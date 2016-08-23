@@ -95,9 +95,9 @@ type ChunkStore interface {
 
 // ChunkStoreConfig specifies config for a ChunkStore
 type ChunkStoreConfig struct {
-	S3URL          string
-	DynamoDBURL    string
-	MemcacheClient *MemcacheClient
+	S3URL       string
+	DynamoDBURL string
+	ChunkCache  *ChunkCache
 }
 
 // NewAWSChunkStore makes a new ChunkStore
@@ -128,7 +128,7 @@ func NewAWSChunkStore(cfg ChunkStoreConfig) (*AWSChunkStore, error) {
 	return &AWSChunkStore{
 		dynamodb:   dynamodb.New(session.New(dynamoDBConfig)),
 		s3:         s3.New(session.New(s3Config)),
-		memcache:   cfg.MemcacheClient,
+		chunkCache: cfg.ChunkCache,
 		tableName:  tableName,
 		bucketName: bucketName,
 	}, nil
@@ -161,10 +161,9 @@ func userID(ctx context.Context) (string, error) {
 type AWSChunkStore struct {
 	dynamodb   dynamodbClient
 	s3         s3Client
-	memcache   *MemcacheClient
+	chunkCache *ChunkCache
 	tableName  string
 	bucketName string
-	cfg        ChunkStoreConfig
 }
 
 type dynamodbClient interface {
@@ -280,9 +279,9 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 			return err
 		}
 
-		if c.memcache != nil {
-			if err = c.memcache.StoreChunkData(userID, &chunk); err != nil {
-				log.Warnf("Could not store %v in memcache: %v", chunk.ID, err)
+		if c.chunkCache != nil {
+			if err = c.chunkCache.StoreChunkData(userID, &chunk); err != nil {
+				log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
 			}
 		}
 	}
@@ -362,9 +361,9 @@ func (c *AWSChunkStore) Get(ctx context.Context, from, through model.Time, match
 		return nil, err
 	}
 
-	var fromMemcache []wire.Chunk
-	if c.memcache != nil {
-		fromMemcache, missing, err = c.memcache.FetchChunkData(userID, missing)
+	var fromCache []wire.Chunk
+	if c.chunkCache != nil {
+		fromCache, missing, err = c.chunkCache.FetchChunkData(userID, missing)
 		if err != nil {
 			log.Warnf("Error fetching from cache: %v", err)
 		}
@@ -375,15 +374,15 @@ func (c *AWSChunkStore) Get(ctx context.Context, from, through model.Time, match
 		return nil, err
 	}
 
-	if c.memcache != nil {
-		if err = c.memcache.StoreChunks(userID, fromS3); err != nil {
-			log.Warnf("Could not store chunks in memcache: %v", err)
+	if c.chunkCache != nil {
+		if err = c.chunkCache.StoreChunks(userID, fromS3); err != nil {
+			log.Warnf("Could not store chunks in chunk cache: %v", err)
 		}
 	}
 
 	// TODO instead of doing this sort, propagate an index and assign chunks
 	// into the result based on that index.
-	chunks := append(fromMemcache, fromS3...)
+	chunks := append(fromCache, fromS3...)
 	sort.Sort(wire.ChunksByID(chunks))
 	return chunks, nil
 }

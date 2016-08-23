@@ -59,14 +59,9 @@ func TestChunkStore(t *testing.T) {
 	store := AWSChunkStore{
 		dynamodb:   mockaws.NewMockDynamoDB(),
 		s3:         mockaws.NewMockS3(),
-		memcache:   nil,
+		chunkCache: nil,
 		tableName:  "tablename",
 		bucketName: "bucketname",
-		cfg: ChunkStoreConfig{
-			S3URL:          "",
-			DynamoDBURL:    "",
-			MemcacheClient: nil,
-		},
 	}
 	store.CreateTables()
 

@@ -99,20 +99,22 @@ func main() {
 		log.Fatalf("Error initializing Consul client: %v", err)
 	}
 
-	var memcache *frankenstein.MemcacheClient
+	var chunkCache *frankenstein.ChunkCache
 	if memcachedHostname != "" {
-		memcache = frankenstein.NewMemcacheClient(frankenstein.MemcacheConfig{
-			Host:           memcachedHostname,
-			Service:        memcachedService,
-			Timeout:        memcachedTimeout,
-			UpdateInterval: 1 * time.Minute,
-			Expiration:     memcachedExpiration,
-		})
+		chunkCache = &frankenstein.ChunkCache{
+			Memcache: frankenstein.NewMemcacheClient(frankenstein.MemcacheConfig{
+				Host:           memcachedHostname,
+				Service:        memcachedService,
+				Timeout:        memcachedTimeout,
+				UpdateInterval: 1 * time.Minute,
+			}),
+			Expiration: memcachedExpiration,
+		}
 	}
 	chunkStore, err := frankenstein.NewAWSChunkStore(frankenstein.ChunkStoreConfig{
-		S3URL:          s3URL,
-		DynamoDBURL:    dynamodbURL,
-		MemcacheClient: memcache,
+		S3URL:       s3URL,
+		DynamoDBURL: dynamodbURL,
+		ChunkCache:  chunkCache,
 	})
 	if err != nil {
 		log.Fatal(err)

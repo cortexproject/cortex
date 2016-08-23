@@ -157,7 +157,6 @@ type AWSChunkStore struct {
 	chunkCache *ChunkCache
 	tableName  string
 	bucketName string
-	cfg        ChunkStoreConfig
 }
 
 type dynamodbClient interface {

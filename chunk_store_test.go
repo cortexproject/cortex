@@ -62,11 +62,6 @@ func TestChunkStore(t *testing.T) {
 		chunkCache: nil,
 		tableName:  "tablename",
 		bucketName: "bucketname",
-		cfg: ChunkStoreConfig{
-			S3URL:       "",
-			DynamoDBURL: "",
-			ChunkCache:  nil,
-		},
 	}
 	store.CreateTables()
 

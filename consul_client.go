@@ -216,7 +216,7 @@ func (c *consulClient) PutBytes(key string, buf []byte) error {
 
 type prefixedConsulClient struct {
 	prefix string
-	ConsulClient
+	consul ConsulClient
 }
 
 // PrefixClient takes a ConsulClient and forces a prefix on all its operations.
@@ -226,21 +226,21 @@ func PrefixClient(client ConsulClient, prefix string) ConsulClient {
 
 // Get and deserialise a JSON value from Consul.
 func (c *prefixedConsulClient) Get(key string, out interface{}) error {
-	return c.ConsulClient.Get(c.prefix+key, out)
+	return c.consul.Get(c.prefix+key, out)
 }
 
 // CAS atomically modifies a value in a callback. If the value doesn't exist,
 // you'll get 'nil' as an argument to your callback.
 func (c *prefixedConsulClient) CAS(key string, out interface{}, f CASCallback) error {
-	return c.ConsulClient.CAS(c.prefix+key, out, f)
+	return c.consul.CAS(c.prefix+key, out, f)
 }
 
 // WatchPrefix watches a prefix. This is in addition to the prefix we already have.
 func (c *prefixedConsulClient) WatchPrefix(prefix string, factory func() interface{}, done chan struct{}, f func(string, interface{}) bool) {
-	c.ConsulClient.WatchPrefix(c.prefix+prefix, factory, done, f)
+	c.consul.WatchPrefix(c.prefix+prefix, factory, done, f)
 }
 
 // PutBytes writes bytes to Consul.
 func (c *prefixedConsulClient) PutBytes(key string, buf []byte) error {
-	return c.ConsulClient.PutBytes(c.prefix+key, buf)
+	return c.consul.PutBytes(c.prefix+key, buf)
 }

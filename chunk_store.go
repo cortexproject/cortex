@@ -31,11 +31,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"github.com/sburnett/lexicographic-tuples"
+	"github.com/prometheus/prometheus/storage/local/wire"
+	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
-	"github.com/prometheus/prometheus/frankenstein/wire"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/tomwilkie/frankenstein/lexicographic-tuples"
 )
 
 const (

@@ -26,12 +26,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
+	"github.com/prometheus/prometheus/storage/local"
 	"github.com/weaveworks/scope/common/middleware"
 	"golang.org/x/net/context"
 
-	"github.com/prometheus/prometheus/frankenstein"
-	"github.com/prometheus/prometheus/frankenstein/api"
-	"github.com/prometheus/prometheus/storage/local"
+	"github.com/tomwilkie/frankenstein"
+	"github.com/tomwilkie/frankenstein/api"
 )
 
 const (

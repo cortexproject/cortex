@@ -22,11 +22,10 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/local/wire"
+	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/tomwilkie/go-mockaws"
 	"golang.org/x/net/context"
-
-	"github.com/prometheus/prometheus/frankenstein/wire"
-	"github.com/prometheus/prometheus/storage/metric"
 )
 
 func init() {

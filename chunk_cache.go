@@ -19,7 +19,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/frankenstein/wire"
+	"github.com/prometheus/prometheus/storage/local/wire"
 )
 
 var (

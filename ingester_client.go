@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/prometheus/storage/remote/generic"
 )
 
+// IngesterClient is a client library for the ingester
 type IngesterClient struct {
 	hostname string
 	client   http.Client
@@ -45,6 +46,7 @@ func NewIngesterClient(hostname string, timeout time.Duration) *IngesterClient {
 	}
 }
 
+// Append adds new samples to the ingester
 func (c *IngesterClient) Append(ctx context.Context, samples []*model.Sample) error {
 	req := &generic.GenericWriteRequest{}
 	for _, s := range samples {
@@ -61,7 +63,7 @@ func (c *IngesterClient) Append(ctx context.Context, samples []*model.Sample) er
 			}
 		}
 		ts.Samples = []*generic.Sample{
-			&generic.Sample{
+			{
 				Value:       proto.Float64(float64(s.Value)),
 				TimestampMs: proto.Int64(int64(s.Timestamp)),
 			},

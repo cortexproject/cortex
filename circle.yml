@@ -1,0 +1,26 @@
+machine:
+  services:
+    - docker
+  environment:
+    PATH: /usr/local/go/bin:$HOME/bin:$PATH
+
+dependencies:
+  override:
+    - go get -u github.com/weaveworks/build-tools/cmd/wcloud
+
+test:
+  override:
+    - make RM= lint
+    - make RM= test
+    - make RM=
+
+#deployment:
+#  push:
+#    branch: master
+#    commands:
+#      - docker login -e '.' -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD" quay.io
+#      - |
+#          set -o pipefail
+#          export LAST_BUILD_COMMIT=$(curl -sS 'https://circleci.com/api/v1/project/weaveworks/service/tree/'$CIRCLE_BRANCH'?circle-token='$CIRCLE_TOKEN'&filter=successful&limit=1' | jq -r '.[0].vcs_revision')
+#          echo Last successful build was commit $LAST_BUILD_COMMIT
+#          ./push-images --and-deploy --if-changed-since $LAST_BUILD_COMMIT

@@ -10,6 +10,6 @@ RUN go get -tags netgo \
 		github.com/kisielk/errcheck \
 		github.com/mjibson/esc \
 		github.com/client9/misspell/cmd/misspell && \
-	rm -rf /go/pkg/ /go/src/
+	rm -rf /go/pkg /go/src
 COPY build.sh /
 ENTRYPOINT ["/build.sh"]

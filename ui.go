@@ -40,6 +40,7 @@ func getTemplate(name string) (string, error) {
 	return string(baseTmpl) + string(pageTmpl), nil
 }
 
+// GraphHandler handles graphs?
 func GraphHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		text, err := getTemplate("graph.html")
@@ -64,6 +65,7 @@ func GraphHandler() http.Handler {
 	})
 }
 
+// StaticAssetsHandler handles static assets?
 func StaticAssetsHandler(stripPrefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		fp := strings.TrimPrefix(req.URL.Path, stripPrefix)

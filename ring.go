@@ -63,6 +63,7 @@ func (r *Ring) Update(col IngesterDesc) {
 	r.updateSortedHashes()
 }
 
+// Delete deletes a collector in the ring.
 func (r *Ring) Delete(col IngesterDesc) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()

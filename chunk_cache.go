@@ -49,11 +49,13 @@ func init() {
 	prometheus.MustRegister(memcacheRequestDuration)
 }
 
+// Memcache caches things
 type Memcache interface {
 	GetMulti(keys []string) (map[string]*memcache.Item, error)
 	Set(item *memcache.Item) error
 }
 
+// ChunkCache caches chunks
 type ChunkCache struct {
 	Memcache   Memcache
 	Expiration time.Duration

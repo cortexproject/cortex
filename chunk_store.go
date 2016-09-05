@@ -33,15 +33,16 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/wire"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/sburnet/lexicographic-tuples"
 	"golang.org/x/net/context"
-
-	"github.com/tomwilkie/frankenstein/lexicographic-tuples"
 )
 
 const (
-	hashKey          = "h"
-	rangeKey         = "r"
-	chunkKey         = "c"
+	hashKey  = "h"
+	rangeKey = "r"
+	chunkKey = "c"
+
+	// UserIDContextKey is the key used in contexts to find the userid
 	UserIDContextKey = "FrankensteinUserID" // TODO dedupe with storage/local
 
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.

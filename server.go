@@ -184,6 +184,7 @@ func QueryHandler(querier Querier) http.Handler {
 	})
 }
 
+// LabelValuesHandler handles label values
 func LabelValuesHandler(querier Querier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &generic.GenericLabelValuesRequest{}

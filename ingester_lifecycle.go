@@ -22,6 +22,8 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/prometheus/common/log"
 )
@@ -30,23 +32,54 @@ const (
 	infName = "eth0"
 )
 
-// WriteIngesterConfigToConsul writes ingester config to Consul
-func WriteIngesterConfigToConsul(consulClient ConsulClient, listenPort int, numTokens int) error {
-	log.Info("Adding ingester to consul")
+// IngesterRegistration manages the connection between the ingester and Consul.
+type IngesterRegistration struct {
+	consul ConsulClient
+	id     string
+	desc   []byte
 
-	desc, err := describeLocalIngester(listenPort, numTokens)
-	if err != nil {
-		return err
-	}
-	return writeIngesterConfigToConsul(consulClient, desc)
+	quit chan struct{}
+	wait sync.WaitGroup
 }
 
-func writeIngesterConfigToConsul(consulClient ConsulClient, desc *IngesterDesc) error {
+// RegisterIngester registers an ingester with Consul.
+func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*IngesterRegistration, error) {
+	desc, err := describeLocalIngester(listenPort, numTokens)
+	if err != nil {
+		return nil, err
+	}
 	buf, err := json.Marshal(desc)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return consulClient.PutBytes(desc.ID, buf)
+
+	r := &IngesterRegistration{
+		consul: consulClient,
+		id:     desc.ID,
+		desc:   buf,
+		quit:   make(chan struct{}),
+	}
+	r.wait.Add(1)
+	go r.updateLoop()
+	return r, nil
+}
+
+func (r *IngesterRegistration) updateLoop() error {
+	defer r.wait.Done()
+	ticker := time.NewTicker(1 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			log.Info("Adding ingester to consul")
+			if err := r.consul.PutBytes(r.id, r.desc); err == nil {
+				break
+			} else {
+				log.Errorf("Failed to write to consul, sleeping: %v", err)
+			}
+		case <-r.quit:
+			ticker.Stop()
+		}
+	}
 }
 
 // describeLocalIngester returns an IngesterDesc for the ingester that is this
@@ -81,26 +114,18 @@ func generateTokens(id string, numTokens int) []uint32 {
 	return tokens
 }
 
-// DeleteIngesterConfigFromConsul deletes ingestor config from Consul
-func DeleteIngesterConfigFromConsul(consulClient ConsulClient) error {
+// Unregister deletes ingestor config from Consul
+func (r *IngesterRegistration) Unregister() error {
 	log.Info("Removing ingester from consul")
-	hostname, err := os.Hostname()
-	if err != nil {
-		return err
-	}
-	return deleteIngesterConfigFromConsul(consulClient, hostname)
-}
-
-func deleteIngesterConfigFromConsul(consulClient ConsulClient, id string) error {
 	buf, err := json.Marshal(IngesterDesc{
-		ID:       id,
+		ID:       r.id,
 		Hostname: "",
 		Tokens:   []uint32{},
 	})
 	if err != nil {
 		return err
 	}
-	return consulClient.PutBytes(id, buf)
+	return r.consul.PutBytes(r.id, buf)
 }
 
 // getFirstAddressOf returns the first IPv4 address of the supplied interface name.

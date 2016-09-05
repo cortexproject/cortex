@@ -35,6 +35,15 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/davecgh/go-spew/spew",
+			"repository": "https://github.com/davecgh/go-spew",
+			"vcs": "git",
+			"revision": "6cf5744a041a0022271cefed95ba843f6d87fd51",
+			"branch": "master",
+			"path": "/spew",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/golang/protobuf/proto",
 			"repository": "https://github.com/golang/protobuf",
 			"vcs": "git",
@@ -252,6 +261,15 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/pmezard/go-difflib/difflib",
+			"repository": "https://github.com/pmezard/go-difflib",
+			"vcs": "git",
+			"revision": "792786c7400a136282c1664665ae0a8db921c6c2",
+			"branch": "master",
+			"path": "/difflib",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/prometheus/client_golang/prometheus",
 			"repository": "https://github.com/prometheus/client_golang",
 			"vcs": "git",
@@ -359,6 +377,14 @@
 			"repository": "https://github.com/syndtr/goleveldb",
 			"vcs": "git",
 			"revision": "6ae1797c0b42b9323fc27ff7dcf568df88f2f33d",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/go-mockaws",
+			"repository": "https://github.com/tomwilkie/go-mockaws",
+			"vcs": "git",
+			"revision": "9853e74229d5d48e82ae9be53d725507db3c8483",
 			"branch": "master",
 			"notests": true
 		},

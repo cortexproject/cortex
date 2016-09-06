@@ -64,20 +64,21 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	return r, nil
 }
 
-func (r *IngesterRegistration) updateLoop() error {
+func (r *IngesterRegistration) updateLoop() {
 	defer r.wait.Done()
 	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			log.Info("Adding ingester to consul")
-			if err := r.consul.PutBytes(r.id, r.desc); err == nil {
-				break
-			} else {
+			if err := r.consul.PutBytes(r.id, r.desc); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
+			} else {
+				return
 			}
 		case <-r.quit:
-			ticker.Stop()
+			return
 		}
 	}
 }
@@ -115,8 +116,16 @@ func generateTokens(id string, numTokens int) []uint32 {
 }
 
 // Unregister deletes ingestor config from Consul
-func (r *IngesterRegistration) Unregister() error {
+func (r *IngesterRegistration) Unregister() {
 	log.Info("Removing ingester from consul")
+	close(r.quit)
+	r.wait.Wait()
+	if err := r.unregister(); err != nil {
+		log.Errorf("Error unregistering ingester: %v", err)
+	}
+}
+
+func (r *IngesterRegistration) unregister() error {
 	buf, err := json.Marshal(IngesterDesc{
 		ID:       r.id,
 		Hostname: "",

@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package frankenstein
+package ring
 
 import (
 	"bytes"
@@ -32,7 +32,7 @@ const (
 type ConsulClient interface {
 	Get(key string, out interface{}) error
 	CAS(key string, out interface{}, f CASCallback) error
-	WatchPrefix(prefix string, factory func() interface{}, done chan struct{}, f func(string, interface{}) bool)
+	WatchPrefix(path string, factory func() interface{}, done chan struct{}, f func(string, interface{}) bool)
 	PutBytes(key string, buf []byte) error
 }
 
@@ -42,7 +42,7 @@ type CASCallback func(in interface{}) (out interface{}, retry bool, err error)
 type kv interface {
 	CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error)
 	Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consul.QueryMeta, error)
-	List(prefix string, q *consul.QueryOptions) (consul.KVPairs, *consul.QueryMeta, error)
+	List(path string, q *consul.QueryOptions) (consul.KVPairs, *consul.QueryMeta, error)
 	Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error)
 }
 
@@ -236,8 +236,8 @@ func (c *prefixedConsulClient) CAS(key string, out interface{}, f CASCallback) e
 }
 
 // WatchPrefix watches a prefix. This is in addition to the prefix we already have.
-func (c *prefixedConsulClient) WatchPrefix(prefix string, factory func() interface{}, done chan struct{}, f func(string, interface{}) bool) {
-	c.consul.WatchPrefix(c.prefix+prefix, factory, done, f)
+func (c *prefixedConsulClient) WatchPrefix(path string, factory func() interface{}, done chan struct{}, f func(string, interface{}) bool) {
+	c.consul.WatchPrefix(c.prefix+path, factory, done, f)
 }
 
 // PutBytes writes bytes to Consul.

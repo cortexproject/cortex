@@ -32,6 +32,7 @@ import (
 
 	"github.com/tomwilkie/frankenstein"
 	"github.com/tomwilkie/frankenstein/api"
+	"github.com/tomwilkie/frankenstein/ring"
 )
 
 const (
@@ -53,97 +54,82 @@ func init() {
 	prometheus.MustRegister(requestDuration)
 }
 
-func main() {
-	var (
-		mode                 string
-		listenPort           int
-		consulHost           string
-		consulPrefix         string
-		s3URL                string
-		dynamodbURL          string
-		dynamodbCreateTables bool
-		memcachedHostname    string
-		memcachedTimeout     time.Duration
-		memcachedExpiration  time.Duration
-		memcachedService     string
-		remoteTimeout        time.Duration
-		flushPeriod          time.Duration
-		maxChunkAge          time.Duration
-		numTokens            int
-	)
+type cfg struct {
+	mode                 string
+	listenPort           int
+	consulHost           string
+	consulPrefix         string
+	s3URL                string
+	dynamodbURL          string
+	dynamodbCreateTables bool
+	memcachedHostname    string
+	memcachedTimeout     time.Duration
+	memcachedExpiration  time.Duration
+	memcachedService     string
+	remoteTimeout        time.Duration
+	flushPeriod          time.Duration
+	maxChunkAge          time.Duration
+	numTokens            int
+}
 
-	flag.StringVar(&mode, "mode", distributor, "Mode (distributor, ingester).")
-	flag.IntVar(&listenPort, "web.listen-port", 9094, "HTTP server listen port.")
-	flag.StringVar(&consulHost, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
-	flag.StringVar(&consulPrefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
-	flag.StringVar(&s3URL, "s3.url", "localhost:4569", "S3 endpoint URL.")
-	flag.StringVar(&dynamodbURL, "dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
-	flag.BoolVar(&dynamodbCreateTables, "dynamodb.create-tables", false, "Create required DynamoDB tables on startup.")
-	flag.StringVar(&memcachedHostname, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
-	flag.DurationVar(&memcachedTimeout, "memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
-	flag.DurationVar(&memcachedExpiration, "memcached.expiration", 0, "How long chunks stay in the memcache.")
-	flag.StringVar(&memcachedService, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
-	flag.DurationVar(&remoteTimeout, "remote.timeout", 5*time.Second, "Timeout for downstream ingesters.")
-	flag.DurationVar(&flushPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
-	flag.DurationVar(&maxChunkAge, "ingester.max-chunk-age", 10*time.Minute, "Maximum chunk age before flushing.")
-	flag.IntVar(&numTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
+func main() {
+	var cfg cfg
+	flag.StringVar(&cfg.mode, "mode", distributor, "Mode (distributor, ingester).")
+	flag.IntVar(&cfg.listenPort, "web.listen-port", 9094, "HTTP server listen port.")
+	flag.StringVar(&cfg.consulHost, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
+	flag.StringVar(&cfg.consulPrefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
+	flag.StringVar(&cfg.s3URL, "s3.url", "localhost:4569", "S3 endpoint URL.")
+	flag.StringVar(&cfg.dynamodbURL, "dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
+	flag.BoolVar(&cfg.dynamodbCreateTables, "dynamodb.create-tables", false, "Create required DynamoDB tables on startup.")
+	flag.StringVar(&cfg.memcachedHostname, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
+	flag.DurationVar(&cfg.memcachedTimeout, "memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
+	flag.DurationVar(&cfg.memcachedExpiration, "memcached.expiration", 0, "How long chunks stay in the memcache.")
+	flag.StringVar(&cfg.memcachedService, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
+	flag.DurationVar(&cfg.remoteTimeout, "remote.timeout", 5*time.Second, "Timeout for downstream ingesters.")
+	flag.DurationVar(&cfg.flushPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
+	flag.DurationVar(&cfg.maxChunkAge, "ingester.max-chunk-age", 10*time.Minute, "Maximum chunk age before flushing.")
+	flag.IntVar(&cfg.numTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
 	flag.Parse()
 
-	consul, err := frankenstein.NewConsulClient(consulHost)
+	chunkStore, err := setupChunkStore(cfg)
+	if err != nil {
+		log.Fatalf("Error initializing chunk store: %v", err)
+	}
+
+	consul, err := ring.NewConsulClient(cfg.consulHost)
 	if err != nil {
 		log.Fatalf("Error initializing Consul client: %v", err)
 	}
-	consul = frankenstein.PrefixClient(consul, consulPrefix)
+	consul = ring.PrefixClient(consul, cfg.consulPrefix)
 
-	var chunkCache *frankenstein.ChunkCache
-	if memcachedHostname != "" {
-		chunkCache = &frankenstein.ChunkCache{
-			Memcache: frankenstein.NewMemcacheClient(frankenstein.MemcacheConfig{
-				Host:           memcachedHostname,
-				Service:        memcachedService,
-				Timeout:        memcachedTimeout,
-				UpdateInterval: 1 * time.Minute,
-			}),
-			Expiration: memcachedExpiration,
-		}
-	}
-	chunkStore, err := frankenstein.NewAWSChunkStore(frankenstein.ChunkStoreConfig{
-		S3URL:       s3URL,
-		DynamoDBURL: dynamodbURL,
-		ChunkCache:  chunkCache,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	if dynamodbCreateTables {
-		if err = chunkStore.CreateTables(); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	switch mode {
+	switch cfg.mode {
 	case distributor:
-		setupDistributor(consul, chunkStore, remoteTimeout)
+		ring := ring.NewRing(consul)
+		defer ring.Stop()
+		setupDistributor(cfg, ring, chunkStore)
+		if err != nil {
+			log.Fatalf("Error initializing distributor: %v", err)
+		}
 	case ingester:
-		registration, err := frankenstein.RegisterIngester(consul, listenPort, numTokens)
+		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.numTokens)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
 			// network errors.
 			log.Fatalf("Could not register ingester: %v", err)
 		}
+		defer registration.Unregister()
 		cfg := local.IngesterConfig{
-			FlushCheckPeriod: flushPeriod,
-			MaxChunkAge:      maxChunkAge,
+			FlushCheckPeriod: cfg.flushPeriod,
+			MaxChunkAge:      cfg.maxChunkAge,
 		}
 		ingester := setupIngester(chunkStore, cfg)
 		defer ingester.Stop()
-		defer registration.Unregister()
 	default:
-		log.Fatalf("Mode %s not supported!", mode)
+		log.Fatalf("Mode %s not supported!", cfg.mode)
 	}
 
 	http.Handle("/metrics", prometheus.Handler())
-	go http.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
+	go http.ListenAndServe(fmt.Sprintf(":%d", cfg.listenPort), nil)
 
 	term := make(chan os.Signal)
 	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
@@ -151,21 +137,47 @@ func main() {
 	log.Warn("Received SIGTERM, exiting gracefully...")
 }
 
-func setupDistributor(
-	consulClient frankenstein.ConsulClient,
-	chunkStore frankenstein.ChunkStore,
-	remoteTimeout time.Duration,
-) {
-	clientFactory := func(hostname string) (*frankenstein.IngesterClient, error) {
-		return frankenstein.NewIngesterClient(hostname, remoteTimeout), nil
+func setupChunkStore(cfg cfg) (frankenstein.ChunkStore, error) {
+	var chunkCache *frankenstein.ChunkCache
+	if cfg.memcachedHostname != "" {
+		chunkCache = &frankenstein.ChunkCache{
+			Memcache: frankenstein.NewMemcacheClient(frankenstein.MemcacheConfig{
+				Host:           cfg.memcachedHostname,
+				Service:        cfg.memcachedService,
+				Timeout:        cfg.memcachedTimeout,
+				UpdateInterval: 1 * time.Minute,
+			}),
+			Expiration: cfg.memcachedExpiration,
+		}
 	}
-	distributor, err := frankenstein.NewDistributor(frankenstein.DistributorConfig{
-		ConsulClient:  consulClient,
-		ClientFactory: clientFactory,
+	chunkStore, err := frankenstein.NewAWSChunkStore(frankenstein.ChunkStoreConfig{
+		S3URL:       cfg.s3URL,
+		DynamoDBURL: cfg.dynamodbURL,
+		ChunkCache:  chunkCache,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
+	if cfg.dynamodbCreateTables {
+		if err = chunkStore.CreateTables(); err != nil {
+			return nil, err
+		}
+	}
+	return chunkStore, err
+}
+
+func setupDistributor(
+	cfg cfg,
+	ring *ring.Ring,
+	chunkStore frankenstein.ChunkStore,
+) {
+	clientFactory := func(hostname string) (*frankenstein.IngesterClient, error) {
+		return frankenstein.NewIngesterClient(hostname, cfg.remoteTimeout), nil
+	}
+	distributor := frankenstein.NewDistributor(frankenstein.DistributorConfig{
+		Ring:          ring,
+		ClientFactory: clientFactory,
+	})
 	prometheus.MustRegister(distributor)
 
 	prefix := "/api/prom"

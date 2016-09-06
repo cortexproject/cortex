@@ -13,7 +13,7 @@
 
 // Responsible for managing the ingester lifecycle.
 
-package frankenstein
+package ring
 
 import (
 	"encoding/json"

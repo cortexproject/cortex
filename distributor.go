@@ -19,11 +19,11 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/tomwilkie/frankenstein/ring"
 )
 
 var (
@@ -37,13 +37,10 @@ var (
 // Distributor is a storage.SampleAppender and a frankenstein.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	ring       *Ring
-	cfg        DistributorConfig
-	clientsMtx sync.RWMutex
-	clients    map[string]*IngesterClient
-
-	quit chan struct{}
-	done chan struct{}
+	ring          ReadRing
+	clientFactory IngesterClientFactory
+	clientsMtx    sync.RWMutex
+	clients       map[string]*IngesterClient
 
 	queryDuration   *prometheus.HistogramVec
 	consulUpdates   prometheus.Counter
@@ -51,30 +48,30 @@ type Distributor struct {
 	sendDuration    *prometheus.HistogramVec
 }
 
+// ReadRing represents the read inferface to the ring.
+type ReadRing interface {
+	prometheus.Collector
+
+	Get(key uint32) (ring.IngesterDesc, error)
+	GetAll() []ring.IngesterDesc
+}
+
+// IngesterClientFactory creates ingester clients.
+type IngesterClientFactory func(string) (*IngesterClient, error)
+
 // DistributorConfig contains the configuration require to
 // create a Distributor
 type DistributorConfig struct {
-	ConsulClient  ConsulClient
-	ConsulPrefix  string
-	ClientFactory func(string) (*IngesterClient, error)
-}
-
-// IngesterDesc is the serialised state in Consul representing
-// an individual ingester.
-type IngesterDesc struct {
-	ID       string   `json:"ID"`
-	Hostname string   `json:"hostname"`
-	Tokens   []uint32 `json:"tokens"`
+	Ring          ReadRing
+	ClientFactory IngesterClientFactory
 }
 
 // NewDistributor constructs a new Distributor
-func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
-	d := &Distributor{
-		ring:    NewRing(),
-		cfg:     cfg,
-		clients: map[string]*IngesterClient{},
-		quit:    make(chan struct{}),
-		done:    make(chan struct{}),
+func NewDistributor(cfg DistributorConfig) *Distributor {
+	return &Distributor{
+		ring:          cfg.Ring,
+		clientFactory: cfg.ClientFactory,
+		clients:       map[string]*IngesterClient{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "prometheus",
 			Name:      "distributor_query_duration_seconds",
@@ -98,26 +95,6 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 			Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 		}, []string{"status_code"}),
 	}
-	go d.loop()
-	return d, nil
-}
-
-// Stop the distributor.
-func (d *Distributor) Stop() {
-	close(d.quit)
-	<-d.done
-}
-
-func (d *Distributor) loop() {
-	defer close(d.done)
-	factory := func() interface{} { return &IngesterDesc{} }
-	d.cfg.ConsulClient.WatchPrefix(d.cfg.ConsulPrefix, factory, d.quit, func(key string, value interface{}) bool {
-		c := *value.(*IngesterDesc)
-		log.Infof("Got update to ingester %d", c.ID)
-		d.consulUpdates.Inc()
-		d.ring.Update(c)
-		return true
-	})
 }
 
 func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {
@@ -135,7 +112,7 @@ func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {
 		return client, nil
 	}
 
-	client, err := d.cfg.ClientFactory(hostname)
+	client, err := d.clientFactory(hostname)
 	if err != nil {
 		return nil, err
 	}

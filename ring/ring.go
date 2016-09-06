@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package frankenstein
+package ring
 
 // Based on https://raw.githubusercontent.com/stathat/consistent/master/consistent.go
 
@@ -22,7 +22,16 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 )
+
+// IngesterDesc is the serialised state in Consul representing
+// an individual ingester.
+type IngesterDesc struct {
+	ID       string   `json:"ID"`
+	Hostname string   `json:"hostname"`
+	Tokens   []uint32 `json:"tokens"`
+}
 
 type uint32s []uint32
 
@@ -39,8 +48,17 @@ var ingestorOwnershipDesc = prometheus.NewDesc(
 	[]string{"ingester"}, nil,
 )
 
+// CoordinationStateClient is an interface to getting changes to the coordination
+// state.  Should allow us to swap out Consul for something else (mesh?) later.
+type CoordinationStateClient interface {
+	WatchPrefix(path string, factory func() interface{}, done chan struct{}, f func(string, interface{}) bool)
+}
+
 // Ring holds the information about the members of the consistent hash circle.
 type Ring struct {
+	client     CoordinationStateClient
+	quit, done chan struct{}
+
 	mtx          sync.RWMutex
 	ingesters    map[string]IngesterDesc // source of truth - indexed by key
 	circle       map[uint32]IngesterDesc // derived - indexed by token
@@ -48,26 +66,40 @@ type Ring struct {
 }
 
 // NewRing creates a new Ring object.
-func NewRing() *Ring {
-	return &Ring{
+func NewRing(client CoordinationStateClient) *Ring {
+	r := &Ring{
+		client:    client,
+		quit:      make(chan struct{}),
+		done:      make(chan struct{}),
 		circle:    map[uint32]IngesterDesc{},
 		ingesters: map[string]IngesterDesc{},
 	}
+	go r.loop()
+	return r
+}
+
+// Stop the distributor.
+func (r *Ring) Stop() {
+	close(r.quit)
+	<-r.done
+}
+
+func (r *Ring) loop() {
+	defer close(r.done)
+	factory := func() interface{} { return &IngesterDesc{} }
+	r.client.WatchPrefix("", factory, r.quit, func(key string, value interface{}) bool {
+		c := *value.(*IngesterDesc)
+		log.Infof("Got update to ingester %v", c.ID)
+		r.update(c)
+		return true
+	})
 }
 
 // Update inserts a collector in the consistent hash.
-func (r *Ring) Update(col IngesterDesc) {
+func (r *Ring) update(col IngesterDesc) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	r.ingesters[col.ID] = col
-	r.updateSortedHashes()
-}
-
-// Delete deletes a collector in the ring.
-func (r *Ring) Delete(col IngesterDesc) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	delete(r.ingesters, col.ID)
 	r.updateSortedHashes()
 }
 

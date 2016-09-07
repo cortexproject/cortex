@@ -104,7 +104,7 @@ func main() {
 
 	switch cfg.mode {
 	case distributor:
-		ring := ring.NewRing(consul)
+		ring := ring.New(consul)
 		defer ring.Stop()
 		setupDistributor(cfg, ring, chunkStore)
 		if err != nil {

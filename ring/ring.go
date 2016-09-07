@@ -25,14 +25,6 @@ import (
 	"github.com/prometheus/common/log"
 )
 
-// IngesterDesc is the serialised state in Consul representing
-// an individual ingester.
-type IngesterDesc struct {
-	ID       string   `json:"ID"`
-	Hostname string   `json:"hostname"`
-	Tokens   []uint32 `json:"tokens"`
-}
-
 type uint32s []uint32
 
 func (x uint32s) Len() int           { return len(x) }
@@ -51,7 +43,7 @@ var ingestorOwnershipDesc = prometheus.NewDesc(
 // CoordinationStateClient is an interface to getting changes to the coordination
 // state.  Should allow us to swap out Consul for something else (mesh?) later.
 type CoordinationStateClient interface {
-	WatchPrefix(path string, factory func() interface{}, done chan struct{}, f func(string, interface{}) bool)
+	WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool)
 }
 
 // Ring holds the information about the members of the consistent hash circle.
@@ -59,20 +51,16 @@ type Ring struct {
 	client     CoordinationStateClient
 	quit, done chan struct{}
 
-	mtx          sync.RWMutex
-	ingesters    map[string]IngesterDesc // source of truth - indexed by key
-	circle       map[uint32]IngesterDesc // derived - indexed by token
-	sortedHashes uint32s                 // derived
+	mtx      sync.RWMutex
+	ringDesc Desc
 }
 
-// NewRing creates a new Ring object.
-func NewRing(client CoordinationStateClient) *Ring {
+// New creates a new Ring
+func New(client CoordinationStateClient) *Ring {
 	r := &Ring{
-		client:    client,
-		quit:      make(chan struct{}),
-		done:      make(chan struct{}),
-		circle:    map[uint32]IngesterDesc{},
-		ingesters: map[string]IngesterDesc{},
+		client: client,
+		quit:   make(chan struct{}),
+		done:   make(chan struct{}),
 	}
 	go r.loop()
 	return r
@@ -86,32 +74,32 @@ func (r *Ring) Stop() {
 
 func (r *Ring) loop() {
 	defer close(r.done)
-	factory := func() interface{} { return &IngesterDesc{} }
-	r.client.WatchPrefix("", factory, r.quit, func(key string, value interface{}) bool {
-		c := *value.(*IngesterDesc)
-		log.Infof("Got update to ingester %v", c.ID)
-		r.update(c)
+	r.client.WatchKey(consulKey, descFactory, r.quit, func(value interface{}) bool {
+		if value == nil {
+			log.Infof("Ring doesn't exist in consul yet.")
+			return true
+		}
+
+		ringDesc := value.(*Desc)
+		log.Infof("Got update to ring - %d ingesters, %d tokens",
+			len(ringDesc.Ingesters), len(ringDesc.Tokens))
+
+		r.mtx.Lock()
+		defer r.mtx.Unlock()
+		r.ringDesc = *ringDesc
 		return true
 	})
-}
-
-// Update inserts a collector in the consistent hash.
-func (r *Ring) update(col IngesterDesc) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	r.ingesters[col.ID] = col
-	r.updateSortedHashes()
 }
 
 // Get returns a collector close to the hash in the circle.
 func (r *Ring) Get(key uint32) (IngesterDesc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	if len(r.circle) == 0 {
+	if len(r.ringDesc.Tokens) == 0 {
 		return IngesterDesc{}, ErrEmptyRing
 	}
 	i := r.search(key)
-	return r.circle[r.sortedHashes[i]], nil
+	return r.ringDesc.Ingesters[r.ringDesc.Tokens[i].Ingester], nil
 }
 
 // GetAll returns all ingesters in the circle.
@@ -119,39 +107,21 @@ func (r *Ring) GetAll() []IngesterDesc {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	ingesters := make([]IngesterDesc, 0, len(r.ingesters))
-	for _, c := range r.ingesters {
-		// Ignore ingesters with no tokens.
-		if len(c.Tokens) > 0 {
-			ingesters = append(ingesters, c)
-		}
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	for _, ingester := range r.ringDesc.Ingesters {
+		ingesters = append(ingesters, ingester)
 	}
 	return ingesters
 }
 
-func (r *Ring) search(key uint32) (i int) {
-	f := func(x int) bool {
-		return r.sortedHashes[x] > key
-	}
-	i = sort.Search(len(r.sortedHashes), f)
-	if i >= len(r.sortedHashes) {
+func (r *Ring) search(key uint32) int {
+	i := sort.Search(len(r.ringDesc.Tokens), func(x int) bool {
+		return r.ringDesc.Tokens[x].Token > key
+	})
+	if i >= len(r.ringDesc.Tokens) {
 		i = 0
 	}
-	return
-}
-
-func (r *Ring) updateSortedHashes() {
-	hashes := uint32s{}
-	circle := map[uint32]IngesterDesc{}
-	for _, col := range r.ingesters {
-		hashes = append(hashes, col.Tokens...)
-		for _, token := range col.Tokens {
-			circle[token] = col
-		}
-	}
-	sort.Sort(hashes)
-	r.sortedHashes = hashes
-	r.circle = circle
+	return i
 }
 
 // Describe implements prometheus.Collector.
@@ -165,15 +135,14 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	defer r.mtx.RUnlock()
 
 	owned := map[string]uint32{}
-	for i, token := range r.sortedHashes {
+	for i, token := range r.ringDesc.Tokens {
 		var diff uint32
-		if i+1 == len(r.sortedHashes) {
-			diff = (math.MaxUint32 - token) + r.sortedHashes[0]
+		if i+1 == len(r.ringDesc.Tokens) {
+			diff = (math.MaxUint32 - token.Token) + r.ringDesc.Tokens[0].Token
 		} else {
-			diff = r.sortedHashes[i+1] - token
+			diff = r.ringDesc.Tokens[i+1].Token - token.Token
 		}
-		collector := r.circle[token]
-		owned[collector.ID] = owned[collector.ID] + diff
+		owned[token.Ingester] = owned[token.Ingester] + diff
 	}
 
 	for id, totalOwned := range owned {

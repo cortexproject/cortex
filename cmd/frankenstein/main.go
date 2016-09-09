@@ -30,9 +30,9 @@ import (
 	"github.com/weaveworks/scope/common/middleware"
 	"golang.org/x/net/context"
 
-	"github.com/tomwilkie/frankenstein"
-	"github.com/tomwilkie/frankenstein/api"
-	"github.com/tomwilkie/frankenstein/ring"
+	"github.com/weaveworks/frankenstein"
+	"github.com/weaveworks/frankenstein/api"
+	"github.com/weaveworks/frankenstein/ring"
 )
 
 const (

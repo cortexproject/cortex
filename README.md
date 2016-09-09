@@ -1,6 +1,6 @@
 # Project Frankenstein: A multitenant, horizontally scalable Prometheus as a service
 
-[![Circle CI](https://circleci.com/gh/tomwilkie/frankenstein/tree/master.svg?style=shield)](https://circleci.com/gh/tomwilkie/frankenstein/tree/master)
+[![Circle CI](https://circleci.com/gh/weaveworks/frankenstein/tree/master.svg?style=shield)](https://circleci.com/gh/weaveworks/frankenstein/tree/master)
 [![Slack Status](https://slack.weave.works/badge.svg)](https://slack.weave.works)
 
 *NB this is a pre-release, pre-alpha service. Availability will not be 100%.

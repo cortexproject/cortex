@@ -23,7 +23,7 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
-	"github.com/tomwilkie/frankenstein/ring"
+	"github.com/weaveworks/frankenstein/ring"
 )
 
 var (

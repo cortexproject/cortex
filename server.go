@@ -16,14 +16,19 @@ package frankenstein
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/generic"
 )
 
@@ -74,43 +79,52 @@ func writeResponse(w http.ResponseWriter, resp proto.Message) {
 	// TODO: set Content-type.
 }
 
+type snappyDecompressor struct{}
+
+func (d *snappyDecompressor) Do(r io.Reader) ([]byte, error) {
+	sr := snappy.NewReader(r)
+	return ioutil.ReadAll(sr)
+}
+
+func (d *snappyDecompressor) Type() string {
+	return "snappy"
+}
+
+type grpcSampleAppender struct {
+	SampleAppender
+}
+
+func (g grpcSampleAppender) Write(ctx context.Context, req *remote.WriteRequest) (*remote.WriteResponse, error) {
+	var samples []*model.Sample
+	for _, ts := range req.Timeseries {
+		metric := model.Metric{}
+		for _, l := range ts.Labels {
+			metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+		}
+
+		for _, s := range ts.Samples {
+			samples = append(samples, &model.Sample{
+				Metric:    metric,
+				Value:     model.SampleValue(s.Value),
+				Timestamp: model.Time(s.TimestampMs),
+			})
+		}
+	}
+
+	if err := g.Append(ctx, samples); err != nil {
+		log.Errorf(err.Error())
+		return nil, err
+	}
+
+	return &remote.WriteResponse{}, nil
+}
+
 // AppenderHandler returns a http.Handler that accepts protobuf formatted
 // metrics and sends them to the supplied appender.
 func AppenderHandler(appender SampleAppender) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := &generic.GenericWriteRequest{}
-		ctx, abort := parseRequest(w, r, req)
-		if abort {
-			return
-		}
-
-		var samples []*model.Sample
-		for _, ts := range req.Timeseries {
-			metric := model.Metric{}
-			if ts.Name != nil {
-				metric[model.MetricNameLabel] = model.LabelValue(ts.GetName())
-			}
-			for _, l := range ts.Labels {
-				metric[model.LabelName(l.GetName())] = model.LabelValue(l.GetValue())
-			}
-
-			for _, s := range ts.Samples {
-				samples = append(samples, &model.Sample{
-					Metric:    metric,
-					Value:     model.SampleValue(s.GetValue()),
-					Timestamp: model.Time(s.GetTimestampMs()),
-				})
-			}
-		}
-
-		if err := appender.Append(ctx, samples); err != nil {
-			log.Errorf(err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusNoContent)
-	})
+	server := grpc.NewServer(grpc.RPCDecompressor(&snappyDecompressor{}))
+	remote.RegisterWriteServer(server, grpcSampleAppender{appender})
+	return server
 }
 
 // QueryHandler returns a http.Handler that accepts protobuf formatted

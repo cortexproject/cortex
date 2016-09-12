@@ -265,26 +265,40 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		return err
 	}
 
-	// TODO: parallelise
+	incomingErrors := make(chan error)
 	for _, chunk := range chunks {
-		err := timeRequest("Put", s3RequestDuration, func() error {
-			var err error
-			_, err = c.s3.PutObject(&s3.PutObjectInput{
-				Body:   bytes.NewReader(chunk.Data),
-				Bucket: aws.String(c.bucketName),
-				Key:    aws.String(chunkName(userID, chunk.ID)),
+		go func(chunk wire.Chunk) {
+			err := timeRequest("Put", s3RequestDuration, func() error {
+				var err error
+				_, err = c.s3.PutObject(&s3.PutObjectInput{
+					Body:   bytes.NewReader(chunk.Data),
+					Bucket: aws.String(c.bucketName),
+					Key:    aws.String(chunkName(userID, chunk.ID)),
+				})
+				return err
 			})
-			return err
-		})
-		if err != nil {
-			return err
-		}
-
-		if c.chunkCache != nil {
-			if err = c.chunkCache.StoreChunkData(userID, &chunk); err != nil {
-				log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
+			if err != nil {
+				incomingErrors <- err
 			}
+
+			if c.chunkCache != nil {
+				if err = c.chunkCache.StoreChunkData(userID, &chunk); err != nil {
+					log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
+				}
+			}
+			incomingErrors <- nil
+		}(chunk)
+	}
+
+	var lastErr error
+	for range chunks {
+		err = <-incomingErrors
+		if err != nil {
+			lastErr = err
 		}
+	}
+	if lastErr != nil {
+		return lastErr
 	}
 
 	writeReqs := []*dynamodb.WriteRequest{}

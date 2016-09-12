@@ -22,55 +22,76 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
-	"golang.org/x/net/context"
-
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/generic"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
 
 // IngesterClient is a client library for the ingester
 type IngesterClient struct {
-	hostname string
-	client   http.Client
+	address      string
+	httpClient   http.Client
+	remoteClient remote.WriteClient
+	timeout      time.Duration
 }
 
 // NewIngesterClient makes a new IngesterClient.  This client is careful to
 // propagate the user ID from Distributor -> Ingester.
-func NewIngesterClient(hostname string, timeout time.Duration) *IngesterClient {
+func NewIngesterClient(address string, timeout time.Duration) (*IngesterClient, error) {
+	conn, err := grpc.Dial(
+		address,
+		grpc.WithTransportCredentials(nil), // should force http
+		grpc.WithInsecure(),
+		grpc.WithTimeout(timeout),
+		grpc.WithCompressor(&snappyCompressor{}),
+	)
+	if err != nil {
+		return nil, err
+	}
 	client := http.Client{
 		Timeout: timeout,
 	}
 	return &IngesterClient{
-		hostname: hostname,
-		client:   client,
-	}
+		address:      address,
+		httpClient:   client,
+		remoteClient: remote.NewWriteClient(conn),
+		timeout:      timeout,
+	}, nil
 }
 
 // Append adds new samples to the ingester
 func (c *IngesterClient) Append(ctx context.Context, samples []*model.Sample) error {
-	req := &generic.GenericWriteRequest{}
+	req := &remote.WriteRequest{
+		Timeseries: make([]*remote.TimeSeries, 0, len(samples)),
+	}
+
 	for _, s := range samples {
-		ts := &generic.TimeSeries{
-			Name: proto.String(string(s.Metric[model.MetricNameLabel])),
+		ts := &remote.TimeSeries{
+			Labels: make([]*remote.LabelPair, 0, len(s.Metric)),
 		}
 		for k, v := range s.Metric {
-			if k != model.MetricNameLabel {
-				ts.Labels = append(ts.Labels,
-					&generic.LabelPair{
-						Name:  proto.String(string(k)),
-						Value: proto.String(string(v)),
-					})
-			}
+			ts.Labels = append(ts.Labels,
+				&remote.LabelPair{
+					Name:  string(k),
+					Value: string(v),
+				})
 		}
-		ts.Samples = []*generic.Sample{
+		ts.Samples = []*remote.Sample{
 			{
-				Value:       proto.Float64(float64(s.Value)),
-				TimestampMs: proto.Int64(int64(s.Timestamp)),
+				Value:       float64(s.Value),
+				TimestampMs: int64(s.Timestamp),
 			},
 		}
 		req.Timeseries = append(req.Timeseries, ts)
 	}
-	return c.doRequest(ctx, "/push", req, nil)
+
+	ctxt, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	_, err := c.remoteClient.Write(ctxt, req)
+	return err
 }
 
 // Query implements Querier.
@@ -160,14 +181,14 @@ func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req pro
 	}
 	buf := bytes.NewBuffer(data)
 
-	httpReq, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s", c.hostname, endpoint), buf)
+	httpReq, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s", c.address, endpoint), buf)
 	if err != nil {
 		return fmt.Errorf("unable to create request: %v", err)
 	}
 	httpReq.Header.Add(userIDHeaderName, userID)
 	// TODO: This isn't actually the correct Content-type.
 	httpReq.Header.Set("Content-Type", string(expfmt.FmtProtoDelim))
-	httpResp, err := c.client.Do(httpReq)
+	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("error sending request: %v", err)
 	}

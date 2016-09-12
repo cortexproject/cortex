@@ -48,6 +48,12 @@ var (
 		Help:      "Time (in seconds) spent serving HTTP requests.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"method", "route", "status_code", "ws"})
+	instr = middleware.Merge(
+		middleware.Logging,
+		middleware.Instrument{
+			Duration: requestDuration,
+		},
+	).Wrap
 )
 
 func init() {
@@ -171,8 +177,8 @@ func setupDistributor(
 	ring *ring.Ring,
 	chunkStore frankenstein.ChunkStore,
 ) {
-	clientFactory := func(hostname string) (*frankenstein.IngesterClient, error) {
-		return frankenstein.NewIngesterClient(hostname, cfg.remoteTimeout), nil
+	clientFactory := func(address string) (*frankenstein.IngesterClient, error) {
+		return frankenstein.NewIngesterClient(address, cfg.remoteTimeout)
 	}
 	distributor := frankenstein.NewDistributor(frankenstein.DistributorConfig{
 		Ring:          ring,
@@ -180,10 +186,10 @@ func setupDistributor(
 	})
 	prometheus.MustRegister(distributor)
 
-	prefix := "/api/prom"
-	http.Handle(prefix+"/push", frankenstein.AppenderHandler(distributor))
+	http.Handle("/remote.Write/Write", instr(frankenstein.AppenderHandler(distributor)))
 
 	// TODO: Move querier to separate binary.
+	prefix := "/api/prom"
 	setupQuerier(distributor, chunkStore, prefix)
 }
 
@@ -191,7 +197,7 @@ func setupDistributor(
 //
 // PromQL -> MergeQuerier -> Distributor -> IngesterQuerier -> Ingester
 //              |
-//              +----------> ChunkQuerier -> DynamoDB/S3
+//              `----------> ChunkQuerier -> DynamoDB/S3
 func setupQuerier(
 	distributor *frankenstein.Distributor,
 	chunkStore frankenstein.ChunkStore,
@@ -214,8 +220,8 @@ func setupQuerier(
 	api.Register(router.WithPrefix(prefix + "/api/v1"))
 	http.Handle("/", router)
 
-	http.Handle(prefix+"/graph", frankenstein.GraphHandler())
-	http.Handle(prefix+"/static/", frankenstein.StaticAssetsHandler(prefix+"/static/"))
+	http.Handle(prefix+"/graph", instr(frankenstein.GraphHandler()))
+	http.Handle(prefix+"/static/", instr(frankenstein.StaticAssetsHandler(prefix+"/static/")))
 }
 
 func setupIngester(
@@ -228,14 +234,7 @@ func setupIngester(
 	}
 	prometheus.MustRegister(ingester)
 
-	instr := middleware.Merge(
-		middleware.Logging,
-		middleware.Instrument{
-			Duration: requestDuration,
-		},
-	).Wrap
-
-	http.Handle("/push", instr(frankenstein.AppenderHandler(ingester)))
+	http.Handle("/remote.Write/Write", instr(frankenstein.AppenderHandler(ingester)))
 	http.Handle("/query", instr(frankenstein.QueryHandler(ingester)))
 	http.Handle("/label_values", instr(frankenstein.LabelValuesHandler(ingester)))
 	return ingester

@@ -265,6 +265,16 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		return err
 	}
 
+	err = c.putChunks(userID, chunks)
+	if err != nil {
+		return err
+	}
+
+	return c.updateIndex(userID, chunks)
+}
+
+// putChunks writes a collection of chunks to S3 in parallel.
+func (c *AWSChunkStore) putChunks(userID string, chunks []wire.Chunk) error {
 	incomingErrors := make(chan error)
 	for _, chunk := range chunks {
 		go func(chunk wire.Chunk) {
@@ -274,38 +284,7 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 
 	var lastErr error
 	for range chunks {
-		err = <-incomingErrors
-		if err != nil {
-			lastErr = err
-		}
-	}
-	if lastErr != nil {
-		return lastErr
-	}
-
-	writeReqs, err := c.calculateDynamoWrites(userID, chunks)
-	if err != nil {
-		return err
-	}
-
-	batches := [][]*dynamodb.WriteRequest{}
-	for i := 0; i < len(writeReqs); i += dynamoMaxBatchSize {
-		var reqs []*dynamodb.WriteRequest
-		if i+dynamoMaxBatchSize > len(writeReqs) {
-			reqs = writeReqs[i:]
-		} else {
-			reqs = writeReqs[i : i+dynamoMaxBatchSize]
-		}
-		batches = append(batches, reqs)
-	}
-	for _, reqs := range batches {
-		go func(reqs []*dynamodb.WriteRequest) {
-			incomingErrors <- c.batchWriteDynamo(reqs)
-		}(reqs)
-	}
-	lastErr = nil
-	for range batches {
-		err = <-incomingErrors
+		err := <-incomingErrors
 		if err != nil {
 			lastErr = err
 		}
@@ -334,6 +313,41 @@ func (c *AWSChunkStore) putChunk(userID string, chunk *wire.Chunk) error {
 		}
 	}
 	return nil
+}
+
+func (c *AWSChunkStore) updateIndex(userID string, chunks []wire.Chunk) error {
+	writeReqs, err := c.calculateDynamoWrites(userID, chunks)
+	if err != nil {
+		return err
+	}
+
+	// Batch the requests.
+	batches := [][]*dynamodb.WriteRequest{}
+	for i := 0; i < len(writeReqs); i += dynamoMaxBatchSize {
+		var reqs []*dynamodb.WriteRequest
+		if i+dynamoMaxBatchSize > len(writeReqs) {
+			reqs = writeReqs[i:]
+		} else {
+			reqs = writeReqs[i : i+dynamoMaxBatchSize]
+		}
+		batches = append(batches, reqs)
+	}
+
+	// Request all the batches in parallel.
+	incomingErrors := make(chan error)
+	for _, reqs := range batches {
+		go func(reqs []*dynamodb.WriteRequest) {
+			incomingErrors <- c.batchWriteDynamo(reqs)
+		}(reqs)
+	}
+	var lastErr error
+	for range batches {
+		err = <-incomingErrors
+		if err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
 }
 
 // calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all

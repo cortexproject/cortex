@@ -268,25 +268,7 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 	incomingErrors := make(chan error)
 	for _, chunk := range chunks {
 		go func(chunk wire.Chunk) {
-			err := timeRequest("Put", s3RequestDuration, func() error {
-				var err error
-				_, err = c.s3.PutObject(&s3.PutObjectInput{
-					Body:   bytes.NewReader(chunk.Data),
-					Bucket: aws.String(c.bucketName),
-					Key:    aws.String(chunkName(userID, chunk.ID)),
-				})
-				return err
-			})
-			if err != nil {
-				incomingErrors <- err
-			}
-
-			if c.chunkCache != nil {
-				if err = c.chunkCache.StoreChunkData(userID, &chunk); err != nil {
-					log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
-				}
-			}
-			incomingErrors <- nil
+			incomingErrors <- c.putChunk(userID, &chunk)
 		}(chunk)
 	}
 
@@ -358,6 +340,29 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		}
 		if err != nil {
 			return fmt.Errorf("error writing DynamoDB batch: %v", err)
+		}
+	}
+	return nil
+}
+
+// putChunk puts a chunk into S3.
+func (c *AWSChunkStore) putChunk(userID string, chunk *wire.Chunk) error {
+	err := timeRequest("Put", s3RequestDuration, func() error {
+		var err error
+		_, err = c.s3.PutObject(&s3.PutObjectInput{
+			Body:   bytes.NewReader(chunk.Data),
+			Bucket: aws.String(c.bucketName),
+			Key:    aws.String(chunkName(userID, chunk.ID)),
+		})
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	if c.chunkCache != nil {
+		if err = c.chunkCache.StoreChunkData(userID, chunk); err != nil {
+			log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
 		}
 	}
 	return nil

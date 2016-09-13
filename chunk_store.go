@@ -321,24 +321,14 @@ func (c *AWSChunkStore) updateIndex(userID string, chunks []wire.Chunk) error {
 		return err
 	}
 
-	// Batch the requests.
-	batches := [][]*dynamodb.WriteRequest{}
-	for i := 0; i < len(writeReqs); i += dynamoMaxBatchSize {
-		var reqs []*dynamodb.WriteRequest
-		if i+dynamoMaxBatchSize > len(writeReqs) {
-			reqs = writeReqs[i:]
-		} else {
-			reqs = writeReqs[i : i+dynamoMaxBatchSize]
-		}
-		batches = append(batches, reqs)
-	}
+	batches := c.batchRequests(writeReqs)
 
 	// Request all the batches in parallel.
 	incomingErrors := make(chan error)
-	for _, reqs := range batches {
-		go func(reqs []*dynamodb.WriteRequest) {
-			incomingErrors <- c.batchWriteDynamo(reqs)
-		}(reqs)
+	for _, batch := range batches {
+		go func(batch []*dynamodb.WriteRequest) {
+			incomingErrors <- c.batchWriteDynamo(batch)
+		}(batch)
 	}
 	var lastErr error
 	for range batches {
@@ -391,6 +381,22 @@ func (c *AWSChunkStore) calculateDynamoWrites(userID string, chunks []wire.Chunk
 	return writeReqs, nil
 }
 
+// batchRequests takes a bunch of WriteRequests and groups them into batches
+// for later writing.
+func (c *AWSChunkStore) batchRequests(writeReqs []*dynamodb.WriteRequest) [][]*dynamodb.WriteRequest {
+	batches := [][]*dynamodb.WriteRequest{}
+	for i := 0; i < len(writeReqs); i += dynamoMaxBatchSize {
+		var reqs []*dynamodb.WriteRequest
+		if i+dynamoMaxBatchSize > len(writeReqs) {
+			reqs = writeReqs[i:]
+		} else {
+			reqs = writeReqs[i : i+dynamoMaxBatchSize]
+		}
+		batches = append(batches, reqs)
+	}
+	return batches
+}
+
 // batchWriteDynamo writes many requests to dynamo in a single batch.
 func (c *AWSChunkStore) batchWriteDynamo(reqs []*dynamodb.WriteRequest) error {
 	var resp *dynamodb.BatchWriteItemOutput
@@ -406,10 +412,7 @@ func (c *AWSChunkStore) batchWriteDynamo(reqs []*dynamodb.WriteRequest) error {
 		dynamoConsumedCapacity.WithLabelValues("BatchWriteItem").
 			Add(float64(*cc.CapacityUnits))
 	}
-	if err != nil {
-		return fmt.Errorf("error writing DynamoDB batch: %v", err)
-	}
-	return nil
+	return err
 }
 
 // Get implements ChunkStore

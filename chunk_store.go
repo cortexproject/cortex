@@ -288,6 +288,7 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		return err
 	}
 
+	batches := [][]*dynamodb.WriteRequest{}
 	for i := 0; i < len(writeReqs); i += dynamoMaxBatchSize {
 		var reqs []*dynamodb.WriteRequest
 		if i+dynamoMaxBatchSize > len(writeReqs) {
@@ -295,12 +296,21 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		} else {
 			reqs = writeReqs[i : i+dynamoMaxBatchSize]
 		}
-		err = c.batchWriteDynamo(reqs)
+		batches = append(batches, reqs)
+	}
+	for _, reqs := range batches {
+		go func(reqs []*dynamodb.WriteRequest) {
+			incomingErrors <- c.batchWriteDynamo(reqs)
+		}(reqs)
+	}
+	lastErr = nil
+	for range batches {
+		err = <-incomingErrors
 		if err != nil {
-			return err
+			lastErr = err
 		}
 	}
-	return nil
+	return lastErr
 }
 
 // putChunk puts a chunk into S3.

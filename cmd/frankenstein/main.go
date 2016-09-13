@@ -186,10 +186,10 @@ func setupDistributor(
 	})
 	prometheus.MustRegister(distributor)
 
-	http.Handle("/remote.Write/Write", instr(frankenstein.AppenderHandler(distributor)))
+	prefix := "/api/prom"
+	http.Handle(prefix+"/push", instr(frankenstein.AppenderHandler(distributor)))
 
 	// TODO: Move querier to separate binary.
-	prefix := "/api/prom"
 	setupQuerier(distributor, chunkStore, prefix)
 }
 
@@ -234,7 +234,7 @@ func setupIngester(
 	}
 	prometheus.MustRegister(ingester)
 
-	http.Handle("/remote.Write/Write", instr(frankenstein.AppenderHandler(ingester)))
+	http.Handle("/push", instr(frankenstein.AppenderHandler(ingester)))
 	http.Handle("/query", instr(frankenstein.QueryHandler(ingester)))
 	http.Handle("/label_values", instr(frankenstein.LabelValuesHandler(ingester)))
 	return ingester

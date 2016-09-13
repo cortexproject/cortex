@@ -15,9 +15,7 @@ package frankenstein
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 
@@ -29,7 +27,6 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/generic"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 )
 
 // legacy from scope as a service.
@@ -108,51 +105,11 @@ func (g grpcSampleAppender) Write(ctx context.Context, req *remote.WriteRequest)
 	return &remote.WriteResponse{}, nil
 }
 
-func decodeWriteRequest(r io.Reader) (*remote.WriteRequest, error) {
-	header := make([]byte, 5)
-	if _, err := r.Read(header); err != nil {
-		return nil, err
-	}
-
-	reader := snappy.NewReader(r)
-	buf, err := ioutil.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-
-	var req remote.WriteRequest
-	if err := proto.Unmarshal(buf, &req); err != nil {
-		return nil, err
-	}
-	return &req, nil
-}
-
-func encodeWriteReponse(resp *remote.WriteResponse, w io.Writer) error {
-	buf, err := proto.Marshal(resp)
-	if err != nil {
-		return err
-	}
-
-	buf = snappy.Encode(nil, buf)
-	header := make([]byte, 5)
-	header[0] = 1
-	binary.BigEndian.PutUint32(header[1:], uint32(len(buf)))
-
-	w.Write(header)
-	w.Write(buf)
-	return nil
-}
-
-// AppenderHandler returns a http.Handler that accepts grpc write requests
-// over http1.
+// AppenderHandler returns a http.Handler that accepts proto encoded samples.
 func AppenderHandler(appender SampleAppender) http.Handler {
-	server := grpc.NewServer(grpc.RPCDecompressor(&snappyDecompressor{}))
 	grpcHandler := grpcSampleAppender{appender}
-	remote.RegisterWriteServer(server, grpcHandler)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Infof("appender handler: %#v", r)
-
 		userID := r.Header.Get(userIDHeaderName)
 		if userID == "" {
 			http.Error(w, "", http.StatusUnauthorized)
@@ -160,29 +117,42 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 		}
 		ctx := context.WithValue(context.Background(), UserIDContextKey, userID)
 
-		defer r.Body.Close()
-		req, err := decodeWriteRequest(r.Body)
+		reqBuf, err := ioutil.ReadAll(snappy.NewReader(r.Body))
 		if err != nil {
-			log.Error("Error decoding body: %d", err)
+			log.Errorf("read err: %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		resp, err := grpcHandler.Write(ctx, req)
+		var req remote.WriteRequest
+		if err := proto.Unmarshal(reqBuf, &req); err != nil {
+			log.Errorf("unmarshall err: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		resp, err := grpcHandler.Write(ctx, &req)
 		if err != nil {
+			log.Errorf("append err: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		respBuf, err := proto.Marshal(resp)
+		if err != nil {
+			log.Errorf("marshall err: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if _, err := snappy.NewWriter(w).Write(respBuf); err != nil {
 			log.Errorf("write err: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		if err := encodeWriteReponse(resp, w); err != nil {
-			log.Errorf("resp err: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-
-		w.Header().Set("Content-Type", "application/grpc")
-		w.Header().Set("Grpc-Encoding", "snappy")
-		w.WriteHeader(http.StatusNoContent)
+		w.Header().Add("Content-Encoding", "snappy")
+		w.WriteHeader(http.StatusOK)
 	})
 }
 

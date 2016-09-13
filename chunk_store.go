@@ -283,38 +283,9 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		return lastErr
 	}
 
-	writeReqs := []*dynamodb.WriteRequest{}
-	for _, chunk := range chunks {
-		metricName, ok := chunk.Metric[model.MetricNameLabel]
-		if !ok {
-			return fmt.Errorf("no MetricNameLabel for chunk")
-		}
-
-		// TODO compression
-		chunkValue, err := json.Marshal(chunk)
-		if err != nil {
-			return err
-		}
-
-		for _, hour := range bigBuckets(chunk.From, chunk.Through) {
-			hashValue := hashValue(userID, hour, metricName)
-			for label, value := range chunk.Metric {
-				if label == model.MetricNameLabel {
-					continue
-				}
-
-				rangeValue := rangeValue(label, value, chunk.ID)
-				writeReqs = append(writeReqs, &dynamodb.WriteRequest{
-					PutRequest: &dynamodb.PutRequest{
-						Item: map[string]*dynamodb.AttributeValue{
-							hashKey:  {S: aws.String(hashValue)},
-							rangeKey: {B: rangeValue},
-							chunkKey: {B: chunkValue},
-						},
-					},
-				})
-			}
-		}
+	writeReqs, err := c.calculateDynamoWrites(userID, chunks)
+	if err != nil {
+		return err
 	}
 
 	for i := 0; i < len(writeReqs); i += dynamoMaxBatchSize {
@@ -324,22 +295,9 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		} else {
 			reqs = writeReqs[i : i+dynamoMaxBatchSize]
 		}
-
-		var resp *dynamodb.BatchWriteItemOutput
-		err := timeRequest("BatchWriteItem", dynamoRequestDuration, func() error {
-			var err error
-			resp, err = c.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-				RequestItems:           map[string][]*dynamodb.WriteRequest{c.tableName: reqs},
-				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-			})
-			return err
-		})
-		for _, cc := range resp.ConsumedCapacity {
-			dynamoConsumedCapacity.WithLabelValues("BatchWriteItem").
-				Add(float64(*cc.CapacityUnits))
-		}
+		err = c.batchWriteDynamo(reqs)
 		if err != nil {
-			return fmt.Errorf("error writing DynamoDB batch: %v", err)
+			return err
 		}
 	}
 	return nil
@@ -364,6 +322,68 @@ func (c *AWSChunkStore) putChunk(userID string, chunk *wire.Chunk) error {
 		if err = c.chunkCache.StoreChunkData(userID, chunk); err != nil {
 			log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
 		}
+	}
+	return nil
+}
+
+// calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all
+// the chunks it is given.
+//
+// Creates one WriteRequest per bucket per metric per chunk.
+func (c *AWSChunkStore) calculateDynamoWrites(userID string, chunks []wire.Chunk) ([]*dynamodb.WriteRequest, error) {
+	writeReqs := []*dynamodb.WriteRequest{}
+	for _, chunk := range chunks {
+		metricName, ok := chunk.Metric[model.MetricNameLabel]
+		if !ok {
+			return nil, fmt.Errorf("no MetricNameLabel for chunk")
+		}
+
+		// TODO compression
+		chunkValue, err := json.Marshal(chunk)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, hour := range bigBuckets(chunk.From, chunk.Through) {
+			hashValue := hashValue(userID, hour, metricName)
+			for label, value := range chunk.Metric {
+				if label == model.MetricNameLabel {
+					continue
+				}
+
+				rangeValue := rangeValue(label, value, chunk.ID)
+				writeReqs = append(writeReqs, &dynamodb.WriteRequest{
+					PutRequest: &dynamodb.PutRequest{
+						Item: map[string]*dynamodb.AttributeValue{
+							hashKey:  {S: aws.String(hashValue)},
+							rangeKey: {B: rangeValue},
+							chunkKey: {B: chunkValue},
+						},
+					},
+				})
+			}
+		}
+	}
+	return writeReqs, nil
+}
+
+// batchWriteDynamo writes many requests to dynamo in a single batch.
+func (c *AWSChunkStore) batchWriteDynamo(reqs []*dynamodb.WriteRequest) error {
+	var resp *dynamodb.BatchWriteItemOutput
+	err := timeRequest("BatchWriteItem", dynamoRequestDuration, func() error {
+		var err error
+		resp, err = c.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			RequestItems:           map[string][]*dynamodb.WriteRequest{c.tableName: reqs},
+			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		})
+		return err
+	})
+	for _, cc := range resp.ConsumedCapacity {
+		dynamoConsumedCapacity.WithLabelValues("BatchWriteItem").
+			Add(float64(*cc.CapacityUnits))
+	}
+	if err != nil {
+		return fmt.Errorf("error writing DynamoDB batch: %v", err)
 	}
 	return nil
 }

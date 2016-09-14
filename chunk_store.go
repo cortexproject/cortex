@@ -265,39 +265,97 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		return err
 	}
 
-	// TODO: parallelise
-	for _, chunk := range chunks {
-		err := timeRequest("Put", s3RequestDuration, func() error {
-			var err error
-			_, err = c.s3.PutObject(&s3.PutObjectInput{
-				Body:   bytes.NewReader(chunk.Data),
-				Bucket: aws.String(c.bucketName),
-				Key:    aws.String(chunkName(userID, chunk.ID)),
-			})
-			return err
-		})
-		if err != nil {
-			return err
-		}
-
-		if c.chunkCache != nil {
-			if err = c.chunkCache.StoreChunkData(userID, &chunk); err != nil {
-				log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
-			}
-		}
+	err = c.putChunks(userID, chunks)
+	if err != nil {
+		return err
 	}
 
+	return c.updateIndex(userID, chunks)
+}
+
+// putChunks writes a collection of chunks to S3 in parallel.
+func (c *AWSChunkStore) putChunks(userID string, chunks []wire.Chunk) error {
+	incomingErrors := make(chan error)
+	for _, chunk := range chunks {
+		go func(chunk wire.Chunk) {
+			incomingErrors <- c.putChunk(userID, &chunk)
+		}(chunk)
+	}
+
+	var lastErr error
+	for range chunks {
+		err := <-incomingErrors
+		if err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// putChunk puts a chunk into S3.
+func (c *AWSChunkStore) putChunk(userID string, chunk *wire.Chunk) error {
+	err := timeRequest("Put", s3RequestDuration, func() error {
+		var err error
+		_, err = c.s3.PutObject(&s3.PutObjectInput{
+			Body:   bytes.NewReader(chunk.Data),
+			Bucket: aws.String(c.bucketName),
+			Key:    aws.String(chunkName(userID, chunk.ID)),
+		})
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	if c.chunkCache != nil {
+		if err = c.chunkCache.StoreChunkData(userID, chunk); err != nil {
+			log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
+		}
+	}
+	return nil
+}
+
+func (c *AWSChunkStore) updateIndex(userID string, chunks []wire.Chunk) error {
+	writeReqs, err := c.calculateDynamoWrites(userID, chunks)
+	if err != nil {
+		return err
+	}
+
+	batches := c.batchRequests(writeReqs)
+
+	// Request all the batches in parallel.
+	incomingErrors := make(chan error)
+	for _, batch := range batches {
+		go func(batch []*dynamodb.WriteRequest) {
+			incomingErrors <- c.batchWriteDynamo(batch)
+		}(batch)
+	}
+	var lastErr error
+	for range batches {
+		err = <-incomingErrors
+		if err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all
+// the chunks it is given.
+//
+// Creates one WriteRequest per bucket per metric per chunk.
+func (c *AWSChunkStore) calculateDynamoWrites(userID string, chunks []wire.Chunk) ([]*dynamodb.WriteRequest, error) {
 	writeReqs := []*dynamodb.WriteRequest{}
 	for _, chunk := range chunks {
 		metricName, ok := chunk.Metric[model.MetricNameLabel]
 		if !ok {
-			return fmt.Errorf("no MetricNameLabel for chunk")
+			return nil, fmt.Errorf("no MetricNameLabel for chunk")
 		}
 
 		// TODO compression
 		chunkValue, err := json.Marshal(chunk)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		for _, hour := range bigBuckets(chunk.From, chunk.Through) {
@@ -320,7 +378,13 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 			}
 		}
 	}
+	return writeReqs, nil
+}
 
+// batchRequests takes a bunch of WriteRequests and groups them into batches
+// for later writing.
+func (c *AWSChunkStore) batchRequests(writeReqs []*dynamodb.WriteRequest) [][]*dynamodb.WriteRequest {
+	batches := [][]*dynamodb.WriteRequest{}
 	for i := 0; i < len(writeReqs); i += dynamoMaxBatchSize {
 		var reqs []*dynamodb.WriteRequest
 		if i+dynamoMaxBatchSize > len(writeReqs) {
@@ -328,25 +392,27 @@ func (c *AWSChunkStore) Put(ctx context.Context, chunks []wire.Chunk) error {
 		} else {
 			reqs = writeReqs[i : i+dynamoMaxBatchSize]
 		}
-
-		var resp *dynamodb.BatchWriteItemOutput
-		err := timeRequest("BatchWriteItem", dynamoRequestDuration, func() error {
-			var err error
-			resp, err = c.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-				RequestItems:           map[string][]*dynamodb.WriteRequest{c.tableName: reqs},
-				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-			})
-			return err
-		})
-		for _, cc := range resp.ConsumedCapacity {
-			dynamoConsumedCapacity.WithLabelValues("BatchWriteItem").
-				Add(float64(*cc.CapacityUnits))
-		}
-		if err != nil {
-			return fmt.Errorf("error writing DynamoDB batch: %v", err)
-		}
+		batches = append(batches, reqs)
 	}
-	return nil
+	return batches
+}
+
+// batchWriteDynamo writes many requests to dynamo in a single batch.
+func (c *AWSChunkStore) batchWriteDynamo(reqs []*dynamodb.WriteRequest) error {
+	var resp *dynamodb.BatchWriteItemOutput
+	err := timeRequest("BatchWriteItem", dynamoRequestDuration, func() error {
+		var err error
+		resp, err = c.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			RequestItems:           map[string][]*dynamodb.WriteRequest{c.tableName: reqs},
+			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		})
+		return err
+	})
+	for _, cc := range resp.ConsumedCapacity {
+		dynamoConsumedCapacity.WithLabelValues("BatchWriteItem").
+			Add(float64(*cc.CapacityUnits))
+	}
+	return err
 }
 
 // Get implements ChunkStore

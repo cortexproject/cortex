@@ -117,8 +117,10 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 
 func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 	heartbeat := func(in interface{}) (out interface{}, retry bool, err error) {
-		ringDesc := &Desc{}
-		if in != nil {
+		var ringDesc *Desc
+		if in == nil {
+			ringDesc = newDesc()
+		} else {
 			ringDesc = in.(*Desc)
 		}
 
@@ -152,8 +154,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 func (r *IngesterRegistration) unregister(tokens []uint32) {
 	unregister := func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
-			log.Error("Found empty ring when trying to unregister!")
-			return nil, false, nil
+			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}
 
 		ringDesc := in.(*Desc)

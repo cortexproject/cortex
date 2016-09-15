@@ -25,12 +25,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
-	"golang.org/x/net/context"
-
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/util/httputil"
+	"golang.org/x/net/context"
+
+	"github.com/weaveworks/frankenstein/user"
 )
 
 // TODO: Dedupe this constant.
@@ -118,7 +119,7 @@ func (api *API) Register(r *route.Router) {
 					return
 				}
 			}
-			ctx := context.WithValue(context.Background(), local.UserIDContextKey, userID) // TODO: replace string with constant
+			ctx := user.WithID(context.Background(), userID)
 			setCORS(w)
 
 			if data, err := f(ctx, r); err != nil {

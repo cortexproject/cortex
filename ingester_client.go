@@ -28,6 +28,8 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/generic"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/frankenstein/user"
 )
 
 // IngesterClient is a client library for the ingester
@@ -156,7 +158,7 @@ func (c *IngesterClient) LabelValuesForLabelName(ctx context.Context, ln model.L
 }
 
 func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req proto.Message, resp proto.Message, compressed bool) error {
-	userID, err := userID(ctx)
+	userID, err := user.GetID(ctx)
 	if err != nil {
 		return err
 	}

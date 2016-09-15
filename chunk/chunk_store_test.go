@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package frankenstein
+package chunk
 
 import (
 	"reflect"
@@ -22,30 +22,31 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/local/wire"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/tomwilkie/go-mockaws"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/frankenstein/user"
 )
 
 func init() {
 	spew.Config.SortKeys = true // :\
 }
 
-func c(id string) wire.Chunk {
-	return wire.Chunk{ID: id}
+func c(id string) Chunk {
+	return Chunk{ID: id}
 }
 
 func TestIntersect(t *testing.T) {
 	for _, tc := range []struct {
-		in   []wire.ChunksByID
-		want wire.ChunksByID
+		in   []ByID
+		want ByID
 	}{
-		{nil, wire.ChunksByID{}},
-		{[]wire.ChunksByID{{c("a"), c("b"), c("c")}}, []wire.Chunk{c("a"), c("b"), c("c")}},
-		{[]wire.ChunksByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}}, wire.ChunksByID{c("a"), c("c")}},
-		{[]wire.ChunksByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}, {c("b")}}, wire.ChunksByID{}},
-		{[]wire.ChunksByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}, {c("a")}}, wire.ChunksByID{c("a")}},
+		{nil, ByID{}},
+		{[]ByID{{c("a"), c("b"), c("c")}}, []Chunk{c("a"), c("b"), c("c")}},
+		{[]ByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}}, ByID{c("a"), c("c")}},
+		{[]ByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}, {c("b")}}, ByID{}},
+		{[]ByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}, {c("a")}}, ByID{c("a")}},
 	} {
 		have := nWayIntersect(tc.in)
 		if !reflect.DeepEqual(have, tc.want) {
@@ -55,19 +56,20 @@ func TestIntersect(t *testing.T) {
 }
 
 func TestChunkStore(t *testing.T) {
-	store := AWSChunkStore{
+	store := AWSStore{
 		dynamodb:   mockaws.NewMockDynamoDB(),
 		s3:         mockaws.NewMockS3(),
 		chunkCache: nil,
 		tableName:  "tablename",
 		bucketName: "bucketname",
+		putLimiter: NoopSemaphore,
 	}
 	store.CreateTables()
 
-	ctx := context.WithValue(context.Background(), UserIDContextKey, "0")
+	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()
 
-	chunk1 := wire.Chunk{
+	chunk1 := Chunk{
 		ID:      "chunk1",
 		From:    now.Add(-time.Hour),
 		Through: now,
@@ -78,7 +80,7 @@ func TestChunkStore(t *testing.T) {
 		},
 		Data: []byte{},
 	}
-	chunk2 := wire.Chunk{
+	chunk2 := Chunk{
 		ID:      "chunk2",
 		From:    now.Add(-time.Hour),
 		Through: now,
@@ -90,12 +92,12 @@ func TestChunkStore(t *testing.T) {
 		Data: []byte{},
 	}
 
-	err := store.Put(ctx, []wire.Chunk{chunk1, chunk2})
+	err := store.Put(ctx, []Chunk{chunk1, chunk2})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	test := func(name string, expect []wire.Chunk, matchers ...*metric.LabelMatcher) {
+	test := func(name string, expect []Chunk, matchers ...*metric.LabelMatcher) {
 		log.Infof(">>> %s", name)
 		chunks, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
 		if err != nil {
@@ -109,12 +111,12 @@ func TestChunkStore(t *testing.T) {
 
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
 
-	test("Just name label", []wire.Chunk{chunk1, chunk2}, nameMatcher)
-	test("Equal", []wire.Chunk{chunk1}, nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "baz"))
-	test("Not equal", []wire.Chunk{chunk2}, nameMatcher, mustNewLabelMatcher(metric.NotEqual, "bar", "baz"))
-	test("Regex match", []wire.Chunk{chunk1, chunk2}, nameMatcher, mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz"))
-	test("Multiple matchers", []wire.Chunk{chunk1, chunk2}, nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz"))
-	test("Multiple matchers II", []wire.Chunk{chunk1}, nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz"))
+	test("Just name label", []Chunk{chunk1, chunk2}, nameMatcher)
+	test("Equal", []Chunk{chunk1}, nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "baz"))
+	test("Not equal", []Chunk{chunk2}, nameMatcher, mustNewLabelMatcher(metric.NotEqual, "bar", "baz"))
+	test("Regex match", []Chunk{chunk1, chunk2}, nameMatcher, mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz"))
+	test("Multiple matchers", []Chunk{chunk1, chunk2}, nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz"))
+	test("Multiple matchers II", []Chunk{chunk1}, nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz"))
 }
 
 func mustNewLabelMatcher(matchType metric.MatchType, name model.LabelName, value model.LabelValue) *metric.LabelMatcher {

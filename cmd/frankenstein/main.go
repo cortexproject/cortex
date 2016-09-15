@@ -32,6 +32,7 @@ import (
 
 	"github.com/weaveworks/frankenstein"
 	"github.com/weaveworks/frankenstein/api"
+	"github.com/weaveworks/frankenstein/chunk"
 	"github.com/weaveworks/frankenstein/ring"
 )
 
@@ -143,11 +144,11 @@ func main() {
 	log.Warn("Received SIGTERM, exiting gracefully...")
 }
 
-func setupChunkStore(cfg cfg) (frankenstein.ChunkStore, error) {
-	var chunkCache *frankenstein.ChunkCache
+func setupChunkStore(cfg cfg) (chunk.Store, error) {
+	var chunkCache *chunk.Cache
 	if cfg.memcachedHostname != "" {
-		chunkCache = &frankenstein.ChunkCache{
-			Memcache: frankenstein.NewMemcacheClient(frankenstein.MemcacheConfig{
+		chunkCache = &chunk.Cache{
+			Memcache: chunk.NewMemcacheClient(chunk.MemcacheConfig{
 				Host:           cfg.memcachedHostname,
 				Service:        cfg.memcachedService,
 				Timeout:        cfg.memcachedTimeout,
@@ -156,7 +157,7 @@ func setupChunkStore(cfg cfg) (frankenstein.ChunkStore, error) {
 			Expiration: cfg.memcachedExpiration,
 		}
 	}
-	chunkStore, err := frankenstein.NewAWSChunkStore(frankenstein.ChunkStoreConfig{
+	chunkStore, err := chunk.NewAWSStore(chunk.StoreConfig{
 		S3URL:       cfg.s3URL,
 		DynamoDBURL: cfg.dynamodbURL,
 		ChunkCache:  chunkCache,
@@ -175,7 +176,7 @@ func setupChunkStore(cfg cfg) (frankenstein.ChunkStore, error) {
 func setupDistributor(
 	cfg cfg,
 	ring *ring.Ring,
-	chunkStore frankenstein.ChunkStore,
+	chunkStore chunk.Store,
 ) {
 	clientFactory := func(address string) (*frankenstein.IngesterClient, error) {
 		return frankenstein.NewIngesterClient(address, cfg.remoteTimeout)
@@ -200,7 +201,7 @@ func setupDistributor(
 //              `----------> ChunkQuerier -> DynamoDB/S3
 func setupQuerier(
 	distributor *frankenstein.Distributor,
-	chunkStore frankenstein.ChunkStore,
+	chunkStore chunk.Store,
 	prefix string,
 ) {
 	newQuerier := func(ctx context.Context) local.Querier {
@@ -225,7 +226,7 @@ func setupQuerier(
 }
 
 func setupIngester(
-	chunkStore frankenstein.ChunkStore,
+	chunkStore chunk.Store,
 	cfg local.IngesterConfig,
 ) *local.Ingester {
 	ingester, err := local.NewIngester(cfg, chunkStore)

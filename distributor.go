@@ -21,9 +21,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/frankenstein/ring"
+	"github.com/weaveworks/frankenstein/user"
 )
 
 var (
@@ -134,7 +136,7 @@ func tokenFor(userID string, name model.LabelValue) uint32 {
 
 // Append implements SampleAppender.
 func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error {
-	userID, err := userID(ctx)
+	userID, err := user.GetID(ctx)
 	if err != nil {
 		return err
 	}
@@ -172,7 +174,7 @@ func (d *Distributor) sendSamples(ctx context.Context, hostname string, samples 
 	if err != nil {
 		return err
 	}
-	return timeRequestStatus(d.sendDuration, nil, func() error {
+	return instrument.TimeRequestHistogram("send", d.sendDuration, func() error {
 		return client.Append(ctx, samples)
 	})
 }
@@ -192,13 +194,13 @@ func metricNameFromLabelMatchers(matchers ...*metric.LabelMatcher) (model.LabelV
 // Query implements Querier.
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	var result model.Matrix
-	err := timeRequestStatus(d.queryDuration, nil, func() error {
+	err := instrument.TimeRequestHistogram("duration", d.queryDuration, func() error {
 		metricName, err := metricNameFromLabelMatchers(matchers...)
 		if err != nil {
 			return err
 		}
 
-		userID, err := userID(ctx)
+		userID, err := user.GetID(ctx)
 		if err != nil {
 			return err
 		}

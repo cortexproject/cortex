@@ -73,10 +73,17 @@ func Main() int {
 	log.Infoln("Starting prometheus", version.Info())
 	log.Infoln("Build context", version.BuildContext())
 
-	var sampleAppender storage.Fanout
-	var reloadables []Reloadable
+	var (
+		sampleAppender storage.Fanout
+		reloadables    []Reloadable
+	)
 
-	var remoteStorage = remote.New(&cfg.remote)
+	remoteStorage, err := remote.New(&cfg.remote)
+	if err != nil {
+		log.Errorf("Error initializing remote storage: %s", err)
+		return 1
+	}
+
 	if remoteStorage != nil {
 		sampleAppender = append(sampleAppender, remoteStorage)
 		reloadables = append(reloadables, remoteStorage)

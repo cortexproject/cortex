@@ -215,19 +215,10 @@ func init() {
 		"The name of the database to use for storing samples in InfluxDB.",
 	)
 	cfg.fs.StringVar(
-		&cfg.remote.GenericURL, "storage.remote.generic-url", "",
-		"The URL of the generic remote server to send samples to. None, if empty.",
+		&cfg.remote.Address, "experimental.storage.remote.address", "",
+		"The address of the remote server to send samples to. None, if empty. EXPERIMENTAL.",
 	)
-	cfg.fs.StringVar(
-		// TODO: Figure out best way to allow specifying headers, if we want that.
-		&cfg.remote.GenericHeaderName, "storage.remote.generic-header-name", "",
-		"The name of an HTTP header to send with every request to the generic remote server.",
-	)
-	cfg.fs.StringVar(
-		// TODO: Figure out best way to allow specifying headers, if we want that.
-		&cfg.remote.GenericHeaderValue, "storage.remote.generic-header-value", "",
-		"The value of an HTTP header to send with every request to the generic remote server.",
-	)
+
 	cfg.fs.DurationVar(
 		&cfg.remote.StorageTimeout, "storage.remote.timeout", 30*time.Second,
 		"The timeout to use when sending samples to the remote storage.",

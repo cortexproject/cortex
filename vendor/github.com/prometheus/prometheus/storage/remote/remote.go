@@ -14,7 +14,6 @@
 package remote
 
 import (
-	"net/http"
 	"net/url"
 	"sync"
 	"time"
@@ -25,7 +24,6 @@ import (
 	influx "github.com/influxdb/influxdb/client"
 
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/storage/remote/generic"
 	"github.com/prometheus/prometheus/storage/remote/graphite"
 	"github.com/prometheus/prometheus/storage/remote/influxdb"
 	"github.com/prometheus/prometheus/storage/remote/opentsdb"
@@ -48,17 +46,17 @@ func (s *Storage) ApplyConfig(conf *config.Config) error {
 }
 
 // New returns a new remote Storage.
-func New(o *Options) *Storage {
+func New(o *Options) (*Storage, error) {
 	s := &Storage{}
 	if o.GraphiteAddress != "" {
 		c := graphite.NewClient(
 			o.GraphiteAddress, o.GraphiteTransport,
 			o.StorageTimeout, o.GraphitePrefix)
-		s.queues = append(s.queues, NewStorageQueueManager(c, defaultConfig))
+		s.queues = append(s.queues, NewStorageQueueManager(c, nil))
 	}
 	if o.OpentsdbURL != "" {
 		c := opentsdb.NewClient(o.OpentsdbURL, o.StorageTimeout)
-		s.queues = append(s.queues, NewStorageQueueManager(c, defaultConfig))
+		s.queues = append(s.queues, NewStorageQueueManager(c, nil))
 	}
 	if o.InfluxdbURL != nil {
 		conf := influx.Config{
@@ -69,20 +67,19 @@ func New(o *Options) *Storage {
 		}
 		c := influxdb.NewClient(conf, o.InfluxdbDatabase, o.InfluxdbRetentionPolicy)
 		prometheus.MustRegister(c)
-		s.queues = append(s.queues, NewStorageQueueManager(c, defaultConfig))
+		s.queues = append(s.queues, NewStorageQueueManager(c, nil))
 	}
-	if o.GenericURL != "" {
-		headers := http.Header{}
-		if o.GenericHeaderName != "" {
-			headers.Add(o.GenericHeaderName, o.GenericHeaderValue)
+	if o.Address != "" {
+		c, err := NewClient(o.Address, o.StorageTimeout)
+		if err != nil {
+			return nil, err
 		}
-		c := generic.NewClient(o.GenericURL, headers, o.StorageTimeout)
-		s.queues = append(s.queues, NewStorageQueueManager(c, defaultConfig))
+		s.queues = append(s.queues, NewStorageQueueManager(c, nil))
 	}
 	if len(s.queues) == 0 {
-		return nil
+		return nil, nil
 	}
-	return s
+	return s, nil
 }
 
 // Options contains configuration parameters for a remote storage.
@@ -97,9 +94,9 @@ type Options struct {
 	GraphiteAddress         string
 	GraphiteTransport       string
 	GraphitePrefix          string
-	GenericURL              string
-	GenericHeaderName       string
-	GenericHeaderValue      string
+	// TODO: This just being called "Address" will make more sense once the
+	// other remote storage mechanisms are removed.
+	Address string
 }
 
 // Run starts the background processing of the storage queues.

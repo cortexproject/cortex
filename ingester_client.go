@@ -16,61 +16,68 @@ package frankenstein
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
-	"golang.org/x/net/context"
-
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/generic"
+	"golang.org/x/net/context"
 )
 
 // IngesterClient is a client library for the ingester
 type IngesterClient struct {
-	hostname string
-	client   http.Client
+	address string
+	client  http.Client
+	timeout time.Duration
 }
 
 // NewIngesterClient makes a new IngesterClient.  This client is careful to
 // propagate the user ID from Distributor -> Ingester.
-func NewIngesterClient(hostname string, timeout time.Duration) *IngesterClient {
+func NewIngesterClient(address string, timeout time.Duration) (*IngesterClient, error) {
 	client := http.Client{
 		Timeout: timeout,
 	}
 	return &IngesterClient{
-		hostname: hostname,
-		client:   client,
-	}
+		address: address,
+		client:  client,
+		timeout: timeout,
+	}, nil
 }
 
 // Append adds new samples to the ingester
 func (c *IngesterClient) Append(ctx context.Context, samples []*model.Sample) error {
-	req := &generic.GenericWriteRequest{}
+	req := &remote.WriteRequest{
+		Timeseries: make([]*remote.TimeSeries, 0, len(samples)),
+	}
+
 	for _, s := range samples {
-		ts := &generic.TimeSeries{
-			Name: proto.String(string(s.Metric[model.MetricNameLabel])),
+		ts := &remote.TimeSeries{
+			Labels: make([]*remote.LabelPair, 0, len(s.Metric)),
 		}
 		for k, v := range s.Metric {
-			if k != model.MetricNameLabel {
-				ts.Labels = append(ts.Labels,
-					&generic.LabelPair{
-						Name:  proto.String(string(k)),
-						Value: proto.String(string(v)),
-					})
-			}
+			ts.Labels = append(ts.Labels,
+				&remote.LabelPair{
+					Name:  string(k),
+					Value: string(v),
+				})
 		}
-		ts.Samples = []*generic.Sample{
+		ts.Samples = []*remote.Sample{
 			{
-				Value:       proto.Float64(float64(s.Value)),
-				TimestampMs: proto.Int64(int64(s.Timestamp)),
+				Value:       float64(s.Value),
+				TimestampMs: int64(s.Timestamp),
 			},
 		}
 		req.Timeseries = append(req.Timeseries, ts)
 	}
-	return c.doRequest(ctx, "/push", req, nil)
+
+	var resp remote.WriteResponse
+	return c.doRequest(ctx, "/push", req, &resp, true)
 }
 
 // Query implements Querier.
@@ -101,7 +108,7 @@ func (c *IngesterClient) Query(ctx context.Context, from, to model.Time, matcher
 	}
 
 	resp := &generic.GenericReadResponse{}
-	err := c.doRequest(ctx, "/query", req, resp)
+	err := c.doRequest(ctx, "/query", req, resp, false)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +143,7 @@ func (c *IngesterClient) LabelValuesForLabelName(ctx context.Context, ln model.L
 		LabelName: proto.String(string(ln)),
 	}
 	resp := &generic.GenericLabelValuesResponse{}
-	err := c.doRequest(ctx, "/label_values", req, resp)
+	err := c.doRequest(ctx, "/label_values", req, resp, false)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +155,7 @@ func (c *IngesterClient) LabelValuesForLabelName(ctx context.Context, ln model.L
 	return values, nil
 }
 
-func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req proto.Message, resp proto.Message) error {
+func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req proto.Message, resp proto.Message, compressed bool) error {
 	userID, err := userID(ctx)
 	if err != nil {
 		return err
@@ -158,9 +165,17 @@ func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req pro
 	if err != nil {
 		return fmt.Errorf("unable to marshal request: %v", err)
 	}
-	buf := bytes.NewBuffer(data)
 
-	httpReq, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s", c.hostname, endpoint), buf)
+	buf := bytes.Buffer{}
+	var writer io.Writer = &buf
+	if compressed {
+		writer = snappy.NewWriter(writer)
+	}
+	if _, err := writer.Write(data); err != nil {
+		return err
+	}
+
+	httpReq, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s", c.address, endpoint), &buf)
 	if err != nil {
 		return fmt.Errorf("unable to create request: %v", err)
 	}
@@ -175,16 +190,19 @@ func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req pro
 	if httpResp.StatusCode/100 != 2 {
 		return fmt.Errorf("server returned HTTP status %s", httpResp.Status)
 	}
-
 	if resp == nil {
 		return nil
 	}
 
 	buf.Reset()
-	_, err = buf.ReadFrom(httpResp.Body)
-	if err != nil {
+	reader := httpResp.Body.(io.Reader)
+	if compressed {
+		reader = snappy.NewReader(reader)
+	}
+	if _, err = buf.ReadFrom(reader); err != nil {
 		return fmt.Errorf("unable to read response body: %v", err)
 	}
+
 	err = proto.Unmarshal(buf.Bytes(), resp)
 	if err != nil {
 		return fmt.Errorf("unable to unmarshal response body: %v", err)

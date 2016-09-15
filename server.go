@@ -16,15 +16,17 @@ package frankenstein
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"golang.org/x/net/context"
-
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/generic"
+	"golang.org/x/net/context"
 )
 
 // legacy from scope as a service.
@@ -74,42 +76,83 @@ func writeResponse(w http.ResponseWriter, resp proto.Message) {
 	// TODO: set Content-type.
 }
 
-// AppenderHandler returns a http.Handler that accepts protobuf formatted
-// metrics and sends them to the supplied appender.
+type grpcSampleAppender struct {
+	SampleAppender
+}
+
+func (g grpcSampleAppender) Write(ctx context.Context, req *remote.WriteRequest) (*remote.WriteResponse, error) {
+	var samples []*model.Sample
+	for _, ts := range req.Timeseries {
+		metric := model.Metric{}
+		for _, l := range ts.Labels {
+			metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+		}
+
+		for _, s := range ts.Samples {
+			samples = append(samples, &model.Sample{
+				Metric:    metric,
+				Value:     model.SampleValue(s.Value),
+				Timestamp: model.Time(s.TimestampMs),
+			})
+		}
+	}
+
+	if err := g.Append(ctx, samples); err != nil {
+		log.Errorf(err.Error())
+		return nil, err
+	}
+
+	return &remote.WriteResponse{}, nil
+}
+
+// AppenderHandler returns a http.Handler that accepts proto encoded samples.
 func AppenderHandler(appender SampleAppender) http.Handler {
+	grpcHandler := grpcSampleAppender{appender}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := &generic.GenericWriteRequest{}
-		ctx, abort := parseRequest(w, r, req)
-		if abort {
+		userID := r.Header.Get(userIDHeaderName)
+		if userID == "" {
+			http.Error(w, "", http.StatusUnauthorized)
+			return
+		}
+		ctx := context.WithValue(context.Background(), UserIDContextKey, userID)
+
+		reqBuf, err := ioutil.ReadAll(snappy.NewReader(r.Body))
+		if err != nil {
+			log.Errorf("read err: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		var samples []*model.Sample
-		for _, ts := range req.Timeseries {
-			metric := model.Metric{}
-			if ts.Name != nil {
-				metric[model.MetricNameLabel] = model.LabelValue(ts.GetName())
-			}
-			for _, l := range ts.Labels {
-				metric[model.LabelName(l.GetName())] = model.LabelValue(l.GetValue())
-			}
-
-			for _, s := range ts.Samples {
-				samples = append(samples, &model.Sample{
-					Metric:    metric,
-					Value:     model.SampleValue(s.GetValue()),
-					Timestamp: model.Time(s.GetTimestampMs()),
-				})
-			}
+		var req remote.WriteRequest
+		if err := proto.Unmarshal(reqBuf, &req); err != nil {
+			log.Errorf("unmarshall err: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
-		if err := appender.Append(ctx, samples); err != nil {
-			log.Errorf(err.Error())
+		resp, err := grpcHandler.Write(ctx, &req)
+		if err != nil {
+			log.Errorf("append err: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		w.WriteHeader(http.StatusNoContent)
+		respBuf, err := proto.Marshal(resp)
+		if err != nil {
+			log.Errorf("marshall err: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if _, err := snappy.NewWriter(w).Write(respBuf); err != nil {
+			log.Errorf("write err: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Add("Content-Encoding", "snappy")
+		w.WriteHeader(http.StatusOK)
 	})
 }
 

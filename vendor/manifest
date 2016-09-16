@@ -549,7 +549,7 @@
 			"importpath": "github.com/prometheus/prometheus",
 			"repository": "https://github.com/tomwilkie/prometheus",
 			"vcs": "git",
-			"revision": "d171908eaaaddb47941da8671dd53c5239ed52c5",
+			"revision": "20bf6a2a969d01467cdba000bbbecfe072b7bd89",
 			"branch": "frankenstein",
 			"notests": true
 		},
@@ -628,6 +628,15 @@
 			"vcs": "git",
 			"revision": "9853e74229d5d48e82ae9be53d725507db3c8483",
 			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/weaveworks/scope/common/instrument",
+			"repository": "https://github.com/weaveworks/scope",
+			"vcs": "git",
+			"revision": "94cd73c72b6155e499df61018ca64b0cac593694",
+			"branch": "master",
+			"path": "/common/instrument",
 			"notests": true
 		},
 		{

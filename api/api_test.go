@@ -27,10 +27,11 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
-	"golang.org/x/net/context"
-
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/local"
+	"golang.org/x/net/context"
+
+	"github.com/weaveworks/frankenstein/user"
 )
 
 func TestEndpoints(t *testing.T) {
@@ -358,7 +359,7 @@ func TestEndpoints(t *testing.T) {
 
 	for _, test := range tests {
 		// Build a context with the correct request params.
-		ctx := context.WithValue(context.Background(), local.UserIDContextKey, "0")
+		ctx := user.WithID(context.Background(), "0")
 		for p, v := range test.params {
 			ctx = route.WithParam(ctx, p, v)
 		}

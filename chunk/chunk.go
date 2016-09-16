@@ -1,6 +1,6 @@
 // Copyright 2016 The Prometheus Authors
 
-package wire
+package chunk
 
 import (
 	"github.com/prometheus/common/model"
@@ -15,8 +15,9 @@ type Chunk struct {
 	Data    []byte       `json:"-"`
 }
 
-type ChunksByID []Chunk
+// ByID allow you to sort chunks by ID
+type ByID []Chunk
 
-func (cs ChunksByID) Len() int           { return len(cs) }
-func (cs ChunksByID) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
-func (cs ChunksByID) Less(i, j int) bool { return cs[i].ID < cs[j].ID }
+func (cs ByID) Len() int           { return len(cs) }
+func (cs ByID) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
+func (cs ByID) Less(i, j int) bool { return cs[i].ID < cs[j].ID }

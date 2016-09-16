@@ -11,15 +11,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	frank "github.com/weaveworks/frankenstein/chunk"
+	"github.com/weaveworks/frankenstein/user"
 	"golang.org/x/net/context"
 
-	"github.com/prometheus/prometheus/storage/local/wire"
 	"github.com/prometheus/prometheus/storage/metric"
 )
 
 const (
-	UserIDContextKey  = "FrankensteinUserID" // TODO dedupe with copy in frankenstein/
-	ingesterSubsystem = "ingester"
+	ingesterSubsystem        = "ingester"
+	maxConcurrentFlushSeries = 100
 )
 
 var (
@@ -38,12 +39,13 @@ var (
 // Ingester deals with "in flight" chunks.
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
-	cfg        IngesterConfig
-	chunkStore ChunkStore
-	stopLock   sync.RWMutex
-	stopped    bool
-	quit       chan struct{}
-	done       chan struct{}
+	cfg                IngesterConfig
+	chunkStore         frank.Store
+	stopLock           sync.RWMutex
+	stopped            bool
+	quit               chan struct{}
+	done               chan struct{}
+	flushSeriesLimiter frank.Semaphore
 
 	userStateLock sync.Mutex
 	userState     map[string]*userState
@@ -70,11 +72,7 @@ type userState struct {
 	index      *invertedIndex
 }
 
-type ChunkStore interface {
-	Put(context.Context, []wire.Chunk) error
-}
-
-func NewIngester(cfg IngesterConfig, chunkStore ChunkStore) (*Ingester, error) {
+func NewIngester(cfg IngesterConfig, chunkStore frank.Store) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -83,10 +81,11 @@ func NewIngester(cfg IngesterConfig, chunkStore ChunkStore) (*Ingester, error) {
 	}
 
 	i := &Ingester{
-		cfg:        cfg,
-		chunkStore: chunkStore,
-		quit:       make(chan struct{}),
-		done:       make(chan struct{}),
+		cfg:                cfg,
+		chunkStore:         chunkStore,
+		quit:               make(chan struct{}),
+		done:               make(chan struct{}),
+		flushSeriesLimiter: frank.NewSemaphore(maxConcurrentFlushSeries),
 
 		userState: map[string]*userState{},
 
@@ -143,8 +142,8 @@ func NewIngester(cfg IngesterConfig, chunkStore ChunkStore) (*Ingester, error) {
 }
 
 func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {
-	userID, ok := ctx.Value(UserIDContextKey).(string)
-	if !ok {
+	userID, err := user.GetID(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}
 
@@ -364,8 +363,12 @@ func (i *Ingester) Stop() {
 }
 
 func (i *Ingester) loop() {
-	defer i.flushAllUsers(true)
-	defer close(i.done)
+	defer func() {
+		i.flushAllUsers(true)
+		close(i.done)
+		log.Infof("Ingester exited gracefully")
+	}()
+
 	tick := time.Tick(i.cfg.FlushCheckPeriod)
 	for {
 		select {
@@ -378,6 +381,9 @@ func (i *Ingester) loop() {
 }
 
 func (i *Ingester) flushAllUsers(immediate bool) {
+	log.Infof("Flushing chunks... (exiting: %v)", immediate)
+	defer log.Infof("Done flushing chunks.")
+
 	if i.chunkStore == nil {
 		return
 	}
@@ -389,34 +395,55 @@ func (i *Ingester) flushAllUsers(immediate bool) {
 	}
 	i.userStateLock.Unlock()
 
+	var wg sync.WaitGroup
 	for _, userID := range userIDs {
-		i.userStateLock.Lock()
-		userState, ok := i.userState[userID]
-		i.userStateLock.Unlock()
-
-		// This should happen, right?
-		if !ok {
-			continue
-		}
-
-		ctx := context.WithValue(context.Background(), UserIDContextKey, userID)
-		i.flushAllSeries(ctx, userState, immediate)
-
-		// TODO: this is probably slow, and could be done in a better way.
-		i.userStateLock.Lock()
-		if userState.fpToSeries.length() == 0 {
-			delete(i.userState, userID)
-		}
-		i.userStateLock.Unlock()
+		wg.Add(1)
+		go func() {
+			i.flushUser(userID, immediate)
+			wg.Done()
+		}()
 	}
+	wg.Wait()
+}
+
+func (i *Ingester) flushUser(userID string, immediate bool) {
+	log.Infof("Flushing user %s...", userID)
+	defer log.Infof("Done flushing user %s.", userID)
+
+	i.userStateLock.Lock()
+	userState, ok := i.userState[userID]
+	i.userStateLock.Unlock()
+
+	// This should happen, right?
+	if !ok {
+		return
+	}
+
+	ctx := user.WithID(context.Background(), userID)
+	i.flushAllSeries(ctx, userState, immediate)
+
+	// TODO: this is probably slow, and could be done in a better way.
+	i.userStateLock.Lock()
+	if userState.fpToSeries.length() == 0 {
+		delete(i.userState, userID)
+	}
+	i.userStateLock.Unlock()
 }
 
 func (i *Ingester) flushAllSeries(ctx context.Context, state *userState, immediate bool) {
+	var wg sync.WaitGroup
 	for pair := range state.fpToSeries.iter() {
-		if err := i.flushSeries(ctx, state, pair.fp, pair.series, immediate); err != nil {
-			log.Errorf("Failed to flush chunks for series: %v", err)
-		}
+		wg.Add(1)
+		i.flushSeriesLimiter.Acquire()
+		go func() {
+			if err := i.flushSeries(ctx, state, pair.fp, pair.series, immediate); err != nil {
+				log.Errorf("Failed to flush chunks for series: %v", err)
+			}
+			i.flushSeriesLimiter.Release()
+			wg.Done()
+		}()
 	}
+	wg.Wait()
 }
 
 func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Fingerprint, series *memorySeries, immediate bool) error {
@@ -446,7 +473,7 @@ func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Finge
 
 	// now remove the chunks
 	u.fpLocker.Lock(fp)
-	series.chunkDescs = series.chunkDescs[len(chunks):]
+	series.chunkDescs = series.chunkDescs[len(chunks)-1:]
 	i.memoryChunks.Sub(float64(len(chunks)))
 	if len(series.chunkDescs) == 0 {
 		u.fpToSeries.del(fp)
@@ -457,7 +484,7 @@ func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Finge
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunks []*chunkDesc) error {
-	wireChunks := make([]wire.Chunk, 0, len(chunks))
+	wireChunks := make([]frank.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
 		buf := make([]byte, chunkLen)
 		if err := chunk.c.marshalToBuf(buf); err != nil {
@@ -466,7 +493,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 
 		i.chunkUtilization.Observe(chunk.c.utilization())
 
-		wireChunks = append(wireChunks, wire.Chunk{
+		wireChunks = append(wireChunks, frank.Chunk{
 			ID:      fmt.Sprintf("%d:%d:%d", fp, chunk.chunkFirstTime, chunk.chunkLastTime),
 			From:    chunk.chunkFirstTime,
 			Through: chunk.chunkLastTime,

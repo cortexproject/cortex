@@ -27,6 +27,8 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/generic"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/frankenstein/user"
 )
 
 // legacy from scope as a service.
@@ -45,7 +47,7 @@ func parseRequest(w http.ResponseWriter, r *http.Request, req proto.Message) (ct
 		return nil, true
 	}
 
-	ctx = context.WithValue(context.Background(), UserIDContextKey, userID)
+	ctx = user.WithID(context.Background(), userID)
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(r.Body)
 	if err != nil {
@@ -98,7 +100,6 @@ func (g grpcSampleAppender) Write(ctx context.Context, req *remote.WriteRequest)
 	}
 
 	if err := g.Append(ctx, samples); err != nil {
-		log.Errorf(err.Error())
 		return nil, err
 	}
 
@@ -115,7 +116,7 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 			http.Error(w, "", http.StatusUnauthorized)
 			return
 		}
-		ctx := context.WithValue(context.Background(), UserIDContextKey, userID)
+		ctx := user.WithID(context.Background(), userID)
 
 		reqBuf, err := ioutil.ReadAll(snappy.NewReader(r.Body))
 		if err != nil {
@@ -133,7 +134,6 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 
 		resp, err := grpcHandler.Write(ctx, &req)
 		if err != nil {
-			log.Errorf("append err: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

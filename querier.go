@@ -18,10 +18,11 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"golang.org/x/net/context"
-
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
+	"golang.org/x/net/context"
+
+	"github.com/weaveworks/frankenstein/chunk"
 )
 
 // A Querier allows querying all samples in a given time range that match a set
@@ -33,7 +34,7 @@ type Querier interface {
 
 // A ChunkQuerier is a Querier that fetches samples from a ChunkStore.
 type ChunkQuerier struct {
-	Store ChunkStore
+	Store chunk.Store
 }
 
 // Query implements Querier and transforms a list of chunks into sample

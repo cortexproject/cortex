@@ -103,8 +103,14 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 		takenTokens := []uint32{}
 		for _, token := range ringDesc.Tokens {
 			takenTokens = append(takenTokens, token.Token)
+			if token.Ingester == r.id {
+				tokens = append(tokens, token.Token)
+			}
 		}
-		tokens = generateTokens(r.numTokens, takenTokens)
+		if len(tokens) < r.numTokens {
+			newTokens := generateTokens(r.numTokens-len(tokens), takenTokens)
+			tokens = append(tokens, newTokens...)
+		}
 
 		ringDesc.addIngester(r.id, r.hostname, tokens)
 		return ringDesc, true, nil

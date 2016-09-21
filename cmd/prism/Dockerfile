@@ -1,4 +1,4 @@
 FROM       quay.io/prometheus/busybox:latest
-COPY       frank /bin/frank
+COPY       prism /bin/prism
 EXPOSE     9094
-ENTRYPOINT [ "/bin/frank" ]
+ENTRYPOINT [ "/bin/prism" ]

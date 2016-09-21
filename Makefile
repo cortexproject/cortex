@@ -25,7 +25,7 @@ images:
 	$(info $(IMAGE_NAMES))
 
 # List of exes please
-PRISM_EXE := ./cmd/prism/frank
+PRISM_EXE := ./cmd/prism/prism
 EXES = $(PRISM_EXE)
 
 all: $(UPTODATE_FILES)

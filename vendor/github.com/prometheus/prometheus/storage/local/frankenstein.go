@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	frank "github.com/weaveworks/prism/chunk"
+	prism "github.com/weaveworks/prism/chunk"
 	"github.com/weaveworks/prism/user"
 	"golang.org/x/net/context"
 
@@ -40,12 +40,12 @@ var (
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
 	cfg                IngesterConfig
-	chunkStore         frank.Store
+	chunkStore         prism.Store
 	stopLock           sync.RWMutex
 	stopped            bool
 	quit               chan struct{}
 	done               chan struct{}
-	flushSeriesLimiter frank.Semaphore
+	flushSeriesLimiter prism.Semaphore
 
 	userStateLock sync.Mutex
 	userState     map[string]*userState
@@ -72,7 +72,7 @@ type userState struct {
 	index      *invertedIndex
 }
 
-func NewIngester(cfg IngesterConfig, chunkStore frank.Store) (*Ingester, error) {
+func NewIngester(cfg IngesterConfig, chunkStore prism.Store) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -85,7 +85,7 @@ func NewIngester(cfg IngesterConfig, chunkStore frank.Store) (*Ingester, error) 
 		chunkStore:         chunkStore,
 		quit:               make(chan struct{}),
 		done:               make(chan struct{}),
-		flushSeriesLimiter: frank.NewSemaphore(maxConcurrentFlushSeries),
+		flushSeriesLimiter: prism.NewSemaphore(maxConcurrentFlushSeries),
 
 		userState: map[string]*userState{},
 
@@ -484,7 +484,7 @@ func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Finge
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunks []*chunkDesc) error {
-	wireChunks := make([]frank.Chunk, 0, len(chunks))
+	wireChunks := make([]prism.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
 		buf := make([]byte, chunkLen)
 		if err := chunk.c.marshalToBuf(buf); err != nil {
@@ -493,7 +493,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 
 		i.chunkUtilization.Observe(chunk.c.utilization())
 
-		wireChunks = append(wireChunks, frank.Chunk{
+		wireChunks = append(wireChunks, prism.Chunk{
 			ID:      fmt.Sprintf("%d:%d:%d", fp, chunk.chunkFirstTime, chunk.chunkLastTime),
 			From:    chunk.chunkFirstTime,
 			Through: chunk.chunkLastTime,

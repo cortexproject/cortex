@@ -25,17 +25,17 @@ images:
 	$(info $(IMAGE_NAMES))
 
 # List of exes please
-FRANKENSTEIN_EXE := ./cmd/frankenstein/frank
-EXES = $(FRANKENSTEIN_EXE)
+PRISM_EXE := ./cmd/prism/prism
+EXES = $(PRISM_EXE)
 
 all: $(UPTODATE_FILES)
 
 # And what goes into each exe
-$(FRANKENSTEIN_EXE): $(shell find . -name '*.go')
+$(PRISM_EXE): $(shell find . -name '*.go')
 
 # And now what goes into each image
-frank-build/$(UPTODATE): frank-build/*
-cmd/frankenstein/$(UPTODATE): $(FRANKENSTEIN_EXE)
+prism-build/$(UPTODATE): prism-build/*
+cmd/prism/$(UPTODATE): $(PRISM_EXE)
 
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
@@ -53,23 +53,23 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) lint test $(STATIC): frank-build/$(UPTODATE)
+$(EXES) lint test $(STATIC): prism-build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/weaveworks/frankenstein \
-		$(IMAGE_PREFIX)/frank-build $@
+		-v $(shell pwd):/go/src/github.com/weaveworks/prism \
+		$(IMAGE_PREFIX)/prism-build $@
 
 else
 
-$(EXES): frank-build/$(UPTODATE)
+$(EXES): prism-build/$(UPTODATE)
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-lint: frank-build/$(UPTODATE)
+lint: prism-build/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
-test: frank-build/$(UPTODATE)
+test: prism-build/$(UPTODATE)
 	./tools/test -no-go-get
 
 endif

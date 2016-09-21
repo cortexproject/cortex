@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package frankenstein
+package prism
 
 import (
 	"fmt"
@@ -24,8 +24,8 @@ import (
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/frankenstein/ring"
-	"github.com/weaveworks/frankenstein/user"
+	"github.com/weaveworks/prism/ring"
+	"github.com/weaveworks/prism/user"
 )
 
 var (
@@ -36,7 +36,7 @@ var (
 	)
 )
 
-// Distributor is a storage.SampleAppender and a frankenstein.Querier which
+// Distributor is a storage.SampleAppender and a prism.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
 	ring          ReadRing

@@ -7,7 +7,7 @@ import (
 )
 
 // UserIDContextKey is the key used in contexts to find the userid
-const userIDContextKey = "FrankensteinUserID" // TODO dedupe with storage/local
+const userIDContextKey = "PrismUserID" // TODO dedupe with storage/local
 
 // GetID returns the user
 func GetID(ctx context.Context) (string, error) {

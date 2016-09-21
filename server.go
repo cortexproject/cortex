@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package frankenstein
+package prism
 
 import (
 	"bytes"
@@ -28,7 +28,7 @@ import (
 	"github.com/prometheus/prometheus/storage/remote/generic"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/frankenstein/user"
+	"github.com/weaveworks/prism/user"
 )
 
 // legacy from scope as a service.

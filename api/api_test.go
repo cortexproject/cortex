@@ -31,7 +31,7 @@ import (
 	"github.com/prometheus/prometheus/storage/local"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/frankenstein/user"
+	"github.com/weaveworks/prism/user"
 )
 
 func TestEndpoints(t *testing.T) {

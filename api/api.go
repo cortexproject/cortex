@@ -31,7 +31,7 @@ import (
 	"github.com/prometheus/prometheus/util/httputil"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/frankenstein/user"
+	"github.com/weaveworks/prism/user"
 )
 
 // TODO: Dedupe this constant.

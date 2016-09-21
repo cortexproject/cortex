@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package frankenstein
+package prism
 
 import (
 	"bytes"
@@ -29,7 +29,7 @@ import (
 )
 
 func getTemplate(name string) (string, error) {
-	baseTmpl, err := ui.Asset("web/ui/templates/_frankenstein_base.html")
+	baseTmpl, err := ui.Asset("web/ui/templates/_prism_base.html")
 	if err != nil {
 		return "", fmt.Errorf("error reading base template: %s", err)
 	}

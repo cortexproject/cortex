@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package frankenstein
+package prism
 
 import (
 	"sort"
@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/frankenstein/chunk"
+	"github.com/weaveworks/prism/chunk"
 )
 
 // A Querier allows querying all samples in a given time range that match a set
@@ -95,7 +95,7 @@ func (q *ChunkQuerier) LabelValuesForLabelName(ctx context.Context, ln model.Lab
 }
 
 // A MergeQuerier is a promql.Querier that merges the results of multiple
-// frankenstein.Queriers for the same query.
+// prism.Queriers for the same query.
 type MergeQuerier struct {
 	Queriers []Querier
 	Context  context.Context

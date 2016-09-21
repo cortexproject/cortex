@@ -30,10 +30,10 @@ import (
 	"github.com/weaveworks/scope/common/middleware"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/frankenstein"
-	"github.com/weaveworks/frankenstein/api"
-	"github.com/weaveworks/frankenstein/chunk"
-	"github.com/weaveworks/frankenstein/ring"
+	"github.com/weaveworks/prism"
+	"github.com/weaveworks/prism/api"
+	"github.com/weaveworks/prism/chunk"
+	"github.com/weaveworks/prism/ring"
 )
 
 const (
@@ -44,7 +44,7 @@ const (
 
 var (
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "frankenstein",
+		Namespace: "prism",
 		Name:      "request_duration_seconds",
 		Help:      "Time (in seconds) spent serving HTTP requests.",
 		Buckets:   prometheus.DefBuckets,
@@ -178,17 +178,17 @@ func setupDistributor(
 	ring *ring.Ring,
 	chunkStore chunk.Store,
 ) {
-	clientFactory := func(address string) (*frankenstein.IngesterClient, error) {
-		return frankenstein.NewIngesterClient(address, cfg.remoteTimeout)
+	clientFactory := func(address string) (*prism.IngesterClient, error) {
+		return prism.NewIngesterClient(address, cfg.remoteTimeout)
 	}
-	distributor := frankenstein.NewDistributor(frankenstein.DistributorConfig{
+	distributor := prism.NewDistributor(prism.DistributorConfig{
 		Ring:          ring,
 		ClientFactory: clientFactory,
 	})
 	prometheus.MustRegister(distributor)
 
 	prefix := "/api/prom"
-	http.Handle(prefix+"/push", instr(frankenstein.AppenderHandler(distributor)))
+	http.Handle(prefix+"/push", instr(prism.AppenderHandler(distributor)))
 
 	// TODO: Move querier to separate binary.
 	setupQuerier(distributor, chunkStore, prefix)
@@ -200,15 +200,15 @@ func setupDistributor(
 //              |
 //              `----------> ChunkQuerier -> DynamoDB/S3
 func setupQuerier(
-	distributor *frankenstein.Distributor,
+	distributor *prism.Distributor,
 	chunkStore chunk.Store,
 	prefix string,
 ) {
 	newQuerier := func(ctx context.Context) local.Querier {
-		return frankenstein.MergeQuerier{
-			Queriers: []frankenstein.Querier{
+		return prism.MergeQuerier{
+			Queriers: []prism.Querier{
 				distributor,
-				&frankenstein.ChunkQuerier{
+				&prism.ChunkQuerier{
 					Store: chunkStore,
 				},
 			},
@@ -221,8 +221,8 @@ func setupQuerier(
 	api.Register(router.WithPrefix(prefix + "/api/v1"))
 	http.Handle("/", router)
 
-	http.Handle(prefix+"/graph", instr(frankenstein.GraphHandler()))
-	http.Handle(prefix+"/static/", instr(frankenstein.StaticAssetsHandler(prefix+"/static/")))
+	http.Handle(prefix+"/graph", instr(prism.GraphHandler()))
+	http.Handle(prefix+"/static/", instr(prism.StaticAssetsHandler(prefix+"/static/")))
 }
 
 func setupIngester(
@@ -235,8 +235,8 @@ func setupIngester(
 	}
 	prometheus.MustRegister(ingester)
 
-	http.Handle("/push", instr(frankenstein.AppenderHandler(ingester)))
-	http.Handle("/query", instr(frankenstein.QueryHandler(ingester)))
-	http.Handle("/label_values", instr(frankenstein.LabelValuesHandler(ingester)))
+	http.Handle("/push", instr(prism.AppenderHandler(ingester)))
+	http.Handle("/query", instr(prism.QueryHandler(ingester)))
+	http.Handle("/label_values", instr(prism.LabelValuesHandler(ingester)))
 	return ingester
 }

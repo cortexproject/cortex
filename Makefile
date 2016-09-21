@@ -25,17 +25,17 @@ images:
 	$(info $(IMAGE_NAMES))
 
 # List of exes please
-FRANKENSTEIN_EXE := ./cmd/frankenstein/frank
-EXES = $(FRANKENSTEIN_EXE)
+PRISM_EXE := ./cmd/prism/frank
+EXES = $(PRISM_EXE)
 
 all: $(UPTODATE_FILES)
 
 # And what goes into each exe
-$(FRANKENSTEIN_EXE): $(shell find . -name '*.go')
+$(PRISM_EXE): $(shell find . -name '*.go')
 
 # And now what goes into each image
 frank-build/$(UPTODATE): frank-build/*
-cmd/frankenstein/$(UPTODATE): $(FRANKENSTEIN_EXE)
+cmd/prism/$(UPTODATE): $(PRISM_EXE)
 
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
@@ -57,7 +57,7 @@ $(EXES) lint test $(STATIC): frank-build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/weaveworks/frankenstein \
+		-v $(shell pwd):/go/src/github.com/weaveworks/prism \
 		$(IMAGE_PREFIX)/frank-build $@
 
 else

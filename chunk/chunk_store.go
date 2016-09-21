@@ -36,7 +36,7 @@ import (
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/frankenstein/user"
+	"github.com/weaveworks/prism/user"
 )
 
 const (

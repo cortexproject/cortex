@@ -32,7 +32,7 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/sburnet/lexicographic-tuples"
+	"github.com/sburnett/lexicographic-tuples"
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 

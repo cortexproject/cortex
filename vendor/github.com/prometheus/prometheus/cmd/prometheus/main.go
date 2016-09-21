@@ -263,7 +263,7 @@ func reloadConfig(filename string, rls ...Reloadable) (err error) {
 		}
 	}
 	if failed {
-		return fmt.Errorf("one or more errors occured while applying the new configuration (-config.file=%s)", filename)
+		return fmt.Errorf("one or more errors occurred while applying the new configuration (-config.file=%s)", filename)
 	}
 	return nil
 }

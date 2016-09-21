@@ -398,10 +398,10 @@ func (i *Ingester) flushAllUsers(immediate bool) {
 	var wg sync.WaitGroup
 	for _, userID := range userIDs {
 		wg.Add(1)
-		go func() {
+		go func(userID string) {
 			i.flushUser(userID, immediate)
 			wg.Done()
-		}()
+		}(userID)
 	}
 	wg.Wait()
 }
@@ -435,13 +435,13 @@ func (i *Ingester) flushAllSeries(ctx context.Context, state *userState, immedia
 	for pair := range state.fpToSeries.iter() {
 		wg.Add(1)
 		i.flushSeriesLimiter.Acquire()
-		go func() {
+		go func(pair fingerprintSeriesPair) {
 			if err := i.flushSeries(ctx, state, pair.fp, pair.series, immediate); err != nil {
 				log.Errorf("Failed to flush chunks for series: %v", err)
 			}
 			i.flushSeriesLimiter.Release()
 			wg.Done()
-		}()
+		}(pair)
 	}
 	wg.Wait()
 }

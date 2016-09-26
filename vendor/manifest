@@ -549,7 +549,7 @@
 			"importpath": "github.com/prometheus/prometheus",
 			"repository": "https://github.com/tomwilkie/prometheus",
 			"vcs": "git",
-			"revision": "90ee19b37780cfb87f1f6a4404d50de7ba8fc2b4",
+			"revision": "3244beecf7f48739b4e4838fb050dc363376096f",
 			"branch": "frankenstein",
 			"notests": true
 		},

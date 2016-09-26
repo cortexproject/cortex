@@ -506,12 +506,6 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 
 // Describe implements prometheus.Collector.
 func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
-	i.userStateLock.Lock()
-	for _, state := range i.userState {
-		state.mapper.Describe(ch)
-	}
-	i.userStateLock.Unlock()
-
 	ch <- memorySeriesDesc
 	ch <- memoryUsersDesc
 	ch <- i.ingestedSamples.Desc()
@@ -528,7 +522,6 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 	numUsers := len(i.userState)
 	numSeries := 0
 	for _, state := range i.userState {
-		state.mapper.Collect(ch)
 		numSeries += state.fpToSeries.length()
 	}
 	i.userStateLock.Unlock()

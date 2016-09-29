@@ -134,6 +134,7 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 
 		resp, err := grpcHandler.Write(ctx, &req)
 		if err != nil {
+			log.Errorf("grpc write err: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

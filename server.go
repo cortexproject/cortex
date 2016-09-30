@@ -78,11 +78,7 @@ func writeResponse(w http.ResponseWriter, resp proto.Message) {
 	// TODO: set Content-type.
 }
 
-type grpcSampleAppender struct {
-	SampleAppender
-}
-
-func (g grpcSampleAppender) Write(ctx context.Context, req *remote.WriteRequest) (*remote.WriteResponse, error) {
+func getSamples(req *remote.WriteRequest) []*model.Sample {
 	var samples []*model.Sample
 	for _, ts := range req.Timeseries {
 		metric := model.Metric{}
@@ -98,18 +94,11 @@ func (g grpcSampleAppender) Write(ctx context.Context, req *remote.WriteRequest)
 			})
 		}
 	}
-
-	if err := g.Append(ctx, samples); err != nil {
-		return nil, err
-	}
-
-	return &remote.WriteResponse{}, nil
+	return samples
 }
 
 // AppenderHandler returns a http.Handler that accepts proto encoded samples.
 func AppenderHandler(appender SampleAppender) http.Handler {
-	grpcHandler := grpcSampleAppender{appender}
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get(userIDHeaderName)
 		if userID == "" {
@@ -132,13 +121,14 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 			return
 		}
 
-		resp, err := grpcHandler.Write(ctx, &req)
+		err = appender.Append(ctx, getSamples(&req))
 		if err != nil {
+			log.Errorf("append err: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		respBuf, err := proto.Marshal(resp)
+		respBuf, err := proto.Marshal(&remote.WriteResponse{})
 		if err != nil {
 			log.Errorf("marshall err: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)

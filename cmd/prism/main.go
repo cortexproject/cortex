@@ -26,20 +26,25 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
-	"github.com/prometheus/prometheus/storage/local"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/scope/common/middleware"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/prism"
-	"github.com/weaveworks/prism/api"
 	"github.com/weaveworks/prism/chunk"
+	"github.com/weaveworks/prism/ingester"
 	"github.com/weaveworks/prism/ring"
+	"github.com/weaveworks/prism/ui"
+	"github.com/weaveworks/prism/user"
 )
 
 const (
-	distributor = "distributor"
-	ingester    = "ingester"
-	infName     = "eth0"
+	modeDistributor = "distributor"
+	modeIngester    = "ingester"
+
+	infName          = "eth0"
+	userIDHeaderName = "X-Scope-OrgID"
 )
 
 var (
@@ -81,7 +86,7 @@ type cfg struct {
 
 func main() {
 	var cfg cfg
-	flag.StringVar(&cfg.mode, "mode", distributor, "Mode (distributor, ingester).")
+	flag.StringVar(&cfg.mode, "mode", modeDistributor, "Mode (distributor, ingester).")
 	flag.IntVar(&cfg.listenPort, "web.listen-port", 9094, "HTTP server listen port.")
 	flag.StringVar(&cfg.consulHost, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
 	flag.StringVar(&cfg.consulPrefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
@@ -110,14 +115,14 @@ func main() {
 	consul = ring.PrefixClient(consul, cfg.consulPrefix)
 
 	switch cfg.mode {
-	case distributor:
+	case modeDistributor:
 		ring := ring.New(consul)
 		defer ring.Stop()
 		setupDistributor(cfg, ring, chunkStore)
 		if err != nil {
 			log.Fatalf("Error initializing distributor: %v", err)
 		}
-	case ingester:
+	case modeIngester:
 		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.numTokens)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
@@ -125,12 +130,12 @@ func main() {
 			log.Fatalf("Could not register ingester: %v", err)
 		}
 		defer registration.Unregister()
-		cfg := local.IngesterConfig{
+		cfg := ingester.Config{
 			FlushCheckPeriod: cfg.flushPeriod,
 			MaxChunkAge:      cfg.maxChunkAge,
 		}
-		ingester := setupIngester(chunkStore, cfg)
-		defer ingester.Stop()
+		ing := setupIngester(chunkStore, cfg)
+		defer ing.Stop()
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
 	}
@@ -204,32 +209,42 @@ func setupQuerier(
 	chunkStore chunk.Store,
 	prefix string,
 ) {
-	newQuerier := func(ctx context.Context) local.Querier {
-		return prism.MergeQuerier{
-			Queriers: []prism.Querier{
-				distributor,
-				&prism.ChunkQuerier{
-					Store: chunkStore,
-				},
+	querier := prism.MergeQuerier{
+		Queriers: []prism.Querier{
+			distributor,
+			&prism.ChunkQuerier{
+				Store: chunkStore,
 			},
-			Context: ctx,
-		}
+		},
 	}
+	engine := promql.NewEngine(querier, nil)
 
-	api := api.New(newQuerier)
-	router := route.New()
+	api := v1.NewAPI(engine, querier)
+	router := route.New(func(r *http.Request) (context.Context, error) {
+		userID := r.Header.Get(userIDHeaderName)
+		if r.Method != "OPTIONS" && userID == "" {
+			// For now, getting the user ID from basic auth allows for easy testing
+			// with Grafana.
+			// TODO: Remove basic auth support.
+			userID, _, _ = r.BasicAuth()
+			if userID == "" {
+				return nil, fmt.Errorf("missing user ID")
+			}
+		}
+		return user.WithID(context.Background(), userID), nil
+	})
 	api.Register(router.WithPrefix(prefix + "/api/v1"))
 	http.Handle("/", router)
 
-	http.Handle(prefix+"/graph", instr(prism.GraphHandler()))
-	http.Handle(prefix+"/static/", instr(prism.StaticAssetsHandler(prefix+"/static/")))
+	http.Handle(prefix+"/graph", instr(ui.GraphHandler()))
+	http.Handle(prefix+"/static/", instr(ui.StaticAssetsHandler(prefix+"/static/")))
 }
 
 func setupIngester(
 	chunkStore chunk.Store,
-	cfg local.IngesterConfig,
-) *local.Ingester {
-	ingester, err := local.NewIngester(cfg, chunkStore)
+	cfg ingester.Config,
+) *ingester.Ingester {
+	ingester, err := ingester.New(cfg, chunkStore)
 	if err != nil {
 		log.Fatal(err)
 	}

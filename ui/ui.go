@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package prism
+package ui
 
 import (
 	"bytes"
@@ -24,16 +24,14 @@ import (
 	"github.com/prometheus/common/log"
 
 	template "html/template"
-
-	"github.com/prometheus/prometheus/web/ui"
 )
 
 func getTemplate(name string) (string, error) {
-	baseTmpl, err := ui.Asset("web/ui/templates/_prism_base.html")
+	baseTmpl, err := Asset("ui/templates/_prism_base.html")
 	if err != nil {
 		return "", fmt.Errorf("error reading base template: %s", err)
 	}
-	pageTmpl, err := ui.Asset(filepath.Join("web/ui/templates", name))
+	pageTmpl, err := Asset(filepath.Join("ui/templates", name))
 	if err != nil {
 		return "", fmt.Errorf("error reading page template %s: %s", name, err)
 	}
@@ -69,15 +67,15 @@ func GraphHandler() http.Handler {
 func StaticAssetsHandler(stripPrefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		fp := strings.TrimPrefix(req.URL.Path, stripPrefix)
-		fp = filepath.Join("web/ui/static", fp)
+		fp = filepath.Join("ui/static", fp)
 
-		info, err := ui.AssetInfo(fp)
+		info, err := AssetInfo(fp)
 		if err != nil {
 			log.With("file", fp).Warn("Could not get file info: ", err)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		file, err := ui.Asset(fp)
+		file, err := Asset(fp)
 		if err != nil {
 			if err != io.EOF {
 				log.With("file", fp).Warn("Could not get file: ", err)

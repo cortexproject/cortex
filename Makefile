@@ -31,7 +31,7 @@ EXES = $(PRISM_EXE)
 all: $(UPTODATE_FILES)
 
 # And what goes into each exe
-$(PRISM_EXE): $(shell find . -name '*.go')
+$(PRISM_EXE): $(shell find . -name '*.go') $(shell find ui/{static,templates})
 
 # And now what goes into each image
 prism-build/$(UPTODATE): prism-build/*
@@ -63,6 +63,7 @@ $(EXES) lint test $(STATIC): prism-build/$(UPTODATE)
 else
 
 $(EXES): prism-build/$(UPTODATE)
+	go-bindata -pkg ui -o ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  ui/templates/... ui/static/...
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 

@@ -20,5 +20,5 @@ func GetID(ctx context.Context) (string, error) {
 
 // WithID returns a derived context containing the user ID.
 func WithID(ctx context.Context, userID string) context.Context {
-	return context.WithValue(ctx, userIDContextKey, userID)
+	return context.WithValue(ctx, interface{}(userIDContextKey), userID)
 }

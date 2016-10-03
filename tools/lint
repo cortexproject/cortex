@@ -166,7 +166,7 @@ function lint_files {
 
 function list_files {
 	if [ $# -gt 0 ]; then
-        git ls-files --exclude-standard | grep -vE '(^|/)vendor/'
+		git ls-files --exclude-standard | grep -vE '(^|/)(vendor/|prism.pb.go|ui/bindata.go)'
 	else
 		git diff --cached --name-only
 	fi

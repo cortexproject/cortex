@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"golang.org/x/net/context"
 
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/local"
@@ -42,30 +43,24 @@ const (
 	epsilon       = 0.000001 // Relative error allowed for sample values.
 )
 
-type TestStorageMode int
-
-const (
-	LocalStorage TestStorageMode = iota
-)
-
 // Test is a sequence of read and write commands that are run
 // against a test storage.
 type Test struct {
 	testutil.T
-	mode TestStorageMode
 
 	cmds []testCommand
 
 	storage      local.Storage
 	closeStorage func()
 	queryEngine  *Engine
+	context      context.Context
+	cancelCtx    context.CancelFunc
 }
 
 // NewTest returns an initialized empty Test.
-func NewTest(t testutil.T, mode TestStorageMode, input string) (*Test, error) {
+func NewTest(t testutil.T, input string) (*Test, error) {
 	test := &Test{
 		T:    t,
-		mode: mode,
 		cmds: []testCommand{},
 	}
 	err := test.parse(input)
@@ -74,17 +69,22 @@ func NewTest(t testutil.T, mode TestStorageMode, input string) (*Test, error) {
 	return test, err
 }
 
-func newTestFromFile(t testutil.T, mode TestStorageMode, filename string) (*Test, error) {
+func newTestFromFile(t testutil.T, filename string) (*Test, error) {
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	return NewTest(t, mode, string(content))
+	return NewTest(t, string(content))
 }
 
 // QueryEngine returns the test's query engine.
 func (t *Test) QueryEngine() *Engine {
 	return t.queryEngine
+}
+
+// Context returns the test's context.
+func (t *Test) Context() context.Context {
+	return t.context
 }
 
 // Storage returns the test's storage.
@@ -471,7 +471,7 @@ func (t *Test) exec(tc testCommand) error {
 
 	case *evalCmd:
 		q := t.queryEngine.newQuery(cmd.expr, cmd.start, cmd.end, cmd.interval)
-		res := q.Exec()
+		res := q.Exec(t.context)
 		if res.Err != nil {
 			if cmd.fail {
 				return nil
@@ -495,12 +495,11 @@ func (t *Test) exec(tc testCommand) error {
 
 // clear the current test storage of all inserted samples.
 func (t *Test) clear() {
-	if t.queryEngine != nil {
-		t.queryEngine.Stop()
-	}
-
 	if t.closeStorage != nil {
 		t.closeStorage()
+	}
+	if t.cancelCtx != nil {
+		t.cancelCtx()
 	}
 
 	var closer testutil.Closer
@@ -508,13 +507,13 @@ func (t *Test) clear() {
 
 	t.closeStorage = closer.Close
 	t.queryEngine = NewEngine(t.storage, nil)
+	t.context, t.cancelCtx = context.WithCancel(context.Background())
 }
 
 // Close closes resources associated with the Test.
 func (t *Test) Close() {
-	t.queryEngine.Stop()
+	t.cancelCtx()
 	t.closeStorage()
-
 }
 
 // samplesAlmostEqual returns true if the two sample lines only differ by a

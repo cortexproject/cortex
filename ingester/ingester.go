@@ -73,6 +73,7 @@ type Ingester struct {
 	memoryChunks       prometheus.Gauge
 }
 
+// Config configures an Ingester.
 type Config struct {
 	FlushCheckPeriod time.Duration
 	MaxChunkAge      time.Duration
@@ -86,6 +87,7 @@ type userState struct {
 	index      *invertedIndex
 }
 
+// New constructs a new Ingester.
 func New(cfg Config, chunkStore prism.Store) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
@@ -163,10 +165,12 @@ func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {
 	return state, nil
 }
 
+// NeedsThrottling implements storage.SampleAppender.
 func (*Ingester) NeedsThrottling(_ context.Context) bool {
 	return false
 }
 
+// Append implements storage.SampleAppender.
 func (i *Ingester) Append(ctx context.Context, samples []*model.Sample) error {
 	for _, sample := range samples {
 		if err := i.append(ctx, sample); err != nil {
@@ -258,6 +262,7 @@ func (u *userState) getOrCreateSeries(metric model.Metric) (model.Fingerprint, *
 	return fp, series, nil
 }
 
+// Query implements prism.Querier.
 func (i *Ingester) Query(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	i.queries.Inc()
 
@@ -339,7 +344,7 @@ func samplesForRange(s *memorySeries, from, through model.Time) ([]model.SampleP
 	return values, nil
 }
 
-// Get all of the label values that are associated with a given label name.
+// LabelValuesForLabelName returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValuesForLabelName(ctx context.Context, name model.LabelName) (model.LabelValues, error) {
 	state, err := i.getStateFor(ctx)
 	if err != nil {
@@ -349,6 +354,7 @@ func (i *Ingester) LabelValuesForLabelName(ctx context.Context, name model.Label
 	return state.index.lookupLabelValues(name), nil
 }
 
+// Stop stops the Ingester.
 func (i *Ingester) Stop() {
 	i.stopLock.Lock()
 	i.stopped = true

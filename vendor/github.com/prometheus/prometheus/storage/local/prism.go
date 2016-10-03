@@ -465,7 +465,6 @@ func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Finge
 	}
 
 	// flush the chunks without locking the series
-	log.Infof("Flushing %d chunks", len(chunks))
 	if err := i.flushChunks(ctx, fp, series.metric, chunks); err != nil {
 		i.chunkStoreFailures.Add(float64(len(chunks)))
 		return err

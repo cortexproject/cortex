@@ -31,7 +31,7 @@ EXES = $(PRISM_EXE)
 all: $(UPTODATE_FILES)
 
 # And what goes into each exe
-$(PRISM_EXE): $(shell find . -name '*.go') $(shell find ui/{static,templates})
+$(PRISM_EXE): $(shell find . -name '*.go') $(shell find ui/static ui/templates)
 
 # And now what goes into each image
 prism-build/$(UPTODATE): prism-build/*

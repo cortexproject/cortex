@@ -26,7 +26,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/storage/remote"
-	"github.com/prometheus/prometheus/storage/remote/generic"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/prism/user"
@@ -84,32 +83,32 @@ func (c *IngesterClient) Append(ctx context.Context, samples []*model.Sample) er
 
 // Query implements Querier.
 func (c *IngesterClient) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
-	req := &generic.GenericReadRequest{
-		StartTimestampMs: proto.Int64(int64(from)),
-		EndTimestampMs:   proto.Int64(int64(to)),
+	req := &ReadRequest{
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
 	}
 	for _, matcher := range matchers {
-		var mType generic.MatchType
+		var mType MatchType
 		switch matcher.Type {
 		case metric.Equal:
-			mType = generic.MatchType_EQUAL
+			mType = MatchType_EQUAL
 		case metric.NotEqual:
-			mType = generic.MatchType_NOT_EQUAL
+			mType = MatchType_NOT_EQUAL
 		case metric.RegexMatch:
-			mType = generic.MatchType_REGEX_MATCH
+			mType = MatchType_REGEX_MATCH
 		case metric.RegexNoMatch:
-			mType = generic.MatchType_REGEX_NO_MATCH
+			mType = MatchType_REGEX_NO_MATCH
 		default:
 			panic("invalid matcher type")
 		}
-		req.Matchers = append(req.Matchers, &generic.LabelMatcher{
-			Type:  &mType,
-			Name:  proto.String(string(matcher.Name)),
-			Value: proto.String(string(matcher.Value)),
+		req.Matchers = append(req.Matchers, &LabelMatcher{
+			Type:  mType,
+			Name:  string(matcher.Name),
+			Value: string(matcher.Value),
 		})
 	}
 
-	resp := &generic.GenericReadResponse{}
+	resp := &ReadResponse{}
 	err := c.doRequest(ctx, "/query", req, resp, false)
 	if err != nil {
 		return nil, err
@@ -119,18 +118,15 @@ func (c *IngesterClient) Query(ctx context.Context, from, to model.Time, matcher
 	for _, ts := range resp.Timeseries {
 		var ss model.SampleStream
 		ss.Metric = model.Metric{}
-		if ts.Name != nil {
-			ss.Metric[model.MetricNameLabel] = model.LabelValue(ts.GetName())
-		}
 		for _, l := range ts.Labels {
-			ss.Metric[model.LabelName(l.GetName())] = model.LabelValue(l.GetValue())
+			ss.Metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
 		}
 
 		ss.Values = make([]model.SamplePair, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
 			ss.Values = append(ss.Values, model.SamplePair{
-				Value:     model.SampleValue(s.GetValue()),
-				Timestamp: model.Time(s.GetTimestampMs()),
+				Value:     model.SampleValue(s.Value),
+				Timestamp: model.Time(s.TimestampMs),
 			})
 		}
 		m = append(m, &ss)
@@ -141,10 +137,10 @@ func (c *IngesterClient) Query(ctx context.Context, from, to model.Time, matcher
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (c *IngesterClient) LabelValuesForLabelName(ctx context.Context, ln model.LabelName) (model.LabelValues, error) {
-	req := &generic.GenericLabelValuesRequest{
-		LabelName: proto.String(string(ln)),
+	req := &LabelValuesRequest{
+		LabelName: string(ln),
 	}
-	resp := &generic.GenericLabelValuesResponse{}
+	resp := &LabelValuesResponse{}
 	err := c.doRequest(ctx, "/label_values", req, resp, false)
 	if err != nil {
 		return nil, err

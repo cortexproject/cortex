@@ -25,7 +25,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/storage/remote"
-	"github.com/prometheus/prometheus/storage/remote/generic"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/prism/user"
@@ -150,7 +149,7 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 // query requests and serves them.
 func QueryHandler(querier Querier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := &generic.GenericReadRequest{}
+		req := &ReadRequest{}
 		ctx, abort := parseRequest(w, r, req)
 		if abort {
 			return
@@ -159,20 +158,20 @@ func QueryHandler(querier Querier) http.Handler {
 		matchers := make(metric.LabelMatchers, 0, len(req.Matchers))
 		for _, matcher := range req.Matchers {
 			var mtype metric.MatchType
-			switch matcher.GetType() {
-			case generic.MatchType_EQUAL:
+			switch matcher.Type {
+			case MatchType_EQUAL:
 				mtype = metric.Equal
-			case generic.MatchType_NOT_EQUAL:
+			case MatchType_NOT_EQUAL:
 				mtype = metric.NotEqual
-			case generic.MatchType_REGEX_MATCH:
+			case MatchType_REGEX_MATCH:
 				mtype = metric.RegexMatch
-			case generic.MatchType_REGEX_NO_MATCH:
+			case MatchType_REGEX_NO_MATCH:
 				mtype = metric.RegexNoMatch
 			default:
 				http.Error(w, "invalid matcher type", http.StatusBadRequest)
 				return
 			}
-			matcher, err := metric.NewLabelMatcher(mtype, model.LabelName(matcher.GetName()), model.LabelValue(matcher.GetValue()))
+			matcher, err := metric.NewLabelMatcher(mtype, model.LabelName(matcher.Name), model.LabelValue(matcher.Value))
 			if err != nil {
 				http.Error(w, fmt.Sprintf("error creating matcher: %v", err), http.StatusBadRequest)
 				return
@@ -180,8 +179,8 @@ func QueryHandler(querier Querier) http.Handler {
 			matchers = append(matchers, matcher)
 		}
 
-		start := model.Time(req.GetStartTimestampMs())
-		end := model.Time(req.GetEndTimestampMs())
+		start := model.Time(req.StartTimestampMs)
+		end := model.Time(req.EndTimestampMs)
 
 		res, err := querier.Query(ctx, start, end, matchers...)
 		if err != nil {
@@ -189,25 +188,21 @@ func QueryHandler(querier Querier) http.Handler {
 			return
 		}
 
-		resp := &generic.GenericReadResponse{}
+		resp := &ReadResponse{}
 		for _, ss := range res {
-			ts := &generic.TimeSeries{
-				Name: proto.String(string(ss.Metric[model.MetricNameLabel])),
-			}
+			ts := &TimeSeries{}
 			for k, v := range ss.Metric {
-				if k != model.MetricNameLabel {
-					ts.Labels = append(ts.Labels,
-						&generic.LabelPair{
-							Name:  proto.String(string(k)),
-							Value: proto.String(string(v)),
-						})
-				}
+				ts.Labels = append(ts.Labels,
+					&LabelPair{
+						Name:  string(k),
+						Value: string(v),
+					})
 			}
-			ts.Samples = make([]*generic.Sample, 0, len(ss.Values))
+			ts.Samples = make([]*Sample, 0, len(ss.Values))
 			for _, s := range ss.Values {
-				ts.Samples = append(ts.Samples, &generic.Sample{
-					Value:       proto.Float64(float64(s.Value)),
-					TimestampMs: proto.Int64(int64(s.Timestamp)),
+				ts.Samples = append(ts.Samples, &Sample{
+					Value:       float64(s.Value),
+					TimestampMs: int64(s.Timestamp),
 				})
 			}
 			resp.Timeseries = append(resp.Timeseries, ts)
@@ -220,19 +215,19 @@ func QueryHandler(querier Querier) http.Handler {
 // LabelValuesHandler handles label values
 func LabelValuesHandler(querier Querier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := &generic.GenericLabelValuesRequest{}
+		req := &LabelValuesRequest{}
 		ctx, abort := parseRequest(w, r, req)
 		if abort {
 			return
 		}
 
-		values, err := querier.LabelValuesForLabelName(ctx, model.LabelName(req.GetLabelName()))
+		values, err := querier.LabelValuesForLabelName(ctx, model.LabelName(req.LabelName))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		resp := &generic.GenericLabelValuesResponse{}
+		resp := &LabelValuesResponse{}
 		for _, v := range values {
 			resp.LabelValues = append(resp.LabelValues, string(v))
 		}

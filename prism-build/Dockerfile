@@ -9,7 +9,8 @@ RUN go get -tags netgo \
 		github.com/golang/lint/golint \
 		github.com/kisielk/errcheck \
 		github.com/mjibson/esc \
-		github.com/client9/misspell/cmd/misspell && \
+		github.com/client9/misspell/cmd/misspell \
+		github.com/jteeuwen/go-bindata/go-bindata && \
 	rm -rf /go/pkg /go/src
 COPY build.sh /
 ENTRYPOINT ["/build.sh"]

@@ -14,11 +14,13 @@
 package prism
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local"
+	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
@@ -58,7 +60,13 @@ func (q *ChunkQuerier) Query(ctx context.Context, from, to model.Time, matchers 
 			}
 			sampleStreams[fp] = ss
 		}
-		ss.Values = append(ss.Values, local.DecodeDoubleDeltaChunk(c.Data)...)
+
+		samples, err := decodeChunk(c.Data)
+		if err != nil {
+			return nil, err
+		}
+
+		ss.Values = append(ss.Values, samples...)
 	}
 
 	for _, ss := range sampleStreams {
@@ -72,6 +80,22 @@ func (q *ChunkQuerier) Query(ctx context.Context, from, to model.Time, matchers 
 	}
 
 	return matrix, nil
+}
+
+func decodeChunk(buf []byte) ([]model.SamplePair, error) {
+	lc, err := prom_chunk.NewForEncoding(prom_chunk.DoubleDelta)
+	if err != nil {
+		return nil, err
+	}
+	lc.UnmarshalFromBuf(buf)
+	it := lc.NewIterator()
+	// TODO(juliusv): Pre-allocate this with the right length again once we
+	// add a method upstream to get the number of samples in a chunk.
+	var samples []model.SamplePair
+	for it.Scan() {
+		samples = append(samples, it.Value())
+	}
+	return samples, nil
 }
 
 type timeSortableSamplePairs []model.SamplePair
@@ -98,18 +122,17 @@ func (q *ChunkQuerier) LabelValuesForLabelName(ctx context.Context, ln model.Lab
 // prism.Queriers for the same query.
 type MergeQuerier struct {
 	Queriers []Querier
-	Context  context.Context
 }
 
 // QueryRange fetches series for a given time range and label matchers from multiple
 // promql.Queriers and returns the merged results as a map of series iterators.
-func (qm MergeQuerier) QueryRange(from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
+func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
 	fpToIt := map[model.Fingerprint]local.SeriesIterator{}
 
 	// Fetch samples from all queriers and group them by fingerprint (unsorted
 	// and with overlap).
 	for _, q := range qm.Queriers {
-		matrix, err := q.Query(qm.Context, from, to, matchers...)
+		matrix, err := q.Query(ctx, from, to, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -144,29 +167,29 @@ func (qm MergeQuerier) QueryRange(from, to model.Time, matchers ...*metric.Label
 
 // QueryInstant fetches series for a given instant and label matchers from multiple
 // promql.Queriers and returns the merged results as a map of series iterators.
-func (qm MergeQuerier) QueryInstant(ts model.Time, stalenessDelta time.Duration, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
+func (qm MergeQuerier) QueryInstant(ctx context.Context, ts model.Time, stalenessDelta time.Duration, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
 	// For now, just fall back to QueryRange, as QueryInstant is merely allows
 	// for instant-specific optimization.
-	return qm.QueryRange(ts.Add(-stalenessDelta), ts, matchers...)
+	return qm.QueryRange(ctx, ts.Add(-stalenessDelta), ts, matchers...)
 }
 
 // MetricsForLabelMatchers Implements local.Querier.
-func (qm MergeQuerier) MetricsForLabelMatchers(from, through model.Time, matcherSets ...metric.LabelMatchers) ([]metric.Metric, error) {
+func (qm MergeQuerier) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matcherSets ...metric.LabelMatchers) ([]metric.Metric, error) {
 	// TODO: Implement.
 	return nil, nil
 }
 
 // LastSampleForLabelMatchers implements local.Querier.
-func (qm MergeQuerier) LastSampleForLabelMatchers(cutoff model.Time, matcherSets ...metric.LabelMatchers) (model.Vector, error) {
+func (qm MergeQuerier) LastSampleForLabelMatchers(ctx context.Context, cutoff model.Time, matcherSets ...metric.LabelMatchers) (model.Vector, error) {
 	// TODO: Implement.
 	return nil, nil
 }
 
 // LabelValuesForLabelName implements local.Querier.
-func (qm MergeQuerier) LabelValuesForLabelName(name model.LabelName) (model.LabelValues, error) {
+func (qm MergeQuerier) LabelValuesForLabelName(ctx context.Context, name model.LabelName) (model.LabelValues, error) {
 	valueSet := map[model.LabelValue]struct{}{}
 	for _, q := range qm.Queriers {
-		vals, err := q.LabelValuesForLabelName(qm.Context, name)
+		vals, err := q.LabelValuesForLabelName(ctx, name)
 		if err != nil {
 			return nil, err
 		}
@@ -180,4 +203,45 @@ func (qm MergeQuerier) LabelValuesForLabelName(name model.LabelName) (model.Labe
 		values = append(values, v)
 	}
 	return values, nil
+}
+
+// TODO(juliusv): Remove all the dummy local.Storage methods below
+// once the upstream web API expects a leaner interface.
+
+// Append implements local.Storage. Needed to satisfy interface
+// requirements for usage with the Prometheus web API.
+func (qm MergeQuerier) Append(*model.Sample) error {
+	panic("MergeQuerier.Append() should never be called")
+}
+
+// NeedsThrottling implements local.Storage. Needed to satisfy
+// interface requirements for usage with the Prometheus web API.
+func (qm MergeQuerier) NeedsThrottling() bool {
+	panic("MergeQuerier.NeedsThrottling() should never be called")
+}
+
+// DropMetricsForLabelMatchers implements local.Storage. Needed
+// to satisfy interface requirements for usage with the Prometheus
+// web API.
+func (qm MergeQuerier) DropMetricsForLabelMatchers(context.Context, ...*metric.LabelMatcher) (int, error) {
+	return 0, fmt.Errorf("dropping metrics is not supported")
+}
+
+// Start implements local.Storage. Needed to satisfy interface
+// requirements for usage with the Prometheus web API.
+func (qm MergeQuerier) Start() error {
+	panic("MergeQuerier.Start() should never be called")
+}
+
+// Stop implements local.Storage. Needed to satisfy interface
+// requirements for usage with the Prometheus web API.
+func (qm MergeQuerier) Stop() error {
+	panic("MergeQuerier.Stop() should never be called")
+}
+
+// WaitForIndexing implements local.Storage. Needed to satisfy
+// interface requirements for usage with the Prometheus
+// web API.
+func (qm MergeQuerier) WaitForIndexing() {
+	panic("MergeQuerier.WaitForIndexing() should never be called")
 }

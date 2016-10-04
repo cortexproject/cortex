@@ -53,7 +53,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) lint test $(STATIC): prism-build/$(UPTODATE)
+$(EXES) lint test assets: prism-build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
@@ -63,7 +63,6 @@ $(EXES) lint test $(STATIC): prism-build/$(UPTODATE)
 else
 
 $(EXES): prism-build/$(UPTODATE)
-	go-bindata -pkg ui -o ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  ui/templates/... ui/static/...
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -72,6 +71,15 @@ lint: prism-build/$(UPTODATE)
 
 test: prism-build/$(UPTODATE)
 	./tools/test -no-go-get
+
+# Manual step that needs to be run after making any changes to the web assets
+# (ui/{templates,static}/...).
+#
+# TODO(juliusv): Figure out if we can make this an automatic part of the build
+# process. It currently produces diffs (source file timestamps are getting
+# baked into bindata.go) and those make CI fail.
+assets: prism-build/$(UPTODATE)
+	go-bindata -pkg ui -o ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  ui/templates/... ui/static/...
 
 endif
 

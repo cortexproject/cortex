@@ -549,7 +549,7 @@
 			"importpath": "github.com/prometheus/prometheus/config",
 			"repository": "https://github.com/prometheus/prometheus",
 			"vcs": "git",
-			"revision": "c0889fd92eb903dc54783229ac4add758a0da510",
+			"revision": "2844a8c7b547b674994927bd25c4bfb75c6761a0",
 			"branch": "master",
 			"path": "config",
 			"notests": true
@@ -564,10 +564,19 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/prometheus/prometheus/relabel",
+			"repository": "https://github.com/prometheus/prometheus",
+			"vcs": "git",
+			"revision": "2844a8c7b547b674994927bd25c4bfb75c6761a0",
+			"branch": "master",
+			"path": "/relabel",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/prometheus/prometheus/storage",
 			"repository": "https://github.com/prometheus/prometheus",
 			"vcs": "git",
-			"revision": "91727281252c935522f61fec2329c049331976b7",
+			"revision": "2844a8c7b547b674994927bd25c4bfb75c6761a0",
 			"branch": "master",
 			"path": "storage",
 			"notests": true

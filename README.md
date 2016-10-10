@@ -21,24 +21,27 @@ a new instance.
 
 Once you have created your instance, note down the 'Service Token' listed
 underneath 'Probes' in the box on the right of the screen. You will use this
-token to authenticate your retrieval agent with Weave Cloud.
+token to authenticate your local Prometheus with Weave Cloud.
 
-The retrieval agent is a normal Prometheus instance, which you
-can [download from the Prometheus website](https://prometheus.io/download/).
+You can [download Prometheus its website](https://prometheus.io/download/).
 You will need v1.2.1 or later.
 
-Once you've got the retrieval agent, you will need to provide a standard
-[Prometheus config file](https://prometheus.io/docs/operating/configuration/)
-so it can discover your services and relabel them appropriately, and then run
-the following:
+When you've got Prometheus, you will need
+to
+[configure it discover your services](https://prometheus.io/docs/operating/configuration/) and
+also configure it to send its data to Weave Cloud by adding the following
+top-level stanza:
 
-    prometheus -config.file=... -storage.remote.generic-url=http://user:<token>@cloud.weave.works/api/prom/push
+    remote_write:
+      url: https://cloud.weave.works/api/prom/push
+      basic_auth:
+        password: <token>
 
 Where `<token>` is the Service Token you obtained from Weave Cloud.
 
-Once you have started your retrieval agent you can enter Prometheus queries
-into Weave Cloud. Go to https://cloud.weave.works and click the graph icon to
-the right of the instance selector:
+Once your local Prometheus is running you can enter Prometheus queries into
+Weave Cloud. Go to https://cloud.weave.works and click the graph icon to the
+right of the instance selector:
 
 ![Cropped screenshot of Weave Cloud showing Prometheus button as graph](weave-cloud-snippet.png?raw=true)
 

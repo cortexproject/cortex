@@ -23,11 +23,9 @@ Once you have created your instance, note down the 'Service Token' listed
 underneath 'Probes' in the box on the right of the screen. You will use this
 token to authenticate your retrieval agent with Weave Cloud.
 
-The retrieval agent is (mostly) a normal Prometheus instance. To get it, you
-can either build it from source in the
-[frankenstein branch of Prometheus](https://github.com/tomwilkie/prometheus/tree/frankenstein)
-or
-[download a Linux amd64 binary](https://drive.google.com/open?id=0BwqTw528sZRIWlZNS1RFTFVBcmc).
+The retrieval agent is a normal Prometheus instance, which you
+can [download from the Prometheus website](https://prometheus.io/download/).
+You will need v1.2.0 or later.
 
 Once you've got the retrieval agent, you will need to provide a standard
 [Prometheus config file](https://prometheus.io/docs/operating/configuration/)

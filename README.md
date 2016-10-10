@@ -25,7 +25,7 @@ token to authenticate your retrieval agent with Weave Cloud.
 
 The retrieval agent is a normal Prometheus instance, which you
 can [download from the Prometheus website](https://prometheus.io/download/).
-You will need v1.2.0 or later.
+You will need v1.2.1 or later.
 
 Once you've got the retrieval agent, you will need to provide a standard
 [Prometheus config file](https://prometheus.io/docs/operating/configuration/)

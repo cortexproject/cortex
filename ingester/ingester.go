@@ -492,8 +492,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 			return err
 		}
 
-		// TODO(juliusv): Re-enable upstream support for this.
-		// i.chunkUtilization.Observe(chunk.C.utilization())
+		i.chunkUtilization.Observe(chunk.C.Utilization())
 
 		wireChunks = append(wireChunks, prism.Chunk{
 			ID:      fmt.Sprintf("%d:%d:%d", fp, chunk.ChunkFirstTime, chunk.ChunkLastTime),

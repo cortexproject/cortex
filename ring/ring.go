@@ -42,6 +42,7 @@ type CoordinationStateClient interface {
 
 // Ring holds the information about the members of the consistent hash circle.
 type Ring struct {
+	name       string
 	client     CoordinationStateClient
 	quit, done chan struct{}
 
@@ -54,25 +55,32 @@ type Ring struct {
 }
 
 // New creates a new Ring
-func New(client CoordinationStateClient) *Ring {
+func New(name string, client CoordinationStateClient) *Ring {
 	r := &Ring{
+		name:   name,
 		client: client,
 		quit:   make(chan struct{}),
 		done:   make(chan struct{}),
 		ingesterOwnershipDesc: prometheus.NewDesc(
 			"prometheus_distributor_ingester_ownership_percent",
 			"The percent ownership of the ring by ingester",
-			[]string{"ingester"}, nil,
+			[]string{"ingester"}, map[string]string{
+				"ring": name,
+			},
 		),
 		ingesterTotalDesc: prometheus.NewDesc(
 			"prometheus_distributor_ingesters_total",
 			"Number of ingesters in the ring",
-			nil, nil,
+			[]string{"ring"}, map[string]string{
+				"ring": name,
+			},
 		),
 		tokensTotalDesc: prometheus.NewDesc(
 			"prometheus_distributor_tokens_total",
 			"Number of tokens in the ring",
-			nil, nil,
+			[]string{"ring"}, map[string]string{
+				"ring": name,
+			},
 		),
 	}
 	go r.loop()

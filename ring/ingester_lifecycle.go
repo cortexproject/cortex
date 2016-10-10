@@ -48,7 +48,7 @@ type IngesterRegistration struct {
 }
 
 // RegisterIngester registers an ingester with Consul.
-func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*IngesterRegistration, error) {
+func RegisterIngester(name string, consulClient ConsulClient, listenPort, numTokens int) (*IngesterRegistration, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -70,8 +70,9 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 		quit:     make(chan struct{}),
 
 		consulHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "prism_ingester_consul_heartbeats_total",
-			Help: "The total number of heartbeats sent to consul.",
+			Name:        "prism_ingester_consul_heartbeats_total",
+			Help:        "The total number of heartbeats sent to consul.",
+			ConstLabels: map[string]string{"ring": name},
 		}),
 	}
 

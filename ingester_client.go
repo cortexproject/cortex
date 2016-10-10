@@ -77,8 +77,7 @@ func (c *IngesterClient) Append(ctx context.Context, samples []*model.Sample) er
 		req.Timeseries = append(req.Timeseries, ts)
 	}
 
-	var resp remote.WriteResponse
-	return c.doRequest(ctx, "/push", req, &resp, true)
+	return c.doRequest(ctx, "/push", req, nil, true)
 }
 
 // Query implements Querier.

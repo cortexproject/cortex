@@ -126,22 +126,6 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		respBuf, err := proto.Marshal(&remote.WriteResponse{})
-		if err != nil {
-			log.Errorf("marshall err: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		if _, err := snappy.NewWriter(w).Write(respBuf); err != nil {
-			log.Errorf("write err: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Add("Content-Encoding", "snappy")
-		w.WriteHeader(http.StatusOK)
 	})
 }
 

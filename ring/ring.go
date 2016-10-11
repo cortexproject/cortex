@@ -71,7 +71,7 @@ func New(client CoordinationStateClient) *Ring {
 		),
 		tokensTotalDesc: prometheus.NewDesc(
 			"prometheus_distributor_tokens_total",
-			"Number of token in the ring",
+			"Number of tokens in the ring",
 			nil, nil,
 		),
 	}

@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 )
 
@@ -42,6 +43,8 @@ type IngesterRegistration struct {
 	hostname string
 	quit     chan struct{}
 	wait     sync.WaitGroup
+
+	consulHeartbeats prometheus.Counter
 }
 
 // RegisterIngester registers an ingester with Consul.
@@ -65,6 +68,11 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 		// the distributors know where to connect.
 		hostname: fmt.Sprintf("%s:%d", addr, listenPort),
 		quit:     make(chan struct{}),
+
+		consulHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "prism_ingester_consul_heartbeats_total",
+			Help: "The total number of heartbeats sent to consul.",
+		}),
 	}
 
 	r.wait.Add(1)
@@ -148,8 +156,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 	for {
 		select {
 		case <-ticker.C:
-			// TODO(jml): Change this to a metric.
-			log.Debugf("Heartbeating to consul...")
+			r.consulHeartbeats.Inc()
 			if err := r.consul.CAS(consulKey, descFactory, heartbeat); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}
@@ -225,4 +232,14 @@ func getFirstAddressOf(name string) (string, error) {
 	}
 
 	return "", fmt.Errorf("No address found for %s", name)
+}
+
+// Describe implements prometheus.Collector.
+func (r *IngesterRegistration) Describe(ch chan<- *prometheus.Desc) {
+	ch <- r.consulHeartbeats.Desc()
+}
+
+// Collect implements prometheus.Collector.
+func (r *IngesterRegistration) Collect(ch chan<- prometheus.Metric) {
+	ch <- r.consulHeartbeats
 }

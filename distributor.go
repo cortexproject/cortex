@@ -45,7 +45,6 @@ type Distributor struct {
 	clients       map[string]*IngesterClient
 
 	queryDuration   *prometheus.HistogramVec
-	consulUpdates   prometheus.Counter
 	receivedSamples prometheus.Counter
 	sendDuration    *prometheus.HistogramVec
 }
@@ -80,11 +79,6 @@ func NewDistributor(cfg DistributorConfig) *Distributor {
 			Help:      "Time spent executing expression queries.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
 		}, []string{"method", "status_code"}),
-		consulUpdates: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "prometheus",
-			Name:      "distributor_consul_updates_total",
-			Help:      "The total number of received Consul updates.",
-		}),
 		receivedSamples: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: "prometheus",
 			Name:      "distributor_received_samples_total",
@@ -256,7 +250,6 @@ func (*Distributor) NeedsThrottling(_ context.Context) bool {
 // Describe implements prometheus.Collector.
 func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.queryDuration.Describe(ch)
-	ch <- d.consulUpdates.Desc()
 	ch <- d.receivedSamples.Desc()
 	d.sendDuration.Describe(ch)
 	d.ring.Describe(ch)
@@ -266,7 +259,6 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 // Collect implements prometheus.Collector.
 func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	d.queryDuration.Collect(ch)
-	ch <- d.consulUpdates
 	ch <- d.receivedSamples
 	d.sendDuration.Collect(ch)
 	d.ring.Collect(ch)

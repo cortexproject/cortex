@@ -34,10 +34,22 @@ func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
 var ErrEmptyRing = errors.New("empty circle")
 
-var ingestorOwnershipDesc = prometheus.NewDesc(
-	"prometheus_distributor_ingester_ownership_percent",
-	"The percent ownership of the ring by ingestor",
-	[]string{"ingester"}, nil,
+var (
+	ingestorOwnershipDesc = prometheus.NewDesc(
+		"prometheus_distributor_ingester_ownership_percent",
+		"The percent ownership of the ring by ingestor",
+		[]string{"ingester"}, nil,
+	)
+	ingesterTotalDesc = prometheus.NewDesc(
+		"prometheus_distributor_ingesters_total",
+		"Number of ingesters in the ring",
+		nil, nil,
+	)
+	tokensTotalDesc = prometheus.NewDesc(
+		"prometheus_distributor_tokens_total",
+		"Number of token in the ring",
+		nil, nil,
+	)
 )
 
 // CoordinationStateClient is an interface to getting changes to the coordination
@@ -81,11 +93,6 @@ func (r *Ring) loop() {
 		}
 
 		ringDesc := value.(*Desc)
-		// TODO(jml): Do we already have metrics for this? If so, just delete
-		// this. If not, add some!
-		log.Infof("Got update to ring - %d ingesters, %d tokens",
-			len(ringDesc.Ingesters), len(ringDesc.Tokens))
-
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = *ringDesc
@@ -155,4 +162,15 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			id,
 		)
 	}
+
+	ch <- prometheus.MustNewConstMetric(
+		ingesterTotalDesc,
+		prometheus.GaugeValue,
+		float64(len(r.ringDesc.Ingesters)),
+	)
+	ch <- prometheus.MustNewConstMetric(
+		tokensTotalDesc,
+		prometheus.GaugeValue,
+		float64(len(r.ringDesc.Tokens)),
+	)
 }

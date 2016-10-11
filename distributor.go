@@ -16,6 +16,7 @@ package prism
 import (
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,7 +40,8 @@ var (
 // Distributor is a storage.SampleAppender and a prism.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	ring          ReadRing
+	appendRing    ReadRing
+	queryRing     ReadRing
 	clientFactory IngesterClientFactory
 	clientsMtx    sync.RWMutex
 	clients       map[string]*IngesterClient
@@ -63,14 +65,16 @@ type IngesterClientFactory func(string) (*IngesterClient, error)
 // DistributorConfig contains the configuration require to
 // create a Distributor
 type DistributorConfig struct {
-	Ring          ReadRing
+	AppendRing    ReadRing
+	QueryRing     ReadRing
 	ClientFactory IngesterClientFactory
 }
 
 // NewDistributor constructs a new Distributor
 func NewDistributor(cfg DistributorConfig) *Distributor {
 	return &Distributor{
-		ring:          cfg.Ring,
+		appendRing:    cfg.AppendRing,
+		queryRing:     cfg.QueryRing,
 		clientFactory: cfg.ClientFactory,
 		clients:       map[string]*IngesterClient{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -140,7 +144,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 	samplesByIngester := map[string][]*model.Sample{}
 	for _, sample := range samples {
 		key := tokenForMetric(userID, sample.Metric)
-		collector, err := d.ring.Get(key)
+		collector, err := d.appendRing.Get(key)
 		if err != nil {
 			return err
 		}
@@ -189,30 +193,45 @@ func metricNameFromLabelMatchers(matchers ...*metric.LabelMatcher) (model.LabelV
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	var result model.Matrix
 	err := instrument.TimeRequestHistogram("duration", d.queryDuration, func() error {
-		metricName, err := metricNameFromLabelMatchers(matchers...)
-		if err != nil {
-			return err
+		fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
+
+		// Fetch samples from all ingesters and group them by fingerprint (unsorted
+		// and with overlap).
+		for _, c := range d.queryRing.GetAll() {
+			client, err := d.getClientFor(c.Hostname)
+			if err != nil {
+				return err
+			}
+			matrix, err := client.Query(ctx, from, to, matchers...)
+			if err != nil {
+				return err
+			}
+
+			for _, ss := range matrix {
+				fp := ss.Metric.Fingerprint()
+				if mss, ok := fpToSampleStream[fp]; !ok {
+					fpToSampleStream[fp] = &model.SampleStream{
+						Metric: ss.Metric,
+						Values: ss.Values,
+					}
+				} else {
+					mss.Values = append(fpToSampleStream[fp].Values, ss.Values...)
+				}
+			}
 		}
 
-		userID, err := user.GetID(ctx)
-		if err != nil {
-			return err
+		// Sort and dedupe samples.
+		for _, ss := range fpToSampleStream {
+			sortable := timeSortableSamplePairs(ss.Values)
+			sort.Sort(sortable)
+			// TODO: Dedupe samples. Not strictly necessary.
 		}
 
-		collector, err := d.ring.Get(tokenFor(userID, metricName))
-		if err != nil {
-			return err
+		result = make(model.Matrix, 0, len(fpToSampleStream))
+		for _, ss := range fpToSampleStream {
+			result = append(result, ss)
 		}
 
-		client, err := d.getClientFor(collector.Hostname)
-		if err != nil {
-			return err
-		}
-
-		result, err = client.Query(ctx, from, to, matchers...)
-		if err != nil {
-			return err
-		}
 		return nil
 	})
 	return result, err
@@ -221,7 +240,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
 	valueSet := map[model.LabelValue]struct{}{}
-	for _, c := range d.ring.GetAll() {
+	for _, c := range d.queryRing.GetAll() {
 		client, err := d.getClientFor(c.Hostname)
 		if err != nil {
 			return nil, err
@@ -252,7 +271,8 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.queryDuration.Describe(ch)
 	ch <- d.receivedSamples.Desc()
 	d.sendDuration.Describe(ch)
-	d.ring.Describe(ch)
+	d.appendRing.Describe(ch)
+	d.queryRing.Describe(ch)
 	ch <- numClientsDesc
 }
 
@@ -261,7 +281,8 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	d.queryDuration.Collect(ch)
 	ch <- d.receivedSamples
 	d.sendDuration.Collect(ch)
-	d.ring.Collect(ch)
+	d.appendRing.Collect(ch)
+	d.queryRing.Collect(ch)
 
 	d.clientsMtx.RLock()
 	defer d.clientsMtx.RUnlock()

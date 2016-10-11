@@ -45,6 +45,9 @@ const (
 
 	infName          = "eth0"
 	userIDHeaderName = "X-Scope-OrgID"
+
+	appendPrefix = "append/"
+	queryPrefix  = "query/"
 )
 
 var (
@@ -112,31 +115,39 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing Consul client: %v", err)
 	}
-	consul = ring.PrefixClient(consul, cfg.consulPrefix)
+	appendConsul := ring.PrefixClient(consul, cfg.consulPrefix+appendPrefix)
+	queryConsul := ring.PrefixClient(consul, cfg.consulPrefix+queryPrefix)
 
 	switch cfg.mode {
 	case modeDistributor:
-		ring := ring.New(consul)
-		defer ring.Stop()
-		setupDistributor(cfg, ring, chunkStore)
+		appendRing := ring.New(appendPrefix, queryConsul)
+		defer appendRing.Stop()
+		queryRing := ring.New(queryPrefix, appendConsul)
+		defer queryRing.Stop()
+		setupDistributor(cfg, appendRing, queryRing, chunkStore)
 		if err != nil {
 			log.Fatalf("Error initializing distributor: %v", err)
 		}
 	case modeIngester:
-		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.numTokens)
-		prometheus.MustRegister(registration)
+		appendRegistration, err := ring.RegisterIngester(appendPrefix, queryConsul, cfg.listenPort, cfg.numTokens)
+		queryRegistration, err := ring.RegisterIngester(queryPrefix, appendConsul, cfg.listenPort, cfg.numTokens)
+		prometheus.MustRegister(appendRegistration)
+		prometheus.MustRegister(queryRegistration)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
 			// network errors.
 			log.Fatalf("Could not register ingester: %v", err)
 		}
-		defer registration.Unregister()
 		cfg := ingester.Config{
 			FlushCheckPeriod: cfg.flushPeriod,
 			MaxChunkAge:      cfg.maxChunkAge,
 		}
 		ing := setupIngester(chunkStore, cfg)
-		defer ing.Stop()
+		defer func() {
+			appendRegistration.Unregister()
+			ing.Stop()
+			queryRegistration.Unregister()
+		}()
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
 	}
@@ -181,14 +192,16 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 
 func setupDistributor(
 	cfg cfg,
-	ring *ring.Ring,
+	appendRing *ring.Ring,
+	queryRing *ring.Ring,
 	chunkStore chunk.Store,
 ) {
 	clientFactory := func(address string) (*prism.IngesterClient, error) {
 		return prism.NewIngesterClient(address, cfg.remoteTimeout)
 	}
 	distributor := prism.NewDistributor(prism.DistributorConfig{
-		Ring:          ring,
+		AppendRing:    appendRing,
+		QueryRing:     queryRing,
 		ClientFactory: clientFactory,
 	})
 	prometheus.MustRegister(distributor)

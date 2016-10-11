@@ -35,9 +35,9 @@ func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 var ErrEmptyRing = errors.New("empty circle")
 
 var (
-	ingestorOwnershipDesc = prometheus.NewDesc(
+	ingesterOwnershipDesc = prometheus.NewDesc(
 		"prometheus_distributor_ingester_ownership_percent",
-		"The percent ownership of the ring by ingestor",
+		"The percent ownership of the ring by ingester",
 		[]string{"ingester"}, nil,
 	)
 	ingesterTotalDesc = prometheus.NewDesc(
@@ -135,7 +135,7 @@ func (r *Ring) search(key uint32) int {
 
 // Describe implements prometheus.Collector.
 func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
-	ch <- ingestorOwnershipDesc
+	ch <- ingesterOwnershipDesc
 }
 
 // Collect implements prometheus.Collector.
@@ -156,7 +156,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 
 	for id, totalOwned := range owned {
 		ch <- prometheus.MustNewConstMetric(
-			ingestorOwnershipDesc,
+			ingesterOwnershipDesc,
 			prometheus.GaugeValue,
 			float64(totalOwned)/float64(math.MaxUint32),
 			id,

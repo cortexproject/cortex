@@ -34,24 +34,6 @@ func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
 var ErrEmptyRing = errors.New("empty circle")
 
-var (
-	ingesterOwnershipDesc = prometheus.NewDesc(
-		"prometheus_distributor_ingester_ownership_percent",
-		"The percent ownership of the ring by ingester",
-		[]string{"ingester"}, nil,
-	)
-	ingesterTotalDesc = prometheus.NewDesc(
-		"prometheus_distributor_ingesters_total",
-		"Number of ingesters in the ring",
-		nil, nil,
-	)
-	tokensTotalDesc = prometheus.NewDesc(
-		"prometheus_distributor_tokens_total",
-		"Number of token in the ring",
-		nil, nil,
-	)
-)
-
 // CoordinationStateClient is an interface to getting changes to the coordination
 // state.  Should allow us to swap out Consul for something else (mesh?) later.
 type CoordinationStateClient interface {
@@ -65,6 +47,10 @@ type Ring struct {
 
 	mtx      sync.RWMutex
 	ringDesc Desc
+
+	ingesterOwnershipDesc *prometheus.Desc
+	ingesterTotalDesc     *prometheus.Desc
+	tokensTotalDesc       *prometheus.Desc
 }
 
 // New creates a new Ring
@@ -73,6 +59,21 @@ func New(client CoordinationStateClient) *Ring {
 		client: client,
 		quit:   make(chan struct{}),
 		done:   make(chan struct{}),
+		ingesterOwnershipDesc: prometheus.NewDesc(
+			"prometheus_distributor_ingester_ownership_percent",
+			"The percent ownership of the ring by ingester",
+			[]string{"ingester"}, nil,
+		),
+		ingesterTotalDesc: prometheus.NewDesc(
+			"prometheus_distributor_ingesters_total",
+			"Number of ingesters in the ring",
+			nil, nil,
+		),
+		tokensTotalDesc: prometheus.NewDesc(
+			"prometheus_distributor_tokens_total",
+			"Number of token in the ring",
+			nil, nil,
+		),
 	}
 	go r.loop()
 	return r
@@ -135,7 +136,9 @@ func (r *Ring) search(key uint32) int {
 
 // Describe implements prometheus.Collector.
 func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
-	ch <- ingesterOwnershipDesc
+	ch <- r.ingesterOwnershipDesc
+	ch <- r.ingesterTotalDesc
+	ch <- r.tokensTotalDesc
 }
 
 // Collect implements prometheus.Collector.
@@ -156,7 +159,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 
 	for id, totalOwned := range owned {
 		ch <- prometheus.MustNewConstMetric(
-			ingesterOwnershipDesc,
+			r.ingesterOwnershipDesc,
 			prometheus.GaugeValue,
 			float64(totalOwned)/float64(math.MaxUint32),
 			id,
@@ -164,12 +167,12 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	ch <- prometheus.MustNewConstMetric(
-		ingesterTotalDesc,
+		r.ingesterTotalDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringDesc.Ingesters)),
 	)
 	ch <- prometheus.MustNewConstMetric(
-		tokensTotalDesc,
+		r.tokensTotalDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringDesc.Tokens)),
 	)

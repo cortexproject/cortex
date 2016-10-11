@@ -81,6 +81,8 @@ func (r *Ring) loop() {
 		}
 
 		ringDesc := value.(*Desc)
+		// TODO(jml): Do we already have metrics for this? If so, just delete
+		// this. If not, add some!
 		log.Infof("Got update to ring - %d ingesters, %d tokens",
 			len(ringDesc.Ingesters), len(ringDesc.Tokens))
 

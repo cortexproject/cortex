@@ -78,9 +78,10 @@ func (r *IngesterRegistration) Unregister() {
 	log.Info("Removing ingester from consul")
 
 	// closing r.quit triggers loop() to exit, which in turn will trigger
-	// the removal of out tokens.
+	// the removal of our tokens.
 	close(r.quit)
 	r.wait.Wait()
+	log.Infof("Ingester removed from consul")
 }
 
 func (r *IngesterRegistration) loop() {
@@ -147,7 +148,8 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 	for {
 		select {
 		case <-ticker.C:
-			log.Infof("Heartbeating to consul...")
+			// TODO(jml): Change this to a metric.
+			log.Debugf("Heartbeating to consul...")
 			if err := r.consul.CAS(consulKey, descFactory, heartbeat); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}

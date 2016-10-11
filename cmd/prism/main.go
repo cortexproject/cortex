@@ -124,6 +124,7 @@ func main() {
 		}
 	case modeIngester:
 		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.numTokens)
+		prometheus.MustRegister(registration)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
 			// network errors.

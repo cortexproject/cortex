@@ -82,6 +82,8 @@ type cfg struct {
 	flushPeriod          time.Duration
 	maxChunkAge          time.Duration
 	numTokens            int
+
+	distributorConfig prism.DistributorConfig
 }
 
 func main() {
@@ -101,6 +103,11 @@ func main() {
 	flag.DurationVar(&cfg.flushPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	flag.DurationVar(&cfg.maxChunkAge, "ingester.max-chunk-age", 10*time.Minute, "Maximum chunk age before flushing.")
 	flag.IntVar(&cfg.numTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
+	flag.IntVar(&cfg.distributorConfig.ReadReplicas, "distributor.read-replicas", 3, "The number of available ingesters to read from.")
+	flag.IntVar(&cfg.distributorConfig.WriteReplicas, "distributor.write-replicas", 3, "The number of available ingesters to write to.")
+	flag.IntVar(&cfg.distributorConfig.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
+	flag.IntVar(&cfg.distributorConfig.MinWriteSuccesses, "distributor.min-write-successes", 2, "The minimum number of ingesters to which a write must succeed.")
+	flag.DurationVar(&cfg.distributorConfig.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.Parse()
 
 	chunkStore, err := setupChunkStore(cfg)
@@ -117,8 +124,12 @@ func main() {
 	switch cfg.mode {
 	case modeDistributor:
 		ring := ring.New(consul)
+		cfg.distributorConfig.Ring = ring
+		cfg.distributorConfig.ClientFactory = func(address string) (*prism.IngesterClient, error) {
+			return prism.NewIngesterClient(address, cfg.remoteTimeout)
+		}
 		defer ring.Stop()
-		setupDistributor(cfg, ring, chunkStore)
+		setupDistributor(cfg.distributorConfig, chunkStore)
 		if err != nil {
 			log.Fatalf("Error initializing distributor: %v", err)
 		}
@@ -180,17 +191,10 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 }
 
 func setupDistributor(
-	cfg cfg,
-	ring *ring.Ring,
+	cfg prism.DistributorConfig,
 	chunkStore chunk.Store,
 ) {
-	clientFactory := func(address string) (*prism.IngesterClient, error) {
-		return prism.NewIngesterClient(address, cfg.remoteTimeout)
-	}
-	distributor := prism.NewDistributor(prism.DistributorConfig{
-		Ring:          ring,
-		ClientFactory: clientFactory,
-	})
+	distributor := prism.NewDistributor(cfg)
 	prometheus.MustRegister(distributor)
 
 	prefix := "/api/prom"

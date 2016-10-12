@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -39,10 +40,9 @@ var (
 // Distributor is a storage.SampleAppender and a prism.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	ring          ReadRing
-	clientFactory IngesterClientFactory
-	clientsMtx    sync.RWMutex
-	clients       map[string]*IngesterClient
+	cfg        DistributorConfig
+	clientsMtx sync.RWMutex
+	clients    map[string]*IngesterClient
 
 	queryDuration   *prometheus.HistogramVec
 	receivedSamples prometheus.Counter
@@ -53,8 +53,8 @@ type Distributor struct {
 type ReadRing interface {
 	prometheus.Collector
 
-	Get(key uint32) (ring.IngesterDesc, error)
-	GetAll() []ring.IngesterDesc
+	Get(key uint32, n int, heartbeatTimeout time.Duration) ([]ring.IngesterDesc, error)
+	GetAll(heartbeatTimeout time.Duration) []ring.IngesterDesc
 }
 
 // IngesterClientFactory creates ingester clients.
@@ -65,14 +65,19 @@ type IngesterClientFactory func(string) (*IngesterClient, error)
 type DistributorConfig struct {
 	Ring          ReadRing
 	ClientFactory IngesterClientFactory
+
+	ReadReplicas      int
+	WriteReplicas     int
+	MinReadSuccesses  int
+	MinWriteSuccesses int
+	HeartbeatTimeout  time.Duration
 }
 
 // NewDistributor constructs a new Distributor
 func NewDistributor(cfg DistributorConfig) *Distributor {
 	return &Distributor{
-		ring:          cfg.Ring,
-		clientFactory: cfg.ClientFactory,
-		clients:       map[string]*IngesterClient{},
+		cfg:     cfg,
+		clients: map[string]*IngesterClient{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "prometheus",
 			Name:      "distributor_query_duration_seconds",
@@ -108,7 +113,7 @@ func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {
 		return client, nil
 	}
 
-	client, err := d.clientFactory(hostname)
+	client, err := d.cfg.ClientFactory(hostname)
 	if err != nil {
 		return nil, err
 	}
@@ -140,12 +145,14 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 	samplesByIngester := map[string][]*model.Sample{}
 	for _, sample := range samples {
 		key := tokenForMetric(userID, sample.Metric)
-		collector, err := d.ring.Get(key)
+		ingesters, err := d.cfg.Ring.Get(key, d.cfg.WriteReplicas, d.cfg.HeartbeatTimeout)
 		if err != nil {
 			return err
 		}
-		otherSamples := samplesByIngester[collector.Hostname]
-		samplesByIngester[collector.Hostname] = append(otherSamples, sample)
+		for _, ingester := range ingesters {
+			otherSamples := samplesByIngester[ingester.Hostname]
+			samplesByIngester[ingester.Hostname] = append(otherSamples, sample)
+		}
 	}
 
 	errs := make(chan error)
@@ -155,12 +162,19 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 		}(hostname, samples)
 	}
 	var lastErr error
+	successes := 0
 	for i := 0; i < len(samplesByIngester); i++ {
 		if err := <-errs; err != nil {
 			lastErr = err
+			continue
 		}
+		successes++
 	}
-	return lastErr
+
+	if successes < d.cfg.MinWriteSuccesses {
+		return fmt.Errorf("too few successful writes, last error was: %v", lastErr)
+	}
+	return nil
 }
 
 func (d *Distributor) sendSamples(ctx context.Context, hostname string, samples []*model.Sample) error {
@@ -189,6 +203,8 @@ func metricNameFromLabelMatchers(matchers ...*metric.LabelMatcher) (model.LabelV
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	var result model.Matrix
 	err := instrument.TimeRequestHistogram("duration", d.queryDuration, func() error {
+		fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
+
 		metricName, err := metricNameFromLabelMatchers(matchers...)
 		if err != nil {
 			return err
@@ -199,29 +215,83 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		collector, err := d.ring.Get(tokenFor(userID, metricName))
+		ingesters, err := d.cfg.Ring.Get(tokenFor(userID, metricName), d.cfg.ReadReplicas, d.cfg.HeartbeatTimeout)
 		if err != nil {
 			return err
 		}
 
-		client, err := d.getClientFor(collector.Hostname)
-		if err != nil {
-			return err
+		// Fetch samples from multiple ingesters and group them by fingerprint (unsorted
+		// and with overlap).
+		successes := 0
+		var lastErr error
+		for _, ing := range ingesters {
+			client, err := d.getClientFor(ing.Hostname)
+			if err != nil {
+				return err
+			}
+			matrix, err := client.Query(ctx, from, to, matchers...)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			successes++
+
+			for _, ss := range matrix {
+				fp := ss.Metric.Fingerprint()
+				if mss, ok := fpToSampleStream[fp]; !ok {
+					fpToSampleStream[fp] = &model.SampleStream{
+						Metric: ss.Metric,
+						Values: ss.Values,
+					}
+				} else {
+					mss.Values = mergeSamples(fpToSampleStream[fp].Values, ss.Values)
+				}
+			}
 		}
 
-		result, err = client.Query(ctx, from, to, matchers...)
-		if err != nil {
-			return err
+		if successes < d.cfg.MinReadSuccesses {
+			return fmt.Errorf("too few successful reads, last error was: %v", lastErr)
 		}
+
+		result = make(model.Matrix, 0, len(fpToSampleStream))
+		for _, ss := range fpToSampleStream {
+			result = append(result, ss)
+		}
+
 		return nil
 	})
 	return result, err
 }
 
+func mergeSamples(a, b []model.SamplePair) []model.SamplePair {
+	result := make([]model.SamplePair, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i].Timestamp < b[j].Timestamp {
+			result = append(result, a[i])
+			i++
+		} else if a[i].Timestamp > b[j].Timestamp {
+			result = append(result, b[j])
+			j++
+		} else {
+			result = append(result, a[i])
+			i++
+			j++
+		}
+	}
+	for ; i < len(a); i++ {
+		result = append(result, a[i])
+	}
+	for ; j < len(b); j++ {
+		result = append(result, b[j])
+	}
+	return result
+}
+
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
 	valueSet := map[model.LabelValue]struct{}{}
-	for _, c := range d.ring.GetAll() {
+	for _, c := range d.cfg.Ring.GetAll(d.cfg.HeartbeatTimeout) {
 		client, err := d.getClientFor(c.Hostname)
 		if err != nil {
 			return nil, err
@@ -252,7 +322,7 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.queryDuration.Describe(ch)
 	ch <- d.receivedSamples.Desc()
 	d.sendDuration.Describe(ch)
-	d.ring.Describe(ch)
+	d.cfg.Ring.Describe(ch)
 	ch <- numClientsDesc
 }
 
@@ -261,7 +331,7 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	d.queryDuration.Collect(ch)
 	ch <- d.receivedSamples
 	d.sendDuration.Collect(ch)
-	d.ring.Collect(ch)
+	d.cfg.Ring.Collect(ch)
 
 	d.clientsMtx.RLock()
 	defer d.clientsMtx.RUnlock()

@@ -16,7 +16,6 @@ package prism
 import (
 	"fmt"
 	"hash/fnv"
-	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -28,21 +27,11 @@ import (
 	"github.com/weaveworks/prism/user"
 )
 
-var (
-	numClientsDesc = prometheus.NewDesc(
-		"prometheus_distributor_ingester_clients",
-		"The current number of ingester clients.",
-		nil, nil,
-	)
-)
-
 // Distributor is a storage.SampleAppender and a prism.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
 	ring          ReadRing
 	clientFactory IngesterClientFactory
-	clientsMtx    sync.RWMutex
-	clients       map[string]*IngesterClient
 
 	queryDuration   *prometheus.HistogramVec
 	receivedSamples prometheus.Counter
@@ -72,7 +61,6 @@ func NewDistributor(cfg DistributorConfig) *Distributor {
 	return &Distributor{
 		ring:          cfg.Ring,
 		clientFactory: cfg.ClientFactory,
-		clients:       map[string]*IngesterClient{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "prometheus",
 			Name:      "distributor_query_duration_seconds",
@@ -91,29 +79,6 @@ func NewDistributor(cfg DistributorConfig) *Distributor {
 			Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 		}, []string{"method", "status_code"}),
 	}
-}
-
-func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {
-	d.clientsMtx.RLock()
-	client, ok := d.clients[hostname]
-	d.clientsMtx.RUnlock()
-	if ok {
-		return client, nil
-	}
-
-	d.clientsMtx.Lock()
-	defer d.clientsMtx.Unlock()
-	client, ok = d.clients[hostname]
-	if ok {
-		return client, nil
-	}
-
-	client, err := d.clientFactory(hostname)
-	if err != nil {
-		return nil, err
-	}
-	d.clients[hostname] = client
-	return client, nil
 }
 
 func tokenForMetric(userID string, metric model.Metric) uint32 {
@@ -164,7 +129,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 }
 
 func (d *Distributor) sendSamples(ctx context.Context, hostname string, samples []*model.Sample) error {
-	client, err := d.getClientFor(hostname)
+	client, err := d.clientFactory(hostname)
 	if err != nil {
 		return err
 	}
@@ -204,7 +169,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		client, err := d.getClientFor(collector.Hostname)
+		client, err := d.clientFactory(collector.Hostname)
 		if err != nil {
 			return err
 		}
@@ -222,7 +187,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
 	valueSet := map[model.LabelValue]struct{}{}
 	for _, c := range d.ring.GetAll() {
-		client, err := d.getClientFor(c.Hostname)
+		client, err := d.clientFactory(c.Hostname)
 		if err != nil {
 			return nil, err
 		}
@@ -253,7 +218,6 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	ch <- d.receivedSamples.Desc()
 	d.sendDuration.Describe(ch)
 	d.ring.Describe(ch)
-	ch <- numClientsDesc
 }
 
 // Collect implements prometheus.Collector.
@@ -262,12 +226,4 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	ch <- d.receivedSamples
 	d.sendDuration.Collect(ch)
 	d.ring.Collect(ch)
-
-	d.clientsMtx.RLock()
-	defer d.clientsMtx.RUnlock()
-	ch <- prometheus.MustNewConstMetric(
-		numClientsDesc,
-		prometheus.GaugeValue,
-		float64(len(d.clients)),
-	)
 }

@@ -81,10 +81,6 @@ func NewDistributor(cfg DistributorConfig) *Distributor {
 	}
 }
 
-func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {
-	return d.clientFactory(hostname)
-}
-
 func tokenForMetric(userID string, metric model.Metric) uint32 {
 	name := metric[model.MetricNameLabel]
 	return tokenFor(userID, name)
@@ -133,7 +129,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 }
 
 func (d *Distributor) sendSamples(ctx context.Context, hostname string, samples []*model.Sample) error {
-	client, err := d.getClientFor(hostname)
+	client, err := d.clientFactory(hostname)
 	if err != nil {
 		return err
 	}
@@ -173,7 +169,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		client, err := d.getClientFor(collector.Hostname)
+		client, err := d.clientFactory(collector.Hostname)
 		if err != nil {
 			return err
 		}
@@ -191,7 +187,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
 	valueSet := map[model.LabelValue]struct{}{}
 	for _, c := range d.ring.GetAll() {
-		client, err := d.getClientFor(c.Hostname)
+		client, err := d.clientFactory(c.Hostname)
 		if err != nil {
 			return nil, err
 		}

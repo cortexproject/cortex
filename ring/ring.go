@@ -20,6 +20,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -101,24 +102,52 @@ func (r *Ring) loop() {
 	})
 }
 
-// Get returns a collector close to the hash in the circle.
-func (r *Ring) Get(key uint32) (IngesterDesc, error) {
+// Get returns up to n ingesters close to the hash in the circle.
+func (r *Ring) Get(key uint32, n int, heartbeatTimeout time.Duration) ([]IngesterDesc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if len(r.ringDesc.Tokens) == 0 {
-		return IngesterDesc{}, ErrEmptyRing
+		return nil, ErrEmptyRing
 	}
-	i := r.search(key)
-	return r.ringDesc.Ingesters[r.ringDesc.Tokens[i].Ingester], nil
+
+	ingesters := make([]IngesterDesc, 0, n)
+	distinctHosts := map[string]struct{}{}
+	start := r.search(key)
+	iterations := 0
+	for i := start; len(distinctHosts) < n && iterations < len(r.ringDesc.Tokens); i++ {
+		iterations++
+		// Wrap i around in the ring.
+		i %= len(r.ringDesc.Tokens)
+
+		// We want n *distinct* ingesters.
+		host := r.ringDesc.Tokens[i].Ingester
+		if _, ok := distinctHosts[host]; ok {
+			continue
+		}
+		distinctHosts[host] = struct{}{}
+
+		ing := r.ringDesc.Ingesters[host]
+
+		// Out of the n distinct subsequent ingesters, skip those that have not heartbeated in a while.
+		if time.Now().Sub(ing.Timestamp) > heartbeatTimeout {
+			continue
+		}
+
+		ingesters = append(ingesters, ing)
+	}
+	return ingesters, nil
 }
 
-// GetAll returns all ingesters in the circle.
-func (r *Ring) GetAll() []IngesterDesc {
+// GetAll returns all available ingesters in the circle.
+func (r *Ring) GetAll(heartbeatTimeout time.Duration) []IngesterDesc {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
 	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
+		if time.Now().Sub(ingester.Timestamp) > heartbeatTimeout {
+			continue
+		}
 		ingesters = append(ingesters, ingester)
 	}
 	return ingesters

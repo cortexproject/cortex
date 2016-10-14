@@ -44,9 +44,13 @@ type Distributor struct {
 	clientsMtx sync.RWMutex
 	clients    map[string]*IngesterClient
 
-	queryDuration   *prometheus.HistogramVec
-	receivedSamples prometheus.Counter
-	sendDuration    *prometheus.HistogramVec
+	queryDuration          *prometheus.HistogramVec
+	receivedSamples        prometheus.Counter
+	sendDuration           *prometheus.HistogramVec
+	ingesterAppends        *prometheus.CounterVec
+	ingesterAppendFailures *prometheus.CounterVec
+	ingesterQueries        *prometheus.CounterVec
+	ingesterQueryFailures  *prometheus.CounterVec
 }
 
 // ReadRing represents the read inferface to the ring.
@@ -66,8 +70,7 @@ type DistributorConfig struct {
 	Ring          ReadRing
 	ClientFactory IngesterClientFactory
 
-	ReadReplicas      int
-	WriteReplicas     int
+	ReplicationFactor int
 	MinReadSuccesses  int
 	MinWriteSuccesses int
 	HeartbeatTimeout  time.Duration
@@ -92,9 +95,29 @@ func NewDistributor(cfg DistributorConfig) *Distributor {
 		sendDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "prometheus",
 			Name:      "distributor_send_duration_seconds",
-			Help:      "Time spent sending sample batches to ingesters.",
+			Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
 			Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 		}, []string{"method", "status_code"}),
+		ingesterAppends: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "prometheus",
+			Name:      "distributor_ingester_appends_total",
+			Help:      "The total number of batch appends sent to ingesters.",
+		}, []string{"ingester"}),
+		ingesterAppendFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "prometheus",
+			Name:      "distributor_ingester_appends_total",
+			Help:      "The total number of failed batch appends sent to ingesters.",
+		}, []string{"ingester"}),
+		ingesterQueries: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "prometheus",
+			Name:      "distributor_ingester_queries_total",
+			Help:      "The total number queries sent to ingesters.",
+		}, []string{"ingester"}),
+		ingesterQueryFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "prometheus",
+			Name:      "distributor_ingester_appends_total",
+			Help:      "The total number of failed queries sent to ingesters.",
+		}, []string{"ingester"}),
 	}
 }
 
@@ -145,7 +168,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 	samplesByIngester := map[string][]*model.Sample{}
 	for _, sample := range samples {
 		key := tokenForMetric(userID, sample.Metric)
-		ingesters, err := d.cfg.Ring.Get(key, d.cfg.WriteReplicas, d.cfg.HeartbeatTimeout)
+		ingesters, err := d.cfg.Ring.Get(key, d.cfg.ReplicationFactor, d.cfg.HeartbeatTimeout)
 		if err != nil {
 			return err
 		}
@@ -182,9 +205,14 @@ func (d *Distributor) sendSamples(ctx context.Context, hostname string, samples 
 	if err != nil {
 		return err
 	}
-	return instrument.TimeRequestHistogram("send", d.sendDuration, func() error {
+	err = instrument.TimeRequestHistogram("send", d.sendDuration, func() error {
 		return client.Append(ctx, samples)
 	})
+	if err != nil {
+		d.ingesterAppendFailures.WithLabelValues(hostname).Inc()
+	}
+	d.ingesterAppends.WithLabelValues(hostname).Inc()
+	return err
 }
 
 func metricNameFromLabelMatchers(matchers ...*metric.LabelMatcher) (model.LabelValue, error) {
@@ -215,7 +243,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		ingesters, err := d.cfg.Ring.Get(tokenFor(userID, metricName), d.cfg.ReadReplicas, d.cfg.HeartbeatTimeout)
+		ingesters, err := d.cfg.Ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor, d.cfg.HeartbeatTimeout)
 		if err != nil {
 			return err
 		}
@@ -230,8 +258,10 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 				return err
 			}
 			matrix, err := client.Query(ctx, from, to, matchers...)
+			d.ingesterQueries.WithLabelValues(ing.Hostname).Inc()
 			if err != nil {
 				lastErr = err
+				d.ingesterQueryFailures.WithLabelValues(ing.Hostname).Inc()
 				continue
 			}
 			successes++

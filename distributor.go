@@ -111,7 +111,7 @@ func NewDistributor(cfg DistributorConfig) *Distributor {
 		ingesterQueries: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "prometheus",
 			Name:      "distributor_ingester_queries_total",
-			Help:      "The total number queries sent to ingesters.",
+			Help:      "The total number of queries sent to ingesters.",
 		}, []string{"ingester"}),
 		ingesterQueryFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "prometheus",

@@ -23,7 +23,7 @@ Once you have created your instance, note down the 'Service Token' listed
 underneath 'Probes' in the box on the right of the screen. You will use this
 token to authenticate your local Prometheus with Weave Cloud.
 
-You can [download Prometheus its website](https://prometheus.io/download/).
+You can [download Prometheus from its website](https://prometheus.io/download/).
 You will need v1.2.1 or later.
 
 When you've got Prometheus, you will need

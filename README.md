@@ -28,9 +28,9 @@ You will need v1.2.1 or later.
 
 When you've got Prometheus, you will need
 to
-[configure it discover your services](https://prometheus.io/docs/operating/configuration/) and
+[configure it to discover your services](https://prometheus.io/docs/operating/configuration/) and
 also configure it to send its data to Weave Cloud by adding the following
-top-level stanza:
+top-level stanza to `prometheus.yml`:
 
     remote_write:
       url: https://cloud.weave.works/api/prom/push

@@ -54,12 +54,6 @@ var (
 		Help:      "Time (in seconds) spent serving HTTP requests.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"method", "route", "status_code", "ws"})
-	instr = middleware.Merge(
-		middleware.Logging,
-		middleware.Instrument{
-			Duration: requestDuration,
-		},
-	).Wrap
 )
 
 func init() {
@@ -82,6 +76,7 @@ type cfg struct {
 	flushPeriod          time.Duration
 	maxChunkAge          time.Duration
 	numTokens            int
+	logSuccess           bool
 
 	distributorConfig prism.DistributorConfig
 }
@@ -107,6 +102,7 @@ func main() {
 	flag.IntVar(&cfg.distributorConfig.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
 	flag.IntVar(&cfg.distributorConfig.MinWriteSuccesses, "distributor.min-write-successes", 2, "The minimum number of ingesters to which a write must succeed.")
 	flag.DurationVar(&cfg.distributorConfig.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
+	flag.BoolVar(&cfg.logSuccess, "log.success", false, "Log successful requests")
 	flag.Parse()
 
 	chunkStore, err := setupChunkStore(cfg)
@@ -128,7 +124,7 @@ func main() {
 			return prism.NewIngesterClient(address, cfg.remoteTimeout)
 		}
 		defer ring.Stop()
-		setupDistributor(cfg.distributorConfig, chunkStore)
+		setupDistributor(cfg.distributorConfig, chunkStore, cfg.logSuccess)
 		if err != nil {
 			log.Fatalf("Error initializing distributor: %v", err)
 		}
@@ -141,11 +137,11 @@ func main() {
 			log.Fatalf("Could not register ingester: %v", err)
 		}
 		defer registration.Unregister()
-		cfg := ingester.Config{
+		ingesterCfg := ingester.Config{
 			FlushCheckPeriod: cfg.flushPeriod,
 			MaxChunkAge:      cfg.maxChunkAge,
 		}
-		ing := setupIngester(chunkStore, cfg)
+		ing := setupIngester(chunkStore, ingesterCfg, cfg.logSuccess)
 		defer ing.Stop()
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
@@ -192,15 +188,16 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 func setupDistributor(
 	cfg prism.DistributorConfig,
 	chunkStore chunk.Store,
+	logSuccess bool,
 ) {
 	distributor := prism.NewDistributor(cfg)
 	prometheus.MustRegister(distributor)
 
 	prefix := "/api/prom"
-	http.Handle(prefix+"/push", instr(prism.AppenderHandler(distributor)))
+	http.Handle(prefix+"/push", instrument(logSuccess, prism.AppenderHandler(distributor)))
 
 	// TODO: Move querier to separate binary.
-	setupQuerier(distributor, chunkStore, prefix)
+	setupQuerier(distributor, chunkStore, prefix, logSuccess)
 }
 
 // setupQuerier sets up a complete querying pipeline:
@@ -212,6 +209,7 @@ func setupQuerier(
 	distributor *prism.Distributor,
 	chunkStore chunk.Store,
 	prefix string,
+	logSuccess bool,
 ) {
 	querier := prism.MergeQuerier{
 		Queriers: []prism.Querier{
@@ -240,13 +238,14 @@ func setupQuerier(
 	api.Register(router.WithPrefix(prefix + "/api/v1"))
 	http.Handle("/", router)
 
-	http.Handle(prefix+"/graph", instr(ui.GraphHandler()))
-	http.Handle(prefix+"/static/", instr(ui.StaticAssetsHandler(prefix+"/static/")))
+	http.Handle(prefix+"/graph", instrument(logSuccess, ui.GraphHandler()))
+	http.Handle(prefix+"/static/", instrument(logSuccess, ui.StaticAssetsHandler(prefix+"/static/")))
 }
 
 func setupIngester(
 	chunkStore chunk.Store,
 	cfg ingester.Config,
+	logSuccess bool,
 ) *ingester.Ingester {
 	ingester, err := ingester.New(cfg, chunkStore)
 	if err != nil {
@@ -254,8 +253,20 @@ func setupIngester(
 	}
 	prometheus.MustRegister(ingester)
 
-	http.Handle("/push", instr(prism.AppenderHandler(ingester)))
-	http.Handle("/query", instr(prism.QueryHandler(ingester)))
-	http.Handle("/label_values", instr(prism.LabelValuesHandler(ingester)))
+	http.Handle("/push", instrument(logSuccess, prism.AppenderHandler(ingester)))
+	http.Handle("/query", instrument(logSuccess, prism.QueryHandler(ingester)))
+	http.Handle("/label_values", instrument(logSuccess, prism.LabelValuesHandler(ingester)))
 	return ingester
+}
+
+// instrument instruments a handler.
+func instrument(logSuccess bool, handler http.Handler) http.Handler {
+	return middleware.Merge(
+		middleware.Log{
+			LogSuccess: logSuccess,
+		},
+		middleware.Instrument{
+			Duration: requestDuration,
+		},
+	).Wrap(handler)
 }

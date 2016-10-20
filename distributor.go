@@ -78,6 +78,9 @@ type DistributorConfig struct {
 
 // NewDistributor constructs a new Distributor
 func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
+	if 0 > cfg.ReplicationFactor {
+		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
+	}
 	if cfg.MinWriteSuccesses > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("MinWriteSuccesses > ReplicationFactor: %d > %d", cfg.MinWriteSuccesses, cfg.ReplicationFactor)
 	}

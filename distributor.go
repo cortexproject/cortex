@@ -77,7 +77,16 @@ type DistributorConfig struct {
 }
 
 // NewDistributor constructs a new Distributor
-func NewDistributor(cfg DistributorConfig) *Distributor {
+func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
+	if 0 > cfg.ReplicationFactor {
+		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
+	}
+	if cfg.MinWriteSuccesses > cfg.ReplicationFactor {
+		return nil, fmt.Errorf("MinWriteSuccesses > ReplicationFactor: %d > %d", cfg.MinWriteSuccesses, cfg.ReplicationFactor)
+	}
+	if cfg.MinReadSuccesses > cfg.ReplicationFactor {
+		return nil, fmt.Errorf("MinReadSuccesses > ReplicationFactor: %d > %d", cfg.MinReadSuccesses, cfg.ReplicationFactor)
+	}
 	return &Distributor{
 		cfg:     cfg,
 		clients: map[string]*IngesterClient{},
@@ -118,7 +127,7 @@ func NewDistributor(cfg DistributorConfig) *Distributor {
 			Name:      "distributor_ingester_appends_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
-	}
+	}, nil
 }
 
 func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {

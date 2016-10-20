@@ -190,7 +190,10 @@ func setupDistributor(
 	chunkStore chunk.Store,
 	logSuccess bool,
 ) {
-	distributor := prism.NewDistributor(cfg)
+	distributor, err := prism.NewDistributor(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 	prometheus.MustRegister(distributor)
 
 	prefix := "/api/prom"

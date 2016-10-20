@@ -77,7 +77,7 @@ type DistributorConfig struct {
 }
 
 // NewDistributor constructs a new Distributor
-func NewDistributor(cfg DistributorConfig) *Distributor {
+func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 	return &Distributor{
 		cfg:     cfg,
 		clients: map[string]*IngesterClient{},
@@ -118,7 +118,7 @@ func NewDistributor(cfg DistributorConfig) *Distributor {
 			Name:      "distributor_ingester_appends_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
-	}
+	}, nil
 }
 
 func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {

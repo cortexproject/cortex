@@ -78,6 +78,12 @@ type DistributorConfig struct {
 
 // NewDistributor constructs a new Distributor
 func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
+	if cfg.MinWriteSuccesses > cfg.ReplicationFactor {
+		return nil, fmt.Errorf("MinWriteSuccesses > ReplicationFactor: %d > %d", cfg.MinWriteSuccesses, cfg.ReplicationFactor)
+	}
+	if cfg.MinReadSuccesses > cfg.ReplicationFactor {
+		return nil, fmt.Errorf("MinReadSuccesses > ReplicationFactor: %d > %d", cfg.MinReadSuccesses, cfg.ReplicationFactor)
+	}
 	return &Distributor{
 		cfg:     cfg,
 		clients: map[string]*IngesterClient{},

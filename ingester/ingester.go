@@ -123,7 +123,7 @@ func New(cfg Config, chunkStore prism.Store) (*Ingester, error) {
 		}),
 		memoryChunks: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "prism_ingester_memory_chunks",
-			Help: "The total number of samples returned from queries.",
+			Help: "The total number of chunks in memory.",
 		}),
 		chunkStoreFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "prism_ingester_chunk_store_failures_total",
@@ -515,6 +515,7 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- i.chunkStoreFailures.Desc()
 	ch <- i.queries.Desc()
 	ch <- i.queriedSamples.Desc()
+	ch <- i.memoryChunks.Desc()
 }
 
 // Collect implements prometheus.Collector.
@@ -543,6 +544,7 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 	ch <- i.chunkStoreFailures
 	ch <- i.queries
 	ch <- i.queriedSamples
+	ch <- i.memoryChunks
 }
 
 type invertedIndex struct {

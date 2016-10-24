@@ -474,7 +474,7 @@ func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Finge
 
 	// now remove the chunks
 	u.fpLocker.Lock(fp)
-	series.chunkDescs = series.chunkDescs[len(chunks)-1:]
+	series.chunkDescs = series.chunkDescs[len(chunks):]
 	i.memoryChunks.Sub(float64(len(chunks)))
 	if len(series.chunkDescs) == 0 {
 		u.fpToSeries.del(fp)

@@ -363,6 +363,10 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.sendDuration.Describe(ch)
 	d.cfg.Ring.Describe(ch)
 	ch <- numClientsDesc
+	d.ingesterAppends.Describe(ch)
+	d.ingesterAppendFailures.Describe(ch)
+	d.ingesterQueries.Describe(ch)
+	d.ingesterQueryFailures.Describe(ch)
 }
 
 // Collect implements prometheus.Collector.
@@ -371,6 +375,10 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	ch <- d.receivedSamples
 	d.sendDuration.Collect(ch)
 	d.cfg.Ring.Collect(ch)
+	d.ingesterAppends.Collect(ch)
+	d.ingesterAppendFailures.Collect(ch)
+	d.ingesterQueries.Collect(ch)
+	d.ingesterQueryFailures.Collect(ch)
 
 	d.clientsMtx.RLock()
 	defer d.clientsMtx.RUnlock()

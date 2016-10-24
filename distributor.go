@@ -114,7 +114,7 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 		}, []string{"ingester"}),
 		ingesterAppendFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "prism",
-			Name:      "distributor_ingester_appends_total",
+			Name:      "distributor_ingester_append_failures_total",
 			Help:      "The total number of failed batch appends sent to ingesters.",
 		}, []string{"ingester"}),
 		ingesterQueries: prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -124,7 +124,7 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 		}, []string{"ingester"}),
 		ingesterQueryFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "prism",
-			Name:      "distributor_ingester_appends_total",
+			Name:      "distributor_ingester_query_failures_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
 	}, nil

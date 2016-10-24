@@ -263,6 +263,10 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
+		if len(ingesters) < d.cfg.MinReadSuccesses {
+			return fmt.Errorf("Could only find %d ingesters for query. Need at least %d", len(ingesters), d.cfg.MinReadSuccesses)
+		}
+
 		// Fetch samples from multiple ingesters and group them by fingerprint (unsorted
 		// and with overlap).
 		successes := 0

@@ -129,7 +129,7 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
 		ingestersAlive: prometheus.NewDesc(
-			"prism_distributor_ingesters_alive_total",
+			"prism_distributor_ingesters_alive",
 			"Number of ingesters in the ring that have heartbeats within timeout.",
 			nil, nil,
 		),

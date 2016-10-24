@@ -50,8 +50,8 @@ type Ring struct {
 	ringDesc Desc
 
 	ingesterOwnershipDesc *prometheus.Desc
-	ingesterTotalDesc     *prometheus.Desc
-	tokensTotalDesc       *prometheus.Desc
+	numIngestersDesc      *prometheus.Desc
+	numTokensDesc         *prometheus.Desc
 }
 
 // New creates a new Ring
@@ -61,17 +61,17 @@ func New(client CoordinationStateClient) *Ring {
 		quit:   make(chan struct{}),
 		done:   make(chan struct{}),
 		ingesterOwnershipDesc: prometheus.NewDesc(
-			"prometheus_distributor_ingester_ownership_percent",
+			"prism_distributor_ingester_ownership_percent",
 			"The percent ownership of the ring by ingester",
 			[]string{"ingester"}, nil,
 		),
-		ingesterTotalDesc: prometheus.NewDesc(
-			"prometheus_distributor_ingesters_total",
+		numIngestersDesc: prometheus.NewDesc(
+			"prism_distributor_ingesters",
 			"Number of ingesters in the ring",
 			nil, nil,
 		),
-		tokensTotalDesc: prometheus.NewDesc(
-			"prometheus_distributor_tokens_total",
+		numTokensDesc: prometheus.NewDesc(
+			"prism_distributor_tokens",
 			"Number of tokens in the ring",
 			nil, nil,
 		),
@@ -166,8 +166,8 @@ func (r *Ring) search(key uint32) int {
 // Describe implements prometheus.Collector.
 func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.ingesterOwnershipDesc
-	ch <- r.ingesterTotalDesc
-	ch <- r.tokensTotalDesc
+	ch <- r.numIngestersDesc
+	ch <- r.numTokensDesc
 }
 
 // Collect implements prometheus.Collector.
@@ -196,12 +196,12 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	ch <- prometheus.MustNewConstMetric(
-		r.ingesterTotalDesc,
+		r.numIngestersDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringDesc.Ingesters)),
 	)
 	ch <- prometheus.MustNewConstMetric(
-		r.tokensTotalDesc,
+		r.numTokensDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringDesc.Tokens)),
 	)

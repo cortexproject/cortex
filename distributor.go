@@ -31,7 +31,7 @@ import (
 
 var (
 	numClientsDesc = prometheus.NewDesc(
-		"prometheus_distributor_ingester_clients",
+		"prism_distributor_ingester_clients",
 		"The current number of ingester clients.",
 		nil, nil,
 	)
@@ -114,7 +114,7 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 		}, []string{"ingester"}),
 		ingesterAppendFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "prism",
-			Name:      "distributor_ingester_appends_total",
+			Name:      "distributor_ingester_append_failures_total",
 			Help:      "The total number of failed batch appends sent to ingesters.",
 		}, []string{"ingester"}),
 		ingesterQueries: prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -124,7 +124,7 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 		}, []string{"ingester"}),
 		ingesterQueryFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "prism",
-			Name:      "distributor_ingester_appends_total",
+			Name:      "distributor_ingester_query_failures_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
 	}, nil
@@ -363,6 +363,10 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.sendDuration.Describe(ch)
 	d.cfg.Ring.Describe(ch)
 	ch <- numClientsDesc
+	d.ingesterAppends.Describe(ch)
+	d.ingesterAppendFailures.Describe(ch)
+	d.ingesterQueries.Describe(ch)
+	d.ingesterQueryFailures.Describe(ch)
 }
 
 // Collect implements prometheus.Collector.
@@ -371,6 +375,10 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	ch <- d.receivedSamples
 	d.sendDuration.Collect(ch)
 	d.cfg.Ring.Collect(ch)
+	d.ingesterAppends.Collect(ch)
+	d.ingesterAppendFailures.Collect(ch)
+	d.ingesterQueries.Collect(ch)
+	d.ingesterQueryFailures.Collect(ch)
 
 	d.clientsMtx.RLock()
 	defer d.clientsMtx.RUnlock()

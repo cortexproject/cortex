@@ -31,7 +31,7 @@ import (
 
 var (
 	numClientsDesc = prometheus.NewDesc(
-		"prometheus_distributor_ingester_clients",
+		"prism_distributor_ingester_clients",
 		"The current number of ingester clients.",
 		nil, nil,
 	)

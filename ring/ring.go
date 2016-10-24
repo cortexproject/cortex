@@ -61,17 +61,17 @@ func New(client CoordinationStateClient) *Ring {
 		quit:   make(chan struct{}),
 		done:   make(chan struct{}),
 		ingesterOwnershipDesc: prometheus.NewDesc(
-			"prometheus_distributor_ingester_ownership_percent",
+			"prism_distributor_ingester_ownership_percent",
 			"The percent ownership of the ring by ingester",
 			[]string{"ingester"}, nil,
 		),
 		ingesterTotalDesc: prometheus.NewDesc(
-			"prometheus_distributor_ingesters_total",
+			"prism_distributor_ingesters_total",
 			"Number of ingesters in the ring",
 			nil, nil,
 		),
 		tokensTotalDesc: prometheus.NewDesc(
-			"prometheus_distributor_tokens_total",
+			"prism_distributor_tokens_total",
 			"Number of tokens in the ring",
 			nil, nil,
 		),

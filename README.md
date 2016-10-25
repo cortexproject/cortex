@@ -1,15 +1,15 @@
-# Prism: A multitenant, horizontally scalable Prometheus as a service
+# Cortex: A multitenant, horizontally scalable Prometheus as a service
 
-[![Circle CI](https://circleci.com/gh/weaveworks/prism/tree/master.svg?style=shield)](https://circleci.com/gh/weaveworks/prism/tree/master)
+[![Circle CI](https://circleci.com/gh/weaveworks/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/weaveworks/cortex/tree/master)
 [![Slack Status](https://slack.weave.works/badge.svg)](https://slack.weave.works)
 
 *NB this is a pre-release, pre-alpha service. Availability will not be 100%.
 APIs will change. Data will be lost.*
 
-Prism is an API compatible [Prometheus](https://prometheus.io)
+Cortex is an API compatible [Prometheus](https://prometheus.io)
 implementation, that natively supports multitenancy and scale-out clustering.
 
-Prism is a [Weaveworks](https://weave.works) project that forms a major part
+Cortex is a [Weaveworks](https://weave.works) project that forms a major part
 of [Weave Cloud](https://cloud.weave.works). If you are interested in using
 our hosted Prometheus as a service, please
 contact [help@weave.works](mailto:help@weave.works).

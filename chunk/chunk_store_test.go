@@ -26,7 +26,7 @@ import (
 	"github.com/tomwilkie/go-mockaws"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/prism/user"
+	"github.com/weaveworks/cortex/user"
 )
 
 func init() {

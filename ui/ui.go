@@ -27,7 +27,7 @@ import (
 )
 
 func getTemplate(name string) (string, error) {
-	baseTmpl, err := Asset("ui/templates/_prism_base.html")
+	baseTmpl, err := Asset("ui/templates/_cortex_base.html")
 	if err != nil {
 		return "", fmt.Errorf("error reading base template: %s", err)
 	}

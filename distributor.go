@@ -51,6 +51,7 @@ type Distributor struct {
 	ingesterAppendFailures *prometheus.CounterVec
 	ingesterQueries        *prometheus.CounterVec
 	ingesterQueryFailures  *prometheus.CounterVec
+	ingestersAlive         *prometheus.Desc
 }
 
 // ReadRing represents the read inferface to the ring.
@@ -127,6 +128,11 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 			Name:      "distributor_ingester_query_failures_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
+		ingestersAlive: prometheus.NewDesc(
+			"prism_distributor_ingesters_alive",
+			"Number of ingesters in the ring that have heartbeats within timeout.",
+			nil, nil,
+		),
 	}, nil
 }
 
@@ -257,6 +263,10 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
+		if len(ingesters) < d.cfg.MinReadSuccesses {
+			return fmt.Errorf("could only find %d ingesters for query. Need at least %d", len(ingesters), d.cfg.MinReadSuccesses)
+		}
+
 		// Fetch samples from multiple ingesters and group them by fingerprint (unsorted
 		// and with overlap).
 		successes := 0
@@ -367,6 +377,7 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.ingesterAppendFailures.Describe(ch)
 	d.ingesterQueries.Describe(ch)
 	d.ingesterQueryFailures.Describe(ch)
+	ch <- d.ingestersAlive
 }
 
 // Collect implements prometheus.Collector.
@@ -379,6 +390,12 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	d.ingesterAppendFailures.Collect(ch)
 	d.ingesterQueries.Collect(ch)
 	d.ingesterQueryFailures.Collect(ch)
+
+	ch <- prometheus.MustNewConstMetric(
+		d.ingestersAlive,
+		prometheus.GaugeValue,
+		float64(len(d.cfg.Ring.GetAll(d.cfg.HeartbeatTimeout))),
+	)
 
 	d.clientsMtx.RLock()
 	defer d.clientsMtx.RUnlock()

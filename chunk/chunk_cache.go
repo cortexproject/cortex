@@ -24,19 +24,19 @@ import (
 
 var (
 	memcacheRequests = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "prometheus",
+		Namespace: "prism",
 		Name:      "memcache_requests_total",
 		Help:      "Total count of chunks requested from memcache.",
 	})
 
 	memcacheHits = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "prometheus",
+		Namespace: "prism",
 		Name:      "memcache_hits_total",
 		Help:      "Total count of chunks found in memcache.",
 	})
 
 	memcacheRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "prometheus",
+		Namespace: "prism",
 		Name:      "memcache_request_duration_seconds",
 		Help:      "Total time spent in seconds doing memcache requests.",
 		Buckets:   []float64{.001, .0025, .005, .01, .025, .05},

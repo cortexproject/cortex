@@ -31,12 +31,12 @@ import (
 	"github.com/weaveworks/scope/common/middleware"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/prism"
-	"github.com/weaveworks/prism/chunk"
-	"github.com/weaveworks/prism/ingester"
-	"github.com/weaveworks/prism/ring"
-	"github.com/weaveworks/prism/ui"
-	"github.com/weaveworks/prism/user"
+	"github.com/weaveworks/cortex"
+	"github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/ingester"
+	"github.com/weaveworks/cortex/ring"
+	"github.com/weaveworks/cortex/ui"
+	"github.com/weaveworks/cortex/user"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 
 var (
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "prism",
+		Namespace: "cortex",
 		Name:      "request_duration_seconds",
 		Help:      "Time (in seconds) spent serving HTTP requests.",
 		Buckets:   prometheus.DefBuckets,
@@ -78,7 +78,7 @@ type cfg struct {
 	numTokens            int
 	logSuccess           bool
 
-	distributorConfig prism.DistributorConfig
+	distributorConfig cortex.DistributorConfig
 }
 
 func main() {
@@ -120,8 +120,8 @@ func main() {
 	case modeDistributor:
 		ring := ring.New(consul)
 		cfg.distributorConfig.Ring = ring
-		cfg.distributorConfig.ClientFactory = func(address string) (*prism.IngesterClient, error) {
-			return prism.NewIngesterClient(address, cfg.remoteTimeout)
+		cfg.distributorConfig.ClientFactory = func(address string) (*cortex.IngesterClient, error) {
+			return cortex.NewIngesterClient(address, cfg.remoteTimeout)
 		}
 		defer ring.Stop()
 		setupDistributor(cfg.distributorConfig, chunkStore, cfg.logSuccess)
@@ -186,18 +186,18 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 }
 
 func setupDistributor(
-	cfg prism.DistributorConfig,
+	cfg cortex.DistributorConfig,
 	chunkStore chunk.Store,
 	logSuccess bool,
 ) {
-	distributor, err := prism.NewDistributor(cfg)
+	distributor, err := cortex.NewDistributor(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 	prometheus.MustRegister(distributor)
 
 	prefix := "/api/prom"
-	http.Handle(prefix+"/push", instrument(logSuccess, prism.AppenderHandler(distributor)))
+	http.Handle(prefix+"/push", instrument(logSuccess, cortex.AppenderHandler(distributor)))
 
 	// TODO: Move querier to separate binary.
 	setupQuerier(distributor, chunkStore, prefix, logSuccess)
@@ -209,15 +209,15 @@ func setupDistributor(
 //              |
 //              `----------> ChunkQuerier -> DynamoDB/S3
 func setupQuerier(
-	distributor *prism.Distributor,
+	distributor *cortex.Distributor,
 	chunkStore chunk.Store,
 	prefix string,
 	logSuccess bool,
 ) {
-	querier := prism.MergeQuerier{
-		Queriers: []prism.Querier{
+	querier := cortex.MergeQuerier{
+		Queriers: []cortex.Querier{
 			distributor,
-			&prism.ChunkQuerier{
+			&cortex.ChunkQuerier{
 				Store: chunkStore,
 			},
 		},
@@ -256,9 +256,9 @@ func setupIngester(
 	}
 	prometheus.MustRegister(ingester)
 
-	http.Handle("/push", instrument(logSuccess, prism.AppenderHandler(ingester)))
-	http.Handle("/query", instrument(logSuccess, prism.QueryHandler(ingester)))
-	http.Handle("/label_values", instrument(logSuccess, prism.LabelValuesHandler(ingester)))
+	http.Handle("/push", instrument(logSuccess, cortex.AppenderHandler(ingester)))
+	http.Handle("/query", instrument(logSuccess, cortex.QueryHandler(ingester)))
+	http.Handle("/label_values", instrument(logSuccess, cortex.LabelValuesHandler(ingester)))
 	return ingester
 }
 

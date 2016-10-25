@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
-	prism "github.com/weaveworks/prism/chunk"
-	"github.com/weaveworks/prism/user"
+	cortex "github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/user"
 	"golang.org/x/net/context"
 
 	"github.com/prometheus/prometheus/storage/metric"
@@ -30,12 +30,12 @@ const (
 
 var (
 	memorySeriesDesc = prometheus.NewDesc(
-		"prism_ingester_memory_series",
+		"cortex_ingester_memory_series",
 		"The current number of series in memory.",
 		nil, nil,
 	)
 	memoryUsersDesc = prometheus.NewDesc(
-		"prism_ingester_memory_users",
+		"cortex_ingester_memory_users",
 		"The current number of users in memory.",
 		nil, nil,
 	)
@@ -54,12 +54,12 @@ var (
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
 	cfg                Config
-	chunkStore         prism.Store
+	chunkStore         cortex.Store
 	stopLock           sync.RWMutex
 	stopped            bool
 	quit               chan struct{}
 	done               chan struct{}
-	flushSeriesLimiter prism.Semaphore
+	flushSeriesLimiter cortex.Semaphore
 
 	userStateLock sync.Mutex
 	userState     map[string]*userState
@@ -88,7 +88,7 @@ type userState struct {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore prism.Store) (*Ingester, error) {
+func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -101,40 +101,40 @@ func New(cfg Config, chunkStore prism.Store) (*Ingester, error) {
 		chunkStore:         chunkStore,
 		quit:               make(chan struct{}),
 		done:               make(chan struct{}),
-		flushSeriesLimiter: prism.NewSemaphore(maxConcurrentFlushSeries),
+		flushSeriesLimiter: cortex.NewSemaphore(maxConcurrentFlushSeries),
 
 		userState: map[string]*userState{},
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "prism_ingester_ingested_samples_total",
+			Name: "cortex_ingester_ingested_samples_total",
 			Help: "The total number of samples ingested.",
 		}),
 		discardedSamples: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "prism_ingester_out_of_order_samples_total",
+				Name: "cortex_ingester_out_of_order_samples_total",
 				Help: "The total number of samples that were discarded because their timestamps were at or before the last received sample for a series.",
 			},
 			[]string{discardReasonLabel},
 		),
 		chunkUtilization: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "prism_ingester_chunk_utilization",
+			Name:    "cortex_ingester_chunk_utilization",
 			Help:    "Distribution of stored chunk utilization.",
 			Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9},
 		}),
 		memoryChunks: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "prism_ingester_memory_chunks",
+			Name: "cortex_ingester_memory_chunks",
 			Help: "The total number of chunks in memory.",
 		}),
 		chunkStoreFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "prism_ingester_chunk_store_failures_total",
+			Name: "cortex_ingester_chunk_store_failures_total",
 			Help: "The total number of errors while storing chunks to the chunk store.",
 		}),
 		queries: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "prism_ingester_queries_total",
+			Name: "cortex_ingester_queries_total",
 			Help: "The total number of queries the ingester has handled.",
 		}),
 		queriedSamples: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "prism_ingester_queried_samples_total",
+			Name: "cortex_ingester_queried_samples_total",
 			Help: "The total number of samples returned from queries.",
 		}),
 	}
@@ -262,7 +262,7 @@ func (u *userState) getOrCreateSeries(metric model.Metric) (model.Fingerprint, *
 	return fp, series, nil
 }
 
-// Query implements prism.Querier.
+// Query implements cortex.Querier.
 func (i *Ingester) Query(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	i.queries.Inc()
 
@@ -485,7 +485,7 @@ func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Finge
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunks []*prom_chunk.Desc) error {
-	wireChunks := make([]prism.Chunk, 0, len(chunks))
+	wireChunks := make([]cortex.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
 		buf := make([]byte, prom_chunk.ChunkLen)
 		if err := chunk.C.MarshalToBuf(buf); err != nil {
@@ -494,7 +494,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 
 		i.chunkUtilization.Observe(chunk.C.Utilization())
 
-		wireChunks = append(wireChunks, prism.Chunk{
+		wireChunks = append(wireChunks, cortex.Chunk{
 			ID:      fmt.Sprintf("%d:%d:%d", fp, chunk.ChunkFirstTime, chunk.ChunkLastTime),
 			From:    chunk.ChunkFirstTime,
 			Through: chunk.ChunkLastTime,

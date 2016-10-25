@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package prism
+package cortex
 
 import (
 	"bytes"
@@ -28,7 +28,7 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/prism/user"
+	"github.com/weaveworks/cortex/user"
 )
 
 // IngesterClient is a client library for the ingester

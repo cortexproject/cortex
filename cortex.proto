@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package prism;
+package cortex;
 
 message Sample {
   double value = 1;

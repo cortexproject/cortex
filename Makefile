@@ -25,17 +25,17 @@ images:
 	$(info $(IMAGE_NAMES))
 
 # List of exes please
-PRISM_EXE := ./cmd/prism/prism
-EXES = $(PRISM_EXE)
+CORTEX_EXE := ./cmd/cortex/cortex
+EXES = $(CORTEX_EXE)
 
 all: $(UPTODATE_FILES)
 
 # And what goes into each exe
-$(PRISM_EXE): $(shell find . -name '*.go') $(shell find ui/static ui/templates)
+$(CORTEX_EXE): $(shell find . -name '*.go') $(shell find ui/static ui/templates)
 
 # And now what goes into each image
-prism-build/$(UPTODATE): prism-build/*
-cmd/prism/$(UPTODATE): $(PRISM_EXE)
+cortex-build/$(UPTODATE): cortex-build/*
+cmd/cortex/$(UPTODATE): $(CORTEX_EXE)
 
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
@@ -53,23 +53,23 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) lint test assets: prism-build/$(UPTODATE)
+$(EXES) lint test assets: cortex-build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/weaveworks/prism \
-		$(IMAGE_PREFIX)/prism-build $@
+		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
+		$(IMAGE_PREFIX)/cortex-build $@
 
 else
 
-$(EXES): prism-build/$(UPTODATE)
+$(EXES): cortex-build/$(UPTODATE)
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-lint: prism-build/$(UPTODATE)
+lint: cortex-build/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
-test: prism-build/$(UPTODATE)
+test: cortex-build/$(UPTODATE)
 	./tools/test -no-go-get
 
 # Manual step that needs to be run after making any changes to the web assets
@@ -78,7 +78,7 @@ test: prism-build/$(UPTODATE)
 # TODO(juliusv): Figure out if we can make this an automatic part of the build
 # process. It currently produces diffs (source file timestamps are getting
 # baked into bindata.go) and those make CI fail.
-assets: prism-build/$(UPTODATE)
+assets: cortex-build/$(UPTODATE)
 	go-bindata -pkg ui -o ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  ui/templates/... ui/static/...
 
 endif

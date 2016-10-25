@@ -70,7 +70,7 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 		quit:     make(chan struct{}),
 
 		consulHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "prism_ingester_consul_heartbeats_total",
+			Name: "cortex_ingester_consul_heartbeats_total",
 			Help: "The total number of heartbeats sent to consul.",
 		}),
 	}

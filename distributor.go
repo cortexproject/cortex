@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package prism
+package cortex
 
 import (
 	"fmt"
@@ -25,19 +25,19 @@ import (
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/prism/ring"
-	"github.com/weaveworks/prism/user"
+	"github.com/weaveworks/cortex/ring"
+	"github.com/weaveworks/cortex/user"
 )
 
 var (
 	numClientsDesc = prometheus.NewDesc(
-		"prism_distributor_ingester_clients",
+		"cortex_distributor_ingester_clients",
 		"The current number of ingester clients.",
 		nil, nil,
 	)
 )
 
-// Distributor is a storage.SampleAppender and a prism.Querier which
+// Distributor is a storage.SampleAppender and a cortex.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
 	cfg        DistributorConfig
@@ -92,44 +92,44 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 		cfg:     cfg,
 		clients: map[string]*IngesterClient{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "prism",
+			Namespace: "cortex",
 			Name:      "distributor_query_duration_seconds",
 			Help:      "Time spent executing expression queries.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
 		}, []string{"method", "status_code"}),
 		receivedSamples: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "prism",
+			Namespace: "cortex",
 			Name:      "distributor_received_samples_total",
 			Help:      "The total number of received samples.",
 		}),
 		sendDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "prism",
+			Namespace: "cortex",
 			Name:      "distributor_send_duration_seconds",
 			Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
 			Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 		}, []string{"method", "status_code"}),
 		ingesterAppends: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "prism",
+			Namespace: "cortex",
 			Name:      "distributor_ingester_appends_total",
 			Help:      "The total number of batch appends sent to ingesters.",
 		}, []string{"ingester"}),
 		ingesterAppendFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "prism",
+			Namespace: "cortex",
 			Name:      "distributor_ingester_append_failures_total",
 			Help:      "The total number of failed batch appends sent to ingesters.",
 		}, []string{"ingester"}),
 		ingesterQueries: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "prism",
+			Namespace: "cortex",
 			Name:      "distributor_ingester_queries_total",
 			Help:      "The total number of queries sent to ingesters.",
 		}, []string{"ingester"}),
 		ingesterQueryFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "prism",
+			Namespace: "cortex",
 			Name:      "distributor_ingester_query_failures_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
 		ingestersAlive: prometheus.NewDesc(
-			"prism_distributor_ingesters_alive",
+			"cortex_distributor_ingesters_alive",
 			"Number of ingesters in the ring that have heartbeats within timeout.",
 			nil, nil,
 		),

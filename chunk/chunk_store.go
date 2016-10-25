@@ -36,7 +36,7 @@ import (
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/prism/user"
+	"github.com/weaveworks/cortex/user"
 )
 
 const (
@@ -51,29 +51,29 @@ const (
 
 var (
 	dynamoRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "prism",
+		Namespace: "cortex",
 		Name:      "dynamo_request_duration_seconds",
 		Help:      "Time spent doing DynamoDB requests.",
 		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 	}, []string{"operation", "status_code"})
 	dynamoRequestPages = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "prism",
+		Namespace: "cortex",
 		Name:      "dynamo_request_pages",
 		Help:      "Number of pages by DynamoDB request",
 		Buckets:   prometheus.ExponentialBuckets(1, 2.0, 5),
 	})
 	dynamoConsumedCapacity = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "prism",
+		Namespace: "cortex",
 		Name:      "dynamo_consumed_capacity_total",
 		Help:      "The capacity units consumed by operation.",
 	}, []string{"operation"})
 	droppedMatches = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "prism",
+		Namespace: "cortex",
 		Name:      "dropped_matches_total",
 		Help:      "The number of chunks fetched but later dropped for not matching.",
 	})
 	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "prism",
+		Namespace: "cortex",
 		Name:      "s3_request_duration_seconds",
 		Help:      "Time spent doing S3 requests.",
 		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},

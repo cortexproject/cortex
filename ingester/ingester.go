@@ -77,14 +77,16 @@ type Ingester struct {
 type Config struct {
 	FlushCheckPeriod time.Duration
 	MaxChunkAge      time.Duration
+	RateUpdatePeriod time.Duration
 }
 
 type userState struct {
-	userID     string
-	fpLocker   *fingerprintLocker
-	fpToSeries *seriesMap
-	mapper     *fpMapper
-	index      *invertedIndex
+	userID          string
+	fpLocker        *fingerprintLocker
+	fpToSeries      *seriesMap
+	mapper          *fpMapper
+	index           *invertedIndex
+	ingestedSamples *ewmaRate
 }
 
 // New constructs a new Ingester.
@@ -94,6 +96,9 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 	}
 	if cfg.MaxChunkAge == 0 {
 		cfg.MaxChunkAge = 10 * time.Minute
+	}
+	if cfg.RateUpdatePeriod == 0 {
+		cfg.RateUpdatePeriod = 1 * time.Minute
 	}
 
 	i := &Ingester{
@@ -154,10 +159,11 @@ func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {
 	state, ok := i.userState[userID]
 	if !ok {
 		state = &userState{
-			userID:     userID,
-			fpToSeries: newSeriesMap(),
-			fpLocker:   newFingerprintLocker(16),
-			index:      newInvertedIndex(),
+			userID:          userID,
+			fpToSeries:      newSeriesMap(),
+			fpLocker:        newFingerprintLocker(16),
+			index:           newInvertedIndex(),
+			ingestedSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		i.userState[userID] = state
@@ -233,6 +239,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 	if err == nil {
 		// TODO: Track append failures too (unlikely to happen).
 		i.ingestedSamples.Inc()
+		state.ingestedSamples.inc()
 	}
 	return err
 }
@@ -371,11 +378,14 @@ func (i *Ingester) loop() {
 		log.Infof("Ingester exited gracefully")
 	}()
 
-	tick := time.Tick(i.cfg.FlushCheckPeriod)
+	flushTick := time.Tick(i.cfg.FlushCheckPeriod)
+	rateUpdateTick := time.Tick(i.cfg.RateUpdatePeriod)
 	for {
 		select {
-		case <-tick:
+		case <-flushTick:
 			i.flushAllUsers(false)
+		case <-rateUpdateTick:
+			i.updateRates()
 		case <-i.quit:
 			return
 		}
@@ -503,6 +513,15 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 		})
 	}
 	return i.chunkStore.Put(ctx, wireChunks)
+}
+
+func (i *Ingester) updateRates() {
+	i.userStateLock.Lock()
+	defer i.userStateLock.Unlock()
+
+	for _, u := range i.userState {
+		u.ingestedSamples.tick()
+	}
 }
 
 // Describe implements prometheus.Collector.

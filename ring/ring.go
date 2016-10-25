@@ -18,6 +18,7 @@ package ring
 import (
 	"errors"
 	"math"
+	"math/rand"
 	"sort"
 	"sync"
 	"time"
@@ -110,7 +111,6 @@ func (r *Ring) Get(key uint32, n int, heartbeatTimeout time.Duration) ([]Ingeste
 		return nil, ErrEmptyRing
 	}
 
-	ingesters := make([]IngesterDesc, 0, n)
 	distinctHosts := map[string]struct{}{}
 	start := r.search(key)
 	iterations := 0
@@ -125,7 +125,10 @@ func (r *Ring) Get(key uint32, n int, heartbeatTimeout time.Duration) ([]Ingeste
 			continue
 		}
 		distinctHosts[host] = struct{}{}
+	}
 
+	ingesters := make([]IngesterDesc, 0, n)
+	for host := range distinctHosts {
 		ing := r.ringDesc.Ingesters[host]
 
 		// Out of the n distinct subsequent ingesters, skip those that have not heartbeated in a while.
@@ -135,7 +138,14 @@ func (r *Ring) Get(key uint32, n int, heartbeatTimeout time.Duration) ([]Ingeste
 
 		ingesters = append(ingesters, ing)
 	}
-	return ingesters, nil
+
+	m := len(ingesters)
+	shuffledIngesters := make([]IngesterDesc, m, m)
+	order := rand.Perm(m)
+	for i, ing := range ingesters {
+		shuffledIngesters[order[i]] = ing
+	}
+	return shuffledIngesters, nil
 }
 
 // GetAll returns all available ingesters in the circle.

@@ -97,7 +97,7 @@ func getSamples(req *remote.WriteRequest) []*model.Sample {
 }
 
 // AppenderHandler returns a http.Handler that accepts proto encoded samples.
-func AppenderHandler(appender SampleAppender) http.Handler {
+func AppenderHandler(appender SampleAppender, errorHandler func(http.ResponseWriter, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get(userIDHeaderName)
 		if userID == "" {
@@ -122,9 +122,7 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 
 		err = appender.Append(ctx, getSamples(&req))
 		if err != nil {
-			log.Errorf("append err: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			errorHandler(w, err)
 		}
 	})
 }

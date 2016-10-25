@@ -80,6 +80,12 @@ type Config struct {
 	RateUpdatePeriod time.Duration
 }
 
+// UserStats models ingestion statistics for one user.
+type UserStats struct {
+	IngestionRate float64
+	NumSeries     uint64
+}
+
 type userState struct {
 	userID          string
 	fpLocker        *fingerprintLocker
@@ -98,7 +104,7 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 		cfg.MaxChunkAge = 10 * time.Minute
 	}
 	if cfg.RateUpdatePeriod == 0 {
-		cfg.RateUpdatePeriod = 1 * time.Minute
+		cfg.RateUpdatePeriod = 15 * time.Second
 	}
 
 	i := &Ingester{
@@ -359,6 +365,18 @@ func (i *Ingester) LabelValuesForLabelName(ctx context.Context, name model.Label
 	}
 
 	return state.index.lookupLabelValues(name), nil
+}
+
+// UserStats returns ingestion statistics for the current user.
+func (i *Ingester) UserStats(ctx context.Context) (*UserStats, error) {
+	state, err := i.getStateFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &UserStats{
+		IngestionRate: state.ingestedSamples.rate(),
+		NumSeries:     uint64(state.fpToSeries.length()),
+	}, nil
 }
 
 // Stop stops the Ingester.

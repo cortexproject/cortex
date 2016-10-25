@@ -15,6 +15,7 @@ package cortex
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -27,6 +28,7 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
 
+	"github.com/weaveworks/cortex/ingester"
 	"github.com/weaveworks/cortex/user"
 )
 
@@ -47,6 +49,11 @@ func parseRequest(w http.ResponseWriter, r *http.Request, req proto.Message) (ct
 	}
 
 	ctx = user.WithID(context.Background(), userID)
+
+	if req == nil {
+		return ctx, false
+	}
+
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(r.Body)
 	if err != nil {
@@ -64,7 +71,7 @@ func parseRequest(w http.ResponseWriter, r *http.Request, req proto.Message) (ct
 	return ctx, false
 }
 
-func writeResponse(w http.ResponseWriter, resp proto.Message) {
+func writeProtoResponse(w http.ResponseWriter, resp proto.Message) {
 	data, err := proto.Marshal(resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -75,6 +82,19 @@ func writeResponse(w http.ResponseWriter, resp proto.Message) {
 		return
 	}
 	// TODO: set Content-type.
+}
+
+func writeJSONResponse(w http.ResponseWriter, v interface{}) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err = w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
 }
 
 func getSamples(req *remote.WriteRequest) []*model.Sample {
@@ -192,7 +212,7 @@ func QueryHandler(querier Querier) http.Handler {
 			resp.Timeseries = append(resp.Timeseries, ts)
 		}
 
-		writeResponse(w, resp)
+		writeProtoResponse(w, resp)
 	})
 }
 
@@ -216,6 +236,45 @@ func LabelValuesHandler(querier Querier) http.Handler {
 			resp.LabelValues = append(resp.LabelValues, string(v))
 		}
 
-		writeResponse(w, resp)
+		writeProtoResponse(w, resp)
+	})
+}
+
+// IngesterUserStatsHandler handles user stats requests to the Ingester.
+func IngesterUserStatsHandler(statsFn func(context.Context) (*ingester.UserStats, error)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, abort := parseRequest(w, r, nil)
+		if abort {
+			return
+		}
+
+		stats, err := statsFn(ctx)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		writeProtoResponse(w, &UserStatsResponse{
+			IngestionRate: stats.IngestionRate,
+			NumSeries:     stats.NumSeries,
+		})
+	})
+}
+
+// DistributorUserStatsHandler handles user stats to the Distributor.
+func DistributorUserStatsHandler(statsFn func(context.Context) (*ingester.UserStats, error)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, abort := parseRequest(w, r, nil)
+		if abort {
+			return
+		}
+
+		stats, err := statsFn(ctx)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		writeJSONResponse(w, stats)
 	})
 }

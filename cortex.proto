@@ -48,3 +48,8 @@ message LabelValuesRequest {
 message LabelValuesResponse {
   repeated string label_values = 1;
 }
+
+message UserStatsResponse {
+  double ingestion_rate = 1;
+  uint64 num_series = 2;
+}

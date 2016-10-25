@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
 
+	"github.com/weaveworks/cortex/ingester"
 	"github.com/weaveworks/cortex/user"
 )
 
@@ -152,24 +153,40 @@ func (c *IngesterClient) LabelValuesForLabelName(ctx context.Context, ln model.L
 	return values, nil
 }
 
+// UserStats returns stats for the current user.
+func (c *IngesterClient) UserStats(ctx context.Context) (*ingester.UserStats, error) {
+	resp := &UserStatsResponse{}
+	err := c.doRequest(ctx, "/user_stats", nil, resp, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ingester.UserStats{
+		IngestionRate: resp.IngestionRate,
+		NumSeries:     resp.NumSeries,
+	}, nil
+}
+
 func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req proto.Message, resp proto.Message, compressed bool) error {
 	userID, err := user.GetID(ctx)
 	if err != nil {
 		return err
 	}
 
-	data, err := proto.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("unable to marshal request: %v", err)
-	}
+	var buf bytes.Buffer
+	if req != nil {
+		data, err := proto.Marshal(req)
+		if err != nil {
+			return fmt.Errorf("unable to marshal request: %v", err)
+		}
 
-	buf := bytes.Buffer{}
-	var writer io.Writer = &buf
-	if compressed {
-		writer = snappy.NewWriter(writer)
-	}
-	if _, err := writer.Write(data); err != nil {
-		return err
+		var writer io.Writer = &buf
+		if compressed {
+			writer = snappy.NewWriter(writer)
+		}
+		if _, err := writer.Write(data); err != nil {
+			return err
+		}
 	}
 
 	httpReq, err := http.NewRequest("POST", fmt.Sprintf("http://%s%s", c.address, endpoint), &buf)

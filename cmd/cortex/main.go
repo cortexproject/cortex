@@ -73,11 +73,10 @@ type cfg struct {
 	memcachedExpiration  time.Duration
 	memcachedService     string
 	remoteTimeout        time.Duration
-	flushPeriod          time.Duration
-	maxChunkAge          time.Duration
 	numTokens            int
 	logSuccess           bool
 
+	ingesterConfig    ingester.Config
 	distributorConfig cortex.DistributorConfig
 }
 
@@ -95,8 +94,9 @@ func main() {
 	flag.DurationVar(&cfg.memcachedExpiration, "memcached.expiration", 0, "How long chunks stay in the memcache.")
 	flag.StringVar(&cfg.memcachedService, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
 	flag.DurationVar(&cfg.remoteTimeout, "remote.timeout", 5*time.Second, "Timeout for downstream ingesters.")
-	flag.DurationVar(&cfg.flushPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
-	flag.DurationVar(&cfg.maxChunkAge, "ingester.max-chunk-age", 10*time.Minute, "Maximum chunk age before flushing.")
+	flag.DurationVar(&cfg.ingesterConfig.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
+	flag.DurationVar(&cfg.ingesterConfig.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
+	flag.DurationVar(&cfg.ingesterConfig.MaxChunkAge, "ingester.max-chunk-age", 10*time.Minute, "Maximum chunk age before flushing.")
 	flag.IntVar(&cfg.numTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
 	flag.IntVar(&cfg.distributorConfig.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	flag.IntVar(&cfg.distributorConfig.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
@@ -137,11 +137,7 @@ func main() {
 			log.Fatalf("Could not register ingester: %v", err)
 		}
 		defer registration.Unregister()
-		ingesterCfg := ingester.Config{
-			FlushCheckPeriod: cfg.flushPeriod,
-			MaxChunkAge:      cfg.maxChunkAge,
-		}
-		ing := setupIngester(chunkStore, ingesterCfg, cfg.logSuccess)
+		ing := setupIngester(chunkStore, cfg.ingesterConfig, cfg.logSuccess)
 		defer ing.Stop()
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
@@ -241,6 +237,8 @@ func setupQuerier(
 	api.Register(router.WithPrefix(prefix + "/api/v1"))
 	http.Handle("/", router)
 
+	http.Handle(prefix+"/user_stats", instrument(logSuccess, cortex.DistributorUserStatsHandler(distributor.UserStats)))
+
 	http.Handle(prefix+"/graph", instrument(logSuccess, ui.GraphHandler()))
 	http.Handle(prefix+"/static/", instrument(logSuccess, ui.StaticAssetsHandler(prefix+"/static/")))
 }
@@ -259,6 +257,7 @@ func setupIngester(
 	http.Handle("/push", instrument(logSuccess, cortex.AppenderHandler(ingester)))
 	http.Handle("/query", instrument(logSuccess, cortex.QueryHandler(ingester)))
 	http.Handle("/label_values", instrument(logSuccess, cortex.LabelValuesHandler(ingester)))
+	http.Handle("/user_stats", instrument(logSuccess, cortex.IngesterUserStatsHandler(ingester.UserStats)))
 	return ingester
 }
 

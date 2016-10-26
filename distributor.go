@@ -25,6 +25,7 @@ import (
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 
+	"github.com/weaveworks/cortex/ingester"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/user"
 )
@@ -359,6 +360,28 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 		values = append(values, v)
 	}
 	return values, nil
+}
+
+// UserStats returns statistics about the current user.
+func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error) {
+	totalStats := &ingester.UserStats{}
+	for _, c := range d.cfg.Ring.GetAll(d.cfg.HeartbeatTimeout) {
+		client, err := d.getClientFor(c.Hostname)
+		if err != nil {
+			return nil, err
+		}
+		stats, err := client.UserStats(ctx)
+		if err != nil {
+			return nil, err
+		}
+		totalStats.IngestionRate += stats.IngestionRate
+		totalStats.NumSeries += stats.NumSeries
+	}
+
+	totalStats.IngestionRate /= float64(d.cfg.ReplicationFactor)
+	totalStats.NumSeries /= uint64(d.cfg.ReplicationFactor)
+
+	return totalStats, nil
 }
 
 // NeedsThrottling implements SampleAppender.

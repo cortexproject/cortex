@@ -82,8 +82,8 @@ type Config struct {
 
 // UserStats models ingestion statistics for one user.
 type UserStats struct {
-	IngestionRate float64
-	NumSeries     uint64
+	IngestionRate float64 `json:"ingestionRate"`
+	NumSeries     uint64  `json:"numSeries"`
 }
 
 type userState struct {

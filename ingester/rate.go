@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// ewmaRate tracks an exponentially weighted moving average of a per-second rate.
 type ewmaRate struct {
 	newEvents int64
 	alpha     float64
@@ -22,12 +23,14 @@ func newEWMARate(alpha float64, interval time.Duration) *ewmaRate {
 	}
 }
 
+// rate returns the per-second rate.
 func (r *ewmaRate) rate() float64 {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	return r.lastRate
 }
 
+// tick assumes to be called every r.interval.
 func (r *ewmaRate) tick() {
 	newEvents := atomic.LoadInt64(&r.newEvents)
 	atomic.AddInt64(&r.newEvents, -newEvents)
@@ -44,6 +47,7 @@ func (r *ewmaRate) tick() {
 	}
 }
 
+// inc counts one event.
 func (r *ewmaRate) inc() {
 	atomic.AddInt64(&r.newEvents, 1)
 }

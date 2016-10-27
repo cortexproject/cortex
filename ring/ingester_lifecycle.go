@@ -30,13 +30,18 @@ import (
 
 const (
 	infName           = "eth0"
-	consulKey         = "ring"
+	registryKey       = "ring"
 	heartbeatInterval = 5 * time.Second
 )
 
-// IngesterRegistration manages the connection between the ingester and Consul.
+// Registry is where we register ingesters.
+type Registry interface {
+	CAS(key string, factory InstanceFactory, f CASCallback) error
+}
+
+// IngesterRegistration manages the connection between the ingester and the registry.
 type IngesterRegistration struct {
-	consul    ConsulClient
+	registry  Registry
 	numTokens int
 
 	id       string
@@ -44,11 +49,11 @@ type IngesterRegistration struct {
 	quit     chan struct{}
 	wait     sync.WaitGroup
 
-	consulHeartbeats prometheus.Counter
+	registryHeartbeats prometheus.Counter
 }
 
-// RegisterIngester registers an ingester with Consul.
-func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*IngesterRegistration, error) {
+// RegisterIngester registers an ingester with a registry.
+func RegisterIngester(registryClient Registry, listenPort, numTokens int) (*IngesterRegistration, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -60,18 +65,18 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	}
 
 	r := &IngesterRegistration{
-		consul:    consulClient,
+		registry:  registryClient,
 		numTokens: numTokens,
 
 		id: hostname,
-		// hostname is the ip+port of this instance, written to consul so
-		// the distributors know where to connect.
+		// hostname is the ip+port of this instance, written to the registry
+		// so the distributors know where to connect.
 		hostname: fmt.Sprintf("%s:%d", addr, listenPort),
 		quit:     make(chan struct{}),
 
-		consulHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_consul_heartbeats_total",
-			Help: "The total number of heartbeats sent to consul.",
+		registryHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_registry_heartbeats_total",
+			Help: "The total number of heartbeats sent to registry.",
 		}),
 	}
 
@@ -80,16 +85,16 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	return r, nil
 }
 
-// Unregister removes ingester config from Consul; will block
+// Unregister removes ingester config from the registry; will block
 // until we'll successfully unregistered.
 func (r *IngesterRegistration) Unregister() {
-	log.Info("Removing ingester from consul")
+	log.Info("Removing ingester from registry")
 
 	// closing r.quit triggers loop() to exit, which in turn will trigger
 	// the removal of our tokens.
 	close(r.quit)
 	r.wait.Wait()
-	log.Infof("Ingester removed from consul")
+	log.Infof("Ingester removed from registry")
 }
 
 func (r *IngesterRegistration) loop() {
@@ -124,8 +129,8 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 		ringDesc.addIngester(r.id, r.hostname, tokens)
 		return ringDesc, true, nil
 	}
-	if err := r.consul.CAS(consulKey, descFactory, pickTokens); err != nil {
-		log.Fatalf("Failed to pick tokens in consul: %v", err)
+	if err := r.registry.CAS(registryKey, descFactory, pickTokens); err != nil {
+		log.Fatalf("Failed to pick tokens in registry: %v", err)
 	}
 	return tokens
 }
@@ -141,7 +146,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 
 		ingesterDesc, ok := ringDesc.Ingesters[r.id]
 		if !ok {
-			// consul must have restarted
+			// registry must have restarted
 			log.Infof("Found empty ring, inserting tokens!")
 			ringDesc.addIngester(r.id, r.hostname, tokens)
 		} else {
@@ -156,9 +161,9 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 	for {
 		select {
 		case <-ticker.C:
-			r.consulHeartbeats.Inc()
-			if err := r.consul.CAS(consulKey, descFactory, heartbeat); err != nil {
-				log.Errorf("Failed to write to consul, sleeping: %v", err)
+			r.registryHeartbeats.Inc()
+			if err := r.registry.CAS(registryKey, descFactory, heartbeat); err != nil {
+				log.Errorf("Failed to write to registry, sleeping: %v", err)
 			}
 		case <-r.quit:
 			return
@@ -176,8 +181,8 @@ func (r *IngesterRegistration) unregister(tokens []uint32) {
 		ringDesc.removeIngester(r.id, tokens)
 		return ringDesc, true, nil
 	}
-	if err := r.consul.CAS(consulKey, descFactory, unregister); err != nil {
-		log.Fatalf("Failed to unregister from consul: %v", err)
+	if err := r.registry.CAS(registryKey, descFactory, unregister); err != nil {
+		log.Fatalf("Failed to unregister: %v", err)
 	}
 }
 
@@ -236,10 +241,10 @@ func getFirstAddressOf(name string) (string, error) {
 
 // Describe implements prometheus.Collector.
 func (r *IngesterRegistration) Describe(ch chan<- *prometheus.Desc) {
-	ch <- r.consulHeartbeats.Desc()
+	ch <- r.registryHeartbeats.Desc()
 }
 
 // Collect implements prometheus.Collector.
 func (r *IngesterRegistration) Collect(ch chan<- prometheus.Metric) {
-	ch <- r.consulHeartbeats
+	ch <- r.registryHeartbeats
 }

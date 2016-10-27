@@ -96,7 +96,7 @@ func (r *Ring) Stop() {
 
 func (r *Ring) loop() {
 	defer close(r.done)
-	r.client.WatchKey(consulKey, descFactory, r.quit, func(value interface{}) bool {
+	r.client.WatchKey(registryKey, descFactory, r.quit, func(value interface{}) bool {
 		if value == nil {
 			log.Infof("Ring doesn't exist in consul yet.")
 			return true

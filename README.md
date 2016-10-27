@@ -56,7 +56,6 @@ have a datasource with the following parameters:
 - Password: <Service Token> (the same one your retrieval agent uses)
 
 For more information, please see:
-- [Original design document](http://goo.gl/prdUYV)
 - [PromCon 2016 talk video](https://www.youtube.com/watch?v=3Tb4Wc0kfCM)
 
 Or join us on [our Slack channel](https://slack.weave.works) and ask us

@@ -34,6 +34,7 @@ import (
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/ingester"
+	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/ui"
 	"github.com/weaveworks/cortex/user"
@@ -125,18 +126,15 @@ func main() {
 		}
 		defer ring.Stop()
 		setupDistributor(cfg.distributorConfig, chunkStore, cfg.logSuccess)
-		if err != nil {
-			log.Fatalf("Error initializing distributor: %v", err)
-		}
 	case modeIngester:
 		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.numTokens)
-		prometheus.MustRegister(registration)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
 			// network errors.
 			log.Fatalf("Could not register ingester: %v", err)
 		}
 		defer registration.Unregister()
+		prometheus.MustRegister(registration)
 		ing := setupIngester(chunkStore, cfg.ingesterConfig, cfg.logSuccess)
 		defer ing.Stop()
 	default:
@@ -210,10 +208,10 @@ func setupQuerier(
 	prefix string,
 	logSuccess bool,
 ) {
-	querier := cortex.MergeQuerier{
-		Queriers: []cortex.Querier{
+	querier := querier.MergeQuerier{
+		Queriers: []querier.Querier{
 			distributor,
-			&cortex.ChunkQuerier{
+			&querier.ChunkQuerier{
 				Store: chunkStore,
 			},
 		},

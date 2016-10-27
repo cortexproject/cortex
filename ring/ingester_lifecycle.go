@@ -34,9 +34,32 @@ const (
 	heartbeatInterval = 5 * time.Second
 )
 
+type consulRegistry struct {
+	consul  ConsulClient
+	factory InstanceFactory
+	key     string
+}
+
+// NewConsulRegistry creates a new registry that stores things in Consul.
+func NewConsulRegistry(client ConsulClient) Registry {
+	return &consulRegistry{
+		consul:  client,
+		factory: descFactory,
+		key:     registryKey,
+	}
+}
+
+func (c *consulRegistry) Watch(done <-chan struct{}, f func(interface{}) bool) {
+	c.consul.WatchKey(c.key, c.factory, done, f)
+}
+
+func (c *consulRegistry) CAS(f CASCallback) error {
+	return c.consul.CAS(c.key, c.factory, f)
+}
+
 // Registry is where we register ingesters.
 type Registry interface {
-	CAS(key string, factory InstanceFactory, f CASCallback) error
+	CAS(f CASCallback) error
 }
 
 // IngesterRegistration manages the connection between the ingester and the registry.
@@ -129,7 +152,7 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 		ringDesc.addIngester(r.id, r.hostname, tokens)
 		return ringDesc, true, nil
 	}
-	if err := r.registry.CAS(registryKey, descFactory, pickTokens); err != nil {
+	if err := r.registry.CAS(pickTokens); err != nil {
 		log.Fatalf("Failed to pick tokens in registry: %v", err)
 	}
 	return tokens
@@ -162,7 +185,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 		select {
 		case <-ticker.C:
 			r.registryHeartbeats.Inc()
-			if err := r.registry.CAS(registryKey, descFactory, heartbeat); err != nil {
+			if err := r.registry.CAS(heartbeat); err != nil {
 				log.Errorf("Failed to write to registry, sleeping: %v", err)
 			}
 		case <-r.quit:
@@ -181,7 +204,7 @@ func (r *IngesterRegistration) unregister(tokens []uint32) {
 		ringDesc.removeIngester(r.id, tokens)
 		return ringDesc, true, nil
 	}
-	if err := r.registry.CAS(registryKey, descFactory, unregister); err != nil {
+	if err := r.registry.CAS(unregister); err != nil {
 		log.Fatalf("Failed to unregister: %v", err)
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/ingester"
+	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/user"
 )
 
@@ -151,7 +152,7 @@ func AppenderHandler(appender SampleAppender) http.Handler {
 
 // QueryHandler returns a http.Handler that accepts protobuf formatted
 // query requests and serves them.
-func QueryHandler(querier Querier) http.Handler {
+func QueryHandler(querier querier.Querier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &ReadRequest{}
 		ctx, abort := parseRequest(w, r, req)
@@ -217,7 +218,7 @@ func QueryHandler(querier Querier) http.Handler {
 }
 
 // LabelValuesHandler handles label values
-func LabelValuesHandler(querier Querier) http.Handler {
+func LabelValuesHandler(querier querier.Querier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &LabelValuesRequest{}
 		ctx, abort := parseRequest(w, r, req)

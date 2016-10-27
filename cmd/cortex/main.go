@@ -34,6 +34,7 @@ import (
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/ingester"
+	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/ui"
 	"github.com/weaveworks/cortex/user"
@@ -207,10 +208,10 @@ func setupQuerier(
 	prefix string,
 	logSuccess bool,
 ) {
-	querier := cortex.MergeQuerier{
-		Queriers: []cortex.Querier{
+	querier := querier.MergeQuerier{
+		Queriers: []querier.Querier{
 			distributor,
-			&cortex.ChunkQuerier{
+			&querier.ChunkQuerier{
 				Store: chunkStore,
 			},
 		},

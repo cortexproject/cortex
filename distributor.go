@@ -28,6 +28,7 @@ import (
 	"github.com/weaveworks/cortex/ingester"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/cortex/util"
 )
 
 var (
@@ -294,7 +295,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 						Values: ss.Values,
 					}
 				} else {
-					mss.Values = mergeSamples(fpToSampleStream[fp].Values, ss.Values)
+					mss.Values = util.MergeSamples(fpToSampleStream[fp].Values, ss.Values)
 				}
 			}
 		}
@@ -311,31 +312,6 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 		return nil
 	})
 	return result, err
-}
-
-func mergeSamples(a, b []model.SamplePair) []model.SamplePair {
-	result := make([]model.SamplePair, 0, len(a)+len(b))
-	i, j := 0, 0
-	for i < len(a) && j < len(b) {
-		if a[i].Timestamp < b[j].Timestamp {
-			result = append(result, a[i])
-			i++
-		} else if a[i].Timestamp > b[j].Timestamp {
-			result = append(result, b[j])
-			j++
-		} else {
-			result = append(result, a[i])
-			i++
-			j++
-		}
-	}
-	for ; i < len(a); i++ {
-		result = append(result, a[i])
-	}
-	for ; j < len(b); j++ {
-		result = append(result, b[j])
-	}
-	return result
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.

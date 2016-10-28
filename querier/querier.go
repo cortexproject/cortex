@@ -15,16 +15,15 @@ package querier
 
 import (
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local"
-	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/util"
 )
 
 // A Querier allows querying all samples in a given time range that match a set
@@ -48,68 +47,7 @@ func (q *ChunkQuerier) Query(ctx context.Context, from, to model.Time, matchers 
 		return nil, err
 	}
 
-	// Group chunks by series, sort and dedupe samples.
-	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
-
-	for _, c := range chunks {
-		fp := c.Metric.Fingerprint()
-		ss, ok := sampleStreams[fp]
-		if !ok {
-			ss = &model.SampleStream{
-				Metric: c.Metric,
-			}
-			sampleStreams[fp] = ss
-		}
-
-		samples, err := decodeChunk(c.Data)
-		if err != nil {
-			return nil, err
-		}
-
-		ss.Values = append(ss.Values, samples...)
-	}
-
-	for _, ss := range sampleStreams {
-		sort.Sort(timeSortableSamplePairs(ss.Values))
-		// TODO: should we also dedupe samples here or leave that to the upper layers?
-	}
-
-	matrix := make(model.Matrix, 0, len(sampleStreams))
-	for _, ss := range sampleStreams {
-		matrix = append(matrix, ss)
-	}
-
-	return matrix, nil
-}
-
-func decodeChunk(buf []byte) ([]model.SamplePair, error) {
-	lc, err := prom_chunk.NewForEncoding(prom_chunk.DoubleDelta)
-	if err != nil {
-		return nil, err
-	}
-	lc.UnmarshalFromBuf(buf)
-	it := lc.NewIterator()
-	// TODO(juliusv): Pre-allocate this with the right length again once we
-	// add a method upstream to get the number of samples in a chunk.
-	var samples []model.SamplePair
-	for it.Scan() {
-		samples = append(samples, it.Value())
-	}
-	return samples, nil
-}
-
-type timeSortableSamplePairs []model.SamplePair
-
-func (ts timeSortableSamplePairs) Len() int {
-	return len(ts)
-}
-
-func (ts timeSortableSamplePairs) Less(i, j int) bool {
-	return ts[i].Timestamp < ts[j].Timestamp
-}
-
-func (ts timeSortableSamplePairs) Swap(i, j int) {
-	ts[i], ts[j] = ts[j], ts[i]
+	return chunk.ChunksToMatrix(chunks)
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
@@ -145,16 +83,9 @@ func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matc
 				}
 			} else {
 				ssIt := it.(sampleStreamIterator)
-				ssIt.ss.Values = append(ssIt.ss.Values, ss.Values...)
+				ssIt.ss.Values = util.MergeSamples(ssIt.ss.Values, ss.Values)
 			}
 		}
-	}
-
-	// Sort and dedupe samples.
-	for _, it := range fpToIt {
-		sortable := timeSortableSamplePairs(it.(sampleStreamIterator).ss.Values)
-		sort.Sort(sortable)
-		// TODO: Dedupe samples. Not strictly necessary.
 	}
 
 	iterators := make([]local.SeriesIterator, 0, len(fpToIt))

@@ -10,9 +10,7 @@ Cortex is an API compatible [Prometheus](https://prometheus.io)
 implementation, that natively supports multitenancy and scale-out clustering.
 
 Cortex is a [Weaveworks](https://weave.works) project that forms a major part
-of [Weave Cloud](https://cloud.weave.works). If you are interested in using
-our hosted Prometheus as a service, please
-contact [help@weave.works](mailto:help@weave.works).
+of [Weave Cloud](https://cloud.weave.works).
 
 ## Getting started
 

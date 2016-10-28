@@ -109,18 +109,14 @@ type memorySeries struct {
 	// The timestamp of the last sample in this series. Needed to
 	// ensure timestamp monotonicity during ingestion.
 	lastTime model.Time
-	// The last ingested sample value. Needed for fast access for
-	// federation.
+	// The value of the last sample in this series. Needed to
+	// ensure timestamp monotonicity during ingestion.
 	lastSampleValue model.SampleValue
 	// Whether lastSampleValue has been set already.
 	lastSampleValueSet bool
 	// Whether the current head chunk has already been finished.  If true,
 	// the current head chunk must not be modified anymore.
 	headChunkClosed bool
-	// Whether the current head chunk is used by an iterator. In that case,
-	// a non-closed head chunk has to be cloned before more samples are
-	// appended.
-	headChunkUsedByIterator bool
 }
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
@@ -141,21 +137,6 @@ func (s *memorySeries) add(v model.SamplePair) (int, error) {
 		newHead := chunk.NewDesc(chunk.New(), v.Timestamp)
 		s.chunkDescs = append(s.chunkDescs, newHead)
 		s.headChunkClosed = false
-	} else if s.headChunkUsedByIterator && s.head().RefCount() > 1 {
-		// We only need to clone the head chunk if the current head
-		// chunk was used in an iterator at all and if the refCount is
-		// still greater than the 1 we always have because the head
-		// chunk is not yet persisted. The latter is just an
-		// approximation. We will still clone unnecessarily if an older
-		// iterator using a previous version of the head chunk is still
-		// around and keep the head chunk pinned. We needed to track
-		// pins by version of the head chunk, which is probably not
-		// worth the effort.
-		chunk.Ops.WithLabelValues(chunk.Clone).Inc()
-		// No locking needed here because a non-persisted head chunk can
-		// not get evicted concurrently.
-		s.head().C = s.head().C.Clone()
-		s.headChunkUsedByIterator = false
 	}
 
 	chunks, err := s.head().Add(v)

@@ -477,7 +477,6 @@ func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Finge
 	// Decide what chunks to flush
 	if immediate || time.Now().Sub(series.head().FirstTime().Time()) > i.cfg.MaxChunkAge {
 		series.headChunkClosed = true
-		series.headChunkUsedByIterator = false
 		series.head().MaybePopulateLastTime()
 	}
 	chunks := series.chunkDescs

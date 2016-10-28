@@ -15,7 +15,6 @@ package ingester
 
 import (
 	"sync"
-	"time"
 
 	"github.com/prometheus/common/model"
 
@@ -29,7 +28,7 @@ type fingerprintSeriesPair struct {
 }
 
 // seriesMap maps fingerprints to memory series. All its methods are
-// goroutine-safe. A SeriesMap is effectively is a goroutine-safe version of
+// goroutine-safe. A seriesMap is effectively is a goroutine-safe version of
 // map[model.Fingerprint]*memorySeries.
 type seriesMap struct {
 	mtx sync.RWMutex
@@ -107,32 +106,8 @@ type memorySeries struct {
 	metric model.Metric
 	// Sorted by start time, overlapping chunk ranges are forbidden.
 	chunkDescs []*chunk.Desc
-	// The index (within chunkDescs above) of the first chunk.Desc that
-	// points to a non-persisted chunk. If all chunks are persisted, then
-	// persistWatermark == len(chunkDescs).
-	persistWatermark int
-	// The modification time of the series file. The zero value of time.Time
-	// is used to mark an unknown modification time.
-	modTime time.Time
-	// The chunkDescs in memory might not have all the chunkDescs for the
-	// chunks that are persisted to disk. The missing chunkDescs are all
-	// contiguous and at the tail end. chunkDescsOffset is the index of the
-	// chunk on disk that corresponds to the first chunk.Desc in memory. If
-	// it is 0, the chunkDescs are all loaded. A value of -1 denotes a
-	// special case: There are chunks on disk, but the offset to the
-	// chunkDescs in memory is unknown. Also, in this special case, there is
-	// no overlap between chunks on disk and chunks in memory (implying that
-	// upon first persisting of a chunk in memory, the offset has to be
-	// set).
-	chunkDescsOffset int
-	// The savedFirstTime field is used as a fallback when the
-	// chunkDescsOffset is not 0. It can be used to save the FirstTime of the
-	// first chunk before its chunk desc is evicted. In doubt, this field is
-	// just set to the oldest possible timestamp.
-	savedFirstTime model.Time
-	// The timestamp of the last sample in this series. Needed for fast
-	// access for federation and to ensure timestamp monotonicity during
-	// ingestion.
+	// The timestamp of the last sample in this series. Needed to
+	// ensure timestamp monotonicity during ingestion.
 	lastTime model.Time
 	// The last ingested sample value. Needed for fast access for
 	// federation.
@@ -146,38 +121,15 @@ type memorySeries struct {
 	// a non-closed head chunk has to be cloned before more samples are
 	// appended.
 	headChunkUsedByIterator bool
-	// Whether the series is inconsistent with the last checkpoint in a way
-	// that would require a disk seek during crash recovery.
-	dirty bool
 }
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
-// given metric. chunkDescs and modTime in the new series are set according to
-// the provided parameters. chunkDescs can be nil or empty if this is a
-// genuinely new time series (i.e. not one that is being unarchived). In that
-// case, headChunkClosed is set to false, and firstTime and lastTime are both
-// set to model.Earliest. The zero value for modTime can be used if the
-// modification time of the series file is unknown (e.g. if this is a genuinely
-// new series).
-func newMemorySeries(m model.Metric, chunkDescs []*chunk.Desc, modTime time.Time) (*memorySeries, error) {
-	var err error
-	firstTime := model.Earliest
-	lastTime := model.Earliest
-	if len(chunkDescs) > 0 {
-		firstTime = chunkDescs[0].FirstTime()
-		if lastTime, err = chunkDescs[len(chunkDescs)-1].LastTime(); err != nil {
-			return nil, err
-		}
-	}
+// given metric.
+func newMemorySeries(m model.Metric) *memorySeries {
 	return &memorySeries{
-		metric:           m,
-		chunkDescs:       chunkDescs,
-		headChunkClosed:  len(chunkDescs) > 0,
-		savedFirstTime:   firstTime,
-		lastTime:         lastTime,
-		persistWatermark: len(chunkDescs),
-		modTime:          modTime,
-	}, nil
+		metric:   m,
+		lastTime: model.Earliest,
+	}
 }
 
 // add adds a sample pair to the series. It returns the number of newly
@@ -232,14 +184,4 @@ func (s *memorySeries) add(v model.SamplePair) (int, error) {
 // series has no chunk descriptors.
 func (s *memorySeries) head() *chunk.Desc {
 	return s.chunkDescs[len(s.chunkDescs)-1]
-}
-
-// firstTime returns the timestamp of the first sample in the series.
-//
-// The caller must have locked the fingerprint of the memorySeries.
-func (s *memorySeries) firstTime() model.Time {
-	if s.chunkDescsOffset == 0 && len(s.chunkDescs) > 0 {
-		return s.chunkDescs[0].FirstTime()
-	}
-	return s.savedFirstTime
 }

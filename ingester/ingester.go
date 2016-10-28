@@ -264,12 +264,7 @@ func (u *userState) getOrCreateSeries(metric model.Metric) (model.Fingerprint, *
 		return fp, series, nil
 	}
 
-	var err error
-	series, err = newMemorySeries(metric, nil, time.Time{})
-	if err != nil {
-		// err should always be nil when chunkDescs are nil
-		panic(err)
-	}
+	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
 	u.index.add(metric, fp)
 	return fp, series, nil

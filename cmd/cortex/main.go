@@ -119,7 +119,7 @@ func main() {
 
 	switch cfg.mode {
 	case modeDistributor:
-		ring := ring.New(consul)
+		ring := ring.New(consul, cfg.distributorConfig.HeartbeatTimeout)
 		cfg.distributorConfig.Ring = ring
 		cfg.distributorConfig.ClientFactory = func(address string) (*cortex.IngesterClient, error) {
 			return cortex.NewIngesterClient(address, cfg.remoteTimeout)

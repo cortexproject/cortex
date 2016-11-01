@@ -203,9 +203,8 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	healthy, unhealthy := 0, 0
-	now := time.Now()
 	for _, ingester := range r.ringDesc.Ingesters {
-		if ingester.Timestamp.Sub(now) > r.heartbeatTimeout {
+		if time.Now().Sub(ingester.Timestamp) > r.heartbeatTimeout {
 			unhealthy++
 		} else {
 			healthy++

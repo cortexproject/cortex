@@ -53,15 +53,14 @@ type Distributor struct {
 	ingesterAppendFailures *prometheus.CounterVec
 	ingesterQueries        *prometheus.CounterVec
 	ingesterQueryFailures  *prometheus.CounterVec
-	ingestersAlive         *prometheus.Desc
 }
 
 // ReadRing represents the read inferface to the ring.
 type ReadRing interface {
 	prometheus.Collector
 
-	Get(key uint32, n int, heartbeatTimeout time.Duration) ([]ring.IngesterDesc, error)
-	GetAll(heartbeatTimeout time.Duration) []ring.IngesterDesc
+	Get(key uint32, n int) ([]ring.IngesterDesc, error)
+	GetAll() []ring.IngesterDesc
 }
 
 // IngesterClientFactory creates ingester clients.
@@ -130,11 +129,6 @@ func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 			Name:      "distributor_ingester_query_failures_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
-		ingestersAlive: prometheus.NewDesc(
-			"cortex_distributor_ingesters_alive",
-			"Number of ingesters in the ring that have heartbeats within timeout.",
-			nil, nil,
-		),
 	}, nil
 }
 
@@ -185,7 +179,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 	samplesByIngester := map[string][]*model.Sample{}
 	for _, sample := range samples {
 		key := tokenForMetric(userID, sample.Metric)
-		ingesters, err := d.cfg.Ring.Get(key, d.cfg.ReplicationFactor, d.cfg.HeartbeatTimeout)
+		ingesters, err := d.cfg.Ring.Get(key, d.cfg.ReplicationFactor)
 		if err != nil {
 			return err
 		}
@@ -260,7 +254,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		ingesters, err := d.cfg.Ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor, d.cfg.HeartbeatTimeout)
+		ingesters, err := d.cfg.Ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor)
 		if err != nil {
 			return err
 		}
@@ -317,7 +311,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
 	valueSet := map[model.LabelValue]struct{}{}
-	for _, c := range d.cfg.Ring.GetAll(d.cfg.HeartbeatTimeout) {
+	for _, c := range d.cfg.Ring.GetAll() {
 		client, err := d.getClientFor(c.Hostname)
 		if err != nil {
 			return nil, err
@@ -341,7 +335,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error) {
 	totalStats := &ingester.UserStats{}
-	for _, c := range d.cfg.Ring.GetAll(d.cfg.HeartbeatTimeout) {
+	for _, c := range d.cfg.Ring.GetAll() {
 		client, err := d.getClientFor(c.Hostname)
 		if err != nil {
 			return nil, err
@@ -376,7 +370,6 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.ingesterAppendFailures.Describe(ch)
 	d.ingesterQueries.Describe(ch)
 	d.ingesterQueryFailures.Describe(ch)
-	ch <- d.ingestersAlive
 }
 
 // Collect implements prometheus.Collector.
@@ -389,13 +382,6 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	d.ingesterAppendFailures.Collect(ch)
 	d.ingesterQueries.Collect(ch)
 	d.ingesterQueryFailures.Collect(ch)
-
-	ch <- prometheus.MustNewConstMetric(
-		d.ingestersAlive,
-		prometheus.GaugeValue,
-		float64(len(d.cfg.Ring.GetAll(d.cfg.HeartbeatTimeout))),
-	)
-
 	d.clientsMtx.RLock()
 	defer d.clientsMtx.RUnlock()
 	ch <- prometheus.MustNewConstMetric(

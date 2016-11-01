@@ -26,6 +26,11 @@ import (
 	"github.com/prometheus/common/log"
 )
 
+const (
+	healthyLabel   = "healthy"
+	unhealthyLabel = "unhealthy"
+)
+
 type uint32s []uint32
 
 func (x uint32s) Len() int           { return len(x) }
@@ -43,8 +48,9 @@ type CoordinationStateClient interface {
 
 // Ring holds the information about the members of the consistent hash circle.
 type Ring struct {
-	client     CoordinationStateClient
-	quit, done chan struct{}
+	client           CoordinationStateClient
+	quit, done       chan struct{}
+	heartbeatTimeout time.Duration
 
 	mtx      sync.RWMutex
 	ringDesc Desc
@@ -55,23 +61,24 @@ type Ring struct {
 }
 
 // New creates a new Ring
-func New(client CoordinationStateClient) *Ring {
+func New(client CoordinationStateClient, heartbeatTimeout time.Duration) *Ring {
 	r := &Ring{
-		client: client,
-		quit:   make(chan struct{}),
-		done:   make(chan struct{}),
+		client:           client,
+		heartbeatTimeout: heartbeatTimeout,
+		quit:             make(chan struct{}),
+		done:             make(chan struct{}),
 		ingesterOwnershipDesc: prometheus.NewDesc(
-			"cortex_distributor_ingester_ownership_percent",
+			"cortex_ring_ingester_ownership_percent",
 			"The percent ownership of the ring by ingester",
 			[]string{"ingester"}, nil,
 		),
 		numIngestersDesc: prometheus.NewDesc(
-			"cortex_distributor_ingesters",
+			"cortex_ring_ingesters",
 			"Number of ingesters in the ring",
-			nil, nil,
+			[]string{"state"}, nil,
 		),
 		numTokensDesc: prometheus.NewDesc(
-			"cortex_distributor_tokens",
+			"cortex_ring_tokens",
 			"Number of tokens in the ring",
 			nil, nil,
 		),
@@ -103,7 +110,7 @@ func (r *Ring) loop() {
 }
 
 // Get returns up to n ingesters close to the hash in the circle.
-func (r *Ring) Get(key uint32, n int, heartbeatTimeout time.Duration) ([]IngesterDesc, error) {
+func (r *Ring) Get(key uint32, n int) ([]IngesterDesc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if len(r.ringDesc.Tokens) == 0 {
@@ -129,7 +136,7 @@ func (r *Ring) Get(key uint32, n int, heartbeatTimeout time.Duration) ([]Ingeste
 		ing := r.ringDesc.Ingesters[host]
 
 		// Out of the n distinct subsequent ingesters, skip those that have not heartbeated in a while.
-		if time.Now().Sub(ing.Timestamp) > heartbeatTimeout {
+		if time.Now().Sub(ing.Timestamp) > r.heartbeatTimeout {
 			continue
 		}
 
@@ -139,13 +146,13 @@ func (r *Ring) Get(key uint32, n int, heartbeatTimeout time.Duration) ([]Ingeste
 }
 
 // GetAll returns all available ingesters in the circle.
-func (r *Ring) GetAll(heartbeatTimeout time.Duration) []IngesterDesc {
+func (r *Ring) GetAll() []IngesterDesc {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
 	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(ingester.Timestamp) > heartbeatTimeout {
+		if time.Now().Sub(ingester.Timestamp) > r.heartbeatTimeout {
 			continue
 		}
 		ingesters = append(ingesters, ingester)
@@ -195,10 +202,27 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		)
 	}
 
+	healthy, unhealthy := 0, 0
+	now := time.Now()
+	for _, ingester := range r.ringDesc.Ingesters {
+		if ingester.Timestamp.Sub(now) > r.heartbeatTimeout {
+			unhealthy++
+		} else {
+			healthy++
+		}
+	}
+
 	ch <- prometheus.MustNewConstMetric(
 		r.numIngestersDesc,
 		prometheus.GaugeValue,
-		float64(len(r.ringDesc.Ingesters)),
+		float64(healthy),
+		healthyLabel,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		r.numIngestersDesc,
+		prometheus.GaugeValue,
+		float64(unhealthy),
+		unhealthyLabel,
 	)
 	ch <- prometheus.MustNewConstMetric(
 		r.numTokensDesc,

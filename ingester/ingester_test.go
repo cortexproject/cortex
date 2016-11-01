@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
@@ -37,40 +36,6 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 func (s *testStore) Get(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]chunk.Chunk, error) {
 	return nil, nil
-}
-
-func (s *testStore) queryMatrix(userID string) model.Matrix {
-	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
-
-	for _, c := range s.chunks[userID] {
-		fp := c.Metric.Fingerprint()
-		ss, ok := sampleStreams[fp]
-		if !ok {
-			ss = &model.SampleStream{
-				Metric: c.Metric,
-			}
-			sampleStreams[fp] = ss
-		}
-
-		lc, err := prom_chunk.NewForEncoding(prom_chunk.DoubleDelta)
-		if err != nil {
-			panic(err)
-		}
-		lc.UnmarshalFromBuf(c.Data)
-		it := lc.NewIterator()
-		var samples []model.SamplePair
-		for it.Scan() {
-			samples = append(samples, it.Value())
-		}
-
-		ss.Values = append(ss.Values, samples...)
-	}
-
-	matrix := make(model.Matrix, 0, len(sampleStreams))
-	for _, ss := range sampleStreams {
-		matrix = append(matrix, ss)
-	}
-	return matrix
 }
 
 func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matrix {
@@ -160,7 +125,10 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via chunk store.
 	ing.Stop()
 	for _, userID := range userIDs {
-		res := store.queryMatrix(userID)
+		res, err := chunk.ChunksToMatrix(store.chunks[userID])
+		if err != nil {
+			t.Fatal(err)
+		}
 		sort.Sort(res)
 
 		if !reflect.DeepEqual(res, testData[userID]) {

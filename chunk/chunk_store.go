@@ -55,7 +55,7 @@ var (
 		Name:      "dynamo_request_duration_seconds",
 		Help:      "Time spent doing DynamoDB requests.",
 
-		// DynamoDB latency seems to raneg from a few ms to a few sec and is
+		// DynamoDB latency seems to range from a few ms to a few sec and is
 		// important.  So use 8 buckets from 64us to 8s.
 		Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
 	}, []string{"operation", "status_code"})

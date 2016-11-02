@@ -54,8 +54,8 @@ var (
 		Name:      "request_duration_seconds",
 		Help:      "Time (in seconds) spent serving HTTP requests.",
 
-		// Cortex latency can be very low (ingesters typically take a few ms to)
-		// process a request, all the way to very high (queries can take tens of
+		// Cortex latency can be very low (ingesters typically take a few ms to
+		// process a request), all the way to very high (queries can take tens of
 		// second).  As its important, we use 10 buckets.  Smallest is 128us
 		// biggest is 130s.
 		Buckets: prometheus.ExponentialBuckets(0.000128, 4, 10),

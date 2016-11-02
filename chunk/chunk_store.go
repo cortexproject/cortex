@@ -54,7 +54,10 @@ var (
 		Namespace: "cortex",
 		Name:      "dynamo_request_duration_seconds",
 		Help:      "Time spent doing DynamoDB requests.",
-		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
+
+		// DynamoDB latency seems to raneg from a few ms to a few sec and is
+		// important.  So use 8 buckets from 64us to 8s.
+		Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
 	}, []string{"operation", "status_code"})
 	dynamoRequestPages = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",

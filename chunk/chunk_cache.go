@@ -39,7 +39,8 @@ var (
 		Namespace: "cortex",
 		Name:      "memcache_request_duration_seconds",
 		Help:      "Total time spent in seconds doing memcache requests.",
-		Buckets:   []float64{.001, .0025, .005, .01, .025, .05},
+		// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
+		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
 	}, []string{"method", "status_code"})
 )
 

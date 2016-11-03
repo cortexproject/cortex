@@ -204,6 +204,15 @@ func setupDistributor(
 }
 
 func handleDistributorError(w http.ResponseWriter, err error) {
+	switch e := err.(type) {
+	case cortex.IngesterError:
+		switch {
+		case 400 <= e.StatusCode && e.StatusCode < 500:
+			log.Warnf("append err: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	log.Errorf("append err: %v", err)
 	http.Error(w, err.Error(), http.StatusInternalServerError)
 }

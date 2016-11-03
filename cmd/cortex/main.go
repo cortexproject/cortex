@@ -196,10 +196,24 @@ func setupDistributor(
 	prometheus.MustRegister(distributor)
 
 	prefix := "/api/prom"
-	http.Handle(prefix+"/push", instrument(logSuccess, cortex.AppenderHandler(distributor)))
+	http.Handle(prefix+"/push", instrument(logSuccess, cortex.AppenderHandler(distributor, handleDistributorError)))
 
 	// TODO: Move querier to separate binary.
 	setupQuerier(distributor, chunkStore, prefix, logSuccess)
+}
+
+func handleDistributorError(w http.ResponseWriter, err error) {
+	switch e := err.(type) {
+	case cortex.IngesterError:
+		switch {
+		case 400 <= e.StatusCode && e.StatusCode < 500:
+			log.Warnf("append err: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	log.Errorf("append err: %v", err)
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
 // setupQuerier sets up a complete querying pipeline:
@@ -257,11 +271,22 @@ func setupIngester(
 	}
 	prometheus.MustRegister(ingester)
 
-	http.Handle("/push", instrument(logSuccess, cortex.AppenderHandler(ingester)))
+	http.Handle("/push", instrument(logSuccess, cortex.AppenderHandler(ingester, handleIngesterError)))
 	http.Handle("/query", instrument(logSuccess, cortex.QueryHandler(ingester)))
 	http.Handle("/label_values", instrument(logSuccess, cortex.LabelValuesHandler(ingester)))
 	http.Handle("/user_stats", instrument(logSuccess, cortex.IngesterUserStatsHandler(ingester.UserStats)))
 	return ingester
+}
+
+func handleIngesterError(w http.ResponseWriter, err error) {
+	switch err {
+	case ingester.ErrOutOfOrderSample, ingester.ErrDuplicateSampleForTimestamp:
+		log.Warnf("append err: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	default:
+		log.Errorf("append err: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // instrument instruments a handler.

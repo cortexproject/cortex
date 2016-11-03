@@ -39,6 +39,23 @@ type IngesterClient struct {
 	timeout time.Duration
 }
 
+// IngesterError is an error we got from an ingester.
+type IngesterError struct {
+	StatusCode int
+	err        error
+}
+
+func errStatusCode(code int, status string) IngesterError {
+	return IngesterError{
+		StatusCode: code,
+		err:        fmt.Errorf("server returned HTTP status %s", status),
+	}
+}
+
+func (i IngesterError) Error() string {
+	return i.err.Error()
+}
+
 // NewIngesterClient makes a new IngesterClient.  This client is careful to
 // propagate the user ID from Distributor -> Ingester.
 func NewIngesterClient(address string, timeout time.Duration) (*IngesterClient, error) {
@@ -202,7 +219,7 @@ func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req pro
 	}
 	defer httpResp.Body.Close()
 	if httpResp.StatusCode/100 != 2 {
-		return fmt.Errorf("server returned HTTP status %s", httpResp.Status)
+		return errStatusCode(httpResp.StatusCode, httpResp.Status)
 	}
 	if resp == nil {
 		return nil

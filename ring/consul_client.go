@@ -31,10 +31,11 @@ const (
 // such as CAS and Watch which take callbacks.  It also deals with serialisation
 // by having an instance factory passed in to methods and deserialising into that.
 type ConsulClient interface {
-	Get(key string, factory InstanceFactory) error
 	CAS(key string, factory InstanceFactory, f CASCallback) error
-	WatchPrefix(path string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool)
 	WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool)
+	// XXX: The following three are unused in the code-base. Can we delete them?
+	Get(key string, factory InstanceFactory) error
+	WatchPrefix(path string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool)
 	PutBytes(key string, buf []byte) error
 }
 

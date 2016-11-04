@@ -1,5 +1,3 @@
-// Copyright 2016 The Prometheus Authors
-
 package chunk
 
 import (

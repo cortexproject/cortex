@@ -7,8 +7,10 @@ import (
 	"github.com/prometheus/common/log"
 )
 
+// TokenState describes the state of a token
 type TokenState int
 
+// Values for TokenState
 const (
 	Active TokenState = iota
 	Leaving

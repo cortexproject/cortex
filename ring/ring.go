@@ -18,6 +18,15 @@ const (
 	unhealthyLabel = "unhealthy"
 )
 
+// Operation can be Read or Write
+type Operation int
+
+// Values for Operation
+const (
+	Read Operation = iota
+	Write
+)
+
 type uint32s []uint32
 
 func (x uint32s) Len() int           { return len(x) }
@@ -96,13 +105,6 @@ func (r *Ring) loop() {
 	})
 }
 
-type Operation int
-
-const (
-	Read Operation = iota
-	Write
-)
-
 // Get returns n (or more) ingesters which form the replicas for the given key.
 func (r *Ring) Get(key uint32, n int, op Operation) ([]IngesterDesc, error) {
 	r.mtx.RLock()
@@ -110,6 +112,8 @@ func (r *Ring) Get(key uint32, n int, op Operation) ([]IngesterDesc, error) {
 	return r.getInternal(key, n, op)
 }
 
+// BatchGet returns n (or more) ingesters which form the replicas for the given key.
+// The order of the result matches the order of the input.
 func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]IngesterDesc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()

@@ -76,6 +76,8 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	return r, nil
 }
 
+// ChangeState changes the state of all tokens owned by this
+// ingester in the ring.
 func (r *IngesterRegistration) ChangeState(state TokenState) {
 	log.Info("Changing token state to: %v", state)
 	r.stateChange <- state

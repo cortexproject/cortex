@@ -201,7 +201,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 			}
 		}
 		if len(liveIngesters) < sampleTrackers[i].minSuccess {
-			return fmt.Errorf("wanted at least %d live ingesters to process write, had %d.",
+			return fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
 				sampleTrackers[i].minSuccess, len(liveIngesters))
 		}
 

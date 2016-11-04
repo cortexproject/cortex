@@ -125,10 +125,14 @@ func main() {
 			// network errors.
 			log.Fatalf("Could not register ingester: %v", err)
 		}
-		defer registration.Unregister()
 		prometheus.MustRegister(registration)
 		ing := setupIngester(chunkStore, cfg.ingesterConfig, cfg.logSuccess)
-		defer ing.Stop()
+
+		defer func() {
+			registration.ChangeState(ring.Leaving)
+			ing.Stop()
+			registration.Unregister()
+		}()
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
 	}

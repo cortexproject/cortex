@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,7 +47,8 @@ type Distributor struct {
 type ReadRing interface {
 	prometheus.Collector
 
-	Get(key uint32, n int) ([]ring.IngesterDesc, error)
+	Get(key uint32, n int, op ring.Operation) ([]ring.IngesterDesc, error)
+	BatchGet(keys []uint32, n int, op ring.Operation) ([][]ring.IngesterDesc, error)
 	GetAll() []ring.IngesterDesc
 }
 
@@ -154,6 +156,12 @@ func tokenFor(userID string, name model.LabelValue) uint32 {
 	return h.Sum32()
 }
 
+type sampleTracker struct {
+	sample     *model.Sample
+	minSuccess int
+	succeeded  int32
+}
+
 // Append implements SampleAppender.
 func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error {
 	userID, err := user.GetID(ctx)
@@ -163,45 +171,76 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 
 	d.receivedSamples.Add(float64(len(samples)))
 
-	samplesByIngester := map[string][]*model.Sample{}
-	for _, sample := range samples {
-		key := tokenForMetric(userID, sample.Metric)
-		ingesters, err := d.cfg.Ring.Get(key, d.cfg.ReplicationFactor)
-		if err != nil {
-			return err
+	sampleTrackers := make([]sampleTracker, len(samples), len(samples))
+	samplesByIngester := map[string][]*sampleTracker{}
+	keys := make([]uint32, len(samples), len(samples))
+
+	for i, sample := range samples {
+		keys[i] = tokenForMetric(userID, sample.Metric)
+	}
+
+	ingesters, err := d.cfg.Ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
+	if err != nil {
+		return err
+	}
+
+	for i := range samples {
+		sampleTrackers[i] = sampleTracker{
+			sample:     samples[i],
+			minSuccess: (len(ingesters[i]) / 2) + 1,
+			succeeded:  0,
 		}
-		for _, ingester := range ingesters {
-			otherSamples := samplesByIngester[ingester.Hostname]
-			samplesByIngester[ingester.Hostname] = append(otherSamples, sample)
+
+		// Skip those that have not heartbeated in a while. NB these are still
+		// included in the calculation of minSuccess, so too many failed ingesters
+		// will cause the whole write to fail.
+		liveIngesters := make([]string, len(ingesters[i]))
+		for _, ingester := range ingesters[i] {
+			if time.Now().Sub(ingester.Timestamp) <= d.cfg.HeartbeatTimeout {
+				liveIngesters = append(liveIngesters, ingester.Hostname)
+			}
+		}
+		if len(liveIngesters) < sampleTrackers[i].minSuccess {
+			return fmt.Errorf("Wanted at least %d live ingesters to process write, had %d.",
+				sampleTrackers[i].minSuccess, len(liveIngesters))
+		}
+
+		for _, liveIngester := range liveIngesters {
+			sampleForIngester := samplesByIngester[liveIngester]
+			samplesByIngester[liveIngester] = append(sampleForIngester, &sampleTrackers[i])
 		}
 	}
 
 	errs := make(chan error)
 	for hostname, samples := range samplesByIngester {
-		go func(hostname string, samples []*model.Sample) {
+		go func(hostname string, samples []*sampleTracker) {
 			errs <- d.sendSamples(ctx, hostname, samples)
 		}(hostname, samples)
 	}
 	var lastErr error
-	successes := 0
 	for i := 0; i < len(samplesByIngester); i++ {
 		if err := <-errs; err != nil {
 			lastErr = err
 			continue
 		}
-		successes++
 	}
-
-	if successes < d.cfg.MinWriteSuccesses {
-		return fmt.Errorf("too few successful writes, last error was: %v", lastErr)
+	for i := range sampleTrackers {
+		if sampleTrackers[i].succeeded < int32(sampleTrackers[i].minSuccess) {
+			return fmt.Errorf("need %d successful writes, only got %d, last error was: %v",
+				sampleTrackers[i].minSuccess, sampleTrackers[i].succeeded, lastErr)
+		}
 	}
 	return nil
 }
 
-func (d *Distributor) sendSamples(ctx context.Context, hostname string, samples []*model.Sample) error {
+func (d *Distributor) sendSamples(ctx context.Context, hostname string, sampleTrackers []*sampleTracker) error {
 	client, err := d.getClientFor(hostname)
 	if err != nil {
 		return err
+	}
+	samples := make([]*model.Sample, len(sampleTrackers), len(sampleTrackers))
+	for i := range sampleTrackers {
+		samples[i] = sampleTrackers[i].sample
 	}
 	err = instrument.TimeRequestHistogram("send", d.sendDuration, func() error {
 		return client.Append(ctx, samples)
@@ -210,6 +249,9 @@ func (d *Distributor) sendSamples(ctx context.Context, hostname string, samples 
 		d.ingesterAppendFailures.WithLabelValues(hostname).Inc()
 	}
 	d.ingesterAppends.WithLabelValues(hostname).Inc()
+	for i := range sampleTrackers {
+		atomic.AddInt32(&sampleTrackers[i].succeeded, 1)
+	}
 	return err
 }
 
@@ -241,7 +283,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		ingesters, err := d.cfg.Ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor)
+		ingesters, err := d.cfg.Ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor, ring.Read)
 		if err != nil {
 			return err
 		}

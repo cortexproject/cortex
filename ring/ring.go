@@ -96,8 +96,36 @@ func (r *Ring) loop() {
 	})
 }
 
-// Get returns up to n ingesters close to the hash in the circle.
-func (r *Ring) Get(key uint32, n int) ([]IngesterDesc, error) {
+type Operation int
+
+const (
+	Read Operation = iota
+	Write
+)
+
+// Get returns n (or more) ingesters which form the replicas for the given key.
+func (r *Ring) Get(key uint32, n int, op Operation) ([]IngesterDesc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.getInternal(key, n, op)
+}
+
+func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]IngesterDesc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	result := make([][]IngesterDesc, len(keys), len(keys))
+	for i, key := range keys {
+		ingesters, err := r.getInternal(key, n, op)
+		if err != nil {
+			return nil, err
+		}
+		result[i] = ingesters
+	}
+	return result, nil
+}
+
+func (r *Ring) getInternal(key uint32, n int, op Operation) ([]IngesterDesc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if len(r.ringDesc.Tokens) == 0 {
@@ -114,19 +142,22 @@ func (r *Ring) Get(key uint32, n int) ([]IngesterDesc, error) {
 		i %= len(r.ringDesc.Tokens)
 
 		// We want n *distinct* ingesters.
-		host := r.ringDesc.Tokens[i].Ingester
-		if _, ok := distinctHosts[host]; ok {
+		token := r.ringDesc.Tokens[i]
+		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
 		}
-		distinctHosts[host] = struct{}{}
+		distinctHosts[token.Ingester] = struct{}{}
 
-		ing := r.ringDesc.Ingesters[host]
-
-		// Out of the n distinct subsequent ingesters, skip those that have not heartbeated in a while.
-		if time.Now().Sub(ing.Timestamp) > r.heartbeatTimeout {
-			continue
+		// If we encounter a Leaving token, for reads we should bump n,
+		// for writes we bump n and skip the token.
+		if token.State == Leaving {
+			n++
+			if op == Write {
+				continue
+			}
 		}
 
+		ing := r.ringDesc.Ingesters[token.Ingester]
 		ingesters = append(ingesters, ing)
 	}
 	return ingesters, nil

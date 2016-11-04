@@ -102,6 +102,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing chunk store: %v", err)
 	}
+	resourceWatcher, err := chunk.WatchDynamo(cfg.dynamodbURL, 2*time.Minute)
+	if err != nil {
+		log.Fatalf("Error initializing DynamoDB watcher: %v", err)
+	}
+	defer resourceWatcher.Stop()
+	prometheus.MustRegister(resourceWatcher)
 
 	consul, err := ring.NewConsulClient(cfg.consulHost)
 	if err != nil {

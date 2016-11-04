@@ -7,6 +7,15 @@ import (
 	"github.com/prometheus/common/log"
 )
 
+// TokenState describes the state of a token
+type TokenState int
+
+// Values for TokenState
+const (
+	Active TokenState = iota
+	Leaving
+)
+
 // Desc is the serialised state in Consul representing
 // all ingesters (ie, the ring).
 type Desc struct {
@@ -29,8 +38,9 @@ func (ts TokenDescs) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
 
 // TokenDesc describes an individual token in the ring.
 type TokenDesc struct {
-	Token    uint32 `json:"tokens"`
-	Ingester string `json:"ingester"`
+	Token    uint32     `json:"tokens"`
+	Ingester string     `json:"ingester"`
+	State    TokenState `json:"state"`
 }
 
 func descFactory() interface{} {
@@ -43,7 +53,7 @@ func newDesc() *Desc {
 	}
 }
 
-func (d *Desc) addIngester(id, hostname string, tokens []uint32) {
+func (d *Desc) addIngester(id, hostname string, tokens []uint32, state TokenState) {
 	d.Ingesters[id] = IngesterDesc{
 		Hostname:  hostname,
 		Timestamp: time.Now(),
@@ -53,6 +63,7 @@ func (d *Desc) addIngester(id, hostname string, tokens []uint32) {
 		d.Tokens = append(d.Tokens, TokenDesc{
 			Token:    token,
 			Ingester: id,
+			State:    state,
 		})
 	}
 

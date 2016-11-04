@@ -18,6 +18,15 @@ const (
 	unhealthyLabel = "unhealthy"
 )
 
+// Operation can be Read or Write
+type Operation int
+
+// Values for Operation
+const (
+	Read Operation = iota
+	Write
+)
+
 type uint32s []uint32
 
 func (x uint32s) Len() int           { return len(x) }
@@ -96,8 +105,31 @@ func (r *Ring) loop() {
 	})
 }
 
-// Get returns up to n ingesters close to the hash in the circle.
-func (r *Ring) Get(key uint32, n int) ([]IngesterDesc, error) {
+// Get returns n (or more) ingesters which form the replicas for the given key.
+func (r *Ring) Get(key uint32, n int, op Operation) ([]IngesterDesc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.getInternal(key, n, op)
+}
+
+// BatchGet returns n (or more) ingesters which form the replicas for the given key.
+// The order of the result matches the order of the input.
+func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]IngesterDesc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	result := make([][]IngesterDesc, len(keys), len(keys))
+	for i, key := range keys {
+		ingesters, err := r.getInternal(key, n, op)
+		if err != nil {
+			return nil, err
+		}
+		result[i] = ingesters
+	}
+	return result, nil
+}
+
+func (r *Ring) getInternal(key uint32, n int, op Operation) ([]IngesterDesc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if len(r.ringDesc.Tokens) == 0 {
@@ -114,19 +146,26 @@ func (r *Ring) Get(key uint32, n int) ([]IngesterDesc, error) {
 		i %= len(r.ringDesc.Tokens)
 
 		// We want n *distinct* ingesters.
-		host := r.ringDesc.Tokens[i].Ingester
-		if _, ok := distinctHosts[host]; ok {
+		token := r.ringDesc.Tokens[i]
+		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
 		}
-		distinctHosts[host] = struct{}{}
+		distinctHosts[token.Ingester] = struct{}{}
 
-		ing := r.ringDesc.Ingesters[host]
-
-		// Out of the n distinct subsequent ingesters, skip those that have not heartbeated in a while.
-		if time.Now().Sub(ing.Timestamp) > r.heartbeatTimeout {
-			continue
+		// Ingesters that are Leaving do not count to the replication limit. We do
+		// not want to Write to them because they are about to go away, but we do
+		// want to write the extra replica somewhere.  So we increase the size of the
+		// set of replicas for the key.  This means we have to also increase the
+		// size of the replica set for read, but we can read from Leaving ingesters,
+		// so don't skip it in this case.
+		if token.State == Leaving {
+			n++
+			if op == Write {
+				continue
+			}
 		}
 
+		ing := r.ringDesc.Ingesters[token.Ingester]
 		ingesters = append(ingesters, ing)
 	}
 	return ingesters, nil

@@ -31,6 +31,11 @@ type IngesterRegistration struct {
 	quit     chan struct{}
 	wait     sync.WaitGroup
 
+	// We need to remember the token state just in case consul goes away and comes
+	// back empty.  Channel is used to tell the actor to update consul on state changes.
+	state       TokenState
+	stateChange chan TokenState
+
 	consulHeartbeats prometheus.Counter
 }
 
@@ -56,6 +61,10 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 		hostname: fmt.Sprintf("%s:%d", addr, listenPort),
 		quit:     make(chan struct{}),
 
+		// Only read/written on actor goroutine.
+		state:       Active,
+		stateChange: make(chan TokenState),
+
 		consulHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_consul_heartbeats_total",
 			Help: "The total number of heartbeats sent to consul.",
@@ -65,6 +74,13 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	r.wait.Add(1)
 	go r.loop()
 	return r, nil
+}
+
+// ChangeState changes the state of all tokens owned by this
+// ingester in the ring.
+func (r *IngesterRegistration) ChangeState(state TokenState) {
+	log.Info("Changing token state to: %v", state)
+	r.stateChange <- state
 }
 
 // Unregister removes ingester config from Consul; will block
@@ -108,7 +124,7 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 			tokens = append(tokens, newTokens...)
 		}
 
-		ringDesc.addIngester(r.id, r.hostname, tokens)
+		ringDesc.addIngester(r.id, r.hostname, tokens, r.state)
 		return ringDesc, true, nil
 	}
 	if err := r.consul.CAS(consulKey, descFactory, pickTokens); err != nil {
@@ -118,7 +134,7 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 }
 
 func (r *IngesterRegistration) heartbeat(tokens []uint32) {
-	heartbeat := func(in interface{}) (out interface{}, retry bool, err error) {
+	updateConsul := func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *Desc
 		if in == nil {
 			ringDesc = newDesc()
@@ -130,21 +146,29 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 		if !ok {
 			// consul must have restarted
 			log.Infof("Found empty ring, inserting tokens!")
-			ringDesc.addIngester(r.id, r.hostname, tokens)
+			ringDesc.addIngester(r.id, r.hostname, tokens, r.state)
 		} else {
 			ingesterDesc.Timestamp = time.Now()
 			ringDesc.Ingesters[r.id] = ingesterDesc
+			for i := range ringDesc.Tokens {
+				ringDesc.Tokens[i].State = r.state
+			}
 		}
 
 		return ringDesc, true, nil
 	}
+
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 	for {
 		select {
+		case r.state = <-r.stateChange:
+			if err := r.consul.CAS(consulKey, descFactory, updateConsul); err != nil {
+				log.Errorf("Failed to write to consul, sleeping: %v", err)
+			}
 		case <-ticker.C:
 			r.consulHeartbeats.Inc()
-			if err := r.consul.CAS(consulKey, descFactory, heartbeat); err != nil {
+			if err := r.consul.CAS(consulKey, descFactory, updateConsul); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}
 		case <-r.quit:

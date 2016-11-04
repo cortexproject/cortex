@@ -61,6 +61,7 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 		hostname: fmt.Sprintf("%s:%d", addr, listenPort),
 		quit:     make(chan struct{}),
 
+		// Only read/written on actor goroutine.
 		state:       Active,
 		stateChange: make(chan TokenState),
 
@@ -76,7 +77,7 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 }
 
 func (r *IngesterRegistration) ChangeState(state TokenState) {
-	log.Info("Leaving the ring")
+	log.Info("Changing token state to: %v", state)
 	r.stateChange <- state
 }
 

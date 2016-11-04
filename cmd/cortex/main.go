@@ -128,6 +128,7 @@ func main() {
 		prometheus.MustRegister(registration)
 		ing := setupIngester(chunkStore, cfg.ingesterConfig, cfg.logSuccess)
 
+		// Deferring a func to make ordering obvious
 		defer func() {
 			registration.ChangeState(ring.Leaving)
 			ing.Stop()

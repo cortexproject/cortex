@@ -192,7 +192,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 		}
 
 		// Skip those that have not heartbeated in a while. NB these are still
-		// included in the calculation of minSuccess, so too many failed ingesters
+		// included in the calculation of minSuccess, so if too many failed ingesters
 		// will cause the whole write to fail.
 		liveIngesters := make([]string, len(ingesters[i]))
 		for _, ingester := range ingesters[i] {
@@ -201,7 +201,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 			}
 		}
 		if len(liveIngesters) < sampleTrackers[i].minSuccess {
-			return fmt.Errorf("Wanted at least %d live ingesters to process write, had %d.",
+			return fmt.Errorf("wanted at least %d live ingesters to process write, had %d.",
 				sampleTrackers[i].minSuccess, len(liveIngesters))
 		}
 

@@ -93,7 +93,6 @@ func main() {
 	flag.IntVar(&cfg.numTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
 	flag.IntVar(&cfg.distributorConfig.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	flag.IntVar(&cfg.distributorConfig.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
-	flag.IntVar(&cfg.distributorConfig.MinWriteSuccesses, "distributor.min-write-successes", 2, "The minimum number of ingesters to which a write must succeed.")
 	flag.DurationVar(&cfg.distributorConfig.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.BoolVar(&cfg.logSuccess, "log.success", false, "Log successful requests")
 	flag.Parse()
@@ -125,7 +124,6 @@ func main() {
 			// network errors.
 			log.Fatalf("Could not register ingester: %v", err)
 		}
-		prometheus.MustRegister(registration)
 		ing := setupIngester(chunkStore, cfg.ingesterConfig, cfg.logSuccess)
 
 		// Deferring a func to make ordering obvious
@@ -134,6 +132,8 @@ func main() {
 			ing.Stop()
 			registration.Unregister()
 		}()
+
+		prometheus.MustRegister(registration)
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
 	}

@@ -63,7 +63,6 @@ type DistributorConfig struct {
 
 	ReplicationFactor int
 	MinReadSuccesses  int
-	MinWriteSuccesses int
 	HeartbeatTimeout  time.Duration
 }
 
@@ -71,9 +70,6 @@ type DistributorConfig struct {
 func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
 	if 0 > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
-	}
-	if cfg.MinWriteSuccesses > cfg.ReplicationFactor {
-		return nil, fmt.Errorf("MinWriteSuccesses > ReplicationFactor: %d > %d", cfg.MinWriteSuccesses, cfg.ReplicationFactor)
 	}
 	if cfg.MinReadSuccesses > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("MinReadSuccesses > ReplicationFactor: %d > %d", cfg.MinReadSuccesses, cfg.ReplicationFactor)
@@ -171,10 +167,7 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 
 	d.receivedSamples.Add(float64(len(samples)))
 
-	sampleTrackers := make([]sampleTracker, len(samples), len(samples))
-	samplesByIngester := map[string][]*sampleTracker{}
 	keys := make([]uint32, len(samples), len(samples))
-
 	for i, sample := range samples {
 		keys[i] = tokenForMetric(userID, sample.Metric)
 	}
@@ -184,9 +177,12 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 		return err
 	}
 
+	sampleTrackers := make([]sampleTracker, len(samples), len(samples))
+	samplesByIngester := map[string][]*sampleTracker{}
 	for i := range samples {
 		sampleTrackers[i] = sampleTracker{
-			sample:     samples[i],
+			sample: samples[i],
+			// We need a response from a quorum of ingesters, which is n/2 + 1.
 			minSuccess: (len(ingesters[i]) / 2) + 1,
 			succeeded:  0,
 		}
@@ -194,12 +190,15 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 		// Skip those that have not heartbeated in a while. NB these are still
 		// included in the calculation of minSuccess, so if too many failed ingesters
 		// will cause the whole write to fail.
-		liveIngesters := make([]string, len(ingesters[i]))
+		liveIngesters := make([]string, 0, len(ingesters[i]))
 		for _, ingester := range ingesters[i] {
 			if time.Now().Sub(ingester.Timestamp) <= d.cfg.HeartbeatTimeout {
 				liveIngesters = append(liveIngesters, ingester.Hostname)
 			}
 		}
+
+		// This is just a shortcut - if there are not minSuccess available ingesters,
+		// after filtering out dead ones, don't even both trying.
 		if len(liveIngesters) < sampleTrackers[i].minSuccess {
 			return fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
 				sampleTrackers[i].minSuccess, len(liveIngesters))

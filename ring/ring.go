@@ -152,8 +152,12 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]IngesterDesc, err
 		}
 		distinctHosts[token.Ingester] = struct{}{}
 
-		// If we encounter a Leaving token, for reads we should bump n,
-		// for writes we bump n and skip the token.
+		// Ingesters that are Leaving do not count to the replication limit. We do
+		// not want to Write to them because they are about to go away, but we do
+		// want to write the extra replica somewhere.  So we increase the size of the
+		// set of replicas for the key.  This means we have to also increase the
+		// size of the replica set for read, but we can read from Leaving ingesters,
+		// so don't skip it in this case.
 		if token.State == Leaving {
 			n++
 			if op == Write {

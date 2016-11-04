@@ -107,17 +107,18 @@ func main() {
 		log.Fatalf("Error initializing Consul client: %v", err)
 	}
 	consul = ring.PrefixClient(consul, cfg.consulPrefix)
+	r := ring.New(consul, cfg.distributorConfig.HeartbeatTimeout)
+	defer r.Stop()
 
 	switch cfg.mode {
 	case modeDistributor:
-		ring := ring.New(consul, cfg.distributorConfig.HeartbeatTimeout)
-		cfg.distributorConfig.Ring = ring
+		cfg.distributorConfig.Ring = r
 		cfg.distributorConfig.ClientFactory = func(address string) (*cortex.IngesterClient, error) {
 			return cortex.NewIngesterClient(address, cfg.remoteTimeout)
 		}
-		defer ring.Stop()
 		setupDistributor(cfg.distributorConfig, chunkStore, cfg.logSuccess)
 	case modeIngester:
+		cfg.ingesterConfig.Ring = r
 		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.numTokens)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
@@ -267,6 +268,7 @@ func setupIngester(
 	http.Handle("/query", instrument(logSuccess, cortex.QueryHandler(ingester)))
 	http.Handle("/label_values", instrument(logSuccess, cortex.LabelValuesHandler(ingester)))
 	http.Handle("/user_stats", instrument(logSuccess, cortex.IngesterUserStatsHandler(ingester.UserStats)))
+	http.Handle("/ready", instrument(logSuccess, cortex.IngesterReadinessHandler(ingester)))
 	return ingester
 }
 

@@ -260,6 +260,16 @@ func IngesterUserStatsHandler(statsFn func(context.Context) (*ingester.UserStats
 	})
 }
 
+func IngesterReadinessHandler(i *ingester.Ingester) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if i.Ready() {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
+}
+
 // DistributorUserStatsHandler handles user stats to the Distributor.
 func DistributorUserStatsHandler(statsFn func(context.Context) (*ingester.UserStats, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

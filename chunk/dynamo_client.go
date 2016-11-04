@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,8 +19,11 @@ const (
 
 type dynamoWatcher struct {
 	accountMaxCapacity *prometheus.GaugeVec
+	tableCapacity      *prometheus.GaugeVec
 
-	dynamoDB       *dynamodb.DynamoDB
+	dynamoDB  *dynamodb.DynamoDB
+	tableName string
+
 	updateInterval time.Duration
 	quit           chan struct{}
 	wait           sync.WaitGroup
@@ -43,15 +47,20 @@ func WatchDynamo(dynamoDBURL string, interval time.Duration) (Watcher, error) {
 	}
 	client := dynamodb.New(session.New(dynamoDBConfig))
 
-	// TODO: Report on table capacity.
-	// tableName := strings.TrimPrefix(dynamoURL.Path, "/")
+	tableName := strings.TrimPrefix(url.Path, "/")
 	w := &dynamoWatcher{
 		accountMaxCapacity: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "dynamo_account_max_capacity_units",
 			Help:      "Account-wide DynamoDB capacity, measured in DynamoDB capacity units.",
 		}, []string{"op"}),
+		tableCapacity: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "cortex",
+			Name:      "dynamo_table_capacity_units",
+			Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
+		}, []string{"op", "table"}),
 		dynamoDB:       client,
+		tableName:      tableName,
 		updateInterval: interval,
 		quit:           make(chan struct{}),
 	}
@@ -71,10 +80,15 @@ func (w *dynamoWatcher) updateLoop() {
 	for {
 		select {
 		case <-ticker.C:
+			log.Debugf("Updating limits from dynamo")
 			err := w.updateAccountLimits()
 			if err != nil {
 				// TODO: Back off if err is throttling related.
-				log.Warnf("Could not fetch limits from dynamo: %v", err)
+				log.Warnf("Could not fetch account limits from dynamo: %v", err)
+			}
+			err = w.updateTableLimits()
+			if err != nil {
+				log.Warnf("Could not fetch table limits from dynamo: %v", err)
 			}
 		case <-w.quit:
 			ticker.Stop()
@@ -92,12 +106,27 @@ func (w *dynamoWatcher) updateAccountLimits() error {
 	return nil
 }
 
+func (w *dynamoWatcher) updateTableLimits() error {
+	output, err := w.dynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
+		TableName: &w.tableName,
+	})
+	if err != nil {
+		return err
+	}
+	throughput := output.Table.ProvisionedThroughput
+	w.tableCapacity.WithLabelValues(readLabel, w.tableName).Set(float64(*throughput.ReadCapacityUnits))
+	w.tableCapacity.WithLabelValues(writeLabel, w.tableName).Set(float64(*throughput.WriteCapacityUnits))
+	return nil
+}
+
 // Describe implements prometheus.Collector.
 func (w *dynamoWatcher) Describe(ch chan<- *prometheus.Desc) {
 	w.accountMaxCapacity.Describe(ch)
+	w.tableCapacity.Describe(ch)
 }
 
 // Collect implements prometheus.Collector.
 func (w *dynamoWatcher) Collect(ch chan<- prometheus.Metric) {
 	w.accountMaxCapacity.Collect(ch)
+	w.tableCapacity.Collect(ch)
 }

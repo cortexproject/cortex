@@ -130,8 +130,6 @@ func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]IngesterDesc, e
 }
 
 func (r *Ring) getInternal(key uint32, n int, op Operation) ([]IngesterDesc, error) {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
 	if len(r.ringDesc.Tokens) == 0 {
 		return nil, ErrEmptyRing
 	}

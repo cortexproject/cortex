@@ -1,4 +1,4 @@
-FROM golang:1.7.3
+FROM golang:1.6.3
 RUN apt-get update && apt-get install -y python-requests python-yaml file jq && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN go clean -i net && \

@@ -260,6 +260,19 @@ func IngesterUserStatsHandler(statsFn func(context.Context) (*ingester.UserStats
 	})
 }
 
+// IngesterReadinessHandler returns 204 when the ingester is ready,
+// 500 otherwise.  Its use by kubernetes to indicate if the ingester
+// pool is ready to have ingesters added / removed.
+func IngesterReadinessHandler(i *ingester.Ingester) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if i.Ready() {
+			w.WriteHeader(http.StatusNoContent)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
+}
+
 // DistributorUserStatsHandler handles user stats to the Distributor.
 func DistributorUserStatsHandler(statsFn func(context.Context) (*ingester.UserStats, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

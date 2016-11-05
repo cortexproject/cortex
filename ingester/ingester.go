@@ -10,11 +10,12 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
-	cortex "github.com/weaveworks/cortex/chunk"
-	"github.com/weaveworks/cortex/user"
+	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
-	"github.com/prometheus/prometheus/storage/metric"
+	cortex "github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/ring"
+	"github.com/weaveworks/cortex/user"
 )
 
 const (
@@ -78,6 +79,7 @@ type Config struct {
 	FlushCheckPeriod time.Duration
 	MaxChunkAge      time.Duration
 	RateUpdatePeriod time.Duration
+	Ring             *ring.Ring
 }
 
 // UserStats models ingestion statistics for one user.
@@ -152,6 +154,12 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 
 	go i.loop()
 	return i, nil
+}
+
+// Ready is used to indicate to k8s when the ingesters are ready for
+// the addition / removal of another ingester.
+func (i *Ingester) Ready() bool {
+	return i.cfg.Ring.Ready()
 }
 
 func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {

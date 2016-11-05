@@ -184,6 +184,26 @@ func (r *Ring) GetAll() []IngesterDesc {
 	return ingesters
 }
 
+// Ready is true when all ingesters are active and healthy.
+func (r *Ring) Ready() bool {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	for _, ingester := range r.ringDesc.Ingesters {
+		if time.Now().Sub(ingester.Timestamp) > r.heartbeatTimeout {
+			return false
+		}
+	}
+
+	for _, token := range r.ringDesc.Tokens {
+		if token.State != Active {
+			return false
+		}
+	}
+
+	return len(r.ringDesc.Tokens) > 0
+}
+
 func (r *Ring) search(key uint32) int {
 	i := sort.Search(len(r.ringDesc.Tokens), func(x int) bool {
 		return r.ringDesc.Tokens[x].Token > key

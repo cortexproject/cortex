@@ -149,6 +149,7 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]IngesterDesc, err
 			continue
 		}
 		distinctHosts[token.Ingester] = struct{}{}
+		ingester := r.ringDesc.Ingesters[token.Ingester]
 
 		// Ingesters that are Leaving do not count to the replication limit. We do
 		// not want to Write to them because they are about to go away, but we do
@@ -156,15 +157,14 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]IngesterDesc, err
 		// set of replicas for the key.  This means we have to also increase the
 		// size of the replica set for read, but we can read from Leaving ingesters,
 		// so don't skip it in this case.
-		if token.State == Leaving {
+		if ingester.State == Leaving {
 			n++
 			if op == Write {
 				continue
 			}
 		}
 
-		ing := r.ringDesc.Ingesters[token.Ingester]
-		ingesters = append(ingesters, ing)
+		ingesters = append(ingesters, ingester)
 	}
 	return ingesters, nil
 }
@@ -192,11 +192,7 @@ func (r *Ring) Ready() bool {
 	for _, ingester := range r.ringDesc.Ingesters {
 		if time.Now().Sub(ingester.Timestamp) > r.heartbeatTimeout {
 			return false
-		}
-	}
-
-	for _, token := range r.ringDesc.Tokens {
-		if token.State != Active {
+		} else if ingester.State != Active {
 			return false
 		}
 	}

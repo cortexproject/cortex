@@ -7,12 +7,12 @@ import (
 	"github.com/prometheus/common/log"
 )
 
-// TokenState describes the state of a token
-type TokenState int
+// IngesterState describes the state of an ingester
+type IngesterState int
 
-// Values for TokenState
+// Values for IngesterState
 const (
-	Active TokenState = iota
+	Active IngesterState = iota
 	Leaving
 )
 
@@ -25,8 +25,9 @@ type Desc struct {
 
 // IngesterDesc describes a single ingester.
 type IngesterDesc struct {
-	Hostname  string    `json:"hostname"`
-	Timestamp time.Time `json:"timestamp"`
+	Hostname  string        `json:"hostname"`
+	Timestamp time.Time     `json:"timestamp"`
+	State     IngesterState `json:"state"`
 }
 
 // TokenDescs is a sortable list of TokenDescs
@@ -38,9 +39,8 @@ func (ts TokenDescs) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
 
 // TokenDesc describes an individual token in the ring.
 type TokenDesc struct {
-	Token    uint32     `json:"tokens"`
-	Ingester string     `json:"ingester"`
-	State    TokenState `json:"state"`
+	Token    uint32 `json:"tokens"`
+	Ingester string `json:"ingester"`
 }
 
 func descFactory() interface{} {
@@ -53,17 +53,17 @@ func newDesc() *Desc {
 	}
 }
 
-func (d *Desc) addIngester(id, hostname string, tokens []uint32, state TokenState) {
+func (d *Desc) addIngester(id, hostname string, tokens []uint32, state IngesterState) {
 	d.Ingesters[id] = IngesterDesc{
 		Hostname:  hostname,
 		Timestamp: time.Now(),
+		State:     state,
 	}
 
 	for _, token := range tokens {
 		d.Tokens = append(d.Tokens, TokenDesc{
 			Token:    token,
 			Ingester: id,
-			State:    state,
 		})
 	}
 

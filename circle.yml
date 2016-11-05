@@ -5,8 +5,14 @@ machine:
     PATH: /usr/local/go/bin:$HOME/bin:$PATH
 
 dependencies:
+  cache_directories:
+    - "~/docker"
   override:
     - go get -u github.com/weaveworks/build-tools/cmd/wcloud
+    - |
+        cd cortex-build && \
+        ../tools/rebuild-image weaveworks/cortex-build . build.sh Dockerfile && \
+        touch .uptodate
 
 test:
   override:

@@ -184,6 +184,7 @@ func (r *Ring) GetAll() []IngesterDesc {
 	return ingesters
 }
 
+// Ready is true when all ingesters are active and healthy.
 func (r *Ring) Ready() bool {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -195,7 +196,7 @@ func (r *Ring) Ready() bool {
 	}
 
 	for _, token := range r.ringDesc.Tokens {
-		if token.State == Leaving {
+		if token.State != Active {
 			return false
 		}
 	}

@@ -156,6 +156,8 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 	return i, nil
 }
 
+// Ready is used to indicate to k8s when the ingesters are ready for
+// the addition / removal of another ingester.
 func (i *Ingester) Ready() bool {
 	return i.cfg.Ring.Ready()
 }

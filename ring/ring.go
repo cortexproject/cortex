@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	healthyLabel   = "healthy"
-	unhealthyLabel = "unhealthy"
+	unhealthy = "Unhealthy"
 )
 
 // Operation can be Read or Write
@@ -242,27 +241,28 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		)
 	}
 
-	healthy, unhealthy := 0, 0
+	// Initialised to zero so we emit zero-metrics (instead of not emitting anything)
+	byState := map[string]int{
+		unhealthy:        0,
+		Active.String():  0,
+		Leaving.String(): 0,
+	}
 	for _, ingester := range r.ringDesc.Ingesters {
 		if time.Now().Sub(ingester.Timestamp) > r.heartbeatTimeout {
-			unhealthy++
+			byState[unhealthy]++
 		} else {
-			healthy++
+			byState[ingester.State.String()]++
 		}
 	}
 
-	ch <- prometheus.MustNewConstMetric(
-		r.numIngestersDesc,
-		prometheus.GaugeValue,
-		float64(healthy),
-		healthyLabel,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		r.numIngestersDesc,
-		prometheus.GaugeValue,
-		float64(unhealthy),
-		unhealthyLabel,
-	)
+	for state, count := range byState {
+		ch <- prometheus.MustNewConstMetric(
+			r.numIngestersDesc,
+			prometheus.GaugeValue,
+			float64(count),
+			state,
+		)
+	}
 	ch <- prometheus.MustNewConstMetric(
 		r.numTokensDesc,
 		prometheus.GaugeValue,

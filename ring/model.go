@@ -16,6 +16,16 @@ const (
 	Leaving
 )
 
+func (s IngesterState) String() string {
+	switch s {
+	case Active:
+		return "Active"
+	case Leaving:
+		return "Leaving"
+	}
+	return ""
+}
+
 // Desc is the serialised state in Consul representing
 // all ingesters (ie, the ring).
 type Desc struct {

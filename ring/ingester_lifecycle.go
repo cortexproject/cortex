@@ -33,8 +33,8 @@ type IngesterRegistration struct {
 
 	// We need to remember the token state just in case consul goes away and comes
 	// back empty.  Channel is used to tell the actor to update consul on state changes.
-	state       TokenState
-	stateChange chan TokenState
+	state       IngesterState
+	stateChange chan IngesterState
 
 	consulHeartbeats prometheus.Counter
 }
@@ -63,7 +63,7 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 
 		// Only read/written on actor goroutine.
 		state:       Active,
-		stateChange: make(chan TokenState),
+		stateChange: make(chan IngesterState),
 
 		consulHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_consul_heartbeats_total",
@@ -78,8 +78,8 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 
 // ChangeState changes the state of all tokens owned by this
 // ingester in the ring.
-func (r *IngesterRegistration) ChangeState(state TokenState) {
-	log.Info("Changing token state to: %v", state)
+func (r *IngesterRegistration) ChangeState(state IngesterState) {
+	log.Info("Changing ingester state to: %v", state)
 	r.stateChange <- state
 }
 
@@ -123,6 +123,7 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 			newTokens := generateTokens(r.numTokens-len(tokens), takenTokens)
 			tokens = append(tokens, newTokens...)
 		}
+		sort.Sort(sortableUint32(tokens))
 
 		ringDesc.addIngester(r.id, r.hostname, tokens, r.state)
 		return ringDesc, true, nil
@@ -149,10 +150,8 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 			ringDesc.addIngester(r.id, r.hostname, tokens, r.state)
 		} else {
 			ingesterDesc.Timestamp = time.Now()
+			ingesterDesc.State = r.state
 			ringDesc.Ingesters[r.id] = ingesterDesc
-			for i := range ringDesc.Tokens {
-				ringDesc.Tokens[i].State = r.state
-			}
 		}
 
 		return ringDesc, true, nil
@@ -214,7 +213,6 @@ func generateTokens(numTokens int, takenTokens []uint32) []uint32 {
 		tokens = append(tokens, candidate)
 		i++
 	}
-	sort.Sort(tokens)
 	return tokens
 }
 

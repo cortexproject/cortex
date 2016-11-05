@@ -140,11 +140,12 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]IngesterDesc, err
 	iterations := 0
 	for i := start; len(distinctHosts) < n && iterations < len(r.ringDesc.Tokens); i++ {
 		iterations++
+
 		// Wrap i around in the ring.
-		i %= len(r.ringDesc.Tokens)
+		j := i % len(r.ringDesc.Tokens)
 
 		// We want n *distinct* ingesters.
-		token := r.ringDesc.Tokens[i]
+		token := r.ringDesc.Tokens[j]
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
 		}

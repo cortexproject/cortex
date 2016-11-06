@@ -43,10 +43,12 @@ func (q *ChunkQuerier) LabelValuesForLabelName(ctx context.Context, ln model.Lab
 	return nil, nil
 }
 
+// Queryable is an adapter between Prometheus' Queryable and Querier.
 type Queryable struct {
 	Q local.Querier
 }
 
+// Querier implements Queryable
 func (q Queryable) Querier() (local.Querier, error) {
 	return q.Q, nil
 }
@@ -131,13 +133,15 @@ func (qm MergeQuerier) LabelValuesForLabelName(ctx context.Context, name model.L
 	return values, nil
 }
 
+// Close is a noop
 func (qm MergeQuerier) Close() error {
 	return nil
 }
 
+// DummyStorage creates a local.Storage compatible struct from a
+// Querable, such that it can be used with web.NewAPI.
 // TODO(juliusv): Remove all the dummy local.Storage methods below
 // once the upstream web API expects a leaner interface.
-
 type DummyStorage struct {
 	Queryable
 }

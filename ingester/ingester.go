@@ -68,6 +68,7 @@ type Ingester struct {
 	ingestedSamples    prometheus.Counter
 	discardedSamples   *prometheus.CounterVec
 	chunkUtilization   prometheus.Histogram
+	chunkLength        prometheus.Histogram
 	chunkStoreFailures prometheus.Counter
 	queries            prometheus.Counter
 	queriedSamples     prometheus.Counter
@@ -133,6 +134,11 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 			Name:    "cortex_ingester_chunk_utilization",
 			Help:    "Distribution of stored chunk utilization.",
 			Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9},
+		}),
+		chunkLength: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_chunk_length",
+			Help:    "Distribution of stored chunk lengths.",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 10),
 		}),
 		memoryChunks: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_memory_chunks",
@@ -523,6 +529,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 		}
 
 		i.chunkUtilization.Observe(chunk.C.Utilization())
+		i.chunkLength.Observe(chunk.C.Len())
 
 		wireChunks = append(wireChunks, cortex.Chunk{
 			ID:      fmt.Sprintf("%d:%d:%d", fp, chunk.ChunkFirstTime, chunk.ChunkLastTime),

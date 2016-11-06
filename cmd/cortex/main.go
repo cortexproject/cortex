@@ -20,6 +20,7 @@ import (
 
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/ingester"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/ring"
@@ -70,7 +71,7 @@ type cfg struct {
 	logSuccess           bool
 
 	ingesterConfig    ingester.Config
-	distributorConfig cortex.DistributorConfig
+	distributorConfig distributor.Config
 }
 
 func main() {
@@ -113,8 +114,8 @@ func main() {
 	switch cfg.mode {
 	case modeDistributor:
 		cfg.distributorConfig.Ring = r
-		cfg.distributorConfig.ClientFactory = func(address string) (*cortex.IngesterClient, error) {
-			return cortex.NewIngesterClient(address, cfg.remoteTimeout)
+		cfg.distributorConfig.ClientFactory = func(address string) (*distributor.IngesterClient, error) {
+			return distributor.NewIngesterClient(address, cfg.remoteTimeout)
 		}
 		setupDistributor(cfg.distributorConfig, chunkStore, cfg.logSuccess)
 	case modeIngester:
@@ -178,26 +179,26 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 }
 
 func setupDistributor(
-	cfg cortex.DistributorConfig,
+	cfg distributor.Config,
 	chunkStore chunk.Store,
 	logSuccess bool,
 ) {
-	distributor, err := cortex.NewDistributor(cfg)
+	dist, err := distributor.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	prometheus.MustRegister(distributor)
+	prometheus.MustRegister(dist)
 
 	prefix := "/api/prom"
-	http.Handle(prefix+"/push", instrument(logSuccess, cortex.AppenderHandler(distributor, handleDistributorError)))
+	http.Handle(prefix+"/push", instrument(logSuccess, cortex.AppenderHandler(dist, handleDistributorError)))
 
 	// TODO: Move querier to separate binary.
-	setupQuerier(distributor, chunkStore, prefix, logSuccess)
+	setupQuerier(dist, chunkStore, prefix, logSuccess)
 }
 
 func handleDistributorError(w http.ResponseWriter, err error) {
 	switch e := err.(type) {
-	case cortex.IngesterError:
+	case distributor.IngesterError:
 		switch {
 		case 400 <= e.StatusCode && e.StatusCode < 500:
 			log.Warnf("append err: %v", err)
@@ -215,7 +216,7 @@ func handleDistributorError(w http.ResponseWriter, err error) {
 //              |
 //              `----------> ChunkQuerier -> DynamoDB/S3
 func setupQuerier(
-	distributor *cortex.Distributor,
+	distributor *distributor.Distributor,
 	chunkStore chunk.Store,
 	prefix string,
 	logSuccess bool,

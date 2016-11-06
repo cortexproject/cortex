@@ -43,6 +43,14 @@ func (q *ChunkQuerier) LabelValuesForLabelName(ctx context.Context, ln model.Lab
 	return nil, nil
 }
 
+type Queryable struct {
+	Q local.Querier
+}
+
+func (q Queryable) Querier() (local.Querier, error) {
+	return q.Q, nil
+}
+
 // A MergeQuerier is a promql.Querier that merges the results of multiple
 // cortex.Queriers for the same query.
 type MergeQuerier struct {
@@ -123,43 +131,51 @@ func (qm MergeQuerier) LabelValuesForLabelName(ctx context.Context, name model.L
 	return values, nil
 }
 
+func (qm MergeQuerier) Close() error {
+	return nil
+}
+
 // TODO(juliusv): Remove all the dummy local.Storage methods below
 // once the upstream web API expects a leaner interface.
 
+type DummyStorage struct {
+	Queryable
+}
+
 // Append implements local.Storage. Needed to satisfy interface
 // requirements for usage with the Prometheus web API.
-func (qm MergeQuerier) Append(*model.Sample) error {
+func (DummyStorage) Append(*model.Sample) error {
 	panic("MergeQuerier.Append() should never be called")
 }
 
 // NeedsThrottling implements local.Storage. Needed to satisfy
 // interface requirements for usage with the Prometheus web API.
-func (qm MergeQuerier) NeedsThrottling() bool {
+func (DummyStorage) NeedsThrottling() bool {
 	panic("MergeQuerier.NeedsThrottling() should never be called")
 }
 
 // DropMetricsForLabelMatchers implements local.Storage. Needed
 // to satisfy interface requirements for usage with the Prometheus
 // web API.
-func (qm MergeQuerier) DropMetricsForLabelMatchers(context.Context, ...*metric.LabelMatcher) (int, error) {
+func (DummyStorage) DropMetricsForLabelMatchers(context.Context, ...*metric.LabelMatcher) (int, error) {
 	return 0, fmt.Errorf("dropping metrics is not supported")
 }
 
 // Start implements local.Storage. Needed to satisfy interface
 // requirements for usage with the Prometheus web API.
-func (qm MergeQuerier) Start() error {
+func (DummyStorage) Start() error {
 	panic("MergeQuerier.Start() should never be called")
 }
 
 // Stop implements local.Storage. Needed to satisfy interface
 // requirements for usage with the Prometheus web API.
-func (qm MergeQuerier) Stop() error {
+func (DummyStorage) Stop() error {
 	panic("MergeQuerier.Stop() should never be called")
 }
 
 // WaitForIndexing implements local.Storage. Needed to satisfy
 // interface requirements for usage with the Prometheus
 // web API.
-func (qm MergeQuerier) WaitForIndexing() {
+func (DummyStorage) WaitForIndexing() {
 	panic("MergeQuerier.WaitForIndexing() should never be called")
 }

@@ -220,17 +220,20 @@ func setupQuerier(
 	prefix string,
 	logSuccess bool,
 ) {
-	querier := querier.MergeQuerier{
-		Queriers: []querier.Querier{
-			distributor,
-			&querier.ChunkQuerier{
-				Store: chunkStore,
+	queryable := querier.Queryable{
+		Q: querier.MergeQuerier{
+			Queriers: []querier.Querier{
+				distributor,
+				&querier.ChunkQuerier{
+					Store: chunkStore,
+				},
 			},
 		},
 	}
-	engine := promql.NewEngine(querier, nil)
 
-	api := v1.NewAPI(engine, querier)
+	engine := promql.NewEngine(queryable, nil)
+
+	api := v1.NewAPI(engine, querier.DummyStorage{queryable})
 	router := route.New(func(r *http.Request) (context.Context, error) {
 		userID := r.Header.Get(userIDHeaderName)
 		if r.Method != "OPTIONS" && userID == "" {

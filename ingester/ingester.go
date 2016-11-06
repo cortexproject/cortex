@@ -565,6 +565,8 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- i.ingestedSamples.Desc()
 	i.discardedSamples.Describe(ch)
 	ch <- i.chunkUtilization.Desc()
+	ch <- i.chunkLength.Desc()
+	ch <- i.chunkAge.Desc()
 	ch <- i.chunkStoreFailures.Desc()
 	ch <- i.queries.Desc()
 	ch <- i.queriedSamples.Desc()
@@ -594,6 +596,8 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 	ch <- i.ingestedSamples
 	i.discardedSamples.Collect(ch)
 	ch <- i.chunkUtilization
+	ch <- i.chunkLength
+	ch <- i.chunkAge
 	ch <- i.chunkStoreFailures
 	ch <- i.queries
 	ch <- i.queriedSamples

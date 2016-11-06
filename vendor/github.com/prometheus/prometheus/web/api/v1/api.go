@@ -182,6 +182,11 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 	if err != nil {
 		return nil, &apiError{errorBadData, err}
 	}
+	if end.Before(start) {
+		err := errors.New("end timestamp must not be before start time")
+		return nil, &apiError{errorBadData, err}
+	}
+
 	step, err := parseDuration(r.FormValue("step"))
 	if err != nil {
 		return nil, &apiError{errorBadData, err}
@@ -226,7 +231,13 @@ func (api *API) labelValues(r *http.Request) (interface{}, *apiError) {
 	if !model.LabelNameRE.MatchString(name) {
 		return nil, &apiError{errorBadData, fmt.Errorf("invalid label name: %q", name)}
 	}
-	vals, err := api.Storage.LabelValuesForLabelName(api.context(r), model.LabelName(name))
+	q, err := api.Storage.Querier()
+	if err != nil {
+		return nil, &apiError{errorExec, err}
+	}
+	defer q.Close()
+
+	vals, err := q.LabelValuesForLabelName(api.context(r), model.LabelName(name))
 	if err != nil {
 		return nil, &apiError{errorExec, err}
 	}
@@ -272,7 +283,13 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 		matcherSets = append(matcherSets, matchers)
 	}
 
-	res, err := api.Storage.MetricsForLabelMatchers(api.context(r), start, end, matcherSets...)
+	q, err := api.Storage.Querier()
+	if err != nil {
+		return nil, &apiError{errorExec, err}
+	}
+	defer q.Close()
+
+	res, err := q.MetricsForLabelMatchers(api.context(r), start, end, matcherSets...)
 	if err != nil {
 		return nil, &apiError{errorExec, err}
 	}

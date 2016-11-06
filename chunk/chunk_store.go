@@ -57,6 +57,12 @@ var (
 		Name:      "dynamo_consumed_capacity_total",
 		Help:      "The capacity units consumed by operation.",
 	}, []string{"operation"})
+	indexEntriesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_index_entries_per_chunk",
+		Help:      "Number of entries written to dynamodb per chunk.",
+		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
+	})
 	droppedMatches = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "dropped_matches_total",
@@ -74,6 +80,7 @@ func init() {
 	prometheus.MustRegister(dynamoRequestDuration)
 	prometheus.MustRegister(dynamoConsumedCapacity)
 	prometheus.MustRegister(dynamoRequestPages)
+	prometheus.MustRegister(indexEntriesPerChunk)
 	prometheus.MustRegister(droppedMatches)
 	prometheus.MustRegister(s3RequestDuration)
 }
@@ -346,6 +353,7 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 			return nil, err
 		}
 
+		entries := 0
 		for _, hour := range bigBuckets(chunk.From, chunk.Through) {
 			hashValue := hashValue(userID, hour, metricName)
 			for label, value := range chunk.Metric {
@@ -353,6 +361,7 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 					continue
 				}
 
+				entries++
 				rangeValue := rangeValue(label, value, chunk.ID)
 				writeReqs = append(writeReqs, &dynamodb.WriteRequest{
 					PutRequest: &dynamodb.PutRequest{
@@ -365,6 +374,7 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 				})
 			}
 		}
+		indexEntriesPerChunk.Observe(float64(entries))
 	}
 	return writeReqs, nil
 }

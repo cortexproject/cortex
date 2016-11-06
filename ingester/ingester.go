@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"container/heap"
 	"fmt"
 	"sort"
 	"sync"
@@ -54,16 +55,20 @@ var (
 // Ingester deals with "in flight" chunks.
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
-	cfg                Config
-	chunkStore         cortex.Store
-	stopLock           sync.RWMutex
-	stopped            bool
-	quit               chan struct{}
-	done               chan struct{}
-	flushSeriesLimiter cortex.Semaphore
+	cfg        Config
+	chunkStore cortex.Store
+	stopLock   sync.RWMutex
+	stopped    bool
+	quit       chan struct{}
+	done       chan struct{}
 
 	userStateLock sync.Mutex
 	userState     map[string]*userState
+
+	flushQueueLock sync.Mutex
+	flushQueueCond *sync.Cond
+	flushQueueHit  map[string]struct{}
+	flushQueue     flushQueue
 
 	ingestedSamples    prometheus.Counter
 	discardedSamples   *prometheus.CounterVec
@@ -99,6 +104,37 @@ type userState struct {
 	ingestedSamples *ewmaRate
 }
 
+type flushOp struct {
+	from      model.Time
+	userID    string
+	fp        model.Fingerprint
+	immediate bool
+}
+
+func (o flushOp) key() string {
+	return fmt.Sprintf("%s-%d-%b", o.userID, o.fp, o.immediate)
+}
+
+type flushQueue []*flushOp
+
+func (q flushQueue) Len() int           { return len(q) }
+func (q flushQueue) Less(i, j int) bool { return q[i].from.Before(q[j].from) }
+func (q flushQueue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
+
+// Push and Pop use pointer receivers because they modify the slice's length,
+// not just its contents.
+func (q *flushQueue) Push(x interface{}) {
+	*q = append(*q, x.(*flushOp))
+}
+
+func (q *flushQueue) Pop() interface{} {
+	old := *q
+	n := len(old)
+	x := old[n-1]
+	*q = old[0 : n-1]
+	return x
+}
+
 // New constructs a new Ingester.
 func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
@@ -112,13 +148,14 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 	}
 
 	i := &Ingester{
-		cfg:                cfg,
-		chunkStore:         chunkStore,
-		quit:               make(chan struct{}),
-		done:               make(chan struct{}),
-		flushSeriesLimiter: cortex.NewSemaphore(maxConcurrentFlushSeries),
+		cfg:        cfg,
+		chunkStore: chunkStore,
+		quit:       make(chan struct{}),
+		done:       make(chan struct{}),
 
 		userState: map[string]*userState{},
+
+		flushQueueHit: map[string]struct{}{},
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_total",
@@ -163,6 +200,8 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 			Help: "The total number of samples returned from queries.",
 		}),
 	}
+	i.flushQueueCond = sync.NewCond(&i.flushQueueLock)
+	heap.Init(&i.flushQueue)
 
 	go i.loop()
 	return i, nil
@@ -440,15 +479,9 @@ func (i *Ingester) flushAllUsers(immediate bool) {
 	}
 	i.userStateLock.Unlock()
 
-	var wg sync.WaitGroup
 	for _, userID := range userIDs {
-		wg.Add(1)
-		go func(userID string) {
-			i.flushUser(userID, immediate)
-			wg.Done()
-		}(userID)
+		i.flushUser(userID, immediate)
 	}
-	wg.Wait()
 }
 
 func (i *Ingester) flushUser(userID string, immediate bool) {
@@ -464,8 +497,9 @@ func (i *Ingester) flushUser(userID string, immediate bool) {
 		return
 	}
 
-	ctx := user.WithID(context.Background(), userID)
-	i.flushAllSeries(ctx, userState, immediate)
+	for pair := range userState.fpToSeries.iter() {
+		i.flushSeries(userState, pair.fp, pair.series, immediate)
+	}
 
 	// TODO: this is probably slow, and could be done in a better way.
 	i.userStateLock.Lock()
@@ -475,55 +509,103 @@ func (i *Ingester) flushUser(userID string, immediate bool) {
 	i.userStateLock.Unlock()
 }
 
-func (i *Ingester) flushAllSeries(ctx context.Context, state *userState, immediate bool) {
-	var wg sync.WaitGroup
-	for pair := range state.fpToSeries.iter() {
-		wg.Add(1)
-		i.flushSeriesLimiter.Acquire()
-		go func(pair fingerprintSeriesPair) {
-			if err := i.flushSeries(ctx, state, pair.fp, pair.series, immediate); err != nil {
-				log.Errorf("Failed to flush chunks for series: %v", err)
-			}
-			i.flushSeriesLimiter.Release()
-			wg.Done()
-		}(pair)
-	}
-	wg.Wait()
-}
-
-func (i *Ingester) flushSeries(ctx context.Context, u *userState, fp model.Fingerprint, series *memorySeries, immediate bool) error {
+func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memorySeries, immediate bool) {
 	u.fpLocker.Lock(fp)
 
 	// Decide what chunks to flush
-	if immediate || time.Now().Sub(series.head().FirstTime().Time()) > i.cfg.MaxChunkAge {
+	firstTime := series.head().FirstTime()
+	if immediate || model.Now().Sub(series.head().FirstTime()) > i.cfg.MaxChunkAge {
 		series.headChunkClosed = true
 		series.head().MaybePopulateLastTime()
 	}
-	chunks := series.chunkDescs
+	chunks := len(series.chunkDescs)
 	if !series.headChunkClosed {
-		chunks = chunks[:len(chunks)-1]
+		chunks--
 	}
 	u.fpLocker.Unlock(fp)
-	if len(chunks) == 0 {
-		return nil
+
+	if chunks == 0 {
+		return
 	}
 
-	// flush the chunks without locking the series
-	if err := i.flushChunks(ctx, fp, series.metric, chunks); err != nil {
-		i.chunkStoreFailures.Add(float64(len(chunks)))
-		return err
+	i.enqueueFlush(firstTime, u.userID, fp, immediate)
+}
+
+func (i *Ingester) enqueueFlush(from model.Time, userID string, fp model.Fingerprint, immediate bool) {
+	i.flushQueueLock.Lock()
+	defer i.flushQueueLock.Unlock()
+
+	op := flushOp{
+		from:      from,
+		userID:    userID,
+		fp:        fp,
+		immediate: immediate,
 	}
 
-	// now remove the chunks
-	u.fpLocker.Lock(fp)
-	series.chunkDescs = series.chunkDescs[len(chunks):]
-	i.memoryChunks.Sub(float64(len(chunks)))
-	if len(series.chunkDescs) == 0 {
-		u.fpToSeries.del(fp)
-		u.index.delete(series.metric, fp)
+	_, enqueued := i.flushQueueHit[op.key()]
+	if enqueued {
+		return
 	}
-	u.fpLocker.Unlock(fp)
-	return nil
+
+	heap.Push(&i.flushQueue, &op)
+	i.flushQueueCond.Broadcast()
+}
+
+func (i *Ingester) dequeueFlush() *flushOp {
+	i.flushQueueLock.Lock()
+	defer i.flushQueueLock.Unlock()
+
+	for len(i.flushQueue) == 0 {
+		i.flushQueueCond.Wait()
+	}
+
+	op := heap.Pop(&i.flushQueue).(*flushOp)
+	delete(i.flushQueueHit, op.key())
+	return op
+}
+
+func (i *Ingester) flushLoop() {
+	for {
+		op := i.dequeueFlush()
+
+		// get the user
+		i.userStateLock.Lock()
+		userState, ok := i.userState[op.userID]
+		i.userStateLock.Unlock()
+		if !ok {
+			continue
+		}
+		ctx := user.WithID(context.Background(), op.userID)
+
+		// Decide what chunks to flush
+		series, ok := userState.fpToSeries.get(op.fp)
+		if !ok {
+			continue
+		}
+
+		userState.fpLocker.Lock(op.fp)
+		chunks := series.chunkDescs
+		if !series.headChunkClosed {
+			chunks = chunks[1:]
+		}
+		userState.fpLocker.Unlock(op.fp)
+
+		// flush the chunks without locking the series
+		if err := i.flushChunks(ctx, op.fp, series.metric, chunks); err != nil {
+			i.chunkStoreFailures.Add(float64(len(chunks)))
+			continue
+		}
+
+		// now remove the chunks
+		userState.fpLocker.Lock(op.fp)
+		series.chunkDescs = series.chunkDescs[len(chunks):]
+		i.memoryChunks.Sub(float64(len(chunks)))
+		if len(series.chunkDescs) == 0 {
+			userState.fpToSeries.del(op.fp)
+			userState.index.delete(series.metric, op.fp)
+		}
+		userState.fpLocker.Unlock(op.fp)
+	}
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunks []*prom_chunk.Desc) error {

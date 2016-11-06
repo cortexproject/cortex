@@ -303,6 +303,10 @@ func (c deltaEncodedChunk) len() int {
 	return (len(c) - deltaHeaderBytes) / c.sampleSize()
 }
 
+func (c deltaEncodedChunk) Len() float64 {
+	return float64(c.len())
+}
+
 // deltaEncodedIndexAccessor implements indexAccessor.
 type deltaEncodedIndexAccessor struct {
 	c              deltaEncodedChunk

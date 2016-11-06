@@ -328,6 +328,19 @@ func (c varbitChunk) Utilization() float64 {
 	return math.Min(float64(c.nextSampleOffset()/8+15)/float64(cap(c)), 1)
 }
 
+// Len implements chunk.
+func (c varbitChunk) Len() float64 {
+	offset := c.nextSampleOffset()
+	switch {
+	case offset == varbitFirstSampleBitOffset:
+		return 0
+	case offset == varbitSecondSampleBitOffset:
+		return 1
+	}
+
+	return float64(int(offset)-varbitFirstValueDeltaOffset) / float64(varbitWorstCaseBitsPerSample[c.valueEncoding()])
+}
+
 // FirstTime implements chunk.
 func (c varbitChunk) FirstTime() model.Time {
 	return model.Time(

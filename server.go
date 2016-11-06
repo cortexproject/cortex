@@ -33,8 +33,8 @@ import (
 	"github.com/weaveworks/cortex/user"
 )
 
-// legacy from scope as a service.
-const userIDHeaderName = "X-Scope-OrgID"
+// UserIDHeaderName is a legacy from scope as a service.
+const UserIDHeaderName = "X-Scope-OrgID"
 
 // SampleAppender is the interface to append samples to both, local and remote
 // storage. All methods are goroutine-safe.
@@ -43,7 +43,7 @@ type SampleAppender interface {
 }
 
 func parseRequest(w http.ResponseWriter, r *http.Request, req proto.Message) (ctx context.Context, abort bool) {
-	userID := r.Header.Get(userIDHeaderName)
+	userID := r.Header.Get(UserIDHeaderName)
 	if userID == "" {
 		http.Error(w, "", http.StatusUnauthorized)
 		return nil, true
@@ -120,7 +120,7 @@ func getSamples(req *remote.WriteRequest) []*model.Sample {
 // AppenderHandler returns a http.Handler that accepts proto encoded samples.
 func AppenderHandler(appender SampleAppender, errorHandler func(http.ResponseWriter, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID := r.Header.Get(userIDHeaderName)
+		userID := r.Header.Get(UserIDHeaderName)
 		if userID == "" {
 			http.Error(w, "", http.StatusUnauthorized)
 			return

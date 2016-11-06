@@ -1,4 +1,4 @@
-package cortex
+package distributor
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ var (
 // Distributor is a storage.SampleAppender and a cortex.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	cfg        DistributorConfig
+	cfg        Config
 	clientsMtx sync.RWMutex
 	clients    map[string]*IngesterClient
 
@@ -55,9 +55,9 @@ type ReadRing interface {
 // IngesterClientFactory creates ingester clients.
 type IngesterClientFactory func(string) (*IngesterClient, error)
 
-// DistributorConfig contains the configuration require to
+// Config contains the configuration require to
 // create a Distributor
-type DistributorConfig struct {
+type Config struct {
 	Ring          ReadRing
 	ClientFactory IngesterClientFactory
 
@@ -66,8 +66,8 @@ type DistributorConfig struct {
 	HeartbeatTimeout  time.Duration
 }
 
-// NewDistributor constructs a new Distributor
-func NewDistributor(cfg DistributorConfig) (*Distributor, error) {
+// New constructs a new Distributor
+func New(cfg Config) (*Distributor, error) {
 	if 0 > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}

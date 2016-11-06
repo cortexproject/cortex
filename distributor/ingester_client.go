@@ -1,17 +1,4 @@
-// Copyright 2016 The Prometheus Authors
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package cortex
+package distributor
 
 import (
 	"bytes"
@@ -28,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
 
+	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/ingester"
 	"github.com/weaveworks/cortex/user"
 )
@@ -100,32 +88,32 @@ func (c *IngesterClient) Append(ctx context.Context, samples []*model.Sample) er
 
 // Query implements Querier.
 func (c *IngesterClient) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
-	req := &ReadRequest{
+	req := &cortex.ReadRequest{
 		StartTimestampMs: int64(from),
 		EndTimestampMs:   int64(to),
 	}
 	for _, matcher := range matchers {
-		var mType MatchType
+		var mType cortex.MatchType
 		switch matcher.Type {
 		case metric.Equal:
-			mType = MatchType_EQUAL
+			mType = cortex.MatchType_EQUAL
 		case metric.NotEqual:
-			mType = MatchType_NOT_EQUAL
+			mType = cortex.MatchType_NOT_EQUAL
 		case metric.RegexMatch:
-			mType = MatchType_REGEX_MATCH
+			mType = cortex.MatchType_REGEX_MATCH
 		case metric.RegexNoMatch:
-			mType = MatchType_REGEX_NO_MATCH
+			mType = cortex.MatchType_REGEX_NO_MATCH
 		default:
 			panic("invalid matcher type")
 		}
-		req.Matchers = append(req.Matchers, &LabelMatcher{
+		req.Matchers = append(req.Matchers, &cortex.LabelMatcher{
 			Type:  mType,
 			Name:  string(matcher.Name),
 			Value: string(matcher.Value),
 		})
 	}
 
-	resp := &ReadResponse{}
+	resp := &cortex.ReadResponse{}
 	err := c.doRequest(ctx, "/query", req, resp, false)
 	if err != nil {
 		return nil, err
@@ -154,10 +142,10 @@ func (c *IngesterClient) Query(ctx context.Context, from, to model.Time, matcher
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (c *IngesterClient) LabelValuesForLabelName(ctx context.Context, ln model.LabelName) (model.LabelValues, error) {
-	req := &LabelValuesRequest{
+	req := &cortex.LabelValuesRequest{
 		LabelName: string(ln),
 	}
-	resp := &LabelValuesResponse{}
+	resp := &cortex.LabelValuesResponse{}
 	err := c.doRequest(ctx, "/label_values", req, resp, false)
 	if err != nil {
 		return nil, err
@@ -172,7 +160,7 @@ func (c *IngesterClient) LabelValuesForLabelName(ctx context.Context, ln model.L
 
 // UserStats returns stats for the current user.
 func (c *IngesterClient) UserStats(ctx context.Context) (*ingester.UserStats, error) {
-	resp := &UserStatsResponse{}
+	resp := &cortex.UserStatsResponse{}
 	err := c.doRequest(ctx, "/user_stats", nil, resp, false)
 	if err != nil {
 		return nil, err
@@ -210,7 +198,7 @@ func (c *IngesterClient) doRequest(ctx context.Context, endpoint string, req pro
 	if err != nil {
 		return fmt.Errorf("unable to create request: %v", err)
 	}
-	httpReq.Header.Add(userIDHeaderName, userID)
+	httpReq.Header.Add(cortex.UserIDHeaderName, userID)
 	// TODO: This isn't actually the correct Content-type.
 	httpReq.Header.Set("Content-Type", string(expfmt.FmtProtoDelim))
 	httpResp, err := c.client.Do(httpReq)

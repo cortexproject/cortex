@@ -276,6 +276,9 @@ type Chunk interface {
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
 	Utilization() float64
+
+	// Len estimates the number of samples in the chunk.  Must run in constant time.
+	Len() float64
 }
 
 // Iterator enables efficient access to the content of a chunk. It is

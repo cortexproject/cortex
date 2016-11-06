@@ -55,7 +55,7 @@ type ReadRing interface {
 // IngesterClientFactory creates ingester clients.
 type IngesterClientFactory func(string) (*IngesterClient, error)
 
-// DistributorConfig contains the configuration require to
+// Config contains the configuration require to
 // create a Distributor
 type Config struct {
 	Ring          ReadRing

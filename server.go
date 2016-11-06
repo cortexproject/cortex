@@ -33,7 +33,7 @@ import (
 	"github.com/weaveworks/cortex/user"
 )
 
-// legacy from scope as a service.
+// UserIDHeaderName is a legacy from scope as a service.
 const UserIDHeaderName = "X-Scope-OrgID"
 
 // SampleAppender is the interface to append samples to both, local and remote

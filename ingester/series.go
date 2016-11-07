@@ -147,6 +147,11 @@ func (s *memorySeries) add(v model.SamplePair) (int, error) {
 	return len(chunks) - 1, nil
 }
 
+func (s *memorySeries) closeHead() {
+	s.headChunkClosed = true
+	s.head().MaybePopulateLastTime()
+}
+
 // head returns a pointer to the head chunk descriptor. The caller must have
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.

@@ -510,7 +510,7 @@ func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memor
 
 	// Decide what chunks to flush
 	firstTime := series.head().FirstTime()
-	if immediate || model.Now().Sub(series.head().FirstTime()) > i.cfg.MaxChunkAge {
+	if immediate || model.Now().Sub(firstTime) > i.cfg.MaxChunkAge {
 		series.headChunkClosed = true
 		series.head().MaybePopulateLastTime()
 	}
@@ -559,9 +559,13 @@ func (i *Ingester) flushLoop(j int) {
 		userState.fpLocker.Lock(op.fp)
 		chunks := series.chunkDescs
 		if !series.headChunkClosed {
-			chunks = chunks[1:]
+			chunks = chunks[:len(chunks)-1]
 		}
 		userState.fpLocker.Unlock(op.fp)
+
+		if len(chunks) == 0 {
+			continue
+		}
 
 		// flush the chunks without locking the series
 		if err := i.flushChunks(ctx, op.fp, series.metric, chunks); err != nil {

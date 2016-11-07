@@ -19,9 +19,7 @@ import (
 )
 
 const (
-	ingesterSubsystem        = "ingester"
-	maxConcurrentFlushSeries = 100
-
+	ingesterSubsystem  = "ingester"
 	discardReasonLabel = "reason"
 
 	// Reasons to discard samples.
@@ -69,7 +67,9 @@ type Ingester struct {
 	userStateLock sync.Mutex
 	userState     map[string]*userState
 
-	flushQueue *priorityQueue
+	// One queue per flush thread.  Fingerprint is used to
+	// pick a queue.
+	flushQueues []*priorityQueue
 
 	ingestedSamples    prometheus.Counter
 	discardedSamples   *prometheus.CounterVec
@@ -141,9 +141,8 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 		chunkStore: chunkStore,
 		quit:       make(chan struct{}),
 
-		userState: map[string]*userState{},
-
-		flushQueue: newPriorityQueue(),
+		userState:   map[string]*userState{},
+		flushQueues: make([]*priorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_total",
@@ -191,7 +190,8 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 
 	i.done.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
-		go i.flushLoop()
+		i.flushQueues[j] = newPriorityQueue()
+		go i.flushLoop(j)
 	}
 
 	i.done.Add(1)
@@ -444,7 +444,9 @@ func (i *Ingester) loop() {
 
 		// We close flush queue here to ensure the flushLoops pick
 		// up all the flushes triggered by the last run
-		i.flushQueue.Close()
+		for _, flushQueue := range i.flushQueues {
+			flushQueue.Close()
+		}
 
 		log.Infof("Ingester.loop() exited gracefully")
 		i.done.Done()
@@ -522,17 +524,18 @@ func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memor
 		return
 	}
 
-	i.flushQueue.Enqueue(&flushOp{firstTime, u.userID, fp, immediate})
+	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
+	i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, u.userID, fp, immediate})
 }
 
-func (i *Ingester) flushLoop() {
+func (i *Ingester) flushLoop(j int) {
 	defer func() {
 		log.Info("Ingester.flushLoop() exited")
 		i.done.Done()
 	}()
 
 	for {
-		o := i.flushQueue.Dequeue()
+		o := i.flushQueues[j].Dequeue()
 		if o == nil {
 			return
 		}
@@ -647,10 +650,15 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 		prometheus.GaugeValue,
 		float64(numUsers),
 	)
+
+	flushQueueLength := 0
+	for _, flushQueue := range i.flushQueues {
+		flushQueueLength += flushQueue.Length()
+	}
 	ch <- prometheus.MustNewConstMetric(
 		flushQueueLengthDesc,
 		prometheus.GaugeValue,
-		float64(i.flushQueue.Length()),
+		float64(flushQueueLength),
 	)
 	ch <- i.ingestedSamples
 	i.discardedSamples.Collect(ch)

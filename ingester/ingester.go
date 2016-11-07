@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
@@ -25,6 +26,12 @@ const (
 	// Reasons to discard samples.
 	outOfOrderTimestamp = "timestamp_out_of_order"
 	duplicateSample     = "multiple_values_for_timestamp"
+
+	// Backoff for flush
+	minBackoff = 100 * time.Millisecond
+	maxBackoff = 1 * time.Second
+
+	provisionedThroughputExceededException = "ProvisionedThroughputExceededException"
 )
 
 var (
@@ -525,6 +532,8 @@ func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memor
 }
 
 func (i *Ingester) flushLoop(j int) {
+	backoff := minBackoff
+
 	defer func() {
 		log.Info("Ingester.flushLoop() exited")
 		i.done.Done()
@@ -570,11 +579,22 @@ func (i *Ingester) flushLoop(j int) {
 		}
 
 		// flush the chunks without locking the series
-		if err := i.flushChunks(ctx, op.fp, series.metric, chunks); err != nil {
+		err := i.flushChunks(ctx, op.fp, series.metric, chunks)
+		if err != nil {
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+				time.Sleep(backoff)
+				backoff = backoff * 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+
 			log.Errorf("Failed to flush chunks: %v", err)
 			i.chunkStoreFailures.Add(float64(len(chunks)))
 			continue
 		}
+
+		backoff = minBackoff
 
 		// now remove the chunks
 		userState.fpLocker.Lock(op.fp)

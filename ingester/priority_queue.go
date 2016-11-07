@@ -15,13 +15,13 @@ type priorityQueue struct {
 
 type op interface {
 	Key() string
-	Priority() int64
+	Priority() int64 // The larger the number the higher the priority.
 }
 
 type queue []op
 
 func (q queue) Len() int           { return len(q) }
-func (q queue) Less(i, j int) bool { return q[i].Priority() < q[j].Priority() }
+func (q queue) Less(i, j int) bool { return q[i].Priority() > q[j].Priority() }
 func (q queue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
 
 // Push and Pop use pointer receivers because they modify the slice's length,
@@ -47,6 +47,12 @@ func newPriorityQueue() *priorityQueue {
 	return pq
 }
 
+func (pq *priorityQueue) Length() int {
+	pq.lock.Lock()
+	defer pq.lock.Unlock()
+	return len(pq.queue)
+}
+
 func (pq *priorityQueue) Close() {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
@@ -67,10 +73,13 @@ func (pq *priorityQueue) Enqueue(op op) {
 		return
 	}
 
+	pq.hit[op.Key()] = struct{}{}
 	heap.Push(&pq.queue, op)
 	pq.cond.Broadcast()
 }
 
+// Dequeue will return the op with the highest priority; block if queue is
+// empty; returns nil if queue is closed.
 func (pq *priorityQueue) Dequeue() op {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()

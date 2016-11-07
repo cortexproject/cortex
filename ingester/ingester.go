@@ -113,7 +113,7 @@ func (o *flushOp) Key() string {
 }
 
 func (o *flushOp) Priority() int64 {
-	return int64(o.from)
+	return -int64(o.from)
 }
 
 // New constructs a new Ingester.

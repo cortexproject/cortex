@@ -1,7 +1,6 @@
 package ingester
 
 import (
-	"container/heap"
 	"fmt"
 	"sort"
 	"sync"
@@ -65,11 +64,7 @@ type Ingester struct {
 	userStateLock sync.Mutex
 	userState     map[string]*userState
 
-	flushQueueLock   sync.Mutex
-	flushQueueCond   *sync.Cond
-	flushQueueClosed bool
-	flushQueueHit    map[string]struct{}
-	flushQueue       flushQueue
+	flushQueue *priorityQueue
 
 	ingestedSamples    prometheus.Counter
 	discardedSamples   *prometheus.CounterVec
@@ -113,28 +108,12 @@ type flushOp struct {
 	immediate bool
 }
 
-func (o flushOp) key() string {
+func (o *flushOp) Key() string {
 	return fmt.Sprintf("%s-%d-%v", o.userID, o.fp, o.immediate)
 }
 
-type flushQueue []*flushOp
-
-func (q flushQueue) Len() int           { return len(q) }
-func (q flushQueue) Less(i, j int) bool { return q[i].from.Before(q[j].from) }
-func (q flushQueue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
-
-// Push and Pop use pointer receivers because they modify the slice's length,
-// not just its contents.
-func (q *flushQueue) Push(x interface{}) {
-	*q = append(*q, x.(*flushOp))
-}
-
-func (q *flushQueue) Pop() interface{} {
-	old := *q
-	n := len(old)
-	x := old[n-1]
-	*q = old[0 : n-1]
-	return x
+func (o *flushOp) Priority() int64 {
+	return int64(o.from)
 }
 
 // New constructs a new Ingester.
@@ -159,7 +138,7 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 
 		userState: map[string]*userState{},
 
-		flushQueueHit: map[string]struct{}{},
+		flushQueue: newPriorityQueue(),
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_total",
@@ -204,8 +183,6 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 			Help: "The total number of samples returned from queries.",
 		}),
 	}
-	i.flushQueueCond = sync.NewCond(&i.flushQueueLock)
-	heap.Init(&i.flushQueue)
 
 	i.done.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
@@ -460,12 +437,9 @@ func (i *Ingester) loop() {
 	defer func() {
 		i.flushAllUsers(true)
 
-		// We update the stopped flag & notify the flush queue here to
-		// ensure it can pick up all the flushes triggered by the last run
-		i.flushQueueLock.Lock()
-		i.flushQueueClosed = true
-		i.flushQueueCond.Broadcast()
-		i.flushQueueLock.Unlock()
+		// We close flush queue here to ensure the flushLoops pick
+		// up all the flushes triggered by the last run
+		i.flushQueue.Close()
 
 		log.Infof("Ingester.loop() exited gracefully")
 		i.done.Done()
@@ -543,44 +517,7 @@ func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memor
 		return
 	}
 
-	i.enqueueFlush(firstTime, u.userID, fp, immediate)
-}
-
-func (i *Ingester) enqueueFlush(from model.Time, userID string, fp model.Fingerprint, immediate bool) {
-	i.flushQueueLock.Lock()
-	defer i.flushQueueLock.Unlock()
-
-	op := flushOp{
-		from:      from,
-		userID:    userID,
-		fp:        fp,
-		immediate: immediate,
-	}
-
-	_, enqueued := i.flushQueueHit[op.key()]
-	if enqueued {
-		return
-	}
-
-	heap.Push(&i.flushQueue, &op)
-	i.flushQueueCond.Broadcast()
-}
-
-func (i *Ingester) dequeueFlush() *flushOp {
-	i.flushQueueLock.Lock()
-	defer i.flushQueueLock.Unlock()
-
-	for len(i.flushQueue) == 0 && !i.flushQueueClosed {
-		i.flushQueueCond.Wait()
-	}
-
-	if len(i.flushQueue) == 0 && i.flushQueueClosed {
-		return nil
-	}
-
-	op := heap.Pop(&i.flushQueue).(*flushOp)
-	delete(i.flushQueueHit, op.key())
-	return op
+	i.flushQueue.Enqueue(&flushOp{firstTime, u.userID, fp, immediate})
 }
 
 func (i *Ingester) flushLoop() {
@@ -590,10 +527,11 @@ func (i *Ingester) flushLoop() {
 	}()
 
 	for {
-		op := i.dequeueFlush()
-		if op == nil {
+		o := i.flushQueue.Dequeue()
+		if o == nil {
 			return
 		}
+		op := o.(*flushOp)
 
 		// get the user
 		i.userStateLock.Lock()

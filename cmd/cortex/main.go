@@ -62,6 +62,7 @@ type cfg struct {
 	s3URL                string
 	dynamodbURL          string
 	dynamodbCreateTables bool
+	dynamodbPollInterval time.Duration
 	memcachedHostname    string
 	memcachedTimeout     time.Duration
 	memcachedExpiration  time.Duration
@@ -83,6 +84,7 @@ func main() {
 	flag.StringVar(&cfg.s3URL, "s3.url", "localhost:4569", "S3 endpoint URL.")
 	flag.StringVar(&cfg.dynamodbURL, "dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
 	flag.BoolVar(&cfg.dynamodbCreateTables, "dynamodb.create-tables", false, "Create required DynamoDB tables on startup.")
+	flag.DurationVar(&cfg.dynamodbPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	flag.StringVar(&cfg.memcachedHostname, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
 	flag.DurationVar(&cfg.memcachedTimeout, "memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
 	flag.DurationVar(&cfg.memcachedExpiration, "memcached.expiration", 0, "How long chunks stay in the memcache.")
@@ -102,7 +104,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing chunk store: %v", err)
 	}
-	resourceWatcher, err := chunk.WatchDynamo(cfg.dynamodbURL, 2*time.Minute)
+	if cfg.dynamodbPollInterval < 1*time.Minute {
+		log.Warnf("Polling DynamoDB more than once a minute. Likely to get throttled: %v", cfg.dynamodbPollInterval)
+	}
+	resourceWatcher, err := chunk.WatchDynamo(cfg.dynamodbURL, cfg.dynamodbPollInterval)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB watcher: %v", err)
 	}
@@ -240,7 +245,7 @@ func setupQuerier(
 
 	engine := promql.NewEngine(queryable, nil)
 
-	api := v1.NewAPI(engine, querier.DummyStorage{queryable})
+	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable})
 	router := route.New(func(r *http.Request) (context.Context, error) {
 		userID := r.Header.Get(userIDHeaderName)
 		if r.Method != "OPTIONS" && userID == "" {

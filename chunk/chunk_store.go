@@ -33,7 +33,6 @@ const (
 
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
 	dynamoMaxBatchSize = 25
-	maxConcurrentPuts  = 100
 )
 
 var (
@@ -129,7 +128,6 @@ func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
 		chunkCache: cfg.ChunkCache,
 		tableName:  tableName,
 		bucketName: bucketName,
-		putLimiter: NewSemaphore(maxConcurrentPuts),
 	}, nil
 }
 
@@ -155,7 +153,6 @@ type AWSStore struct {
 	chunkCache *Cache
 	tableName  string
 	bucketName string
-	putLimiter Semaphore
 }
 
 type dynamodbClient interface {
@@ -268,10 +265,8 @@ func (c *AWSStore) Put(ctx context.Context, chunks []Chunk) error {
 func (c *AWSStore) putChunks(userID string, chunks []Chunk) error {
 	incomingErrors := make(chan error)
 	for _, chunk := range chunks {
-		c.putLimiter.Acquire()
 		go func(chunk Chunk) {
 			incomingErrors <- c.putChunk(userID, &chunk)
-			c.putLimiter.Release()
 		}(chunk)
 	}
 
@@ -314,25 +309,12 @@ func (c *AWSStore) updateIndex(userID string, chunks []Chunk) error {
 		return err
 	}
 
-	batches := c.batchRequests(writeReqs)
-
-	// Request all the batches in parallel.
-	incomingErrors := make(chan error)
-	for _, batch := range batches {
-		c.putLimiter.Acquire()
-		go func(batch []*dynamodb.WriteRequest) {
-			incomingErrors <- c.batchWriteDynamo(batch)
-			c.putLimiter.Release()
-		}(batch)
-	}
-	var lastErr error
-	for range batches {
-		err = <-incomingErrors
-		if err != nil {
-			lastErr = err
+	for _, batch := range c.batchRequests(writeReqs) {
+		if err := c.batchWriteDynamo(batch); err != nil {
+			return err
 		}
 	}
-	return lastErr
+	return nil
 }
 
 // calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all

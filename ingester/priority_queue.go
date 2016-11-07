@@ -13,12 +13,12 @@ type priorityQueue struct {
 	queue  queue
 }
 
-type Op interface {
+type op interface {
 	Key() string
 	Priority() int64
 }
 
-type queue []Op
+type queue []op
 
 func (q queue) Len() int           { return len(q) }
 func (q queue) Less(i, j int) bool { return q[i].Priority() < q[j].Priority() }
@@ -27,7 +27,7 @@ func (q queue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
 // Push and Pop use pointer receivers because they modify the slice's length,
 // not just its contents.
 func (q *queue) Push(x interface{}) {
-	*q = append(*q, x.(Op))
+	*q = append(*q, x.(op))
 }
 
 func (q *queue) Pop() interface{} {
@@ -54,7 +54,7 @@ func (pq *priorityQueue) Close() {
 	pq.cond.Broadcast()
 }
 
-func (pq *priorityQueue) Enqueue(op Op) {
+func (pq *priorityQueue) Enqueue(op op) {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
@@ -71,7 +71,7 @@ func (pq *priorityQueue) Enqueue(op Op) {
 	pq.cond.Broadcast()
 }
 
-func (pq *priorityQueue) Dequeue() Op {
+func (pq *priorityQueue) Dequeue() op {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
@@ -83,7 +83,7 @@ func (pq *priorityQueue) Dequeue() Op {
 		return nil
 	}
 
-	op := heap.Pop(&pq.queue).(Op)
+	op := heap.Pop(&pq.queue).(op)
 	delete(pq.hit, op.Key())
 	return op
 }

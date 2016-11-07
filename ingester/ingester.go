@@ -515,7 +515,7 @@ func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memor
 	}
 
 	firstTime := series.chunkDescs[0].FirstTime()
-	flush := immediate || model.Now().Sub(firstTime) > i.cfg.MaxChunkAge
+	flush := immediate || len(series.chunkDescs) > 1 || model.Now().Sub(firstTime) > i.cfg.MaxChunkAge
 	u.fpLocker.Unlock(fp)
 
 	if flush {

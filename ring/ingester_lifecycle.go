@@ -31,7 +31,7 @@ type IngesterRegistration struct {
 	quit     chan struct{}
 	wait     sync.WaitGroup
 
-	// We need to remember the token state just in case consul goes away and comes
+	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  Channel is used to tell the actor to update consul on state changes.
 	state       IngesterState
 	stateChange chan IngesterState
@@ -76,8 +76,7 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 	return r, nil
 }
 
-// ChangeState changes the state of all tokens owned by this
-// ingester in the ring.
+// ChangeState changes the state of an ingester in the ring.
 func (r *IngesterRegistration) ChangeState(state IngesterState) {
 	log.Info("Changing ingester state to: %v", state)
 	r.stateChange <- state

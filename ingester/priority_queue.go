@@ -15,7 +15,7 @@ type priorityQueue struct {
 
 type op interface {
 	Key() string
-	Priority() int64
+	Priority() int64 // The larger the number the higher the priority.
 }
 
 type queue []op

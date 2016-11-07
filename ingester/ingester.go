@@ -40,6 +40,11 @@ var (
 		"The current number of users in memory.",
 		nil, nil,
 	)
+	flushQueueLengthDesc = prometheus.NewDesc(
+		"cortex_ingester_flush_queue_length",
+		"The total number of series pending in the flush queue.",
+		nil, nil,
+	)
 
 	// ErrOutOfOrderSample is returned if a sample has a timestamp before the latest
 	// timestamp in the series it is appended to.
@@ -610,6 +615,7 @@ func (i *Ingester) updateRates() {
 func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- memorySeriesDesc
 	ch <- memoryUsersDesc
+	ch <- flushQueueLengthDesc
 	ch <- i.ingestedSamples.Desc()
 	i.discardedSamples.Describe(ch)
 	ch <- i.chunkUtilization.Desc()
@@ -640,6 +646,11 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 		memoryUsersDesc,
 		prometheus.GaugeValue,
 		float64(numUsers),
+	)
+	ch <- prometheus.MustNewConstMetric(
+		flushQueueLengthDesc,
+		prometheus.GaugeValue,
+		float64(i.flushQueue.Length()),
 	)
 	ch <- i.ingestedSamples
 	i.discardedSamples.Collect(ch)

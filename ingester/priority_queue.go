@@ -47,6 +47,12 @@ func newPriorityQueue() *priorityQueue {
 	return pq
 }
 
+func (pq *priorityQueue) Length() int {
+	pq.lock.Lock()
+	defer pq.lock.Unlock()
+	return len(pq.queue)
+}
+
 func (pq *priorityQueue) Close() {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()

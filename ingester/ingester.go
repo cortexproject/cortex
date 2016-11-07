@@ -60,15 +60,16 @@ type Ingester struct {
 	stopLock   sync.RWMutex
 	stopped    bool
 	quit       chan struct{}
-	done       chan struct{}
+	done       sync.WaitGroup
 
 	userStateLock sync.Mutex
 	userState     map[string]*userState
 
-	flushQueueLock sync.Mutex
-	flushQueueCond *sync.Cond
-	flushQueueHit  map[string]struct{}
-	flushQueue     flushQueue
+	flushQueueLock   sync.Mutex
+	flushQueueCond   *sync.Cond
+	flushQueueClosed bool
+	flushQueueHit    map[string]struct{}
+	flushQueue       flushQueue
 
 	ingestedSamples    prometheus.Counter
 	discardedSamples   *prometheus.CounterVec
@@ -83,10 +84,11 @@ type Ingester struct {
 
 // Config configures an Ingester.
 type Config struct {
-	FlushCheckPeriod time.Duration
-	MaxChunkAge      time.Duration
-	RateUpdatePeriod time.Duration
-	Ring             *ring.Ring
+	FlushCheckPeriod  time.Duration
+	MaxChunkAge       time.Duration
+	RateUpdatePeriod  time.Duration
+	Ring              *ring.Ring
+	ConcurrentFlushes int
 }
 
 // UserStats models ingestion statistics for one user.
@@ -112,7 +114,7 @@ type flushOp struct {
 }
 
 func (o flushOp) key() string {
-	return fmt.Sprintf("%s-%d-%b", o.userID, o.fp, o.immediate)
+	return fmt.Sprintf("%s-%d-%v", o.userID, o.fp, o.immediate)
 }
 
 type flushQueue []*flushOp
@@ -146,12 +148,14 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 	if cfg.RateUpdatePeriod == 0 {
 		cfg.RateUpdatePeriod = 15 * time.Second
 	}
+	if cfg.ConcurrentFlushes <= 0 {
+		cfg.ConcurrentFlushes = 25
+	}
 
 	i := &Ingester{
 		cfg:        cfg,
 		chunkStore: chunkStore,
 		quit:       make(chan struct{}),
-		done:       make(chan struct{}),
 
 		userState: map[string]*userState{},
 
@@ -203,6 +207,12 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 	i.flushQueueCond = sync.NewCond(&i.flushQueueLock)
 	heap.Init(&i.flushQueue)
 
+	i.done.Add(cfg.ConcurrentFlushes)
+	for j := 0; j < cfg.ConcurrentFlushes; j++ {
+		go i.flushLoop()
+	}
+
+	i.done.Add(1)
 	go i.loop()
 	return i, nil
 }
@@ -439,15 +449,26 @@ func (i *Ingester) Stop() {
 	i.stopped = true
 	i.stopLock.Unlock()
 
+	// Closing i.quit triggers i.loop() to exit; i.loop() exiting
+	// will trigger i.flushLoop()s to exit.
 	close(i.quit)
-	<-i.done
+
+	i.done.Wait()
 }
 
 func (i *Ingester) loop() {
 	defer func() {
 		i.flushAllUsers(true)
-		close(i.done)
-		log.Infof("Ingester exited gracefully")
+
+		// We update the stopped flag & notify the flush queue here to
+		// ensure it can pick up all the flushes triggered by the last run
+		i.flushQueueLock.Lock()
+		i.flushQueueClosed = true
+		i.flushQueueCond.Broadcast()
+		i.flushQueueLock.Unlock()
+
+		log.Infof("Ingester.loop() exited gracefully")
+		i.done.Done()
 	}()
 
 	flushTick := time.Tick(i.cfg.FlushCheckPeriod)
@@ -465,9 +486,6 @@ func (i *Ingester) loop() {
 }
 
 func (i *Ingester) flushAllUsers(immediate bool) {
-	log.Infof("Flushing chunks... (exiting: %v)", immediate)
-	defer log.Infof("Done flushing chunks.")
-
 	if i.chunkStore == nil {
 		return
 	}
@@ -485,9 +503,6 @@ func (i *Ingester) flushAllUsers(immediate bool) {
 }
 
 func (i *Ingester) flushUser(userID string, immediate bool) {
-	log.Infof("Flushing user %s...", userID)
-	defer log.Infof("Done flushing user %s.", userID)
-
 	i.userStateLock.Lock()
 	userState, ok := i.userState[userID]
 	i.userStateLock.Unlock()
@@ -555,8 +570,12 @@ func (i *Ingester) dequeueFlush() *flushOp {
 	i.flushQueueLock.Lock()
 	defer i.flushQueueLock.Unlock()
 
-	for len(i.flushQueue) == 0 {
+	for len(i.flushQueue) == 0 && !i.flushQueueClosed {
 		i.flushQueueCond.Wait()
+	}
+
+	if len(i.flushQueue) == 0 && i.flushQueueClosed {
+		return nil
 	}
 
 	op := heap.Pop(&i.flushQueue).(*flushOp)
@@ -565,8 +584,16 @@ func (i *Ingester) dequeueFlush() *flushOp {
 }
 
 func (i *Ingester) flushLoop() {
+	defer func() {
+		log.Info("Ingester.flushLoop() exited")
+		i.done.Done()
+	}()
+
 	for {
 		op := i.dequeueFlush()
+		if op == nil {
+			return
+		}
 
 		// get the user
 		i.userStateLock.Lock()
@@ -592,6 +619,7 @@ func (i *Ingester) flushLoop() {
 
 		// flush the chunks without locking the series
 		if err := i.flushChunks(ctx, op.fp, series.metric, chunks); err != nil {
+			log.Errorf("Failed to flush chunks: %v", err)
 			i.chunkStoreFailures.Add(float64(len(chunks)))
 			continue
 		}

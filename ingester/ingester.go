@@ -506,11 +506,15 @@ func (i *Ingester) flushUser(userID string, immediate bool) {
 }
 
 func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memorySeries, immediate bool) {
-
 	// Enqueue this series flushing if the oldest chunk is older than the threshold
 
 	u.fpLocker.Lock(fp)
-	firstTime := series.head().FirstTime()
+	if len(series.chunkDescs) <= 0 {
+		u.fpLocker.Unlock(fp)
+		return
+	}
+
+	firstTime := series.chunkDescs[0].FirstTime()
 	flush := immediate || model.Now().Sub(firstTime) > i.cfg.MaxChunkAge
 	u.fpLocker.Unlock(fp)
 

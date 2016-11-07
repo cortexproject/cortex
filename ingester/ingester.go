@@ -555,8 +555,7 @@ func (i *Ingester) flushLoop(j int) {
 
 		// If the head chunk is old enough, close it
 		if op.immediate || model.Now().Sub(series.head().FirstTime()) > i.cfg.MaxChunkAge {
-			series.headChunkClosed = true
-			series.head().MaybePopulateLastTime()
+			series.closeHead()
 		} else {
 			chunks = chunks[:len(chunks)-1]
 		}

@@ -49,7 +49,6 @@ func TestChunkStore(t *testing.T) {
 		chunkCache: nil,
 		tableName:  "tablename",
 		bucketName: "bucketname",
-		putLimiter: NoopSemaphore,
 	}
 	store.CreateTables()
 

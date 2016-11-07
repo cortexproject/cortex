@@ -506,26 +506,18 @@ func (i *Ingester) flushUser(userID string, immediate bool) {
 }
 
 func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memorySeries, immediate bool) {
-	u.fpLocker.Lock(fp)
 
-	// Decide what chunks to flush
+	// Enqueue this series flushing if the oldest chunk is older than the threshold
+
+	u.fpLocker.Lock(fp)
 	firstTime := series.head().FirstTime()
-	if immediate || model.Now().Sub(firstTime) > i.cfg.MaxChunkAge {
-		series.headChunkClosed = true
-		series.head().MaybePopulateLastTime()
-	}
-	chunks := len(series.chunkDescs)
-	if !series.headChunkClosed {
-		chunks--
-	}
+	flush := immediate || model.Now().Sub(firstTime) > i.cfg.MaxChunkAge
 	u.fpLocker.Unlock(fp)
 
-	if chunks == 0 {
-		return
+	if flush {
+		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
+		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, u.userID, fp, immediate})
 	}
-
-	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-	i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, u.userID, fp, immediate})
 }
 
 func (i *Ingester) flushLoop(j int) {
@@ -557,8 +549,15 @@ func (i *Ingester) flushLoop(j int) {
 		}
 
 		userState.fpLocker.Lock(op.fp)
+
+		// Assume we're going to flush everything
 		chunks := series.chunkDescs
-		if !series.headChunkClosed {
+
+		// If the head chunk is old enough, close it
+		if op.immediate || model.Now().Sub(series.head().FirstTime()) > i.cfg.MaxChunkAge {
+			series.headChunkClosed = true
+			series.head().MaybePopulateLastTime()
+		} else {
 			chunks = chunks[:len(chunks)-1]
 		}
 		userState.fpLocker.Unlock(op.fp)

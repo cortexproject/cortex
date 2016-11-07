@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -78,6 +79,7 @@ func TestPriorityQueueWait(t *testing.T) {
 		close(done)
 	}()
 
+	runtime.Gosched()
 	queue.Close()
 	select {
 	case <-done:

@@ -139,7 +139,7 @@ func (qm MergeQuerier) Close() error {
 }
 
 // DummyStorage creates a local.Storage compatible struct from a
-// Querable, such that it can be used with web.NewAPI.
+// Queryable, such that it can be used with web.NewAPI.
 // TODO(juliusv): Remove all the dummy local.Storage methods below
 // once the upstream web API expects a leaner interface.
 type DummyStorage struct {

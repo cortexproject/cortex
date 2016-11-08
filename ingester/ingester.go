@@ -165,7 +165,7 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 		chunkUtilization: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_utilization",
 			Help:    "Distribution of stored chunk utilization (when stored).",
-			Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9},
+			Buckets: prometheus.LinearBuckets(0.1, 0.1, 9),
 		}),
 		chunkLength: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_length",

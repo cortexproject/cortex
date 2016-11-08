@@ -94,8 +94,9 @@ type Config struct {
 	FlushCheckPeriod  time.Duration
 	MaxChunkAge       time.Duration
 	RateUpdatePeriod  time.Duration
-	Ring              *ring.Ring
 	ConcurrentFlushes int
+
+	Ring *ring.Ring
 }
 
 // UserStats models ingestion statistics for one user.

@@ -479,27 +479,18 @@ func (i *Ingester) flushAllUsers(immediate bool) {
 	}
 
 	i.userStateLock.Lock()
-	userIDs := make([]string, 0, len(i.userState))
-	for userID := range i.userState {
-		userIDs = append(userIDs, userID)
+	userState := make(map[string]*userState, len(i.userState))
+	for id, state := range i.userState {
+		userState[id] = state
 	}
 	i.userStateLock.Unlock()
 
-	for _, userID := range userIDs {
-		i.flushUser(userID, immediate)
+	for id, state := range userState {
+		i.flushUser(id, state, immediate)
 	}
 }
 
-func (i *Ingester) flushUser(userID string, immediate bool) {
-	i.userStateLock.Lock()
-	userState, ok := i.userState[userID]
-	i.userStateLock.Unlock()
-
-	// This should happen, right?
-	if !ok {
-		return
-	}
-
+func (i *Ingester) flushUser(userID string, userState *userState, immediate bool) {
 	for pair := range userState.fpToSeries.iter() {
 		i.flushSeries(userState, pair.fp, pair.series, immediate)
 	}

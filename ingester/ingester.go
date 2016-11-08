@@ -27,6 +27,10 @@ const (
 	outOfOrderTimestamp = "timestamp_out_of_order"
 	duplicateSample     = "multiple_values_for_timestamp"
 
+	// For chunk flush errors
+	errorReasonLabel = "error"
+	otherError       = "other"
+
 	// Backoff for flush
 	minBackoff = 100 * time.Millisecond
 	maxBackoff = 1 * time.Second
@@ -83,7 +87,7 @@ type Ingester struct {
 	chunkUtilization   prometheus.Histogram
 	chunkLength        prometheus.Histogram
 	chunkAge           prometheus.Histogram
-	chunkStoreFailures prometheus.Counter
+	chunkStoreFailures *prometheus.CounterVec
 	queries            prometheus.Counter
 	queriedSamples     prometheus.Counter
 	memoryChunks       prometheus.Gauge
@@ -182,10 +186,13 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 			Name: "cortex_ingester_memory_chunks",
 			Help: "The total number of chunks in memory.",
 		}),
-		chunkStoreFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_chunk_store_failures_total",
-			Help: "The total number of errors while storing chunks to the chunk store.",
-		}),
+		chunkStoreFailures: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "cortex_ingester_chunk_store_failures_total",
+				Help: "The total number of errors while storing chunks to the chunk store.",
+			},
+			[]string{errorReasonLabel},
+		),
 		queries: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_queries_total",
 			Help: "The total number of queries the ingester has handled.",
@@ -573,16 +580,19 @@ func (i *Ingester) flushLoop(j int) {
 		// flush the chunks without locking the series
 		err := i.flushChunks(ctx, op.fp, series.metric, chunks)
 		if err != nil {
+			log.Errorf("Failed to flush chunks: %v", err)
+
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+				i.chunkStoreFailures.WithLabelValues(awsErr.Code()).Add(float64(len(chunks)))
 				time.Sleep(backoff)
 				backoff = backoff * 2
 				if backoff > maxBackoff {
 					backoff = maxBackoff
 				}
+			} else {
+				i.chunkStoreFailures.WithLabelValues(otherError).Add(float64(len(chunks)))
 			}
 
-			log.Errorf("Failed to flush chunks: %v", err)
-			i.chunkStoreFailures.Add(float64(len(chunks)))
 			continue
 		}
 
@@ -642,7 +652,7 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- i.chunkUtilization.Desc()
 	ch <- i.chunkLength.Desc()
 	ch <- i.chunkAge.Desc()
-	ch <- i.chunkStoreFailures.Desc()
+	i.chunkStoreFailures.Describe(ch)
 	ch <- i.queries.Desc()
 	ch <- i.queriedSamples.Desc()
 	ch <- i.memoryChunks.Desc()
@@ -683,7 +693,7 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 	ch <- i.chunkUtilization
 	ch <- i.chunkLength
 	ch <- i.chunkAge
-	ch <- i.chunkStoreFailures
+	i.chunkStoreFailures.Collect(ch)
 	ch <- i.queries
 	ch <- i.queriedSamples
 	ch <- i.memoryChunks

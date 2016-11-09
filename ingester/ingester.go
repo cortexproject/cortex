@@ -170,7 +170,7 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 		chunkUtilization: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_utilization",
 			Help:    "Distribution of stored chunk utilization (when stored).",
-			Buckets: prometheus.LinearBuckets(0.1, 0.1, 9),
+			Buckets: prometheus.LinearBuckets(0, 0.2, 6),
 		}),
 		chunkLength: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_length",
@@ -180,7 +180,7 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 		chunkAge: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_age_seconds",
 			Help:    "Distribution of chunk ages (when stored).",
-			Buckets: prometheus.ExponentialBuckets(0.1, 4, 8),
+			Buckets: prometheus.ExponentialBuckets(60, 2, 9),
 		}),
 		memoryChunks: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_memory_chunks",

@@ -70,6 +70,7 @@ type cfg struct {
 	remoteTimeout        time.Duration
 	numTokens            int
 	logSuccess           bool
+	watchDynamo          bool
 
 	ingesterConfig    ingester.Config
 	distributorConfig distributor.Config
@@ -99,6 +100,7 @@ func main() {
 	flag.IntVar(&cfg.distributorConfig.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
 	flag.DurationVar(&cfg.distributorConfig.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.BoolVar(&cfg.logSuccess, "log.success", false, "Log successful requests")
+	flag.BoolVar(&cfg.watchDynamo, "watch-dynamo", false, "Periodically collect DynamoDB provisioned throughput.")
 	flag.Parse()
 
 	chunkStore, err := setupChunkStore(cfg)
@@ -108,12 +110,15 @@ func main() {
 	if cfg.dynamodbPollInterval < 1*time.Minute {
 		log.Warnf("Polling DynamoDB more than once a minute. Likely to get throttled: %v", cfg.dynamodbPollInterval)
 	}
-	resourceWatcher, err := chunk.WatchDynamo(cfg.dynamodbURL, cfg.dynamodbPollInterval)
-	if err != nil {
-		log.Fatalf("Error initializing DynamoDB watcher: %v", err)
+
+	if cfg.watchDynamo {
+		resourceWatcher, err := chunk.WatchDynamo(cfg.dynamodbURL, cfg.dynamodbPollInterval)
+		if err != nil {
+			log.Fatalf("Error initializing DynamoDB watcher: %v", err)
+		}
+		defer resourceWatcher.Stop()
+		prometheus.MustRegister(resourceWatcher)
 	}
-	defer resourceWatcher.Stop()
-	prometheus.MustRegister(resourceWatcher)
 
 	consul, err := ring.NewConsulClient(cfg.consulHost)
 	if err != nil {

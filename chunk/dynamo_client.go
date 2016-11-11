@@ -18,8 +18,7 @@ const (
 )
 
 type dynamoWatcher struct {
-	accountMaxCapacity *prometheus.GaugeVec
-	tableCapacity      *prometheus.GaugeVec
+	tableCapacity *prometheus.GaugeVec
 
 	dynamoDB  *dynamodb.DynamoDB
 	tableName string
@@ -49,11 +48,6 @@ func WatchDynamo(dynamoDBURL string, interval time.Duration) (Watcher, error) {
 
 	tableName := strings.TrimPrefix(url.Path, "/")
 	w := &dynamoWatcher{
-		accountMaxCapacity: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
-			Name:      "dynamo_account_max_capacity_units",
-			Help:      "Account-wide DynamoDB capacity, measured in DynamoDB capacity units.",
-		}, []string{"op"}),
 		tableCapacity: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "dynamo_table_capacity_units",
@@ -81,12 +75,7 @@ func (w *dynamoWatcher) updateLoop() {
 		select {
 		case <-ticker.C:
 			log.Debugf("Updating limits from dynamo")
-			err := w.updateAccountLimits()
-			if err != nil {
-				// TODO: Back off if err is throttling related.
-				log.Warnf("Could not fetch account limits from dynamo: %v", err)
-			}
-			err = w.updateTableLimits()
+			err := w.updateTableLimits()
 			if err != nil {
 				log.Warnf("Could not fetch table limits from dynamo: %v", err)
 			}
@@ -94,16 +83,6 @@ func (w *dynamoWatcher) updateLoop() {
 			ticker.Stop()
 		}
 	}
-}
-
-func (w *dynamoWatcher) updateAccountLimits() error {
-	limits, err := w.dynamoDB.DescribeLimits(&dynamodb.DescribeLimitsInput{})
-	if err != nil {
-		return err
-	}
-	w.accountMaxCapacity.WithLabelValues(readLabel).Set(float64(*limits.AccountMaxReadCapacityUnits))
-	w.accountMaxCapacity.WithLabelValues(writeLabel).Set(float64(*limits.AccountMaxWriteCapacityUnits))
-	return nil
 }
 
 func (w *dynamoWatcher) updateTableLimits() error {
@@ -121,12 +100,10 @@ func (w *dynamoWatcher) updateTableLimits() error {
 
 // Describe implements prometheus.Collector.
 func (w *dynamoWatcher) Describe(ch chan<- *prometheus.Desc) {
-	w.accountMaxCapacity.Describe(ch)
 	w.tableCapacity.Describe(ch)
 }
 
 // Collect implements prometheus.Collector.
 func (w *dynamoWatcher) Collect(ch chan<- prometheus.Metric) {
-	w.accountMaxCapacity.Collect(ch)
 	w.tableCapacity.Collect(ch)
 }

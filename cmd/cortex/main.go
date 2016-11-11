@@ -136,7 +136,7 @@ func main() {
 		cfg.distributorConfig.ClientFactory = func(address string) (*distributor.IngesterClient, error) {
 			return distributor.NewIngesterClient(address, cfg.remoteTimeout)
 		}
-		setupDistributor(cfg.distributorConfig, chunkStore, router.Path("/api/prom"))
+		setupDistributor(cfg.distributorConfig, chunkStore, router.PathPrefix("/api/prom").Subrouter())
 
 	case modeIngester:
 		cfg.ingesterConfig.Ring = r
@@ -146,7 +146,7 @@ func main() {
 			// network errors.
 			log.Fatalf("Could not register ingester: %v", err)
 		}
-		ing := setupIngester(chunkStore, cfg.ingesterConfig, router.NewRoute())
+		ing := setupIngester(chunkStore, cfg.ingesterConfig, router)
 
 		// Deferring a func to make ordering obvious
 		defer func() {
@@ -209,7 +209,7 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 func setupDistributor(
 	cfg distributor.Config,
 	chunkStore chunk.Store,
-	router *mux.Route,
+	router *mux.Router,
 ) {
 	dist, err := distributor.New(cfg)
 	if err != nil {
@@ -245,7 +245,7 @@ func handleDistributorError(w http.ResponseWriter, err error) {
 func setupQuerier(
 	distributor *distributor.Distributor,
 	chunkStore chunk.Store,
-	router *mux.Route,
+	router *mux.Router,
 ) {
 	queryable := querier.Queryable{
 		Q: querier.MergeQuerier{
@@ -262,18 +262,18 @@ func setupQuerier(
 	promRouter := route.New(func(r *http.Request) (context.Context, error) {
 		userID := r.Header.Get(userIDHeaderName)
 		return user.WithID(context.Background(), userID), nil
-	})
+	}).WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)
-	router.Path("/api/v1").Handler(promRouter)
+	router.PathPrefix("/api/v1").Handler(promRouter)
 	router.Path("/user_stats").Handler(cortex.DistributorUserStatsHandler(distributor.UserStats))
 	router.Path("/graph").Handler(ui.GraphHandler())
-	router.Path("/static/").Handler(ui.StaticAssetsHandler("/api/prom/static/"))
+	router.PathPrefix("/static/").Handler(ui.StaticAssetsHandler("/api/prom/static/"))
 }
 
 func setupIngester(
 	chunkStore chunk.Store,
 	cfg ingester.Config,
-	router *mux.Route,
+	router *mux.Router,
 ) *ingester.Ingester {
 	ingester, err := ingester.New(cfg, chunkStore)
 	if err != nil {

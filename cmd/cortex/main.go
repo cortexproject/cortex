@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
@@ -129,15 +128,13 @@ func main() {
 	r := ring.New(consul, cfg.distributorConfig.HeartbeatTimeout)
 	defer r.Stop()
 
-	router := mux.NewRouter()
 	switch cfg.mode {
 	case modeDistributor:
 		cfg.distributorConfig.Ring = r
 		cfg.distributorConfig.ClientFactory = func(address string) (*distributor.IngesterClient, error) {
 			return distributor.NewIngesterClient(address, cfg.remoteTimeout)
 		}
-		setupDistributor(cfg.distributorConfig, chunkStore, router.Path("/api/prom"))
-
+		setupDistributor(cfg.distributorConfig, chunkStore, cfg.logSuccess)
 	case modeIngester:
 		cfg.ingesterConfig.Ring = r
 		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.numTokens)
@@ -146,7 +143,7 @@ func main() {
 			// network errors.
 			log.Fatalf("Could not register ingester: %v", err)
 		}
-		ing := setupIngester(chunkStore, cfg.ingesterConfig, router.NewRoute())
+		ing := setupIngester(chunkStore, cfg.ingesterConfig, cfg.logSuccess)
 
 		// Deferring a func to make ordering obvious
 		defer func() {
@@ -160,16 +157,8 @@ func main() {
 		log.Fatalf("Mode %s not supported!", cfg.mode)
 	}
 
-	router.Handle("/metrics", prometheus.Handler())
-	instrumented := middleware.Merge(
-		middleware.Log{
-			LogSuccess: cfg.logSuccess,
-		},
-		middleware.Instrument{
-			Duration: requestDuration,
-		},
-	).Wrap(router)
-	go http.ListenAndServe(fmt.Sprintf(":%d", cfg.listenPort), instrumented)
+	http.Handle("/metrics", prometheus.Handler())
+	go http.ListenAndServe(fmt.Sprintf(":%d", cfg.listenPort), nil)
 
 	term := make(chan os.Signal)
 	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
@@ -209,7 +198,7 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 func setupDistributor(
 	cfg distributor.Config,
 	chunkStore chunk.Store,
-	router *mux.Route,
+	logSuccess bool,
 ) {
 	dist, err := distributor.New(cfg)
 	if err != nil {
@@ -217,10 +206,11 @@ func setupDistributor(
 	}
 	prometheus.MustRegister(dist)
 
-	router.Path("/push").Handler(cortex.AppenderHandler(dist, handleDistributorError))
+	prefix := "/api/prom"
+	http.Handle(prefix+"/push", instrument(logSuccess, cortex.AppenderHandler(dist, handleDistributorError)))
 
 	// TODO: Move querier to separate binary.
-	setupQuerier(dist, chunkStore, router)
+	setupQuerier(dist, chunkStore, prefix, logSuccess)
 }
 
 func handleDistributorError(w http.ResponseWriter, err error) {
@@ -245,7 +235,8 @@ func handleDistributorError(w http.ResponseWriter, err error) {
 func setupQuerier(
 	distributor *distributor.Distributor,
 	chunkStore chunk.Store,
-	router *mux.Route,
+	prefix string,
+	logSuccess bool,
 ) {
 	queryable := querier.Queryable{
 		Q: querier.MergeQuerier{
@@ -257,23 +248,36 @@ func setupQuerier(
 			},
 		},
 	}
+
 	engine := promql.NewEngine(queryable, nil)
+
 	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable})
-	promRouter := route.New(func(r *http.Request) (context.Context, error) {
+	router := route.New(func(r *http.Request) (context.Context, error) {
 		userID := r.Header.Get(userIDHeaderName)
+		if r.Method != "OPTIONS" && userID == "" {
+			// For now, getting the user ID from basic auth allows for easy testing
+			// with Grafana.
+			// TODO: Remove basic auth support.
+			userID, _, _ = r.BasicAuth()
+			if userID == "" {
+				return nil, fmt.Errorf("missing user ID")
+			}
+		}
 		return user.WithID(context.Background(), userID), nil
 	})
-	api.Register(promRouter)
-	router.Path("/api/v1").Handler(promRouter)
-	router.Path("/user_stats").Handler(cortex.DistributorUserStatsHandler(distributor.UserStats))
-	router.Path("/graph").Handler(ui.GraphHandler())
-	router.Path("/static/").Handler(ui.StaticAssetsHandler("/api/prom/static/"))
+	api.Register(router.WithPrefix(prefix + "/api/v1"))
+	http.Handle("/", router)
+
+	http.Handle(prefix+"/user_stats", instrument(logSuccess, cortex.DistributorUserStatsHandler(distributor.UserStats)))
+
+	http.Handle(prefix+"/graph", instrument(logSuccess, ui.GraphHandler()))
+	http.Handle(prefix+"/static/", instrument(logSuccess, ui.StaticAssetsHandler(prefix+"/static/")))
 }
 
 func setupIngester(
 	chunkStore chunk.Store,
 	cfg ingester.Config,
-	router *mux.Route,
+	logSuccess bool,
 ) *ingester.Ingester {
 	ingester, err := ingester.New(cfg, chunkStore)
 	if err != nil {
@@ -281,11 +285,11 @@ func setupIngester(
 	}
 	prometheus.MustRegister(ingester)
 
-	router.Path("/push").Handler(cortex.AppenderHandler(ingester, handleIngesterError))
-	router.Path("/query").Handler(cortex.QueryHandler(ingester))
-	router.Path("/label_values").Handler(cortex.LabelValuesHandler(ingester))
-	router.Path("/user_stats").Handler(cortex.IngesterUserStatsHandler(ingester.UserStats))
-	router.Path("/ready").Handler(cortex.IngesterReadinessHandler(ingester))
+	http.Handle("/push", instrument(logSuccess, cortex.AppenderHandler(ingester, handleIngesterError)))
+	http.Handle("/query", instrument(logSuccess, cortex.QueryHandler(ingester)))
+	http.Handle("/label_values", instrument(logSuccess, cortex.LabelValuesHandler(ingester)))
+	http.Handle("/user_stats", instrument(logSuccess, cortex.IngesterUserStatsHandler(ingester.UserStats)))
+	http.Handle("/ready", instrument(logSuccess, cortex.IngesterReadinessHandler(ingester)))
 	return ingester
 }
 
@@ -298,4 +302,16 @@ func handleIngesterError(w http.ResponseWriter, err error) {
 		log.Errorf("append err: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// instrument instruments a handler.
+func instrument(logSuccess bool, handler http.Handler) http.Handler {
+	return middleware.Merge(
+		middleware.Log{
+			LogSuccess: logSuccess,
+		},
+		middleware.Instrument{
+			Duration: requestDuration,
+		},
+	).Wrap(handler)
 }

@@ -1,6 +1,6 @@
 <p align="center"><img src="imgs/logo.png" alt="Weave Cortex Logo"></p>
 
-# Opensource, horizontally scalable Prometheus as a service
+# Open source, horizontally scalable Prometheus as a service
 
 [![Circle CI](https://circleci.com/gh/weaveworks/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/weaveworks/cortex/tree/master)
 [![Slack Status](https://slack.weave.works/badge.svg)](https://slack.weave.works)
@@ -30,7 +30,7 @@ Weave Cloud gives you some example queries that show you general system informat
 
 ## About Weave Cortex
 
-To learn more about Weave Cortex consult the follow documents / talks:
+To learn more about Weave Cortex, consult the follow documents / talks:
 
 - [Original design document for Project Frankenstein](http://goo.gl/prdUYV)
 - PromCon 2016 Talk: "Project Frankenstein: Multitenant, Scale-Out Prometheus": [video](https://youtu.be/3Tb4Wc0kfCM), [slides](http://www.slideshare.net/weaveworks/project-frankenstein-a-multitenant-horizontally-scalable-prometheus-as-a-service)
@@ -39,7 +39,7 @@ To learn more about Weave Cortex consult the follow documents / talks:
 
 ## Using Cortex on other platforms
 
-Cortex can be used to monitor virtually any application on any platform, as the local agent is a specially configure, unmodified OSS Prometheus binary.  You can [download Prometheus from its website](https://prometheus.io/download/).  You will need v1.2.1 or later.
+Cortex can be used to monitor virtually any application on any platform, as the local agent is a specially configured unmodified OSS Prometheus binary.  You can [download Prometheus from its website](https://prometheus.io/download/).  You will need v1.2.1 or later.
 
 When you've got Prometheus, you will need to [configure it to discover your services](https://prometheus.io/docs/operating/configuration/) and configure it to send its data to Weave Cloud by adding the following top-level stanza to `prometheus.yml`:
 

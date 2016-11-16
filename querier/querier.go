@@ -13,6 +13,20 @@ import (
 	"github.com/weaveworks/cortex/util"
 )
 
+// NewQueryable creates a new promql.Engine for cortex.
+func NewQueryable(distributor Querier, chunkStore chunk.Store) Queryable {
+	return Queryable{
+		Q: MergeQuerier{
+			Queriers: []Querier{
+				distributor,
+				&ChunkQuerier{
+					Store: chunkStore,
+				},
+			},
+		},
+	}
+}
+
 // A Querier allows querying all samples in a given time range that match a set
 // of label matchers.
 type Querier interface {

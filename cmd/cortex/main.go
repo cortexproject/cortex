@@ -25,6 +25,7 @@ import (
 	"github.com/weaveworks/cortex/ingester"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/ring"
+	"github.com/weaveworks/cortex/ruler"
 	"github.com/weaveworks/cortex/ui"
 	"github.com/weaveworks/cortex/user"
 )
@@ -32,6 +33,7 @@ import (
 const (
 	modeDistributor = "distributor"
 	modeIngester    = "ingester"
+	modeRuler       = "ruler"
 
 	infName          = "eth0"
 	userIDHeaderName = "X-Scope-OrgID"
@@ -75,11 +77,12 @@ type cfg struct {
 
 	ingesterConfig    ingester.Config
 	distributorConfig distributor.Config
+	rulerConfig       ruler.Config
 }
 
 func main() {
 	var cfg cfg
-	flag.StringVar(&cfg.mode, "mode", modeDistributor, "Mode (distributor, ingester).")
+	flag.StringVar(&cfg.mode, "mode", modeDistributor, "Mode (distributor, ingester, ruler).")
 	flag.IntVar(&cfg.listenPort, "web.listen-port", 9094, "HTTP server listen port.")
 	flag.StringVar(&cfg.consulHost, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
 	flag.StringVar(&cfg.consulPrefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
@@ -100,6 +103,9 @@ func main() {
 	flag.IntVar(&cfg.distributorConfig.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	flag.IntVar(&cfg.distributorConfig.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
 	flag.DurationVar(&cfg.distributorConfig.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
+	flag.StringVar(&cfg.rulerConfig.ConfigsAPIURL, "ruler.configs.url", "http://configs.default.svc.cluster.local:80/", "URL of configs API server.")
+	flag.StringVar(&cfg.rulerConfig.UserID, "ruler.userID", "", "Weave Cloud org to run rules for")
+	flag.StringVar(&cfg.rulerConfig.UserToken, "ruler.token", "", "Weave Cloud token for org to run rules for")
 	flag.BoolVar(&cfg.logSuccess, "log.success", false, "Log successful requests")
 	flag.BoolVar(&cfg.watchDynamo, "watch-dynamo", false, "Periodically collect DynamoDB provisioned throughput.")
 	flag.Parse()
@@ -156,6 +162,17 @@ func main() {
 		}()
 
 		prometheus.MustRegister(registration)
+
+	case modeRuler:
+		cfg.rulerConfig.DistributorConfig = cfg.distributorConfig
+		ruler, err := setupRuler(chunkStore, cfg.rulerConfig)
+		if err != nil {
+			// Some of our initial configuration was fundamentally invalid.
+			log.Fatalf("Could not set up ruler: %v", err)
+		}
+		// XXX: Single-tenanted as part of our initially super hacky way of dogfooding.
+		ruler.Execute(cfg.rulerConfig.UserID, cfg.rulerConfig.UserToken)
+
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
 	}
@@ -247,16 +264,7 @@ func setupQuerier(
 	chunkStore chunk.Store,
 	router *mux.Router,
 ) {
-	queryable := querier.Queryable{
-		Q: querier.MergeQuerier{
-			Queriers: []querier.Querier{
-				distributor,
-				&querier.ChunkQuerier{
-					Store: chunkStore,
-				},
-			},
-		},
-	}
+	queryable := querier.NewQueryable(distributor, chunkStore)
 	engine := promql.NewEngine(queryable, nil)
 	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable})
 	promRouter := route.New(func(r *http.Request) (context.Context, error) {
@@ -298,4 +306,9 @@ func handleIngesterError(w http.ResponseWriter, err error) {
 		log.Errorf("append err: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// setupRuler sets up a ruler.
+func setupRuler(chunkStore chunk.Store, cfg ruler.Config) (*ruler.Ruler, error) {
+	return ruler.New(chunkStore, cfg)
 }

@@ -6,6 +6,8 @@ import (
 	"golang.org/x/net/context"
 )
 
+// TODO(jml): typedef for userid
+
 // UserIDContextKey is the key used in contexts to find the userid
 const userIDContextKey = "CortexUserID" // TODO dedupe with storage/local
 

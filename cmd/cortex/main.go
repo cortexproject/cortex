@@ -166,7 +166,8 @@ func main() {
 			LogSuccess: cfg.logSuccess,
 		},
 		middleware.Instrument{
-			Duration: requestDuration,
+			Duration:     requestDuration,
+			RouteMatcher: router,
 		},
 	).Wrap(router)
 	go http.ListenAndServe(fmt.Sprintf(":%d", cfg.listenPort), instrumented)

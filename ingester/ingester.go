@@ -96,7 +96,7 @@ type Ingester struct {
 // Config configures an Ingester.
 type Config struct {
 	FlushCheckPeriod  time.Duration
-	MaxChunkAge       time.Duration
+	MaxChunkIdle      time.Duration
 	RateUpdatePeriod  time.Duration
 	ConcurrentFlushes int
 
@@ -138,8 +138,8 @@ func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
-	if cfg.MaxChunkAge == 0 {
-		cfg.MaxChunkAge = 10 * time.Minute
+	if cfg.MaxChunkIdle == 0 {
+		cfg.MaxChunkIdle = 1 * time.Hour
 	}
 	if cfg.RateUpdatePeriod == 0 {
 		cfg.RateUpdatePeriod = 15 * time.Second
@@ -520,13 +520,13 @@ func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memor
 		return
 	}
 
-	firstTime := series.chunkDescs[0].FirstTime()
-	flush := immediate || len(series.chunkDescs) > 1 || model.Now().Sub(firstTime) > i.cfg.MaxChunkAge
+	lastTime := series.lastTime
+	flush := immediate || len(series.chunkDescs) > 1 || model.Now().Sub(lastTime) > i.cfg.MaxChunkIdle
 	u.fpLocker.Unlock(fp)
 
 	if flush {
 		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, u.userID, fp, immediate})
+		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{lastTime, u.userID, fp, immediate})
 	}
 }
 
@@ -566,7 +566,7 @@ func (i *Ingester) flushLoop(j int) {
 		chunks := series.chunkDescs
 
 		// If the head chunk is old enough, close it
-		if op.immediate || model.Now().Sub(series.head().FirstTime()) > i.cfg.MaxChunkAge {
+		if op.immediate || model.Now().Sub(series.lastTime) > i.cfg.MaxChunkIdle {
 			series.closeHead()
 		} else {
 			chunks = chunks[:len(chunks)-1]

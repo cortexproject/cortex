@@ -77,7 +77,7 @@ func matrixToSamples(m model.Matrix) []*model.Sample {
 func TestIngesterAppend(t *testing.T) {
 	cfg := Config{
 		FlushCheckPeriod: 99999 * time.Hour,
-		MaxChunkAge:      99999 * time.Hour,
+		MaxChunkIdle:     99999 * time.Hour,
 	}
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},

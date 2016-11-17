@@ -33,8 +33,6 @@ type Config struct {
 	// XXX: Currently single tenant only (which is awful) as the most
 	// expedient way of getting *something* working.
 	UserID string
-	// XXX: Really should not need both this & the userID
-	OrgExternalID string
 }
 
 // Ruler is a recording rules server.
@@ -79,10 +77,10 @@ func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
 
 // GetWorkerFor gets a rules recording worker for the given user.
 // It will keep polling until it can construct one.
-func (r *Ruler) GetWorkerFor(userID, orgName string) Worker {
+func (r *Ruler) GetWorkerFor(userID string) Worker {
 	delay := time.Duration(r.cfg.EvaluationInterval)
 	for {
-		worker, err := r.getWorkerFor(userID, orgName)
+		worker, err := r.getWorkerFor(userID)
 		if err == nil {
 			return worker
 		}
@@ -92,9 +90,9 @@ func (r *Ruler) GetWorkerFor(userID, orgName string) Worker {
 }
 
 // getWorkerFor gets a rules recording worker for the given user.
-func (r *Ruler) getWorkerFor(userID, orgName string) (Worker, error) {
+func (r *Ruler) getWorkerFor(userID string) (Worker, error) {
 	mgr := r.getManager(userID)
-	conf, err := r.getConfig(userID, orgName)
+	conf, err := r.getConfig(userID)
 	if err != nil {
 		return nil, fmt.Errorf("Error fetching config: %v", err)
 	}
@@ -119,10 +117,10 @@ func (r *Ruler) getManager(userID string) *rules.Manager {
 	})
 }
 
-func (r *Ruler) getConfig(userID, orgName string) (*config.Config, error) {
+func (r *Ruler) getConfig(userID string) (*config.Config, error) {
 	// XXX: This is highly specific to Weave Cloud. Would be good to have a
 	// more pluggable way of expressing this for Cortex.
-	cfg, err := getOrgConfig(r.configsAPIURL, orgName)
+	cfg, err := getOrgConfig(r.configsAPIURL, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -171,17 +169,15 @@ type cortexConfig struct {
 }
 
 // getOrgConfig gets the organization's cortex config from a configs api server.
-func getOrgConfig(configsAPIURL *url.URL, orgName string) (*cortexConfig, error) {
+func getOrgConfig(configsAPIURL *url.URL, userID string) (*cortexConfig, error) {
 	// TODO: Extract configs client logic into go client library (ala users)
-	// TODO: Fix configs server so that:
-	// 1. Do not need org ID in the URL to get authenticated org
-	// 2. Uses orgID (i.e. numeric database ID) rather than external ID for auth token
-	url := fmt.Sprintf("%s/api/configs/org/%s/cortex", configsAPIURL.String(), orgName)
+	// TODO: Fix configs server so that we not need org ID in the URL to get authenticated org
+	url := fmt.Sprintf("%s/api/configs/org/%s/cortex", configsAPIURL.String(), userID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("X-Scope-OrgID", orgName)
+	req.Header.Add("X-Scope-OrgID", userID)
 	client := &http.Client{}
 	res, err := client.Do(req)
 	if err != nil {

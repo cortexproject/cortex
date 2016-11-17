@@ -105,7 +105,6 @@ func main() {
 	flag.DurationVar(&cfg.distributorConfig.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.StringVar(&cfg.rulerConfig.ConfigsAPIURL, "ruler.configs.url", "http://configs.default.svc.cluster.local:80/", "URL of configs API server.")
 	flag.StringVar(&cfg.rulerConfig.UserID, "ruler.userID", "", "Weave Cloud org to run rules for")
-	flag.StringVar(&cfg.rulerConfig.OrgExternalID, "ruler.orgExternalID", "", "Weave Cloud org to run rules for")
 	flag.DurationVar(&cfg.rulerConfig.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
 	flag.BoolVar(&cfg.logSuccess, "log.success", false, "Log successful requests")
 	flag.BoolVar(&cfg.watchDynamo, "watch-dynamo", false, "Periodically collect DynamoDB provisioned throughput.")
@@ -177,7 +176,7 @@ func main() {
 			log.Fatalf("Could not set up ruler: %v", err)
 		}
 		// XXX: Single-tenanted as part of our initially super hacky way of dogfooding.
-		worker := ruler.GetWorkerFor(cfg.rulerConfig.UserID, cfg.rulerConfig.OrgExternalID)
+		worker := ruler.GetWorkerFor(cfg.rulerConfig.UserID)
 		go worker.Run()
 		defer worker.Stop()
 

@@ -106,6 +106,7 @@ func main() {
 	flag.StringVar(&cfg.rulerConfig.ConfigsAPIURL, "ruler.configs.url", "http://configs.default.svc.cluster.local:80/", "URL of configs API server.")
 	flag.StringVar(&cfg.rulerConfig.UserID, "ruler.userID", "", "Weave Cloud org to run rules for")
 	flag.StringVar(&cfg.rulerConfig.UserToken, "ruler.token", "", "Weave Cloud token for org to run rules for")
+	flag.DurationVar(&cfg.rulerConfig.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
 	flag.BoolVar(&cfg.logSuccess, "log.success", false, "Log successful requests")
 	flag.BoolVar(&cfg.watchDynamo, "watch-dynamo", false, "Periodically collect DynamoDB provisioned throughput.")
 	flag.Parse()
@@ -171,11 +172,7 @@ func main() {
 			log.Fatalf("Could not set up ruler: %v", err)
 		}
 		// XXX: Single-tenanted as part of our initially super hacky way of dogfooding.
-		worker, err := ruler.Execute(cfg.rulerConfig.UserID, cfg.rulerConfig.UserToken)
-		if err != nil {
-			// XXX: Should *not* fail here. Instead should loop until it works, w/ backoff.
-			log.Fatalf("Could not apply config: %v", err)
-		}
+		worker := ruler.GetWorkerFor(cfg.rulerConfig.UserID, cfg.rulerConfig.UserToken)
 		go worker.Run()
 		defer worker.Stop()
 

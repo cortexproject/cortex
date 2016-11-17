@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"time"
 
+	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
@@ -26,6 +28,8 @@ type Config struct {
 	DistributorConfig distributor.Config
 	ConfigsAPIURL     string
 	ExternalURL       string
+	// How frequently to evaluate rules by default.
+	EvaluationInterval time.Duration
 	// XXX: Currently single tenant only (which is awful) as the most
 	// expedient way of getting *something* working.
 	UserID string
@@ -75,8 +79,22 @@ func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
 	}, nil
 }
 
-// Execute does the thing.
-func (r *Ruler) Execute(userID, userToken string) (Worker, error) {
+// GetWorkerFor gets a rules recording worker for the given user.
+// It will keep polling until it can construct one.
+func (r *Ruler) GetWorkerFor(userID, userToken string) Worker {
+	delay := time.Duration(r.cfg.EvaluationInterval)
+	for {
+		worker, err := r.getWorkerFor(userID, userToken)
+		if err == nil {
+			return worker
+		}
+		log.Warnf("Could not get configuration for %v: %v", userID, err)
+		time.Sleep(delay)
+	}
+}
+
+// getWorkerFor gets a rules recording worker for the given user.
+func (r *Ruler) getWorkerFor(userID, userToken string) (Worker, error) {
 	mgr := r.getManager(userToken)
 	conf, err := r.getConfig(userID)
 	if err != nil {
@@ -128,9 +146,11 @@ func (r *Ruler) getConfig(userID string) (*config.Config, error) {
 		ruleFiles = append(ruleFiles, filepath)
 	}
 
+	globalConfig := config.DefaultGlobalConfig
+	globalConfig.EvaluationInterval = model.Duration(r.cfg.EvaluationInterval)
 	return &config.Config{
 		// XXX: Need to set recording interval here.
-		GlobalConfig: config.DefaultGlobalConfig,
+		GlobalConfig: globalConfig,
 		RuleFiles:    ruleFiles,
 	}, nil
 }

@@ -171,7 +171,13 @@ func main() {
 			log.Fatalf("Could not set up ruler: %v", err)
 		}
 		// XXX: Single-tenanted as part of our initially super hacky way of dogfooding.
-		ruler.Execute(cfg.rulerConfig.UserID, cfg.rulerConfig.UserToken)
+		worker, err := ruler.Execute(cfg.rulerConfig.UserID, cfg.rulerConfig.UserToken)
+		if err != nil {
+			// XXX: Should *not* fail here. Instead should loop until it works, w/ backoff.
+			log.Fatalf("Could not apply config: %v", err)
+		}
+		go worker.Run()
+		defer worker.Stop()
 
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)

@@ -45,6 +45,12 @@ type Ruler struct {
 	externalURL   *url.URL
 }
 
+// Worker does a thing until it's told to stop.
+type Worker interface {
+	Run()
+	Stop()
+}
+
 // New returns a new Ruler.
 func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
 	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
@@ -70,13 +76,17 @@ func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
 }
 
 // Execute does the thing.
-func (r *Ruler) Execute(userID, userToken string) error {
+func (r *Ruler) Execute(userID, userToken string) (Worker, error) {
 	mgr := r.getManager(userToken)
 	conf, err := r.getConfig(userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return mgr.ApplyConfig(conf)
+	err = mgr.ApplyConfig(conf)
+	if err != nil {
+		return nil, err
+	}
+	return mgr, nil
 }
 
 func (r *Ruler) getManager(userID string) *rules.Manager {

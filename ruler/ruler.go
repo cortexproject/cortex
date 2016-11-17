@@ -33,10 +33,8 @@ type Config struct {
 	// XXX: Currently single tenant only (which is awful) as the most
 	// expedient way of getting *something* working.
 	UserID string
-	// XXX: UserID can be inferred from token if we have access to the users
-	// server, which we do. Just specifying both so I can get something
-	// running asap.
-	UserToken string
+	// XXX: Really should not need both this & the userID
+	OrgExternalID string
 }
 
 // Ruler is a recording rules server.
@@ -81,10 +79,10 @@ func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
 
 // GetWorkerFor gets a rules recording worker for the given user.
 // It will keep polling until it can construct one.
-func (r *Ruler) GetWorkerFor(userID, userToken string) Worker {
+func (r *Ruler) GetWorkerFor(userID, orgName string) Worker {
 	delay := time.Duration(r.cfg.EvaluationInterval)
 	for {
-		worker, err := r.getWorkerFor(userID, userToken)
+		worker, err := r.getWorkerFor(userID, orgName)
 		if err == nil {
 			return worker
 		}
@@ -94,9 +92,9 @@ func (r *Ruler) GetWorkerFor(userID, userToken string) Worker {
 }
 
 // getWorkerFor gets a rules recording worker for the given user.
-func (r *Ruler) getWorkerFor(userID, userToken string) (Worker, error) {
-	mgr := r.getManager(userToken)
-	conf, err := r.getConfig(userID)
+func (r *Ruler) getWorkerFor(userID, orgName string) (Worker, error) {
+	mgr := r.getManager(userID)
+	conf, err := r.getConfig(userID, orgName)
 	if err != nil {
 		return nil, fmt.Errorf("Error fetching config: %v", err)
 	}
@@ -121,11 +119,10 @@ func (r *Ruler) getManager(userID string) *rules.Manager {
 	})
 }
 
-func (r *Ruler) getConfig(userID string) (*config.Config, error) {
-	// TODO: Extract configs client logic into go client library (ala users)
+func (r *Ruler) getConfig(userID, orgName string) (*config.Config, error) {
 	// XXX: This is highly specific to Weave Cloud. Would be good to have a
 	// more pluggable way of expressing this for Cortex.
-	cfg, err := getOrgConfig(r.configsAPIURL, userID)
+	cfg, err := getOrgConfig(r.configsAPIURL, orgName)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +146,6 @@ func (r *Ruler) getConfig(userID string) (*config.Config, error) {
 	globalConfig := config.DefaultGlobalConfig
 	globalConfig.EvaluationInterval = model.Duration(r.cfg.EvaluationInterval)
 	return &config.Config{
-		// XXX: Need to set recording interval here.
 		GlobalConfig: globalConfig,
 		RuleFiles:    ruleFiles,
 	}, nil
@@ -166,7 +162,7 @@ func (a appenderAdapter) Append(sample *model.Sample) error {
 }
 
 func (a appenderAdapter) NeedsThrottling() bool {
-	// XXX: Just a guess.
+	// XXX: Just a guess. Who knows?
 	return false
 }
 
@@ -175,13 +171,17 @@ type cortexConfig struct {
 }
 
 // getOrgConfig gets the organization's cortex config from a configs api server.
-func getOrgConfig(configsAPIURL *url.URL, userID string) (*cortexConfig, error) {
-	url := fmt.Sprintf("%s/api/configs/org/%s/cortex", configsAPIURL.String(), userID)
+func getOrgConfig(configsAPIURL *url.URL, orgName string) (*cortexConfig, error) {
+	// TODO: Extract configs client logic into go client library (ala users)
+	// TODO: Fix configs server so that:
+	// 1. Do not need org ID in the URL to get authenticated org
+	// 2. Uses orgID (i.e. numeric database ID) rather than external ID for auth token
+	url := fmt.Sprintf("%s/api/configs/org/%s/cortex", configsAPIURL.String(), orgName)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("X-Scope-OrgID", userID)
+	req.Header.Add("X-Scope-OrgID", orgName)
 	client := &http.Client{}
 	res, err := client.Do(req)
 	if err != nil {

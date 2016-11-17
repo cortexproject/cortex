@@ -27,9 +27,6 @@ type Chunk struct {
 	Encoding prom_chunk.Encoding `json:"encoding"`
 	Data     prom_chunk.Chunk    `json:"-"`
 
-	// Flag indicates if metadata was written to index, and if false implies
-	// we should read a header of the chunk containing the metadata.  Exists
-	// for backwards compatibility with older chunks, which did not have header.
 	metadataInIndex bool
 }
 
@@ -59,8 +56,8 @@ func (c *Chunk) reader() (io.ReadSeeker, error) {
 		return nil, err
 	}
 
-	lenBytes := [4]byte{}
-	binary.BigEndian.PutUint32(lenBytes[:], uint32(metadata.Len()))
+	metadataLenBytes := [4]byte{}
+	binary.BigEndian.PutUint32(metadataLenBytes[:], uint32(metadata.Len()))
 
 	// TODO consider adding a .Reader() to upstream to remove copy
 	data := make([]byte, prom_chunk.ChunkLen)
@@ -68,10 +65,14 @@ func (c *Chunk) reader() (io.ReadSeeker, error) {
 		return nil, err
 	}
 
+	dataLenBytes := [4]byte{}
+	binary.BigEndian.PutUint32(dataLenBytes[:], uint32(len(data)))
+
 	// Body is chunk bytes (uncompressed) with metadata appended on the end.
 	return ioutils.MultiReadSeeker(
-		bytes.NewReader(lenBytes[:]),
+		bytes.NewReader(metadataLenBytes[:]),
 		bytes.NewReader(metadata.Bytes()),
+		bytes.NewReader(dataLenBytes[:]),
 		bytes.NewReader(data),
 	), nil
 }
@@ -100,6 +101,9 @@ func (c *Chunk) decode(r io.Reader) error {
 		return err
 	}
 
+	// Flag indicates if metadata was written to index, and if false implies
+	// we should read a header of the chunk containing the metadata.  Exists
+	// for backwards compatibility with older chunks, which did not have header.
 	if c.Encoding == prom_chunk.Delta {
 		c.Encoding = prom_chunk.DoubleDelta
 	}
@@ -109,7 +113,15 @@ func (c *Chunk) decode(r io.Reader) error {
 		return err
 	}
 
-	return c.Data.Unmarshal(r)
+	var dataLen uint32
+	if err := binary.Read(r, binary.BigEndian, &dataLen); err != nil {
+		return err
+	}
+
+	return c.Data.Unmarshal(&io.LimitedReader{
+		N: int64(dataLen),
+		R: r,
+	})
 }
 
 // ChunksToMatrix converts a slice of chunks into a model.Matrix.

@@ -16,11 +16,11 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/cortex/util"
 )
 
 // Config is the configuration for the recording rules server.
@@ -105,7 +105,7 @@ func (r *Ruler) getWorkerFor(userID string) (Worker, error) {
 
 func (r *Ruler) getManager(userID string) *rules.Manager {
 	ctx := user.WithID(context.Background(), userID)
-	appender := appenderAdapter{appender: r.distributor, ctx: ctx}
+	appender := appenderAdapter{distributor: r.distributor, ctx: ctx}
 	queryable := querier.NewQueryable(r.distributor, r.chunkStore)
 	engine := promql.NewEngine(queryable, nil)
 	return rules.NewManager(&rules.ManagerOptions{
@@ -151,12 +151,14 @@ func (r *Ruler) getConfig(userID string) (*config.Config, error) {
 
 // appenderAdapter adapts cortex.SampleAppender to prometheus.SampleAppender
 type appenderAdapter struct {
-	appender cortex.SampleAppender
-	ctx      context.Context
+	distributor *distributor.Distributor
+	ctx         context.Context
 }
 
 func (a appenderAdapter) Append(sample *model.Sample) error {
-	return a.appender.Append(a.ctx, []*model.Sample{sample})
+	req := util.ToWriteRequest([]*model.Sample{sample})
+	_, err := a.distributor.Push(a.ctx, req)
+	return err
 }
 
 func (a appenderAdapter) NeedsThrottling() bool {

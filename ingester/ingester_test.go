@@ -14,6 +14,7 @@ import (
 
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/cortex/util"
 )
 
 type testStore struct {
@@ -98,7 +99,7 @@ func TestIngesterAppend(t *testing.T) {
 	// Append samples.
 	for _, userID := range userIDs {
 		ctx := user.WithID(context.Background(), userID)
-		err = ing.Append(ctx, matrixToSamples(testData[userID]))
+		_, err = ing.Push(ctx, util.ToWriteRequest(matrixToSamples(testData[userID])))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -111,12 +112,19 @@ func TestIngesterAppend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res, err := ing.Query(ctx, model.Earliest, model.Latest, matcher)
+
+		req, err := util.ToQueryRequest(model.Earliest, model.Latest, matcher)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sort.Sort(res)
 
+		resp, err := ing.Query(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		res := util.FromQueryResponse(resp)
+		sort.Sort(res)
 		if !reflect.DeepEqual(res, testData[userID]) {
 			t.Fatalf("unexpected query result\n\nwant:\n\n%v\n\ngot:\n\n%v\n\n", testData[userID], res)
 		}

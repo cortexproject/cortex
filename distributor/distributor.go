@@ -7,16 +7,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/weaveworks/scope/common/instrument"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/weaveworks/scope/common/instrument"
-	"golang.org/x/net/context"
+	"github.com/prometheus/prometheus/storage/remote"
 
-	"github.com/weaveworks/cortex/ingester"
+	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/user"
 	"github.com/weaveworks/cortex/util"
+	"github.com/weaveworks/cortex/util/middleware"
 )
 
 var (
@@ -32,7 +36,7 @@ var (
 type Distributor struct {
 	cfg        Config
 	clientsMtx sync.RWMutex
-	clients    map[string]*IngesterClient
+	clients    map[string]cortex.IngesterClient
 
 	queryDuration          *prometheus.HistogramVec
 	receivedSamples        prometheus.Counter
@@ -52,18 +56,15 @@ type ReadRing interface {
 	GetAll() []ring.IngesterDesc
 }
 
-// IngesterClientFactory creates ingester clients.
-type IngesterClientFactory func(string) (*IngesterClient, error)
-
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	Ring          ReadRing
-	ClientFactory IngesterClientFactory
+	Ring ReadRing
 
 	ReplicationFactor int
 	MinReadSuccesses  int
 	HeartbeatTimeout  time.Duration
+	RemoteTimeout     time.Duration
 }
 
 // New constructs a new Distributor
@@ -76,7 +77,7 @@ func New(cfg Config) (*Distributor, error) {
 	}
 	return &Distributor{
 		cfg:     cfg,
-		clients: map[string]*IngesterClient{},
+		clients: map[string]cortex.IngesterClient{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "distributor_query_duration_seconds",
@@ -117,9 +118,9 @@ func New(cfg Config) (*Distributor, error) {
 	}, nil
 }
 
-func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {
+func (d *Distributor) getClientFor(ingester ring.IngesterDesc) (cortex.IngesterClient, error) {
 	d.clientsMtx.RLock()
-	client, ok := d.clients[hostname]
+	client, ok := d.clients[ingester.Hostname]
 	d.clientsMtx.RUnlock()
 	if ok {
 		return client, nil
@@ -127,16 +128,30 @@ func (d *Distributor) getClientFor(hostname string) (*IngesterClient, error) {
 
 	d.clientsMtx.Lock()
 	defer d.clientsMtx.Unlock()
-	client, ok = d.clients[hostname]
+	client, ok = d.clients[ingester.Hostname]
 	if ok {
 		return client, nil
 	}
 
-	client, err := d.cfg.ClientFactory(hostname)
-	if err != nil {
-		return nil, err
+	if ingester.GRPCHostname != "" {
+		conn, err := grpc.Dial(
+			ingester.GRPCHostname,
+			grpc.WithInsecure(),
+			grpc.WithUnaryInterceptor(middleware.ClientUserHeaderInterceptor),
+		)
+		if err != nil {
+			return nil, err
+		}
+		client = cortex.NewIngesterClient(conn)
+	} else {
+		var err error
+		client, err = NewHTTPIngesterClient(ingester.Hostname, d.cfg.RemoteTimeout)
+		if err != nil {
+			return nil, err
+		}
 	}
-	d.clients[hostname] = client
+
+	d.clients[ingester.Hostname] = client
 	return client, nil
 }
 
@@ -158,13 +173,14 @@ type sampleTracker struct {
 	succeeded  int32
 }
 
-// Append implements SampleAppender.
-func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error {
+// Push Implements cortex.IngesterServer
+func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
 	userID, err := user.GetID(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	samples := util.FromWriteRequest(req)
 	d.receivedSamples.Add(float64(len(samples)))
 
 	keys := make([]uint32, len(samples), len(samples))
@@ -174,11 +190,11 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 
 	ingesters, err := d.cfg.Ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	sampleTrackers := make([]sampleTracker, len(samples), len(samples))
-	samplesByIngester := map[string][]*sampleTracker{}
+	samplesByIngester := map[ring.IngesterDesc][]*sampleTracker{}
 	for i := range samples {
 		sampleTrackers[i] = sampleTracker{
 			sample: samples[i],
@@ -190,17 +206,17 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 		// Skip those that have not heartbeated in a while. NB these are still
 		// included in the calculation of minSuccess, so if too many failed ingesters
 		// will cause the whole write to fail.
-		liveIngesters := make([]string, 0, len(ingesters[i]))
+		liveIngesters := make([]ring.IngesterDesc, 0, len(ingesters[i]))
 		for _, ingester := range ingesters[i] {
 			if time.Now().Sub(ingester.Timestamp) <= d.cfg.HeartbeatTimeout {
-				liveIngesters = append(liveIngesters, ingester.Hostname)
+				liveIngesters = append(liveIngesters, ingester)
 			}
 		}
 
 		// This is just a shortcut - if there are not minSuccess available ingesters,
 		// after filtering out dead ones, don't even both trying.
 		if len(liveIngesters) < sampleTrackers[i].minSuccess {
-			return fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
+			return nil, fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
 				sampleTrackers[i].minSuccess, len(liveIngesters))
 		}
 
@@ -212,8 +228,8 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 
 	errs := make(chan error)
 	for hostname, samples := range samplesByIngester {
-		go func(hostname string, samples []*sampleTracker) {
-			errs <- d.sendSamples(ctx, hostname, samples)
+		go func(ingester ring.IngesterDesc, samples []*sampleTracker) {
+			errs <- d.sendSamples(ctx, ingester, samples)
 		}(hostname, samples)
 	}
 	var lastErr error
@@ -225,15 +241,15 @@ func (d *Distributor) Append(ctx context.Context, samples []*model.Sample) error
 	}
 	for i := range sampleTrackers {
 		if sampleTrackers[i].succeeded < int32(sampleTrackers[i].minSuccess) {
-			return fmt.Errorf("need %d successful writes, only got %d, last error was: %v",
+			return nil, fmt.Errorf("need %d successful writes, only got %d, last error was: %v",
 				sampleTrackers[i].minSuccess, sampleTrackers[i].succeeded, lastErr)
 		}
 	}
-	return nil
+	return &cortex.WriteResponse{}, nil
 }
 
-func (d *Distributor) sendSamples(ctx context.Context, hostname string, sampleTrackers []*sampleTracker) error {
-	client, err := d.getClientFor(hostname)
+func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, sampleTrackers []*sampleTracker) error {
+	client, err := d.getClientFor(ingester)
 	if err != nil {
 		return err
 	}
@@ -242,12 +258,13 @@ func (d *Distributor) sendSamples(ctx context.Context, hostname string, sampleTr
 		samples[i] = sampleTrackers[i].sample
 	}
 	err = instrument.TimeRequestHistogram("send", d.sendDuration, func() error {
-		return client.Append(ctx, samples)
+		_, err := client.Push(ctx, util.ToWriteRequest(samples))
+		return err
 	})
 	if err != nil {
-		d.ingesterAppendFailures.WithLabelValues(hostname).Inc()
+		d.ingesterAppendFailures.WithLabelValues(ingester.Hostname).Inc()
 	}
-	d.ingesterAppends.WithLabelValues(hostname).Inc()
+	d.ingesterAppends.WithLabelValues(ingester.Hostname).Inc()
 	for i := range sampleTrackers {
 		atomic.AddInt32(&sampleTrackers[i].succeeded, 1)
 	}
@@ -296,11 +313,17 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 		successes := 0
 		var lastErr error
 		for _, ing := range ingesters {
-			client, err := d.getClientFor(ing.Hostname)
+			client, err := d.getClientFor(ing)
 			if err != nil {
 				return err
 			}
-			matrix, err := client.Query(ctx, from, to, matchers...)
+
+			req, err := util.ToQueryRequest(from, to, matchers...)
+			if err != nil {
+				return err
+			}
+
+			resp, err := client.Query(ctx, req)
 			d.ingesterQueries.WithLabelValues(ing.Hostname).Inc()
 			if err != nil {
 				lastErr = err
@@ -309,7 +332,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			}
 			successes++
 
-			for _, ss := range matrix {
+			for _, ss := range util.FromQueryResponse(resp) {
 				fp := ss.Metric.Fingerprint()
 				if mss, ok := fpToSampleStream[fp]; !ok {
 					fpToSampleStream[fp] = &model.SampleStream{
@@ -339,17 +362,19 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
 	valueSet := map[model.LabelValue]struct{}{}
-	for _, c := range d.cfg.Ring.GetAll() {
-		client, err := d.getClientFor(c.Hostname)
+	for _, ingester := range d.cfg.Ring.GetAll() {
+		client, err := d.getClientFor(ingester)
 		if err != nil {
 			return nil, err
 		}
-		vals, err := client.LabelValuesForLabelName(ctx, labelName)
+		resp, err := client.LabelValues(ctx, &cortex.LabelValuesRequest{
+			LabelName: string(labelName),
+		})
 		if err != nil {
 			return nil, err
 		}
-		for _, v := range vals {
-			valueSet[v] = struct{}{}
+		for _, v := range resp.LabelValues {
+			valueSet[model.LabelValue(v)] = struct{}{}
 		}
 	}
 
@@ -361,30 +386,25 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 }
 
 // UserStats returns statistics about the current user.
-func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error) {
-	totalStats := &ingester.UserStats{}
-	for _, c := range d.cfg.Ring.GetAll() {
-		client, err := d.getClientFor(c.Hostname)
+func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
+	totalStats := &UserStats{}
+	for _, ingester := range d.cfg.Ring.GetAll() {
+		client, err := d.getClientFor(ingester)
 		if err != nil {
 			return nil, err
 		}
-		stats, err := client.UserStats(ctx)
+		resp, err := client.UserStats(ctx, &cortex.UserStatsRequest{})
 		if err != nil {
 			return nil, err
 		}
-		totalStats.IngestionRate += stats.IngestionRate
-		totalStats.NumSeries += stats.NumSeries
+		totalStats.IngestionRate += resp.IngestionRate
+		totalStats.NumSeries += resp.NumSeries
 	}
 
 	totalStats.IngestionRate /= float64(d.cfg.ReplicationFactor)
 	totalStats.NumSeries /= uint64(d.cfg.ReplicationFactor)
 
 	return totalStats, nil
-}
-
-// NeedsThrottling implements SampleAppender.
-func (*Distributor) NeedsThrottling(_ context.Context) bool {
-	return false
 }
 
 // Describe implements prometheus.Collector.

@@ -38,6 +38,8 @@ type IngesterDesc struct {
 	Hostname  string        `json:"hostname"`
 	Timestamp time.Time     `json:"timestamp"`
 	State     IngesterState `json:"state"`
+
+	GRPCHostname string `json:"grpc_hostname"`
 }
 
 // TokenDescs is a sortable list of TokenDescs
@@ -63,11 +65,12 @@ func newDesc() *Desc {
 	}
 }
 
-func (d *Desc) addIngester(id, hostname string, tokens []uint32, state IngesterState) {
+func (d *Desc) addIngester(id, hostname, grpcHostname string, tokens []uint32, state IngesterState) {
 	d.Ingesters[id] = IngesterDesc{
-		Hostname:  hostname,
-		Timestamp: time.Now(),
-		State:     state,
+		Hostname:     hostname,
+		GRPCHostname: grpcHostname,
+		Timestamp:    time.Now(),
+		State:        state,
 	}
 
 	for _, token := range tokens {

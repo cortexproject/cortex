@@ -138,7 +138,7 @@ func (r *Ruler) getConfig(userID string) (*config.Config, error) {
 	ruleFiles := []string{}
 	for filename, rules := range cfg.RulesFiles {
 		filepath := path.Join(dir, filename)
-		err = ioutil.WriteFile(filepath, rules, 0644)
+		err = ioutil.WriteFile(filepath, []byte(rules), 0644)
 		if err != nil {
 			// XXX: Clean up already-written files
 			return nil, err
@@ -171,7 +171,7 @@ func (a appenderAdapter) NeedsThrottling() bool {
 }
 
 type cortexConfig struct {
-	RulesFiles map[string][]byte `json:"rules_files"`
+	RulesFiles map[string]string `json:"rules_files"`
 }
 
 // getOrgConfig gets the organization's cortex config from a configs api server.

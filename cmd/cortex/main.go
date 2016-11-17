@@ -165,6 +165,11 @@ func main() {
 		prometheus.MustRegister(registration)
 
 	case modeRuler:
+		// XXX: Too much duplication w/ distributor set up.
+		cfg.distributorConfig.Ring = r
+		cfg.distributorConfig.ClientFactory = func(address string) (*distributor.IngesterClient, error) {
+			return distributor.NewIngesterClient(address, cfg.remoteTimeout)
+		}
 		cfg.rulerConfig.DistributorConfig = cfg.distributorConfig
 		ruler, err := setupRuler(chunkStore, cfg.rulerConfig)
 		if err != nil {

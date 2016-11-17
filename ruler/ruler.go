@@ -98,11 +98,11 @@ func (r *Ruler) getWorkerFor(userID, userToken string) (Worker, error) {
 	mgr := r.getManager(userToken)
 	conf, err := r.getConfig(userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error fetching config: %v", err)
 	}
 	err = mgr.ApplyConfig(conf)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error applying config: %v", err)
 	}
 	return mgr, nil
 }

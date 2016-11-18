@@ -700,7 +700,7 @@ func (c *AWSStore) fetchChunkData(userID string, chunkSet []Chunk) ([]Chunk, err
 				incomingErrors <- err
 				return
 			}
-
+			defer resp.Body.Close()
 			if err := chunk.decode(resp.Body); err != nil {
 				incomingErrors <- err
 				return

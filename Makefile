@@ -31,7 +31,9 @@ EXES = $(CORTEX_EXE)
 all: $(UPTODATE_FILES)
 
 # And what goes into each exe
-$(CORTEX_EXE): $(shell find . -name '*.go') $(shell find ui/static ui/templates)
+$(CORTEX_EXE): $(shell find . -name '*.go') ui/bindata.go cortex.pb.go
+cortex.pb.go: cortex.proto
+ui/bindata.go: $(shell find ui/static ui/templates)
 
 # And now what goes into each image
 cortex-build/$(UPTODATE): cortex-build/*
@@ -53,7 +55,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) lint test assets: cortex-build/$(UPTODATE)
+$(EXES) cortex.pb.go ui/bindata.go lint test shell: cortex-build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
@@ -66,26 +68,26 @@ $(EXES): cortex-build/$(UPTODATE)
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
+cortex.pb.go: cortex-build/$(UPTODATE)
+	protoc -I ./vendor:. --go_out=plugins=grpc:. ./cortex.proto
+
+ui/bindata.go: cortex-build/$(UPTODATE)
+	go-bindata -pkg ui -o ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  ui/templates/... ui/static/...
+
 lint: cortex-build/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
-test: cortex-build/$(UPTODATE)
+test: cortex-build/$(UPTODATE) cortex.pb.go
 	./tools/test -no-go-get
 
-# Manual step that needs to be run after making any changes to the web assets
-# (ui/{templates,static}/...).
-#
-# TODO(juliusv): Figure out if we can make this an automatic part of the build
-# process. It currently produces diffs (source file timestamps are getting
-# baked into bindata.go) and those make CI fail.
-assets: cortex-build/$(UPTODATE)
-	go-bindata -pkg ui -o ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  ui/templates/... ui/static/...
+shell: cortex-build/$(UPTODATE)
+	bash
 
 endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES)
+	rm -rf $(UPTODATE_FILES) $(EXES) cortex.pb.go ui/bindata.go
 	go clean ./...
 
 

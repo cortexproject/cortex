@@ -610,25 +610,13 @@ func (i *Ingester) flushLoop(j int) {
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunks []*prom_chunk.Desc) error {
-	wireChunks := make([]cortex.Chunk, 0, len(chunks))
-	for _, chunk := range chunks {
-		buf := make([]byte, prom_chunk.ChunkLen)
-		if err := chunk.C.MarshalToBuf(buf); err != nil {
-			return err
-		}
-
-		i.chunkUtilization.Observe(chunk.C.Utilization())
-		i.chunkLength.Observe(chunk.C.Len())
-		i.chunkAge.Observe(model.Now().Sub(chunk.ChunkFirstTime).Seconds())
-
-		wireChunks = append(wireChunks, cortex.Chunk{
-			ID:      fmt.Sprintf("%d:%d:%d", fp, chunk.ChunkFirstTime, chunk.ChunkLastTime),
-			From:    chunk.ChunkFirstTime,
-			Through: chunk.ChunkLastTime,
-			Metric:  metric,
-			Data:    buf,
-		})
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*prom_chunk.Desc) error {
+	wireChunks := make([]cortex.Chunk, 0, len(chunkDescs))
+	for _, chunkDesc := range chunkDescs {
+		i.chunkUtilization.Observe(chunkDesc.C.Utilization())
+		i.chunkLength.Observe(chunkDesc.C.Len())
+		i.chunkAge.Observe(model.Now().Sub(chunkDesc.ChunkFirstTime).Seconds())
+		wireChunks = append(wireChunks, cortex.NewChunk(fp, metric, chunkDesc))
 	}
 	return i.chunkStore.Put(ctx, wireChunks)
 }

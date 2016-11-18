@@ -9,6 +9,7 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/tomwilkie/go-mockaws"
 	"golang.org/x/net/context"
@@ -55,6 +56,8 @@ func TestChunkStore(t *testing.T) {
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()
 
+	chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
+
 	chunk1 := Chunk{
 		ID:      "chunk1",
 		From:    now.Add(-time.Hour),
@@ -64,7 +67,8 @@ func TestChunkStore(t *testing.T) {
 			"bar":  "baz",
 			"toms": "code",
 		},
-		Data: []byte{},
+		Encoding: chunk.DoubleDelta,
+		Data:     chunks[0],
 	}
 	chunk2 := Chunk{
 		ID:      "chunk2",
@@ -75,7 +79,8 @@ func TestChunkStore(t *testing.T) {
 			"bar":  "beep",
 			"toms": "code",
 		},
-		Data: []byte{},
+		Encoding: chunk.DoubleDelta,
+		Data:     chunks[0],
 	}
 
 	err := store.Put(ctx, []Chunk{chunk1, chunk2})

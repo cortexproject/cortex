@@ -1,7 +1,9 @@
 package chunk
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -90,10 +92,13 @@ func (c *Cache) FetchChunkData(userID string, chunks []Chunk) (found []Chunk, mi
 		item, ok := items[memcacheKey(userID, chunk.ID)]
 		if !ok {
 			missing = append(missing, chunk)
-		} else {
-			chunk.Data = item.Value
-			found = append(found, chunk)
+			continue
 		}
+
+		if err := chunk.decode(bytes.NewReader(item.Value)); err != nil {
+			return nil, nil, err
+		}
+		found = append(found, chunk)
 	}
 
 	memcacheHits.Add(float64(len(found)))
@@ -102,12 +107,20 @@ func (c *Cache) FetchChunkData(userID string, chunks []Chunk) (found []Chunk, mi
 
 // StoreChunkData serializes and stores a chunk in the chunk cache.
 func (c *Cache) StoreChunkData(userID string, chunk *Chunk) error {
+	reader, err := chunk.reader()
+	if err != nil {
+		return err
+	}
+
+	buf, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+
 	return instrument.TimeRequestHistogramStatus("Put", memcacheRequestDuration, memcacheStatusCode, func() error {
-		// TODO: Add compression - maybe encapsulated in marshaling/unmarshaling
-		// methods of Chunk.
 		item := memcache.Item{
 			Key:        memcacheKey(userID, chunk.ID),
-			Value:      chunk.Data,
+			Value:      buf,
 			Expiration: int32(c.Expiration.Seconds()),
 		}
 		return c.Memcache.Set(&item)

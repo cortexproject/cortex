@@ -1,10 +1,8 @@
 package chunk
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"sort"
 	"strings"
@@ -300,10 +298,15 @@ func (c *AWSStore) putChunks(userID string, chunks []Chunk) error {
 
 // putChunk puts a chunk into S3.
 func (c *AWSStore) putChunk(userID string, chunk *Chunk) error {
-	err := instrument.TimeRequestHistogram("Put", s3RequestDuration, func() error {
+	body, err := chunk.reader()
+	if err != nil {
+		return err
+	}
+
+	err = instrument.TimeRequestHistogram("Put", s3RequestDuration, func() error {
 		var err error
 		_, err = c.s3.PutObject(&s3.PutObjectInput{
-			Body:   bytes.NewReader(chunk.Data),
+			Body:   body,
 			Bucket: aws.String(c.bucketName),
 			Key:    aws.String(chunkName(userID, chunk.ID)),
 		})
@@ -347,12 +350,6 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 			return nil, fmt.Errorf("no MetricNameLabel for chunk")
 		}
 
-		// TODO compression
-		chunkValue, err := json.Marshal(chunk)
-		if err != nil {
-			return nil, err
-		}
-
 		entries := 0
 		for _, hour := range bigBuckets(chunk.From, chunk.Through) {
 			hashValue := hashValue(userID, hour, metricName)
@@ -368,7 +365,6 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 						Item: map[string]*dynamodb.AttributeValue{
 							hashKey:  {S: aws.String(hashValue)},
 							rangeKey: {B: rangeValue},
-							chunkKey: {B: chunkValue},
 						},
 					},
 				})
@@ -664,16 +660,18 @@ func processResponse(resp *dynamodb.QueryOutput, chunkSet *ByID, matcher *metric
 		if err != nil {
 			return dropped, err
 		}
-		chunkValue := item[chunkKey].B
-		if chunkValue == nil {
-			return dropped, fmt.Errorf("invalid item: %v", item)
-		}
+
 		chunk := Chunk{
 			ID: chunkID,
 		}
-		if err := json.Unmarshal(chunkValue, &chunk); err != nil {
-			return dropped, err
+
+		if chunkValue, ok := item[chunkKey]; ok && chunkValue.B != nil {
+			if err := json.Unmarshal(chunkValue.B, &chunk); err != nil {
+				return dropped, err
+			}
+			chunk.metadataInIndex = true
 		}
+
 		if matcher != nil && (label != matcher.Name || !matcher.Match(value)) {
 			log.Debugf("Dropping unexpected", chunk.Metric)
 			dropped++
@@ -702,12 +700,11 @@ func (c *AWSStore) fetchChunkData(userID string, chunkSet []Chunk) ([]Chunk, err
 				incomingErrors <- err
 				return
 			}
-			buf, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
+			defer resp.Body.Close()
+			if err := chunk.decode(resp.Body); err != nil {
 				incomingErrors <- err
 				return
 			}
-			chunk.Data = buf
 			incomingChunks <- chunk
 		}(chunk)
 	}

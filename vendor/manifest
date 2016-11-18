@@ -245,7 +245,7 @@
 			"importpath": "github.com/docker/docker/pkg/ioutils",
 			"repository": "https://github.com/docker/docker",
 			"vcs": "git",
-			"revision": "a58e3e7fefd67ebe57c183e970e5fcda096c9ad1",
+			"revision": "27699ba8b23217525b0b026fa689834db4454a35",
 			"branch": "master",
 			"path": "/pkg/ioutils",
 			"notests": true

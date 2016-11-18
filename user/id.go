@@ -6,6 +6,10 @@ import (
 	"golang.org/x/net/context"
 )
 
+// TODO(jml): typedef for userid, maybe even put in a weaveworks library, so
+// that there's a shared language around the multiple ways of identifying
+// entitiies.
+
 // UserIDContextKey is the key used in contexts to find the userid
 const userIDContextKey = "CortexUserID" // TODO dedupe with storage/local
 

@@ -1,3 +1,5 @@
 cmd/cortex/cortex
 .uptodate
 .pkg
+cortex.pb.go
+ui/bindata.go

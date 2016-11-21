@@ -614,7 +614,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 	wireChunks := make([]cortex.Chunk, 0, len(chunkDescs))
 	for _, chunkDesc := range chunkDescs {
 		i.chunkUtilization.Observe(chunkDesc.C.Utilization())
-		i.chunkLength.Observe(chunkDesc.C.Len())
+		i.chunkLength.Observe(float64(chunkDesc.C.Len()))
 		i.chunkAge.Observe(model.Now().Sub(chunkDesc.ChunkFirstTime).Seconds())
 		wireChunks = append(wireChunks, cortex.NewChunk(fp, metric, chunkDesc))
 	}

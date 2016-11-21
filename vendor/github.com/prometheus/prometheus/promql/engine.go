@@ -30,6 +30,18 @@ import (
 	"github.com/prometheus/prometheus/util/stats"
 )
 
+const (
+	// The largest SampleValue that can be converted to an int64 without overflow.
+	maxInt64 model.SampleValue = 9223372036854774784
+	// The smallest SampleValue that can be converted to an int64 without underflow.
+	minInt64 model.SampleValue = -9223372036854775808
+)
+
+// convertibleToInt64 returns true if v does not over-/underflow an int64.
+func convertibleToInt64(v model.SampleValue) bool {
+	return v <= maxInt64 && v >= minInt64
+}
+
 // sampleStream is a stream of Values belonging to an attached COWMetric.
 type sampleStream struct {
 	Metric metric.Metric
@@ -108,7 +120,7 @@ func (r *Result) Matrix() (model.Matrix, error) {
 	}
 	v, ok := r.Value.(model.Matrix)
 	if !ok {
-		return nil, fmt.Errorf("query result is not a matrix")
+		return nil, fmt.Errorf("query result is not a range vector")
 	}
 	return v, nil
 }
@@ -274,7 +286,7 @@ func (ng *Engine) NewRangeQuery(qs string, start, end model.Time, interval time.
 		return nil, err
 	}
 	if expr.Type() != model.ValVector && expr.Type() != model.ValScalar {
-		return nil, fmt.Errorf("invalid expression type %q for range query, must be scalar or vector", expr.Type())
+		return nil, fmt.Errorf("invalid expression type %q for range query, must be scalar or instant vector", documentedType(expr.Type()))
 	}
 	qry := ng.newQuery(expr, start, end, interval)
 	qry.q = qs
@@ -569,7 +581,7 @@ func (ev *evaluator) evalScalar(e Expr) *model.Scalar {
 	val := ev.eval(e)
 	sv, ok := val.(*model.Scalar)
 	if !ok {
-		ev.errorf("expected scalar but got %s", val.Type())
+		ev.errorf("expected scalar but got %s", documentedType(val.Type()))
 	}
 	return sv
 }
@@ -579,15 +591,18 @@ func (ev *evaluator) evalVector(e Expr) vector {
 	val := ev.eval(e)
 	vec, ok := val.(vector)
 	if !ok {
-		ev.errorf("expected vector but got %s", val.Type())
+		ev.errorf("expected instant vector but got %s", documentedType(val.Type()))
 	}
 	return vec
 }
 
 // evalInt attempts to evaluate e into an integer and errors otherwise.
-func (ev *evaluator) evalInt(e Expr) int {
+func (ev *evaluator) evalInt(e Expr) int64 {
 	sc := ev.evalScalar(e)
-	return int(sc.Value)
+	if !convertibleToInt64(sc.Value) {
+		ev.errorf("scalar value %v overflows int64", sc.Value)
+	}
+	return int64(sc.Value)
 }
 
 // evalFloat attempts to evaluate e into a float and errors otherwise.
@@ -597,11 +612,13 @@ func (ev *evaluator) evalFloat(e Expr) float64 {
 }
 
 // evalMatrix attempts to evaluate e into a matrix and errors otherwise.
+// The error message uses the term "range vector" to match the user facing
+// documentation.
 func (ev *evaluator) evalMatrix(e Expr) matrix {
 	val := ev.eval(e)
 	mat, ok := val.(matrix)
 	if !ok {
-		ev.errorf("expected matrix but got %s", val.Type())
+		ev.errorf("expected range vector but got %s", documentedType(val.Type()))
 	}
 	return mat
 }
@@ -611,7 +628,7 @@ func (ev *evaluator) evalString(e Expr) *model.String {
 	val := ev.eval(e)
 	sv, ok := val.(*model.String)
 	if !ok {
-		ev.errorf("expected string but got %s", val.Type())
+		ev.errorf("expected string but got %s", documentedType(val.Type()))
 	}
 	return sv
 }
@@ -620,7 +637,7 @@ func (ev *evaluator) evalString(e Expr) *model.String {
 func (ev *evaluator) evalOneOf(e Expr, t1, t2 model.ValueType) model.Value {
 	val := ev.eval(e)
 	if val.Type() != t1 && val.Type() != t2 {
-		ev.errorf("expected %s or %s but got %s", t1, t2, val.Type())
+		ev.errorf("expected %s or %s but got %s", documentedType(t1), documentedType(t2), documentedType(val.Type()))
 	}
 	return val
 }
@@ -1022,10 +1039,7 @@ func scalarBinop(op itemType, lhs, rhs model.SampleValue) model.SampleValue {
 	case itemPOW:
 		return model.SampleValue(math.Pow(float64(lhs), float64(rhs)))
 	case itemMOD:
-		if int(rhs) != 0 {
-			return model.SampleValue(int(lhs) % int(rhs))
-		}
-		return model.SampleValue(math.NaN())
+		return model.SampleValue(math.Mod(float64(lhs), float64(rhs)))
 	case itemEQL:
 		return btos(lhs == rhs)
 	case itemNEQ:
@@ -1056,10 +1070,7 @@ func vectorElemBinop(op itemType, lhs, rhs model.SampleValue) (model.SampleValue
 	case itemPOW:
 		return model.SampleValue(math.Pow(float64(lhs), float64(rhs))), true
 	case itemMOD:
-		if int(rhs) != 0 {
-			return model.SampleValue(int(lhs) % int(rhs)), true
-		}
-		return model.SampleValue(math.NaN()), true
+		return model.SampleValue(math.Mod(float64(lhs), float64(rhs))), true
 	case itemEQL:
 		return lhs, lhs == rhs
 	case itemNEQ:
@@ -1099,7 +1110,7 @@ type groupedAggregation struct {
 func (ev *evaluator) aggregation(op itemType, grouping model.LabelNames, without bool, keepCommon bool, param Expr, vec vector) vector {
 
 	result := map[uint64]*groupedAggregation{}
-	var k int
+	var k int64
 	if op == itemTopK || op == itemBottomK {
 		k = ev.evalInt(param)
 		if k < 1 {
@@ -1202,15 +1213,15 @@ func (ev *evaluator) aggregation(op itemType, grouping model.LabelNames, without
 			groupedResult.valuesSquaredSum += s.Value * s.Value
 			groupedResult.groupCount++
 		case itemTopK:
-			if len(groupedResult.heap) < k || groupedResult.heap[0].Value < s.Value || math.IsNaN(float64(groupedResult.heap[0].Value)) {
-				if len(groupedResult.heap) == k {
+			if int64(len(groupedResult.heap)) < k || groupedResult.heap[0].Value < s.Value || math.IsNaN(float64(groupedResult.heap[0].Value)) {
+				if int64(len(groupedResult.heap)) == k {
 					heap.Pop(&groupedResult.heap)
 				}
 				heap.Push(&groupedResult.heap, &sample{Value: s.Value, Metric: s.Metric})
 			}
 		case itemBottomK:
-			if len(groupedResult.reverseHeap) < k || groupedResult.reverseHeap[0].Value > s.Value || math.IsNaN(float64(groupedResult.reverseHeap[0].Value)) {
-				if len(groupedResult.reverseHeap) == k {
+			if int64(len(groupedResult.reverseHeap)) < k || groupedResult.reverseHeap[0].Value > s.Value || math.IsNaN(float64(groupedResult.reverseHeap[0].Value)) {
+				if int64(len(groupedResult.reverseHeap)) == k {
 					heap.Pop(&groupedResult.reverseHeap)
 				}
 				heap.Push(&groupedResult.reverseHeap, &sample{Value: s.Value, Metric: s.Metric})
@@ -1326,5 +1337,18 @@ func (g *queryGate) Done() {
 	case <-g.ch:
 	default:
 		panic("engine.queryGate.Done: more operations done than started")
+	}
+}
+
+// documentedType returns the internal type to the equivalent
+// user facing terminology as defined in the documentation.
+func documentedType(t model.ValueType) string {
+	switch t.String() {
+	case "vector":
+		return "instant vector"
+	case "matrix":
+		return "range vector"
+	default:
+		return t.String()
 	}
 }

@@ -574,10 +574,10 @@
 		},
 		{
 			"importpath": "github.com/prometheus/prometheus",
-			"repository": "https://github.com/tomwilkie/prometheus",
+			"repository": "https://github.com/prometheus/prometheus",
 			"vcs": "git",
-			"revision": "2561b8565cab4a844a68ef2b7da7c34e8480eaba",
-			"branch": "chunk-len",
+			"revision": "ec66082749003ecee471d7600b9e9ca5c83332bd",
+			"branch": "master",
 			"notests": true
 		},
 		{

@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
+	"github.com/mwitkow/go-grpc-middleware"
+	"github.com/opentracing/opentracing-go"
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -137,7 +140,10 @@ func (d *Distributor) getClientFor(ingester ring.IngesterDesc) (cortex.IngesterC
 		conn, err := grpc.Dial(
 			ingester.GRPCHostname,
 			grpc.WithInsecure(),
-			grpc.WithUnaryInterceptor(middleware.ClientUserHeaderInterceptor),
+			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
+				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+				middleware.ClientUserHeaderInterceptor,
+			)),
 		)
 		if err != nil {
 			return nil, err
@@ -257,7 +263,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 	for i := range sampleTrackers {
 		samples[i] = sampleTrackers[i].sample
 	}
-	err = instrument.TimeRequestHistogram("send", d.sendDuration, func() error {
+	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", d.sendDuration, func(ctx context.Context) error {
 		_, err := client.Push(ctx, util.ToWriteRequest(samples))
 		return err
 	})
@@ -286,7 +292,7 @@ func metricNameFromLabelMatchers(matchers ...*metric.LabelMatcher) (model.LabelV
 // Query implements Querier.
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	var result model.Matrix
-	err := instrument.TimeRequestHistogram("duration", d.queryDuration, func() error {
+	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", d.queryDuration, func(ctx context.Context) error {
 		fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
 
 		metricName, err := metricNameFromLabelMatchers(matchers...)

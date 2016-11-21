@@ -370,20 +370,20 @@ func (c *AWSStore) Put(ctx context.Context, chunks []Chunk) error {
 		return err
 	}
 
-	err = c.putChunks(userID, chunks)
+	err = c.putChunks(ctx, userID, chunks)
 	if err != nil {
 		return err
 	}
 
-	return c.updateIndex(userID, chunks)
+	return c.updateIndex(ctx, userID, chunks)
 }
 
 // putChunks writes a collection of chunks to S3 in parallel.
-func (c *AWSStore) putChunks(userID string, chunks []Chunk) error {
+func (c *AWSStore) putChunks(ctx context.Context, userID string, chunks []Chunk) error {
 	incomingErrors := make(chan error)
 	for _, chunk := range chunks {
 		go func(chunk Chunk) {
-			incomingErrors <- c.putChunk(userID, &chunk)
+			incomingErrors <- c.putChunk(ctx, userID, &chunk)
 		}(chunk)
 	}
 
@@ -398,13 +398,13 @@ func (c *AWSStore) putChunks(userID string, chunks []Chunk) error {
 }
 
 // putChunk puts a chunk into S3.
-func (c *AWSStore) putChunk(userID string, chunk *Chunk) error {
+func (c *AWSStore) putChunk(ctx context.Context, userID string, chunk *Chunk) error {
 	body, err := chunk.reader()
 	if err != nil {
 		return err
 	}
 
-	err = instrument.TimeRequestHistogram("Put", s3RequestDuration, func() error {
+	err = instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
 		var err error
 		_, err = c.s3.PutObject(&s3.PutObjectInput{
 			Body:   body,
@@ -418,20 +418,20 @@ func (c *AWSStore) putChunk(userID string, chunk *Chunk) error {
 	}
 
 	if c.chunkCache != nil {
-		if err = c.chunkCache.StoreChunkData(userID, chunk); err != nil {
+		if err = c.chunkCache.StoreChunkData(ctx, userID, chunk); err != nil {
 			log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
 		}
 	}
 	return nil
 }
 
-func (c *AWSStore) updateIndex(userID string, chunks []Chunk) error {
+func (c *AWSStore) updateIndex(ctx context.Context, userID string, chunks []Chunk) error {
 	writeReqs, err := c.calculateDynamoWrites(userID, chunks)
 	if err != nil {
 		return err
 	}
 
-	return c.batchWriteDynamo(c.tableName, writeReqs)
+	return c.batchWriteDynamo(ctx, c.tableName, writeReqs)
 }
 
 // calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all
@@ -478,8 +478,7 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 		return nil, err
 	}
 
-	// TODO push ctx all the way through, so we can do cancellation (eventually!)
-	chunks, err := c.lookupChunks(userID, from, through, matchers)
+	chunks, err := c.lookupChunks(ctx, userID, from, through, matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -501,19 +500,19 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 	var fromCache []Chunk
 	var missing = filtered
 	if c.chunkCache != nil {
-		fromCache, missing, err = c.chunkCache.FetchChunkData(userID, missing)
+		fromCache, missing, err = c.chunkCache.FetchChunkData(ctx, userID, missing)
 		if err != nil {
 			log.Warnf("Error fetching from cache: %v", err)
 		}
 	}
 
-	fromS3, err := c.fetchChunkData(userID, missing)
+	fromS3, err := c.fetchChunkData(ctx, userID, missing)
 	if err != nil {
 		return nil, err
 	}
 
 	if c.chunkCache != nil {
-		if err = c.chunkCache.StoreChunks(userID, fromS3); err != nil {
+		if err = c.chunkCache.StoreChunks(ctx, userID, fromS3); err != nil {
 			log.Warnf("Could not store chunks in chunk cache: %v", err)
 		}
 	}
@@ -540,7 +539,7 @@ func extractMetricName(matchers []*metric.LabelMatcher) (model.LabelValue, []*me
 	return "", nil, fmt.Errorf("no matcher for MetricNameLabel")
 }
 
-func (c *AWSStore) lookupChunks(userID string, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
+func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
 	metricName, matchers, err := extractMetricName(matchers)
 	if err != nil {
 		return nil, err
@@ -552,7 +551,7 @@ func (c *AWSStore) lookupChunks(userID string, from, through model.Time, matcher
 	totalLookups := int32(0)
 	for _, hour := range buckets {
 		go func(hour int64) {
-			incoming, lookups, err := c.lookupChunksFor(userID, hour, metricName, matchers)
+			incoming, lookups, err := c.lookupChunksFor(ctx, userID, hour, metricName, matchers)
 			atomic.AddInt32(&totalLookups, lookups)
 			if err != nil {
 				incomingErrors <- err
@@ -584,9 +583,9 @@ func next(s string) string {
 	return result
 }
 
-func (c *AWSStore) lookupChunksFor(userID string, hour int64, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
+func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, hour int64, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
 	if len(matchers) == 0 {
-		return c.lookupChunksForMetricName(userID, hour, metricName)
+		return c.lookupChunksForMetricName(ctx, userID, hour, metricName)
 	}
 
 	incomingChunkSets := make(chan ByID)
@@ -594,7 +593,7 @@ func (c *AWSStore) lookupChunksFor(userID string, hour int64, metricName model.L
 
 	for _, matcher := range matchers {
 		go func(matcher *metric.LabelMatcher) {
-			incoming, err := c.lookupChunksForMatcher(userID, hour, metricName, matcher)
+			incoming, err := c.lookupChunksForMatcher(ctx, userID, hour, metricName, matcher)
 			if err != nil {
 				incomingErrors <- err
 			} else {
@@ -616,7 +615,7 @@ func (c *AWSStore) lookupChunksFor(userID string, hour int64, metricName model.L
 	return nWayIntersect(chunkSets), int32(len(matchers)), lastErr
 }
 
-func (c *AWSStore) lookupChunksForMetricName(userID string, hour int64, metricName model.LabelValue) (ByID, int32, error) {
+func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string, hour int64, metricName model.LabelValue) (ByID, int32, error) {
 	hashValue := hashValue(userID, hour, metricName)
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(c.tableName),
@@ -638,7 +637,8 @@ func (c *AWSStore) lookupChunksForMetricName(userID string, hour int64, metricNa
 		queryRequestPages.Observe(float64(pages))
 		queryDroppedMatches.Observe(float64(totalDropped))
 	}()
-	if err := c.queryPages(input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
+
+	if err := c.queryPages(ctx, input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
 		var dropped int
 		dropped, processingError = processResponse(resp.(*dynamodb.QueryOutput), &chunkSet, nil)
 		totalDropped += dropped
@@ -656,7 +656,7 @@ func (c *AWSStore) lookupChunksForMetricName(userID string, hour int64, metricNa
 	return chunkSet, 1, nil
 }
 
-func (c *AWSStore) lookupChunksForMatcher(userID string, hour int64, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
+func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, hour int64, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
 	hashValue := hashValue(userID, hour, metricName)
 	var rangeMinValue, rangeMaxValue []byte
 	if matcher.Type == metric.Equal {
@@ -696,7 +696,7 @@ func (c *AWSStore) lookupChunksForMatcher(userID string, hour int64, metricName 
 		queryRequestPages.Observe(float64(pages))
 		queryDroppedMatches.Observe(float64(totalDropped))
 	}()
-	if err := c.queryPages(input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
+	if err := c.queryPages(ctx, input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
 		var dropped int
 		dropped, processingError = processResponse(resp.(*dynamodb.QueryOutput), &chunkSet, matcher)
 		totalDropped += dropped
@@ -751,13 +751,13 @@ func processResponse(resp *dynamodb.QueryOutput, chunkSet *ByID, matcher *metric
 	return dropped, nil
 }
 
-func (c *AWSStore) fetchChunkData(userID string, chunkSet []Chunk) ([]Chunk, error) {
+func (c *AWSStore) fetchChunkData(ctx context.Context, userID string, chunkSet []Chunk) ([]Chunk, error) {
 	incomingChunks := make(chan Chunk)
 	incomingErrors := make(chan error)
 	for _, chunk := range chunkSet {
 		go func(chunk Chunk) {
 			var resp *s3.GetObjectOutput
-			err := instrument.TimeRequestHistogram("Get", s3RequestDuration, func() error {
+			err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
 				var err error
 				resp, err = c.s3.GetObject(&s3.GetObjectInput{
 					Bucket: aws.String(c.bucketName),
@@ -795,8 +795,9 @@ func (c *AWSStore) fetchChunkData(userID string, chunkSet []Chunk) ([]Chunk, err
 }
 
 // batchWriteDynamo writes many requests to dynamo in a single batch.
-func (c *AWSStore) batchWriteDynamo(tableName string, reqs []*dynamodb.WriteRequest) error {
+func (c *AWSStore) batchWriteDynamo(ctx context.Context, tableName string, reqs []*dynamodb.WriteRequest) error {
 	req := &dynamoBatchWriteItemsOp{
+		ctx:       ctx,
 		tableName: tableName,
 		reqs:      reqs,
 		dynamodb:  c.dynamodb,
@@ -806,9 +807,10 @@ func (c *AWSStore) batchWriteDynamo(tableName string, reqs []*dynamodb.WriteRequ
 	return <-req.done
 }
 
-func (c *AWSStore) queryPages(input *dynamodb.QueryInput, callback func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
+func (c *AWSStore) queryPages(ctx context.Context, input *dynamodb.QueryInput, callback func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
 	page, _ := c.dynamodb.QueryRequest(input)
 	req := &dynamoQueryPagesOp{
+		ctx:      ctx,
 		request:  page,
 		callback: callback,
 		done:     make(chan error),
@@ -835,12 +837,14 @@ type dynamoOp interface {
 }
 
 type dynamoQueryPagesOp struct {
+	ctx      context.Context
 	request  dynamoRequest
 	callback func(resp interface{}, lastPage bool) (shouldContinue bool)
 	done     chan error
 }
 
 type dynamoBatchWriteItemsOp struct {
+	ctx       context.Context
 	tableName string
 	reqs      []*dynamodb.WriteRequest
 	dynamodb  dynamodbClient
@@ -851,7 +855,7 @@ func (r *dynamoQueryPagesOp) do() {
 	backoff := minBackoff
 
 	for page := r.request; page != nil; page = page.NextPage() {
-		err := instrument.TimeRequestHistogram("DynamoDB.QueryPages", dynamoRequestDuration, func() error {
+		err := instrument.TimeRequestHistogram(r.ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
 
@@ -909,7 +913,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		fillReq(&outstanding, &reqs)
 
 		var resp *dynamodb.BatchWriteItemOutput
-		err := instrument.TimeRequestHistogram("DynamoDB.BatchWriteItem", dynamoRequestDuration, func() error {
+		err := instrument.TimeRequestHistogram(r.ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(_ context.Context) error {
 			var err error
 			resp, err = r.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 				RequestItems:           map[string][]*dynamodb.WriteRequest{r.tableName: reqs},

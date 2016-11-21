@@ -53,24 +53,39 @@ type worker struct {
 	userID        string
 	configsAPIURL *url.URL
 	opts          *rules.ManagerOptions
+
+	done       chan struct{}
+	terminated chan struct{}
 }
 
 func (w *worker) Run() {
+	defer close(w.terminated)
 	var rs []rules.Rule
+	var group *rules.Group
+	tick := time.NewTicker(w.delay)
+	defer tick.Stop()
 	for {
 		var err error
-		rs, err = w.loadRules()
-		if err != nil {
-			log.Warnf("Could not get configuration for %v: %v", w.userID, err)
-			time.Sleep(w.delay)
+		select {
+		case <-w.done:
+			return
+		default:
+			select {
+			case <-w.done:
+				return
+			case <-tick.C:
+				if group == nil {
+					rs, err = w.loadRules()
+					if err != nil {
+						log.Warnf("Could not get configuration for %v: %v", w.userID, err)
+						continue
+					}
+					group = rules.NewGroup("default", w.delay, rs, w.opts)
+				} else {
+					group.Eval()
+				}
+			}
 		}
-		break
-	}
-	group := rules.NewGroup("default", w.delay, rs, w.opts)
-	for {
-		// XXX: Use NewTicker.
-		group.Eval()
-		time.Sleep(w.delay)
 	}
 }
 
@@ -87,6 +102,8 @@ func (w *worker) loadRules() ([]rules.Rule, error) {
 }
 
 func (w *worker) Stop() {
+	close(w.done)
+	<-w.terminated
 }
 
 // New returns a new Ruler.

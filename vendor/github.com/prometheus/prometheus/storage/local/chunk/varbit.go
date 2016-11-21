@@ -328,17 +328,13 @@ func (c varbitChunk) Utilization() float64 {
 	return math.Min(float64(c.nextSampleOffset()/8+15)/float64(cap(c)), 1)
 }
 
-// Len implements chunk.
-func (c varbitChunk) Len() float64 {
-	offset := c.nextSampleOffset()
-	switch {
-	case offset == varbitFirstSampleBitOffset:
-		return 0
-	case offset == varbitSecondSampleBitOffset:
-		return 1
+// Len implements chunk.  Runs in O(n).
+func (c varbitChunk) Len() int {
+	it := c.NewIterator()
+	i := 0
+	for ; it.Scan(); i++ {
 	}
-
-	return float64(int(offset)-varbitFirstValueDeltaOffset) / float64(varbitWorstCaseBitsPerSample[c.valueEncoding()])
+	return i
 }
 
 // FirstTime implements chunk.

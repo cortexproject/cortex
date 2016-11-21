@@ -3,15 +3,12 @@ package ruler
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
-	"path"
 	"time"
 
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
@@ -51,6 +48,47 @@ type Worker interface {
 	Stop()
 }
 
+type worker struct {
+	delay         time.Duration
+	userID        string
+	configsAPIURL *url.URL
+	opts          *rules.ManagerOptions
+}
+
+func (w *worker) Run() {
+	var rs []rules.Rule
+	for {
+		var err error
+		rs, err = w.loadRules()
+		if err != nil {
+			log.Warnf("Could not get configuration for %v: %v", w.userID, err)
+			time.Sleep(w.delay)
+		}
+		break
+	}
+	group := rules.NewGroup("default", w.delay, rs, w.opts)
+	for {
+		// XXX: Use NewTicker.
+		group.Eval()
+		time.Sleep(w.delay)
+	}
+}
+
+func (w *worker) loadRules() ([]rules.Rule, error) {
+	cfg, err := getOrgConfig(w.configsAPIURL, w.userID)
+	if err != nil {
+		return nil, fmt.Errorf("Error fetching config: %v", err)
+	}
+	rs, err := loadRules(cfg.RulesFiles)
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing rules: %v", err)
+	}
+	return rs, nil
+}
+
+func (w *worker) Stop() {
+}
+
 // New returns a new Ruler.
 func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
 	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
@@ -79,74 +117,56 @@ func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
 // It will keep polling until it can construct one.
 func (r *Ruler) GetWorkerFor(userID string) Worker {
 	delay := time.Duration(r.cfg.EvaluationInterval)
-	for {
-		worker, err := r.getWorkerFor(userID)
-		if err == nil {
-			return worker
-		}
-		log.Warnf("Could not get configuration for %v: %v", userID, err)
-		time.Sleep(delay)
+	return &worker{
+		delay:         delay,
+		userID:        userID,
+		configsAPIURL: r.configsAPIURL,
+		opts:          r.getManagerOptions(userID),
 	}
 }
 
-// getWorkerFor gets a rules recording worker for the given user.
-func (r *Ruler) getWorkerFor(userID string) (Worker, error) {
-	mgr := r.getManager(userID)
-	conf, err := r.getConfig(userID)
-	if err != nil {
-		return nil, fmt.Errorf("Error fetching config: %v", err)
-	}
-	err = mgr.ApplyConfig(conf)
-	if err != nil {
-		return nil, fmt.Errorf("Error applying config: %v", err)
-	}
-	return mgr, nil
-}
-
-func (r *Ruler) getManager(userID string) *rules.Manager {
+func (r *Ruler) getManagerOptions(userID string) *rules.ManagerOptions {
 	ctx := user.WithID(context.Background(), userID)
 	appender := appenderAdapter{appender: r.distributor, ctx: ctx}
 	queryable := querier.NewQueryable(r.distributor, r.chunkStore)
 	engine := promql.NewEngine(queryable, nil)
-	return rules.NewManager(&rules.ManagerOptions{
+	return &rules.ManagerOptions{
 		SampleAppender: appender,
 		Notifier:       nil,
 		QueryEngine:    engine,
 		Context:        ctx,
 		ExternalURL:    r.externalURL,
-	})
+	}
 }
 
-func (r *Ruler) getConfig(userID string) (*config.Config, error) {
-	// XXX: This is highly specific to Weave Cloud. Would be good to have a
-	// more pluggable way of expressing this for Cortex.
-	cfg, err := getOrgConfig(r.configsAPIURL, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	dir, err := ioutil.TempDir("", fmt.Sprintf("rules-%v", userID))
-	if err != nil {
-		return nil, err
-	}
-
-	ruleFiles := []string{}
-	for filename, rules := range cfg.RulesFiles {
-		filepath := path.Join(dir, filename)
-		err = ioutil.WriteFile(filepath, []byte(rules), 0644)
+// loadRules loads rules.
+//
+// Strongly inspired by `loadGroups` in Prometheus.
+func loadRules(files map[string]string) ([]rules.Rule, error) {
+	result := []rules.Rule{}
+	for fn, content := range files {
+		stmts, err := promql.ParseStmts(string(content))
 		if err != nil {
-			// XXX: Clean up already-written files
-			return nil, err
+			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
 		}
-		ruleFiles = append(ruleFiles, filepath)
-	}
 
-	globalConfig := config.DefaultGlobalConfig
-	globalConfig.EvaluationInterval = model.Duration(r.cfg.EvaluationInterval)
-	return &config.Config{
-		GlobalConfig: globalConfig,
-		RuleFiles:    ruleFiles,
-	}, nil
+		for _, stmt := range stmts {
+			var rule rules.Rule
+
+			switch r := stmt.(type) {
+			case *promql.AlertStmt:
+				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations)
+
+			case *promql.RecordStmt:
+				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)
+
+			default:
+				panic("ruler.loadRules: unknown statement type")
+			}
+			result = append(result, rule)
+		}
+	}
+	return result, nil
 }
 
 // appenderAdapter adapts cortex.SampleAppender to prometheus.SampleAppender

@@ -173,7 +173,7 @@ type sampleTracker struct {
 	succeeded  int32
 }
 
-// Push Implements cortex.IngesterServer
+// Push implements cortex.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
 	userID, err := user.GetID(ctx)
 	if err != nil {

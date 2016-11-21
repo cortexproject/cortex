@@ -23,7 +23,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		case IngesterError:
 			switch {
 			case 400 <= e.StatusCode && e.StatusCode < 500:
-				log.Warnf("append err: %v", err)
+				log.Warnf("push err: %v", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

@@ -149,7 +149,7 @@ func (r *Ruler) getConfig(userID string) (*config.Config, error) {
 	}, nil
 }
 
-// appenderAdapter adapts cortex.SampleAppender to prometheus.SampleAppender
+// appenderAdapter adapts a distributor.Distributor to prometheus.SampleAppender
 type appenderAdapter struct {
 	distributor *distributor.Distributor
 	ctx         context.Context

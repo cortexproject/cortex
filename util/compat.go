@@ -111,7 +111,6 @@ func FromQueryRequest(req *cortex.QueryRequest) (model.Time, model.Time, []*metr
 		}
 		matchers = append(matchers, matcher)
 	}
-
 	from := model.Time(req.StartTimestampMs)
 	to := model.Time(req.EndTimestampMs)
 	return from, to, matchers, nil

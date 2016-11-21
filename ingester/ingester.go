@@ -241,7 +241,7 @@ func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {
 	return state, nil
 }
 
-// Push Implements cortex.IngesterServer
+// Push implements cortex.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
 	for _, sample := range util.FromWriteRequest(req) {
 		if err := i.append(ctx, sample); err != nil {

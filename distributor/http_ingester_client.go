@@ -19,7 +19,7 @@ import (
 	"github.com/weaveworks/cortex/user"
 )
 
-// IngesterClient is a client library for the ingester
+// httpIngesterClient is a client library for the ingester
 type httpIngesterClient struct {
 	address string
 	client  http.Client

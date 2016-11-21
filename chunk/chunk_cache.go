@@ -9,6 +9,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/scope/common/instrument"
+	"golang.org/x/net/context"
 )
 
 var (
@@ -70,7 +71,7 @@ func memcacheKey(userID, chunkID string) string {
 }
 
 // FetchChunkData gets chunks from the chunk cache.
-func (c *Cache) FetchChunkData(userID string, chunks []Chunk) (found []Chunk, missing []Chunk, err error) {
+func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chunk) (found []Chunk, missing []Chunk, err error) {
 	memcacheRequests.Add(float64(len(chunks)))
 
 	keys := make([]string, 0, len(chunks))
@@ -79,7 +80,7 @@ func (c *Cache) FetchChunkData(userID string, chunks []Chunk) (found []Chunk, mi
 	}
 
 	var items map[string]*memcache.Item
-	err = instrument.TimeRequestHistogramStatus("Get", memcacheRequestDuration, memcacheStatusCode, func() error {
+	err = instrument.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		var err error
 		items, err = c.Memcache.GetMulti(keys)
 		return err
@@ -106,7 +107,7 @@ func (c *Cache) FetchChunkData(userID string, chunks []Chunk) (found []Chunk, mi
 }
 
 // StoreChunkData serializes and stores a chunk in the chunk cache.
-func (c *Cache) StoreChunkData(userID string, chunk *Chunk) error {
+func (c *Cache) StoreChunkData(ctx context.Context, userID string, chunk *Chunk) error {
 	reader, err := chunk.reader()
 	if err != nil {
 		return err
@@ -117,7 +118,7 @@ func (c *Cache) StoreChunkData(userID string, chunk *Chunk) error {
 		return err
 	}
 
-	return instrument.TimeRequestHistogramStatus("Put", memcacheRequestDuration, memcacheStatusCode, func() error {
+	return instrument.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		item := memcache.Item{
 			Key:        memcacheKey(userID, chunk.ID),
 			Value:      buf,
@@ -128,11 +129,11 @@ func (c *Cache) StoreChunkData(userID string, chunk *Chunk) error {
 }
 
 // StoreChunks serializes and stores multiple chunks in the chunk cache.
-func (c *Cache) StoreChunks(userID string, chunks []Chunk) error {
+func (c *Cache) StoreChunks(ctx context.Context, userID string, chunks []Chunk) error {
 	errs := make(chan error)
 	for _, chunk := range chunks {
 		go func(chunk *Chunk) {
-			errs <- c.StoreChunkData(userID, chunk)
+			errs <- c.StoreChunkData(ctx, userID, chunk)
 		}(&chunk)
 	}
 	var errOut error

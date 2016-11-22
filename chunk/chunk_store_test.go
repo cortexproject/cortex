@@ -58,30 +58,32 @@ func TestChunkStore(t *testing.T) {
 
 	chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
 
-	chunk1 := Chunk{
-		ID:      "chunk1",
-		From:    now.Add(-time.Hour),
-		Through: now,
-		Metric: model.Metric{
+	chunk1 := NewChunk(
+		model.Fingerprint(1),
+		model.Metric{
 			model.MetricNameLabel: "foo",
 			"bar":  "baz",
 			"toms": "code",
 		},
-		Encoding: chunk.DoubleDelta,
-		Data:     chunks[0],
-	}
-	chunk2 := Chunk{
-		ID:      "chunk2",
-		From:    now.Add(-time.Hour),
-		Through: now,
-		Metric: model.Metric{
+		&chunk.Desc{
+			ChunkFirstTime: now.Add(-time.Hour),
+			ChunkLastTime:  now,
+			C:              chunks[0],
+		},
+	)
+	chunk2 := NewChunk(
+		model.Fingerprint(2),
+		model.Metric{
 			model.MetricNameLabel: "foo",
 			"bar":  "beep",
 			"toms": "code",
 		},
-		Encoding: chunk.DoubleDelta,
-		Data:     chunks[0],
-	}
+		&chunk.Desc{
+			ChunkFirstTime: now.Add(-time.Hour),
+			ChunkLastTime:  now,
+			C:              chunks[0],
+		},
+	)
 
 	err := store.Put(ctx, []Chunk{chunk1, chunk2})
 	if err != nil {
@@ -96,7 +98,7 @@ func TestChunkStore(t *testing.T) {
 		}
 
 		if !reflect.DeepEqual(expect, chunks) {
-			t.Fatalf("wrong chunks - " + diff(expect, chunks))
+			t.Fatalf("%s: wrong chunks - %s", name, diff(expect, chunks))
 		}
 	}
 

@@ -514,6 +514,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/mwitkow/go-grpc-middleware",
+			"repository": "https://github.com/mwitkow/go-grpc-middleware",
+			"vcs": "git",
+			"revision": "e32d89015bae0f74206a52a292b9da2407f51954",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/onsi/ginkgo",
 			"repository": "https://github.com/onsi/ginkgo",
 			"vcs": "git",
@@ -629,6 +637,15 @@
 			"revision": "d77da356e56a7428ad25149ca77381849a6a5232",
 			"branch": "master",
 			"path": "/require",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/stretchr/testify/suite",
+			"repository": "https://github.com/stretchr/testify",
+			"vcs": "git",
+			"revision": "18a02ba4a312f95da08ff4cfc0055750ce50ae9e",
+			"branch": "master",
+			"path": "/suite",
 			"notests": true
 		},
 		{
@@ -982,7 +999,7 @@
 			"importpath": "google.golang.org/grpc",
 			"repository": "https://github.com/grpc/grpc-go",
 			"vcs": "git",
-			"revision": "0e6ec3a4501ee9ee2d023abe92e436fd04ed4081",
+			"revision": "b13ef794997191ec801db90a42c50034df91850a",
 			"branch": "master",
 			"notests": true
 		},

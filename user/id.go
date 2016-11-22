@@ -13,6 +13,12 @@ import (
 // UserIDContextKey is the key used in contexts to find the userid
 const userIDContextKey = "CortexUserID" // TODO dedupe with storage/local
 
+// UserIDHeaderName is a legacy from scope as a service.
+const UserIDHeaderName = "X-Scope-OrgID"
+
+// LowerUserIDHeaderName as gRPC / HTTP2.0 headers are lowercased.
+const LowerUserIDHeaderName = "x-scope-orgid"
+
 // GetID returns the user
 func GetID(ctx context.Context) (string, error) {
 	userid, ok := ctx.Value(userIDContextKey).(string)

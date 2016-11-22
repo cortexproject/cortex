@@ -12,11 +12,14 @@ import (
 	"github.com/prometheus/common/model"
 	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
 
-	cortex "github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex"
+	cortex_chunk "github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/cortex/util"
 )
 
 const (
@@ -69,7 +72,7 @@ var (
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
 	cfg        Config
-	chunkStore cortex.Store
+	chunkStore cortex_chunk.Store
 	stopLock   sync.RWMutex
 	stopped    bool
 	quit       chan struct{}
@@ -99,14 +102,9 @@ type Config struct {
 	MaxChunkIdle      time.Duration
 	RateUpdatePeriod  time.Duration
 	ConcurrentFlushes int
+	GRPCListenPort    int
 
 	Ring *ring.Ring
-}
-
-// UserStats models ingestion statistics for one user.
-type UserStats struct {
-	IngestionRate float64 `json:"ingestionRate"`
-	NumSeries     uint64  `json:"numSeries"`
 }
 
 type userState struct {
@@ -134,7 +132,7 @@ func (o *flushOp) Priority() int64 {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore cortex.Store) (*Ingester, error) {
+func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -243,19 +241,14 @@ func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {
 	return state, nil
 }
 
-// NeedsThrottling implements storage.SampleAppender.
-func (*Ingester) NeedsThrottling(_ context.Context) bool {
-	return false
-}
-
-// Append implements storage.SampleAppender.
-func (i *Ingester) Append(ctx context.Context, samples []*model.Sample) error {
-	for _, sample := range samples {
+// Push implements cortex.IngesterServer
+func (i *Ingester) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
+	for _, sample := range util.FromWriteRequest(req) {
 		if err := i.append(ctx, sample); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return &cortex.WriteResponse{}, nil
 }
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
@@ -336,8 +329,22 @@ func (u *userState) getOrCreateSeries(metric model.Metric) (model.Fingerprint, *
 	return fp, series, nil
 }
 
-// Query implements cortex.Querier.
-func (i *Ingester) Query(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
+// Query implements service.IngesterServer
+func (i *Ingester) Query(ctx context.Context, req *cortex.QueryRequest) (*cortex.QueryResponse, error) {
+	start, end, matchers, err := util.FromQueryRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	matrix, err := i.query(ctx, start, end, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	return util.ToQueryResponse(matrix), nil
+}
+
+func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	i.queries.Inc()
 
 	state, err := i.getStateFor(ctx)
@@ -418,23 +425,28 @@ func samplesForRange(s *memorySeries, from, through model.Time) ([]model.SampleP
 	return values, nil
 }
 
-// LabelValuesForLabelName returns all label values that are associated with a given label name.
-func (i *Ingester) LabelValuesForLabelName(ctx context.Context, name model.LabelName) (model.LabelValues, error) {
+// LabelValues returns all label values that are associated with a given label name.
+func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesRequest) (*cortex.LabelValuesResponse, error) {
 	state, err := i.getStateFor(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return state.index.lookupLabelValues(name), nil
+	resp := &cortex.LabelValuesResponse{}
+	for _, v := range state.index.lookupLabelValues(model.LabelName(req.LabelName)) {
+		resp.LabelValues = append(resp.LabelValues, string(v))
+	}
+
+	return resp, nil
 }
 
 // UserStats returns ingestion statistics for the current user.
-func (i *Ingester) UserStats(ctx context.Context) (*UserStats, error) {
+func (i *Ingester) UserStats(ctx context.Context, req *cortex.UserStatsRequest) (*cortex.UserStatsResponse, error) {
 	state, err := i.getStateFor(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &UserStats{
+	return &cortex.UserStatsResponse{
 		IngestionRate: state.ingestedSamples.rate(),
 		NumSeries:     uint64(state.fpToSeries.length()),
 	}, nil
@@ -611,12 +623,12 @@ func (i *Ingester) flushLoop(j int) {
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*prom_chunk.Desc) error {
-	wireChunks := make([]cortex.Chunk, 0, len(chunkDescs))
+	wireChunks := make([]cortex_chunk.Chunk, 0, len(chunkDescs))
 	for _, chunkDesc := range chunkDescs {
 		i.chunkUtilization.Observe(chunkDesc.C.Utilization())
 		i.chunkLength.Observe(float64(chunkDesc.C.Len()))
 		i.chunkAge.Observe(model.Now().Sub(chunkDesc.ChunkFirstTime).Seconds())
-		wireChunks = append(wireChunks, cortex.NewChunk(fp, metric, chunkDesc))
+		wireChunks = append(wireChunks, cortex_chunk.NewChunk(fp, metric, chunkDesc))
 	}
 	return i.chunkStore.Put(ctx, wireChunks)
 }

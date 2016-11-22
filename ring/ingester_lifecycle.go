@@ -26,10 +26,11 @@ type IngesterRegistration struct {
 	consul    ConsulClient
 	numTokens int
 
-	id       string
-	hostname string
-	quit     chan struct{}
-	wait     sync.WaitGroup
+	id           string
+	hostname     string
+	grpcHostname string
+	quit         chan struct{}
+	wait         sync.WaitGroup
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  Channel is used to tell the actor to update consul on state changes.
@@ -40,7 +41,7 @@ type IngesterRegistration struct {
 }
 
 // RegisterIngester registers an ingester with Consul.
-func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*IngesterRegistration, error) {
+func RegisterIngester(consulClient ConsulClient, listenPort, grpcPort, numTokens int) (*IngesterRegistration, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -58,8 +59,9 @@ func RegisterIngester(consulClient ConsulClient, listenPort, numTokens int) (*In
 		id: hostname,
 		// hostname is the ip+port of this instance, written to consul so
 		// the distributors know where to connect.
-		hostname: fmt.Sprintf("%s:%d", addr, listenPort),
-		quit:     make(chan struct{}),
+		hostname:     fmt.Sprintf("%s:%d", addr, listenPort),
+		grpcHostname: fmt.Sprintf("%s:%d", addr, grpcPort),
+		quit:         make(chan struct{}),
 
 		// Only read/written on actor goroutine.
 		state:       Active,
@@ -123,8 +125,7 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 			tokens = append(tokens, newTokens...)
 		}
 		sort.Sort(sortableUint32(tokens))
-
-		ringDesc.addIngester(r.id, r.hostname, tokens, r.state)
+		ringDesc.addIngester(r.id, r.hostname, r.grpcHostname, tokens, r.state)
 		return ringDesc, true, nil
 	}
 	if err := r.consul.CAS(consulKey, descFactory, pickTokens); err != nil {
@@ -146,7 +147,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 		if !ok {
 			// consul must have restarted
 			log.Infof("Found empty ring, inserting tokens!")
-			ringDesc.addIngester(r.id, r.hostname, tokens, r.state)
+			ringDesc.addIngester(r.id, r.hostname, r.grpcHostname, tokens, r.state)
 		} else {
 			ingesterDesc.Timestamp = time.Now()
 			ingesterDesc.State = r.state

@@ -200,11 +200,28 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/Shopify/sarama",
+			"repository": "https://github.com/Shopify/sarama",
+			"vcs": "git",
+			"revision": "fd498173ae2bfc49a2b4eb19353241317785e7e6",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/Sirupsen/logrus",
 			"repository": "https://github.com/Sirupsen/logrus",
 			"vcs": "git",
 			"revision": "3ec0642a7fb6488f65b06f9040adc67e3990296a",
 			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/apache/thrift/lib/go/thrift",
+			"repository": "https://github.com/apache/thrift",
+			"vcs": "git",
+			"revision": "84d6af4cf903571319e0ebddd7beb12bc93fb752",
+			"branch": "master",
+			"path": "/lib/go/thrift",
 			"notests": true
 		},
 		{
@@ -266,6 +283,58 @@
 			"revision": "a58e3e7fefd67ebe57c183e970e5fcda096c9ad1",
 			"branch": "master",
 			"path": "vendor/golang.org/x/net/context",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/eapache/go-resiliency/breaker",
+			"repository": "https://github.com/eapache/go-resiliency",
+			"vcs": "git",
+			"revision": "b86b1ec0dd4209a588dc1285cdd471e73525c0b3",
+			"branch": "master",
+			"path": "/breaker",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/eapache/go-xerial-snappy",
+			"repository": "https://github.com/eapache/go-xerial-snappy",
+			"vcs": "git",
+			"revision": "bb955e01b9346ac19dc29eb16586c90ded99a98c",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/eapache/queue",
+			"repository": "https://github.com/eapache/queue",
+			"vcs": "git",
+			"revision": "44cc805cf13205b55f69e14bcb69867d1ae92f98",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/gogo/protobuf/proto",
+			"repository": "https://github.com/gogo/protobuf",
+			"vcs": "git",
+			"revision": "8d70fb3182befc465c4a1eac8ad4d38ff49778e2",
+			"branch": "master",
+			"path": "/proto",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/gogo/protobuf/sortkeys",
+			"repository": "https://github.com/gogo/protobuf",
+			"vcs": "git",
+			"revision": "8d70fb3182befc465c4a1eac8ad4d38ff49778e2",
+			"branch": "master",
+			"path": "sortkeys",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/gogo/protobuf/types",
+			"repository": "https://github.com/gogo/protobuf",
+			"vcs": "git",
+			"revision": "8d70fb3182befc465c4a1eac8ad4d38ff49778e2",
+			"branch": "master",
+			"path": "types",
 			"notests": true
 		},
 		{
@@ -334,6 +403,15 @@
 			"vcs": "git",
 			"revision": "0b13a922203ebdbfd236c818efcd5ed46097d690",
 			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
+			"repository": "https://github.com/grpc-ecosystem/grpc-opentracing",
+			"vcs": "git",
+			"revision": "8fa31758f85ff84c4f21071a156e7a5539a93795",
+			"branch": "master",
+			"path": "/go/otgrpc",
 			"notests": true
 		},
 		{
@@ -487,6 +565,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/klauspost/crc32",
+			"repository": "https://github.com/klauspost/crc32",
+			"vcs": "git",
+			"revision": "cb6bfca970f6908083f26f39a79009d608efd5cd",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/matttproud/golang_protobuf_extensions/pbtest",
 			"repository": "https://github.com/matttproud/golang_protobuf_extensions",
 			"vcs": "git",
@@ -534,6 +620,31 @@
 			"repository": "https://github.com/onsi/gomega",
 			"vcs": "git",
 			"revision": "b48c9a8b2644326d0a44eaaacc8d83e35174a05d",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/opentracing-contrib/go-stdlib/nethttp",
+			"repository": "https://github.com/opentracing-contrib/go-stdlib",
+			"vcs": "git",
+			"revision": "75e37ae3e209c490d2aa67d8a31fb302fdc38cba",
+			"branch": "master",
+			"path": "/nethttp",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/opentracing/opentracing-go",
+			"repository": "https://github.com/opentracing/opentracing-go",
+			"vcs": "git",
+			"revision": "902ca977fd85455c364050f985eba376b44315f0",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/openzipkin/zipkin-go-opentracing",
+			"repository": "https://github.com/openzipkin/zipkin-go-opentracing",
+			"vcs": "git",
+			"revision": "e877b8e9d1069eaedfe4f27e9b6a51cfe20073c9",
 			"branch": "master",
 			"notests": true
 		},
@@ -589,6 +700,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/rcrowley/go-metrics",
+			"repository": "https://github.com/rcrowley/go-metrics",
+			"vcs": "git",
+			"revision": "ab2277b1c5d15c3cba104e9cbddbdfc622df5ad8",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/sburnett/lexicographic-tuples",
 			"repository": "https://github.com/sburnett/lexicographic-tuples",
 			"vcs": "git",
@@ -619,6 +738,14 @@
 			"revision": "5db88ed452e937f2fd557de6f4f1af7f2eabed0b",
 			"branch": "master",
 			"path": "/convey",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/stathat/go",
+			"repository": "https://github.com/stathat/go",
+			"vcs": "git",
+			"revision": "74669b9f388d9d788c97399a0824adbfee78400e",
+			"branch": "master",
 			"notests": true
 		},
 		{
@@ -683,10 +810,181 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/tomwilkie/loki/client",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "2ccb41df36caa8852a14db6d6fa3548ee5707094",
+			"branch": "master",
+			"path": "/client",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/Shopify/sarama",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/Shopify/sarama",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/apache/thrift/lib/go/thrift",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/apache/thrift/lib/go/thrift",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/davecgh/go-spew/spew",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/davecgh/go-spew/spew",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/eapache/go-resiliency/breaker",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/eapache/go-resiliency/breaker",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/eapache/go-xerial-snappy",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/eapache/go-xerial-snappy",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/eapache/queue",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/eapache/queue",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/gogo/protobuf/proto",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/gogo/protobuf/proto",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/gogo/protobuf/sortkeys",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/gogo/protobuf/sortkeys",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/gogo/protobuf/types",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/gogo/protobuf/types",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/golang/snappy",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/golang/snappy",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/klauspost/crc32",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/klauspost/crc32",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/opentracing/opentracing-go",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/opentracing/opentracing-go",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/openzipkin/zipkin-go-opentracing",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/openzipkin/zipkin-go-opentracing",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/rcrowley/go-metrics",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/rcrowley/go-metrics",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/github.com/stathat/go",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/github.com/stathat/go",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/golang.org/x/net/context",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/golang.org/x/net/context",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/golang.org/x/net/internal/timeseries",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/golang.org/x/net/internal/timeseries",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/tomwilkie/loki/vendor/golang.org/x/net/trace",
+			"repository": "https://github.com/tomwilkie/loki",
+			"vcs": "git",
+			"revision": "b16fdc171d69a02a9c498d97456cdb87d30f5437",
+			"branch": "master",
+			"path": "vendor/golang.org/x/net/trace",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/weaveworks/scope/common/instrument",
 			"repository": "https://github.com/weaveworks/scope",
 			"vcs": "git",
-			"revision": "94cd73c72b6155e499df61018ca64b0cac593694",
+			"revision": "21ee72a384237af8d6e045ec0373c915182038dc",
 			"branch": "master",
 			"path": "/common/instrument",
 			"notests": true

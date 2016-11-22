@@ -416,7 +416,6 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 		return nil, err
 	}
 
-	// TODO push ctx all the way through, so we can do cancellation (eventually!)
 	missing, err := c.lookupChunks(ctx, userID, from, through, matchers)
 	if err != nil {
 		return nil, err

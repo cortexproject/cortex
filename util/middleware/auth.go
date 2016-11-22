@@ -17,7 +17,14 @@ func ClientUserHeaderInterceptor(ctx context.Context, method string, req, reply 
 		return err
 	}
 
-	newCtx := metadata.NewContext(ctx, metadata.New(map[string]string{user.UserIDHeaderName: userID}))
+	md, ok := metadata.FromContext(ctx)
+	if !ok {
+		md = metadata.New(map[string]string{user.LowerUserIDHeaderName: userID})
+	} else {
+		md[user.LowerUserIDHeaderName] = []string{userID}
+	}
+	newCtx := metadata.NewContext(ctx, md)
+
 	return invoker(newCtx, method, req, reply, cc, opts...)
 }
 

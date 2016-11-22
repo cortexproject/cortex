@@ -12,7 +12,11 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/opentracing/opentracing-go"
+	"github.com/tomwilkie/loki/client"
 	"github.com/weaveworks/scope/common/middleware"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -139,6 +143,12 @@ func main() {
 		prometheus.MustRegister(resourceWatcher)
 	}
 
+	tracer, err := loki.NewTracer(loki.DefaultConfig)
+	if err != nil {
+		log.Fatalf("Error initializing tracer: %v", err)
+	}
+	opentracing.InitGlobalTracer(tracer)
+
 	consul, err := ring.NewConsulClient(cfg.consulHost)
 	if err != nil {
 		log.Fatalf("Error initializing Consul client: %v", err)
@@ -170,8 +180,9 @@ func main() {
 		}
 		grpcServer := grpc.NewServer(
 			grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-				cortex_grpc_middleware.ServerInstrumentInterceptor(requestDuration),
 				cortex_grpc_middleware.ServerLoggingInterceptor(cfg.logSuccess),
+				cortex_grpc_middleware.ServerInstrumentInterceptor(requestDuration),
+				otgrpc.OpenTracingServerInterceptor(tracer),
 				cortex_grpc_middleware.ServerUserHeaderInterceptor,
 			)),
 		)
@@ -207,7 +218,11 @@ func main() {
 	}
 
 	router.Handle("/metrics", prometheus.Handler())
+	router.Handle("/traces", loki.Handler())
 	instrumented := middleware.Merge(
+		middleware.Func(func(handler http.Handler) http.Handler {
+			return nethttp.Middleware(tracer, handler)
+		}),
 		middleware.Log{
 			LogSuccess: cfg.logSuccess,
 		},
@@ -288,7 +303,7 @@ func setupQuerier(
 		if userID == "" {
 			return nil, fmt.Errorf("no %s header", user.UserIDHeaderName)
 		}
-		return user.WithID(context.Background(), userID), nil
+		return user.WithID(r.Context(), userID), nil
 	}).WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)
 	router.PathPrefix("/api/v1").Handler(promRouter)

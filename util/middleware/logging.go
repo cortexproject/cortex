@@ -15,10 +15,10 @@ func ServerLoggingInterceptor(logSuccess bool) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		begin := time.Now()
 		resp, err := handler(ctx, req)
-		if logSuccess && err != nil {
-			log.Infof("%s %s (%v) %s", gRPC, info.FullMethod, err, time.Since(begin))
-		} else {
+		if err != nil {
 			log.Errorf("%s %s (%v) %s", gRPC, info.FullMethod, err, time.Since(begin))
+		} else if logSuccess {
+			log.Infof("%s %s (success) %s", gRPC, info.FullMethod, time.Since(begin))
 		}
 		return resp, err
 	}

@@ -1,4 +1,4 @@
-package mockaws
+package chunk
 
 import (
 	"bytes"
@@ -164,3 +164,20 @@ func (m *MockDynamoDB) QueryPages(input *dynamodb.QueryInput, f func(p *dynamodb
 	f(output, true)
 	return nil
 }
+
+func (m *MockDynamoDB) QueryRequest(in *dynamodb.QueryInput) (req dynamoRequest, output *dynamodb.QueryOutput) {
+	output, err := m.Query(in)
+	return &mockDynamoRequest{output, err}, nil
+}
+
+type mockDynamoRequest struct {
+	data *dynamodb.QueryOutput
+	err  error
+}
+
+func (m *mockDynamoRequest) NextPage() dynamoRequest { return nil }
+func (m *mockDynamoRequest) HasNextPage() bool       { return false }
+func (m *mockDynamoRequest) Data() interface{}       { return m.data }
+func (m *mockDynamoRequest) OperationName() string   { return "Query" }
+func (m *mockDynamoRequest) Send() error             { return m.err }
+func (m *mockDynamoRequest) Error() error            { return nil }

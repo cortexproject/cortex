@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/tomwilkie/go-mockaws"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/user"
@@ -44,14 +43,16 @@ func TestIntersect(t *testing.T) {
 }
 
 func TestChunkStore(t *testing.T) {
-	store := AWSStore{
-		dynamodb:   mockaws.NewMockDynamoDB(),
-		s3:         mockaws.NewMockS3(),
-		chunkCache: nil,
-		tableName:  "tablename",
-		bucketName: "bucketname",
+	store, err := NewAWSStore(StoreConfig{
+		dynamodb: NewMockDynamoDB(),
+		s3:       NewMockS3(),
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+
 	store.CreateTables()
+	defer store.Stop()
 
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()
@@ -85,8 +86,7 @@ func TestChunkStore(t *testing.T) {
 		},
 	)
 
-	err := store.Put(ctx, []Chunk{chunk1, chunk2})
-	if err != nil {
+	if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
 		t.Fatal(err)
 	}
 

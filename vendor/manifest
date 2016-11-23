@@ -675,14 +675,6 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/tomwilkie/go-mockaws",
-			"repository": "https://github.com/tomwilkie/go-mockaws",
-			"vcs": "git",
-			"revision": "9853e74229d5d48e82ae9be53d725507db3c8483",
-			"branch": "master",
-			"notests": true
-		},
-		{
 			"importpath": "github.com/weaveworks/scope/common/instrument",
 			"repository": "https://github.com/weaveworks/scope",
 			"vcs": "git",

@@ -6,12 +6,14 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -35,8 +37,17 @@ const (
 	errorReasonLabel = "error"
 	otherError       = "other"
 
+	// Backoff for dynamoDB requests
+	minBackoff = 100 * time.Millisecond
+	maxBackoff = 1 * time.Second
+
+	// Number of synchronous dynamodb requests
+	numDynamoRequests = 50
+
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
 	dynamoMaxBatchSize = 25
+
+	provisionedThroughputExceededException = "ProvisionedThroughputExceededException"
 )
 
 var (
@@ -114,6 +125,7 @@ func init() {
 type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	Get(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]Chunk, error)
+	Stop()
 }
 
 // StoreConfig specifies config for a ChunkStore
@@ -121,40 +133,124 @@ type StoreConfig struct {
 	S3URL       string
 	DynamoDBURL string
 	ChunkCache  *Cache
+
+	// Not exported as only used by tests to inject mocks
+	dynamodb dynamodbClient
+	s3       s3Client
+}
+
+type dynamodbClient interface {
+	CreateTable(*dynamodb.CreateTableInput) (*dynamodb.CreateTableOutput, error)
+	ListTables(*dynamodb.ListTablesInput) (*dynamodb.ListTablesOutput, error)
+	BatchWriteItem(*dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error)
+	QueryRequest(*dynamodb.QueryInput) (req dynamoRequest, output *dynamodb.QueryOutput)
+}
+
+type dynamoRequest interface {
+	NextPage() dynamoRequest
+	HasNextPage() bool
+	Data() interface{}
+	OperationName() string
+	Send() error
+	Error() error
+}
+
+type dynamoClientAdapter struct {
+	*dynamodb.DynamoDB
+}
+
+func (d dynamoClientAdapter) QueryRequest(in *dynamodb.QueryInput) (dynamoRequest, *dynamodb.QueryOutput) {
+	req, out := d.DynamoDB.QueryRequest(in)
+	return dynamoRequestAdapter{req}, out
+}
+
+type dynamoRequestAdapter struct {
+	*request.Request
+}
+
+func (d dynamoRequestAdapter) Data() interface{} {
+	return d.Request.Data
+}
+
+func (d dynamoRequestAdapter) OperationName() string {
+	return d.Operation.Name
+}
+
+func (d dynamoRequestAdapter) NextPage() dynamoRequest {
+	return dynamoRequestAdapter{d.Request.NextPage()}
+}
+
+func (d dynamoRequestAdapter) Error() error {
+	return d.Request.Error
+}
+
+type s3Client interface {
+	PutObject(*s3.PutObjectInput) (*s3.PutObjectOutput, error)
+	GetObject(*s3.GetObjectInput) (*s3.GetObjectOutput, error)
+}
+
+// AWSStore implements ChunkStore for AWS
+type AWSStore struct {
+	dynamodb   dynamodbClient
+	s3         s3Client
+	chunkCache *Cache
+	tableName  string
+	bucketName string
+
+	dynamoRequests     chan *dynamoOp
+	dynamoRequestsDone sync.WaitGroup
 }
 
 // NewAWSStore makes a new ChunkStore
 func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
-	s3URL, err := url.Parse(cfg.S3URL)
-	if err != nil {
-		return nil, err
+	s3Client, bucketName := cfg.s3, ""
+	if s3Client == nil {
+		s3URL, err := url.Parse(cfg.S3URL)
+		if err != nil {
+			return nil, err
+		}
+
+		s3Config, err := awsConfigFromURL(s3URL)
+		if err != nil {
+			return nil, err
+		}
+
+		s3Client = s3.New(session.New(s3Config))
+		bucketName = strings.TrimPrefix(s3URL.Path, "/")
 	}
 
-	s3Config, err := awsConfigFromURL(s3URL)
-	if err != nil {
-		return nil, err
+	dynamodbClient, tableName := cfg.dynamodb, ""
+	if dynamodbClient == nil {
+		dynamodbURL, err := url.Parse(cfg.DynamoDBURL)
+		if err != nil {
+			return nil, err
+		}
+
+		dynamoDBConfig, err := awsConfigFromURL(dynamodbURL)
+		if err != nil {
+			return nil, err
+		}
+
+		dynamodbClient = dynamoClientAdapter{dynamodb.New(session.New(dynamoDBConfig))}
+		tableName = strings.TrimPrefix(dynamodbURL.Path, "/")
 	}
 
-	dynamodbURL, err := url.Parse(cfg.DynamoDBURL)
-	if err != nil {
-		return nil, err
-	}
-
-	dynamoDBConfig, err := awsConfigFromURL(dynamodbURL)
-	if err != nil {
-		return nil, err
-	}
-
-	tableName := strings.TrimPrefix(dynamodbURL.Path, "/")
-	bucketName := strings.TrimPrefix(s3URL.Path, "/")
-
-	return &AWSStore{
-		dynamodb:   dynamodb.New(session.New(dynamoDBConfig)),
-		s3:         s3.New(session.New(s3Config)),
+	store := &AWSStore{
+		dynamodb:   dynamodbClient,
+		s3:         s3Client,
 		chunkCache: cfg.ChunkCache,
 		tableName:  tableName,
 		bucketName: bucketName,
-	}, nil
+
+		dynamoRequests: make(chan *dynamoOp),
+	}
+
+	store.dynamoRequestsDone.Add(numDynamoRequests)
+	for i := 0; i < numDynamoRequests; i++ {
+		go store.dynamoRequestLoop()
+	}
+
+	return store, nil
 }
 
 func awsConfigFromURL(url *url.URL) (*aws.Config, error) {
@@ -174,25 +270,9 @@ func awsConfigFromURL(url *url.URL) (*aws.Config, error) {
 	return config, nil
 }
 
-// AWSStore implements ChunkStore for AWS
-type AWSStore struct {
-	dynamodb   dynamodbClient
-	s3         s3Client
-	chunkCache *Cache
-	tableName  string
-	bucketName string
-}
-
-type dynamodbClient interface {
-	CreateTable(*dynamodb.CreateTableInput) (*dynamodb.CreateTableOutput, error)
-	ListTables(*dynamodb.ListTablesInput) (*dynamodb.ListTablesOutput, error)
-	BatchWriteItem(*dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error)
-	QueryPages(*dynamodb.QueryInput, func(p *dynamodb.QueryOutput, lastPage bool) bool) error
-}
-
-type s3Client interface {
-	PutObject(*s3.PutObjectInput) (*s3.PutObjectOutput, error)
-	GetObject(*s3.GetObjectInput) (*s3.GetObjectOutput, error)
+func (c *AWSStore) Stop() {
+	close(c.dynamoRequests)
+	c.dynamoRequestsDone.Wait()
 }
 
 // CreateTables creates the required tables in DynamoDB.
@@ -599,18 +679,12 @@ func (c *AWSStore) lookupChunksForMetricName(userID string, hour int64, metricNa
 		queryRequestPages.Observe(float64(pages))
 		queryDroppedMatches.Observe(float64(totalDropped))
 	}()
-	if err := instrument.TimeRequestHistogram("QueryPages", dynamoRequestDuration, func() error {
-		err := c.dynamodb.QueryPages(input, func(resp *dynamodb.QueryOutput, lastPage bool) (shouldContinue bool) {
-			var dropped int
-			dropped, processingError = processResponse(resp, &chunkSet, nil)
-			totalDropped += dropped
-			pages++
-			return processingError != nil && !lastPage
-		})
-		if err != nil {
-			recordDynamoError(err)
-		}
-		return err
+	if err := c.queryPages(input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
+		var dropped int
+		dropped, processingError = processResponse(resp.(*dynamodb.QueryOutput), &chunkSet, nil)
+		totalDropped += dropped
+		pages++
+		return processingError != nil && !lastPage
 	}); err != nil {
 		log.Errorf("Error querying DynamoDB: %v", err)
 		return nil, 1, err
@@ -618,7 +692,6 @@ func (c *AWSStore) lookupChunksForMetricName(userID string, hour int64, metricNa
 		log.Errorf("Error processing DynamoDB response: %v", processingError)
 		return nil, 1, processingError
 	}
-
 	sort.Sort(ByID(chunkSet))
 	chunkSet = unique(chunkSet)
 	return chunkSet, 1, nil
@@ -664,18 +737,12 @@ func (c *AWSStore) lookupChunksForMatcher(userID string, hour int64, metricName 
 		queryRequestPages.Observe(float64(pages))
 		queryDroppedMatches.Observe(float64(totalDropped))
 	}()
-	if err := instrument.TimeRequestHistogram("QueryPages", dynamoRequestDuration, func() error {
-		err := c.dynamodb.QueryPages(input, func(resp *dynamodb.QueryOutput, lastPage bool) (shouldContinue bool) {
-			var dropped int
-			dropped, processingError = processResponse(resp, &chunkSet, matcher)
-			totalDropped += dropped
-			pages++
-			return processingError != nil && !lastPage
-		})
-		if err != nil {
-			recordDynamoError(err)
-		}
-		return err
+	if err := c.queryPages(input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
+		var dropped int
+		dropped, processingError = processResponse(resp.(*dynamodb.QueryOutput), &chunkSet, matcher)
+		totalDropped += dropped
+		pages++
+		return processingError != nil && !lastPage
 	}); err != nil {
 		log.Errorf("Error querying DynamoDB: %v", err)
 		return nil, err
@@ -766,4 +833,66 @@ func (c *AWSStore) fetchChunkData(userID string, chunkSet []Chunk) ([]Chunk, err
 		return nil, errors[0]
 	}
 	return chunks, nil
+}
+
+func (c *AWSStore) queryPages(input *dynamodb.QueryInput, fn func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
+	page, _ := c.dynamodb.QueryRequest(input)
+
+	for page := page; page != nil; page = page.NextPage() {
+		req := &dynamoOp{
+			request: page,
+			done:    make(chan error),
+		}
+		c.dynamoRequests <- req
+		if err := <-req.done; err != nil {
+			return err
+		}
+		if getNextPage := fn(page.Data(), !page.HasNextPage()); !getNextPage {
+			return page.Error()
+		}
+	}
+
+	return nil
+}
+
+func (c *AWSStore) dynamoRequestLoop() {
+	defer c.dynamoRequestsDone.Done()
+	for {
+		select {
+		case request, ok := <-c.dynamoRequests:
+			if !ok {
+				return
+			}
+			request.done <- request.doWithBackoff()
+		}
+	}
+}
+
+type dynamoOp struct {
+	request dynamoRequest
+	done    chan error
+}
+
+func (r *dynamoOp) doWithBackoff() error {
+	backoff := minBackoff
+	for {
+		err := instrument.TimeRequestHistogram(r.request.OperationName(), dynamoRequestDuration, func() error {
+			return r.request.Send()
+		})
+
+		if err != nil {
+			recordDynamoError(err)
+
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+				time.Sleep(backoff)
+				backoff = backoff * 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
+		}
+
+		return err
+	}
 }

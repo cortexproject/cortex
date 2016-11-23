@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/docker/docker/pkg/ioutils"
 	"github.com/golang/snappy"
@@ -47,6 +49,26 @@ func NewChunk(fp model.Fingerprint, metric model.Metric, c *prom_chunk.Desc) Chu
 		Encoding: c.C.Encoding(),
 		Data:     c.C,
 	}
+}
+
+func parseChunkID(id string) (model.Fingerprint, model.Time, model.Time, error) {
+	parts := strings.Split(id, ":")
+	if len(parts) != 3 {
+		return 0, 0, 0, fmt.Errorf("invalid chunk ID")
+	}
+	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	firstTime, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	lastTime, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return model.Fingerprint(fingerprint), model.Time(firstTime), model.Time(lastTime), nil
 }
 
 func (c *Chunk) reader() (io.ReadSeeker, error) {

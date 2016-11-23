@@ -417,14 +417,27 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 	}
 
 	// TODO push ctx all the way through, so we can do cancellation (eventually!)
-	missing, err := c.lookupChunks(userID, from, through, matchers)
+	chunks, err := c.lookupChunks(userID, from, through, matchers)
 	if err != nil {
 		return nil, err
 	}
 
-	queryChunks.Observe(float64(len(missing)))
+	filtered := make([]Chunk, 0, len(chunks))
+	for _, chunk := range chunks {
+		_, chunkFrom, chunkThrough, err := parseChunkID(chunk.ID)
+		if err != nil {
+			return nil, err
+		}
+		if chunkThrough < from || through < chunkFrom {
+			continue
+		}
+		filtered = append(filtered, chunk)
+	}
+
+	queryChunks.Observe(float64(len(filtered)))
 
 	var fromCache []Chunk
+	var missing = filtered
 	if c.chunkCache != nil {
 		fromCache, missing, err = c.chunkCache.FetchChunkData(userID, missing)
 		if err != nil {
@@ -445,9 +458,9 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 
 	// TODO instead of doing this sort, propagate an index and assign chunks
 	// into the result based on that index.
-	chunks := append(fromCache, fromS3...)
-	sort.Sort(ByID(chunks))
-	return chunks, nil
+	allChunks := append(fromCache, fromS3...)
+	sort.Sort(ByID(allChunks))
+	return allChunks, nil
 }
 
 func extractMetricName(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, error) {

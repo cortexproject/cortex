@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -30,6 +31,10 @@ const (
 	rangeKey = "r"
 	chunkKey = "c"
 
+	// For dynamodb errors
+	errorReasonLabel = "error"
+	otherError       = "other"
+
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
 	dynamoMaxBatchSize = 25
 )
@@ -49,6 +54,11 @@ var (
 		Name:      "dynamo_consumed_capacity_total",
 		Help:      "The capacity units consumed by operation.",
 	}, []string{"operation"})
+	dynamoFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_failures_total",
+		Help:      "The total number of errors while storing chunks to the chunk store.",
+	}, []string{errorReasonLabel})
 	indexEntriesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_entries_per_chunk",
@@ -153,7 +163,9 @@ func awsConfigFromURL(url *url.URL) (*aws.Config, error) {
 	}
 	password, _ := url.User.Password()
 	creds := credentials.NewStaticCredentials(url.User.Username(), password, "")
-	config := aws.NewConfig().WithCredentials(creds)
+	config := aws.NewConfig().
+		WithCredentials(creds).
+		WithMaxRetries(0) // We do our own retries, so we can monitor them
 	if strings.Contains(url.Host, ".") {
 		config = config.WithEndpoint(fmt.Sprintf("http://%s", url.Host)).WithRegion("dummy")
 	} else {
@@ -260,6 +272,14 @@ func parseRangeValue(v []byte) (label model.LabelName, value model.LabelValue, c
 	_, err = lex.Decode(v, &labelStr, &valueStr, &chunkID)
 	label, value = model.LabelName(labelStr), model.LabelValue(valueStr)
 	return
+}
+
+func recordDynamoError(err error) {
+	if awsErr, ok := err.(awserr.Error); ok {
+		dynamoFailures.WithLabelValues(awsErr.Code()).Add(float64(1))
+	} else {
+		dynamoFailures.WithLabelValues(otherError).Add(float64(1))
+	}
 }
 
 // Put implements ChunkStore
@@ -400,6 +420,9 @@ func (c *AWSStore) batchWriteDynamo(reqs []*dynamodb.WriteRequest) error {
 			RequestItems:           map[string][]*dynamodb.WriteRequest{c.tableName: reqs},
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
+		if err != nil {
+			recordDynamoError(err)
+		}
 		return err
 	})
 	for _, cc := range resp.ConsumedCapacity {
@@ -577,14 +600,17 @@ func (c *AWSStore) lookupChunksForMetricName(userID string, hour int64, metricNa
 		queryDroppedMatches.Observe(float64(totalDropped))
 	}()
 	if err := instrument.TimeRequestHistogram("QueryPages", dynamoRequestDuration, func() error {
-		pages++
-		return c.dynamodb.QueryPages(input, func(resp *dynamodb.QueryOutput, lastPage bool) (shouldContinue bool) {
+		err := c.dynamodb.QueryPages(input, func(resp *dynamodb.QueryOutput, lastPage bool) (shouldContinue bool) {
 			var dropped int
 			dropped, processingError = processResponse(resp, &chunkSet, nil)
 			totalDropped += dropped
 			pages++
 			return processingError != nil && !lastPage
 		})
+		if err != nil {
+			recordDynamoError(err)
+		}
+		return err
 	}); err != nil {
 		log.Errorf("Error querying DynamoDB: %v", err)
 		return nil, 1, err
@@ -639,13 +665,17 @@ func (c *AWSStore) lookupChunksForMatcher(userID string, hour int64, metricName 
 		queryDroppedMatches.Observe(float64(totalDropped))
 	}()
 	if err := instrument.TimeRequestHistogram("QueryPages", dynamoRequestDuration, func() error {
-		return c.dynamodb.QueryPages(input, func(resp *dynamodb.QueryOutput, lastPage bool) (shouldContinue bool) {
+		err := c.dynamodb.QueryPages(input, func(resp *dynamodb.QueryOutput, lastPage bool) (shouldContinue bool) {
 			var dropped int
 			dropped, processingError = processResponse(resp, &chunkSet, matcher)
 			totalDropped += dropped
 			pages++
 			return processingError != nil && !lastPage
 		})
+		if err != nil {
+			recordDynamoError(err)
+		}
+		return err
 	}); err != nil {
 		log.Errorf("Error querying DynamoDB: %v", err)
 		return nil, err

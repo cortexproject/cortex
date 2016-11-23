@@ -56,7 +56,7 @@ func (m *MockDynamoDB) ListTables(*dynamodb.ListTablesInput) (*dynamodb.ListTabl
 	defer m.mtx.RUnlock()
 
 	var tableNames []*string
-	for tableName, _ := range m.tables {
+	for tableName := range m.tables {
 		func(tableName string) {
 			tableNames = append(tableNames, &tableName)
 		}(tableName)

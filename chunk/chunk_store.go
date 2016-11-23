@@ -270,6 +270,7 @@ func awsConfigFromURL(url *url.URL) (*aws.Config, error) {
 	return config, nil
 }
 
+// Stop background goroutines.
 func (c *AWSStore) Stop() {
 	close(c.dynamoRequests)
 	c.dynamoRequestsDone.Wait()

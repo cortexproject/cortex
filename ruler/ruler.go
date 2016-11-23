@@ -70,20 +70,21 @@ func (w *worker) Run() {
 		case <-w.done:
 			return
 		default:
-			select {
-			case <-w.done:
-				return
-			case <-tick.C:
-				if group == nil {
-					rs, err = w.loadRules()
-					if err != nil {
-						log.Warnf("Could not get configuration for %v: %v", w.userID, err)
-						continue
-					}
-					group = rules.NewGroup("default", w.delay, rs, w.opts)
-				} else {
-					group.Eval()
+		}
+		// Select on 'done' again to avoid live-locking.
+		select {
+		case <-w.done:
+			return
+		case <-tick.C:
+			if group == nil {
+				rs, err = w.loadRules()
+				if err != nil {
+					log.Warnf("Could not get configuration for %v: %v", w.userID, err)
+					continue
 				}
+				group = rules.NewGroup("default", w.delay, rs, w.opts)
+			} else {
+				group.Eval()
 			}
 		}
 	}

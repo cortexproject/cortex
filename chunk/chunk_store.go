@@ -429,7 +429,6 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 			return nil, err
 		}
 		if chunkThrough < from || through < chunkFrom {
-			fmt.Println(chunkThrough, from, through, chunkFrom)
 			continue
 		}
 		filtered = append(filtered, chunk)

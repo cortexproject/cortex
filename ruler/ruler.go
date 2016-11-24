@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/log"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
@@ -17,14 +16,12 @@ import (
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/user"
-	"github.com/weaveworks/cortex/util"
 )
 
 // Config is the configuration for the recording rules server.
 type Config struct {
-	DistributorConfig distributor.Config
-	ConfigsAPIURL     string
-	ExternalURL       string
+	ConfigsAPIURL string
+	ExternalURL   string
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
 	// XXX: Currently single tenant only (which is awful) as the most
@@ -32,14 +29,35 @@ type Config struct {
 	UserID string
 }
 
-// Ruler is a recording rules server.
+// Ruler evaluates rules.
 type Ruler struct {
-	cfg         Config
-	chunkStore  chunk.Store
-	distributor *distributor.Distributor
+	Engine   *promql.Engine
+	Appender SampleAppender
+}
 
-	configsAPIURL *url.URL
-	externalURL   *url.URL
+// NewRuler creates a new ruler from a distributor and chunk store.
+func NewRuler(d *distributor.Distributor, c chunk.Store) Ruler {
+	return Ruler{querier.NewEngine(d, c), d}
+}
+
+func (r *Ruler) getManagerOptions(ctx context.Context) *rules.ManagerOptions {
+	appender := appenderAdapter{appender: r.Appender, ctx: ctx}
+	return &rules.ManagerOptions{
+		SampleAppender: appender,
+		QueryEngine:    r.Engine,
+		Context:        ctx,
+	}
+}
+
+func (r *Ruler) newGroup(ctx context.Context, delay time.Duration, rs []rules.Rule) *rules.Group {
+	return rules.NewGroup("default", delay, rs, r.getManagerOptions(ctx))
+}
+
+// Evaluate a list of rules in the given context.
+func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
+	delay := 0 * time.Second // Unused, so 0 value is fine.
+	g := r.newGroup(ctx, delay, rs)
+	g.Eval()
 }
 
 // Worker does a thing until it's told to stop.
@@ -52,16 +70,32 @@ type worker struct {
 	delay         time.Duration
 	userID        string
 	configsAPIURL *url.URL
-	opts          *rules.ManagerOptions
+	ruler         Ruler
 
 	done       chan struct{}
 	terminated chan struct{}
 }
 
+// NewWorker gets a rules recording worker for the given user.
+// It will keep polling until it can construct one.
+func NewWorker(cfg Config, ruler Ruler) (Worker, error) {
+	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
+	if err != nil {
+		return nil, err
+	}
+	delay := time.Duration(cfg.EvaluationInterval)
+	return &worker{
+		delay:         delay,
+		userID:        cfg.UserID,
+		configsAPIURL: configsAPIURL,
+		ruler:         ruler,
+	}, nil
+}
+
 func (w *worker) Run() {
 	defer close(w.terminated)
-	var rs []rules.Rule
-	var group *rules.Group
+	rs := []rules.Rule{}
+	ctx := user.WithID(context.Background(), w.userID)
 	tick := time.NewTicker(w.delay)
 	defer tick.Stop()
 	for {
@@ -76,15 +110,14 @@ func (w *worker) Run() {
 		case <-w.done:
 			return
 		case <-tick.C:
-			if group == nil {
+			if len(rs) == 0 {
 				rs, err = w.loadRules()
 				if err != nil {
 					log.Warnf("Could not get configuration for %v: %v", w.userID, err)
 					continue
 				}
-				group = rules.NewGroup("default", w.delay, rs, w.opts)
 			} else {
-				group.Eval()
+				w.ruler.Evaluate(ctx, rs)
 			}
 		}
 	}
@@ -105,56 +138,6 @@ func (w *worker) loadRules() ([]rules.Rule, error) {
 func (w *worker) Stop() {
 	close(w.done)
 	<-w.terminated
-}
-
-// New returns a new Ruler.
-func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
-	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
-	if err != nil {
-		return nil, err
-	}
-	externalURL, err := url.Parse(cfg.ExternalURL)
-	if err != nil {
-		return nil, err
-	}
-
-	d, err := distributor.New(cfg.DistributorConfig)
-	if err != nil {
-		return nil, err
-	}
-	return &Ruler{
-		cfg:           cfg,
-		chunkStore:    chunkStore,
-		distributor:   d,
-		configsAPIURL: configsAPIURL,
-		externalURL:   externalURL,
-	}, nil
-}
-
-// GetWorkerFor gets a rules recording worker for the given user.
-// It will keep polling until it can construct one.
-func (r *Ruler) GetWorkerFor(userID string) Worker {
-	delay := time.Duration(r.cfg.EvaluationInterval)
-	return &worker{
-		delay:         delay,
-		userID:        userID,
-		configsAPIURL: r.configsAPIURL,
-		opts:          r.getManagerOptions(userID),
-	}
-}
-
-func (r *Ruler) getManagerOptions(userID string) *rules.ManagerOptions {
-	ctx := user.WithID(context.Background(), userID)
-	appender := appenderAdapter{distributor: r.distributor, ctx: ctx}
-	queryable := querier.NewQueryable(r.distributor, r.chunkStore)
-	engine := promql.NewEngine(queryable, nil)
-	return &rules.ManagerOptions{
-		SampleAppender: appender,
-		Notifier:       nil,
-		QueryEngine:    engine,
-		Context:        ctx,
-		ExternalURL:    r.externalURL,
-	}
 }
 
 // loadRules loads rules.
@@ -185,23 +168,6 @@ func loadRules(files map[string]string) ([]rules.Rule, error) {
 		}
 	}
 	return result, nil
-}
-
-// appenderAdapter adapts a distributor.Distributor to prometheus.SampleAppender
-type appenderAdapter struct {
-	distributor *distributor.Distributor
-	ctx         context.Context
-}
-
-func (a appenderAdapter) Append(sample *model.Sample) error {
-	req := util.ToWriteRequest([]*model.Sample{sample})
-	_, err := a.distributor.Push(a.ctx, req)
-	return err
-}
-
-func (a appenderAdapter) NeedsThrottling() bool {
-	// XXX: Just a guess. Who knows?
-	return false
 }
 
 type cortexConfig struct {

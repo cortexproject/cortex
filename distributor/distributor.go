@@ -173,12 +173,21 @@ type sampleTracker struct {
 
 // Push implements cortex.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
-	userID, err := user.GetID(ctx)
+	samples := util.FromWriteRequest(req)
+	err := d.AppendMany(ctx, samples)
 	if err != nil {
 		return nil, err
 	}
+	return &cortex.WriteResponse{}, nil
+}
 
-	samples := util.FromWriteRequest(req)
+// AppendMany appends many samples to the given context.
+func (d *Distributor) AppendMany(ctx context.Context, samples []*model.Sample) error {
+	userID, err := user.GetID(ctx)
+	if err != nil {
+		return err
+	}
+
 	d.receivedSamples.Add(float64(len(samples)))
 
 	keys := make([]uint32, len(samples), len(samples))
@@ -188,7 +197,7 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 
 	ingesters, err := d.cfg.Ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	sampleTrackers := make([]sampleTracker, len(samples), len(samples))
@@ -214,7 +223,7 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		// This is just a shortcut - if there are not minSuccess available ingesters,
 		// after filtering out dead ones, don't even both trying.
 		if len(liveIngesters) < sampleTrackers[i].minSuccess {
-			return nil, fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
+			return fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
 				sampleTrackers[i].minSuccess, len(liveIngesters))
 		}
 
@@ -239,11 +248,11 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 	}
 	for i := range sampleTrackers {
 		if sampleTrackers[i].succeeded < int32(sampleTrackers[i].minSuccess) {
-			return nil, fmt.Errorf("need %d successful writes, only got %d, last error was: %v",
+			return fmt.Errorf("need %d successful writes, only got %d, last error was: %v",
 				sampleTrackers[i].minSuccess, sampleTrackers[i].succeeded, lastErr)
 		}
 	}
-	return &cortex.WriteResponse{}, nil
+	return nil
 }
 
 func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker) error {

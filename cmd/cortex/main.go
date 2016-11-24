@@ -201,18 +201,14 @@ func main() {
 		prometheus.MustRegister(registration)
 
 	case modeRuler:
-		// XXX: Too much duplication w/ distributor set up.
 		cfg.distributorConfig.Ring = r
-		cfg.rulerConfig.DistributorConfig = cfg.distributorConfig
-		ruler, err := setupRuler(chunkStore, cfg.rulerConfig)
+		ruler, err := setupRuler(cfg.distributorConfig, chunkStore, cfg.rulerConfig)
 		if err != nil {
 			// Some of our initial configuration was fundamentally invalid.
 			log.Fatalf("Could not set up ruler: %v", err)
 		}
-		// XXX: Single-tenanted as part of our initially super hacky way of dogfooding.
-		worker := ruler.GetWorkerFor(cfg.rulerConfig.UserID)
-		go worker.Run()
-		defer worker.Stop()
+		go ruler.Run()
+		defer ruler.Stop()
 
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
@@ -368,6 +364,11 @@ func setupIngester(
 }
 
 // setupRuler sets up a ruler.
-func setupRuler(chunkStore chunk.Store, cfg ruler.Config) (*ruler.Ruler, error) {
-	return ruler.New(chunkStore, cfg)
+func setupRuler(distributorCfg distributor.Config, chunkStore chunk.Store, cfg ruler.Config) (ruler.Worker, error) {
+	dist, err := distributor.New(distributorCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return ruler.NewWorker(cfg, ruler.NewRuler(dist, chunkStore))
 }

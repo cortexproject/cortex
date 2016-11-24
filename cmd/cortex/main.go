@@ -124,6 +124,7 @@ func main() {
 	if cfg.dynamodbPollInterval < 1*time.Minute {
 		log.Warnf("Polling DynamoDB more than once a minute. Likely to get throttled: %v", cfg.dynamodbPollInterval)
 	}
+	defer chunkStore.Stop()
 
 	if cfg.watchDynamo {
 		resourceWatcher, err := chunk.WatchDynamo(cfg.dynamodbURL, cfg.dynamodbPollInterval)

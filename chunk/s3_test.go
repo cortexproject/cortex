@@ -1,4 +1,4 @@
-package mockaws
+package chunk
 
 import (
 	"bytes"

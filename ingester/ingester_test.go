@@ -39,6 +39,8 @@ func (s *testStore) Get(ctx context.Context, from, through model.Time, matchers 
 	return nil, nil
 }
 
+func (s *testStore) Stop() {}
+
 func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matrix {
 	m := make(model.Matrix, 0, numSeries)
 	for i := 0; i < numSeries; i++ {

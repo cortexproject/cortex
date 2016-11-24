@@ -32,13 +32,6 @@ type Chunk struct {
 	metadataInIndex bool
 }
 
-// ByID allow you to sort chunks by ID
-type ByID []Chunk
-
-func (cs ByID) Len() int           { return len(cs) }
-func (cs ByID) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
-func (cs ByID) Less(i, j int) bool { return cs[i].ID < cs[j].ID }
-
 // NewChunk creates a new chunk
 func NewChunk(fp model.Fingerprint, metric model.Metric, c *prom_chunk.Desc) Chunk {
 	return Chunk{

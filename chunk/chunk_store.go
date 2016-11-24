@@ -112,6 +112,7 @@ var (
 func init() {
 	prometheus.MustRegister(dynamoRequestDuration)
 	prometheus.MustRegister(dynamoConsumedCapacity)
+	prometheus.MustRegister(dynamoFailures)
 	prometheus.MustRegister(indexEntriesPerChunk)
 	prometheus.MustRegister(s3RequestDuration)
 

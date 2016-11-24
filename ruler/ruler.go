@@ -65,10 +65,10 @@ type Worker interface {
 }
 
 type worker struct {
-	delay         time.Duration
-	userID        string
-	configsAPIURL *url.URL
-	ruler         Ruler
+	delay      time.Duration
+	userID     string
+	configsAPI configsAPI
+	ruler      Ruler
 
 	done       chan struct{}
 	terminated chan struct{}
@@ -83,10 +83,10 @@ func NewWorker(cfg Config, ruler Ruler) (Worker, error) {
 	}
 	delay := time.Duration(cfg.EvaluationInterval)
 	return &worker{
-		delay:         delay,
-		userID:        cfg.UserID,
-		configsAPIURL: configsAPIURL,
-		ruler:         ruler,
+		delay:      delay,
+		userID:     cfg.UserID,
+		configsAPI: configsAPI{configsAPIURL},
+		ruler:      ruler,
 	}, nil
 }
 
@@ -122,11 +122,11 @@ func (w *worker) Run() {
 }
 
 func (w *worker) loadRules() ([]rules.Rule, error) {
-	cfg, err := getOrgConfig(w.configsAPIURL, w.userID)
+	cfg, err := w.configsAPI.getOrgConfig(w.userID)
 	if err != nil {
 		return nil, fmt.Errorf("Error fetching config: %v", err)
 	}
-	rs, err := loadRules(cfg.RulesFiles)
+	rs, err := cfg.GetRules()
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing rules: %v", err)
 	}

@@ -197,7 +197,7 @@ type AWSStore struct {
 	tableName  string
 	bucketName string
 
-	dynamoRequests     chan *dynamoOp
+	dynamoRequests     chan dynamoOp
 	dynamoRequestsDone sync.WaitGroup
 }
 
@@ -242,7 +242,7 @@ func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
 		tableName:  tableName,
 		bucketName: bucketName,
 
-		dynamoRequests: make(chan *dynamoOp),
+		dynamoRequests: make(chan dynamoOp),
 	}
 
 	store.dynamoRequestsDone.Add(numDynamoRequests)
@@ -431,12 +431,7 @@ func (c *AWSStore) updateIndex(userID string, chunks []Chunk) error {
 		return err
 	}
 
-	for _, batch := range c.batchRequests(writeReqs) {
-		if err := c.batchWriteDynamo(batch); err != nil {
-			return err
-		}
-	}
-	return nil
+	return c.batchWriteDynamo(c.tableName, writeReqs)
 }
 
 // calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all
@@ -474,43 +469,6 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 		indexEntriesPerChunk.Observe(float64(entries))
 	}
 	return writeReqs, nil
-}
-
-// batchRequests takes a bunch of WriteRequests and groups them into batches
-// for later writing.
-func (c *AWSStore) batchRequests(writeReqs []*dynamodb.WriteRequest) [][]*dynamodb.WriteRequest {
-	batches := [][]*dynamodb.WriteRequest{}
-	for i := 0; i < len(writeReqs); i += dynamoMaxBatchSize {
-		var reqs []*dynamodb.WriteRequest
-		if i+dynamoMaxBatchSize > len(writeReqs) {
-			reqs = writeReqs[i:]
-		} else {
-			reqs = writeReqs[i : i+dynamoMaxBatchSize]
-		}
-		batches = append(batches, reqs)
-	}
-	return batches
-}
-
-// batchWriteDynamo writes many requests to dynamo in a single batch.
-func (c *AWSStore) batchWriteDynamo(reqs []*dynamodb.WriteRequest) error {
-	var resp *dynamodb.BatchWriteItemOutput
-	err := instrument.TimeRequestHistogram("BatchWriteItem", dynamoRequestDuration, func() error {
-		var err error
-		resp, err = c.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-			RequestItems:           map[string][]*dynamodb.WriteRequest{c.tableName: reqs},
-			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-		})
-		if err != nil {
-			recordDynamoError(err)
-		}
-		return err
-	})
-	for _, cc := range resp.ConsumedCapacity {
-		dynamoConsumedCapacity.WithLabelValues("BatchWriteItem").
-			Add(float64(*cc.CapacityUnits))
-	}
-	return err
 }
 
 // Get implements ChunkStore
@@ -836,24 +794,27 @@ func (c *AWSStore) fetchChunkData(userID string, chunkSet []Chunk) ([]Chunk, err
 	return chunks, nil
 }
 
-func (c *AWSStore) queryPages(input *dynamodb.QueryInput, fn func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
-	page, _ := c.dynamodb.QueryRequest(input)
-
-	for page := page; page != nil; page = page.NextPage() {
-		req := &dynamoOp{
-			request: page,
-			done:    make(chan error),
-		}
-		c.dynamoRequests <- req
-		if err := <-req.done; err != nil {
-			return err
-		}
-		if getNextPage := fn(page.Data(), !page.HasNextPage()); !getNextPage {
-			return page.Error()
-		}
+// batchWriteDynamo writes many requests to dynamo in a single batch.
+func (c *AWSStore) batchWriteDynamo(tableName string, reqs []*dynamodb.WriteRequest) error {
+	req := &dynamoBatchWriteItemsOp{
+		tableName: tableName,
+		reqs:      reqs,
+		dynamodb:  c.dynamodb,
+		done:      make(chan error),
 	}
+	c.dynamoRequests <- req
+	return <-req.done
+}
 
-	return nil
+func (c *AWSStore) queryPages(input *dynamodb.QueryInput, callback func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
+	page, _ := c.dynamodb.QueryRequest(input)
+	req := &dynamoQueryPagesOp{
+		request:  page,
+		callback: callback,
+		done:     make(chan error),
+	}
+	c.dynamoRequests <- req
+	return <-req.done
 }
 
 func (c *AWSStore) dynamoRequestLoop() {
@@ -864,22 +825,40 @@ func (c *AWSStore) dynamoRequestLoop() {
 			if !ok {
 				return
 			}
-			request.done <- request.doWithBackoff()
+			request.do()
 		}
 	}
 }
 
-type dynamoOp struct {
-	request dynamoRequest
-	done    chan error
+type dynamoOp interface {
+	do()
 }
 
-func (r *dynamoOp) doWithBackoff() error {
+type dynamoQueryPagesOp struct {
+	request  dynamoRequest
+	callback func(resp interface{}, lastPage bool) (shouldContinue bool)
+	done     chan error
+}
+
+type dynamoBatchWriteItemsOp struct {
+	tableName string
+	reqs      []*dynamodb.WriteRequest
+	dynamodb  dynamodbClient
+	done      chan error
+}
+
+func (r *dynamoQueryPagesOp) do() {
 	backoff := minBackoff
-	for {
-		err := instrument.TimeRequestHistogram(r.request.OperationName(), dynamoRequestDuration, func() error {
-			return r.request.Send()
+
+	for page := r.request; page != nil; page = page.NextPage() {
+		err := instrument.TimeRequestHistogram("DynamoDB.QueryPages", dynamoRequestDuration, func() error {
+			return page.Send()
 		})
+
+		if cc := page.Data().(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
+			dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages").
+				Add(float64(*cc.CapacityUnits))
+		}
 
 		if err != nil {
 			recordDynamoError(err)
@@ -892,8 +871,75 @@ func (r *dynamoOp) doWithBackoff() error {
 				}
 				continue
 			}
+
+			r.done <- page.Error()
+			return
 		}
 
-		return err
+		if getNextPage := r.callback(page.Data(), !page.HasNextPage()); !getNextPage {
+			r.done <- page.Error()
+			return
+		}
+
+		backoff = minBackoff
 	}
+
+	r.done <- nil
+}
+
+func fillReq(in *[]*dynamodb.WriteRequest, out *[]*dynamodb.WriteRequest) {
+	if len(*out)+len(*in) > dynamoMaxBatchSize {
+		*out = append(*out, (*in)[:dynamoMaxBatchSize-len(*in)]...)
+		*in = (*in)[dynamoMaxBatchSize-len(*in):]
+	} else {
+		*out = append(*out, (*in)[:len(*in)]...)
+		*in = nil
+	}
+}
+
+func (r *dynamoBatchWriteItemsOp) do() {
+	outstanding, unprocessed := r.reqs, []*dynamodb.WriteRequest{}
+	backoff := minBackoff
+
+	for len(outstanding)+len(unprocessed) > 0 {
+		reqs := []*dynamodb.WriteRequest{}
+		fillReq(&unprocessed, &reqs)
+		fillReq(&outstanding, &reqs)
+
+		var resp *dynamodb.BatchWriteItemOutput
+		err := instrument.TimeRequestHistogram("DynamoDB.BatchWriteItem", dynamoRequestDuration, func() error {
+			var err error
+			resp, err = r.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+				RequestItems:           map[string][]*dynamodb.WriteRequest{r.tableName: reqs},
+				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+			})
+			return err
+		})
+		for _, cc := range resp.ConsumedCapacity {
+			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem").
+				Add(float64(*cc.CapacityUnits))
+		}
+		if resp.UnprocessedItems != nil && len(resp.UnprocessedItems[r.tableName]) > 0 {
+			unprocessed = append(unprocessed, resp.UnprocessedItems[r.tableName]...)
+		}
+
+		if err != nil {
+			recordDynamoError(err)
+
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+				time.Sleep(backoff)
+				backoff = backoff * 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
+
+			r.done <- err
+			return
+		}
+		backoff = minBackoff
+	}
+
+	r.done <- nil
 }

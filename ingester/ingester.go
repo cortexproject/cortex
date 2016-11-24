@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
@@ -531,8 +530,6 @@ func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memor
 }
 
 func (i *Ingester) flushLoop(j int) {
-	backoff := minBackoff
-
 	defer func() {
 		log.Info("Ingester.flushLoop() exited")
 		i.done.Done()
@@ -580,18 +577,9 @@ func (i *Ingester) flushLoop(j int) {
 		// flush the chunks without locking the series
 		err := i.flushChunks(ctx, op.fp, series.metric, chunks)
 		if err != nil {
-			log.Errorf("Failed to flush chunks: %v", err)
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-				time.Sleep(backoff)
-				backoff = backoff * 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-			}
+			log.Errorf("Failed to flush series: %v", err)
 			continue
 		}
-
-		backoff = minBackoff
 
 		// now remove the chunks
 		userState.fpLocker.Lock(op.fp)

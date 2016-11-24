@@ -936,7 +936,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 			continue
 		}
 
-		// If we get provisionedThroughputExceededException, then no items we're processed,
+		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
 			unprocessed = append(unprocessed, reqs...)

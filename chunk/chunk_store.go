@@ -887,22 +887,24 @@ func (r *dynamoQueryPagesOp) do() {
 	r.done <- nil
 }
 
-func fillReq(in *[]*dynamodb.WriteRequest, out *[]*dynamodb.WriteRequest) {
-	if len(*out)+len(*in) > dynamoMaxBatchSize {
-		*out = append(*out, (*in)[:dynamoMaxBatchSize-len(*in)]...)
-		*in = (*in)[dynamoMaxBatchSize-len(*in):]
-	} else {
-		*out = append(*out, (*in)[:len(*in)]...)
-		*in = nil
-	}
-}
-
 func (r *dynamoBatchWriteItemsOp) do() {
 	outstanding, unprocessed := r.reqs, []*dynamodb.WriteRequest{}
 	backoff := minBackoff
+	min := func(i, j int) int {
+		if i < j {
+			return i
+		}
+		return j
+	}
+	fillReq := func(in *[]*dynamodb.WriteRequest, out *[]*dynamodb.WriteRequest) {
+		outLen, inLen := len(*out), len(*in)
+		toFill := min(inLen, dynamoMaxBatchSize-inLen-outLen)
+		*out = append(*out, (*in)[:toFill]...)
+		*in = (*in)[toFill:]
+	}
 
 	for len(outstanding)+len(unprocessed) > 0 {
-		reqs := []*dynamodb.WriteRequest{}
+		var reqs []*dynamodb.WriteRequest
 		fillReq(&unprocessed, &reqs)
 		fillReq(&outstanding, &reqs)
 
@@ -913,31 +915,45 @@ func (r *dynamoBatchWriteItemsOp) do() {
 				RequestItems:           map[string][]*dynamodb.WriteRequest{r.tableName: reqs},
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
+			if err != nil {
+				recordDynamoError(err)
+			}
 			return err
 		})
 		for _, cc := range resp.ConsumedCapacity {
 			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem").
 				Add(float64(*cc.CapacityUnits))
 		}
+
+		// If there are unprocessed items, backoff and retry those items.
 		if resp.UnprocessedItems != nil && len(resp.UnprocessedItems[r.tableName]) > 0 {
 			unprocessed = append(unprocessed, resp.UnprocessedItems[r.tableName]...)
+			time.Sleep(backoff)
+			backoff = backoff * 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			continue
 		}
 
-		if err != nil {
-			recordDynamoError(err)
-
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-				time.Sleep(backoff)
-				backoff = backoff * 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-				continue
+		// If we get provisionedThroughputExceededException, then no items we're processed,
+		// so back off and retry all.
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+			unprocessed = append(unprocessed, reqs...)
+			time.Sleep(backoff)
+			backoff = backoff * 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
 			}
+			continue
+		}
 
+		// All other errors are fatal.
+		if err != nil {
 			r.done <- err
 			return
 		}
+
 		backoff = minBackoff
 	}
 

@@ -20,43 +20,59 @@ func init() {
 	spew.Config.SortKeys = true // :\
 }
 
-func c(id string) Chunk {
-	return Chunk{ID: id}
-}
-
-func TestIntersect(t *testing.T) {
-	for _, tc := range []struct {
-		in   []ByID
-		want ByID
-	}{
-		{nil, ByID{}},
-		{[]ByID{{c("a"), c("b"), c("c")}}, []Chunk{c("a"), c("b"), c("c")}},
-		{[]ByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}}, ByID{c("a"), c("c")}},
-		{[]ByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}, {c("b")}}, ByID{}},
-		{[]ByID{{c("a"), c("b"), c("c")}, {c("a"), c("c")}, {c("a")}}, ByID{c("a")}},
-	} {
-		have := nWayIntersect(tc.in)
-		if !reflect.DeepEqual(have, tc.want) {
-			t.Errorf("%v != %v", have, tc.want)
-		}
-	}
-}
-
-func TestChunkStore(t *testing.T) {
+func TestChunkStoreUnprocessed(t *testing.T) {
 	store, err := NewAWSStore(StoreConfig{
-		dynamodb: NewMockDynamoDB(),
+		dynamodb: NewMockDynamoDB(2, 2),
 		s3:       NewMockS3(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	store.CreateTables()
 	defer store.Stop()
 
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()
+	chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
+	chunk := NewChunk(
+		model.Fingerprint(1),
+		model.Metric{
+			model.MetricNameLabel: "foo",
+			"bar":  "baz",
+			"toms": "code",
+		},
+		&chunk.Desc{
+			ChunkFirstTime: now.Add(-time.Hour),
+			ChunkLastTime:  now,
+			C:              chunks[0],
+		},
+	)
+	want := []Chunk{chunk}
+	if err := store.Put(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	have, err := store.Get(ctx, now.Add(-time.Hour), now, mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(want, have) {
+		t.Fatalf("wrong chunks - %s", diff(want, have))
+	}
+}
 
+func TestChunkStore(t *testing.T) {
+	store, err := NewAWSStore(StoreConfig{
+		dynamodb: NewMockDynamoDB(0, 0),
+		s3:       NewMockS3(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.CreateTables()
+	defer store.Stop()
+
+	ctx := user.WithID(context.Background(), "0")
+	now := model.Now()
 	chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
 
 	chunk1 := NewChunk(

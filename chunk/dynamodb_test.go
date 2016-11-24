@@ -7,12 +7,15 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
 type MockDynamoDB struct {
-	mtx    sync.RWMutex
-	tables map[string]mockDynamoDBTable
+	mtx            sync.RWMutex
+	unprocessed    int
+	provisionedErr int
+	tables         map[string]mockDynamoDBTable
 }
 
 type mockDynamoDBTable struct {
@@ -23,9 +26,11 @@ type mockDynamoDBTable struct {
 
 type mockDynamoDBItem map[string]*dynamodb.AttributeValue
 
-func NewMockDynamoDB() *MockDynamoDB {
+func NewMockDynamoDB(unprocessed int, provisionedErr int) *MockDynamoDB {
 	return &MockDynamoDB{
-		tables: map[string]mockDynamoDBTable{},
+		tables:         map[string]mockDynamoDBTable{},
+		unprocessed:    unprocessed,
+		provisionedErr: provisionedErr,
 	}
 }
 
@@ -70,6 +75,15 @@ func (m *MockDynamoDB) BatchWriteItem(input *dynamodb.BatchWriteItemInput) (*dyn
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	resp := &dynamodb.BatchWriteItemOutput{
+		UnprocessedItems: map[string][]*dynamodb.WriteRequest{},
+	}
+
+	if m.provisionedErr > 0 {
+		m.provisionedErr--
+		return resp, awserr.New(provisionedThroughputExceededException, "", nil)
+	}
+
 	for tableName, writeRequests := range input.RequestItems {
 		table, ok := m.tables[tableName]
 		if !ok {
@@ -77,6 +91,12 @@ func (m *MockDynamoDB) BatchWriteItem(input *dynamodb.BatchWriteItemInput) (*dyn
 		}
 
 		for _, writeRequest := range writeRequests {
+			if m.unprocessed > 0 {
+				m.unprocessed--
+				resp.UnprocessedItems[tableName] = append(resp.UnprocessedItems[tableName], writeRequest)
+				continue
+			}
+
 			hashValue := *writeRequest.PutRequest.Item[table.hashKey].S
 			rangeValue := writeRequest.PutRequest.Item[table.rangeKey].B
 			log.Printf("Write %s/%x", hashValue, rangeValue)
@@ -96,7 +116,7 @@ func (m *MockDynamoDB) BatchWriteItem(input *dynamodb.BatchWriteItemInput) (*dyn
 			table.items[hashValue] = items
 		}
 	}
-	return &dynamodb.BatchWriteItemOutput{}, nil
+	return resp, nil
 }
 
 func (m *MockDynamoDB) Query(input *dynamodb.QueryInput) (*dynamodb.QueryOutput, error) {

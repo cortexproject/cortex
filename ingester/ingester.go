@@ -28,12 +28,6 @@ const (
 	// Reasons to discard samples.
 	outOfOrderTimestamp = "timestamp_out_of_order"
 	duplicateSample     = "multiple_values_for_timestamp"
-
-	// Backoff for flush
-	minBackoff = 100 * time.Millisecond
-	maxBackoff = 1 * time.Second
-
-	provisionedThroughputExceededException = "ProvisionedThroughputExceededException"
 )
 
 var (

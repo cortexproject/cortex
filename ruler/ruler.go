@@ -74,6 +74,8 @@ type worker struct {
 	terminated chan struct{}
 }
 
+// TODO: Use the new scheduler
+
 // NewWorker gets a rules recording worker for the given user.
 // It will keep polling until it can construct one.
 func NewWorker(cfg Config, ruler Ruler) (Worker, error) {

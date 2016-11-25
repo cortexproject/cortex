@@ -136,26 +136,18 @@ func (d *Distributor) getClientFor(ingester ring.IngesterDesc) (cortex.IngesterC
 		return client, nil
 	}
 
-	if ingester.GRPCHostname != "" {
-		conn, err := grpc.Dial(
-			ingester.GRPCHostname,
-			grpc.WithInsecure(),
-			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-				middleware.ClientUserHeaderInterceptor,
-			)),
-		)
-		if err != nil {
-			return nil, err
-		}
-		client = cortex.NewIngesterClient(conn)
-	} else {
-		var err error
-		client, err = NewHTTPIngesterClient(ingester.Hostname, d.cfg.RemoteTimeout)
-		if err != nil {
-			return nil, err
-		}
+	conn, err := grpc.Dial(
+		ingester.GRPCHostname,
+		grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.ClientUserHeaderInterceptor,
+		)),
+	)
+	if err != nil {
+		return nil, err
 	}
+	client = cortex.NewIngesterClient(conn)
 
 	d.clients[ingester.Hostname] = client
 	return client, nil

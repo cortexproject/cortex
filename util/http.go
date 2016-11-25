@@ -22,7 +22,7 @@ func ParseProtoRequest(w http.ResponseWriter, r *http.Request, req proto.Message
 		return nil, true
 	}
 
-	ctx = user.WithID(context.Background(), userID)
+	ctx = user.WithID(r.Context(), userID)
 	if req == nil {
 		return ctx, false
 	}

@@ -337,6 +337,15 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
+			"repository": "https://github.com/grpc-ecosystem/grpc-opentracing",
+			"vcs": "git",
+			"revision": "8fa31758f85ff84c4f21071a156e7a5539a93795",
+			"branch": "master",
+			"path": "/go/otgrpc",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/gucumber/gucumber",
 			"repository": "https://github.com/gucumber/gucumber",
 			"vcs": "git",
@@ -538,6 +547,23 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/opentracing-contrib/go-stdlib/nethttp",
+			"repository": "https://github.com/opentracing-contrib/go-stdlib",
+			"vcs": "git",
+			"revision": "75e37ae3e209c490d2aa67d8a31fb302fdc38cba",
+			"branch": "master",
+			"path": "/nethttp",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/opentracing/opentracing-go",
+			"repository": "https://github.com/opentracing/opentracing-go",
+			"vcs": "git",
+			"revision": "902ca977fd85455c364050f985eba376b44315f0",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/pmezard/go-difflib/difflib",
 			"repository": "https://github.com/pmezard/go-difflib",
 			"vcs": "git",
@@ -678,7 +704,7 @@
 			"importpath": "github.com/weaveworks/scope/common/instrument",
 			"repository": "https://github.com/weaveworks/scope",
 			"vcs": "git",
-			"revision": "94cd73c72b6155e499df61018ca64b0cac593694",
+			"revision": "604661ca2afa686508492ac3eee8c327bf47eb68",
 			"branch": "master",
 			"path": "/common/instrument",
 			"notests": true

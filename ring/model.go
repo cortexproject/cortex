@@ -3,8 +3,6 @@ package ring
 import (
 	"sort"
 	"time"
-
-	"github.com/prometheus/common/log"
 )
 
 // IngesterState describes the state of an ingester
@@ -83,29 +81,13 @@ func (d *Desc) addIngester(id, hostname, grpcHostname string, tokens []uint32, s
 	sort.Sort(d.Tokens)
 }
 
-func (d *Desc) removeIngester(id string, tokens []uint32) {
+func (d *Desc) removeIngester(id string) {
 	delete(d.Ingesters, id)
 	output := []TokenDesc{}
-	i, j := 0, 0
-	for i < len(d.Tokens) && j < len(tokens) {
-		if d.Tokens[i].Token < tokens[j] {
+	for i := 0; i < len(d.Tokens); i++ {
+		if d.Tokens[i].Ingester != id {
 			output = append(output, d.Tokens[i])
-			i++
-		} else if d.Tokens[i].Token > tokens[j] {
-			log.Infof("Missing token from ring: %d", tokens[j])
-			j++
-		} else {
-			i++
-			j++
 		}
-	}
-	for i < len(d.Tokens) {
-		output = append(output, d.Tokens[i])
-		i++
-	}
-	for j < len(tokens) {
-		log.Infof("Missing token from ring: %d", tokens[j])
-		j++
 	}
 	d.Tokens = output
 }

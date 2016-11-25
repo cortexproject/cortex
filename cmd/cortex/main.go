@@ -147,6 +147,8 @@ func main() {
 	defer r.Stop()
 
 	router := mux.NewRouter()
+	router.Handle("/ring", r)
+
 	switch cfg.mode {
 	case modeDistributor:
 		cfg.distributorConfig.Ring = r

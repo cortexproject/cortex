@@ -99,7 +99,7 @@ func (r *IngesterRegistration) Unregister() {
 func (r *IngesterRegistration) loop() {
 	defer r.wait.Done()
 	tokens := r.pickTokens()
-	defer r.unregister(tokens)
+	defer r.unregister()
 	r.heartbeat(tokens)
 }
 
@@ -176,14 +176,14 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 	}
 }
 
-func (r *IngesterRegistration) unregister(tokens []uint32) {
+func (r *IngesterRegistration) unregister() {
 	unregister := func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}
 
 		ringDesc := in.(*Desc)
-		ringDesc.removeIngester(r.id, tokens)
+		ringDesc.removeIngester(r.id)
 		return ringDesc, true, nil
 	}
 	if err := r.consul.CAS(consulKey, descFactory, unregister); err != nil {

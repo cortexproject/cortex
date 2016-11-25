@@ -35,15 +35,9 @@ func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
 var ErrEmptyRing = errors.New("empty circle")
 
-// CoordinationStateClient is an interface to getting changes to the coordination
-// state.  Should allow us to swap out Consul for something else (mesh?) later.
-type CoordinationStateClient interface {
-	WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool)
-}
-
 // Ring holds the information about the members of the consistent hash circle.
 type Ring struct {
-	client           CoordinationStateClient
+	consul           ConsulClient
 	quit, done       chan struct{}
 	heartbeatTimeout time.Duration
 
@@ -56,9 +50,9 @@ type Ring struct {
 }
 
 // New creates a new Ring
-func New(client CoordinationStateClient, heartbeatTimeout time.Duration) *Ring {
+func New(consul ConsulClient, heartbeatTimeout time.Duration) *Ring {
 	r := &Ring{
-		client:           client,
+		consul:           consul,
 		heartbeatTimeout: heartbeatTimeout,
 		quit:             make(chan struct{}),
 		done:             make(chan struct{}),
@@ -90,7 +84,7 @@ func (r *Ring) Stop() {
 
 func (r *Ring) loop() {
 	defer close(r.done)
-	r.client.WatchKey(consulKey, descFactory, r.quit, func(value interface{}) bool {
+	r.consul.WatchKey(consulKey, descFactory, r.quit, func(value interface{}) bool {
 		if value == nil {
 			log.Infof("Ring doesn't exist in consul yet.")
 			return true

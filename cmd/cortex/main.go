@@ -138,7 +138,11 @@ func main() {
 		prometheus.MustRegister(resourceWatcher)
 	}
 
-	consul, err := ring.NewConsulClient(cfg.consulHost)
+	ringSerDes := ring.NewDynamicSerDes(
+		ring.JSONSerDes{Factory: ring.DescFactory},
+		ring.ProtoSerDes{Factory: ring.ProtoDescFactory},
+	)
+	consul, err := ring.NewConsulClient(cfg.consulHost, ringSerDes)
 	if err != nil {
 		log.Fatalf("Error initializing Consul client: %v", err)
 	}
@@ -156,7 +160,7 @@ func main() {
 
 	case modeIngester:
 		cfg.ingesterConfig.Ring = r
-		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.ingesterConfig.GRPCListenPort, cfg.numTokens)
+		registration, err := ring.RegisterIngester(consul, cfg.ingesterConfig.GRPCListenPort, cfg.numTokens, ringSerDes)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
 			// network errors.
@@ -183,7 +187,7 @@ func main() {
 
 		// Deferring a func to make ordering obvious
 		defer func() {
-			registration.ChangeState(ring.Leaving)
+			registration.ChangeState(ring.IngesterState_LEAVING)
 			ing.Stop()
 			registration.Unregister()
 		}()

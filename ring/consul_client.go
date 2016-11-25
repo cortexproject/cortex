@@ -1,11 +1,13 @@
 package ring
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+	"github.com/golang/snappy"
 	consul "github.com/hashicorp/consul/api"
 	"github.com/prometheus/common/log"
 )
@@ -18,18 +20,20 @@ const (
 // such as CAS and Watch which take callbacks.  It also deals with serialisation
 // by having an instance factory passed in to methods and deserialising into that.
 type ConsulClient interface {
-	Get(key string, factory InstanceFactory) error
-	CAS(key string, factory InstanceFactory, f CASCallback) error
-	WatchPrefix(path string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool)
-	WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool)
+	CAS(key string, f CASCallback) error
+	WatchPrefix(path string, done <-chan struct{}, f func(string, interface{}) bool)
+	WatchKey(key string, done <-chan struct{}, f func(interface{}) bool)
 	PutBytes(key string, buf []byte) error
 }
 
 // CASCallback is the type of the callback to CAS.  If err is nil, out must be non-nil.
 type CASCallback func(in interface{}) (out interface{}, retry bool, err error)
 
-// InstanceFactory type creates empty instances for use when deserialising
-type InstanceFactory func() interface{}
+// Codec allows the consult client to serialise and deserialise values.
+type Codec interface {
+	Decode([]byte) (interface{}, error)
+	Encode(interface{}) ([]byte, error)
+}
 
 type kv interface {
 	CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error)
@@ -40,10 +44,11 @@ type kv interface {
 
 type consulClient struct {
 	kv
+	codec Codec
 }
 
 // NewConsulClient returns a new ConsulClient.
-func NewConsulClient(addr string) (ConsulClient, error) {
+func NewConsulClient(addr string, codec Codec) (ConsulClient, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: addr,
 		Scheme:  "http",
@@ -51,7 +56,10 @@ func NewConsulClient(addr string) (ConsulClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &consulClient{client.KV()}, nil
+	return &consulClient{
+		kv:    client.KV(),
+		codec: codec,
+	}, nil
 }
 
 var (
@@ -64,25 +72,114 @@ var (
 	ErrNotFound = fmt.Errorf("Not found")
 )
 
-// Get and deserialise a JSON value from Consul.
-func (c *consulClient) Get(key string, factory InstanceFactory) error {
-	kvp, _, err := c.kv.Get(key, queryOptions)
+// ProtoCodec is a Codec for proto/snappy
+type ProtoCodec struct {
+	Factory func() proto.Message
+}
+
+// Decode implements Codec
+func (p ProtoCodec) Decode(bytes []byte) (interface{}, error) {
+	out := p.Factory()
+	bytes, err := snappy.Decode(nil, bytes)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if kvp == nil {
-		return ErrNotFound
+	if err := proto.Unmarshal(bytes, out); err != nil {
+		return nil, err
 	}
-	out := factory()
-	if err := json.NewDecoder(bytes.NewReader(kvp.Value)).Decode(out); err != nil {
-		return err
+	return out, nil
+}
+
+// Encode implements Codec
+func (p ProtoCodec) Encode(msg interface{}) ([]byte, error) {
+	bytes, err := proto.Marshal(msg.(proto.Message))
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	return snappy.Encode(nil, bytes), nil
+}
+
+// JSONCodec is a Codec for JSON
+type JSONCodec struct {
+	Factory func() interface{}
+}
+
+// Decode implements Codec
+func (j JSONCodec) Decode(bytes []byte) (interface{}, error) {
+	out := j.Factory()
+	if err := json.Unmarshal(bytes, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Encode implemenrs Codec
+func (j JSONCodec) Encode(msg interface{}) ([]byte, error) {
+	return json.Marshal(msg)
+}
+
+// DynamicCodec is a Codec that can read json and proto, and
+// that can serialise to either (selectively).
+// Once it fails to decode JSON, it will start decoding (and
+// writing) protos.
+type DynamicCodec struct {
+	mtx      sync.Mutex
+	useProto bool
+	json     Codec
+	proto    Codec
+}
+
+// NewDynamicCodec makes a new DynamicCodec
+func NewDynamicCodec(json, proto Codec) *DynamicCodec {
+	return &DynamicCodec{
+		useProto: false,
+		json:     json,
+		proto:    proto,
+	}
+}
+
+// UseProto allow you to change the Codec at runtime.
+func (d *DynamicCodec) UseProto(useProto bool) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.useProto != useProto {
+		log.Infof("Using to proto serialization: %v", useProto)
+		d.useProto = useProto
+	}
+}
+
+// Decode implements Codec
+func (d *DynamicCodec) Decode(bytes []byte) (interface{}, error) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	out, err := d.json.Decode(bytes)
+	if err == nil {
+		return out, nil
+	}
+
+	out, err = d.proto.Decode(bytes)
+	if err == nil && !d.useProto {
+		log.Infof("Error decoding json, switching to writing proto: %v", err)
+		d.useProto = true
+	}
+
+	return out, err
+}
+
+// Encode implemenrs Codec
+func (d *DynamicCodec) Encode(msg interface{}) ([]byte, error) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.useProto {
+		return d.proto.Encode(msg)
+	}
+	return d.json.Encode(msg)
 }
 
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
-func (c *consulClient) CAS(key string, factory InstanceFactory, f CASCallback) error {
+func (c *consulClient) CAS(key string, f CASCallback) error {
 	var (
 		index   = uint64(0)
 		retries = 10
@@ -96,9 +193,9 @@ func (c *consulClient) CAS(key string, factory InstanceFactory, f CASCallback) e
 		}
 		var intermediate interface{}
 		if kvp != nil {
-			out := factory()
-			if err := json.NewDecoder(bytes.NewReader(kvp.Value)).Decode(out); err != nil {
-				log.Errorf("Error deserialising %s: %v", key, err)
+			out, err := c.codec.Decode(kvp.Value)
+			if err != nil {
+				log.Errorf("Error decoding %s: %v", key, err)
 				continue
 			}
 			// If key doesn't exist, index will be 0.
@@ -119,14 +216,14 @@ func (c *consulClient) CAS(key string, factory InstanceFactory, f CASCallback) e
 			panic("Callback must instantiate value!")
 		}
 
-		value := bytes.Buffer{}
-		if err := json.NewEncoder(&value).Encode(intermediate); err != nil {
+		bytes, err := c.codec.Encode(intermediate)
+		if err != nil {
 			log.Errorf("Error serialising value for %s: %v", key, err)
 			continue
 		}
 		ok, _, err := c.kv.CAS(&consul.KVPair{
 			Key:         key,
-			Value:       value.Bytes(),
+			Value:       bytes,
 			ModifyIndex: index,
 		}, writeOptions)
 		if err != nil {
@@ -189,7 +286,7 @@ func isClosed(done <-chan struct{}) bool {
 // supplied which generates an empty struct for WatchPrefix to deserialise
 // into. Values in Consul are assumed to be JSON. This function blocks until
 // the done channel is closed.
-func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool) {
+func (c *consulClient) WatchPrefix(prefix string, done <-chan struct{}, f func(string, interface{}) bool) {
 	var (
 		backoff = newBackoff(done)
 		index   = uint64(0)
@@ -218,9 +315,9 @@ func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done 
 		index = meta.LastIndex
 
 		for _, kvp := range kvps {
-			out := factory()
-			if err := json.NewDecoder(bytes.NewReader(kvp.Value)).Decode(out); err != nil {
-				log.Errorf("Error deserialising %s: %v", kvp.Key, err)
+			out, err := c.codec.Decode(kvp.Value)
+			if err != nil {
+				log.Errorf("Error decoding %s: %v", kvp.Key, err)
 				continue
 			}
 			if !f(kvp.Key, out) {
@@ -236,7 +333,7 @@ func (c *consulClient) WatchPrefix(prefix string, factory InstanceFactory, done 
 // supplied which generates an empty struct for WatchKey to deserialise
 // into. Values in Consul are assumed to be JSON. This function blocks until
 // the done channel is closed.
-func (c *consulClient) WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool) {
+func (c *consulClient) WatchKey(key string, done <-chan struct{}, f func(interface{}) bool) {
 	var (
 		backoff = newBackoff(done)
 		index   = uint64(0)
@@ -266,9 +363,10 @@ func (c *consulClient) WatchKey(key string, factory InstanceFactory, done <-chan
 
 		var out interface{}
 		if kvp != nil {
-			out = factory()
-			if err := json.NewDecoder(bytes.NewReader(kvp.Value)).Decode(out); err != nil {
-				log.Errorf("Error deserialising %s: %v", kvp.Key, err)
+			var err error
+			out, err = c.codec.Decode(kvp.Value)
+			if err != nil {
+				log.Errorf("Error decoding %s: %v", key, err)
 				continue
 			}
 		}
@@ -296,25 +394,20 @@ func PrefixClient(client ConsulClient, prefix string) ConsulClient {
 	return &prefixedConsulClient{prefix, client}
 }
 
-// Get and deserialise a JSON value from Consul.
-func (c *prefixedConsulClient) Get(key string, factory InstanceFactory) error {
-	return c.consul.Get(c.prefix+key, factory)
-}
-
 // CAS atomically modifies a value in a callback. If the value doesn't exist,
 // you'll get 'nil' as an argument to your callback.
-func (c *prefixedConsulClient) CAS(key string, factory InstanceFactory, f CASCallback) error {
-	return c.consul.CAS(c.prefix+key, factory, f)
+func (c *prefixedConsulClient) CAS(key string, f CASCallback) error {
+	return c.consul.CAS(c.prefix+key, f)
 }
 
 // WatchPrefix watches a prefix. This is in addition to the prefix we already have.
-func (c *prefixedConsulClient) WatchPrefix(path string, factory InstanceFactory, done <-chan struct{}, f func(string, interface{}) bool) {
-	c.consul.WatchPrefix(c.prefix+path, factory, done, f)
+func (c *prefixedConsulClient) WatchPrefix(path string, done <-chan struct{}, f func(string, interface{}) bool) {
+	c.consul.WatchPrefix(c.prefix+path, done, f)
 }
 
 // WatchKey watches a key.
-func (c *prefixedConsulClient) WatchKey(key string, factory InstanceFactory, done <-chan struct{}, f func(interface{}) bool) {
-	c.consul.WatchKey(c.prefix+key, factory, done, f)
+func (c *prefixedConsulClient) WatchKey(key string, done <-chan struct{}, f func(interface{}) bool) {
+	c.consul.WatchKey(c.prefix+key, done, f)
 }
 
 // PutBytes writes bytes to Consul.

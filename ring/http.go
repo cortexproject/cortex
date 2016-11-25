@@ -1,13 +1,14 @@
 package ring
 
 import (
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"math"
 	"net/http"
 	"sort"
 	"time"
+
+	"github.com/golang/protobuf/proto"
 )
 
 const tpl = `
@@ -39,7 +40,7 @@ const tpl = `
 					<tr>
 						<td>{{ .ID }}</td>
 						<td>{{ .State }}</td>
-						<td>{{ .Hostname }}</td>
+						<td>{{ .Address }}</td>
 						<td>{{ .Timestamp }}</td>
 						<td>{{ .Tokens }}</td>
 						<td>{{ .Ownership }}%</td>
@@ -73,7 +74,7 @@ func (r *Ring) forget(id string) error {
 		ringDesc.removeIngester(id)
 		return ringDesc, true, nil
 	}
-	return r.consul.CAS(consulKey, descFactory, unregister)
+	return r.consul.CAS(consulKey, unregister)
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -101,29 +102,24 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	tokens, owned := countTokens(r.ringDesc.Tokens)
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
+		timestamp := time.Unix(ing.Timestamp, 0)
 		state := ing.State.String()
-		if now.Sub(ing.Timestamp) > r.heartbeatTimeout {
+		if now.Sub(timestamp) > r.heartbeatTimeout {
 			state = unhealthy
 		}
 
 		ingesters = append(ingesters, struct {
-			ID, State, Hostname, Timestamp string
-			Tokens                         uint32
-			Ownership                      float64
+			ID, State, Address, Timestamp string
+			Tokens                        uint32
+			Ownership                     float64
 		}{
 			ID:        id,
 			State:     state,
-			Hostname:  ing.Hostname,
-			Timestamp: ing.Timestamp.String(),
+			Address:   ing.Addr,
+			Timestamp: timestamp.String(),
 			Tokens:    tokens[id],
 			Ownership: (float64(owned[id]) / float64(math.MaxUint32)) * 100,
 		})
-	}
-
-	buf, err := json.MarshalIndent(r.ringDesc, "", "  ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
 	}
 
 	if err := tmpl.Execute(w, struct {
@@ -135,7 +131,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		Ingesters: ingesters,
 		Message:   message,
 		Now:       time.Now(),
-		Ring:      string(buf),
+		Ring:      proto.MarshalTextString(r.ringDesc),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

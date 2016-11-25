@@ -11,6 +11,16 @@ import (
 	"github.com/weaveworks/cortex/util"
 )
 
+// IngesterError is an error we got from an ingester.
+type IngesterError struct {
+	StatusCode int
+	err        error
+}
+
+func (i IngesterError) Error() string {
+	return i.err.Error()
+}
+
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	var req remote.WriteRequest

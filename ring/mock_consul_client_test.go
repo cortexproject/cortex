@@ -21,7 +21,10 @@ func newMockConsulClient() ConsulClient {
 	}
 	m.cond = sync.NewCond(&m.mtx)
 	go m.loop()
-	return &consulClient{&m}
+	return &consulClient{
+		kv:    &m,
+		codec: ProtoCodec{Factory: ProtoDescFactory},
+	}
 }
 
 func copyKVPair(in *consul.KVPair) *consul.KVPair {

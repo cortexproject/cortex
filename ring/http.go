@@ -52,7 +52,7 @@ func init() {
 	tmpl, err = template.New("webpage").
 		Funcs(template.FuncMap{
 			"time": func(in interface{}) string {
-				return in.(time.Time).String()
+				return time.Unix(in.(int64), 0).String()
 			},
 		}).
 		Parse(tpl)
@@ -71,7 +71,7 @@ func (r *Ring) forget(id string) error {
 		ringDesc.removeIngester(id)
 		return ringDesc, true, nil
 	}
-	return r.consul.CAS(consulKey, descFactory, unregister)
+	return r.consul.CAS(consulKey, unregister)
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -88,7 +88,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if err := tmpl.Execute(w, struct {
-		Ring    Desc
+		Ring    *Desc
 		Message string
 		Now     time.Time
 	}{

@@ -25,12 +25,12 @@ const (
 type IngesterRegistration struct {
 	consul    ConsulClient
 	numTokens int
+	codec     *DynamicCodec
 
-	id           string
-	hostname     string
-	grpcHostname string
-	quit         chan struct{}
-	wait         sync.WaitGroup
+	id       string
+	hostname string
+	quit     chan struct{}
+	wait     sync.WaitGroup
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  Channel is used to tell the actor to update consul on state changes.
@@ -41,7 +41,7 @@ type IngesterRegistration struct {
 }
 
 // RegisterIngester registers an ingester with Consul.
-func RegisterIngester(consulClient ConsulClient, listenPort, grpcPort, numTokens int) (*IngesterRegistration, error) {
+func RegisterIngester(consulClient ConsulClient, grpcPort, numTokens int, codec *DynamicCodec) (*IngesterRegistration, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -55,16 +55,16 @@ func RegisterIngester(consulClient ConsulClient, listenPort, grpcPort, numTokens
 	r := &IngesterRegistration{
 		consul:    consulClient,
 		numTokens: numTokens,
+		codec:     codec,
 
 		id: hostname,
 		// hostname is the ip+port of this instance, written to consul so
 		// the distributors know where to connect.
-		hostname:     fmt.Sprintf("%s:%d", addr, listenPort),
-		grpcHostname: fmt.Sprintf("%s:%d", addr, grpcPort),
-		quit:         make(chan struct{}),
+		hostname: fmt.Sprintf("%s:%d", addr, grpcPort),
+		quit:     make(chan struct{}),
 
 		// Only read/written on actor goroutine.
-		state:       Active,
+		state:       IngesterState_ACTIVE,
 		stateChange: make(chan IngesterState),
 
 		consulHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
@@ -125,16 +125,17 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 			tokens = append(tokens, newTokens...)
 		}
 		sort.Sort(sortableUint32(tokens))
-		ringDesc.addIngester(r.id, r.hostname, r.grpcHostname, tokens, r.state)
+		ringDesc.addIngester(r.id, r.hostname, tokens, r.state)
 		return ringDesc, true, nil
 	}
-	if err := r.consul.CAS(consulKey, descFactory, pickTokens); err != nil {
+	if err := r.consul.CAS(consulKey, pickTokens); err != nil {
 		log.Fatalf("Failed to pick tokens in consul: %v", err)
 	}
 	return tokens
 }
 
 func (r *IngesterRegistration) heartbeat(tokens []uint32) {
+
 	updateConsul := func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *Desc
 		if in == nil {
@@ -143,14 +144,29 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 			ringDesc = in.(*Desc)
 		}
 
+		// See if all ingesters can read protos; if so start writing them
+		allIngestersCanReadProtos := true
+		for _, ing := range ringDesc.Ingesters {
+			if !ing.ProtoRing {
+				allIngestersCanReadProtos = false
+				break
+			}
+		}
+		if allIngestersCanReadProtos {
+			r.codec.UseProto(true)
+		}
+
 		ingesterDesc, ok := ringDesc.Ingesters[r.id]
 		if !ok {
 			// consul must have restarted
 			log.Infof("Found empty ring, inserting tokens!")
-			ringDesc.addIngester(r.id, r.hostname, r.grpcHostname, tokens, r.state)
+			ringDesc.addIngester(r.id, r.hostname, tokens, r.state)
 		} else {
-			ingesterDesc.Timestamp = time.Now()
+			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = r.state
+
+			// Set ProtoRing back to true for the case where an existing ingester that didn't understand this field removed it whilst updating the ring.
+			ingesterDesc.ProtoRing = true
 			ringDesc.Ingesters[r.id] = ingesterDesc
 		}
 
@@ -162,12 +178,12 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 	for {
 		select {
 		case r.state = <-r.stateChange:
-			if err := r.consul.CAS(consulKey, descFactory, updateConsul); err != nil {
+			if err := r.consul.CAS(consulKey, updateConsul); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}
 		case <-ticker.C:
 			r.consulHeartbeats.Inc()
-			if err := r.consul.CAS(consulKey, descFactory, updateConsul); err != nil {
+			if err := r.consul.CAS(consulKey, updateConsul); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}
 		case <-r.quit:
@@ -186,7 +202,7 @@ func (r *IngesterRegistration) unregister() {
 		ringDesc.removeIngester(r.id)
 		return ringDesc, true, nil
 	}
-	if err := r.consul.CAS(consulKey, descFactory, unregister); err != nil {
+	if err := r.consul.CAS(consulKey, unregister); err != nil {
 		log.Fatalf("Failed to unregister from consul: %v", err)
 	}
 }

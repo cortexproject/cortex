@@ -1,4 +1,4 @@
-package ingester
+package util
 
 import (
 	"runtime"
@@ -20,7 +20,7 @@ func (i item) Key() string {
 }
 
 func TestPriorityQueueBasic(t *testing.T) {
-	queue := newPriorityQueue()
+	queue := NewPriorityQueue()
 	assert.Equal(t, 0, queue.Length(), "Expected length = 0")
 
 	queue.Enqueue(item(1))
@@ -35,7 +35,7 @@ func TestPriorityQueueBasic(t *testing.T) {
 }
 
 func TestPriorityQueuePriorities(t *testing.T) {
-	queue := newPriorityQueue()
+	queue := NewPriorityQueue()
 	queue.Enqueue(item(1))
 	queue.Enqueue(item(2))
 
@@ -47,7 +47,7 @@ func TestPriorityQueuePriorities(t *testing.T) {
 }
 
 func TestPriorityQueuePriorities2(t *testing.T) {
-	queue := newPriorityQueue()
+	queue := NewPriorityQueue()
 	queue.Enqueue(item(2))
 	queue.Enqueue(item(1))
 
@@ -59,7 +59,7 @@ func TestPriorityQueuePriorities2(t *testing.T) {
 }
 
 func TestPriorityQueueDedupe(t *testing.T) {
-	queue := newPriorityQueue()
+	queue := NewPriorityQueue()
 	queue.Enqueue(item(1))
 	queue.Enqueue(item(1))
 
@@ -71,7 +71,7 @@ func TestPriorityQueueDedupe(t *testing.T) {
 }
 
 func TestPriorityQueueWait(t *testing.T) {
-	queue := newPriorityQueue()
+	queue := NewPriorityQueue()
 
 	done := make(chan struct{})
 	go func() {

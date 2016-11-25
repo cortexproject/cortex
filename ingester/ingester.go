@@ -72,7 +72,7 @@ type Ingester struct {
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
-	flushQueues []*priorityQueue
+	flushQueues []*util.PriorityQueue
 
 	ingestedSamples  prometheus.Counter
 	discardedSamples *prometheus.CounterVec
@@ -140,7 +140,7 @@ func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
 		quit:       make(chan struct{}),
 
 		userState:   map[string]*userState{},
-		flushQueues: make([]*priorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_total",
@@ -184,7 +184,7 @@ func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
 
 	i.done.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = newPriorityQueue()
+		i.flushQueues[j] = util.NewPriorityQueue()
 		go i.flushLoop(j)
 	}
 

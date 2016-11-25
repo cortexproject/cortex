@@ -127,8 +127,8 @@ func main() {
 	flag.DurationVar(&cfg.distributorConfig.RemoteTimeout, "distributor.remote-timeout", 5*time.Second, "Timeout for downstream ingesters.")
 
 	flag.StringVar(&cfg.rulerConfig.ConfigsAPIURL, "ruler.configs.url", "", "URL of configs API server.")
-	flag.StringVar(&cfg.rulerConfig.UserID, "ruler.userID", "", "Weave Cloud org to run rules for")
 	flag.DurationVar(&cfg.rulerConfig.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
+	flag.IntVar(&cfg.rulerConfig.NumWorkers, "ruler.num-workers", 1, "Number of worker routines in this process")
 
 	flag.Parse()
 
@@ -370,5 +370,5 @@ func setupRuler(distributorCfg distributor.Config, chunkStore chunk.Store, cfg r
 		return nil, err
 	}
 
-	return ruler.NewWorker(cfg, ruler.NewRuler(dist, chunkStore))
+	return ruler.NewServer(cfg, ruler.NewRuler(dist, chunkStore))
 }

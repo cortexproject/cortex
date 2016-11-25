@@ -12,6 +12,9 @@ import (
 
 const (
 	skewCorrection = 1 * time.Minute
+	// Backoff for loading initial configuration set.
+	minBackoff = 100 * time.Millisecond
+	maxBackoff = 2 * time.Second
 )
 
 type workItem struct {
@@ -38,23 +41,37 @@ func (w workItem) Defer(interval time.Duration) workItem {
 type scheduler struct {
 	configsAPI         configsAPI // XXX: Maybe make this an interface ConfigSource or similar.
 	evaluationInterval time.Duration
-	q                  util.PriorityQueue
-	lastPolled         time.Time
-	pollMutex          sync.RWMutex
+	q                  *util.PriorityQueue
+
+	pollInterval time.Duration
+	lastPolled   time.Time
+	pollMutex    sync.RWMutex
 
 	quit chan struct{}
 	wait sync.WaitGroup
 }
 
+// newScheduler makes a new scheduler.
+func newScheduler(configsAPI configsAPI, evaluationInterval, pollInterval time.Duration) scheduler {
+	return scheduler{
+		configsAPI:         configsAPI,
+		evaluationInterval: evaluationInterval,
+		pollInterval:       pollInterval,
+		q:                  util.NewPriorityQueue(),
+	}
+}
+
 // Run polls the source of configurations for changes.
-func (s *scheduler) Run(interval time.Duration) {
+func (s *scheduler) Run() {
 	s.wait.Add(1)
 	defer s.wait.Done()
-	ticker := time.NewTicker(interval)
+	// Load initial set of all configurations before polling for new ones.
+	s.addNewConfigs(time.Now(), s.loadAllConfigs())
+	ticker := time.NewTicker(s.pollInterval)
 	for {
 		select {
-		case <-ticker.C:
-			err := s.updateConfigs(time.Now())
+		case now := <-ticker.C:
+			err := s.updateConfigs(now)
 			if err != nil {
 				log.Warnf("Error updating configs: %v", err)
 			}
@@ -68,6 +85,25 @@ func (s *scheduler) Stop() {
 	close(s.quit)
 	s.q.Close()
 	s.wait.Wait()
+}
+
+// Load the full set of configurations from the server, retrying with backoff
+// until we can get them.
+func (s *scheduler) loadAllConfigs() map[string]cortexConfig {
+	backoff := minBackoff
+	dawnOfTime := time.Unix(0, 0)
+	for {
+		cfgs, err := s.poll(dawnOfTime)
+		if err == nil {
+			return cfgs
+		}
+		log.Warnf("Error fetching all configurations, backing off: %v", err)
+		time.Sleep(backoff)
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
 }
 
 func (s *scheduler) updateConfigs(now time.Time) error {
@@ -121,6 +157,8 @@ func (s *scheduler) nextWorkItem(now time.Time) *workItem {
 		return nil
 	}
 	item := op.(workItem)
+	// XXX: If the item takes longer than `evaluationInterval` to be
+	// processed, it will get processed concurrently.
 	s.addWorkItem(item.Defer(s.evaluationInterval))
 	// XXX: If another older item appears while we are sleeping, we won't
 	// notice it. Can't figure out how to do this without having a buffered

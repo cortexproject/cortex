@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
@@ -22,9 +21,7 @@ type Config struct {
 	ExternalURL   string
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
-	// XXX: Currently single tenant only (which is awful) as the most
-	// expedient way of getting *something* working.
-	UserID string
+	NumWorkers         int
 }
 
 // Ruler evaluates rules.
@@ -58,6 +55,48 @@ func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 	g.Eval()
 }
 
+type server struct {
+	scheduler *scheduler
+	workers   []worker
+}
+
+// NewServer makes a new rule processing server.
+func NewServer(cfg Config, ruler Ruler) (Worker, error) {
+	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
+	if err != nil {
+		return nil, err
+	}
+	configsAPI := configsAPI{configsAPIURL}
+	delay := time.Duration(cfg.EvaluationInterval)
+	// TODO: Separate configuration for polling interval.
+	scheduler := newScheduler(configsAPI, delay, delay)
+	if cfg.NumWorkers <= 0 {
+		return nil, fmt.Errorf("Must have at least 1 worker, got %d", cfg.NumWorkers)
+	}
+	workers := make([]worker, cfg.NumWorkers)
+	for i := 0; i < cfg.NumWorkers; i++ {
+		workers[i] = newWorker(&scheduler, ruler)
+	}
+	return &server{
+		scheduler: &scheduler,
+		workers:   workers,
+	}, nil
+}
+
+func (s *server) Run() {
+	go s.scheduler.Run()
+	for _, w := range s.workers {
+		go w.Run()
+	}
+}
+
+func (s *server) Stop() {
+	for _, w := range s.workers {
+		w.Stop()
+	}
+	s.scheduler.Stop()
+}
+
 // Worker does a thing until it's told to stop.
 type Worker interface {
 	Run()
@@ -65,74 +104,37 @@ type Worker interface {
 }
 
 type worker struct {
-	delay      time.Duration
-	userID     string
-	configsAPI configsAPI
-	ruler      Ruler
+	scheduler *scheduler
+	ruler     Ruler
 
 	done       chan struct{}
 	terminated chan struct{}
 }
 
-// TODO: Use the new scheduler
-
-// NewWorker gets a rules recording worker for the given user.
-// It will keep polling until it can construct one.
-func NewWorker(cfg Config, ruler Ruler) (Worker, error) {
-	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
-	if err != nil {
-		return nil, err
+func newWorker(scheduler *scheduler, ruler Ruler) worker {
+	return worker{
+		scheduler: scheduler,
+		ruler:     ruler,
 	}
-	delay := time.Duration(cfg.EvaluationInterval)
-	return &worker{
-		delay:      delay,
-		userID:     cfg.UserID,
-		configsAPI: configsAPI{configsAPIURL},
-		ruler:      ruler,
-	}, nil
 }
 
 func (w *worker) Run() {
 	defer close(w.terminated)
-	rs := []rules.Rule{}
-	ctx := user.WithID(context.Background(), w.userID)
-	tick := time.NewTicker(w.delay)
-	defer tick.Stop()
 	for {
-		var err error
 		select {
 		case <-w.done:
 			return
 		default:
 		}
-		// Select on 'done' again to avoid live-locking.
-		select {
-		case <-w.done:
+		item := w.scheduler.nextWorkItem(time.Now())
+		if item == nil {
 			return
-		case <-tick.C:
-			if len(rs) == 0 {
-				rs, err = w.loadRules()
-				if err != nil {
-					log.Warnf("Could not get configuration for %v: %v", w.userID, err)
-					continue
-				}
-			} else {
-				w.ruler.Evaluate(ctx, rs)
-			}
 		}
+		ctx := user.WithID(context.Background(), item.userID)
+		w.ruler.Evaluate(ctx, item.rules)
+		// XXX: Should we have some sort of small delay / yielding point here
+		// to prevent monopolising the CPU?
 	}
-}
-
-func (w *worker) loadRules() ([]rules.Rule, error) {
-	cfg, err := w.configsAPI.getOrgConfig(w.userID)
-	if err != nil {
-		return nil, fmt.Errorf("Error fetching config: %v", err)
-	}
-	rs, err := cfg.GetRules()
-	if err != nil {
-		return nil, fmt.Errorf("Error parsing rules: %v", err)
-	}
-	return rs, nil
 }
 
 func (w *worker) Stop() {

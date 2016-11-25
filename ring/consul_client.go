@@ -29,8 +29,8 @@ type ConsulClient interface {
 // CASCallback is the type of the callback to CAS.  If err is nil, out must be non-nil.
 type CASCallback func(in interface{}) (out interface{}, retry bool, err error)
 
-// SerDes allows the consult client to serialise and deserialise values.
-type SerDes interface {
+// Codec allows the consult client to serialise and deserialise values.
+type Codec interface {
 	Decode([]byte) (interface{}, error)
 	Encode(interface{}) ([]byte, error)
 }
@@ -44,11 +44,11 @@ type kv interface {
 
 type consulClient struct {
 	kv
-	serdes SerDes
+	codec Codec
 }
 
 // NewConsulClient returns a new ConsulClient.
-func NewConsulClient(addr string, serdes SerDes) (ConsulClient, error) {
+func NewConsulClient(addr string, codec Codec) (ConsulClient, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: addr,
 		Scheme:  "http",
@@ -57,8 +57,8 @@ func NewConsulClient(addr string, serdes SerDes) (ConsulClient, error) {
 		return nil, err
 	}
 	return &consulClient{
-		kv:     client.KV(),
-		serdes: serdes,
+		kv:    client.KV(),
+		codec: codec,
 	}, nil
 }
 
@@ -72,13 +72,13 @@ var (
 	ErrNotFound = fmt.Errorf("Not found")
 )
 
-// ProtoSerDes is a SerDes for proto/snappy
-type ProtoSerDes struct {
+// ProtoCodec is a Codec for proto/snappy
+type ProtoCodec struct {
 	Factory func() proto.Message
 }
 
-// Decode implements SerDes
-func (p ProtoSerDes) Decode(bytes []byte) (interface{}, error) {
+// Decode implements Codec
+func (p ProtoCodec) Decode(bytes []byte) (interface{}, error) {
 	out := p.Factory()
 	bytes, err := snappy.Decode(nil, bytes)
 	if err != nil {
@@ -90,8 +90,8 @@ func (p ProtoSerDes) Decode(bytes []byte) (interface{}, error) {
 	return out, nil
 }
 
-// Encode implements SerDes
-func (p ProtoSerDes) Encode(msg interface{}) ([]byte, error) {
+// Encode implements Codec
+func (p ProtoCodec) Encode(msg interface{}) ([]byte, error) {
 	bytes, err := proto.Marshal(msg.(proto.Message))
 	if err != nil {
 		return nil, err
@@ -99,13 +99,13 @@ func (p ProtoSerDes) Encode(msg interface{}) ([]byte, error) {
 	return snappy.Encode(nil, bytes), nil
 }
 
-// JSONSerDes is a SerDes for JSON
-type JSONSerDes struct {
+// JSONCodec is a Codec for JSON
+type JSONCodec struct {
 	Factory func() interface{}
 }
 
-// Decode implements SerDes
-func (j JSONSerDes) Decode(bytes []byte) (interface{}, error) {
+// Decode implements Codec
+func (j JSONCodec) Decode(bytes []byte) (interface{}, error) {
 	out := j.Factory()
 	if err := json.Unmarshal(bytes, out); err != nil {
 		return nil, err
@@ -113,43 +113,43 @@ func (j JSONSerDes) Decode(bytes []byte) (interface{}, error) {
 	return out, nil
 }
 
-// Encode implemenrs SerDes
-func (j JSONSerDes) Encode(msg interface{}) ([]byte, error) {
+// Encode implemenrs Codec
+func (j JSONCodec) Encode(msg interface{}) ([]byte, error) {
 	return json.Marshal(msg)
 }
 
-// DynamicSerDes is a SerDes that can read json and proto, and
+// DynamicCodec is a Codec that can read json and proto, and
 // that can serialise to either (selectively).
 // Once it fails to decode JSON, it will start decoding (and
 // writing) protos.
-type DynamicSerDes struct {
+type DynamicCodec struct {
 	mtx      sync.Mutex
 	useProto bool
-	json     SerDes
-	proto    SerDes
+	json     Codec
+	proto    Codec
 }
 
-// NewDynamicSerDes makes a new DynamicSerDes
-func NewDynamicSerDes(json, proto SerDes) *DynamicSerDes {
-	return &DynamicSerDes{
+// NewDynamicCodec makes a new DynamicCodec
+func NewDynamicCodec(json, proto Codec) *DynamicCodec {
+	return &DynamicCodec{
 		useProto: false,
 		json:     json,
 		proto:    proto,
 	}
 }
 
-// UseProto allow you to change the SerDes at runtime.
-func (d *DynamicSerDes) UseProto(useProto bool) {
+// UseProto allow you to change the Codec at runtime.
+func (d *DynamicCodec) UseProto(useProto bool) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	if d.useProto != useProto {
-		log.Infof("Switching to proto serialization: %v", useProto)
+		log.Infof("Using to proto serialization: %v", useProto)
 		d.useProto = useProto
 	}
 }
 
-// Decode implements SerDes
-func (d *DynamicSerDes) Decode(bytes []byte) (interface{}, error) {
+// Decode implements Codec
+func (d *DynamicCodec) Decode(bytes []byte) (interface{}, error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
@@ -158,16 +158,17 @@ func (d *DynamicSerDes) Decode(bytes []byte) (interface{}, error) {
 		return out, nil
 	}
 
-	if !d.useProto {
+	out, err = d.proto.Decode(bytes)
+	if err == nil && !d.useProto {
 		log.Infof("Error decoding json, switching to writing proto: %v", err)
 		d.useProto = true
 	}
 
-	return d.proto.Decode(bytes)
+	return out, err
 }
 
-// Encode implemenrs SerDes
-func (d *DynamicSerDes) Encode(msg interface{}) ([]byte, error) {
+// Encode implemenrs Codec
+func (d *DynamicCodec) Encode(msg interface{}) ([]byte, error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	if d.useProto {
@@ -192,7 +193,7 @@ func (c *consulClient) CAS(key string, f CASCallback) error {
 		}
 		var intermediate interface{}
 		if kvp != nil {
-			out, err := c.serdes.Decode(kvp.Value)
+			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
 				log.Errorf("Error decoding %s: %v", key, err)
 				continue
@@ -215,7 +216,7 @@ func (c *consulClient) CAS(key string, f CASCallback) error {
 			panic("Callback must instantiate value!")
 		}
 
-		bytes, err := c.serdes.Encode(intermediate)
+		bytes, err := c.codec.Encode(intermediate)
 		if err != nil {
 			log.Errorf("Error serialising value for %s: %v", key, err)
 			continue
@@ -314,7 +315,7 @@ func (c *consulClient) WatchPrefix(prefix string, done <-chan struct{}, f func(s
 		index = meta.LastIndex
 
 		for _, kvp := range kvps {
-			out, err := c.serdes.Decode(kvp.Value)
+			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
 				log.Errorf("Error decoding %s: %v", kvp.Key, err)
 				continue
@@ -363,7 +364,7 @@ func (c *consulClient) WatchKey(key string, done <-chan struct{}, f func(interfa
 		var out interface{}
 		if kvp != nil {
 			var err error
-			out, err = c.serdes.Decode(kvp.Value)
+			out, err = c.codec.Decode(kvp.Value)
 			if err != nil {
 				log.Errorf("Error decoding %s: %v", key, err)
 				continue

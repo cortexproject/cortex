@@ -25,7 +25,7 @@ const (
 type IngesterRegistration struct {
 	consul    ConsulClient
 	numTokens int
-	serdes    *DynamicSerDes
+	codec     *DynamicCodec
 
 	id       string
 	hostname string
@@ -41,7 +41,7 @@ type IngesterRegistration struct {
 }
 
 // RegisterIngester registers an ingester with Consul.
-func RegisterIngester(consulClient ConsulClient, grpcPort, numTokens int, serdes *DynamicSerDes) (*IngesterRegistration, error) {
+func RegisterIngester(consulClient ConsulClient, grpcPort, numTokens int, codec *DynamicCodec) (*IngesterRegistration, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func RegisterIngester(consulClient ConsulClient, grpcPort, numTokens int, serdes
 	r := &IngesterRegistration{
 		consul:    consulClient,
 		numTokens: numTokens,
-		serdes:    serdes,
+		codec:     codec,
 
 		id: hostname,
 		// hostname is the ip+port of this instance, written to consul so
@@ -153,7 +153,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 			}
 		}
 		if allIngestersCanReadProtos {
-			r.serdes.UseProto(true)
+			r.codec.UseProto(true)
 		}
 
 		ingesterDesc, ok := ringDesc.Ingesters[r.id]
@@ -165,7 +165,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = r.state
 
-			// Set ProtoRing back to true for the case where an existing ingester that didn't understand this field removed it whilst updating the ring.
+			// Set ProtoRing back to true for the case where an existing ingestser that didn't understand this field removed it whilst updating the ring.
 			ingesterDesc.ProtoRing = true
 			ringDesc.Ingesters[r.id] = ingesterDesc
 		}

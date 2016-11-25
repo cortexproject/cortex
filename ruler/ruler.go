@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
@@ -14,6 +16,26 @@ import (
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/user"
 )
+
+var (
+	evalDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: "cortex",
+			Name:      "group_evaluation_duration_seconds",
+			Help:      "The duration for a rule group to execute.",
+		},
+	)
+	rulesProcessed = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "rules_processed",
+		Help:      "How many rules have been processed.",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(evalDuration)
+	prometheus.MustRegister(rulesProcessed)
+}
 
 // Config is the configuration for the recording rules server.
 type Config struct {
@@ -50,9 +72,16 @@ func (r *Ruler) newGroup(ctx context.Context, delay time.Duration, rs []rules.Ru
 
 // Evaluate a list of rules in the given context.
 func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
+	log.Debugf("Evaluating %d rules...", len(rs))
 	delay := 0 * time.Second // Unused, so 0 value is fine.
+	start := time.Now()
 	g := r.newGroup(ctx, delay, rs)
 	g.Eval()
+	// The prometheus routines we're calling have their own instrumentation
+	// but, a) it's rule-based, not group-based, b) it's a summary, not a
+	// histogram, so we can't reliably aggregate.
+	evalDuration.Observe(time.Since(start).Seconds())
+	rulesProcessed.Add(float64(len(rs)))
 }
 
 type server struct {
@@ -88,6 +117,7 @@ func (s *server) Run() {
 	for _, w := range s.workers {
 		go w.Run()
 	}
+	log.Infof("Ruler up and running")
 }
 
 func (s *server) Stop() {
@@ -128,6 +158,7 @@ func (w *worker) Run() {
 		}
 		item := w.scheduler.nextWorkItem(time.Now())
 		if item == nil {
+			log.Debugf("Queue closed. Terminating worker.")
 			return
 		}
 		ctx := user.WithID(context.Background(), item.userID)

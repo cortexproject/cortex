@@ -16,6 +16,7 @@ const tpl = `
 	</head>
 	<body>
 		<h1>Cortex Ring Status</h1>
+		<p>Current time: {{ .Now }}</p>
 		<p>{{ .Message }}</p>
 		<form action="" method="POST">
 			<table width="100%" border="1">
@@ -89,9 +90,11 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if err := tmpl.Execute(w, struct {
 		Ring    Desc
 		Message string
+		Now     time.Time
 	}{
 		Ring:    r.ringDesc,
 		Message: message,
+		Now:     time.Now(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

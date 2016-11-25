@@ -316,6 +316,8 @@ func setupIngester(
 		log.Fatal(err)
 	}
 	prometheus.MustRegister(ingester)
+
+	router.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	return ingester
 }
 

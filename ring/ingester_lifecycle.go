@@ -165,7 +165,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = r.state
 
-			// Set ProtoRing back to true for the case where an existing ingestser that didn't understand this field removed it whilst updating the ring.
+			// Set ProtoRing back to true for the case where an existing ingester that didn't understand this field removed it whilst updating the ring.
 			ingesterDesc.ProtoRing = true
 			ringDesc.Ingesters[r.id] = ingesterDesc
 		}

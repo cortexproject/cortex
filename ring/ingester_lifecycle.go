@@ -135,7 +135,6 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 }
 
 func (r *IngesterRegistration) heartbeat(tokens []uint32) {
-	allIngestersCanReadProtos := false
 
 	updateConsul := func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *Desc
@@ -146,14 +145,16 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 		}
 
 		// See if all ingesters can read protos; if so start writing them
-		protoRing := true
+		allIngestersCanReadProtos := true
 		for _, ing := range ringDesc.Ingesters {
 			if !ing.ProtoRing {
 				allIngestersCanReadProtos = false
 				break
 			}
 		}
-		allIngestersCanReadProtos = protoRing
+		if allIngestersCanReadProtos {
+			r.serdes.UseProto(true)
+		}
 
 		ingesterDesc, ok := ringDesc.Ingesters[r.id]
 		if !ok {
@@ -184,8 +185,6 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 			r.consulHeartbeats.Inc()
 			if err := r.consul.CAS(consulKey, updateConsul); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
-			} else if allIngestersCanReadProtos {
-				r.serdes.UseProto(true)
 			}
 		case <-r.quit:
 			return

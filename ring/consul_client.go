@@ -140,11 +140,12 @@ func NewDynamicSerDes(json, proto SerDes) *DynamicSerDes {
 
 // UseProto allow you to change the SerDes at runtime.
 func (d *DynamicSerDes) UseProto(useProto bool) {
-	log.Infof("Switching to proto serialization: %v", useProto)
-
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	d.useProto = useProto
+	if d.useProto != useProto {
+		log.Infof("Switching to proto serialization: %v", useProto)
+		d.useProto = useProto
+	}
 }
 
 // Decode implements SerDes

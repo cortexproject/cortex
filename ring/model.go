@@ -1,97 +1,89 @@
 package ring
 
 import (
-	"encoding/json"
 	"sort"
 	"time"
-
-	"github.com/golang/protobuf/proto"
 )
 
-// ByToken is a sortable list of TokenDescs
-type ByToken []*TokenDesc
+// IngesterState describes the state of an ingester
+type IngesterState int
 
-func (ts ByToken) Len() int           { return len(ts) }
-func (ts ByToken) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
-func (ts ByToken) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
+// Values for IngesterState
+const (
+	Active IngesterState = iota
+	Leaving
+)
 
-// ProtoDescFactory makes new Descs
-func ProtoDescFactory() proto.Message {
-	return newDesc()
+func (s IngesterState) String() string {
+	switch s {
+	case Active:
+		return "Active"
+	case Leaving:
+		return "Leaving"
+	}
+	return ""
 }
 
-// DescFactory makes new Descs
-func DescFactory() interface{} {
+// Desc is the serialised state in Consul representing
+// all ingesters (ie, the ring).
+type Desc struct {
+	Ingesters map[string]IngesterDesc `json:"ingesters"`
+	Tokens    TokenDescs              `json:"tokens"`
+}
+
+// IngesterDesc describes a single ingester.
+type IngesterDesc struct {
+	Hostname  string        `json:"hostname"`
+	Timestamp time.Time     `json:"timestamp"`
+	State     IngesterState `json:"state"`
+
+	GRPCHostname string `json:"grpc_hostname"`
+}
+
+// TokenDescs is a sortable list of TokenDescs
+type TokenDescs []TokenDesc
+
+func (ts TokenDescs) Len() int           { return len(ts) }
+func (ts TokenDescs) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
+func (ts TokenDescs) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
+
+// TokenDesc describes an individual token in the ring.
+type TokenDesc struct {
+	Token    uint32 `json:"tokens"`
+	Ingester string `json:"ingester"`
+}
+
+func descFactory() interface{} {
 	return newDesc()
 }
 
 func newDesc() *Desc {
 	return &Desc{
-		Ingesters: map[string]*IngesterDesc{},
+		Ingesters: map[string]IngesterDesc{},
 	}
 }
 
-type oldIngesterDesc struct {
-	Hostname     string        `json:"hostname"`
-	Timestamp    time.Time     `json:"timestamp"`
-	State        IngesterState `json:"state"`
-	GRPCHostname string        `json:"grpc_hostname"`
-	ProtoRing    bool          `json:"proto_ring"`
-}
-
-// UnmarshalJSON allows the new proto IngesterDescs to read the old JSON format.
-//
-// NB grpc_hostname in the old format is just hostname in the new.
-func (d *IngesterDesc) UnmarshalJSON(in []byte) error {
-	var tmp oldIngesterDesc
-	if err := json.Unmarshal(in, &tmp); err != nil {
-		return err
-	}
-
-	d.Hostname = tmp.GRPCHostname
-	d.Timestamp = tmp.Timestamp.Unix()
-	d.State = tmp.State
-	d.ProtoRing = tmp.ProtoRing
-	return nil
-}
-
-// MarshalJSON allows the new proto IngesterDescs to write the old JSON format.
-//
-// NB grpc_hostname in the old format is just hostname in the new.
-func (d *IngesterDesc) MarshalJSON() ([]byte, error) {
-	return json.Marshal(oldIngesterDesc{
-		Hostname:     "",
-		Timestamp:    time.Unix(d.Timestamp, 0),
-		State:        d.State,
-		GRPCHostname: d.Hostname,
-		ProtoRing:    d.ProtoRing,
-	})
-}
-
-func (d *Desc) addIngester(id, hostname string, tokens []uint32, state IngesterState) {
-	if d.Ingesters == nil {
-		d.Ingesters = map[string]*IngesterDesc{}
-	}
-	d.Ingesters[id] = &IngesterDesc{
-		Hostname:  hostname,
-		Timestamp: time.Now().Unix(),
-		State:     state,
-		ProtoRing: true,
+func (d *Desc) addIngester(id, hostname, grpcHostname string, tokens []uint32, state IngesterState) {
+	d.Ingesters[id] = IngesterDesc{
+		Hostname:     hostname,
+		GRPCHostname: grpcHostname,
+		Timestamp:    time.Now(),
+		State:        state,
 	}
 
 	for _, token := range tokens {
-		d.Tokens = append(d.Tokens, &TokenDesc{
+		d.Tokens = append(d.Tokens, TokenDesc{
 			Token:    token,
 			Ingester: id,
 		})
 	}
 
-	sort.Sort(ByToken(d.Tokens))
+	sort.Sort(d.Tokens)
 }
 
 func (d *Desc) removeIngester(id string) {
 	delete(d.Ingesters, id)
-	output := []*TokenDesc{}
+	output := []TokenDesc{}
 	for i := 0; i < len(d.Tokens); i++ {
 		if d.Tokens[i].Ingester != id {
 			output = append(output, d.Tokens[i])

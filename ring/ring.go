@@ -42,7 +42,7 @@ type Ring struct {
 	heartbeatTimeout time.Duration
 
 	mtx      sync.RWMutex
-	ringDesc *Desc
+	ringDesc Desc
 
 	ingesterOwnershipDesc *prometheus.Desc
 	numIngestersDesc      *prometheus.Desc
@@ -84,7 +84,7 @@ func (r *Ring) Stop() {
 
 func (r *Ring) loop() {
 	defer close(r.done)
-	r.consul.WatchKey(consulKey, r.quit, func(value interface{}) bool {
+	r.consul.WatchKey(consulKey, descFactory, r.quit, func(value interface{}) bool {
 		if value == nil {
 			log.Infof("Ring doesn't exist in consul yet.")
 			return true
@@ -93,13 +93,13 @@ func (r *Ring) loop() {
 		ringDesc := value.(*Desc)
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
-		r.ringDesc = ringDesc
+		r.ringDesc = *ringDesc
 		return true
 	})
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.
-func (r *Ring) Get(key uint32, n int, op Operation) ([]*IngesterDesc, error) {
+func (r *Ring) Get(key uint32, n int, op Operation) ([]IngesterDesc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	return r.getInternal(key, n, op)
@@ -107,11 +107,11 @@ func (r *Ring) Get(key uint32, n int, op Operation) ([]*IngesterDesc, error) {
 
 // BatchGet returns n (or more) ingesters which form the replicas for the given key.
 // The order of the result matches the order of the input.
-func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]*IngesterDesc, error) {
+func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]IngesterDesc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	result := make([][]*IngesterDesc, len(keys), len(keys))
+	result := make([][]IngesterDesc, len(keys), len(keys))
 	for i, key := range keys {
 		ingesters, err := r.getInternal(key, n, op)
 		if err != nil {
@@ -122,12 +122,12 @@ func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]*IngesterDesc, 
 	return result, nil
 }
 
-func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, error) {
+func (r *Ring) getInternal(key uint32, n int, op Operation) ([]IngesterDesc, error) {
 	if len(r.ringDesc.Tokens) == 0 {
 		return nil, ErrEmptyRing
 	}
 
-	ingesters := make([]*IngesterDesc, 0, n)
+	ingesters := make([]IngesterDesc, 0, n)
 	distinctHosts := map[string]struct{}{}
 	start := r.search(key)
 	iterations := 0
@@ -150,7 +150,7 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, er
 		// set of replicas for the key.  This means we have to also increase the
 		// size of the replica set for read, but we can read from Leaving ingesters,
 		// so don't skip it in this case.
-		if ingester.State == IngesterState_LEAVING {
+		if ingester.State == Leaving {
 			n++
 			if op == Write {
 				continue
@@ -163,13 +163,13 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, er
 }
 
 // GetAll returns all available ingesters in the circle.
-func (r *Ring) GetAll() []*IngesterDesc {
+func (r *Ring) GetAll() []IngesterDesc {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
+		if time.Now().Sub(ingester.Timestamp) > r.heartbeatTimeout {
 			continue
 		}
 		ingesters = append(ingesters, ingester)
@@ -183,9 +183,9 @@ func (r *Ring) Ready() bool {
 	defer r.mtx.RUnlock()
 
 	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
+		if time.Now().Sub(ingester.Timestamp) > r.heartbeatTimeout {
 			return false
-		} else if ingester.State != IngesterState_ACTIVE {
+		} else if ingester.State != Active {
 			return false
 		}
 	}
@@ -237,12 +237,12 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 
 	// Initialised to zero so we emit zero-metrics (instead of not emitting anything)
 	byState := map[string]int{
-		unhealthy:                      0,
-		IngesterState_ACTIVE.String():  0,
-		IngesterState_LEAVING.String(): 0,
+		unhealthy:        0,
+		Active.String():  0,
+		Leaving.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
+		if time.Now().Sub(ingester.Timestamp) > r.heartbeatTimeout {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

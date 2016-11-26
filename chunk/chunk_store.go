@@ -38,9 +38,10 @@ const (
 	errorReasonLabel = "error"
 	otherError       = "other"
 
-	// Backoff for dynamoDB requests
-	minBackoff = 100 * time.Millisecond
-	maxBackoff = 1 * time.Second
+	// Backoff for dynamoDB requests, to match AWS lib - see:
+	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
+	minBackoff = 50 * time.Millisecond
+	maxBackoff = 50 * time.Second
 
 	// Number of synchronous dynamodb requests
 	numDynamoRequests = 25

@@ -911,7 +911,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 	}
 	fillReq := func(in *[]*dynamodb.WriteRequest, out *[]*dynamodb.WriteRequest) {
 		outLen, inLen := len(*out), len(*in)
-		toFill := min(inLen, dynamoMaxBatchSize-inLen-outLen)
+		toFill := min(inLen, dynamoMaxBatchSize-outLen)
 		*out = append(*out, (*in)[:toFill]...)
 		*in = (*in)[toFill:]
 	}

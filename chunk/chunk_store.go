@@ -3,6 +3,7 @@ package chunk
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"sort"
 	"strings"
@@ -42,7 +43,7 @@ const (
 	maxBackoff = 1 * time.Second
 
 	// Number of synchronous dynamodb requests
-	numDynamoRequests = 50
+	numDynamoRequests = 25
 
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
 	dynamoMaxBatchSize = 25
@@ -852,6 +853,16 @@ type dynamoBatchWriteItemsOp struct {
 	done      chan error
 }
 
+func nextBackoff(lastBackoff time.Duration) time.Duration {
+	// Based on the "Decorrelated Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
+	// sleep = min(cap, random_between(base, sleep * 3))
+	backoff := minBackoff + time.Duration(rand.Int63n(int64((lastBackoff*3)-minBackoff)))
+	if backoff > maxBackoff {
+		backoff = maxBackoff
+	}
+	return backoff
+}
+
 func (r *dynamoQueryPagesOp) do() {
 	backoff := minBackoff
 
@@ -870,10 +881,7 @@ func (r *dynamoQueryPagesOp) do() {
 
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
 				time.Sleep(backoff)
-				backoff = backoff * 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
+				backoff = nextBackoff(backoff)
 				continue
 			}
 
@@ -934,10 +942,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		if resp.UnprocessedItems != nil && len(resp.UnprocessedItems[r.tableName]) > 0 {
 			unprocessed = append(unprocessed, resp.UnprocessedItems[r.tableName]...)
 			time.Sleep(backoff)
-			backoff = backoff * 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
+			backoff = nextBackoff(backoff)
 			continue
 		}
 
@@ -946,10 +951,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
 			unprocessed = append(unprocessed, reqs...)
 			time.Sleep(backoff)
-			backoff = backoff * 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
+			backoff = nextBackoff(backoff)
 			continue
 		}
 

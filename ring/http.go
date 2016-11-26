@@ -1,8 +1,10 @@
 package ring
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"math"
 	"net/http"
 	"time"
 )
@@ -26,21 +28,26 @@ const tpl = `
 						<th>State</th>
 						<th>Address</th>
 						<th>Last Heartbeat</th>
+						<th>Tokens</th>
+						<th>Ownership</th>
 						<th>Actions</th>
 					</tr>
 				</thead>
 				<tbody>
-					{{ range $key, $value := .Ring.Ingesters }}
+					{{ range .Ingesters }}
 					<tr>
-						<td>{{ $key }}</td>
-						<td>{{ $value.State }}</td>
-						<td>{{ $value.Hostname }}</td>
-						<td>{{ $value.Timestamp | time }}</td>
-						<td><button name="forget" value="{{ $key }}" type="submit">Forget</button></td>
+						<td>{{ .ID }}</td>
+						<td>{{ .State }}</td>
+						<td>{{ .Hostname }}</td>
+						<td>{{ .Timestamp }}</td>
+						<td>{{ .Tokens }}</td>
+						<td>{{ .Ownership }}%</td>
+						<td><button name="forget" value="{{ .ID }}" type="submit">Forget</button></td>
 					</tr>
 					{{ end }}
 				</tbody>
 			</table>
+			<pre>{{ .Ring }}</pre>
 		</form>
 	</body>
 </html>`
@@ -49,13 +56,7 @@ var tmpl *template.Template
 
 func init() {
 	var err error
-	tmpl, err = template.New("webpage").
-		Funcs(template.FuncMap{
-			"time": func(in interface{}) string {
-				return in.(time.Time).String()
-			},
-		}).
-		Parse(tpl)
+	tmpl, err = template.New("webpage").Parse(tpl)
 	if err != nil {
 		panic(err)
 	}
@@ -87,14 +88,46 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
+
+	now := time.Now()
+	ingesters := []interface{}{}
+	tokens, owned := countTokens(r.ringDesc.Tokens)
+	for id, ing := range r.ringDesc.Ingesters {
+		state := ing.State.String()
+		if now.Sub(ing.Timestamp) > r.heartbeatTimeout {
+			state = unhealthy
+		}
+
+		ingesters = append(ingesters, struct {
+			ID, State, Hostname, Timestamp string
+			Tokens                         uint32
+			Ownership                      float64
+		}{
+			ID:        id,
+			State:     state,
+			Hostname:  ing.Hostname,
+			Timestamp: ing.Timestamp.String(),
+			Tokens:    tokens[id],
+			Ownership: (float64(owned[id]) / float64(math.MaxUint32)) * 100,
+		})
+	}
+
+	buf, err := json.Marshal(r.ringDesc)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	if err := tmpl.Execute(w, struct {
-		Ring    Desc
-		Message string
-		Now     time.Time
+		Ingesters []interface{}
+		Message   string
+		Now       time.Time
+		Ring      string
 	}{
-		Ring:    r.ringDesc,
-		Message: message,
-		Now:     time.Now(),
+		Ingesters: ingesters,
+		Message:   message,
+		Now:       time.Now(),
+		Ring:      string(buf),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

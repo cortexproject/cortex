@@ -210,22 +210,28 @@ func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.numTokensDesc
 }
 
+func countTokens(tokens []TokenDesc) (map[string]uint32, map[string]uint32) {
+	owned := map[string]uint32{}
+	numTokens := map[string]uint32{}
+	for i, token := range tokens {
+		var diff uint32
+		if i+1 == len(tokens) {
+			diff = (math.MaxUint32 - token.Token) + tokens[0].Token
+		} else {
+			diff = tokens[i+1].Token - token.Token
+		}
+		numTokens[token.Ingester] = numTokens[token.Ingester] + 1
+		owned[token.Ingester] = owned[token.Ingester] + diff
+	}
+	return numTokens, owned
+}
+
 // Collect implements prometheus.Collector.
 func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	owned := map[string]uint32{}
-	for i, token := range r.ringDesc.Tokens {
-		var diff uint32
-		if i+1 == len(r.ringDesc.Tokens) {
-			diff = (math.MaxUint32 - token.Token) + r.ringDesc.Tokens[0].Token
-		} else {
-			diff = r.ringDesc.Tokens[i+1].Token - token.Token
-		}
-		owned[token.Ingester] = owned[token.Ingester] + diff
-	}
-
+	_, owned := countTokens(r.ringDesc.Tokens)
 	for id, totalOwned := range owned {
 		ch <- prometheus.MustNewConstMetric(
 			r.ingesterOwnershipDesc,

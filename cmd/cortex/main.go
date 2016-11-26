@@ -138,11 +138,7 @@ func main() {
 		prometheus.MustRegister(resourceWatcher)
 	}
 
-	ringCodec := ring.NewDynamicCodec(
-		ring.JSONCodec{Factory: ring.DescFactory},
-		ring.ProtoCodec{Factory: ring.ProtoDescFactory},
-	)
-	consul, err := ring.NewConsulClient(cfg.consulHost, ringCodec)
+	consul, err := ring.NewConsulClient(cfg.consulHost)
 	if err != nil {
 		log.Fatalf("Error initializing Consul client: %v", err)
 	}
@@ -160,7 +156,7 @@ func main() {
 
 	case modeIngester:
 		cfg.ingesterConfig.Ring = r
-		registration, err := ring.RegisterIngester(consul, cfg.ingesterConfig.GRPCListenPort, cfg.numTokens, ringCodec)
+		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.ingesterConfig.GRPCListenPort, cfg.numTokens)
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
 			// network errors.
@@ -187,7 +183,7 @@ func main() {
 
 		// Deferring a func to make ordering obvious
 		defer func() {
-			registration.ChangeState(ring.IngesterState_LEAVING)
+			registration.ChangeState(ring.Leaving)
 			ing.Stop()
 			registration.Unregister()
 		}()

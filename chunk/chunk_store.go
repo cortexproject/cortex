@@ -72,6 +72,11 @@ var (
 		Name:      "dynamo_failures_total",
 		Help:      "The total number of errors while storing chunks to the chunk store.",
 	}, []string{errorReasonLabel})
+	dynamoUnprocessedItems = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_unprocessed_items_total",
+		Help:      "Unprocessed items",
+	})
 	indexEntriesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_entries_per_chunk",
@@ -115,6 +120,7 @@ func init() {
 	prometheus.MustRegister(dynamoRequestDuration)
 	prometheus.MustRegister(dynamoConsumedCapacity)
 	prometheus.MustRegister(dynamoFailures)
+	prometheus.MustRegister(dynamoUnprocessedItems)
 	prometheus.MustRegister(indexEntriesPerChunk)
 	prometheus.MustRegister(s3RequestDuration)
 
@@ -941,6 +947,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 
 		// If there are unprocessed items, backoff and retry those items.
 		if resp.UnprocessedItems != nil && len(resp.UnprocessedItems[r.tableName]) > 0 {
+			dynamoUnprocessedItems.Add(float64(len(resp.UnprocessedItems[r.tableName])))
 			unprocessed = append(unprocessed, resp.UnprocessedItems[r.tableName]...)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)

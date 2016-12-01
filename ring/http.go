@@ -112,7 +112,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	buf, err := json.Marshal(r.ringDesc)
+	buf, err := json.MarshalIndent(r.ringDesc, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

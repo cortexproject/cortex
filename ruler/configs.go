@@ -17,6 +17,11 @@ type cortexConfig struct {
 	RulesFiles map[string]string `json:"rules_files"`
 }
 
+// Response from server for getOrgConfigs
+type cortexConfigsResponse struct {
+	Configs map[string]cortexConfig `json:"configs"`
+}
+
 // Get the rules from the cortex configuration.
 //
 // Strongly inspired by `loadGroups` in Prometheus.
@@ -73,11 +78,11 @@ func (c *configsAPI) getOrgConfigs(since time.Duration) (map[string]cortexConfig
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
 	}
-	var configs map[string]cortexConfig
+	var configs cortexConfigsResponse
 	if err := json.NewDecoder(res.Body).Decode(&configs); err != nil {
 		return nil, err
 	}
-	return configs, nil
+	return configs.Configs, nil
 }
 
 // getOrgConfig gets the organization's cortex config from a configs api server.

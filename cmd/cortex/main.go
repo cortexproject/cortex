@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -370,5 +371,10 @@ func setupRuler(distributorCfg distributor.Config, chunkStore chunk.Store, cfg r
 		return nil, err
 	}
 
-	return ruler.NewServer(cfg, ruler.NewRuler(dist, chunkStore))
+	externalURL, err := url.Parse(cfg.ExternalURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return ruler.NewServer(cfg, ruler.NewRuler(dist, chunkStore, externalURL))
 }

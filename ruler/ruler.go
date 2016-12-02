@@ -40,7 +40,10 @@ func init() {
 // Config is the configuration for the recording rules server.
 type Config struct {
 	ConfigsAPIURL string
-	ExternalURL   string
+	// This is used for template expansion in alerts. Because we don't support
+	// alerts yet, this value doesn't matter. However, it must be a valid URL
+	// in order to navigate Prometheus's code paths.
+	ExternalURL string
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
 	NumWorkers         int
@@ -48,21 +51,23 @@ type Config struct {
 
 // Ruler evaluates rules.
 type Ruler struct {
-	Engine   *promql.Engine
-	Appender SampleAppender
+	engine   *promql.Engine
+	appender SampleAppender
+	alertURL *url.URL
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(d *distributor.Distributor, c chunk.Store) Ruler {
-	return Ruler{querier.NewEngine(d, c), d}
+func NewRuler(d *distributor.Distributor, c chunk.Store, alertURL *url.URL) Ruler {
+	return Ruler{querier.NewEngine(d, c), d, alertURL}
 }
 
 func (r *Ruler) getManagerOptions(ctx context.Context) *rules.ManagerOptions {
-	appender := appenderAdapter{appender: r.Appender, ctx: ctx}
+	appender := appenderAdapter{appender: r.appender, ctx: ctx}
 	return &rules.ManagerOptions{
 		SampleAppender: appender,
-		QueryEngine:    r.Engine,
+		QueryEngine:    r.engine,
 		Context:        ctx,
+		ExternalURL:    r.alertURL,
 	}
 }
 

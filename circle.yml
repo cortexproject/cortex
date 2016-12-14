@@ -8,7 +8,6 @@ dependencies:
   cache_directories:
     - "~/docker"
   override:
-    - go get -u github.com/weaveworks/build-tools/cmd/wcloud
     - |
         cd cortex-build && \
         ../tools/rebuild-image weaveworks/cortex-build . build.sh Dockerfile && \
@@ -26,4 +25,3 @@ deployment:
     commands:
       - docker login -e "$DOCKER_REGISTRY_EMAIL" -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
       - docker push weaveworks/cortex:$(./tools/image-tag)
-      - wcloud deploy -u circle weaveworks/cortex:$(./tools/image-tag)

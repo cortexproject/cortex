@@ -41,6 +41,7 @@ type IngesterRegistration struct {
 	consulHeartbeats prometheus.Counter
 }
 
+// IngesterRegistrationConfig is the config for an IngesterRegistration
 type IngesterRegistrationConfig struct {
 	ListenPort int
 	GRPCPort   int

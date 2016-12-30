@@ -156,7 +156,11 @@ func main() {
 
 	case modeIngester:
 		cfg.ingesterConfig.Ring = r
-		registration, err := ring.RegisterIngester(consul, cfg.listenPort, cfg.ingesterConfig.GRPCListenPort, cfg.numTokens)
+		registration, err := ring.RegisterIngester(consul, ring.IngesterRegistrationConfig{
+			ListenPort: cfg.listenPort,
+			GRPCPort:   cfg.ingesterConfig.GRPCListenPort,
+			NumTokens:  cfg.numTokens,
+		})
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
 			// network errors.

@@ -1,7 +1,6 @@
 package distributor
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/prometheus/common/log"
@@ -9,23 +8,6 @@ import (
 
 	"github.com/weaveworks/cortex/util"
 )
-
-// IngesterError is an error we got from an ingester.
-type IngesterError struct {
-	StatusCode int
-	err        error
-}
-
-func errStatusCode(code int, status string) IngesterError {
-	return IngesterError{
-		StatusCode: code,
-		err:        fmt.Errorf("server returned HTTP status %s", status),
-	}
-}
-
-func (i IngesterError) Error() string {
-	return i.err.Error()
-}
 
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {

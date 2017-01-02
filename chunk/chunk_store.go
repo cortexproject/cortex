@@ -487,27 +487,13 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 		return nil, err
 	}
 
-	chunks, err := c.lookupChunks(ctx, userID, from, through, matchers)
+	missing, err := c.lookupChunks(ctx, userID, from, through, matchers)
 	if err != nil {
 		return nil, err
 	}
-
-	filtered := make([]Chunk, 0, len(chunks))
-	for _, chunk := range chunks {
-		_, chunkFrom, chunkThrough, err := parseChunkID(chunk.ID)
-		if err != nil {
-			return nil, err
-		}
-		if chunkThrough < from || through < chunkFrom {
-			continue
-		}
-		filtered = append(filtered, chunk)
-	}
-
-	queryChunks.Observe(float64(len(filtered)))
+	queryChunks.Observe(float64(len(missing)))
 
 	var fromCache []Chunk
-	var missing = filtered
 	if c.chunkCache != nil {
 		fromCache, missing, err = c.chunkCache.FetchChunkData(ctx, userID, missing)
 		if err != nil {
@@ -581,8 +567,21 @@ func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, throug
 		}
 	}
 
+	// Filter out chunks that are not in the selected time range.
+	filtered := make([]Chunk, 0, len(chunks))
+	for _, chunk := range chunks {
+		_, chunkFrom, chunkThrough, err := parseChunkID(chunk.ID)
+		if err != nil {
+			return nil, err
+		}
+		if chunkThrough < from || through < chunkFrom {
+			continue
+		}
+		filtered = append(filtered, chunk)
+	}
+
 	queryDynamoLookups.Observe(float64(atomic.LoadInt32(&totalLookups)))
-	return chunks, lastErr
+	return filtered, lastErr
 }
 
 func next(s string) string {

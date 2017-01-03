@@ -338,7 +338,7 @@ func (c *AWSStore) CreateTables() error {
 	return err
 }
 
-func bigBuckets(from, through model.Time, dailyBucketsFrom model.Time) []string {
+func (c *AWSStore) bigBuckets(from, through model.Time) []string {
 	var (
 		secondsInHour = int64(time.Hour / time.Second)
 		fromHour      = from.Unix() / secondsInHour
@@ -348,7 +348,7 @@ func bigBuckets(from, through model.Time, dailyBucketsFrom model.Time) []string 
 		fromDay      = from.Unix() / secondsInDay
 		throughDay   = through.Unix() / secondsInDay
 
-		firstDailyBucket = dailyBucketsFrom.Unix() / secondsInDay
+		firstDailyBucket = c.dailyBucketsFrom.Unix() / secondsInDay
 		lastHourlyBucket = firstDailyBucket * 24
 
 		result []string
@@ -482,7 +482,7 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 		}
 
 		entries := 0
-		for _, bucket := range bigBuckets(chunk.From, chunk.Through, c.dailyBucketsFrom) {
+		for _, bucket := range c.bigBuckets(chunk.From, chunk.Through) {
 			hashValue := hashValue(userID, bucket, metricName)
 			for label, value := range chunk.Metric {
 				if label == model.MetricNameLabel {
@@ -568,7 +568,7 @@ func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, throug
 
 	incomingChunkSets := make(chan ByID)
 	incomingErrors := make(chan error)
-	buckets := bigBuckets(from, through, c.dailyBucketsFrom)
+	buckets := c.bigBuckets(from, through)
 	totalLookups := int32(0)
 	for _, b := range buckets {
 		go func(bucket string) {

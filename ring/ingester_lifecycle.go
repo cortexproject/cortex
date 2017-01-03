@@ -23,8 +23,9 @@ const (
 
 // IngesterRegistration manages the connection between the ingester and Consul.
 type IngesterRegistration struct {
-	consul    ConsulClient
-	numTokens int
+	consul         ConsulClient
+	numTokens      int
+	skipUnregister bool
 
 	id           string
 	hostname     string
@@ -40,27 +41,48 @@ type IngesterRegistration struct {
 	consulHeartbeats prometheus.Counter
 }
 
+// IngesterRegistrationConfig is the config for an IngesterRegistration
+type IngesterRegistrationConfig struct {
+	ListenPort int
+	GRPCPort   int
+	NumTokens  int
+
+	// For testing
+	Addr           string
+	Hostname       string
+	skipUnregister bool
+}
+
 // RegisterIngester registers an ingester with Consul.
-func RegisterIngester(consulClient ConsulClient, listenPort, grpcPort, numTokens int) (*IngesterRegistration, error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, err
+func RegisterIngester(consulClient ConsulClient, cfg IngesterRegistrationConfig) (*IngesterRegistration, error) {
+	hostname := cfg.Hostname
+	if hostname == "" {
+		var err error
+		hostname, err = os.Hostname()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	addr, err := getFirstAddressOf(infName)
-	if err != nil {
-		return nil, err
+	addr := cfg.Addr
+	if addr == "" {
+		var err error
+		addr, err = getFirstAddressOf(infName)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	r := &IngesterRegistration{
-		consul:    consulClient,
-		numTokens: numTokens,
+		consul:         consulClient,
+		numTokens:      cfg.NumTokens,
+		skipUnregister: cfg.skipUnregister,
 
 		id: hostname,
 		// hostname is the ip+port of this instance, written to consul so
 		// the distributors know where to connect.
-		hostname:     fmt.Sprintf("%s:%d", addr, listenPort),
-		grpcHostname: fmt.Sprintf("%s:%d", addr, grpcPort),
+		hostname:     fmt.Sprintf("%s:%d", addr, cfg.ListenPort),
+		grpcHostname: fmt.Sprintf("%s:%d", addr, cfg.GRPCPort),
 		quit:         make(chan struct{}),
 
 		// Only read/written on actor goroutine.
@@ -87,23 +109,27 @@ func (r *IngesterRegistration) ChangeState(state IngesterState) {
 // Unregister removes ingester config from Consul; will block
 // until we'll successfully unregistered.
 func (r *IngesterRegistration) Unregister() {
-	log.Info("Removing ingester from consul")
-
 	// closing r.quit triggers loop() to exit, which in turn will trigger
 	// the removal of our tokens.
 	close(r.quit)
 	r.wait.Wait()
-	log.Infof("Ingester removed from consul")
 }
 
 func (r *IngesterRegistration) loop() {
 	defer r.wait.Done()
-	tokens := r.pickTokens()
-	defer r.unregister()
+	tokens, err := r.pickTokens()
+	if err != nil {
+		log.Fatalf("Failed to pick tokens in consul: %v", err)
+	}
+
+	if !r.skipUnregister {
+		defer r.unregister()
+	}
+
 	r.heartbeat(tokens)
 }
 
-func (r *IngesterRegistration) pickTokens() []uint32 {
+func (r *IngesterRegistration) pickTokens() ([]uint32, error) {
 	var tokens []uint32
 	pickTokens := func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *Desc
@@ -113,25 +139,32 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 			ringDesc = in.(*Desc)
 		}
 
-		takenTokens := []uint32{}
+		var takenTokens, myTokens []uint32
 		for _, token := range ringDesc.Tokens {
 			takenTokens = append(takenTokens, token.Token)
+
 			if token.Ingester == r.id {
-				tokens = append(tokens, token.Token)
+				myTokens = append(myTokens, token.Token)
 			}
 		}
-		if len(tokens) < r.numTokens {
-			newTokens := generateTokens(r.numTokens-len(tokens), takenTokens)
-			tokens = append(tokens, newTokens...)
+
+		if len(myTokens) > 0 {
+			log.Infof("%d tokens already exist for this ingester!", len(myTokens))
 		}
+
+		newTokens := generateTokens(r.numTokens-len(myTokens), takenTokens)
+		ringDesc.addIngester(r.id, r.hostname, r.grpcHostname, newTokens, r.state)
+
+		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
-		ringDesc.addIngester(r.id, r.hostname, r.grpcHostname, tokens, r.state)
+
 		return ringDesc, true, nil
 	}
 	if err := r.consul.CAS(consulKey, descFactory, pickTokens); err != nil {
-		log.Fatalf("Failed to pick tokens in consul: %v", err)
+		return nil, err
 	}
-	return tokens
+	log.Infof("Ingester added to consul")
+	return tokens, nil
 }
 
 func (r *IngesterRegistration) heartbeat(tokens []uint32) {
@@ -189,6 +222,7 @@ func (r *IngesterRegistration) unregister() {
 	if err := r.consul.CAS(consulKey, descFactory, unregister); err != nil {
 		log.Fatalf("Failed to unregister from consul: %v", err)
 	}
+	log.Infof("Ingester removed from consul")
 }
 
 type sortableUint32 []uint32

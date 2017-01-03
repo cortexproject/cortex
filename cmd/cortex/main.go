@@ -317,6 +317,12 @@ func setupIngester(
 	}
 	prometheus.MustRegister(ingester)
 
+	// This interface is temporary until rolled out to prod, then we can remove it
+	// in favour of the gRPC interface.
+	router.Path("/push").Handler(http.HandlerFunc(ingester.PushHandler))
+	router.Path("/query").Handler(http.HandlerFunc(ingester.QueryHandler))
+	router.Path("/label_values").Handler(http.HandlerFunc(ingester.LabelValuesHandler))
+	router.Path("/user_stats").Handler(http.HandlerFunc(ingester.UserStatsHandler))
 	router.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	return ingester
 }

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"math"
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -89,10 +90,17 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
+	ingesterIDs := []string{}
+	for id := range r.ringDesc.Ingesters {
+		ingesterIDs = append(ingesterIDs, id)
+	}
+	sort.Strings(ingesterIDs)
+
 	now := time.Now()
 	ingesters := []interface{}{}
 	tokens, owned := countTokens(r.ringDesc.Tokens)
-	for id, ing := range r.ringDesc.Ingesters {
+	for _, id := range ingesterIDs {
+		ing := r.ringDesc.Ingesters[id]
 		state := ing.State.String()
 		if now.Sub(ing.Timestamp) > r.heartbeatTimeout {
 			state = unhealthy

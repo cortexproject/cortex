@@ -25,17 +25,10 @@ func newMockConsulClient() ConsulClient {
 }
 
 func copyKVPair(in *consul.KVPair) *consul.KVPair {
-	value := make([]byte, len(in.Value))
-	copy(value, in.Value)
-	return &consul.KVPair{
-		Key:         in.Key,
-		CreateIndex: in.CreateIndex,
-		ModifyIndex: in.ModifyIndex,
-		LockIndex:   in.LockIndex,
-		Flags:       in.Flags,
-		Value:       value,
-		Session:     in.Session,
-	}
+	out := *in
+	out.Value = make([]byte, len(in.Value))
+	copy(out.Value, in.Value)
+	return &out
 }
 
 // periodic loop to wake people up, so they can honour timeouts

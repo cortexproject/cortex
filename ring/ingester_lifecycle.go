@@ -117,7 +117,10 @@ func (r *IngesterRegistration) Unregister() {
 
 func (r *IngesterRegistration) loop() {
 	defer r.wait.Done()
-	tokens := r.pickTokens()
+	tokens, err := r.pickTokens()
+	if err != nil {
+		log.Fatalf("Failed to pick tokens in consul: %v", err)
+	}
 
 	if !r.skipUnregister {
 		defer r.unregister()
@@ -126,7 +129,7 @@ func (r *IngesterRegistration) loop() {
 	r.heartbeat(tokens)
 }
 
-func (r *IngesterRegistration) pickTokens() []uint32 {
+func (r *IngesterRegistration) pickTokens() ([]uint32, error) {
 	var tokens []uint32
 	pickTokens := func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *Desc
@@ -158,11 +161,10 @@ func (r *IngesterRegistration) pickTokens() []uint32 {
 		return ringDesc, true, nil
 	}
 	if err := r.consul.CAS(consulKey, descFactory, pickTokens); err != nil {
-		log.Fatalf("Failed to pick tokens in consul: %v", err)
-		return nil
+		return nil, err
 	}
 	log.Infof("Ingester added to consul")
-	return tokens
+	return tokens, nil
 }
 
 func (r *IngesterRegistration) heartbeat(tokens []uint32) {

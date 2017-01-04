@@ -51,6 +51,9 @@ const (
 	dynamoMaxBatchSize = 25
 
 	provisionedThroughputExceededException = "ProvisionedThroughputExceededException"
+
+	secondsInHour = int64(time.Hour / time.Second)
+	secondsInDay  = int64(24 * time.Hour / time.Second)
 )
 
 var (
@@ -208,8 +211,8 @@ type AWSStore struct {
 	tableName  string
 	bucketName string
 
-	// Around which time to start bucketing indexes by day instead of by hour.
-	// Only the day matters, not the time within the day.
+	// After midnight on this day, we start bucketing indexes by day instead of by
+	// hour.  Only the day matters, not the time within the day.
 	dailyBucketsFrom model.Time
 
 	dynamoRequests     chan dynamoOp
@@ -339,15 +342,20 @@ func (c *AWSStore) CreateTables() error {
 	return err
 }
 
+// bigBuckets generates the list of "big buckets" for a given time range.
+// These buckets are used in the hash key of the inverted index, and need to
+// be deterministic for both reads and writes.
+//
+// This function deals with any changes from one bucketing scheme to another -
+// for instance, it know the date at which to migrate from hourly buckets to
+// to weekly buckets.
 func (c *AWSStore) bigBuckets(from, through model.Time) []string {
 	var (
-		secondsInHour = int64(time.Hour / time.Second)
-		fromHour      = from.Unix() / secondsInHour
-		throughHour   = through.Unix() / secondsInHour
+		fromHour    = from.Unix() / secondsInHour
+		throughHour = through.Unix() / secondsInHour
 
-		secondsInDay = int64(24 * time.Hour / time.Second)
-		fromDay      = from.Unix() / secondsInDay
-		throughDay   = through.Unix() / secondsInDay
+		fromDay    = from.Unix() / secondsInDay
+		throughDay = through.Unix() / secondsInDay
 
 		firstDailyBucket = c.dailyBucketsFrom.Unix() / secondsInDay
 		lastHourlyBucket = firstDailyBucket * 24

@@ -251,11 +251,12 @@ func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
 	}
 
 	store := &AWSStore{
-		dynamodb:   dynamodbClient,
-		s3:         s3Client,
-		chunkCache: cfg.ChunkCache,
-		tableName:  tableName,
-		bucketName: bucketName,
+		dynamodb:         dynamodbClient,
+		s3:               s3Client,
+		chunkCache:       cfg.ChunkCache,
+		tableName:        tableName,
+		bucketName:       bucketName,
+		dailyBucketsFrom: cfg.DailyBucketsFrom,
 
 		dynamoRequests: make(chan dynamoOp),
 	}

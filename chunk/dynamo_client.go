@@ -6,8 +6,11 @@ import (
 )
 
 type dynamodbClient interface {
+	ListTablesPages(*dynamodb.ListTablesInput, func(p *dynamodb.ListTablesOutput, lastPage bool) (shouldContinue bool)) error
 	CreateTable(*dynamodb.CreateTableInput) (*dynamodb.CreateTableOutput, error)
-	ListTables(*dynamodb.ListTablesInput) (*dynamodb.ListTablesOutput, error)
+	DescribeTable(*dynamodb.DescribeTableInput) (*dynamodb.DescribeTableOutput, error)
+	UpdateTable(*dynamodb.UpdateTableInput) (*dynamodb.UpdateTableOutput, error)
+
 	BatchWriteItem(*dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error)
 	QueryRequest(*dynamodb.QueryInput) (req dynamoRequest, output *dynamodb.QueryOutput)
 }

@@ -21,15 +21,25 @@ func init() {
 }
 
 func TestChunkStoreUnprocessed(t *testing.T) {
+	dynamodb := NewMockDynamoDB(2, 2)
 	store, err := NewAWSStore(StoreConfig{
-		dynamodb: NewMockDynamoDB(2, 2),
+		dynamodb: dynamodb,
 		s3:       NewMockS3(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.CreateTables()
 	defer store.Stop()
+
+	tableManager, err := NewDynamoTableManager(TableManagerConfig{
+		dynamodb: dynamodb,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tableManager.syncTables(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()
@@ -61,15 +71,25 @@ func TestChunkStoreUnprocessed(t *testing.T) {
 }
 
 func TestChunkStore(t *testing.T) {
+	dynamodb := NewMockDynamoDB(0, 0)
 	store, err := NewAWSStore(StoreConfig{
-		dynamodb: NewMockDynamoDB(0, 0),
+		dynamodb: dynamodb,
 		s3:       NewMockS3(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.CreateTables()
 	defer store.Stop()
+
+	tableManager, err := NewDynamoTableManager(TableManagerConfig{
+		dynamodb: dynamodb,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tableManager.syncTables(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()
@@ -193,11 +213,18 @@ func TestBigBuckets(t *testing.T) {
 		},
 	}
 	for i, s := range scenarios {
+		expected := []bucketSpec{}
+		for _, b := range s.buckets {
+			expected = append(expected, bucketSpec{bucket: b})
+		}
+
 		cs := &AWSStore{
-			dailyBucketsFrom: s.dailyBucketsFrom,
+			cfg: StoreConfig{
+				DailyBucketsFrom: s.dailyBucketsFrom,
+			},
 		}
 		buckets := cs.bigBuckets(s.from, s.through)
-		if !reflect.DeepEqual(buckets, s.buckets) {
+		if !reflect.DeepEqual(buckets, expected) {
 			t.Fatalf("%d. unexpected buckets; want %v, got %v", i, s.buckets, buckets)
 		}
 	}

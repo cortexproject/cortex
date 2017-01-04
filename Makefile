@@ -26,18 +26,21 @@ images:
 
 # List of exes please
 CORTEX_EXE := ./cmd/cortex/cortex
-EXES = $(CORTEX_EXE)
+CORTEX_TABLE_MANAGER_EXE := ./cmd/cortex_table_manager/cortex_table_manager
+EXES = $(CORTEX_EXE) $(CORTEX_TABLE_MANAGER_EXE)
 
 all: $(UPTODATE_FILES)
 
 # And what goes into each exe
 $(CORTEX_EXE): $(shell find . -name '*.go') ui/bindata.go cortex.pb.go
+$(CORTEX_TABLE_MANAGER_EXE): $(shell find ./chunk/ -name '*.go') cmd/cortex_table_manager/main.go
 cortex.pb.go: cortex.proto
 ui/bindata.go: $(shell find ui/static ui/templates)
 
 # And now what goes into each image
 cortex-build/$(UPTODATE): cortex-build/*
 cmd/cortex/$(UPTODATE): $(CORTEX_EXE)
+cmd/cortex_table_manager/$(UPTODATE): $(CORTEX_TABLE_MANAGER_EXE)
 
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")

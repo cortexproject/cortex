@@ -96,9 +96,7 @@ func main() {
 	flag.StringVar(&cfg.s3URL, "s3.url", "localhost:4569", "S3 endpoint URL.")
 	flag.StringVar(&cfg.dynamodbURL, "dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
 	flag.DurationVar(&cfg.dynamodbPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
-	flag.BoolVar(&cfg.dynamodbCreateTables, "dynamodb.create-tables", false, "Create required DynamoDB tables on startup.")
 	flag.StringVar(&cfg.dynamodbDailyBucketsFrom, "dynamodb.daily-buckets-from", "9999-01-01", "The date in the format YYYY-MM-DD of the first day for which DynamoDB index buckets should be day-sized vs. hour-sized.")
-	flag.BoolVar(&cfg.watchDynamo, "watch-dynamo", false, "Periodically collect DynamoDB provisioned throughput.")
 
 	flag.StringVar(&cfg.memcachedHostname, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
 	flag.StringVar(&cfg.memcachedService, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
@@ -122,6 +120,10 @@ func main() {
 	flag.StringVar(&cfg.rulerConfig.UserID, "ruler.userID", "", "Weave Cloud org to run rules for")
 	flag.DurationVar(&cfg.rulerConfig.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
 
+	// Deprecated
+	flag.BoolVar(&cfg.dynamodbCreateTables, "dynamodb.create-tables", false, "Create required DynamoDB tables on startup.")
+	flag.BoolVar(&cfg.watchDynamo, "watch-dynamo", false, "Periodically collect DynamoDB provisioned throughput.")
+
 	flag.Parse()
 
 	chunkStore, err := setupChunkStore(cfg)
@@ -132,15 +134,6 @@ func main() {
 		log.Warnf("Polling DynamoDB more than once a minute. Likely to get throttled: %v", cfg.dynamodbPollInterval)
 	}
 	defer chunkStore.Stop()
-
-	if cfg.watchDynamo {
-		resourceWatcher, err := chunk.WatchDynamo(cfg.dynamodbURL, cfg.dynamodbPollInterval)
-		if err != nil {
-			log.Fatalf("Error initializing DynamoDB watcher: %v", err)
-		}
-		defer resourceWatcher.Stop()
-		prometheus.MustRegister(resourceWatcher)
-	}
 
 	consul, err := ring.NewConsulClient(cfg.consulHost)
 	if err != nil {
@@ -254,21 +247,12 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing daily buckets begin date: %v", err)
 	}
-	chunkStore, err := chunk.NewAWSStore(chunk.StoreConfig{
+	return chunk.NewAWSStore(chunk.StoreConfig{
 		S3URL:            cfg.s3URL,
 		DynamoDBURL:      cfg.dynamodbURL,
 		ChunkCache:       chunkCache,
 		DailyBucketsFrom: model.TimeFromUnix(dailyBucketsFrom.Unix()),
 	})
-	if err != nil {
-		return nil, err
-	}
-	if cfg.dynamodbCreateTables {
-		if err = chunkStore.CreateTables(); err != nil {
-			return nil, err
-		}
-	}
-	return chunkStore, err
 }
 
 func setupDistributor(

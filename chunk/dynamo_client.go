@@ -1,109 +1,51 @@
 package chunk
 
 import (
-	"net/url"
-	"strings"
-	"sync"
-	"time"
-
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 )
 
-const (
-	readLabel  = "read"
-	writeLabel = "write"
-)
-
-type dynamoWatcher struct {
-	tableCapacity *prometheus.GaugeVec
-
-	dynamoDB  *dynamodb.DynamoDB
-	tableName string
-
-	updateInterval time.Duration
-	quit           chan struct{}
-	wait           sync.WaitGroup
+type dynamodbClient interface {
+	CreateTable(*dynamodb.CreateTableInput) (*dynamodb.CreateTableOutput, error)
+	ListTables(*dynamodb.ListTablesInput) (*dynamodb.ListTablesOutput, error)
+	BatchWriteItem(*dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error)
+	QueryRequest(*dynamodb.QueryInput) (req dynamoRequest, output *dynamodb.QueryOutput)
 }
 
-// Watcher watches something and reports to Prometheus.
-type Watcher interface {
-	Stop()
-	prometheus.Collector
+type dynamoRequest interface {
+	NextPage() dynamoRequest
+	HasNextPage() bool
+	Data() interface{}
+	OperationName() string
+	Send() error
+	Error() error
 }
 
-// WatchDynamo watches Dynamo and reports on resource limits.
-func WatchDynamo(dynamoDBURL string, interval time.Duration) (Watcher, error) {
-	url, err := url.Parse(dynamoDBURL)
-	if err != nil {
-		return nil, err
-	}
-	dynamoDBConfig, err := awsConfigFromURL(url)
-	if err != nil {
-		return nil, err
-	}
-	client := dynamodb.New(session.New(dynamoDBConfig))
-
-	tableName := strings.TrimPrefix(url.Path, "/")
-	w := &dynamoWatcher{
-		tableCapacity: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
-			Name:      "dynamo_table_capacity_units",
-			Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
-		}, []string{"op", "table"}),
-		dynamoDB:       client,
-		tableName:      tableName,
-		updateInterval: interval,
-		quit:           make(chan struct{}),
-	}
-	go w.updateLoop()
-	return w, nil
+type dynamoClientAdapter struct {
+	*dynamodb.DynamoDB
 }
 
-// Stop stops the dynamo watcher.
-func (w *dynamoWatcher) Stop() {
-	close(w.quit)
-	w.wait.Wait()
+func (d dynamoClientAdapter) QueryRequest(in *dynamodb.QueryInput) (dynamoRequest, *dynamodb.QueryOutput) {
+	req, out := d.DynamoDB.QueryRequest(in)
+	return dynamoRequestAdapter{req}, out
 }
 
-func (w *dynamoWatcher) updateLoop() {
-	defer w.wait.Done()
-	ticker := time.NewTicker(w.updateInterval)
-	for {
-		select {
-		case <-ticker.C:
-			log.Debugf("Updating limits from dynamo")
-			err := w.updateTableLimits()
-			if err != nil {
-				log.Warnf("Could not fetch table limits from dynamo: %v", err)
-			}
-		case <-w.quit:
-			ticker.Stop()
-		}
-	}
+type dynamoRequestAdapter struct {
+	*request.Request
 }
 
-func (w *dynamoWatcher) updateTableLimits() error {
-	output, err := w.dynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
-		TableName: &w.tableName,
-	})
-	if err != nil {
-		return err
-	}
-	throughput := output.Table.ProvisionedThroughput
-	w.tableCapacity.WithLabelValues(readLabel, w.tableName).Set(float64(*throughput.ReadCapacityUnits))
-	w.tableCapacity.WithLabelValues(writeLabel, w.tableName).Set(float64(*throughput.WriteCapacityUnits))
-	return nil
+func (d dynamoRequestAdapter) Data() interface{} {
+	return d.Request.Data
 }
 
-// Describe implements prometheus.Collector.
-func (w *dynamoWatcher) Describe(ch chan<- *prometheus.Desc) {
-	w.tableCapacity.Describe(ch)
+func (d dynamoRequestAdapter) OperationName() string {
+	return d.Operation.Name
 }
 
-// Collect implements prometheus.Collector.
-func (w *dynamoWatcher) Collect(ch chan<- prometheus.Metric) {
-	w.tableCapacity.Collect(ch)
+func (d dynamoRequestAdapter) NextPage() dynamoRequest {
+	return dynamoRequestAdapter{d.Request.NextPage()}
+}
+
+func (d dynamoRequestAdapter) Error() error {
+	return d.Request.Error
 }

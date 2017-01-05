@@ -505,7 +505,7 @@ func (i *Ingester) sweepUsers(immediate bool) {
 	i.userStateLock.Unlock()
 }
 
-// sweepSeries schedules a series for flushing based on a set of criterea
+// sweepSeries schedules a series for flushing based on a set of criteria
 //
 // NB we don't close the head chunk here, as the series could wait in the queue
 // for some time, and we want to encourage chunks to be as full as possible.
@@ -529,18 +529,16 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) bool 
 		return true
 	}
 
-	// Or if any chunks need flushing
-	for _, c := range series.chunkDescs {
-		if i.shouldFlushChunk(c) {
-			return true
-		}
+	// Or if the only existing chunk need flushing
+	if len(series.chunkDescs) > 0 {
+		return i.shouldFlushChunk(series.chunkDescs[0])
 	}
 
 	return false
 }
 
 func (i *Ingester) shouldFlushChunk(c *prom_chunk.Desc) bool {
-	// Chunks should be flushed if their first entry is older than MaxChunkAge
+	// Chunks should be flushed if their oldest entry is older than MaxChunkAge
 	if model.Now().Sub(c.ChunkFirstTime) > i.cfg.MaxChunkAge {
 		return true
 	}
@@ -604,7 +602,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 		return nil
 	}
 
-	// flush the chunks without locking the series
+	// flush the chunks without locking the series, as we don't want to hold the series lock for the duration of the dynamo/s3 rpcs.
 	ctx := user.WithID(context.Background(), userID)
 	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {

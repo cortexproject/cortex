@@ -146,3 +146,59 @@ func diff(want, have interface{}) string {
 	})
 	return "\n" + text
 }
+
+func TestBigBuckets(t *testing.T) {
+	scenarios := []struct {
+		from, through, dailyBucketsFrom model.Time
+		buckets                         []string
+	}{
+		// Buckets are by hour until we reach the `dailyBucketsFrom`, after which they are by day.
+		{
+			from:             model.TimeFromUnix(0),
+			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,
+			dailyBucketsFrom: model.TimeFromUnix(0).Add(1 * 24 * time.Hour),
+			buckets:          []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "d1", "d2"},
+		},
+
+		// Only the day part of `dailyBucketsFrom` matters, not the time part.
+		{
+			from:             model.TimeFromUnix(0),
+			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,
+			dailyBucketsFrom: model.TimeFromUnix(0).Add(2*24*time.Hour) - 1,
+			buckets:          []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "d1", "d2"},
+		},
+
+		// Moving dailyBucketsFrom to the previous day compared to the above makes 24 1-hour buckets disappear.
+		{
+			from:             model.TimeFromUnix(0),
+			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,
+			dailyBucketsFrom: model.TimeFromUnix(0).Add(1*24*time.Hour) - 1,
+			buckets:          []string{"0", "d0", "d1", "d2"},
+		},
+
+		// If `dailyBucketsFrom` is after the interval, everything will be bucketed by hour.
+		{
+			from:             model.TimeFromUnix(0),
+			through:          model.TimeFromUnix(0).Add(2 * 24 * time.Hour),
+			dailyBucketsFrom: model.TimeFromUnix(0).Add(99 * 24 * time.Hour),
+			buckets:          []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48"},
+		},
+
+		// Should only return daily buckets when dailyBucketsFrom is before the interval.
+		{
+			from:             model.TimeFromUnix(0).Add(1 * 24 * time.Hour),
+			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,
+			dailyBucketsFrom: model.TimeFromUnix(0),
+			buckets:          []string{"d1", "d2"},
+		},
+	}
+	for i, s := range scenarios {
+		cs := &AWSStore{
+			dailyBucketsFrom: s.dailyBucketsFrom,
+		}
+		buckets := cs.bigBuckets(s.from, s.through)
+		if !reflect.DeepEqual(buckets, s.buckets) {
+			t.Fatalf("%d. unexpected buckets; want %v, got %v", i, s.buckets, buckets)
+		}
+	}
+}

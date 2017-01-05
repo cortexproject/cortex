@@ -22,6 +22,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
@@ -60,22 +61,23 @@ func init() {
 }
 
 type cfg struct {
-	mode                 string
-	listenPort           int
-	consulHost           string
-	consulPrefix         string
-	s3URL                string
-	dynamodbURL          string
-	dynamodbCreateTables bool
-	dynamodbPollInterval time.Duration
-	memcachedHostname    string
-	memcachedTimeout     time.Duration
-	memcachedExpiration  time.Duration
-	memcachedService     string
-	remoteTimeout        time.Duration
-	numTokens            int
-	logSuccess           bool
-	watchDynamo          bool
+	mode                     string
+	listenPort               int
+	consulHost               string
+	consulPrefix             string
+	s3URL                    string
+	dynamodbURL              string
+	dynamodbCreateTables     bool
+	dynamodbPollInterval     time.Duration
+	dynamodbDailyBucketsFrom string
+	memcachedHostname        string
+	memcachedTimeout         time.Duration
+	memcachedExpiration      time.Duration
+	memcachedService         string
+	remoteTimeout            time.Duration
+	numTokens                int
+	logSuccess               bool
+	watchDynamo              bool
 
 	ingesterConfig    ingester.Config
 	distributorConfig distributor.Config
@@ -95,6 +97,7 @@ func main() {
 	flag.StringVar(&cfg.dynamodbURL, "dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
 	flag.DurationVar(&cfg.dynamodbPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	flag.BoolVar(&cfg.dynamodbCreateTables, "dynamodb.create-tables", false, "Create required DynamoDB tables on startup.")
+	flag.StringVar(&cfg.dynamodbDailyBucketsFrom, "dynamodb.daily-buckets-from", "9999-01-01", "The date in the format YYYY-MM-DD of the first day for which DynamoDB index buckets should be day-sized vs. hour-sized.")
 	flag.BoolVar(&cfg.watchDynamo, "watch-dynamo", false, "Periodically collect DynamoDB provisioned throughput.")
 
 	flag.StringVar(&cfg.memcachedHostname, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
@@ -246,10 +249,15 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 			Expiration: cfg.memcachedExpiration,
 		}
 	}
+	dailyBucketsFrom, err := time.Parse("2006-01-02", cfg.dynamodbDailyBucketsFrom)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing daily buckets begin date: %v", err)
+	}
 	chunkStore, err := chunk.NewAWSStore(chunk.StoreConfig{
-		S3URL:       cfg.s3URL,
-		DynamoDBURL: cfg.dynamodbURL,
-		ChunkCache:  chunkCache,
+		S3URL:            cfg.s3URL,
+		DynamoDBURL:      cfg.dynamodbURL,
+		ChunkCache:       chunkCache,
+		DailyBucketsFrom: model.TimeFromUnix(dailyBucketsFrom.Unix()),
 	})
 	if err != nil {
 		return nil, err

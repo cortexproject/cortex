@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -50,6 +51,9 @@ const (
 	dynamoMaxBatchSize = 25
 
 	provisionedThroughputExceededException = "ProvisionedThroughputExceededException"
+
+	secondsInHour = int64(time.Hour / time.Second)
+	secondsInDay  = int64(24 * time.Hour / time.Second)
 )
 
 var (
@@ -139,9 +143,10 @@ type Store interface {
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	S3URL       string
-	DynamoDBURL string
-	ChunkCache  *Cache
+	S3URL            string
+	DynamoDBURL      string
+	ChunkCache       *Cache
+	DailyBucketsFrom model.Time
 
 	// Not exported as only used by tests to inject mocks
 	dynamodb dynamodbClient
@@ -206,6 +211,10 @@ type AWSStore struct {
 	tableName  string
 	bucketName string
 
+	// After midnight on this day, we start bucketing indexes by day instead of by
+	// hour.  Only the day matters, not the time within the day.
+	dailyBucketsFrom model.Time
+
 	dynamoRequests     chan dynamoOp
 	dynamoRequestsDone sync.WaitGroup
 }
@@ -245,11 +254,12 @@ func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
 	}
 
 	store := &AWSStore{
-		dynamodb:   dynamodbClient,
-		s3:         s3Client,
-		chunkCache: cfg.ChunkCache,
-		tableName:  tableName,
-		bucketName: bucketName,
+		dynamodb:         dynamodbClient,
+		s3:               s3Client,
+		chunkCache:       cfg.ChunkCache,
+		tableName:        tableName,
+		bucketName:       bucketName,
+		dailyBucketsFrom: cfg.DailyBucketsFrom,
 
 		dynamoRequests: make(chan dynamoOp),
 	}
@@ -332,16 +342,41 @@ func (c *AWSStore) CreateTables() error {
 	return err
 }
 
-func bigBuckets(from, through model.Time) []int64 {
+// bigBuckets generates the list of "big buckets" for a given time range.
+// These buckets are used in the hash key of the inverted index, and need to
+// be deterministic for both reads and writes.
+//
+// This function deals with any changes from one bucketing scheme to another -
+// for instance, it know the date at which to migrate from hourly buckets to
+// to weekly buckets.
+func (c *AWSStore) bigBuckets(from, through model.Time) []string {
 	var (
-		secondsInHour = int64(time.Hour / time.Second)
-		fromHour      = from.Unix() / secondsInHour
-		throughHour   = through.Unix() / secondsInHour
-		result        []int64
+		fromHour    = from.Unix() / secondsInHour
+		throughHour = through.Unix() / secondsInHour
+
+		fromDay    = from.Unix() / secondsInDay
+		throughDay = through.Unix() / secondsInDay
+
+		firstDailyBucket = c.dailyBucketsFrom.Unix() / secondsInDay
+		lastHourlyBucket = firstDailyBucket * 24
+
+		result []string
 	)
+
 	for i := fromHour; i <= throughHour; i++ {
-		result = append(result, i)
+		if i > lastHourlyBucket {
+			break
+		}
+		result = append(result, strconv.Itoa(int(i)))
 	}
+
+	for i := fromDay; i <= throughDay; i++ {
+		if i < firstDailyBucket {
+			continue
+		}
+		result = append(result, fmt.Sprintf("d%d", int(i)))
+	}
+
 	return result
 }
 
@@ -349,8 +384,8 @@ func chunkName(userID, chunkID string) string {
 	return fmt.Sprintf("%s/%s", userID, chunkID)
 }
 
-func hashValue(userID string, hour int64, metricName model.LabelValue) string {
-	return fmt.Sprintf("%s:%d:%s", userID, hour, metricName)
+func hashValue(userID string, bucket string, metricName model.LabelValue) string {
+	return fmt.Sprintf("%s:%s:%s", userID, bucket, metricName)
 }
 
 func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) []byte {
@@ -456,8 +491,8 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 		}
 
 		entries := 0
-		for _, hour := range bigBuckets(chunk.From, chunk.Through) {
-			hashValue := hashValue(userID, hour, metricName)
+		for _, bucket := range c.bigBuckets(chunk.From, chunk.Through) {
+			hashValue := hashValue(userID, bucket, metricName)
 			for label, value := range chunk.Metric {
 				if label == model.MetricNameLabel {
 					continue
@@ -542,18 +577,18 @@ func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, throug
 
 	incomingChunkSets := make(chan ByID)
 	incomingErrors := make(chan error)
-	buckets := bigBuckets(from, through)
+	buckets := c.bigBuckets(from, through)
 	totalLookups := int32(0)
-	for _, hour := range buckets {
-		go func(hour int64) {
-			incoming, lookups, err := c.lookupChunksFor(ctx, userID, hour, metricName, matchers)
+	for _, b := range buckets {
+		go func(bucket string) {
+			incoming, lookups, err := c.lookupChunksFor(ctx, userID, bucket, metricName, matchers)
 			atomic.AddInt32(&totalLookups, lookups)
 			if err != nil {
 				incomingErrors <- err
 			} else {
 				incomingChunkSets <- incoming
 			}
-		}(hour)
+		}(b)
 	}
 
 	var chunks ByID
@@ -591,9 +626,9 @@ func next(s string) string {
 	return result
 }
 
-func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, hour int64, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
+func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, bucket string, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
 	if len(matchers) == 0 {
-		return c.lookupChunksForMetricName(ctx, userID, hour, metricName)
+		return c.lookupChunksForMetricName(ctx, userID, bucket, metricName)
 	}
 
 	incomingChunkSets := make(chan ByID)
@@ -601,7 +636,7 @@ func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, hour int6
 
 	for _, matcher := range matchers {
 		go func(matcher *metric.LabelMatcher) {
-			incoming, err := c.lookupChunksForMatcher(ctx, userID, hour, metricName, matcher)
+			incoming, err := c.lookupChunksForMatcher(ctx, userID, bucket, metricName, matcher)
 			if err != nil {
 				incomingErrors <- err
 			} else {
@@ -623,8 +658,8 @@ func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, hour int6
 	return nWayIntersect(chunkSets), int32(len(matchers)), lastErr
 }
 
-func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string, hour int64, metricName model.LabelValue) (ByID, int32, error) {
-	hashValue := hashValue(userID, hour, metricName)
+func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string, bucket string, metricName model.LabelValue) (ByID, int32, error) {
+	hashValue := hashValue(userID, bucket, metricName)
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(c.tableName),
 		KeyConditions: map[string]*dynamodb.Condition{
@@ -664,8 +699,8 @@ func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string,
 	return chunkSet, 1, nil
 }
 
-func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, hour int64, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
-	hashValue := hashValue(userID, hour, metricName)
+func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bucket string, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
+	hashValue := hashValue(userID, bucket, metricName)
 	var rangeMinValue, rangeMaxValue []byte
 	if matcher.Type == metric.Equal {
 		nextValue := model.LabelValue(next(string(matcher.Value)))

@@ -168,6 +168,7 @@ func TestBigBuckets(t *testing.T) {
 			buckets:          []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "d1", "d2"},
 		},
 
+		// Moving dailyBucketsFrom to the previous day compared to the above makes 24 1-hour buckets disappear.
 		{
 			from:             model.TimeFromUnix(0),
 			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,

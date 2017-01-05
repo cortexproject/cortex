@@ -85,7 +85,7 @@ func TestDynamoTableManager(t *testing.T) {
 		"Move forward by max chunk age + grace period",
 		time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: 0},
+			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 		},
 	)
@@ -95,7 +95,7 @@ func TestDynamoTableManager(t *testing.T) {
 		"Move forward by table period - grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(-gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: 0},
+			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
@@ -106,7 +106,7 @@ func TestDynamoTableManager(t *testing.T) {
 		"Move forward by table period + grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: 0},
+			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
@@ -117,8 +117,8 @@ func TestDynamoTableManager(t *testing.T) {
 		"Move forward by table period + max chunk age + grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: 0},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: 0},
+			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
+			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: minWriteCapacity},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
 	)
@@ -128,8 +128,8 @@ func TestDynamoTableManager(t *testing.T) {
 		"Nothing changed",
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: 0},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: 0},
+			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
+			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: minWriteCapacity},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
 	)

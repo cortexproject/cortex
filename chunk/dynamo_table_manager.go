@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	readLabel  = "read"
-	writeLabel = "write"
+	readLabel        = "read"
+	writeLabel       = "write"
+	minWriteCapacity = 1
 )
 
 var (
@@ -119,6 +120,12 @@ func (m *DynamoTableManager) loop() {
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
+	if err := instrument.TimeRequestHistogram(context.Background(), "DynamoTableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
+		return m.syncTables(ctx)
+	}); err != nil {
+		log.Errorf("Error syncing tables: %v", err)
+	}
+
 	for {
 		select {
 		case <-ticker.C:
@@ -161,43 +168,55 @@ func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byName) Less(i, j int) bool { return a[i].name < a[j].name }
 
 func (m *DynamoTableManager) calculateExpectedTables(_ context.Context) []tableDescription {
+	if !m.cfg.UsePeriodicTables {
+		return []tableDescription{
+			{
+				name:             m.tableName,
+				provisionedRead:  m.cfg.ProvisionedReadThroughput,
+				provisionedWrite: m.cfg.ProvisionedWriteThroughput,
+			},
+		}
+	}
+
 	result := []tableDescription{}
+
+	var (
+		tablePeriodSecs = int64(m.cfg.TablePeriod / time.Second)
+		gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
+		maxChunkAgeSecs = int64(m.cfg.MaxChunkAge / time.Second)
+		firstTable      = m.cfg.PeriodicTableStartAt.Unix() / tablePeriodSecs
+		lastTable       = (mtime.Now().Unix() + gracePeriodSecs) / tablePeriodSecs
+		now             = mtime.Now().Unix()
+	)
 
 	// Add the legacy table
 	{
 		legacyTable := tableDescription{
-			name:            m.tableName,
-			provisionedRead: m.cfg.ProvisionedReadThroughput,
+			name:             m.tableName,
+			provisionedRead:  m.cfg.ProvisionedReadThroughput,
+			provisionedWrite: minWriteCapacity,
 		}
 
 		// if we are before the switch to periodic table, we need to give this table write throughput
-		if !m.cfg.UsePeriodicTables || mtime.Now().Before(m.cfg.PeriodicTableStartAt.Add(m.cfg.CreationGracePeriod).Add(m.cfg.MaxChunkAge)) {
+		if now < (firstTable*tablePeriodSecs)+gracePeriodSecs+maxChunkAgeSecs {
 			legacyTable.provisionedWrite = m.cfg.ProvisionedWriteThroughput
 		}
 		result = append(result, legacyTable)
 	}
 
-	if m.cfg.UsePeriodicTables {
-		tablePeriodSecs := int64(m.cfg.TablePeriod / time.Second)
-		gracePeriodSecs := int64(m.cfg.CreationGracePeriod / time.Second)
-		maxChunkAgeSecs := int64(m.cfg.MaxChunkAge / time.Second)
-		firstTable := m.cfg.PeriodicTableStartAt.Unix() / tablePeriodSecs
-		lastTable := (mtime.Now().Unix() + gracePeriodSecs) / tablePeriodSecs
-
-		for i := firstTable; i <= lastTable; i++ {
-			table := tableDescription{
-				// Name construction needs to be consistent with chunk_store.bigBuckets
-				name:            m.cfg.TablePrefix + strconv.Itoa(int(i)),
-				provisionedRead: m.cfg.ProvisionedReadThroughput,
-			}
-
-			// if now is within table [start - grace, end + grace), then we need some write throughput
-			now := mtime.Now().Unix()
-			if (i*tablePeriodSecs)-gracePeriodSecs <= now && now < (i*tablePeriodSecs)+tablePeriodSecs+gracePeriodSecs+maxChunkAgeSecs {
-				table.provisionedWrite = m.cfg.ProvisionedWriteThroughput
-			}
-			result = append(result, table)
+	for i := firstTable; i <= lastTable; i++ {
+		table := tableDescription{
+			// Name construction needs to be consistent with chunk_store.bigBuckets
+			name:             m.cfg.TablePrefix + strconv.Itoa(int(i)),
+			provisionedRead:  m.cfg.ProvisionedReadThroughput,
+			provisionedWrite: minWriteCapacity,
 		}
+
+		// if now is within table [start - grace, end + grace), then we need some write throughput
+		if (i*tablePeriodSecs)-gracePeriodSecs <= now && now < (i*tablePeriodSecs)+tablePeriodSecs+gracePeriodSecs+maxChunkAgeSecs {
+			table.provisionedWrite = m.cfg.ProvisionedWriteThroughput
+		}
+		result = append(result, table)
 	}
 
 	sort.Sort(byName(result))
@@ -306,10 +325,11 @@ func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []ta
 		tableCapacity.WithLabelValues(writeLabel, desc.name).Set(float64(*out.Table.ProvisionedThroughput.WriteCapacityUnits))
 
 		if *out.Table.ProvisionedThroughput.ReadCapacityUnits == desc.provisionedRead && *out.Table.ProvisionedThroughput.WriteCapacityUnits == desc.provisionedWrite {
+			log.Infof("  Provisioned throughput: read = %d, write = %d, skipping.", *out.Table.ProvisionedThroughput.ReadCapacityUnits, *out.Table.ProvisionedThroughput.WriteCapacityUnits)
 			continue
 		}
 
-		log.Infof("Updating provisioned throughput on table %s", desc.name)
+		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.name, desc.provisionedRead, desc.provisionedWrite)
 		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
 			_, err := m.dynamodb.UpdateTable(&dynamodb.UpdateTableInput{
 				TableName: aws.String(desc.name),

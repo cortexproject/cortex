@@ -88,6 +88,7 @@ type Ingester struct {
 type Config struct {
 	FlushCheckPeriod  time.Duration
 	MaxChunkIdle      time.Duration
+	MaxChunkAge       time.Duration
 	RateUpdatePeriod  time.Duration
 	ConcurrentFlushes int
 	GRPCListenPort    int
@@ -448,7 +449,7 @@ func (i *Ingester) Stop() {
 
 func (i *Ingester) loop() {
 	defer func() {
-		i.flushAllUsers(true)
+		i.sweepUsers(true)
 
 		// We close flush queue here to ensure the flushLoops pick
 		// up all the flushes triggered by the last run
@@ -465,7 +466,7 @@ func (i *Ingester) loop() {
 	for {
 		select {
 		case <-flushTick:
-			i.flushAllUsers(false)
+			i.sweepUsers(false)
 		case <-rateUpdateTick:
 			i.updateRates()
 		case <-i.quit:
@@ -474,7 +475,8 @@ func (i *Ingester) loop() {
 	}
 }
 
-func (i *Ingester) flushAllUsers(immediate bool) {
+// sweepUsers periodically schedules series for flushing and garbage collects users with no series
+func (i *Ingester) sweepUsers(immediate bool) {
 	if i.chunkStore == nil {
 		return
 	}
@@ -487,40 +489,68 @@ func (i *Ingester) flushAllUsers(immediate bool) {
 	i.userStateLock.Unlock()
 
 	for id, state := range userState {
-		i.flushUser(id, state, immediate)
-	}
-}
-
-func (i *Ingester) flushUser(userID string, userState *userState, immediate bool) {
-	for pair := range userState.fpToSeries.iter() {
-		i.flushSeries(userState, pair.fp, pair.series, immediate)
+		for pair := range state.fpToSeries.iter() {
+			state.fpLocker.Lock(pair.fp)
+			i.sweepSeries(id, pair.fp, pair.series, immediate)
+			state.fpLocker.Unlock(pair.fp)
+		}
 	}
 
-	// TODO: this is probably slow, and could be done in a better way.
 	i.userStateLock.Lock()
-	if userState.fpToSeries.length() == 0 {
-		delete(i.userState, userID)
+	for id, state := range userState {
+		if state.fpToSeries.length() == 0 {
+			delete(i.userState, id)
+		}
 	}
 	i.userStateLock.Unlock()
 }
 
-func (i *Ingester) flushSeries(u *userState, fp model.Fingerprint, series *memorySeries, immediate bool) {
-	// Enqueue this series flushing if the oldest chunk is older than the threshold
-
-	u.fpLocker.Lock(fp)
+// sweepSeries schedules a series for flushing based on a set of criterea
+//
+// NB we don't close the head chunk here, as the series could wait in the queue
+// for some time, and we want to encourage chunks to be as full as possible.
+func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memorySeries, immediate bool) {
 	if len(series.chunkDescs) <= 0 {
-		u.fpLocker.Unlock(fp)
 		return
 	}
 
 	lastTime := series.lastTime
-	flush := immediate || len(series.chunkDescs) > 1 || model.Now().Sub(lastTime) > i.cfg.MaxChunkIdle
-	u.fpLocker.Unlock(fp)
+	flush := i.shouldFlushSeries(series, immediate)
 
 	if flush {
 		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{lastTime, u.userID, fp, immediate})
+		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{lastTime, userID, fp, immediate})
 	}
+}
+
+func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) bool {
+	// Series should be scheduled for flushing if they have more than one chunk
+	if immediate || len(series.chunkDescs) > 1 {
+		return true
+	}
+
+	// Or if any chunks need flushing
+	for _, c := range series.chunkDescs {
+		if i.shouldFlushChunk(c) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (i *Ingester) shouldFlushChunk(c *prom_chunk.Desc) bool {
+	// Chunks should be flushed if their first entry is older than MaxChunkAge
+	if model.Now().Sub(c.ChunkFirstTime) > i.cfg.MaxChunkAge {
+		return true
+	}
+
+	// Chunk should be flushed if their last entry is older then MaxChunkIdle
+	if model.Now().Sub(c.ChunkLastTime) > i.cfg.MaxChunkIdle {
+		return true
+	}
+
+	return false
 }
 
 func (i *Ingester) flushLoop(j int) {
@@ -536,55 +566,61 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		// get the user
-		i.userStateLock.Lock()
-		userState, ok := i.userState[op.userID]
-		i.userStateLock.Unlock()
-		if !ok {
-			continue
+		if err := i.flushUserSeries(op.userID, op.fp, op.immediate); err != nil {
+			log.Errorf("Failed to flush user: %v", err)
 		}
-		ctx := user.WithID(context.Background(), op.userID)
-
-		// Decide what chunks to flush
-		series, ok := userState.fpToSeries.get(op.fp)
-		if !ok {
-			continue
-		}
-
-		userState.fpLocker.Lock(op.fp)
-
-		// Assume we're going to flush everything
-		chunks := series.chunkDescs
-
-		// If the head chunk is old enough, close it
-		if op.immediate || model.Now().Sub(series.lastTime) > i.cfg.MaxChunkIdle {
-			series.closeHead()
-		} else {
-			chunks = chunks[:len(chunks)-1]
-		}
-		userState.fpLocker.Unlock(op.fp)
-
-		if len(chunks) == 0 {
-			continue
-		}
-
-		// flush the chunks without locking the series
-		err := i.flushChunks(ctx, op.fp, series.metric, chunks)
-		if err != nil {
-			log.Errorf("Failed to flush series: %v", err)
-			continue
-		}
-
-		// now remove the chunks
-		userState.fpLocker.Lock(op.fp)
-		series.chunkDescs = series.chunkDescs[len(chunks):]
-		i.memoryChunks.Sub(float64(len(chunks)))
-		if len(series.chunkDescs) == 0 {
-			userState.fpToSeries.del(op.fp)
-			userState.index.delete(series.metric, op.fp)
-		}
-		userState.fpLocker.Unlock(op.fp)
 	}
+}
+
+func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
+	i.userStateLock.Lock()
+	userState, ok := i.userState[userID]
+	i.userStateLock.Unlock()
+	if !ok {
+		return nil
+	}
+
+	series, ok := userState.fpToSeries.get(fp)
+	if !ok {
+		return nil
+	}
+
+	userState.fpLocker.Lock(fp)
+	if !i.shouldFlushSeries(series, immediate) {
+		userState.fpLocker.Unlock(fp)
+		return nil
+	}
+
+	// Assume we're going to flush everything, and maybe don't flush the head chunk if it doesn't need it.
+	chunks := series.chunkDescs
+	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(chunks[0])) {
+		series.closeHead()
+	} else {
+		chunks = chunks[:len(chunks)-1]
+	}
+	userState.fpLocker.Unlock(fp)
+
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	// flush the chunks without locking the series
+	ctx := user.WithID(context.Background(), userID)
+	err := i.flushChunks(ctx, fp, series.metric, chunks)
+	if err != nil {
+		return err
+	}
+
+	// now remove the chunks
+	userState.fpLocker.Lock(fp)
+	series.chunkDescs = series.chunkDescs[len(chunks):]
+	i.memoryChunks.Sub(float64(len(chunks)))
+	if len(series.chunkDescs) == 0 {
+		userState.fpToSeries.del(fp)
+		userState.index.delete(series.metric, fp)
+	}
+	userState.fpLocker.Unlock(fp)
+	return nil
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*prom_chunk.Desc) error {

@@ -200,29 +200,6 @@ func (i *Ingester) Ready() bool {
 	return i.cfg.Ring.Ready()
 }
 
-func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {
-	userID, err := user.GetID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no user id")
-	}
-
-	i.userStateLock.Lock()
-	defer i.userStateLock.Unlock()
-	state, ok := i.userState[userID]
-	if !ok {
-		state = &userState{
-			userID:          userID,
-			fpToSeries:      newSeriesMap(),
-			fpLocker:        newFingerprintLocker(16),
-			index:           newInvertedIndex(),
-			ingestedSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
-		}
-		state.mapper = newFPMapper(state.fpToSeries)
-		i.userState[userID] = state
-	}
-	return state, nil
-}
-
 // Push implements cortex.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
 	for _, sample := range util.FromWriteRequest(req) {
@@ -289,6 +266,29 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		state.ingestedSamples.inc()
 	}
 	return err
+}
+
+func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {
+	userID, err := user.GetID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id")
+	}
+
+	i.userStateLock.Lock()
+	defer i.userStateLock.Unlock()
+	state, ok := i.userState[userID]
+	if !ok {
+		state = &userState{
+			userID:          userID,
+			fpToSeries:      newSeriesMap(),
+			fpLocker:        newFingerprintLocker(16),
+			index:           newInvertedIndex(),
+			ingestedSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		}
+		state.mapper = newFPMapper(state.fpToSeries)
+		i.userState[userID] = state
+	}
+	return state, nil
 }
 
 func (u *userState) getOrCreateSeries(metric model.Metric) (model.Fingerprint, *memorySeries, error) {

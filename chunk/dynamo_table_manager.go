@@ -138,7 +138,7 @@ func (m *DynamoTableManager) loop() {
 }
 
 func (m *DynamoTableManager) syncTables(ctx context.Context) error {
-	expected := m.calculateExpectedTables(ctx)
+	expected := m.calculateExpectedTables()
 
 	toCreate, toCheckThroughput, err := m.partitionTables(ctx, expected)
 	if err != nil {
@@ -164,7 +164,7 @@ func (a byName) Len() int           { return len(a) }
 func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byName) Less(i, j int) bool { return a[i].name < a[j].name }
 
-func (m *DynamoTableManager) calculateExpectedTables(_ context.Context) []tableDescription {
+func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 	if !m.cfg.UsePeriodicTables {
 		return []tableDescription{
 			{

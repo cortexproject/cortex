@@ -520,7 +520,7 @@ func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, throug
 	totalLookups := int32(0)
 	for _, b := range buckets {
 		go func(bucket bucketSpec) {
-			incoming, lookups, err := c.lookupChunksFor(ctx, userID, bucket.tableName, bucket.bucket, metricName, matchers)
+			incoming, lookups, err := c.lookupChunksFor(ctx, userID, bucket, metricName, matchers)
 			atomic.AddInt32(&totalLookups, lookups)
 			if err != nil {
 				incomingErrors <- err
@@ -565,9 +565,9 @@ func next(s string) string {
 	return result
 }
 
-func (c *AWSStore) lookupChunksFor(ctx context.Context, userID, tableName, bucket string, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
+func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
 	if len(matchers) == 0 {
-		return c.lookupChunksForMetricName(ctx, userID, tableName, bucket, metricName)
+		return c.lookupChunksForMetricName(ctx, userID, bucket, metricName)
 	}
 
 	incomingChunkSets := make(chan ByID)
@@ -575,7 +575,7 @@ func (c *AWSStore) lookupChunksFor(ctx context.Context, userID, tableName, bucke
 
 	for _, matcher := range matchers {
 		go func(matcher *metric.LabelMatcher) {
-			incoming, err := c.lookupChunksForMatcher(ctx, userID, tableName, bucket, metricName, matcher)
+			incoming, err := c.lookupChunksForMatcher(ctx, userID, bucket, metricName, matcher)
 			if err != nil {
 				incomingErrors <- err
 			} else {
@@ -597,10 +597,10 @@ func (c *AWSStore) lookupChunksFor(ctx context.Context, userID, tableName, bucke
 	return nWayIntersect(chunkSets), int32(len(matchers)), lastErr
 }
 
-func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID, tableName, bucket string, metricName model.LabelValue) (ByID, int32, error) {
-	hashValue := hashValue(userID, bucket, metricName)
+func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue) (ByID, int32, error) {
+	hashValue := hashValue(userID, bucket.bucket, metricName)
 	input := &dynamodb.QueryInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(bucket.tableName),
 		KeyConditions: map[string]*dynamodb.Condition{
 			hashKey: {
 				AttributeValueList: []*dynamodb.AttributeValue{
@@ -638,8 +638,8 @@ func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID, tableN
 	return chunkSet, 1, nil
 }
 
-func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID, tableName, bucket string, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
-	hashValue := hashValue(userID, bucket, metricName)
+func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
+	hashValue := hashValue(userID, bucket.bucket, metricName)
 	var rangeMinValue, rangeMaxValue []byte
 	if matcher.Type == metric.Equal {
 		nextValue := model.LabelValue(next(string(matcher.Value)))
@@ -652,7 +652,7 @@ func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID, tableName
 	}
 
 	input := &dynamodb.QueryInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(bucket.tableName),
 		KeyConditions: map[string]*dynamodb.Condition{
 			hashKey: {
 				AttributeValueList: []*dynamodb.AttributeValue{

@@ -310,6 +310,7 @@ func setupQuerier(
 	}).WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)
 	router.PathPrefix("/api/v1").Handler(promRouter)
+	router.Path("/validate_expr").Handler(http.HandlerFunc(distributor.ValidateExprHandler))
 	router.Path("/user_stats").Handler(http.HandlerFunc(distributor.UserStatsHandler))
 	router.Path("/graph").Handler(ui.GraphHandler())
 	router.PathPrefix("/static/").Handler(ui.StaticAssetsHandler("/api/prom/static/"))

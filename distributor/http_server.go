@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/remote"
 
 	"github.com/weaveworks/cortex/util"
@@ -53,4 +54,11 @@ func (d *Distributor) UserStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	util.WriteJSONResponse(w, stats)
+}
+
+// ValidateExprHandler validates a PromQL expression.
+func (d *Distributor) ValidateExprHandler(w http.ResponseWriter, r *http.Request) {
+	_, err := promql.ParseExpr(r.FormValue("expr"))
+	valid := (err == nil)
+	util.WriteJSONResponse(w, map[string]bool{"valid": valid})
 }

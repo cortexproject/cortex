@@ -47,10 +47,7 @@ type TableManagerConfig struct {
 	DynamoDBURL          string
 	DynamoDBPollInterval time.Duration
 
-	UsePeriodicTables    bool
-	TablePrefix          string
-	TablePeriod          time.Duration
-	PeriodicTableStartAt time.Time
+	PeriodicTableConfig
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod        time.Duration
@@ -102,13 +99,13 @@ func NewDynamoTableManager(cfg TableManagerConfig) (*DynamoTableManager, error) 
 	return m, nil
 }
 
-// Start starts the DynamoTableManager
+// Start the DynamoTableManager
 func (m *DynamoTableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
 }
 
-// Stop stops the DynamoTableManager
+// Stop the DynamoTableManager
 func (m *DynamoTableManager) Stop() {
 	close(m.done)
 	m.wait.Wait()
@@ -223,22 +220,13 @@ func (m *DynamoTableManager) calculateExpectedTables(_ context.Context) []tableD
 	return result
 }
 
+// partitionTables works out tables that need to be created vs tables that need to be updated
 func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions []tableDescription) ([]tableDescription, []tableDescription, error) {
-	// Get a list of tables that exist
-	existingTables := []string{}
-	if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
-		return m.dynamodb.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
-			for _, s := range resp.TableNames {
-				existingTables = append(existingTables, *s)
-			}
-			return true
-		})
-	}); err != nil {
+	existingTables, err := m.listTables(ctx)
+	if err != nil {
 		return nil, nil, err
 	}
-	sort.Strings(existingTables)
 
-	// Work out tables that need to be created vs tables that need to be updated
 	toCreate, toCheckThroughput := []tableDescription{}, []tableDescription{}
 	i, j := 0, 0
 	for i < len(descriptions) && j < len(existingTables) {
@@ -249,7 +237,7 @@ func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions [
 			// existingTables[j].name isn't in descriptions, can ignore
 			j++
 		} else {
-			// Table existis, need to check it has correct throughput
+			// Table exists, need to check it has correct throughput
 			toCheckThroughput = append(toCheckThroughput, descriptions[i])
 			i++
 			j++
@@ -260,6 +248,22 @@ func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions [
 	}
 
 	return toCreate, toCheckThroughput, nil
+}
+
+func (m *DynamoTableManager) listTables(ctx context.Context) ([]string, error) {
+	table := []string{}
+	if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
+		return m.dynamodb.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
+			for _, s := range resp.TableNames {
+				table = append(table, *s)
+			}
+			return true
+		})
+	}); err != nil {
+		return nil, err
+	}
+	sort.Strings(table)
+	return table, nil
 }
 
 func (m *DynamoTableManager) createTables(ctx context.Context, descriptions []tableDescription) error {

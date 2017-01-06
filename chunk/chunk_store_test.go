@@ -20,17 +20,7 @@ func init() {
 	spew.Config.SortKeys = true // :\
 }
 
-func TestChunkStoreUnprocessed(t *testing.T) {
-	dynamodb := NewMockDynamoDB(2, 2)
-	store, err := NewAWSStore(StoreConfig{
-		dynamodb: dynamodb,
-		s3:       NewMockS3(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Stop()
-
+func setupDynamodb(t *testing.T, dynamodb dynamodbClient) {
 	tableManager, err := NewDynamoTableManager(TableManagerConfig{
 		dynamodb: dynamodb,
 	})
@@ -40,6 +30,19 @@ func TestChunkStoreUnprocessed(t *testing.T) {
 	if err := tableManager.syncTables(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestChunkStoreUnprocessed(t *testing.T) {
+	dynamodb := NewMockDynamoDB(2, 2)
+	setupDynamodb(t, dynamodb)
+	store, err := NewAWSStore(StoreConfig{
+		dynamodb: dynamodb,
+		s3:       NewMockS3(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Stop()
 
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()
@@ -72,6 +75,7 @@ func TestChunkStoreUnprocessed(t *testing.T) {
 
 func TestChunkStore(t *testing.T) {
 	dynamodb := NewMockDynamoDB(0, 0)
+	setupDynamodb(t, dynamodb)
 	store, err := NewAWSStore(StoreConfig{
 		dynamodb: dynamodb,
 		s3:       NewMockS3(),
@@ -80,16 +84,6 @@ func TestChunkStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Stop()
-
-	tableManager, err := NewDynamoTableManager(TableManagerConfig{
-		dynamodb: dynamodb,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tableManager.syncTables(context.Background()); err != nil {
-		t.Fatal(err)
-	}
 
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()

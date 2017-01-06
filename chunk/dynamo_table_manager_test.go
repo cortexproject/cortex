@@ -26,10 +26,13 @@ func TestDynamoTableManager(t *testing.T) {
 	cfg := TableManagerConfig{
 		dynamodb: dynamodb,
 
-		UsePeriodicTables:          true,
-		TablePrefix:                tablePrefix,
-		TablePeriod:                tablePeriod,
-		PeriodicTableStartAt:       time.Unix(0, 0),
+		PeriodicTableConfig: PeriodicTableConfig{
+			UsePeriodicTables:    true,
+			TablePrefix:          tablePrefix,
+			TablePeriod:          tablePeriod,
+			PeriodicTableStartAt: time.Unix(0, 0),
+		},
+
 		CreationGracePeriod:        gracePeriod,
 		MaxChunkAge:                maxChunkAge,
 		ProvisionedWriteThroughput: write,

@@ -13,7 +13,9 @@ import (
 
 func main() {
 	cfg := chunk.TableManagerConfig{
-		UsePeriodicTables: true,
+		PeriodicTableConfig: chunk.PeriodicTableConfig{
+			UsePeriodicTables: true,
+		},
 	}
 
 	addr := flag.String("web.listen-addr", ":80", "The address to listen on for HTTP requests.")

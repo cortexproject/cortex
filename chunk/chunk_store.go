@@ -150,14 +150,21 @@ type StoreConfig struct {
 	// hour.  Only the day matters, not the time within the day.
 	DailyBucketsFrom model.Time
 
-	UsePeriodicTables    bool
-	TablePrefix          string
-	TablePeriod          time.Duration
-	PeriodicTableStartAt time.Time
+	PeriodicTableConfig
 
 	// Not exported as only used by tests to inject mocks
 	dynamodb dynamodbClient
 	s3       s3Client
+}
+
+// PeriodicTableConfig for the use of periodic tables (ie, weekly talbes).  Can
+// control when to start the periodic tables, how long the period should be,
+// and the prefix to give the tables.
+type PeriodicTableConfig struct {
+	UsePeriodicTables    bool
+	TablePrefix          string
+	TablePeriod          time.Duration
+	PeriodicTableStartAt time.Time
 }
 
 type s3Client interface {
@@ -266,7 +273,7 @@ type bucketSpec struct {
 // be deterministic for both reads and writes.
 //
 // This function deals with any changes from one bucketing scheme to another -
-// for instance, it know the date at which to migrate from hourly buckets to
+// for instance, it knows the date at which to migrate from hourly buckets to
 // to weekly buckets.
 func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 	var (
@@ -282,19 +289,12 @@ func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 		result []bucketSpec
 	)
 
-	tableForBucket := func(bucketStart int64) string {
-		if !c.cfg.UsePeriodicTables || bucketStart < (c.cfg.PeriodicTableStartAt.Unix()) {
-			return c.tableName
-		}
-		return c.cfg.TablePrefix + strconv.Itoa(int(bucketStart/int64(c.cfg.TablePeriod/time.Second)))
-	}
-
 	for i := fromHour; i <= throughHour; i++ {
 		if i > lastHourlyBucket {
 			break
 		}
 		result = append(result, bucketSpec{
-			tableName: tableForBucket(i * secondsInHour),
+			tableName: c.tableForBucket(i * secondsInHour),
 			bucket:    strconv.Itoa(int(i)),
 		})
 	}
@@ -304,12 +304,19 @@ func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 			continue
 		}
 		result = append(result, bucketSpec{
-			tableName: tableForBucket(i * secondsInDay),
+			tableName: c.tableForBucket(i * secondsInDay),
 			bucket:    fmt.Sprintf("d%d", int(i)),
 		})
 	}
 
 	return result
+}
+
+func (c *AWSStore) tableForBucket(bucketStart int64) string {
+	if !c.cfg.UsePeriodicTables || bucketStart < (c.cfg.PeriodicTableStartAt.Unix()) {
+		return c.tableName
+	}
+	return c.cfg.TablePrefix + strconv.Itoa(int(bucketStart/int64(c.cfg.TablePeriod/time.Second)))
 }
 
 func chunkName(userID, chunkID string) string {
@@ -878,6 +885,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		}
 		return j
 	}
+
 	dictLen := func(in map[string][]*dynamodb.WriteRequest) int {
 		result := 0
 		for _, reqs := range in {
@@ -885,6 +893,8 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		}
 		return result
 	}
+
+	// Fill 'out' with WriteRequests from 'in' until it 'out' has at most dynamoMaxBatchSize requests. Remove those requests from 'in'.
 	fillReq := func(in map[string][]*dynamodb.WriteRequest, out map[string][]*dynamodb.WriteRequest) {
 		outLen, inLen := dictLen(out), dictLen(in)
 		toFill := min(inLen, dynamoMaxBatchSize-outLen)
@@ -896,6 +906,13 @@ func (r *dynamoBatchWriteItemsOp) do() {
 				in[tableName] = reqs[taken:]
 				toFill -= taken
 			}
+		}
+	}
+
+	copyUnprocessed := func(in map[string][]*dynamodb.WriteRequest, out map[string][]*dynamodb.WriteRequest) {
+		for tableName, unprocessReqs := range in {
+			out[tableName] = append(out[tableName], unprocessReqs...)
+			dynamoUnprocessedItems.Add(float64(len(unprocessReqs)))
 		}
 	}
 
@@ -925,11 +942,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 
 		// If there are unprocessed items, backoff and retry those items.
 		if resp.UnprocessedItems != nil && dictLen(resp.UnprocessedItems) > 0 {
-			for tableName, unprocessReqs := range resp.UnprocessedItems {
-				unprocessed[tableName] = append(unprocessed[tableName], unprocessReqs...)
-				dynamoUnprocessedItems.Add(float64(len(unprocessReqs)))
-			}
-
+			copyUnprocessed(resp.UnprocessedItems, unprocessed)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue
@@ -938,11 +951,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-			for tableName, unprocessReqs := range reqs {
-				unprocessed[tableName] = append(unprocessed[tableName], unprocessReqs...)
-				dynamoUnprocessedItems.Add(float64(len(unprocessReqs)))
-			}
-
+			copyUnprocessed(reqs, unprocessed)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue

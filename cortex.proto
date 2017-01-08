@@ -9,6 +9,7 @@ service Ingester {
   rpc Query(QueryRequest) returns (QueryResponse) {};
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
   rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
+  rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
 }
 
 message WriteResponse {
@@ -38,6 +39,24 @@ message UserStatsRequest {
 message UserStatsResponse {
   double ingestion_rate = 1;
   uint64 num_series = 2;
+}
+
+message MetricsForLabelMatchersRequest {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+  repeated LabelMatchers matchers_set = 3;
+}
+
+message MetricsForLabelMatchersResponse {
+  repeated Metric metric = 1;
+}
+
+message LabelMatchers {
+  repeated LabelMatcher matchers = 1;
+}
+
+message Metric {
+  repeated remote.LabelPair labels = 1;
 }
 
 enum MatchType {

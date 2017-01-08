@@ -81,6 +81,10 @@ func (c *httpIngesterClient) LabelValues(ctx context.Context, req *cortex.LabelV
 	return resp, nil
 }
 
+func (*httpIngesterClient) MetricsForLabelMatchers(_ context.Context, _ *cortex.MetricsForLabelMatchersRequest, _ ...grpc.CallOption) (*cortex.MetricsForLabelMatchersResponse, error) {
+	return nil, nil
+}
+
 // UserStats returns stats for the current user.
 func (c *httpIngesterClient) UserStats(ctx context.Context, in *cortex.UserStatsRequest, _ ...grpc.CallOption) (*cortex.UserStatsResponse, error) {
 	resp := &cortex.UserStatsResponse{}

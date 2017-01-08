@@ -32,6 +32,7 @@ func NewQueryable(distributor Querier, chunkStore chunk.Store) Queryable {
 type Querier interface {
 	Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error)
 	LabelValuesForLabelName(context.Context, model.LabelName) (model.LabelValues, error)
+	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matcherSets ...metric.LabelMatchers) ([]metric.Metric, error)
 }
 
 // A ChunkQuerier is a Querier that fetches samples from a ChunkStore.
@@ -57,6 +58,11 @@ func (q *ChunkQuerier) LabelValuesForLabelName(ctx context.Context, ln model.Lab
 	return nil, nil
 }
 
+// MetricsForLabelMatchers is a noop for chunk querier.
+func (q *ChunkQuerier) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matcherSets ...metric.LabelMatchers) ([]metric.Metric, error) {
+	return nil, nil
+}
+
 // Queryable is an adapter between Prometheus' Queryable and Querier.
 type Queryable struct {
 	Q local.Querier
@@ -76,7 +82,6 @@ type MergeQuerier struct {
 // QueryRange fetches series for a given time range and label matchers from multiple
 // promql.Queriers and returns the merged results as a map of series iterators.
 func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
-
 	// Fetch samples from all queriers in parallel
 	matrices := make(chan model.Matrix)
 	errors := make(chan error)
@@ -135,8 +140,25 @@ func (qm MergeQuerier) QueryInstant(ctx context.Context, ts model.Time, stalenes
 
 // MetricsForLabelMatchers Implements local.Querier.
 func (qm MergeQuerier) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matcherSets ...metric.LabelMatchers) ([]metric.Metric, error) {
-	// TODO: Implement.
-	return nil, nil
+	// NB we don't do this in parallel, as in practice we only have 2 queriers,
+	// one of which is the chunk store which doesn't implement this.
+
+	metrics := map[model.Fingerprint]metric.Metric{}
+	for _, q := range qm.Queriers {
+		ms, err := q.MetricsForLabelMatchers(ctx, from, through, matcherSets...)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range ms {
+			metrics[m.Metric.Fingerprint()] = m
+		}
+	}
+
+	result := make([]metric.Metric, 0, len(metrics))
+	for _, m := range metrics {
+		result = append(result, m)
+	}
+	return result, nil
 }
 
 // LastSampleForLabelMatchers implements local.Querier.

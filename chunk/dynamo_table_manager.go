@@ -110,6 +110,7 @@ func (m *DynamoTableManager) loop() {
 
 func (m *DynamoTableManager) syncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
+	log.Infof("Expecting %d tables", len(expected))
 
 	toCreate, toCheckThroughput, err := m.partitionTables(ctx, expected)
 	if err != nil {
@@ -204,6 +205,7 @@ func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions [
 		if descriptions[i].name < existingTables[j] {
 			// Table descriptions[i] doesn't exist
 			toCreate = append(toCreate, descriptions[i])
+			i++
 		} else if descriptions[i].name > existingTables[j] {
 			// existingTables[j].name isn't in descriptions, can ignore
 			j++

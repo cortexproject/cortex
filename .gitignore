@@ -1,4 +1,5 @@
 cmd/cortex/cortex
+cmd/cortex_table_manager/cortex_table_manager
 .uptodate
 .pkg
 cortex.pb.go

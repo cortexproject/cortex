@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
@@ -15,28 +16,49 @@ type MockDynamoDB struct {
 	mtx            sync.RWMutex
 	unprocessed    int
 	provisionedErr int
-	tables         map[string]mockDynamoDBTable
+	tables         map[string]*mockDynamoDBTable
 }
 
 type mockDynamoDBTable struct {
-	hashKey  string
-	rangeKey string
-	items    map[string][]mockDynamoDBItem
+	hashKey     string
+	rangeKey    string
+	items       map[string][]mockDynamoDBItem
+	write, read int64
 }
 
 type mockDynamoDBItem map[string]*dynamodb.AttributeValue
 
 func NewMockDynamoDB(unprocessed int, provisionedErr int) *MockDynamoDB {
 	return &MockDynamoDB{
-		tables:         map[string]mockDynamoDBTable{},
+		tables:         map[string]*mockDynamoDBTable{},
 		unprocessed:    unprocessed,
 		provisionedErr: provisionedErr,
 	}
 }
 
+func (m *MockDynamoDB) ListTablesPages(_ *dynamodb.ListTablesInput, fn func(p *dynamodb.ListTablesOutput, lastPage bool) (shouldContinue bool)) error {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	var tableNames []*string
+	for tableName := range m.tables {
+		func(tableName string) {
+			tableNames = append(tableNames, &tableName)
+		}(tableName)
+	}
+	fn(&dynamodb.ListTablesOutput{
+		TableNames: tableNames,
+	}, true)
+	return nil
+}
+
 func (m *MockDynamoDB) CreateTable(input *dynamodb.CreateTableInput) (*dynamodb.CreateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+
+	if _, ok := m.tables[*input.TableName]; ok {
+		return nil, fmt.Errorf("table already exists")
+	}
 
 	var hashKey, rangeKey string
 	for _, schemaElement := range input.KeySchema {
@@ -47,28 +69,51 @@ func (m *MockDynamoDB) CreateTable(input *dynamodb.CreateTableInput) (*dynamodb.
 		}
 	}
 
-	m.tables[*input.TableName] = mockDynamoDBTable{
+	m.tables[*input.TableName] = &mockDynamoDBTable{
 		hashKey:  hashKey,
 		rangeKey: rangeKey,
 		items:    map[string][]mockDynamoDBItem{},
+		write:    *input.ProvisionedThroughput.WriteCapacityUnits,
+		read:     *input.ProvisionedThroughput.ReadCapacityUnits,
 	}
 
 	return &dynamodb.CreateTableOutput{}, nil
 }
 
-func (m *MockDynamoDB) ListTables(*dynamodb.ListTablesInput) (*dynamodb.ListTablesOutput, error) {
+func (m *MockDynamoDB) DescribeTable(input *dynamodb.DescribeTableInput) (*dynamodb.DescribeTableOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	var tableNames []*string
-	for tableName := range m.tables {
-		func(tableName string) {
-			tableNames = append(tableNames, &tableName)
-		}(tableName)
+	table, ok := m.tables[*input.TableName]
+	if !ok {
+		return nil, fmt.Errorf("not found")
 	}
-	return &dynamodb.ListTablesOutput{
-		TableNames: tableNames,
+
+	return &dynamodb.DescribeTableOutput{
+		Table: &dynamodb.TableDescription{
+			ItemCount: aws.Int64(int64(len(table.items))),
+			ProvisionedThroughput: &dynamodb.ProvisionedThroughputDescription{
+				ReadCapacityUnits:  aws.Int64(table.read),
+				WriteCapacityUnits: aws.Int64(table.write),
+			},
+			TableStatus: aws.String(dynamodb.TableStatusActive),
+		},
 	}, nil
+}
+
+func (m *MockDynamoDB) UpdateTable(input *dynamodb.UpdateTableInput) (*dynamodb.UpdateTableOutput, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	table, ok := m.tables[*input.TableName]
+	if !ok {
+		return nil, fmt.Errorf("not found")
+	}
+
+	table.read = *input.ProvisionedThroughput.ReadCapacityUnits
+	table.write = *input.ProvisionedThroughput.WriteCapacityUnits
+
+	return &dynamodb.UpdateTableOutput{}, nil
 }
 
 func (m *MockDynamoDB) BatchWriteItem(input *dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error) {

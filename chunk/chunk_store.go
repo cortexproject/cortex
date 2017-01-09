@@ -4,19 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net/url"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/prometheus/client_golang/prometheus"
@@ -143,77 +138,32 @@ type Store interface {
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	S3URL            string
-	DynamoDBURL      string
-	ChunkCache       *Cache
+	S3         S3Client
+	BucketName string
+	DynamoDB   DynamoDBClient
+	TableName  string
+	ChunkCache *Cache
+
+	// After midnight on this day, we start bucketing indexes by day instead of by
+	// hour.  Only the day matters, not the time within the day.
 	DailyBucketsFrom model.Time
 
-	// Not exported as only used by tests to inject mocks
-	dynamodb dynamodbClient
-	s3       s3Client
+	PeriodicTableConfig
 }
 
-type dynamodbClient interface {
-	CreateTable(*dynamodb.CreateTableInput) (*dynamodb.CreateTableOutput, error)
-	ListTables(*dynamodb.ListTablesInput) (*dynamodb.ListTablesOutput, error)
-	BatchWriteItem(*dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error)
-	QueryRequest(*dynamodb.QueryInput) (req dynamoRequest, output *dynamodb.QueryOutput)
-}
-
-type dynamoRequest interface {
-	NextPage() dynamoRequest
-	HasNextPage() bool
-	Data() interface{}
-	OperationName() string
-	Send() error
-	Error() error
-}
-
-type dynamoClientAdapter struct {
-	*dynamodb.DynamoDB
-}
-
-func (d dynamoClientAdapter) QueryRequest(in *dynamodb.QueryInput) (dynamoRequest, *dynamodb.QueryOutput) {
-	req, out := d.DynamoDB.QueryRequest(in)
-	return dynamoRequestAdapter{req}, out
-}
-
-type dynamoRequestAdapter struct {
-	*request.Request
-}
-
-func (d dynamoRequestAdapter) Data() interface{} {
-	return d.Request.Data
-}
-
-func (d dynamoRequestAdapter) OperationName() string {
-	return d.Operation.Name
-}
-
-func (d dynamoRequestAdapter) NextPage() dynamoRequest {
-	return dynamoRequestAdapter{d.Request.NextPage()}
-}
-
-func (d dynamoRequestAdapter) Error() error {
-	return d.Request.Error
-}
-
-type s3Client interface {
-	PutObject(*s3.PutObjectInput) (*s3.PutObjectOutput, error)
-	GetObject(*s3.GetObjectInput) (*s3.GetObjectOutput, error)
+// PeriodicTableConfig for the use of periodic tables (ie, weekly talbes).  Can
+// control when to start the periodic tables, how long the period should be,
+// and the prefix to give the tables.
+type PeriodicTableConfig struct {
+	UsePeriodicTables    bool
+	TablePrefix          string
+	TablePeriod          time.Duration
+	PeriodicTableStartAt time.Time
 }
 
 // AWSStore implements ChunkStore for AWS
 type AWSStore struct {
-	dynamodb   dynamodbClient
-	s3         s3Client
-	chunkCache *Cache
-	tableName  string
-	bucketName string
-
-	// After midnight on this day, we start bucketing indexes by day instead of by
-	// hour.  Only the day matters, not the time within the day.
-	dailyBucketsFrom model.Time
+	cfg StoreConfig
 
 	dynamoRequests     chan dynamoOp
 	dynamoRequestsDone sync.WaitGroup
@@ -221,46 +171,8 @@ type AWSStore struct {
 
 // NewAWSStore makes a new ChunkStore
 func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
-	s3Client, bucketName := cfg.s3, ""
-	if s3Client == nil {
-		s3URL, err := url.Parse(cfg.S3URL)
-		if err != nil {
-			return nil, err
-		}
-
-		s3Config, err := awsConfigFromURL(s3URL)
-		if err != nil {
-			return nil, err
-		}
-
-		s3Client = s3.New(session.New(s3Config))
-		bucketName = strings.TrimPrefix(s3URL.Path, "/")
-	}
-
-	dynamodbClient, tableName := cfg.dynamodb, ""
-	if dynamodbClient == nil {
-		dynamodbURL, err := url.Parse(cfg.DynamoDBURL)
-		if err != nil {
-			return nil, err
-		}
-
-		dynamoDBConfig, err := awsConfigFromURL(dynamodbURL)
-		if err != nil {
-			return nil, err
-		}
-
-		dynamodbClient = dynamoClientAdapter{dynamodb.New(session.New(dynamoDBConfig))}
-		tableName = strings.TrimPrefix(dynamodbURL.Path, "/")
-	}
-
 	store := &AWSStore{
-		dynamodb:         dynamodbClient,
-		s3:               s3Client,
-		chunkCache:       cfg.ChunkCache,
-		tableName:        tableName,
-		bucketName:       bucketName,
-		dailyBucketsFrom: cfg.DailyBucketsFrom,
-
+		cfg:            cfg,
 		dynamoRequests: make(chan dynamoOp),
 	}
 
@@ -272,74 +184,15 @@ func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
 	return store, nil
 }
 
-func awsConfigFromURL(url *url.URL) (*aws.Config, error) {
-	if url.User == nil {
-		return nil, fmt.Errorf("must specify username & password in URL")
-	}
-	password, _ := url.User.Password()
-	creds := credentials.NewStaticCredentials(url.User.Username(), password, "")
-	config := aws.NewConfig().
-		WithCredentials(creds).
-		WithMaxRetries(0) // We do our own retries, so we can monitor them
-	if strings.Contains(url.Host, ".") {
-		config = config.WithEndpoint(fmt.Sprintf("http://%s", url.Host)).WithRegion("dummy")
-	} else {
-		config = config.WithRegion(url.Host)
-	}
-	return config, nil
-}
-
 // Stop background goroutines.
 func (c *AWSStore) Stop() {
 	close(c.dynamoRequests)
 	c.dynamoRequestsDone.Wait()
 }
 
-// CreateTables creates the required tables in DynamoDB.
-func (c *AWSStore) CreateTables() error {
-	// See if tableName exists.
-	resp, err := c.dynamodb.ListTables(&dynamodb.ListTablesInput{
-		Limit: aws.Int64(10),
-	})
-	if err != nil {
-		return err
-	}
-	for _, s := range resp.TableNames {
-		if *s == c.tableName {
-			return nil
-		}
-	}
-
-	params := &dynamodb.CreateTableInput{
-		TableName: aws.String(c.tableName),
-		AttributeDefinitions: []*dynamodb.AttributeDefinition{
-			{
-				AttributeName: aws.String(hashKey),
-				AttributeType: aws.String("S"),
-			},
-			{
-				AttributeName: aws.String(rangeKey),
-				AttributeType: aws.String("B"),
-			},
-		},
-		KeySchema: []*dynamodb.KeySchemaElement{
-			{
-				AttributeName: aws.String(hashKey),
-				KeyType:       aws.String("HASH"),
-			},
-			{
-				AttributeName: aws.String(rangeKey),
-				KeyType:       aws.String("RANGE"),
-			},
-		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(10),
-			WriteCapacityUnits: aws.Int64(5),
-		},
-	}
-	log.Infof("Creating table %s", c.tableName)
-	_, err = c.dynamodb.CreateTable(params)
-	return err
+type bucketSpec struct {
+	tableName string
+	bucket    string
 }
 
 // bigBuckets generates the list of "big buckets" for a given time range.
@@ -347,9 +200,9 @@ func (c *AWSStore) CreateTables() error {
 // be deterministic for both reads and writes.
 //
 // This function deals with any changes from one bucketing scheme to another -
-// for instance, it know the date at which to migrate from hourly buckets to
+// for instance, it knows the date at which to migrate from hourly buckets to
 // to weekly buckets.
-func (c *AWSStore) bigBuckets(from, through model.Time) []string {
+func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 	var (
 		fromHour    = from.Unix() / secondsInHour
 		throughHour = through.Unix() / secondsInHour
@@ -357,34 +210,47 @@ func (c *AWSStore) bigBuckets(from, through model.Time) []string {
 		fromDay    = from.Unix() / secondsInDay
 		throughDay = through.Unix() / secondsInDay
 
-		firstDailyBucket = c.dailyBucketsFrom.Unix() / secondsInDay
+		firstDailyBucket = c.cfg.DailyBucketsFrom.Unix() / secondsInDay
 		lastHourlyBucket = firstDailyBucket * 24
 
-		result []string
+		result []bucketSpec
 	)
 
 	for i := fromHour; i <= throughHour; i++ {
-		if i > lastHourlyBucket {
+		if i >= lastHourlyBucket {
 			break
 		}
-		result = append(result, strconv.Itoa(int(i)))
+		result = append(result, bucketSpec{
+			tableName: c.tableForBucket(i * secondsInHour),
+			bucket:    strconv.Itoa(int(i)),
+		})
 	}
 
 	for i := fromDay; i <= throughDay; i++ {
 		if i < firstDailyBucket {
 			continue
 		}
-		result = append(result, fmt.Sprintf("d%d", int(i)))
+		result = append(result, bucketSpec{
+			tableName: c.tableForBucket(i * secondsInDay),
+			bucket:    fmt.Sprintf("d%d", int(i)),
+		})
 	}
 
 	return result
+}
+
+func (c *AWSStore) tableForBucket(bucketStart int64) string {
+	if !c.cfg.UsePeriodicTables || bucketStart < (c.cfg.PeriodicTableStartAt.Unix()) {
+		return c.cfg.TableName
+	}
+	return c.cfg.TablePrefix + strconv.Itoa(int(bucketStart/int64(c.cfg.TablePeriod/time.Second)))
 }
 
 func chunkName(userID, chunkID string) string {
 	return fmt.Sprintf("%s/%s", userID, chunkID)
 }
 
-func hashValue(userID string, bucket string, metricName model.LabelValue) string {
+func hashValue(userID, bucket string, metricName model.LabelValue) string {
 	return fmt.Sprintf("%s:%s:%s", userID, bucket, metricName)
 }
 
@@ -450,9 +316,9 @@ func (c *AWSStore) putChunk(ctx context.Context, userID string, chunk *Chunk) er
 
 	err = instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
 		var err error
-		_, err = c.s3.PutObject(&s3.PutObjectInput{
+		_, err = c.cfg.S3.PutObject(&s3.PutObjectInput{
 			Body:   body,
-			Bucket: aws.String(c.bucketName),
+			Bucket: aws.String(c.cfg.BucketName),
 			Key:    aws.String(chunkName(userID, chunk.ID)),
 		})
 		return err
@@ -461,8 +327,8 @@ func (c *AWSStore) putChunk(ctx context.Context, userID string, chunk *Chunk) er
 		return err
 	}
 
-	if c.chunkCache != nil {
-		if err = c.chunkCache.StoreChunkData(ctx, userID, chunk); err != nil {
+	if c.cfg.ChunkCache != nil {
+		if err = c.cfg.ChunkCache.StoreChunkData(ctx, userID, chunk); err != nil {
 			log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
 		}
 	}
@@ -475,15 +341,15 @@ func (c *AWSStore) updateIndex(ctx context.Context, userID string, chunks []Chun
 		return err
 	}
 
-	return c.batchWriteDynamo(ctx, c.tableName, writeReqs)
+	return c.batchWriteDynamo(ctx, writeReqs)
 }
 
 // calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all
 // the chunks it is given.
 //
 // Creates one WriteRequest per bucket per metric per chunk.
-func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dynamodb.WriteRequest, error) {
-	writeReqs := []*dynamodb.WriteRequest{}
+func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) (map[string][]*dynamodb.WriteRequest, error) {
+	writeReqs := map[string][]*dynamodb.WriteRequest{}
 	for _, chunk := range chunks {
 		metricName, ok := chunk.Metric[model.MetricNameLabel]
 		if !ok {
@@ -492,7 +358,7 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 
 		entries := 0
 		for _, bucket := range c.bigBuckets(chunk.From, chunk.Through) {
-			hashValue := hashValue(userID, bucket, metricName)
+			hashValue := hashValue(userID, bucket.bucket, metricName)
 			for label, value := range chunk.Metric {
 				if label == model.MetricNameLabel {
 					continue
@@ -500,7 +366,7 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) ([]*dyna
 
 				entries++
 				rangeValue := rangeValue(label, value, chunk.ID)
-				writeReqs = append(writeReqs, &dynamodb.WriteRequest{
+				writeReqs[bucket.tableName] = append(writeReqs[bucket.tableName], &dynamodb.WriteRequest{
 					PutRequest: &dynamodb.PutRequest{
 						Item: map[string]*dynamodb.AttributeValue{
 							hashKey:  {S: aws.String(hashValue)},
@@ -529,8 +395,8 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 	queryChunks.Observe(float64(len(missing)))
 
 	var fromCache []Chunk
-	if c.chunkCache != nil {
-		fromCache, missing, err = c.chunkCache.FetchChunkData(ctx, userID, missing)
+	if c.cfg.ChunkCache != nil {
+		fromCache, missing, err = c.cfg.ChunkCache.FetchChunkData(ctx, userID, missing)
 		if err != nil {
 			log.Warnf("Error fetching from cache: %v", err)
 		}
@@ -541,8 +407,8 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 		return nil, err
 	}
 
-	if c.chunkCache != nil {
-		if err = c.chunkCache.StoreChunks(ctx, userID, fromS3); err != nil {
+	if c.cfg.ChunkCache != nil {
+		if err = c.cfg.ChunkCache.StoreChunks(ctx, userID, fromS3); err != nil {
 			log.Warnf("Could not store chunks in chunk cache: %v", err)
 		}
 	}
@@ -580,7 +446,7 @@ func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, throug
 	buckets := c.bigBuckets(from, through)
 	totalLookups := int32(0)
 	for _, b := range buckets {
-		go func(bucket string) {
+		go func(bucket bucketSpec) {
 			incoming, lookups, err := c.lookupChunksFor(ctx, userID, bucket, metricName, matchers)
 			atomic.AddInt32(&totalLookups, lookups)
 			if err != nil {
@@ -626,7 +492,7 @@ func next(s string) string {
 	return result
 }
 
-func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, bucket string, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
+func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
 	if len(matchers) == 0 {
 		return c.lookupChunksForMetricName(ctx, userID, bucket, metricName)
 	}
@@ -658,10 +524,10 @@ func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, bucket st
 	return nWayIntersect(chunkSets), int32(len(matchers)), lastErr
 }
 
-func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string, bucket string, metricName model.LabelValue) (ByID, int32, error) {
-	hashValue := hashValue(userID, bucket, metricName)
+func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue) (ByID, int32, error) {
+	hashValue := hashValue(userID, bucket.bucket, metricName)
 	input := &dynamodb.QueryInput{
-		TableName: aws.String(c.tableName),
+		TableName: aws.String(bucket.tableName),
 		KeyConditions: map[string]*dynamodb.Condition{
 			hashKey: {
 				AttributeValueList: []*dynamodb.AttributeValue{
@@ -699,8 +565,8 @@ func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string,
 	return chunkSet, 1, nil
 }
 
-func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bucket string, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
-	hashValue := hashValue(userID, bucket, metricName)
+func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
+	hashValue := hashValue(userID, bucket.bucket, metricName)
 	var rangeMinValue, rangeMaxValue []byte
 	if matcher.Type == metric.Equal {
 		nextValue := model.LabelValue(next(string(matcher.Value)))
@@ -713,7 +579,7 @@ func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bu
 	}
 
 	input := &dynamodb.QueryInput{
-		TableName: aws.String(c.tableName),
+		TableName: aws.String(bucket.tableName),
 		KeyConditions: map[string]*dynamodb.Condition{
 			hashKey: {
 				AttributeValueList: []*dynamodb.AttributeValue{
@@ -802,8 +668,8 @@ func (c *AWSStore) fetchChunkData(ctx context.Context, userID string, chunkSet [
 			var resp *s3.GetObjectOutput
 			err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
 				var err error
-				resp, err = c.s3.GetObject(&s3.GetObjectInput{
-					Bucket: aws.String(c.bucketName),
+				resp, err = c.cfg.S3.GetObject(&s3.GetObjectInput{
+					Bucket: aws.String(c.cfg.BucketName),
 					Key:    aws.String(chunkName(userID, chunk.ID)),
 				})
 				return err
@@ -838,20 +704,19 @@ func (c *AWSStore) fetchChunkData(ctx context.Context, userID string, chunkSet [
 }
 
 // batchWriteDynamo writes many requests to dynamo in a single batch.
-func (c *AWSStore) batchWriteDynamo(ctx context.Context, tableName string, reqs []*dynamodb.WriteRequest) error {
+func (c *AWSStore) batchWriteDynamo(ctx context.Context, reqs map[string][]*dynamodb.WriteRequest) error {
 	req := &dynamoBatchWriteItemsOp{
-		ctx:       ctx,
-		tableName: tableName,
-		reqs:      reqs,
-		dynamodb:  c.dynamodb,
-		done:      make(chan error),
+		ctx:      ctx,
+		reqs:     reqs,
+		dynamodb: c.cfg.DynamoDB,
+		done:     make(chan error),
 	}
 	c.dynamoRequests <- req
 	return <-req.done
 }
 
 func (c *AWSStore) queryPages(ctx context.Context, input *dynamodb.QueryInput, callback func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
-	page, _ := c.dynamodb.QueryRequest(input)
+	page, _ := c.cfg.DynamoDB.QueryRequest(input)
 	req := &dynamoQueryPagesOp{
 		ctx:      ctx,
 		request:  page,
@@ -887,11 +752,10 @@ type dynamoQueryPagesOp struct {
 }
 
 type dynamoBatchWriteItemsOp struct {
-	ctx       context.Context
-	tableName string
-	reqs      []*dynamodb.WriteRequest
-	dynamodb  dynamodbClient
-	done      chan error
+	ctx      context.Context
+	reqs     map[string][]*dynamodb.WriteRequest
+	dynamodb DynamoDBClient
+	done     chan error
 }
 
 func nextBackoff(lastBackoff time.Duration) time.Duration {
@@ -942,31 +806,55 @@ func (r *dynamoQueryPagesOp) do() {
 }
 
 func (r *dynamoBatchWriteItemsOp) do() {
-	outstanding, unprocessed := r.reqs, []*dynamodb.WriteRequest{}
-	backoff := minBackoff
 	min := func(i, j int) int {
 		if i < j {
 			return i
 		}
 		return j
 	}
-	fillReq := func(in *[]*dynamodb.WriteRequest, out *[]*dynamodb.WriteRequest) {
-		outLen, inLen := len(*out), len(*in)
-		toFill := min(inLen, dynamoMaxBatchSize-outLen)
-		*out = append(*out, (*in)[:toFill]...)
-		*in = (*in)[toFill:]
+
+	dictLen := func(in map[string][]*dynamodb.WriteRequest) int {
+		result := 0
+		for _, reqs := range in {
+			result += len(reqs)
+		}
+		return result
 	}
 
-	for len(outstanding)+len(unprocessed) > 0 {
-		var reqs []*dynamodb.WriteRequest
-		fillReq(&unprocessed, &reqs)
-		fillReq(&outstanding, &reqs)
+	// Fill 'out' with WriteRequests from 'in' until it 'out' has at most dynamoMaxBatchSize requests. Remove those requests from 'in'.
+	fillReq := func(in map[string][]*dynamodb.WriteRequest, out map[string][]*dynamodb.WriteRequest) {
+		outLen, inLen := dictLen(out), dictLen(in)
+		toFill := min(inLen, dynamoMaxBatchSize-outLen)
+		for toFill > 0 {
+			for tableName := range in {
+				reqs := in[tableName]
+				taken := min(len(reqs), toFill)
+				out[tableName] = append(out[tableName], reqs[:taken]...)
+				in[tableName] = reqs[taken:]
+				toFill -= taken
+			}
+		}
+	}
+
+	copyUnprocessed := func(in map[string][]*dynamodb.WriteRequest, out map[string][]*dynamodb.WriteRequest) {
+		for tableName, unprocessReqs := range in {
+			out[tableName] = append(out[tableName], unprocessReqs...)
+			dynamoUnprocessedItems.Add(float64(len(unprocessReqs)))
+		}
+	}
+
+	outstanding, unprocessed := r.reqs, map[string][]*dynamodb.WriteRequest{}
+	backoff := minBackoff
+	for dictLen(outstanding)+dictLen(unprocessed) > 0 {
+		reqs := map[string][]*dynamodb.WriteRequest{}
+		fillReq(unprocessed, reqs)
+		fillReq(outstanding, reqs)
 
 		var resp *dynamodb.BatchWriteItemOutput
 		err := instrument.TimeRequestHistogram(r.ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(_ context.Context) error {
 			var err error
 			resp, err = r.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-				RequestItems:           map[string][]*dynamodb.WriteRequest{r.tableName: reqs},
+				RequestItems:           reqs,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
 			if err != nil {
@@ -980,9 +868,8 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		}
 
 		// If there are unprocessed items, backoff and retry those items.
-		if resp.UnprocessedItems != nil && len(resp.UnprocessedItems[r.tableName]) > 0 {
-			dynamoUnprocessedItems.Add(float64(len(resp.UnprocessedItems[r.tableName])))
-			unprocessed = append(unprocessed, resp.UnprocessedItems[r.tableName]...)
+		if resp.UnprocessedItems != nil && dictLen(resp.UnprocessedItems) > 0 {
+			copyUnprocessed(resp.UnprocessedItems, unprocessed)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue
@@ -991,7 +878,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-			unprocessed = append(unprocessed, reqs...)
+			copyUnprocessed(reqs, unprocessed)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue

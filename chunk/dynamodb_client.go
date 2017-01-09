@@ -1,11 +1,16 @@
 package chunk
 
 import (
+	"net/url"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-type dynamodbClient interface {
+// DynamoDBClient is a client for DynamoDB
+type DynamoDBClient interface {
 	ListTablesPages(*dynamodb.ListTablesInput, func(p *dynamodb.ListTablesOutput, lastPage bool) (shouldContinue bool)) error
 	CreateTable(*dynamodb.CreateTableInput) (*dynamodb.CreateTableOutput, error)
 	DescribeTable(*dynamodb.DescribeTableInput) (*dynamodb.DescribeTableOutput, error)
@@ -22,6 +27,23 @@ type dynamoRequest interface {
 	OperationName() string
 	Send() error
 	Error() error
+}
+
+// NewDynamoDBClient makes a new DynamoDBClient
+func NewDynamoDBClient(dynamoDBURL string) (DynamoDBClient, string, error) {
+	url, err := url.Parse(dynamoDBURL)
+	if err != nil {
+		return nil, "", err
+	}
+
+	dynamoDBConfig, err := awsConfigFromURL(url)
+	if err != nil {
+		return nil, "", err
+	}
+
+	dynamoDBClient := dynamoClientAdapter{dynamodb.New(session.New(dynamoDBConfig))}
+	tableName := strings.TrimPrefix(url.Path, "/")
+	return dynamoDBClient, tableName, nil
 }
 
 type dynamoClientAdapter struct {

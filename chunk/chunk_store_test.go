@@ -20,9 +20,9 @@ func init() {
 	spew.Config.SortKeys = true // :\
 }
 
-func setupDynamodb(t *testing.T, dynamodb dynamodbClient) {
+func setupDynamodb(t *testing.T, dynamoDB DynamoDBClient) {
 	tableManager, err := NewDynamoTableManager(TableManagerConfig{
-		dynamodb: dynamodb,
+		DynamoDB: dynamoDB,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -33,11 +33,11 @@ func setupDynamodb(t *testing.T, dynamodb dynamodbClient) {
 }
 
 func TestChunkStoreUnprocessed(t *testing.T) {
-	dynamodb := NewMockDynamoDB(2, 2)
-	setupDynamodb(t, dynamodb)
+	dynamoDB := NewMockDynamoDB(2, 2)
+	setupDynamodb(t, dynamoDB)
 	store, err := NewAWSStore(StoreConfig{
-		dynamodb: dynamodb,
-		s3:       NewMockS3(),
+		DynamoDB: dynamoDB,
+		S3:       NewMockS3(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -74,11 +74,11 @@ func TestChunkStoreUnprocessed(t *testing.T) {
 }
 
 func TestChunkStore(t *testing.T) {
-	dynamodb := NewMockDynamoDB(0, 0)
-	setupDynamodb(t, dynamodb)
+	dynamoDB := NewMockDynamoDB(0, 0)
+	setupDynamodb(t, dynamoDB)
 	store, err := NewAWSStore(StoreConfig{
-		dynamodb: dynamodb,
-		s3:       NewMockS3(),
+		DynamoDB: dynamoDB,
+		S3:       NewMockS3(),
 	})
 	if err != nil {
 		t.Fatal(err)

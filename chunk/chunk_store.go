@@ -4,18 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net/url"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/prometheus/client_golang/prometheus"
@@ -142,19 +138,17 @@ type Store interface {
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	S3URL       string
-	DynamoDBURL string
-	ChunkCache  *Cache
+	S3         S3Client
+	BucketName string
+	DynamoDB   DynamoDBClient
+	TableName  string
+	ChunkCache *Cache
 
 	// After midnight on this day, we start bucketing indexes by day instead of by
 	// hour.  Only the day matters, not the time within the day.
 	DailyBucketsFrom model.Time
 
 	PeriodicTableConfig
-
-	// Not exported as only used by tests to inject mocks
-	dynamodb dynamodbClient
-	s3       s3Client
 }
 
 // PeriodicTableConfig for the use of periodic tables (ie, weekly talbes).  Can
@@ -167,19 +161,8 @@ type PeriodicTableConfig struct {
 	PeriodicTableStartAt time.Time
 }
 
-type s3Client interface {
-	PutObject(*s3.PutObjectInput) (*s3.PutObjectOutput, error)
-	GetObject(*s3.GetObjectInput) (*s3.GetObjectOutput, error)
-}
-
 // AWSStore implements ChunkStore for AWS
 type AWSStore struct {
-	dynamodb   dynamodbClient
-	s3         s3Client
-	chunkCache *Cache
-	tableName  string
-	bucketName string
-
 	cfg StoreConfig
 
 	dynamoRequests     chan dynamoOp
@@ -188,47 +171,8 @@ type AWSStore struct {
 
 // NewAWSStore makes a new ChunkStore
 func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
-	s3Client, bucketName := cfg.s3, ""
-	if s3Client == nil {
-		s3URL, err := url.Parse(cfg.S3URL)
-		if err != nil {
-			return nil, err
-		}
-
-		s3Config, err := awsConfigFromURL(s3URL)
-		if err != nil {
-			return nil, err
-		}
-
-		s3Client = s3.New(session.New(s3Config))
-		bucketName = strings.TrimPrefix(s3URL.Path, "/")
-	}
-
-	dynamodbClient, tableName := cfg.dynamodb, ""
-	if dynamodbClient == nil {
-		dynamodbURL, err := url.Parse(cfg.DynamoDBURL)
-		if err != nil {
-			return nil, err
-		}
-
-		dynamoDBConfig, err := awsConfigFromURL(dynamodbURL)
-		if err != nil {
-			return nil, err
-		}
-
-		dynamodbClient = dynamoClientAdapter{dynamodb.New(session.New(dynamoDBConfig))}
-		tableName = strings.TrimPrefix(dynamodbURL.Path, "/")
-	}
-
 	store := &AWSStore{
-		dynamodb:   dynamodbClient,
-		s3:         s3Client,
-		chunkCache: cfg.ChunkCache,
-		tableName:  tableName,
-		bucketName: bucketName,
-
-		cfg: cfg,
-
+		cfg:            cfg,
 		dynamoRequests: make(chan dynamoOp),
 	}
 
@@ -238,23 +182,6 @@ func NewAWSStore(cfg StoreConfig) (*AWSStore, error) {
 	}
 
 	return store, nil
-}
-
-func awsConfigFromURL(url *url.URL) (*aws.Config, error) {
-	if url.User == nil {
-		return nil, fmt.Errorf("must specify username & password in URL")
-	}
-	password, _ := url.User.Password()
-	creds := credentials.NewStaticCredentials(url.User.Username(), password, "")
-	config := aws.NewConfig().
-		WithCredentials(creds).
-		WithMaxRetries(0) // We do our own retries, so we can monitor them
-	if strings.Contains(url.Host, ".") {
-		config = config.WithEndpoint(fmt.Sprintf("http://%s", url.Host)).WithRegion("dummy")
-	} else {
-		config = config.WithRegion(url.Host)
-	}
-	return config, nil
 }
 
 // Stop background goroutines.
@@ -314,7 +241,7 @@ func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 
 func (c *AWSStore) tableForBucket(bucketStart int64) string {
 	if !c.cfg.UsePeriodicTables || bucketStart < (c.cfg.PeriodicTableStartAt.Unix()) {
-		return c.tableName
+		return c.cfg.TableName
 	}
 	return c.cfg.TablePrefix + strconv.Itoa(int(bucketStart/int64(c.cfg.TablePeriod/time.Second)))
 }
@@ -389,9 +316,9 @@ func (c *AWSStore) putChunk(ctx context.Context, userID string, chunk *Chunk) er
 
 	err = instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
 		var err error
-		_, err = c.s3.PutObject(&s3.PutObjectInput{
+		_, err = c.cfg.S3.PutObject(&s3.PutObjectInput{
 			Body:   body,
-			Bucket: aws.String(c.bucketName),
+			Bucket: aws.String(c.cfg.BucketName),
 			Key:    aws.String(chunkName(userID, chunk.ID)),
 		})
 		return err
@@ -400,8 +327,8 @@ func (c *AWSStore) putChunk(ctx context.Context, userID string, chunk *Chunk) er
 		return err
 	}
 
-	if c.chunkCache != nil {
-		if err = c.chunkCache.StoreChunkData(ctx, userID, chunk); err != nil {
+	if c.cfg.ChunkCache != nil {
+		if err = c.cfg.ChunkCache.StoreChunkData(ctx, userID, chunk); err != nil {
 			log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
 		}
 	}
@@ -468,8 +395,8 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 	queryChunks.Observe(float64(len(missing)))
 
 	var fromCache []Chunk
-	if c.chunkCache != nil {
-		fromCache, missing, err = c.chunkCache.FetchChunkData(ctx, userID, missing)
+	if c.cfg.ChunkCache != nil {
+		fromCache, missing, err = c.cfg.ChunkCache.FetchChunkData(ctx, userID, missing)
 		if err != nil {
 			log.Warnf("Error fetching from cache: %v", err)
 		}
@@ -480,8 +407,8 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 		return nil, err
 	}
 
-	if c.chunkCache != nil {
-		if err = c.chunkCache.StoreChunks(ctx, userID, fromS3); err != nil {
+	if c.cfg.ChunkCache != nil {
+		if err = c.cfg.ChunkCache.StoreChunks(ctx, userID, fromS3); err != nil {
 			log.Warnf("Could not store chunks in chunk cache: %v", err)
 		}
 	}
@@ -741,8 +668,8 @@ func (c *AWSStore) fetchChunkData(ctx context.Context, userID string, chunkSet [
 			var resp *s3.GetObjectOutput
 			err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
 				var err error
-				resp, err = c.s3.GetObject(&s3.GetObjectInput{
-					Bucket: aws.String(c.bucketName),
+				resp, err = c.cfg.S3.GetObject(&s3.GetObjectInput{
+					Bucket: aws.String(c.cfg.BucketName),
 					Key:    aws.String(chunkName(userID, chunk.ID)),
 				})
 				return err
@@ -781,7 +708,7 @@ func (c *AWSStore) batchWriteDynamo(ctx context.Context, reqs map[string][]*dyna
 	req := &dynamoBatchWriteItemsOp{
 		ctx:      ctx,
 		reqs:     reqs,
-		dynamodb: c.dynamodb,
+		dynamodb: c.cfg.DynamoDB,
 		done:     make(chan error),
 	}
 	c.dynamoRequests <- req
@@ -789,7 +716,7 @@ func (c *AWSStore) batchWriteDynamo(ctx context.Context, reqs map[string][]*dyna
 }
 
 func (c *AWSStore) queryPages(ctx context.Context, input *dynamodb.QueryInput, callback func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
-	page, _ := c.dynamodb.QueryRequest(input)
+	page, _ := c.cfg.DynamoDB.QueryRequest(input)
 	req := &dynamoQueryPagesOp{
 		ctx:      ctx,
 		request:  page,
@@ -827,7 +754,7 @@ type dynamoQueryPagesOp struct {
 type dynamoBatchWriteItemsOp struct {
 	ctx      context.Context
 	reqs     map[string][]*dynamodb.WriteRequest
-	dynamodb dynamodbClient
+	dynamodb DynamoDBClient
 	done     chan error
 }
 

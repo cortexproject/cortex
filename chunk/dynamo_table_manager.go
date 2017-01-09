@@ -1,15 +1,12 @@
 package chunk
 
 import (
-	"net/url"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -44,7 +41,8 @@ func init() {
 
 // TableManagerConfig is the config for a DynamoTableManager
 type TableManagerConfig struct {
-	DynamoDBURL          string
+	DynamoDB             DynamoDBClient
+	TableName            string
 	DynamoDBPollInterval time.Duration
 
 	PeriodicTableConfig
@@ -54,45 +52,18 @@ type TableManagerConfig struct {
 	MaxChunkAge                time.Duration
 	ProvisionedWriteThroughput int64
 	ProvisionedReadThroughput  int64
-
-	// Not exported as only used by tests to inject mocks
-	dynamodb dynamodbClient
 }
 
 // DynamoTableManager creates and manages the provisioned throughput on DynamoDB tables
 type DynamoTableManager struct {
-	cfg      TableManagerConfig
-	dynamodb dynamodbClient
-
-	// the name of the single, pre-weekly table
-	tableName string
-
+	cfg  TableManagerConfig
 	done chan struct{}
 	wait sync.WaitGroup
 }
 
 // NewDynamoTableManager makes a new DynamoTableManager
 func NewDynamoTableManager(cfg TableManagerConfig) (*DynamoTableManager, error) {
-	dynamodbClient, tableName := cfg.dynamodb, ""
-	if dynamodbClient == nil {
-		dynamodbURL, err := url.Parse(cfg.DynamoDBURL)
-		if err != nil {
-			return nil, err
-		}
-
-		dynamoDBConfig, err := awsConfigFromURL(dynamodbURL)
-		if err != nil {
-			return nil, err
-		}
-
-		dynamodbClient = dynamoClientAdapter{dynamodb.New(session.New(dynamoDBConfig))}
-		tableName = strings.TrimPrefix(dynamodbURL.Path, "/")
-	}
-
 	m := &DynamoTableManager{
-		dynamodb:  dynamodbClient,
-		tableName: tableName,
-
 		cfg:  cfg,
 		done: make(chan struct{}),
 	}
@@ -168,7 +139,7 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 	if !m.cfg.UsePeriodicTables {
 		return []tableDescription{
 			{
-				name:             m.tableName,
+				name:             m.cfg.TableName,
 				provisionedRead:  m.cfg.ProvisionedReadThroughput,
 				provisionedWrite: m.cfg.ProvisionedWriteThroughput,
 			},
@@ -189,7 +160,7 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 	// Add the legacy table
 	{
 		legacyTable := tableDescription{
-			name:             m.tableName,
+			name:             m.cfg.TableName,
 			provisionedRead:  m.cfg.ProvisionedReadThroughput,
 			provisionedWrite: minWriteCapacity,
 		}
@@ -253,7 +224,7 @@ func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions [
 func (m *DynamoTableManager) listTables(ctx context.Context) ([]string, error) {
 	table := []string{}
 	if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
-		return m.dynamodb.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
+		return m.cfg.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
 			for _, s := range resp.TableNames {
 				table = append(table, *s)
 			}
@@ -297,7 +268,7 @@ func (m *DynamoTableManager) createTables(ctx context.Context, descriptions []ta
 		}
 		log.Infof("Creating table %s", desc.name)
 		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(_ context.Context) error {
-			_, err := m.dynamodb.CreateTable(params)
+			_, err := m.cfg.DynamoDB.CreateTable(params)
 			return err
 		}); err != nil {
 			return err
@@ -312,7 +283,7 @@ func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []ta
 		var out *dynamodb.DescribeTableOutput
 		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
 			var err error
-			out, err = m.dynamodb.DescribeTable(&dynamodb.DescribeTableInput{
+			out, err = m.cfg.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
 				TableName: aws.String(desc.name),
 			})
 			return err
@@ -335,7 +306,7 @@ func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []ta
 
 		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.name, desc.provisionedRead, desc.provisionedWrite)
 		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
-			_, err := m.dynamodb.UpdateTable(&dynamodb.UpdateTableInput{
+			_, err := m.cfg.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
 				TableName: aws.String(desc.name),
 				ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
 					ReadCapacityUnits:  aws.Int64(desc.provisionedRead),

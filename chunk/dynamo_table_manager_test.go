@@ -21,10 +21,10 @@ const (
 )
 
 func TestDynamoTableManager(t *testing.T) {
-	dynamodb := NewMockDynamoDB(0, 0)
+	dynamoDB := NewMockDynamoDB(0, 0)
 
 	cfg := TableManagerConfig{
-		dynamodb: dynamodb,
+		DynamoDB: dynamoDB,
 
 		PeriodicTableConfig: PeriodicTableConfig{
 			UsePeriodicTables:    true,
@@ -49,7 +49,7 @@ func TestDynamoTableManager(t *testing.T) {
 			if err := tableManager.syncTables(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			expectTables(t, dynamodb, expected)
+			expectTables(t, dynamoDB, expected)
 		})
 	}
 
@@ -138,7 +138,7 @@ func TestDynamoTableManager(t *testing.T) {
 	)
 }
 
-func expectTables(t *testing.T, dynamo dynamodbClient, expected []tableDescription) {
+func expectTables(t *testing.T, dynamo DynamoDBClient, expected []tableDescription) {
 	tables := []string{}
 	if err := dynamo.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
 		for _, s := range resp.TableNames {

@@ -243,14 +243,28 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 			Expiration: cfg.memcachedExpiration,
 		}
 	}
+
+	s3Client, bucketName, err := chunk.NewS3Client(cfg.s3URL)
+	if err != nil {
+		return nil, err
+	}
+
+	dynamoDBClient, tableName, err := chunk.NewDynamoDBClient(cfg.dynamodbURL)
+	if err != nil {
+		return nil, err
+	}
+
 	dailyBucketsFrom, err := time.Parse("2006-01-02", cfg.dynamodbDailyBucketsFrom)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing daily buckets begin date: %v", err)
 	}
 	return chunk.NewAWSStore(chunk.StoreConfig{
-		S3URL:            cfg.s3URL,
-		DynamoDBURL:      cfg.dynamodbURL,
-		ChunkCache:       chunkCache,
+		S3:         s3Client,
+		BucketName: bucketName,
+		DynamoDB:   dynamoDBClient,
+		TableName:  tableName,
+		ChunkCache: chunkCache,
+
 		DailyBucketsFrom: model.TimeFromUnix(dailyBucketsFrom.Unix()),
 	})
 }

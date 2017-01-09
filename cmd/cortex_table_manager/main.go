@@ -21,7 +21,7 @@ func main() {
 	addr := flag.String("web.listen-addr", ":80", "The address to listen on for HTTP requests.")
 	flag.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	periodicTableStartAt := flag.String("dynamodb.periodic-table.start", "", "DynamoDB periodic tables start time.")
-	flag.StringVar(&cfg.DynamoDBURL, "dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
+	dynamodbURL := flag.String("dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
 	flag.StringVar(&cfg.TablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
 	flag.DurationVar(&cfg.TablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
 	flag.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/delete before/after its needed).")
@@ -34,6 +34,11 @@ func main() {
 	cfg.PeriodicTableStartAt, err = time.Parse(time.RFC3339, *periodicTableStartAt)
 	if err != nil {
 		log.Fatalf("Error parsing dynamodb.periodic-table.start: %v", err)
+	}
+
+	cfg.DynamoDB, cfg.TableName, err = chunk.NewDynamoDBClient(*dynamodbURL)
+	if err != nil {
+		log.Fatalf("Error creating DynamoDB client: %v", err)
 	}
 
 	tableManager, err := chunk.NewDynamoTableManager(cfg)

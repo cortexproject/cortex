@@ -217,7 +217,7 @@ func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 	)
 
 	for i := fromHour; i <= throughHour; i++ {
-		if i > lastHourlyBucket {
+		if i >= lastHourlyBucket {
 			break
 		}
 		result = append(result, bucketSpec{

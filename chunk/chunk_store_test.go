@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -162,16 +163,44 @@ func diff(want, have interface{}) string {
 }
 
 func TestBigBuckets(t *testing.T) {
+	const (
+		tableName      = "table"
+		periodicPrefix = "periodic"
+	)
+
+	buckets := func(tableName string, bs []string) []bucketSpec {
+		result := []bucketSpec{}
+		for _, b := range bs {
+			result = append(result, bucketSpec{
+				tableName: tableName,
+				bucket:    b,
+			})
+		}
+		return result
+	}
+
+	mergeBuckets := func(bss ...[]bucketSpec) []bucketSpec {
+		result := []bucketSpec{}
+		for _, bs := range bss {
+			result = append(result, bs...)
+		}
+		return result
+	}
+
+	firstDayBuckets := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23"}
+
 	scenarios := []struct {
 		from, through, dailyBucketsFrom model.Time
-		buckets                         []string
+		periodicTablesFrom              time.Time
+		periodicTablesPeriod            time.Duration
+		buckets                         []bucketSpec
 	}{
 		// Buckets are by hour until we reach the `dailyBucketsFrom`, after which they are by day.
 		{
 			from:             model.TimeFromUnix(0),
 			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,
 			dailyBucketsFrom: model.TimeFromUnix(0).Add(1 * 24 * time.Hour),
-			buckets:          []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "d1", "d2"},
+			buckets:          buckets(tableName, append(firstDayBuckets, "d1", "d2")),
 		},
 
 		// Only the day part of `dailyBucketsFrom` matters, not the time part.
@@ -179,7 +208,7 @@ func TestBigBuckets(t *testing.T) {
 			from:             model.TimeFromUnix(0),
 			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,
 			dailyBucketsFrom: model.TimeFromUnix(0).Add(2*24*time.Hour) - 1,
-			buckets:          []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "d1", "d2"},
+			buckets:          buckets(tableName, append(firstDayBuckets, "d1", "d2")),
 		},
 
 		// Moving dailyBucketsFrom to the previous day compared to the above makes 24 1-hour buckets disappear.
@@ -187,7 +216,7 @@ func TestBigBuckets(t *testing.T) {
 			from:             model.TimeFromUnix(0),
 			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,
 			dailyBucketsFrom: model.TimeFromUnix(0).Add(1*24*time.Hour) - 1,
-			buckets:          []string{"0", "d0", "d1", "d2"},
+			buckets:          buckets(tableName, []string{"d0", "d1", "d2"}),
 		},
 
 		// If `dailyBucketsFrom` is after the interval, everything will be bucketed by hour.
@@ -195,7 +224,7 @@ func TestBigBuckets(t *testing.T) {
 			from:             model.TimeFromUnix(0),
 			through:          model.TimeFromUnix(0).Add(2 * 24 * time.Hour),
 			dailyBucketsFrom: model.TimeFromUnix(0).Add(99 * 24 * time.Hour),
-			buckets:          []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48"},
+			buckets:          buckets(tableName, append(firstDayBuckets, "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48")),
 		},
 
 		// Should only return daily buckets when dailyBucketsFrom is before the interval.
@@ -203,23 +232,54 @@ func TestBigBuckets(t *testing.T) {
 			from:             model.TimeFromUnix(0).Add(1 * 24 * time.Hour),
 			through:          model.TimeFromUnix(0).Add(3*24*time.Hour) - 1,
 			dailyBucketsFrom: model.TimeFromUnix(0),
-			buckets:          []string{"d1", "d2"},
+			buckets:          buckets(tableName, []string{"d1", "d2"}),
+		},
+
+		// Basic weekly- ables.
+		{
+			from:                 model.TimeFromUnix(0),
+			through:              model.TimeFromUnix(0).Add(4*24*time.Hour) - 1,
+			dailyBucketsFrom:     model.TimeFromUnix(0),
+			periodicTablesFrom:   time.Unix(0, 0),
+			periodicTablesPeriod: 2 * 24 * time.Hour,
+			buckets: mergeBuckets(
+				buckets(periodicPrefix+"0", []string{"d0", "d1"}),
+				buckets(periodicPrefix+"1", []string{"d2", "d3"}),
+			),
+		},
+
+		// Daily buckets + weekly tables.
+		{
+			from:                 model.TimeFromUnix(0),
+			through:              model.TimeFromUnix(0).Add(4*24*time.Hour) - 1,
+			dailyBucketsFrom:     model.TimeFromUnix(0).Add(2*24*time.Hour) - 1,
+			periodicTablesFrom:   time.Unix(0, 0).Add(1 * 24 * time.Hour),
+			periodicTablesPeriod: 2 * 24 * time.Hour,
+			buckets: mergeBuckets(
+				buckets(tableName, firstDayBuckets),
+				buckets(periodicPrefix+"0", []string{"d1"}),
+				buckets(periodicPrefix+"1", []string{"d2", "d3"}),
+			),
 		},
 	}
 	for i, s := range scenarios {
-		expected := []bucketSpec{}
-		for _, b := range s.buckets {
-			expected = append(expected, bucketSpec{bucket: b})
-		}
-
-		cs := &AWSStore{
-			cfg: StoreConfig{
-				DailyBucketsFrom: s.dailyBucketsFrom,
-			},
-		}
-		buckets := cs.bigBuckets(s.from, s.through)
-		if !reflect.DeepEqual(buckets, expected) {
-			t.Fatalf("%d. unexpected buckets; want %v, got %v", i, s.buckets, buckets)
-		}
+		t.Run(fmt.Sprintf("Case %d", i), func(t *testing.T) {
+			cs := &AWSStore{
+				cfg: StoreConfig{
+					TableName:        tableName,
+					DailyBucketsFrom: s.dailyBucketsFrom,
+					PeriodicTableConfig: PeriodicTableConfig{
+						UsePeriodicTables:    !s.periodicTablesFrom.IsZero(),
+						TablePeriod:          s.periodicTablesPeriod,
+						TablePrefix:          periodicPrefix,
+						PeriodicTableStartAt: s.periodicTablesFrom,
+					},
+				},
+			}
+			buckets := cs.bigBuckets(s.from, s.through)
+			if !reflect.DeepEqual(buckets, s.buckets) {
+				t.Fatalf("%d. unexpected buckets; want %v, got %v", i, s.buckets, buckets)
+			}
+		})
 	}
 }

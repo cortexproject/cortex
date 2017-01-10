@@ -486,7 +486,11 @@ func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, throug
 }
 
 func next(s string) string {
-	// TODO deal with overflows
+	if len(s) == 0 {
+		return "\x01" // Result cannot container null characters, so use 1 instead.
+	}
+
+	// TODO deal with overflows, null characters etc
 	l := len(s)
 	result := s[:l-1] + string(s[l-1]+1)
 	return result

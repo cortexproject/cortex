@@ -61,23 +61,28 @@ func init() {
 }
 
 type cfg struct {
-	mode                     string
-	listenPort               int
-	consulHost               string
-	consulPrefix             string
-	s3URL                    string
-	dynamodbURL              string
-	dynamodbCreateTables     bool
-	dynamodbPollInterval     time.Duration
-	dynamodbDailyBucketsFrom string
-	memcachedHostname        string
-	memcachedTimeout         time.Duration
-	memcachedExpiration      time.Duration
-	memcachedService         string
-	remoteTimeout            time.Duration
-	numTokens                int
-	logSuccess               bool
-	watchDynamo              bool
+	mode         string
+	listenPort   int
+	consulHost   string
+	consulPrefix string
+	s3URL        string
+
+	dynamodbURL                  string
+	dynamodbCreateTables         bool
+	dynamodbPollInterval         time.Duration
+	dynamodbDailyBucketsFrom     string
+	dynamodbPeriodicTableStartAt string
+	dynamodbTablePrefix          string
+	dynamodbTablePeriod          time.Duration
+
+	memcachedHostname   string
+	memcachedTimeout    time.Duration
+	memcachedExpiration time.Duration
+	memcachedService    string
+	remoteTimeout       time.Duration
+	numTokens           int
+	logSuccess          bool
+	watchDynamo         bool
 
 	ingesterConfig    ingester.Config
 	distributorConfig distributor.Config
@@ -97,6 +102,9 @@ func main() {
 	flag.StringVar(&cfg.dynamodbURL, "dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
 	flag.DurationVar(&cfg.dynamodbPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	flag.StringVar(&cfg.dynamodbDailyBucketsFrom, "dynamodb.daily-buckets-from", "9999-01-01", "The date in the format YYYY-MM-DD of the first day for which DynamoDB index buckets should be day-sized vs. hour-sized.")
+	flag.StringVar(&cfg.dynamodbPeriodicTableStartAt, "dynamodb.periodic-table.start", "", "DynamoDB periodic tables start time. If unspecified, don't use periodic tables.")
+	flag.StringVar(&cfg.dynamodbTablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
+	flag.DurationVar(&cfg.dynamodbTablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
 
 	flag.StringVar(&cfg.memcachedHostname, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
 	flag.StringVar(&cfg.memcachedService, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
@@ -119,10 +127,6 @@ func main() {
 	flag.StringVar(&cfg.rulerConfig.ConfigsAPIURL, "ruler.configs.url", "", "URL of configs API server.")
 	flag.StringVar(&cfg.rulerConfig.UserID, "ruler.userID", "", "Weave Cloud org to run rules for")
 	flag.DurationVar(&cfg.rulerConfig.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
-
-	// Deprecated
-	flag.BoolVar(&cfg.dynamodbCreateTables, "dynamodb.create-tables", false, "Create required DynamoDB tables on startup.")
-	flag.BoolVar(&cfg.watchDynamo, "watch-dynamo", false, "Periodically collect DynamoDB provisioned throughput.")
 
 	flag.Parse()
 
@@ -258,6 +262,16 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing daily buckets begin date: %v", err)
 	}
+
+	usePeriodicTables, periodicTableStartAt := false, time.Time{}
+	if cfg.dynamodbPeriodicTableStartAt != "" {
+		usePeriodicTables = true
+		periodicTableStartAt, err = time.Parse(time.RFC3339, cfg.dynamodbPeriodicTableStartAt)
+		if err != nil {
+			log.Fatalf("Error parsing dynamodb.periodic-table.start: %v", err)
+		}
+	}
+
 	return chunk.NewAWSStore(chunk.StoreConfig{
 		S3:         s3Client,
 		BucketName: bucketName,
@@ -266,6 +280,13 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 		ChunkCache: chunkCache,
 
 		DailyBucketsFrom: model.TimeFromUnix(dailyBucketsFrom.Unix()),
+
+		PeriodicTableConfig: chunk.PeriodicTableConfig{
+			UsePeriodicTables:    usePeriodicTables,
+			TablePrefix:          cfg.dynamodbTablePrefix,
+			TablePeriod:          cfg.dynamodbTablePeriod,
+			PeriodicTableStartAt: periodicTableStartAt,
+		},
 	})
 }
 

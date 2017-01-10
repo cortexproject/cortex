@@ -136,6 +136,7 @@ func TestChunkStore(t *testing.T) {
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
 
 	test("Just name label", []Chunk{chunk1, chunk2}, nameMatcher)
+	test("Empty matcher", nil, nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", ""))
 	test("Equal", []Chunk{chunk1}, nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "baz"))
 	test("Not equal", []Chunk{chunk2}, nameMatcher, mustNewLabelMatcher(metric.NotEqual, "bar", "baz"))
 	test("Regex match", []Chunk{chunk1, chunk2}, nameMatcher, mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz"))

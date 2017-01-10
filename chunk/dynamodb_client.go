@@ -68,7 +68,10 @@ func (d dynamoRequestAdapter) OperationName() string {
 }
 
 func (d dynamoRequestAdapter) NextPage() dynamoRequest {
-	return dynamoRequestAdapter{d.Request.NextPage()}
+	if r := d.Request.NextPage(); r != nil {
+		return dynamoRequestAdapter{r}
+	}
+	return nil
 }
 
 func (d dynamoRequestAdapter) Error() error {

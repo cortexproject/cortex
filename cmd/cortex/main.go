@@ -102,7 +102,7 @@ func main() {
 	flag.StringVar(&cfg.dynamodbURL, "dynamodb.url", "localhost:8000", "DynamoDB endpoint URL.")
 	flag.DurationVar(&cfg.dynamodbPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	flag.StringVar(&cfg.dynamodbDailyBucketsFrom, "dynamodb.daily-buckets-from", "9999-01-01", "The date in the format YYYY-MM-DD of the first day for which DynamoDB index buckets should be day-sized vs. hour-sized.")
-	flag.StringVar(&cfg.dynamodbPeriodicTableStartAt, "dynamodb.periodic-table.start", "", "DynamoDB periodic tables start time.")
+	flag.StringVar(&cfg.dynamodbPeriodicTableStartAt, "dynamodb.periodic-table.start", "", "DynamoDB periodic tables start time. If unspecified, don't use periodic tables.")
 	flag.StringVar(&cfg.dynamodbTablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
 	flag.DurationVar(&cfg.dynamodbTablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
 

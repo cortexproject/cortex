@@ -115,7 +115,7 @@ func TestIngesterAppend(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		req, err := util.ToQueryRequest(model.Earliest, model.Latest, matcher)
+		req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -324,7 +324,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 				return err
 			}
 
-			req, err := util.ToQueryRequest(from, to, matchers...)
+			req, err := util.ToQueryRequest(from, to, matchers)
 			if err != nil {
 				return err
 			}
@@ -365,21 +365,54 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 	return result, err
 }
 
+// forAllIngesters runs f, in parallel, for all ingesters
+func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+	resps, errs := make(chan interface{}), make(chan error)
+	ingesters := d.cfg.Ring.GetAll()
+	for _, ingester := range ingesters {
+		go func(ingester ring.IngesterDesc) {
+			client, err := d.getClientFor(ingester)
+			if err != nil {
+				errs <- err
+				return
+			}
+
+			resp, err := f(client)
+			if err != nil {
+				errs <- err
+			} else {
+				resps <- resp
+			}
+		}(ingester)
+	}
+
+	var lastErr error
+	result := []interface{}{}
+	for range ingesters {
+		select {
+		case resp := <-resps:
+			result = append(result, resp)
+		case lastErr = <-errs:
+		}
+	}
+	return result, lastErr
+}
+
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
+	req := &cortex.LabelValuesRequest{
+		LabelName: string(labelName),
+	}
+	resps, err := d.forAllIngesters(func(client cortex.IngesterClient) (interface{}, error) {
+		return client.LabelValues(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	valueSet := map[model.LabelValue]struct{}{}
-	for _, ingester := range d.cfg.Ring.GetAll() {
-		client, err := d.getClientFor(ingester)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := client.LabelValues(ctx, &cortex.LabelValuesRequest{
-			LabelName: string(labelName),
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, v := range resp.LabelValues {
+	for _, resp := range resps {
+		for _, v := range resp.(*cortex.LabelValuesResponse).LabelValues {
 			valueSet[model.LabelValue(v)] = struct{}{}
 		}
 	}
@@ -391,20 +424,51 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 	return values, nil
 }
 
+// MetricsForLabelMatchers gets the metrics that match said matchers
+func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...metric.LabelMatchers) ([]metric.Metric, error) {
+	req, err := util.ToMetricsForLabelMatchersRequest(from, through, matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	resps, err := d.forAllIngesters(func(client cortex.IngesterClient) (interface{}, error) {
+		return client.MetricsForLabelMatchers(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := map[model.Fingerprint]model.Metric{}
+	for _, resp := range resps {
+		ms := util.FromMetricsForLabelMatchersResponse(resp.(*cortex.MetricsForLabelMatchersResponse))
+		for _, m := range ms {
+			metrics[m.Fingerprint()] = m
+		}
+	}
+
+	result := make([]metric.Metric, 0, len(metrics))
+	for _, m := range metrics {
+		result = append(result, metric.Metric{
+			Metric: m,
+		})
+	}
+	return result, nil
+}
+
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
+	req := &cortex.UserStatsRequest{}
+	resps, err := d.forAllIngesters(func(client cortex.IngesterClient) (interface{}, error) {
+		return client.UserStats(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	totalStats := &UserStats{}
-	for _, ingester := range d.cfg.Ring.GetAll() {
-		client, err := d.getClientFor(ingester)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := client.UserStats(ctx, &cortex.UserStatsRequest{})
-		if err != nil {
-			return nil, err
-		}
-		totalStats.IngestionRate += resp.IngestionRate
-		totalStats.NumSeries += resp.NumSeries
+	for _, resp := range resps {
+		totalStats.IngestionRate += resp.(*cortex.UserStatsResponse).IngestionRate
+		totalStats.NumSeries += resp.(*cortex.UserStatsResponse).NumSeries
 	}
 
 	totalStats.IngestionRate /= float64(d.cfg.ReplicationFactor)

@@ -422,6 +422,39 @@ func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesReque
 	return resp, nil
 }
 
+// MetricsForLabelMatchers returns all the metrics which match a set of matchers.
+func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *cortex.MetricsForLabelMatchersRequest) (*cortex.MetricsForLabelMatchersResponse, error) {
+	state, err := i.getStateFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO Right now we ignore start and end.
+	_, _, matchersSet, err := util.FromMetricsForLabelMatchersRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	fps := map[model.Fingerprint]struct{}{}
+	for _, matchers := range matchersSet {
+		for _, fp := range state.index.lookup(matchers) {
+			fps[fp] = struct{}{}
+		}
+	}
+
+	result := []model.Metric{}
+	for fp := range fps {
+		state.fpLocker.Lock(fp)
+		series, ok := state.fpToSeries.get(fp)
+		if ok {
+			result = append(result, series.metric)
+		}
+		state.fpLocker.Unlock(fp)
+	}
+
+	return util.ToMetricsForLabelMatchersResponse(result), nil
+}
+
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx context.Context, req *cortex.UserStatsRequest) (*cortex.UserStatsResponse, error) {
 	state, err := i.getStateFor(ctx)

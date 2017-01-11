@@ -189,7 +189,7 @@ func (m *MockDynamoDB) Query(input *dynamodb.QueryInput) (*dynamodb.QueryOutput,
 	if !ok {
 		log.Printf("Lookup %s/* -> *", hashValue)
 		found = items
-	} else {
+	} else if *rangeKeyCondition.ComparisonOperator == dynamodb.ComparisonOperatorBetween {
 		rangeValueStart := rangeKeyCondition.AttributeValueList[0].B
 		rangeValueEnd := rangeKeyCondition.AttributeValueList[1].B
 
@@ -208,6 +208,32 @@ func (m *MockDynamoDB) Query(input *dynamodb.QueryInput) (*dynamodb.QueryOutput,
 			return &dynamodb.QueryOutput{}, nil
 		}
 		found = items[i:j]
+	} else if *rangeKeyCondition.ComparisonOperator == dynamodb.ComparisonOperatorBeginsWith {
+		prefix := rangeKeyCondition.AttributeValueList[0].B
+
+		log.Printf("Lookup prefix %s/%x (%d)", hashValue, prefix, len(items))
+
+		// the smallest index i in [0, n) at which f(i) is true
+		i := sort.Search(len(items), func(i int) bool {
+			if bytes.Compare(items[i][table.rangeKey].B, prefix) > 0 {
+				return true
+			}
+			return bytes.HasPrefix(items[i][table.rangeKey].B, prefix)
+		})
+		j := sort.Search(len(items)-i, func(j int) bool {
+			if bytes.Compare(items[i+j][table.rangeKey].B, prefix) < 0 {
+				return false
+			}
+			return !bytes.HasPrefix(items[i+j][table.rangeKey].B, prefix)
+		})
+
+		log.Printf("  found range [%d:%d)", i, i+j)
+		if i > len(items) || j == 0 {
+			return &dynamodb.QueryOutput{}, nil
+		}
+		found = items[i : i+j]
+	} else {
+		panic(fmt.Sprintf("%s not supported", *rangeKeyCondition.ComparisonOperator))
 	}
 
 	result := make([]map[string]*dynamodb.AttributeValue, 0, len(found))

@@ -254,8 +254,8 @@ func hashValue(userID, bucket string, metricName model.LabelValue) string {
 	return fmt.Sprintf("%s:%s:%s", userID, bucket, metricName)
 }
 
-func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) []byte {
-	return lex.EncodeOrDie(string(label), string(value), chunkID)
+func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) ([]byte, error) {
+	return lex.Encode(string(label), string(value), chunkID)
 }
 
 func parseRangeValue(v []byte) (label model.LabelName, value model.LabelValue, chunkID string, err error) {
@@ -365,7 +365,10 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) (map[str
 				}
 
 				entries++
-				rangeValue := rangeValue(label, value, chunk.ID)
+				rangeValue, err := rangeValue(label, value, chunk.ID)
+				if err != nil {
+					return nil, err
+				}
 				writeReqs[bucket.tableName] = append(writeReqs[bucket.tableName], &dynamodb.WriteRequest{
 					PutRequest: &dynamodb.PutRequest{
 						Item: map[string]*dynamodb.AttributeValue{
@@ -485,17 +488,6 @@ func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, throug
 	return filtered, lastErr
 }
 
-func next(s string) string {
-	if len(s) == 0 {
-		return "\x01" // Result cannot container null characters, so use 1 instead.
-	}
-
-	// TODO deal with overflows, null characters etc
-	l := len(s)
-	result := s[:l-1] + string(s[l-1]+1)
-	return result
-}
-
 func (c *AWSStore) lookupChunksFor(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue, matchers []*metric.LabelMatcher) (ByID, int32, error) {
 	if len(matchers) == 0 {
 		return c.lookupChunksForMetricName(ctx, userID, bucket, metricName)
@@ -571,15 +563,15 @@ func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string,
 
 func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
 	hashValue := hashValue(userID, bucket.bucket, metricName)
-	var rangeMinValue, rangeMaxValue []byte
+	var rangePrefix []byte
+	var err error
 	if matcher.Type == metric.Equal {
-		nextValue := model.LabelValue(next(string(matcher.Value)))
-		rangeMinValue = rangeValue(matcher.Name, matcher.Value, "")
-		rangeMaxValue = rangeValue(matcher.Name, nextValue, "")
+		rangePrefix, err = lex.Encode(string(matcher.Name), string(matcher.Value))
 	} else {
-		nextLabel := model.LabelName(next(string(matcher.Name)))
-		rangeMinValue = rangeValue(matcher.Name, "", "")
-		rangeMaxValue = rangeValue(nextLabel, "", "")
+		rangePrefix, err = lex.Encode(string(matcher.Name))
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	input := &dynamodb.QueryInput{
@@ -593,10 +585,9 @@ func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bu
 			},
 			rangeKey: {
 				AttributeValueList: []*dynamodb.AttributeValue{
-					{B: rangeMinValue},
-					{B: rangeMaxValue},
+					{B: rangePrefix},
 				},
-				ComparisonOperator: aws.String("BETWEEN"),
+				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
 			},
 		},
 		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),

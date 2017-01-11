@@ -287,7 +287,7 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 			TablePeriod:          cfg.dynamodbTablePeriod,
 			PeriodicTableStartAt: periodicTableStartAt,
 		},
-	})
+	}), nil
 }
 
 func setupDistributor(

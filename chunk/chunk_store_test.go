@@ -36,13 +36,10 @@ func setupDynamodb(t *testing.T, dynamoDB DynamoDBClient) {
 func TestChunkStoreUnprocessed(t *testing.T) {
 	dynamoDB := NewMockDynamoDB(2, 2)
 	setupDynamodb(t, dynamoDB)
-	store, err := NewAWSStore(StoreConfig{
+	store := NewAWSStore(StoreConfig{
 		DynamoDB: dynamoDB,
 		S3:       NewMockS3(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer store.Stop()
 
 	ctx := user.WithID(context.Background(), "0")
@@ -77,13 +74,10 @@ func TestChunkStoreUnprocessed(t *testing.T) {
 func TestChunkStore(t *testing.T) {
 	dynamoDB := NewMockDynamoDB(0, 0)
 	setupDynamodb(t, dynamoDB)
-	store, err := NewAWSStore(StoreConfig{
+	store := NewAWSStore(StoreConfig{
 		DynamoDB: dynamoDB,
 		S3:       NewMockS3(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer store.Stop()
 
 	ctx := user.WithID(context.Background(), "0")

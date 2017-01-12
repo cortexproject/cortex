@@ -1,109 +1,42 @@
 package ingester
 
 import (
-	"sync"
+	"fmt"
+	"sort"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-
 	"github.com/prometheus/prometheus/storage/local/chunk"
+	"github.com/prometheus/prometheus/storage/metric"
 )
 
-// fingerprintSeriesPair pairs a fingerprint with a memorySeries pointer.
-type fingerprintSeriesPair struct {
-	fp     model.Fingerprint
-	series *memorySeries
-}
+var discardedSamples = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "cortex_ingester_out_of_order_samples_total",
+		Help: "The total number of samples that were discarded because their timestamps were at or before the last received sample for a series.",
+	},
+	[]string{discardReasonLabel},
+)
 
-// seriesMap maps fingerprints to memory series. All its methods are
-// goroutine-safe. A seriesMap is effectively is a goroutine-safe version of
-// map[model.Fingerprint]*memorySeries.
-type seriesMap struct {
-	mtx sync.RWMutex
-	m   map[model.Fingerprint]*memorySeries
-}
-
-// newSeriesMap returns a newly allocated empty seriesMap. To create a seriesMap
-// based on a prefilled map, use an explicit initializer.
-func newSeriesMap() *seriesMap {
-	return &seriesMap{m: make(map[model.Fingerprint]*memorySeries)}
-}
-
-// length returns the number of mappings in the seriesMap.
-func (sm *seriesMap) length() int {
-	sm.mtx.RLock()
-	defer sm.mtx.RUnlock()
-
-	return len(sm.m)
-}
-
-// get returns a memorySeries for a fingerprint. Return values have the same
-// semantics as the native Go map.
-func (sm *seriesMap) get(fp model.Fingerprint) (s *memorySeries, ok bool) {
-	sm.mtx.RLock()
-	s, ok = sm.m[fp]
-	// Note that the RUnlock is not done via defer for performance reasons.
-	// TODO(beorn7): Once https://github.com/golang/go/issues/14939 is
-	// fixed, revert to the usual defer idiom.
-	sm.mtx.RUnlock()
-	return
-}
-
-// put adds a mapping to the seriesMap. It panics if s == nil.
-func (sm *seriesMap) put(fp model.Fingerprint, s *memorySeries) {
-	sm.mtx.Lock()
-	defer sm.mtx.Unlock()
-
-	if s == nil {
-		panic("tried to add nil pointer to seriesMap")
-	}
-	sm.m[fp] = s
-}
-
-// del removes a mapping from the series Map.
-func (sm *seriesMap) del(fp model.Fingerprint) {
-	sm.mtx.Lock()
-	defer sm.mtx.Unlock()
-
-	delete(sm.m, fp)
-}
-
-// iter returns a channel that produces all mappings in the seriesMap. The
-// channel will be closed once all fingerprints have been received. Not
-// consuming all fingerprints from the channel will leak a goroutine. The
-// semantics of concurrent modification of seriesMap is the similar as the one
-// for iterating over a map with a 'range' clause. However, if the next element
-// in iteration order is removed after the current element has been received
-// from the channel, it will still be produced by the channel.
-func (sm *seriesMap) iter() <-chan fingerprintSeriesPair {
-	ch := make(chan fingerprintSeriesPair)
-	go func() {
-		sm.mtx.RLock()
-		for fp, s := range sm.m {
-			sm.mtx.RUnlock()
-			ch <- fingerprintSeriesPair{fp, s}
-			sm.mtx.RLock()
-		}
-		sm.mtx.RUnlock()
-		close(ch)
-	}()
-	return ch
+func init() {
+	prometheus.MustRegister(discardedSamples)
 }
 
 type memorySeries struct {
 	metric model.Metric
+
 	// Sorted by start time, overlapping chunk ranges are forbidden.
-	chunkDescs []*chunk.Desc
-	// The timestamp of the last sample in this series. Needed to
-	// ensure timestamp monotonicity during ingestion.
-	lastTime model.Time
-	// The value of the last sample in this series. Needed to
-	// ensure timestamp monotonicity during ingestion.
-	lastSampleValue model.SampleValue
-	// Whether lastSampleValue has been set already.
-	lastSampleValueSet bool
+	chunkDescs []*desc
+
 	// Whether the current head chunk has already been finished.  If true,
 	// the current head chunk must not be modified anymore.
 	headChunkClosed bool
+
+	// The timestamp & value of the last sample in this series. Needed to
+	// ensure timestamp monotonicity during ingestion.
+	lastSampleValueSet bool
+	lastTime           model.Time
+	lastSampleValue    model.SampleValue
 }
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
@@ -119,42 +52,133 @@ func newMemorySeries(m model.Metric) *memorySeries {
 // completed chunks (which are now eligible for persistence).
 //
 // The caller must have locked the fingerprint of the series.
-func (s *memorySeries) add(v model.SamplePair) (int, error) {
+func (s *memorySeries) add(v model.SamplePair) error {
+	// Don't report "no-op appends", i.e. where timestamp and sample
+	// value are the same as for the last append, as they are a
+	// common occurrence when using client-side timestamps
+	// (e.g. Pushgateway or federation).
+	if s.lastSampleValueSet &&
+		v.Timestamp == s.lastTime &&
+		v.Value.Equal(s.lastSampleValue) {
+		return nil
+	}
+	if v.Timestamp == s.lastTime {
+		discardedSamples.WithLabelValues(duplicateSample).Inc()
+		return ErrDuplicateSampleForTimestamp // Caused by the caller.
+	}
+	if v.Timestamp < s.lastTime {
+		discardedSamples.WithLabelValues(outOfOrderTimestamp).Inc()
+		return ErrOutOfOrderSample // Caused by the caller.
+	}
+
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {
-		newHead := chunk.NewDesc(chunk.New(), v.Timestamp)
+		newHead := newDesc(chunk.New(), v.Timestamp)
 		s.chunkDescs = append(s.chunkDescs, newHead)
 		s.headChunkClosed = false
 	}
 
-	chunks, err := s.head().Add(v)
+	chunks, err := s.head().add(v)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	s.head().C = chunks[0]
 
-	for _, c := range chunks[1:] {
-		s.chunkDescs = append(s.chunkDescs, chunk.NewDesc(c, c.FirstTime()))
+	switch len(chunks) {
+	case 1: // noop, sample added to the chunk
+	case 2:
+		// new overflow chunk - in practice there is only ever 1 overflow chunk,
+		// thats how the chunk code is constructed.
+		s.chunkDescs = append(s.chunkDescs, newDesc(chunks[1], v.Timestamp))
+	default:
+		panic(fmt.Sprintf("Unexpected: got %d chunks from chunk.Add", len(chunks)))
 	}
 
-	// Populate lastTime of now-closed chunks.
-	for _, cd := range s.chunkDescs[len(s.chunkDescs)-len(chunks) : len(s.chunkDescs)-1] {
-		cd.MaybePopulateLastTime()
-	}
-
-	s.lastTime = v.Timestamp
-	s.lastSampleValue = v.Value
-	s.lastSampleValueSet = true
-	return len(chunks) - 1, nil
+	return nil
 }
 
 func (s *memorySeries) closeHead() {
 	s.headChunkClosed = true
-	s.head().MaybePopulateLastTime()
+}
+
+// firstTime returns the earliest known time for the series. The caller must have
+// locked the fingerprint of the memorySeries. This method will panic if this
+// series has no chunk descriptors.
+func (s *memorySeries) firstTime() model.Time {
+	return s.chunkDescs[0].FirstTime
 }
 
 // head returns a pointer to the head chunk descriptor. The caller must have
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
-func (s *memorySeries) head() *chunk.Desc {
+func (s *memorySeries) head() *desc {
 	return s.chunkDescs[len(s.chunkDescs)-1]
+}
+
+func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.SamplePair, error) {
+	// Find first chunk with start time after "from".
+	fromIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
+		return s.chunkDescs[i].FirstTime.After(from)
+	})
+	// Find first chunk with start time after "through".
+	throughIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
+		return s.chunkDescs[i].FirstTime.After(through)
+	})
+	if fromIdx == len(s.chunkDescs) {
+		// Even the last chunk starts before "from". Find out if the
+		// series ends before "from" and we don't need to do anything.
+		lt := s.chunkDescs[len(s.chunkDescs)-1].LastTime
+		if lt.Before(from) {
+			return nil, nil
+		}
+	}
+	if fromIdx > 0 {
+		fromIdx--
+	}
+	if throughIdx == len(s.chunkDescs) {
+		throughIdx--
+	}
+	var values []model.SamplePair
+	in := metric.Interval{
+		OldestInclusive: from,
+		NewestInclusive: through,
+	}
+	for idx := fromIdx; idx <= throughIdx; idx++ {
+		cd := s.chunkDescs[idx]
+		chValues, err := chunk.RangeValues(cd.C.NewIterator(), in)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, chValues...)
+	}
+	return values, nil
+}
+
+type desc struct {
+	C         chunk.Chunk // nil if chunk is evicted.
+	FirstTime model.Time  // Populated at creation. Immutable.
+	LastTime  model.Time  // Populated at creation & on append.
+}
+
+func newDesc(c chunk.Chunk, firstTime model.Time) *desc {
+	return &desc{
+		C:         c,
+		FirstTime: firstTime,
+		LastTime:  firstTime,
+	}
+}
+
+// Add adds a sample pair to the underlying chunk. For safe concurrent access,
+// The chunk must be pinned, and the caller must have locked the fingerprint of
+// the series.
+func (d *desc) add(s model.SamplePair) ([]chunk.Chunk, error) {
+	cs, err := d.C.Add(s)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(cs) == 1 {
+		d.LastTime = s.Timestamp // sample was added to this chunk
+	}
+
+	return cs, nil
 }

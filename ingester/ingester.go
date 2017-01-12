@@ -2,14 +2,12 @@ package ingester
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
@@ -75,7 +73,6 @@ type Ingester struct {
 	flushQueues []*util.PriorityQueue
 
 	ingestedSamples  prometheus.Counter
-	discardedSamples *prometheus.CounterVec
 	chunkUtilization prometheus.Histogram
 	chunkLength      prometheus.Histogram
 	chunkAge         prometheus.Histogram
@@ -147,13 +144,6 @@ func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
 			Name: "cortex_ingester_ingested_samples_total",
 			Help: "The total number of samples ingested.",
 		}),
-		discardedSamples: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "cortex_ingester_out_of_order_samples_total",
-				Help: "The total number of samples that were discarded because their timestamps were at or before the last received sample for a series.",
-			},
-			[]string{discardReasonLabel},
-		),
 		chunkUtilization: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_utilization",
 			Help:    "Distribution of stored chunk utilization (when stored).",
@@ -236,35 +226,18 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		state.fpLocker.Unlock(fp)
 	}()
 
-	if sample.Timestamp == series.lastTime {
-		// Don't report "no-op appends", i.e. where timestamp and sample
-		// value are the same as for the last append, as they are a
-		// common occurrence when using client-side timestamps
-		// (e.g. Pushgateway or federation).
-		if sample.Timestamp == series.lastTime &&
-			series.lastSampleValueSet &&
-			sample.Value.Equal(series.lastSampleValue) {
-			return nil
-		}
-		i.discardedSamples.WithLabelValues(duplicateSample).Inc()
-		return ErrDuplicateSampleForTimestamp // Caused by the caller.
-	}
-	if sample.Timestamp < series.lastTime {
-		i.discardedSamples.WithLabelValues(outOfOrderTimestamp).Inc()
-		return ErrOutOfOrderSample // Caused by the caller.
-	}
 	prevNumChunks := len(series.chunkDescs)
-	_, err = series.add(model.SamplePair{
+	if err := series.add(model.SamplePair{
 		Value:     sample.Value,
 		Timestamp: sample.Timestamp,
-	})
-	i.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-
-	if err == nil {
-		// TODO: Track append failures too (unlikely to happen).
-		i.ingestedSamples.Inc()
-		state.ingestedSamples.inc()
+	}); err != nil {
+		return err
 	}
+
+	i.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+	i.ingestedSamples.Inc()
+	state.ingestedSamples.inc()
+
 	return err
 }
 
@@ -347,7 +320,7 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 			continue
 		}
 
-		values, err := samplesForRange(series, from, through)
+		values, err := series.samplesForRange(from, through)
 		state.fpLocker.Unlock(fp)
 		if err != nil {
 			return nil, err
@@ -363,48 +336,6 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 	i.queriedSamples.Add(float64(queriedSamples))
 
 	return result, nil
-}
-
-func samplesForRange(s *memorySeries, from, through model.Time) ([]model.SamplePair, error) {
-	// Find first chunk with start time after "from".
-	fromIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
-		return s.chunkDescs[i].FirstTime().After(from)
-	})
-	// Find first chunk with start time after "through".
-	throughIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
-		return s.chunkDescs[i].FirstTime().After(through)
-	})
-	if fromIdx == len(s.chunkDescs) {
-		// Even the last chunk starts before "from". Find out if the
-		// series ends before "from" and we don't need to do anything.
-		lt, err := s.chunkDescs[len(s.chunkDescs)-1].LastTime()
-		if err != nil {
-			return nil, err
-		}
-		if lt.Before(from) {
-			return nil, nil
-		}
-	}
-	if fromIdx > 0 {
-		fromIdx--
-	}
-	if throughIdx == len(s.chunkDescs) {
-		throughIdx--
-	}
-	var values []model.SamplePair
-	in := metric.Interval{
-		OldestInclusive: from,
-		NewestInclusive: through,
-	}
-	for idx := fromIdx; idx <= throughIdx; idx++ {
-		cd := s.chunkDescs[idx]
-		chValues, err := prom_chunk.RangeValues(cd.C.NewIterator(), in)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, chValues...)
-	}
-	return values, nil
 }
 
 // LabelValues returns all label values that are associated with a given label name.
@@ -547,12 +478,12 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 		return
 	}
 
-	lastTime := series.lastTime
+	firstTime := series.firstTime()
 	flush := i.shouldFlushSeries(series, immediate)
 
 	if flush {
 		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{lastTime, userID, fp, immediate})
+		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate})
 	}
 }
 
@@ -570,14 +501,14 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) bool 
 	return false
 }
 
-func (i *Ingester) shouldFlushChunk(c *prom_chunk.Desc) bool {
+func (i *Ingester) shouldFlushChunk(c *desc) bool {
 	// Chunks should be flushed if their oldest entry is older than MaxChunkAge
-	if model.Now().Sub(c.ChunkFirstTime) > i.cfg.MaxChunkAge {
+	if model.Now().Sub(c.FirstTime) > i.cfg.MaxChunkAge {
 		return true
 	}
 
 	// Chunk should be flushed if their last entry is older then MaxChunkIdle
-	if model.Now().Sub(c.ChunkLastTime) > i.cfg.MaxChunkIdle {
+	if model.Now().Sub(c.LastTime) > i.cfg.MaxChunkIdle {
 		return true
 	}
 
@@ -624,7 +555,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 
 	// Assume we're going to flush everything, and maybe don't flush the head chunk if it doesn't need it.
 	chunks := series.chunkDescs
-	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(chunks[0])) {
+	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head())) {
 		series.closeHead()
 	} else {
 		chunks = chunks[:len(chunks)-1]
@@ -654,13 +585,13 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	return nil
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*prom_chunk.Desc) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*desc) error {
 	wireChunks := make([]cortex_chunk.Chunk, 0, len(chunkDescs))
 	for _, chunkDesc := range chunkDescs {
 		i.chunkUtilization.Observe(chunkDesc.C.Utilization())
 		i.chunkLength.Observe(float64(chunkDesc.C.Len()))
-		i.chunkAge.Observe(model.Now().Sub(chunkDesc.ChunkFirstTime).Seconds())
-		wireChunks = append(wireChunks, cortex_chunk.NewChunk(fp, metric, chunkDesc))
+		i.chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
+		wireChunks = append(wireChunks, cortex_chunk.NewChunk(fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime))
 	}
 	return i.chunkStore.Put(ctx, wireChunks)
 }
@@ -680,7 +611,6 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- memoryUsersDesc
 	ch <- flushQueueLengthDesc
 	ch <- i.ingestedSamples.Desc()
-	i.discardedSamples.Describe(ch)
 	ch <- i.chunkUtilization.Desc()
 	ch <- i.chunkLength.Desc()
 	ch <- i.chunkAge.Desc()
@@ -720,7 +650,6 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 		float64(flushQueueLength),
 	)
 	ch <- i.ingestedSamples
-	i.discardedSamples.Collect(ch)
 	ch <- i.chunkUtilization
 	ch <- i.chunkLength
 	ch <- i.chunkAge

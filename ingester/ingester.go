@@ -26,6 +26,9 @@ const (
 	// Reasons to discard samples.
 	outOfOrderTimestamp = "timestamp_out_of_order"
 	duplicateSample     = "multiple_values_for_timestamp"
+
+	// Defailt number of series to flush concurrently
+	DefaultConcurrentFlush = 50
 )
 
 var (
@@ -129,7 +132,7 @@ func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
 		cfg.RateUpdatePeriod = 15 * time.Second
 	}
 	if cfg.ConcurrentFlushes <= 0 {
-		cfg.ConcurrentFlushes = 25
+		cfg.ConcurrentFlushes = DefaultConcurrentFlush
 	}
 
 	i := &Ingester{

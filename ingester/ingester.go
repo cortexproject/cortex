@@ -27,7 +27,7 @@ const (
 	outOfOrderTimestamp = "timestamp_out_of_order"
 	duplicateSample     = "multiple_values_for_timestamp"
 
-	// Defailt number of series to flush concurrently
+	// DefaultConcurrentFlush is the number of series to flush concurrently
 	DefaultConcurrentFlush = 50
 )
 

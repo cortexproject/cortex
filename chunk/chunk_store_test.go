@@ -40,7 +40,6 @@ func TestChunkStoreUnprocessed(t *testing.T) {
 		DynamoDB: dynamoDB,
 		S3:       NewMockS3(),
 	})
-	defer store.Stop()
 
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()
@@ -76,7 +75,6 @@ func TestChunkStore(t *testing.T) {
 		DynamoDB: dynamoDB,
 		S3:       NewMockS3(),
 	})
-	defer store.Stop()
 
 	ctx := user.WithID(context.Background(), "0")
 	now := model.Now()

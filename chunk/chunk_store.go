@@ -547,10 +547,6 @@ func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bu
 }
 
 func processResponse(resp *dynamodb.QueryOutput, chunkSet *ByID, matcher *metric.LabelMatcher) (int, error) {
-	if resp.ConsumedCapacity != nil {
-		dynamoConsumedCapacity.WithLabelValues("Query").
-			Add(float64(*resp.ConsumedCapacity.CapacityUnits))
-	}
 	dropped := 0
 	for _, item := range resp.Items {
 		rangeValue := item[rangeKey].B

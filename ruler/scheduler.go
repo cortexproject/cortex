@@ -81,11 +81,12 @@ type scheduler struct {
 	cfgs map[string]cortexConfig
 
 	pollInterval time.Duration
-	lastPolled   time.Time
-	pollMutex    sync.RWMutex
 
-	quit chan struct{}
-	wait sync.WaitGroup
+	latestConfig configID
+	latestMutex  *sync.RWMutex
+
+	done       chan struct{}
+	terminated chan struct{}
 }
 
 // newScheduler makes a new scheduler.
@@ -102,8 +103,7 @@ func newScheduler(configsAPI configsAPI, evaluationInterval, pollInterval time.D
 // Run polls the source of configurations for changes.
 func (s *scheduler) Run() {
 	log.Debugf("Scheduler started")
-	s.wait.Add(1)
-	defer s.wait.Done()
+	defer close(s.terminated)
 	// Load initial set of all configurations before polling for new ones.
 	s.addNewConfigs(time.Now(), s.loadAllConfigs())
 	ticker := time.NewTicker(s.pollInterval)
@@ -114,16 +114,16 @@ func (s *scheduler) Run() {
 			if err != nil {
 				log.Warnf("Error updating configs: %v", err)
 			}
-		case <-s.quit:
+		case <-s.done:
 			ticker.Stop()
 		}
 	}
 }
 
 func (s *scheduler) Stop() {
-	close(s.quit)
+	close(s.done)
 	s.q.Close()
-	s.wait.Wait()
+	<-s.terminated
 	log.Debugf("Scheduler stopped")
 }
 
@@ -131,9 +131,8 @@ func (s *scheduler) Stop() {
 // until we can get them.
 func (s *scheduler) loadAllConfigs() map[string]cortexConfig {
 	backoff := minBackoff
-	dawnOfTime := time.Unix(0, 0)
 	for {
-		cfgs, err := s.poll(dawnOfTime)
+		cfgs, err := s.poll()
 		if err == nil {
 			log.Debugf("Found %d configurations in initial load", len(cfgs))
 			return cfgs
@@ -148,7 +147,7 @@ func (s *scheduler) loadAllConfigs() map[string]cortexConfig {
 }
 
 func (s *scheduler) updateConfigs(now time.Time) error {
-	cfgs, err := s.poll(now)
+	cfgs, err := s.poll()
 	if err != nil {
 		return err
 	}
@@ -156,23 +155,23 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 	return nil
 }
 
-func (s *scheduler) poll(now time.Time) (map[string]cortexConfig, error) {
-	s.pollMutex.RLock()
-	interval := now.Add(-skewCorrection).Sub(s.lastPolled)
-	s.pollMutex.RUnlock()
+func (s *scheduler) poll() (map[string]cortexConfig, error) {
+	s.latestMutex.RLock()
+	configID := s.latestConfig
+	s.latestMutex.RUnlock()
 	var cfgs map[string]cortexConfig
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
-		cfgs, err = s.configsAPI.getOrgConfigs(interval)
+		cfgs, err = s.configsAPI.getOrgConfigs(configID)
 		return err
 	})
 	if err != nil {
 		log.Warnf("configs server poll failed: %v", err)
 		return nil, err
 	}
-	s.pollMutex.Lock()
-	s.lastPolled = now
-	s.pollMutex.Unlock()
+	s.latestMutex.Lock()
+	s.latestConfig = getLatestConfigID(cfgs)
+	s.latestMutex.Unlock()
 	return cfgs, nil
 }
 
@@ -192,6 +191,10 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfig) {
 
 		// XXX: New configs go to the back of the queue. Changed configs are
 		// ignored because priority queue ignores repeated queueing.
+
+		// TODO: Change config server to include updated time, so we can use
+		// that rather than scheduler's understanding of now, so that we can
+		// prioritise by last updated.
 		s.addWorkItem(workItem{userID, rules, now})
 		s.cfgs[userID] = config
 	}

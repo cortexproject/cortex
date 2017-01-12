@@ -57,14 +57,14 @@ type workItem struct {
 	scheduled time.Time
 }
 
-// Key implements Op
+// Key implements ScheduledItem
 func (w workItem) Key() string {
 	return w.userID
 }
 
-// Priority implements Op
-func (w workItem) Priority() int64 {
-	return -w.scheduled.Unix()
+// Scheduled implements ScheduledItem
+func (w workItem) Scheduled() time.Time {
+	return w.scheduled
 }
 
 // Defer returns a copy of this work item, rescheduled to a later time.
@@ -75,7 +75,7 @@ func (w workItem) Defer(interval time.Duration) workItem {
 type scheduler struct {
 	configsAPI         configsAPI // XXX: Maybe make this an interface ConfigSource or similar.
 	evaluationInterval time.Duration
-	q                  *util.PriorityQueue
+	q                  *util.SchedulingQueue
 
 	// All the configurations that we have. Only used for instrumentation.
 	cfgs map[string]cortexConfig
@@ -95,7 +95,7 @@ func newScheduler(configsAPI configsAPI, evaluationInterval, pollInterval time.D
 		configsAPI:         configsAPI,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
-		q:                  util.NewPriorityQueue(),
+		q:                  util.NewSchedulingQueue(),
 		cfgs:               map[string]cortexConfig{},
 	}
 }
@@ -191,10 +191,6 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfig) {
 
 		// XXX: New configs go to the back of the queue. Changed configs are
 		// ignored because priority queue ignores repeated queueing.
-
-		// TODO: Change config server to include updated time, so we can use
-		// that rather than scheduler's understanding of now, so that we can
-		// prioritise by last updated.
 		s.addWorkItem(workItem{userID, rules, now})
 		s.cfgs[userID] = config
 	}
@@ -206,7 +202,10 @@ func (s *scheduler) addWorkItem(i workItem) {
 	queueLength.Set(float64(s.q.Length()))
 }
 
-// Get the next scheduled work item, blocking if none
+// Get the next scheduled work item, blocking if none.
+//
+// Call `workItemDone` on the returned item to indicate that it is ready to be
+// rescheduled.
 func (s *scheduler) nextWorkItem(now time.Time) *workItem {
 	op := s.q.Dequeue()
 	if op == nil {
@@ -215,18 +214,10 @@ func (s *scheduler) nextWorkItem(now time.Time) *workItem {
 	}
 	queueLength.Set(float64(s.q.Length()))
 	item := op.(workItem)
-	// XXX: If the item takes longer than `evaluationInterval` to be
-	// processed, it will get processed concurrently.
-	s.addWorkItem(item.Defer(s.evaluationInterval))
-	// XXX: If another older item appears while we are sleeping, we won't
-	// notice it. Can't figure out how to do this without having a buffered
-	// channel & thus introducing arbitrary blocking points.
-	if item.scheduled.After(now) {
-		log.Debugf("Work item not yet ready for processing. Blocking...")
-		blockedWorkers.Inc()
-		defer blockedWorkers.Dec()
-		time.Sleep(item.scheduled.Sub(now))
-		log.Debugf("Ready now. Unblocked.")
-	}
 	return &item
+}
+
+// workItemDone marks the given item as being ready to be rescheduled.
+func (s *scheduler) workItemDone(i workItem) {
+	s.addWorkItem(i.Defer(s.evaluationInterval))
 }

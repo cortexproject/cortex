@@ -166,6 +166,7 @@ func (w *worker) Run() {
 		}
 		ctx := user.WithID(context.Background(), item.userID)
 		w.ruler.Evaluate(ctx, item.rules)
+		w.scheduler.workItemDone(*item)
 		// XXX: Should we have some sort of small delay / yielding point here
 		// to prevent monopolising the CPU?
 	}

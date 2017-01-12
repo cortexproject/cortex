@@ -52,11 +52,9 @@ func TestChunkStoreUnprocessed(t *testing.T) {
 			"bar":  "baz",
 			"toms": "code",
 		},
-		&chunk.Desc{
-			ChunkFirstTime: now.Add(-time.Hour),
-			ChunkLastTime:  now,
-			C:              chunks[0],
-		},
+		chunks[0],
+		now.Add(-time.Hour),
+		now,
 	)
 	want := []Chunk{chunk}
 	if err := store.Put(ctx, want); err != nil {
@@ -91,11 +89,9 @@ func TestChunkStore(t *testing.T) {
 			"bar":  "baz",
 			"toms": "code",
 		},
-		&chunk.Desc{
-			ChunkFirstTime: now.Add(-time.Hour),
-			ChunkLastTime:  now,
-			C:              chunks[0],
-		},
+		chunks[0],
+		now.Add(-time.Hour),
+		now,
 	)
 	chunk2 := NewChunk(
 		model.Fingerprint(2),
@@ -104,11 +100,9 @@ func TestChunkStore(t *testing.T) {
 			"bar":  "beep",
 			"toms": "code",
 		},
-		&chunk.Desc{
-			ChunkFirstTime: now.Add(-time.Hour),
-			ChunkLastTime:  now,
-			C:              chunks[0],
-		},
+		chunks[0],
+		now.Add(-time.Hour),
+		now,
 	)
 
 	if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {

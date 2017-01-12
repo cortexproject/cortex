@@ -33,14 +33,14 @@ type Chunk struct {
 }
 
 // NewChunk creates a new chunk
-func NewChunk(fp model.Fingerprint, metric model.Metric, c *prom_chunk.Desc) Chunk {
+func NewChunk(fp model.Fingerprint, metric model.Metric, c prom_chunk.Chunk, firstTime, lastTime model.Time) Chunk {
 	return Chunk{
-		ID:       fmt.Sprintf("%d:%d:%d", fp, c.ChunkFirstTime, c.ChunkLastTime),
-		From:     c.ChunkFirstTime,
-		Through:  c.ChunkLastTime,
+		ID:       fmt.Sprintf("%d:%d:%d", fp, firstTime, lastTime),
+		From:     firstTime,
+		Through:  lastTime,
 		Metric:   metric,
-		Encoding: c.C.Encoding(),
-		Data:     c.C,
+		Encoding: c.Encoding(),
+		Data:     c,
 	}
 }
 

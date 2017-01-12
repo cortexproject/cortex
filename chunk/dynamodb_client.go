@@ -4,7 +4,6 @@ import (
 	"math/rand"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -149,124 +148,16 @@ func (d dynamoRequestAdapter) Error() error {
 
 type dynamoDBBackoffClient struct {
 	client DynamoDBClient
-
-	dynamoRequests     chan dynamoOp
-	dynamoRequestsDone sync.WaitGroup
 }
 
 func newDynamoDBBackoffClient(client DynamoDBClient) *dynamoDBBackoffClient {
-	c := &dynamoDBBackoffClient{
-		client:         client,
-		dynamoRequests: make(chan dynamoOp),
+	return &dynamoDBBackoffClient{
+		client: client,
 	}
-
-	c.dynamoRequestsDone.Add(numDynamoRequests)
-	for i := 0; i < numDynamoRequests; i++ {
-		go c.dynamoRequestLoop()
-	}
-
-	return c
-}
-
-// Stop background goroutines.
-func (c *dynamoDBBackoffClient) Stop() {
-	close(c.dynamoRequests)
-	c.dynamoRequestsDone.Wait()
 }
 
 // batchWriteDynamo writes many requests to dynamo in a single batch.
 func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[string][]*dynamodb.WriteRequest) error {
-	req := &dynamoBatchWriteItemsOp{
-		ctx:      ctx,
-		reqs:     reqs,
-		dynamodb: c.client,
-		done:     make(chan error),
-	}
-	c.dynamoRequests <- req
-	return <-req.done
-}
-
-func (c *dynamoDBBackoffClient) queryPages(ctx context.Context, input *dynamodb.QueryInput, callback func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
-	page, _ := c.client.QueryRequest(input)
-	req := &dynamoQueryPagesOp{
-		ctx:      ctx,
-		request:  page,
-		callback: callback,
-		done:     make(chan error),
-	}
-	c.dynamoRequests <- req
-	return <-req.done
-}
-
-func (c *dynamoDBBackoffClient) dynamoRequestLoop() {
-	defer c.dynamoRequestsDone.Done()
-	for {
-		select {
-		case request, ok := <-c.dynamoRequests:
-			if !ok {
-				return
-			}
-			request.do()
-		}
-	}
-}
-
-type dynamoOp interface {
-	do()
-}
-
-type dynamoQueryPagesOp struct {
-	ctx      context.Context
-	request  dynamoRequest
-	callback func(resp interface{}, lastPage bool) (shouldContinue bool)
-	done     chan error
-}
-
-type dynamoBatchWriteItemsOp struct {
-	ctx      context.Context
-	reqs     map[string][]*dynamodb.WriteRequest
-	dynamodb DynamoDBClient
-	done     chan error
-}
-
-func (r *dynamoQueryPagesOp) do() {
-	backoff := minBackoff
-
-	for page := r.request; page != nil; page = page.NextPage() {
-		err := instrument.TimeRequestHistogram(r.ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
-			return page.Send()
-		})
-
-		if cc := page.Data().(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
-			dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages").
-				Add(float64(*cc.CapacityUnits))
-		}
-
-		if err != nil {
-			recordDynamoError(err)
-
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-				time.Sleep(backoff)
-				backoff = nextBackoff(backoff)
-				continue
-			}
-
-			r.done <- page.Error()
-			return
-		}
-
-		if getNextPage := r.callback(page.Data(), !page.HasNextPage()); !getNextPage {
-			r.done <- page.Error()
-			return
-		}
-
-		backoff = minBackoff
-	}
-
-	r.done <- nil
-}
-
-func (r *dynamoBatchWriteItemsOp) do() {
 	min := func(i, j int) int {
 		if i < j {
 			return i
@@ -306,7 +197,7 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		}
 	}
 
-	outstanding, unprocessed := r.reqs, map[string][]*dynamodb.WriteRequest{}
+	outstanding, unprocessed := reqs, map[string][]*dynamodb.WriteRequest{}
 	backoff := minBackoff
 	for dictLen(outstanding)+dictLen(unprocessed) > 0 {
 		reqs := map[string][]*dynamodb.WriteRequest{}
@@ -314,9 +205,9 @@ func (r *dynamoBatchWriteItemsOp) do() {
 		fillReq(outstanding, reqs)
 
 		var resp *dynamodb.BatchWriteItemOutput
-		err := instrument.TimeRequestHistogram(r.ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(_ context.Context) error {
+		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(_ context.Context) error {
 			var err error
-			resp, err = r.dynamodb.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			resp, err = c.client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 				RequestItems:           reqs,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
@@ -350,14 +241,49 @@ func (r *dynamoBatchWriteItemsOp) do() {
 
 		// All other errors are fatal.
 		if err != nil {
-			r.done <- err
-			return
+			return err
 		}
 
 		backoff = minBackoff
 	}
 
-	r.done <- nil
+	return nil
+}
+
+func (c *dynamoDBBackoffClient) queryPages(ctx context.Context, input *dynamodb.QueryInput, callback func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
+	request, _ := c.client.QueryRequest(input)
+	backoff := minBackoff
+
+	for page := request; page != nil; page = page.NextPage() {
+		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
+			return page.Send()
+		})
+
+		if cc := page.Data().(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
+			dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages").
+				Add(float64(*cc.CapacityUnits))
+		}
+
+		if err != nil {
+			recordDynamoError(err)
+
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+				time.Sleep(backoff)
+				backoff = nextBackoff(backoff)
+				continue
+			}
+
+			return page.Error()
+		}
+
+		if getNextPage := callback(page.Data(), !page.HasNextPage()); !getNextPage {
+			return page.Error()
+		}
+
+		backoff = minBackoff
+	}
+
+	return nil
 }
 
 func nextBackoff(lastBackoff time.Duration) time.Duration {

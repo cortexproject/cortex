@@ -84,7 +84,6 @@ func init() {
 type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	Get(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]Chunk, error)
-	Stop()
 }
 
 // StoreConfig specifies config for a ChunkStore
@@ -125,11 +124,6 @@ func NewAWSStore(cfg StoreConfig) *AWSStore {
 		cfg:    cfg,
 		dynamo: newDynamoDBBackoffClient(cfg.DynamoDB),
 	}
-}
-
-// Stop background goroutines.
-func (c *AWSStore) Stop() {
-	c.dynamo.Stop()
 }
 
 type bucketSpec struct {

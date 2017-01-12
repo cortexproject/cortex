@@ -86,7 +86,8 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	switch len(chunks) {
 	case 1: // noop, sample added to the chunk
 	case 2:
-		// new overflow chunk - in practice there is only ever 1
+		// new overflow chunk - in practice there is only ever 1 overflow chunk,
+		// thats how the chunk code is constructed.
 		s.chunkDescs = append(s.chunkDescs, newDesc(chunks[1], v.Timestamp))
 	default:
 		panic(fmt.Sprintf("Unexpected: got %d chunks from chunk.Add", len(chunks)))
@@ -99,7 +100,7 @@ func (s *memorySeries) closeHead() {
 	s.headChunkClosed = true
 }
 
-// firstTime returns the earliest know time for the series. The caller must have
+// firstTime returns the earliest known time for the series. The caller must have
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
 func (s *memorySeries) firstTime() model.Time {

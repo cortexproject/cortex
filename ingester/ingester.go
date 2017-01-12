@@ -478,12 +478,12 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 		return
 	}
 
-	lastTime := series.firstTime()
+	firstTime := series.firstTime()
 	flush := i.shouldFlushSeries(series, immediate)
 
 	if flush {
 		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{lastTime, userID, fp, immediate})
+		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate})
 	}
 }
 

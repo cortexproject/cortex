@@ -290,9 +290,11 @@ func (r *dynamoBatchWriteItemsOp) do() {
 			for tableName := range in {
 				reqs := in[tableName]
 				taken := min(len(reqs), toFill)
-				out[tableName] = append(out[tableName], reqs[:taken]...)
-				in[tableName] = reqs[taken:]
-				toFill -= taken
+				if taken > 0 {
+					out[tableName] = append(out[tableName], reqs[:taken]...)
+					in[tableName] = reqs[taken:]
+					toFill -= taken
+				}
 			}
 		}
 	}

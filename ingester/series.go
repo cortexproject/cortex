@@ -1,7 +1,6 @@
 package ingester
 
 import (
-	"fmt"
 	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -72,7 +71,7 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	}
 
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {
-		newHead := newDesc(chunk.New(), v.Timestamp)
+		newHead := newDesc(chunk.New(), v.Timestamp, v.Timestamp)
 		s.chunkDescs = append(s.chunkDescs, newHead)
 		s.headChunkClosed = false
 	}
@@ -81,16 +80,21 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	if err != nil {
 		return err
 	}
-	s.head().C = chunks[0]
 
-	switch len(chunks) {
-	case 1: // noop, sample added to the chunk
-	case 2:
-		// new overflow chunk - in practice there is only ever 1 overflow chunk,
-		// thats how the chunk code is constructed.
-		s.chunkDescs = append(s.chunkDescs, newDesc(chunks[1], v.Timestamp))
-	default:
-		panic(fmt.Sprintf("Unexpected: got %d chunks from chunk.Add", len(chunks)))
+	// If we get a single chunk result, then just replace the head chunk with it
+	// (no need to update first/last time).  Otherwise, we'll need to update first
+	// and last time.
+	if len(chunks) == 1 {
+		s.head().C = chunks[0]
+	} else {
+		s.chunkDescs = s.chunkDescs[:len(s.chunkDescs)-1]
+		for _, c := range chunks {
+			lastTime, err := c.NewIterator().LastTimestamp()
+			if err != nil {
+				return err
+			}
+			s.chunkDescs = append(s.chunkDescs, newDesc(c, c.FirstTime(), lastTime))
+		}
 	}
 
 	return nil
@@ -159,11 +163,11 @@ type desc struct {
 	LastTime  model.Time  // Populated at creation & on append.
 }
 
-func newDesc(c chunk.Chunk, firstTime model.Time) *desc {
+func newDesc(c chunk.Chunk, firstTime model.Time, lastTime model.Time) *desc {
 	return &desc{
 		C:         c,
 		FirstTime: firstTime,
-		LastTime:  firstTime,
+		LastTime:  lastTime,
 	}
 }
 

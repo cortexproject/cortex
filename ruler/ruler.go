@@ -96,19 +96,18 @@ func NewServer(cfg Config, ruler Ruler) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	configsAPI := configsAPI{configsAPIURL}
-	delay := time.Duration(cfg.EvaluationInterval)
+	c := configsAPI{configsAPIURL}
 	// TODO: Separate configuration for polling interval.
-	scheduler := newScheduler(configsAPI, delay, delay)
+	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval)
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("Must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
 	workers := make([]worker, cfg.NumWorkers)
 	for i := 0; i < cfg.NumWorkers; i++ {
-		workers[i] = newWorker(&scheduler, ruler)
+		workers[i] = newWorker(&s, ruler)
 	}
 	return &Server{
-		scheduler: &scheduler,
+		scheduler: &s,
 		workers:   workers,
 	}, nil
 }

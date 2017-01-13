@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	skewCorrection = 1 * time.Minute
 	// Backoff for loading initial configuration set.
 	minBackoff = 100 * time.Millisecond
 	maxBackoff = 2 * time.Second
@@ -83,7 +82,7 @@ type scheduler struct {
 	pollInterval time.Duration
 
 	latestConfig configID
-	latestMutex  *sync.RWMutex
+	latestMutex  sync.RWMutex
 
 	done       chan struct{}
 	terminated chan struct{}

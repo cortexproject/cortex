@@ -42,7 +42,7 @@ func getLatestConfigID(configs map[string]cortexConfig) configID {
 func (c cortexConfig) GetRules() ([]rules.Rule, error) {
 	result := []rules.Rule{}
 	for fn, content := range c.RulesFiles {
-		stmts, err := promql.ParseStmts(string(content))
+		stmts, err := promql.ParseStmts(content)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
 		}

@@ -143,7 +143,7 @@ type SchedulingQueue struct {
 	timer *time.Timer
 }
 
-// NewPriorityQueue makes a new priority queue.
+// NewSchedulingQueue makes a new priority queue.
 func NewSchedulingQueue() *SchedulingQueue {
 	pq := NewPriorityQueue()
 	return &SchedulingQueue{

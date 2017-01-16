@@ -99,6 +99,11 @@ func (s sched) Key() string {
 	return time.Time(s).Format("2006-01-02 15:04:05.000")
 }
 
+// assertDequeues asserts that queue.Dequeue() is item.
+func assertDequeues(t *testing.T, item sched, queue *SchedulingQueue) {
+	assert.Equal(t, item, queue.Dequeue().(sched), fmt.Sprintf("Expected to dequeue %v", item))
+}
+
 func TestSchedulingQueuePriorities(t *testing.T) {
 	queue := NewSchedulingQueue()
 	oneHourAgo := sched(time.Now().Add(-time.Hour))
@@ -106,8 +111,9 @@ func TestSchedulingQueuePriorities(t *testing.T) {
 	queue.Enqueue(oneHourAgo)
 	queue.Enqueue(twoHoursAgo)
 
-	assert.Equal(t, twoHoursAgo, queue.Dequeue().(sched), fmt.Sprintf("Expected to dequeue %v", twoHoursAgo))
-	assert.Equal(t, oneHourAgo, queue.Dequeue().(sched), fmt.Sprintf("Expected to dequeue %v", oneHourAgo))
+	assert.Equal(t, twoHoursAgo, queue.front().(sched))
+	assertDequeues(t, twoHoursAgo, queue)
+	assertDequeues(t, oneHourAgo, queue)
 
 	queue.Close()
 	assert.Nil(t, queue.Dequeue(), "Expect nil dequeue")
@@ -120,8 +126,8 @@ func TestSchedulingQueuePriorities2(t *testing.T) {
 	queue.Enqueue(twoHoursAgo)
 	queue.Enqueue(oneHourAgo)
 
-	assert.Equal(t, twoHoursAgo, queue.Dequeue().(sched), fmt.Sprintf("Expected to dequeue %v", twoHoursAgo))
-	assert.Equal(t, oneHourAgo, queue.Dequeue().(sched), fmt.Sprintf("Expected to dequeue %v", oneHourAgo))
+	assertDequeues(t, twoHoursAgo, queue)
+	assertDequeues(t, oneHourAgo, queue)
 
 	queue.Close()
 	assert.Nil(t, queue.Dequeue(), "Expect nil dequeue")
@@ -151,7 +157,7 @@ func TestSchedulingQueueWaitOnItem(t *testing.T) {
 	oneHourAgo := sched(time.Now().Add(-time.Hour))
 	done := make(chan struct{})
 	go func() {
-		assert.Equal(t, oneHourAgo, queue.Dequeue(), "Expected value")
+		assertDequeues(t, oneHourAgo, queue)
 		close(done)
 	}()
 
@@ -161,5 +167,51 @@ func TestSchedulingQueueWaitOnItem(t *testing.T) {
 	case <-done:
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Queueing item didn't unblock Dequeue.")
+	}
+}
+
+func TestSchedulingQueueBlockingBug(t *testing.T) {
+	// TODO: Relying on the real clock in tests is crazy. Use some sort of
+	// fake like
+	// https://github.com/jonboulle/clockwork/blob/master/clockwork.go
+	queue := NewSchedulingQueue()
+	twoHoursAgo := sched(time.Now().Add(-2 * time.Hour))
+	queue.Enqueue(twoHoursAgo)
+	assertDequeues(t, twoHoursAgo, queue)
+
+	done := make(chan struct{})
+	delay := 100 * time.Millisecond
+	soon := sched(time.Now().Add(delay))
+	go func() {
+		assertDequeues(t, soon, queue)
+		close(done)
+	}()
+
+	queue.Enqueue(soon)
+	select {
+	case <-done:
+	case <-time.After(2 * delay):
+		t.Fatalf("Still waiting after %v.", 2*delay)
+	}
+}
+
+func TestSchedulingQueueRescheduling(t *testing.T) {
+	queue := NewSchedulingQueue()
+
+	oneHourAgo := sched(time.Now().Add(-1 * time.Hour))
+	oneHourFromNow := sched(time.Now().Add(1 * time.Hour))
+	queue.Enqueue(oneHourFromNow)
+
+	done := make(chan struct{})
+	go func() {
+		assertDequeues(t, oneHourAgo, queue)
+		close(done)
+	}()
+
+	queue.Enqueue(oneHourAgo)
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatalf("Still waiting after 100ms")
 	}
 }

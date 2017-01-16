@@ -26,7 +26,7 @@ type queue []Op
 func (q queue) Len() int           { return len(q) }
 func (q queue) Less(i, j int) bool { return q[i].Priority() > q[j].Priority() }
 func (q queue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
-func (q queue) Top() interface{}   { return q[len(q)-1] }
+func (q queue) Top() interface{}   { return q[0] }
 
 // Push and Pop use pointer receivers because they modify the slice's length,
 // not just its contents.
@@ -178,9 +178,10 @@ func (sq *SchedulingQueue) frontChanged() {
 
 func (sq *SchedulingQueue) cancelTimer() {
 	if sq.timer != nil {
-		if !sq.timer.Stop() {
-			<-sq.timer.C
-		}
+		// Note: the timer might have fired by this point, but that's probably
+		// OK because the only thing we're waiting for is a broadcast to
+		// `cond`, which wakes up the Dequeue loop.
+		sq.timer.Stop()
 		sq.timer = nil
 	}
 }
@@ -189,9 +190,9 @@ func (sq *SchedulingQueue) rescheduleTimer(delay time.Duration) {
 	if sq.timer == nil {
 		sq.timer = time.AfterFunc(delay, sq.cond.Broadcast)
 	} else {
-		if !sq.timer.Stop() {
-			<-sq.timer.C
-		}
+		// Note: timer might have fired by this point, but that's OK. See note
+		// in `cancelTimer` for reasons why.
+		sq.timer.Stop()
 		sq.timer.Reset(delay)
 	}
 }

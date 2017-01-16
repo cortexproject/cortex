@@ -41,7 +41,7 @@ while true; do
 done
 
 spell_check() {
-    filename="$1"
+    local filename="$1"
     local lint_result=0
 
     # we don't want to spell check tar balls, binaries, Makefile and json files
@@ -66,8 +66,8 @@ spell_check() {
 }
 
 test_mismatch() {
-    filename="$1"
-    package=$(grep '^package ' "$filename" | awk '{print $2}')
+    local filename="$1"
+    local package=$(grep '^package ' "$filename" | awk '{print $2}')
     local lint_result=0
 
     if [[ $package == "main" ]]; then
@@ -90,7 +90,7 @@ test_mismatch() {
 }
 
 lint_go() {
-    filename="$1"
+    local filename="$1"
     local lint_result=0
 
     if [ -n "$(gofmt -s -l "${filename}")" ]; then
@@ -128,10 +128,10 @@ lint_go() {
 }
 
 lint_sh() {
-    filename="$1"
+    local filename="$1"
     local lint_result=0
 
-    if [ -n "$(diff <(shfmt -i 4 "${filename}") "${filename}")" ]; then
+    if ! diff <(shfmt -i 4 "${filename}") "${filename}" >/dev/null; then
         lint_result=1
         echo "${filename}: run shfmt -i 4 -w ${filename}"
     fi
@@ -140,6 +140,18 @@ lint_sh() {
     # don't have it installed.
     if type shellcheck >/dev/null 2>&1; then
         shellcheck "${filename}" || lint_result=1
+    fi
+
+    return $lint_result
+}
+
+lint_tf() {
+    local filename="$1"
+    local lint_result=0
+
+    if ! diff <(hclfmt "${filename}") "${filename}" >/dev/null; then
+        lint_result=1
+        echo "${filename}: run hclfmt -w ${filename}"
     fi
 
     return $lint_result
@@ -161,13 +173,14 @@ lint() {
         coverage.html) return ;;
     esac
 
-    if [[ "$(file --mime-type "${filename}" | awk '{print $2}')" = "text/x-shellscript" ]]; then
+    if [[ "$(file --mime-type "${filename}" | awk '{print $2}')" == "text/x-shellscript" ]]; then
         ext="sh"
     fi
 
     case "$ext" in
         go) lint_go "${filename}" || lint_result=1 ;;
         sh) lint_sh "${filename}" || lint_result=1 ;;
+        tf) lint_tf "${filename}" || lint_result=1 ;;
     esac
 
     if [ -z "$IGNORE_TEST_PACKAGES" ]; then

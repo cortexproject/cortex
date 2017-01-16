@@ -28,11 +28,17 @@ var (
 		Name:      "rules_processed_total",
 		Help:      "How many rules have been processed.",
 	})
+	blockedWorkers = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "blocked_workers",
+		Help:      "How many workers are waiting on an item to be ready.",
+	})
 )
 
 func init() {
 	prometheus.MustRegister(evalDuration)
 	prometheus.MustRegister(rulesProcessed)
+	prometheus.MustRegister(blockedWorkers)
 }
 
 // Config is the configuration for the recording rules server.
@@ -158,16 +164,19 @@ func (w *worker) Run() {
 			return
 		default:
 		}
-		item := w.scheduler.nextWorkItem(time.Now())
+		blockedWorkers.Inc()
+		log.Debugf("Waiting for next work item")
+		item := w.scheduler.nextWorkItem()
+		blockedWorkers.Dec()
 		if item == nil {
-			log.Debugf("Queue closed. Terminating worker.")
+			log.Debugf("Queue closed and empty. Terminating worker.")
 			return
 		}
+		log.Debugf("Processing %v", item)
 		ctx := user.WithID(context.Background(), item.userID)
 		w.ruler.Evaluate(ctx, item.rules)
 		w.scheduler.workItemDone(*item)
-		// XXX: Should we have some sort of small delay / yielding point here
-		// to prevent monopolising the CPU?
+		log.Debugf("%v handed back to queue", item)
 	}
 }
 

@@ -25,11 +25,6 @@ var (
 		Name:      "rules_queue_length",
 		Help:      "The length of the rules queue.",
 	})
-	blockedWorkers = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "blocked_workers",
-		Help:      "How many workers are waiting on an item to be ready.",
-	})
 	totalConfigs = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "configs",
@@ -45,7 +40,6 @@ var (
 
 func init() {
 	prometheus.MustRegister(queueLength)
-	prometheus.MustRegister(blockedWorkers)
 	prometheus.MustRegister(configsRequestDuration)
 	prometheus.MustRegister(totalConfigs)
 }
@@ -111,7 +105,7 @@ func (s *scheduler) Run() {
 		case now := <-ticker.C:
 			err := s.updateConfigs(now)
 			if err != nil {
-				log.Warnf("Error updating configs: %v", err)
+				log.Warnf("Scheduler: error updating configs: %v", err)
 			}
 		case <-s.done:
 			ticker.Stop()
@@ -133,10 +127,10 @@ func (s *scheduler) loadAllConfigs() map[string]cortexConfig {
 	for {
 		cfgs, err := s.poll()
 		if err == nil {
-			log.Debugf("Found %d configurations in initial load", len(cfgs))
+			log.Debugf("Scheduler: found %d configurations in initial load", len(cfgs))
 			return cfgs
 		}
-		log.Warnf("Error fetching all configurations, backing off: %v", err)
+		log.Warnf("Scheduler: error fetching all configurations, backing off: %v", err)
 		time.Sleep(backoff)
 		backoff *= 2
 		if backoff > maxBackoff {
@@ -165,7 +159,7 @@ func (s *scheduler) poll() (map[string]cortexConfig, error) {
 		return err
 	})
 	if err != nil {
-		log.Warnf("configs server poll failed: %v", err)
+		log.Warnf("Scheduler: configs server poll failed: %v", err)
 		return nil, err
 	}
 	s.latestMutex.Lock()
@@ -184,7 +178,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfig) {
 			// they submit a broken one, we'll keep processing the last known
 			// working configuration.
 			// TODO: Provide a way of deleting / cancelling recording rules.
-			log.Warnf("Invalid Cortex configuration for %v", userID)
+			log.Warnf("Scheduler: invalid Cortex configuration for %v", userID)
 			continue
 		}
 
@@ -199,13 +193,17 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfig) {
 func (s *scheduler) addWorkItem(i workItem) {
 	s.q.Enqueue(i)
 	queueLength.Set(float64(s.q.Length()))
+	log.Debugf("Scheduler: work item added: %v", i)
 }
 
 // Get the next scheduled work item, blocking if none.
 //
 // Call `workItemDone` on the returned item to indicate that it is ready to be
 // rescheduled.
-func (s *scheduler) nextWorkItem(now time.Time) *workItem {
+func (s *scheduler) nextWorkItem() *workItem {
+	log.Debugf("Scheduler: work item requested. Pending...")
+	// TODO: We are blocking here on the second Dequeue event. Write more
+	// tests for the scheduling queue.
 	op := s.q.Dequeue()
 	if op == nil {
 		log.Infof("Queue closed. No more work items.")
@@ -213,10 +211,13 @@ func (s *scheduler) nextWorkItem(now time.Time) *workItem {
 	}
 	queueLength.Set(float64(s.q.Length()))
 	item := op.(workItem)
+	log.Debugf("Scheduler: work item granted: %v", item)
 	return &item
 }
 
 // workItemDone marks the given item as being ready to be rescheduled.
 func (s *scheduler) workItemDone(i workItem) {
-	s.addWorkItem(i.Defer(s.evaluationInterval))
+	next := i.Defer(s.evaluationInterval)
+	log.Debugf("Scheduler: work item %v rescheduled for %v", i, next.scheduled.Format("2006-01-02 15:04:05"))
+	s.addWorkItem(next)
 }

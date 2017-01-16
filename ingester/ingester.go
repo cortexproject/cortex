@@ -204,6 +204,12 @@ func (i *Ingester) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.
 }
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
+	if err := util.ValidateSample(sample); err != nil {
+		userID, _ := user.GetID(ctx) // ignore err, userID will be empty string if err
+		log.Errorf("Error validating sample from user '%s': %v", userID, err)
+		return nil
+	}
+
 	for ln, lv := range sample.Metric {
 		if len(lv) == 0 {
 			delete(sample.Metric, ln)

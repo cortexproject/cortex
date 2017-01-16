@@ -12,7 +12,7 @@ RUN go get -tags netgo \
 		github.com/client9/misspell/cmd/misspell \
 		github.com/jteeuwen/go-bindata/go-bindata \
 		github.com/golang/protobuf/protoc-gen-go \
-		github.com/mvdan/sh/cmd/shfmt && \
+		gopkg.in/mvdan/sh.v1/cmd/shfmt && \
 	rm -rf /go/pkg /go/src
 RUN mkdir protoc && \
 	cd protoc && \

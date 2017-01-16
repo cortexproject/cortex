@@ -19,7 +19,7 @@ dependencies:
         github.com/fzipp/gocyclo \
         github.com/golang/lint/golint \
         github.com/kisielk/errcheck \
-        ./vendor/github.com/mvdan/sh/cmd/shfmt
+        gopkg.in/mvdan/sh.v1/cmd/shfmt
 
 test:
   override:
@@ -27,5 +27,4 @@ test:
     - cd $SRCDIR/cover; make
     - cd $SRCDIR/socks; make
     - cd $SRCDIR/runner; make
-    - cd $SRCDIR/cmd/wcloud; make
 

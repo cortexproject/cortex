@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 )
@@ -15,18 +16,22 @@ import (
 type configID int
 
 type cortexConfig struct {
-	ConfigID   configID
 	RulesFiles map[string]string `json:"rules_files"`
+}
+
+type cortexConfigView struct {
+	ConfigID configID     `json:"id"`
+	Config   cortexConfig `json:"config"`
 }
 
 // cortexConfigsResponse is a response from server for getOrgConfigs
 type cortexConfigsResponse struct {
-	// Configs maps organization ID to their latest cortexConfig.
-	Configs map[string]cortexConfig `json:"configs"`
+	// Configs maps organization ID to their latest cortexConfigView.
+	Configs map[string]cortexConfigView `json:"configs"`
 }
 
 // getLatestConfigID returns the last config ID from a set of configs.
-func getLatestConfigID(configs map[string]cortexConfig) configID {
+func getLatestConfigID(configs map[string]cortexConfigView) configID {
 	latest := configID(0)
 	for _, config := range configs {
 		if config.ConfigID > latest {
@@ -72,7 +77,7 @@ type configsAPI struct {
 
 // getOrgConfigs returns all Cortex configurations from a configs api server
 // that have been updated since the given time.
-func (c *configsAPI) getOrgConfigs(since configID) (map[string]cortexConfig, error) {
+func (c *configsAPI) getOrgConfigs(since configID) (map[string]cortexConfigView, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -93,8 +98,10 @@ func (c *configsAPI) getOrgConfigs(since configID) (map[string]cortexConfig, err
 	}
 	var configs cortexConfigsResponse
 	if err := json.NewDecoder(res.Body).Decode(&configs); err != nil {
+		log.Errorf("configs: couldn't decode JSON body: %v", err)
 		return nil, err
 	}
+	log.Debugf("configs: got response: %v", configs)
 	return configs.Configs, nil
 }
 
@@ -117,7 +124,9 @@ func (c *configsAPI) getOrgConfig(userID string) (*cortexConfig, error) {
 	}
 	var config cortexConfig
 	if err := json.NewDecoder(res.Body).Decode(&config); err != nil {
+		log.Errorf("Couldn't decode JSON body: %v", err)
 		return nil, err
 	}
+	log.Debugf("Got response: %v", config)
 	return &config, nil
 }

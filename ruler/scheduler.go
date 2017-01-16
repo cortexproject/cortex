@@ -122,7 +122,7 @@ func (s *scheduler) Stop() {
 
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
-func (s *scheduler) loadAllConfigs() map[string]cortexConfig {
+func (s *scheduler) loadAllConfigs() map[string]cortexConfigView {
 	backoff := minBackoff
 	for {
 		cfgs, err := s.poll()
@@ -148,11 +148,11 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 	return nil
 }
 
-func (s *scheduler) poll() (map[string]cortexConfig, error) {
+func (s *scheduler) poll() (map[string]cortexConfigView, error) {
 	s.latestMutex.RLock()
 	configID := s.latestConfig
 	s.latestMutex.RUnlock()
-	var cfgs map[string]cortexConfig
+	var cfgs map[string]cortexConfigView
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
 		cfgs, err = s.configsAPI.getOrgConfigs(configID)
@@ -168,11 +168,11 @@ func (s *scheduler) poll() (map[string]cortexConfig, error) {
 	return cfgs, nil
 }
 
-func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfig) {
+func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigView) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	log.Debugf("Adding %d configurations", len(cfgs))
 	for userID, config := range cfgs {
-		rules, err := config.GetRules()
+		rules, err := config.Config.GetRules()
 		if err != nil {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known
@@ -185,7 +185,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfig) {
 		// XXX: New configs go to the back of the queue. Changed configs are
 		// ignored because priority queue ignores repeated queueing.
 		s.addWorkItem(workItem{userID, rules, now})
-		s.cfgs[userID] = config
+		s.cfgs[userID] = config.Config
 	}
 	totalConfigs.Set(float64(len(s.cfgs)))
 }

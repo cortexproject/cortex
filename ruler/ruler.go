@@ -65,7 +65,7 @@ func NewRuler(d *distributor.Distributor, c chunk.Store, alertURL *url.URL) Rule
 	return Ruler{querier.NewEngine(d, c), d, alertURL}
 }
 
-func (r *Ruler) newGroup(ctx context.Context, delay time.Duration, rs []rules.Rule) *rules.Group {
+func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) *rules.Group {
 	appender := appenderAdapter{appender: r.appender, ctx: ctx}
 	opts := &rules.ManagerOptions{
 		SampleAppender: appender,
@@ -73,15 +73,15 @@ func (r *Ruler) newGroup(ctx context.Context, delay time.Duration, rs []rules.Ru
 		Context:        ctx,
 		ExternalURL:    r.alertURL,
 	}
+	delay := 0 * time.Second // Unused, so 0 value is fine.
 	return rules.NewGroup("default", delay, rs, opts)
 }
 
 // Evaluate a list of rules in the given context.
 func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 	log.Debugf("Evaluating %d rules...", len(rs))
-	delay := 0 * time.Second // Unused, so 0 value is fine.
 	start := time.Now()
-	g := r.newGroup(ctx, delay, rs)
+	g := r.newGroup(ctx, rs)
 	g.Eval()
 	// The prometheus routines we're calling have their own instrumentation
 	// but, a) it's rule-based, not group-based, b) it's a summary, not a

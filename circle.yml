@@ -26,7 +26,7 @@ deployment:
       - docker login -e "$DOCKER_REGISTRY_EMAIL" -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
       - docker push weaveworks/cortex:$(./tools/image-tag)
       - docker push weaveworks/cortex_table_manager:$(./tools/image-tag)
-      - docker loging -e '.' -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io
+      - docker login -e '.' -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io
       - docker tag weaveworks/cortex:$(./tools/image-tag) quay.io/weaveworks/cortex:$(./tools/image-tag)
       - docker tag weaveworks/cortex_table_manager:$(./tools/image-tag) quay.io/weaveworks/cortex_table_manager:$(./tools/image-tag)
       - docker push quay.io/weaveworks/cortex:$(./tools/image-tag)

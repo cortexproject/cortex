@@ -16,11 +16,6 @@ func ValidateSample(s *model.Sample) error {
 		if !validLabelRE.MatchString(string(k)) {
 			return fmt.Errorf("invalid label: %s", k)
 		}
-
-		if strings.ContainsRune(string(v), '\x00') {
-			return fmt.Errorf("invalid label value: %s", v)
-		}
 	}
-
 	return nil
 }

@@ -199,16 +199,12 @@ func hashValue(userID, bucket string, metricName model.LabelValue) string {
 
 func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) []byte {
 	var (
-		labelBytes   = []byte(label)
-		valueBytes   = []byte(value)
-		chunkIDBytes = []byte(chunkID)
-
-		labelLen   = len(labelBytes)
-		valueLen   = base64.RawStdEncoding.EncodedLen(len(valueBytes))
-		chunkIDLen = len(chunkIDBytes)
+		labelLen   = len(label)
+		valueLen   = base64.RawStdEncoding.EncodedLen(len(value))
+		chunkIDLen = len(chunkID)
 
 		// encoded length is len(label) + 1 + len(encoded(value)) + 1 + len(chunkID) + 1 + version byte + 1
-		// 5 = 4 field terminators + 1 version bytes
+		// 5 = 4 field terminators + 1 version bytes 💩
 		length = labelLen + valueLen + chunkIDLen + 5
 		output = make([]byte, length, length)
 		i      = 0
@@ -218,30 +214,26 @@ func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) [
 		i += n + 1
 		return result
 	}
-	copy(next(labelLen), labelBytes)
-	base64.RawStdEncoding.Encode(next(valueLen), valueBytes)
-	copy(next(chunkIDLen), chunkIDBytes)
+	copy(next(labelLen), label)
+	base64.RawStdEncoding.Encode(next(valueLen), []byte(value))
+	copy(next(chunkIDLen), chunkID)
 	next(1)[0] = 1 // set the version
 	return output
 }
 
 func rangeValueKeyOnly(label model.LabelName) []byte {
 	var (
-		labelBytes = []byte(label)
-		labelLen   = len(labelBytes)
-		output     = make([]byte, labelLen+1, labelLen+1)
+		labelLen = len(label)
+		output   = make([]byte, labelLen+1, labelLen+1)
 	)
-	copy(output, labelBytes)
+	copy(output, label)
 	return output
 }
 
 func rangeValueKeyAndBase64ValueOnly(label model.LabelName, value model.LabelValue) []byte {
 	var (
-		labelBytes = []byte(label)
-		valueBytes = []byte(value)
-
-		labelLen = len(labelBytes)
-		valueLen = base64.RawStdEncoding.EncodedLen(len(valueBytes))
+		labelLen = len(label)
+		valueLen = base64.RawStdEncoding.EncodedLen(len(value))
 		length   = labelLen + valueLen + 2
 		output   = make([]byte, length, length)
 		i        = 0
@@ -251,8 +243,8 @@ func rangeValueKeyAndBase64ValueOnly(label model.LabelName, value model.LabelVal
 		i += n + 1
 		return result
 	}
-	copy(next(labelLen), labelBytes)
-	base64.RawStdEncoding.Encode(next(valueLen), valueBytes)
+	copy(next(labelLen), label)
+	base64.RawStdEncoding.Encode(next(valueLen), []byte(value))
 	return output
 }
 

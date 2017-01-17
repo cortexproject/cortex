@@ -74,6 +74,7 @@ type cfg struct {
 	dynamodbPeriodicTableStartAt string
 	dynamodbTablePrefix          string
 	dynamodbTablePeriod          time.Duration
+	dynamodbBase64ValuesFrom     string
 
 	memcachedHostname   string
 	memcachedTimeout    time.Duration
@@ -105,6 +106,7 @@ func main() {
 	flag.StringVar(&cfg.dynamodbPeriodicTableStartAt, "dynamodb.periodic-table.start", "", "DynamoDB periodic tables start time. If unspecified, don't use periodic tables.")
 	flag.StringVar(&cfg.dynamodbTablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
 	flag.DurationVar(&cfg.dynamodbTablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
+	flag.StringVar(&cfg.dynamodbBase64ValuesFrom, "dynamodb.base64-buckets-from", "9999-01-01", "The date in the format YYYY-MM-DD after which we will stop querying to non-base64 encoded values.")
 
 	flag.StringVar(&cfg.memcachedHostname, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
 	flag.StringVar(&cfg.memcachedService, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
@@ -262,6 +264,11 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 		return nil, fmt.Errorf("error parsing daily buckets begin date: %v", err)
 	}
 
+	base64ValuesFrom, err := time.Parse("2006-01-02", cfg.dynamodbBase64ValuesFrom)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing base64 values begin date: %v", err)
+	}
+
 	usePeriodicTables, periodicTableStartAt := false, time.Time{}
 	if cfg.dynamodbPeriodicTableStartAt != "" {
 		usePeriodicTables = true
@@ -279,6 +286,7 @@ func setupChunkStore(cfg cfg) (chunk.Store, error) {
 		ChunkCache: chunkCache,
 
 		DailyBucketsFrom: model.TimeFromUnix(dailyBucketsFrom.Unix()),
+		Base64ValuesFrom: model.TimeFromUnix(base64ValuesFrom.Unix()),
 
 		PeriodicTableConfig: chunk.PeriodicTableConfig{
 			UsePeriodicTables:    usePeriodicTables,

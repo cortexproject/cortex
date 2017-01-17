@@ -615,14 +615,6 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/sburnett/lexicographic-tuples",
-			"repository": "https://github.com/sburnett/lexicographic-tuples",
-			"vcs": "git",
-			"revision": "0d464282e8c00ae6790278a57c91e5d527d2277c",
-			"branch": "master",
-			"notests": true
-		},
-		{
 			"importpath": "github.com/shiena/ansicolor",
 			"repository": "https://github.com/shiena/ansicolor",
 			"vcs": "git",

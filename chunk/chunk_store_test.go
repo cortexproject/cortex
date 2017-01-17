@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/user"
@@ -266,9 +267,50 @@ func TestBigBuckets(t *testing.T) {
 				},
 			}
 			buckets := cs.bigBuckets(s.from, s.through)
+			for i := range buckets {
+				buckets[i].startTime = 0
+			}
 			if !reflect.DeepEqual(buckets, s.buckets) {
 				t.Fatalf("%d. unexpected buckets; want %v, got %v", i, s.buckets, buckets)
 			}
 		})
+	}
+}
+
+func TestRangeValue(t *testing.T) {
+	for _, c := range []struct {
+		name, value, chunkID string
+		expected             []byte
+	}{
+		{"1", "2", "3", []byte{'1', 0, 'M', 'g', 0, '3', 0, 1, 0}},
+		{"1", "\x00", "3", []byte{'1', 0, 'A', 'A', 0, '3', 0, 1, 0}},
+	} {
+		encoded := rangeValue(model.LabelName(c.name), model.LabelValue(c.value), c.chunkID)
+		assert.Equal(t, c.expected, encoded, "encoded")
+
+		name, value, chunkID, err := parseRangeValue(encoded)
+		assert.Nil(t, err, "parseRangeValue error")
+		assert.Equal(t, model.LabelName(c.name), name, "name")
+		assert.Equal(t, model.LabelValue(c.value), value, "value")
+		assert.Equal(t, c.chunkID, chunkID, "chunkID")
+	}
+
+	// Test we can decode legacy range values
+	for _, c := range []struct {
+		encoded              []byte
+		name, value, chunkID string
+	}{
+		{[]byte{'1', 0, '2', 0, '3', 0}, "1", "2", "3"},
+		{[]byte{0x74, 0x6f, 0x6d, 0x73, 0x00, 0x59, 0x32, 0x39, 0x6b, 0x5a, 0x51,
+			0x00, 0x32, 0x3a, 0x31, 0x34, 0x38, 0x34, 0x36, 0x36, 0x31, 0x32, 0x37,
+			0x39, 0x33, 0x39, 0x34, 0x3a, 0x31, 0x34, 0x38, 0x34, 0x36, 0x36, 0x34,
+			0x38, 0x37, 0x39, 0x33, 0x39, 0x34, 0x00, 0x01, 0x00},
+			"toms", "code", "2:1484661279394:1484664879394"},
+	} {
+		name, value, chunkID, err := parseRangeValue(c.encoded)
+		assert.Nil(t, err, "parseRangeValue error")
+		assert.Equal(t, model.LabelName(c.name), name, "name")
+		assert.Equal(t, model.LabelValue(c.value), value, "value")
+		assert.Equal(t, c.chunkID, chunkID, "chunkID")
 	}
 }

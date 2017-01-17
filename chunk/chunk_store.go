@@ -198,7 +198,6 @@ func hashValue(userID, bucket string, metricName model.LabelValue) string {
 }
 
 func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) []byte {
-	// encoded length is len(label) + 1 + len(encoded(value)) + 1 + len(chunkID) + 1 + version byte + 1
 	var (
 		labelBytes   = []byte(label)
 		valueBytes   = []byte(value)
@@ -208,6 +207,8 @@ func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) [
 		valueLen   = base64.RawStdEncoding.EncodedLen(len(valueBytes))
 		chunkIDLen = len(chunkIDBytes)
 
+		// encoded length is len(label) + 1 + len(encoded(value)) + 1 + len(chunkID) + 1 + version byte + 1
+		// 5 = 4 field terminators + 1 version bytes
 		length = labelLen + valueLen + chunkIDLen + 5
 		output = make([]byte, length, length)
 		i      = 0
@@ -605,50 +606,6 @@ func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string,
 
 func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
 	hashValue := hashValue(userID, bucket.bucket, metricName)
-	f := func(rangePrefix []byte) (ByID, error) {
-		input := &dynamodb.QueryInput{
-			TableName: aws.String(bucket.tableName),
-			KeyConditions: map[string]*dynamodb.Condition{
-				hashKey: {
-					AttributeValueList: []*dynamodb.AttributeValue{
-						{S: aws.String(hashValue)},
-					},
-					ComparisonOperator: aws.String("EQ"),
-				},
-				rangeKey: {
-					AttributeValueList: []*dynamodb.AttributeValue{
-						{B: rangePrefix},
-					},
-					ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
-				},
-			},
-			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-		}
-
-		chunkSet := ByID{}
-		var processingError error
-		var pages, totalDropped int
-		defer func() {
-			queryRequestPages.Observe(float64(pages))
-			queryDroppedMatches.Observe(float64(totalDropped))
-		}()
-		if err := c.dynamo.queryPages(ctx, input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
-			var dropped int
-			dropped, processingError = processResponse(resp.(*dynamodb.QueryOutput), &chunkSet, matcher)
-			totalDropped += dropped
-			pages++
-			return processingError != nil && !lastPage
-		}); err != nil {
-			log.Errorf("Error querying DynamoDB: %v", err)
-			return nil, err
-		} else if processingError != nil {
-			log.Errorf("Error processing DynamoDB response: %v", processingError)
-			return nil, processingError
-		}
-
-		sort.Sort(ByID(chunkSet))
-		return chunkSet, nil
-	}
 
 	var rangePrefix []byte
 	if matcher.Type == metric.Equal {
@@ -657,7 +614,7 @@ func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bu
 		rangePrefix = rangeValueKeyOnly(matcher.Name)
 	}
 
-	result, err := f(rangePrefix)
+	result, err := c.lookupChunksForRange(ctx, bucket, matcher, hashValue, rangePrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +625,7 @@ func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bu
 			return nil, err
 		}
 
-		legacyStuff, err := f(legacyRangePrefix)
+		legacyStuff, err := c.lookupChunksForRange(ctx, bucket, matcher, hashValue, legacyRangePrefix)
 		if err != nil {
 			return nil, err
 		}
@@ -677,6 +634,51 @@ func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bu
 	}
 
 	return result, nil
+}
+
+func (c *AWSStore) lookupChunksForRange(ctx context.Context, bucket bucketSpec, matcher *metric.LabelMatcher, hashValue string, rangePrefix []byte) (ByID, error) {
+	input := &dynamodb.QueryInput{
+		TableName: aws.String(bucket.tableName),
+		KeyConditions: map[string]*dynamodb.Condition{
+			hashKey: {
+				AttributeValueList: []*dynamodb.AttributeValue{
+					{S: aws.String(hashValue)},
+				},
+				ComparisonOperator: aws.String("EQ"),
+			},
+			rangeKey: {
+				AttributeValueList: []*dynamodb.AttributeValue{
+					{B: rangePrefix},
+				},
+				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
+			},
+		},
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+	}
+
+	chunkSet := ByID{}
+	var processingError error
+	var pages, totalDropped int
+	defer func() {
+		queryRequestPages.Observe(float64(pages))
+		queryDroppedMatches.Observe(float64(totalDropped))
+	}()
+	if err := c.dynamo.queryPages(ctx, input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
+		var dropped int
+		dropped, processingError = processResponse(resp.(*dynamodb.QueryOutput), &chunkSet, matcher)
+		totalDropped += dropped
+		pages++
+		return processingError != nil && !lastPage
+	}); err != nil {
+		log.Errorf("Error querying DynamoDB: %v", err)
+		return nil, err
+	} else if processingError != nil {
+		log.Errorf("Error processing DynamoDB response: %v", processingError)
+		return nil, processingError
+	}
+
+	sort.Sort(ByID(chunkSet))
+	return chunkSet, nil
 }
 
 func processResponse(resp *dynamodb.QueryOutput, chunkSet *ByID, matcher *metric.LabelMatcher) (int, error) {

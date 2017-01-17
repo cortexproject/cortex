@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jonboulle/clockwork"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/rules"
@@ -88,7 +89,7 @@ func newScheduler(configsAPI configsAPI, evaluationInterval, pollInterval time.D
 		configsAPI:         configsAPI,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
-		q:                  util.NewSchedulingQueue(),
+		q:                  util.NewSchedulingQueue(clockwork.NewRealClock()),
 		cfgs:               map[string]cortexConfig{},
 	}
 }

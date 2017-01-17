@@ -4,6 +4,8 @@ import (
 	"container/heap"
 	"sync"
 	"time"
+
+	"github.com/jonboulle/clockwork"
 )
 
 // PriorityQueue is a priority queue.
@@ -136,18 +138,70 @@ func (op scheduledOp) Priority() int64 {
 	return -op.Scheduled().Unix()
 }
 
+// DelayedCall is a function that we're not going to run yet.
+type DelayedCall struct {
+	clock      clockwork.Clock
+	f          func()
+	elapsed    <-chan time.Time
+	cancelled  chan struct{}
+	terminated chan struct{}
+}
+
+// DelayCall runs 'f' after 'delay'.
+func DelayCall(clock clockwork.Clock, delay time.Duration, f func()) *DelayedCall {
+	call := DelayedCall{
+		clock: clock,
+		f:     f,
+	}
+	call.reset(delay)
+	return &call
+}
+
+func (d *DelayedCall) loop() {
+	defer close(d.terminated)
+	for {
+		select {
+		case <-d.elapsed:
+			d.f()
+		case <-d.cancelled:
+			return
+		}
+	}
+}
+
+// Cancel the delayed call.
+func (d *DelayedCall) Cancel() {
+	close(d.cancelled)
+	<-d.terminated
+}
+
+func (d *DelayedCall) reset(delay time.Duration) {
+	d.cancelled = make(chan struct{})
+	d.terminated = make(chan struct{})
+	d.elapsed = d.clock.After(delay)
+	go d.loop()
+}
+
+// Reset the delayed call to run after 'delay' (as measured from now).
+func (d *DelayedCall) Reset(delay time.Duration) {
+	d.Cancel()
+	d.reset(delay)
+}
+
 // SchedulingQueue is like a priority queue, but the first item is the oldest
 // scheduled item.
 type SchedulingQueue struct {
 	*PriorityQueue
-	timer *time.Timer
+	clock clockwork.Clock
+	timer *DelayedCall
 }
 
 // NewSchedulingQueue makes a new priority queue.
-func NewSchedulingQueue() *SchedulingQueue {
+func NewSchedulingQueue(clock clockwork.Clock) *SchedulingQueue {
 	pq := NewPriorityQueue()
 	return &SchedulingQueue{
 		PriorityQueue: pq,
+		clock:         clock,
 	}
 }
 
@@ -166,7 +220,7 @@ func (sq *SchedulingQueue) frontChanged() {
 		return
 	}
 
-	delay := front.Scheduled().Sub(time.Now())
+	delay := front.Scheduled().Sub(sq.clock.Now())
 	if delay <= 0 {
 		sq.cancelTimer()
 		sq.cond.Broadcast()
@@ -178,21 +232,15 @@ func (sq *SchedulingQueue) frontChanged() {
 
 func (sq *SchedulingQueue) cancelTimer() {
 	if sq.timer != nil {
-		// Note: the timer might have fired by this point, but that's probably
-		// OK because the only thing we're waiting for is a broadcast to
-		// `cond`, which wakes up the Dequeue loop.
-		sq.timer.Stop()
+		sq.timer.Cancel()
 		sq.timer = nil
 	}
 }
 
 func (sq *SchedulingQueue) rescheduleTimer(delay time.Duration) {
 	if sq.timer == nil {
-		sq.timer = time.AfterFunc(delay, sq.cond.Broadcast)
+		sq.timer = DelayCall(sq.clock, delay, sq.cond.Broadcast)
 	} else {
-		// Note: timer might have fired by this point, but that's OK. See note
-		// in `cancelTimer` for reasons why.
-		sq.timer.Stop()
 		sq.timer.Reset(delay)
 	}
 }

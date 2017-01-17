@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/jonboulle/clockwork"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -105,9 +108,10 @@ func assertDequeues(t *testing.T, item sched, queue *SchedulingQueue) {
 }
 
 func TestSchedulingQueuePriorities(t *testing.T) {
-	queue := NewSchedulingQueue()
-	oneHourAgo := sched(time.Now().Add(-time.Hour))
-	twoHoursAgo := sched(time.Now().Add(-2 * time.Hour))
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
+	oneHourAgo := sched(clock.Now().Add(-time.Hour))
+	twoHoursAgo := sched(clock.Now().Add(-2 * time.Hour))
 	queue.Enqueue(oneHourAgo)
 	queue.Enqueue(twoHoursAgo)
 
@@ -120,9 +124,10 @@ func TestSchedulingQueuePriorities(t *testing.T) {
 }
 
 func TestSchedulingQueuePriorities2(t *testing.T) {
-	queue := NewSchedulingQueue()
-	oneHourAgo := sched(time.Now().Add(-time.Hour))
-	twoHoursAgo := sched(time.Now().Add(-2 * time.Hour))
+	clock := clockwork.NewRealClock()
+	queue := NewSchedulingQueue(clock)
+	oneHourAgo := sched(clock.Now().Add(-time.Hour))
+	twoHoursAgo := sched(clock.Now().Add(-2 * time.Hour))
 	queue.Enqueue(twoHoursAgo)
 	queue.Enqueue(oneHourAgo)
 
@@ -134,7 +139,8 @@ func TestSchedulingQueuePriorities2(t *testing.T) {
 }
 
 func TestSchedulingQueueWaitOnEmpty(t *testing.T) {
-	queue := NewSchedulingQueue()
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
 
 	done := make(chan struct{})
 	go func() {
@@ -152,9 +158,10 @@ func TestSchedulingQueueWaitOnEmpty(t *testing.T) {
 }
 
 func TestSchedulingQueueWaitOnItem(t *testing.T) {
-	queue := NewSchedulingQueue()
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
 
-	oneHourAgo := sched(time.Now().Add(-time.Hour))
+	oneHourAgo := sched(clock.Now().Add(-time.Hour))
 	done := make(chan struct{})
 	go func() {
 		assertDequeues(t, oneHourAgo, queue)
@@ -171,36 +178,34 @@ func TestSchedulingQueueWaitOnItem(t *testing.T) {
 }
 
 func TestSchedulingQueueBlockingBug(t *testing.T) {
-	// TODO: Relying on the real clock in tests is crazy. Use some sort of
-	// fake like
-	// https://github.com/jonboulle/clockwork/blob/master/clockwork.go
-	queue := NewSchedulingQueue()
-	twoHoursAgo := sched(time.Now().Add(-2 * time.Hour))
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
+	twoHoursAgo := sched(clock.Now().Add(-2 * time.Hour))
 	queue.Enqueue(twoHoursAgo)
 	assertDequeues(t, twoHoursAgo, queue)
 
 	done := make(chan struct{})
-	delay := 100 * time.Millisecond
-	soon := sched(time.Now().Add(delay))
+	delay := 1 * time.Hour
+	soon := sched(clock.Now().Add(delay))
 	go func() {
 		assertDequeues(t, soon, queue)
 		close(done)
 	}()
 
 	queue.Enqueue(soon)
-	select {
-	case <-done:
-	case <-time.After(2 * delay):
-		t.Fatalf("Still waiting after %v.", 2*delay)
-	}
+	clock.BlockUntil(1)
+	clock.Advance(2 * delay)
+	<-done
 }
 
 func TestSchedulingQueueRescheduling(t *testing.T) {
-	queue := NewSchedulingQueue()
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
 
-	oneHourAgo := sched(time.Now().Add(-1 * time.Hour))
-	oneHourFromNow := sched(time.Now().Add(1 * time.Hour))
+	oneHourAgo := sched(clock.Now().Add(-1 * time.Hour))
+	oneHourFromNow := sched(clock.Now().Add(1 * time.Hour))
 	queue.Enqueue(oneHourFromNow)
+	clock.BlockUntil(1)
 
 	done := make(chan struct{})
 	go func() {
@@ -209,9 +214,27 @@ func TestSchedulingQueueRescheduling(t *testing.T) {
 	}()
 
 	queue.Enqueue(oneHourAgo)
-	select {
-	case <-done:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatalf("Still waiting after 100ms")
-	}
+	<-done
+}
+
+func TestDelayedCall(t *testing.T) {
+	clock := clockwork.NewFakeClock()
+	var wg sync.WaitGroup
+	var called uint64
+
+	wg.Add(1)
+	DelayCall(clock, 5*time.Hour, func() {
+		atomic.AddUint64(&called, 1)
+		wg.Done()
+	})
+
+	clock.BlockUntil(1)
+	assert.Equal(t, uint64(0), atomic.LoadUint64(&called))
+	clock.Advance(2 * time.Hour)
+	assert.Equal(t, uint64(0), atomic.LoadUint64(&called))
+	clock.Advance(2 * time.Hour)
+	assert.Equal(t, uint64(0), atomic.LoadUint64(&called))
+	clock.Advance(2 * time.Hour)
+	wg.Wait()
+	assert.Equal(t, uint64(1), atomic.LoadUint64(&called))
 }

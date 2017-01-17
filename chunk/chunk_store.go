@@ -1,6 +1,8 @@
 package chunk
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -15,7 +17,6 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/sburnett/lexicographic-tuples"
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 
@@ -98,6 +99,9 @@ type StoreConfig struct {
 	// hour.  Only the day matters, not the time within the day.
 	DailyBucketsFrom model.Time
 
+	// After this time, we will only query for base64-encoded label values.
+	Base64ValuesFrom model.Time
+
 	PeriodicTableConfig
 }
 
@@ -129,6 +133,7 @@ func NewAWSStore(cfg StoreConfig) *AWSStore {
 type bucketSpec struct {
 	tableName string
 	bucket    string
+	startTime model.Time
 }
 
 // bigBuckets generates the list of "big buckets" for a given time range.
@@ -159,6 +164,7 @@ func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 		result = append(result, bucketSpec{
 			tableName: c.tableForBucket(i * secondsInHour),
 			bucket:    strconv.Itoa(int(i)),
+			startTime: model.TimeFromUnix(i * secondsInHour),
 		})
 	}
 
@@ -169,6 +175,7 @@ func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 		result = append(result, bucketSpec{
 			tableName: c.tableForBucket(i * secondsInDay),
 			bucket:    fmt.Sprintf("d%d", int(i)),
+			startTime: model.TimeFromUnix(i * secondsInDay),
 		})
 	}
 
@@ -190,15 +197,125 @@ func hashValue(userID, bucket string, metricName model.LabelValue) string {
 	return fmt.Sprintf("%s:%s:%s", userID, bucket, metricName)
 }
 
-func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) ([]byte, error) {
-	return lex.Encode(string(label), string(value), chunkID)
+func rangeValue(label model.LabelName, value model.LabelValue, chunkID string) []byte {
+	// encoded length is len(label) + 1 + len(encoded(value)) + 1 + len(chunkID) + 1 + version byte + 1
+	var (
+		labelBytes   = []byte(label)
+		valueBytes   = []byte(value)
+		chunkIDBytes = []byte(chunkID)
+
+		labelLen   = len(labelBytes)
+		valueLen   = base64.RawStdEncoding.EncodedLen(len(valueBytes))
+		chunkIDLen = len(chunkIDBytes)
+
+		length = labelLen + valueLen + chunkIDLen + 5
+		output = make([]byte, length, length)
+		i      = 0
+	)
+	next := func(n int) []byte {
+		result := output[i : i+n]
+		i += n + 1
+		return result
+	}
+	copy(next(labelLen), labelBytes)
+	base64.RawStdEncoding.Encode(next(valueLen), valueBytes)
+	copy(next(chunkIDLen), chunkIDBytes)
+	next(1)[0] = 1 // set the version
+	return output
 }
 
-func parseRangeValue(v []byte) (label model.LabelName, value model.LabelValue, chunkID string, err error) {
-	var labelStr, valueStr string
-	_, err = lex.Decode(v, &labelStr, &valueStr, &chunkID)
-	label, value = model.LabelName(labelStr), model.LabelValue(valueStr)
-	return
+func rangeValueKeyOnly(label model.LabelName) []byte {
+	var (
+		labelBytes = []byte(label)
+		labelLen   = len(labelBytes)
+		output     = make([]byte, labelLen+1, labelLen+1)
+	)
+	copy(output, labelBytes)
+	return output
+}
+
+func rangeValueKeyAndBase64ValueOnly(label model.LabelName, value model.LabelValue) []byte {
+	var (
+		labelBytes = []byte(label)
+		valueBytes = []byte(value)
+
+		labelLen = len(labelBytes)
+		valueLen = base64.RawStdEncoding.EncodedLen(len(valueBytes))
+		length   = labelLen + valueLen + 2
+		output   = make([]byte, length, length)
+		i        = 0
+	)
+	next := func(n int) []byte {
+		result := output[i : i+n]
+		i += n + 1
+		return result
+	}
+	copy(next(labelLen), labelBytes)
+	base64.RawStdEncoding.Encode(next(valueLen), valueBytes)
+	return output
+}
+
+func rangeValueKeyAndValueOnly(label model.LabelName, value model.LabelValue) ([]byte, error) {
+	var (
+		labelBytes = []byte(label)
+		valueBytes = []byte(value)
+		labelLen   = len(labelBytes)
+		valueLen   = len(valueBytes)
+		length     = labelLen + valueLen + 2
+		output     = make([]byte, length, length)
+		i          = 0
+	)
+	if bytes.ContainsRune(valueBytes, '\x00') {
+		return nil, fmt.Errorf("label values cannot contain null byte")
+	}
+	next := func(n int) []byte {
+		result := output[i : i+n]
+		i += n + 1
+		return result
+	}
+	copy(next(labelLen), labelBytes)
+	copy(next(valueLen), valueBytes)
+	return output, nil
+}
+
+func parseRangeValue(v []byte) (model.LabelName, model.LabelValue, string, error) {
+	var (
+		labelBytes   []byte
+		valueBytes   []byte
+		chunkIDBytes []byte
+		version      []byte
+		i, j         = 0, 0
+	)
+	next := func(output *[]byte) error {
+		for ; j < len(v); j++ {
+			if v[j] == 0 {
+				*output = v[i:j]
+				j++
+				i = j
+				return nil
+			}
+		}
+		return fmt.Errorf("invalid range value: %x", v)
+	}
+	if err := next(&labelBytes); err != nil {
+		return "", "", "", err
+	}
+	if err := next(&valueBytes); err != nil {
+		return "", "", "", err
+	}
+	if err := next(&chunkIDBytes); err != nil {
+		return "", "", "", err
+	}
+	if err := next(&version); err == nil {
+		// We read a version, need to decode value
+		decodedValueLen := base64.RawStdEncoding.DecodedLen(len(valueBytes))
+		decodedValueBytes := make([]byte, decodedValueLen, decodedValueLen)
+		if _, err := base64.RawStdEncoding.Decode(decodedValueBytes, valueBytes); err != nil {
+			return "", "", "", err
+		}
+		valueBytes = decodedValueBytes
+	}
+	return model.LabelName(labelBytes), model.LabelValue(valueBytes), string(chunkIDBytes), nil
 }
 
 // Put implements ChunkStore
@@ -293,10 +410,7 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) (map[str
 				}
 
 				entries++
-				rangeValue, err := rangeValue(label, value, chunk.ID)
-				if err != nil {
-					return nil, err
-				}
+				rangeValue := rangeValue(label, value, chunk.ID)
 				writeReqs[bucket.tableName] = append(writeReqs[bucket.tableName], &dynamodb.WriteRequest{
 					PutRequest: &dynamodb.PutRequest{
 						Item: map[string]*dynamodb.AttributeValue{
@@ -491,59 +605,78 @@ func (c *AWSStore) lookupChunksForMetricName(ctx context.Context, userID string,
 
 func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bucket bucketSpec, metricName model.LabelValue, matcher *metric.LabelMatcher) (ByID, error) {
 	hashValue := hashValue(userID, bucket.bucket, metricName)
-	var rangePrefix []byte
-	var err error
-	if matcher.Type == metric.Equal {
-		rangePrefix, err = lex.Encode(string(matcher.Name), string(matcher.Value))
-	} else {
-		rangePrefix, err = lex.Encode(string(matcher.Name))
+	f := func(rangePrefix []byte) (ByID, error) {
+		input := &dynamodb.QueryInput{
+			TableName: aws.String(bucket.tableName),
+			KeyConditions: map[string]*dynamodb.Condition{
+				hashKey: {
+					AttributeValueList: []*dynamodb.AttributeValue{
+						{S: aws.String(hashValue)},
+					},
+					ComparisonOperator: aws.String("EQ"),
+				},
+				rangeKey: {
+					AttributeValueList: []*dynamodb.AttributeValue{
+						{B: rangePrefix},
+					},
+					ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
+				},
+			},
+			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		}
+
+		chunkSet := ByID{}
+		var processingError error
+		var pages, totalDropped int
+		defer func() {
+			queryRequestPages.Observe(float64(pages))
+			queryDroppedMatches.Observe(float64(totalDropped))
+		}()
+		if err := c.dynamo.queryPages(ctx, input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
+			var dropped int
+			dropped, processingError = processResponse(resp.(*dynamodb.QueryOutput), &chunkSet, matcher)
+			totalDropped += dropped
+			pages++
+			return processingError != nil && !lastPage
+		}); err != nil {
+			log.Errorf("Error querying DynamoDB: %v", err)
+			return nil, err
+		} else if processingError != nil {
+			log.Errorf("Error processing DynamoDB response: %v", processingError)
+			return nil, processingError
+		}
+
+		sort.Sort(ByID(chunkSet))
+		return chunkSet, nil
 	}
+
+	var rangePrefix []byte
+	if matcher.Type == metric.Equal {
+		rangePrefix = rangeValueKeyAndBase64ValueOnly(matcher.Name, matcher.Value)
+	} else {
+		rangePrefix = rangeValueKeyOnly(matcher.Name)
+	}
+
+	result, err := f(rangePrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	input := &dynamodb.QueryInput{
-		TableName: aws.String(bucket.tableName),
-		KeyConditions: map[string]*dynamodb.Condition{
-			hashKey: {
-				AttributeValueList: []*dynamodb.AttributeValue{
-					{S: aws.String(hashValue)},
-				},
-				ComparisonOperator: aws.String("EQ"),
-			},
-			rangeKey: {
-				AttributeValueList: []*dynamodb.AttributeValue{
-					{B: rangePrefix},
-				},
-				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
-			},
-		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+	if matcher.Type == metric.Equal && bucket.startTime.Before(c.cfg.Base64ValuesFrom) {
+		legacyRangePrefix, err := rangeValueKeyAndValueOnly(matcher.Name, matcher.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		legacyStuff, err := f(legacyRangePrefix)
+		if err != nil {
+			return nil, err
+		}
+
+		result = merge(result, legacyStuff)
 	}
 
-	chunkSet := ByID{}
-	var processingError error
-	var pages, totalDropped int
-	defer func() {
-		queryRequestPages.Observe(float64(pages))
-		queryDroppedMatches.Observe(float64(totalDropped))
-	}()
-	if err := c.dynamo.queryPages(ctx, input, func(resp interface{}, lastPage bool) (shouldContinue bool) {
-		var dropped int
-		dropped, processingError = processResponse(resp.(*dynamodb.QueryOutput), &chunkSet, matcher)
-		totalDropped += dropped
-		pages++
-		return processingError != nil && !lastPage
-	}); err != nil {
-		log.Errorf("Error querying DynamoDB: %v", err)
-		return nil, err
-	} else if processingError != nil {
-		log.Errorf("Error processing DynamoDB response: %v", processingError)
-		return nil, processingError
-	}
-
-	sort.Sort(ByID(chunkSet))
-	return chunkSet, nil
+	return result, nil
 }
 
 func processResponse(resp *dynamodb.QueryOutput, chunkSet *ByID, matcher *metric.LabelMatcher) (int, error) {

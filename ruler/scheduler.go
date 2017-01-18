@@ -177,14 +177,12 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigVie
 		if err != nil {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known
-			// working configuration.
+			// working configuration, and they'll never know.
 			// TODO: Provide a way of deleting / cancelling recording rules.
 			log.Warnf("Scheduler: invalid Cortex configuration for %v", userID)
 			continue
 		}
 
-		// XXX: New configs go to the back of the queue. Changed configs are
-		// ignored because priority queue ignores repeated queueing.
 		s.addWorkItem(workItem{userID, rules, now})
 		s.cfgs[userID] = config.Config
 	}

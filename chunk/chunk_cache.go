@@ -8,6 +8,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 )
@@ -97,7 +98,9 @@ func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chun
 		}
 
 		if err := chunk.decode(bytes.NewReader(item.Value)); err != nil {
-			return nil, nil, err
+			log.Errorf("Failed to decode chunk from cache: %v", err)
+			missing = append(missing, chunk)
+			continue
 		}
 		found = append(found, chunk)
 	}

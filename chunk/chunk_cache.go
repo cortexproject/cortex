@@ -97,7 +97,9 @@ func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chun
 		}
 
 		if err := chunk.decode(bytes.NewReader(item.Value)); err != nil {
-			return nil, nil, err
+			log.Errorf("Failed to decode chunk from cache: %v", err)
+			missing = append(missing, chunk)
+			continue
 		}
 		found = append(found, chunk)
 	}

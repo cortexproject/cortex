@@ -23,23 +23,38 @@ type Op interface {
 	Priority() int64 // The larger the number the higher the priority.
 }
 
-type queue []Op
+// item is an item in the queue. It's an Op + an index.
+type item struct {
+	index   int
+	payload Op
+}
+
+type queue []*item
 
 func (q queue) Len() int           { return len(q) }
-func (q queue) Less(i, j int) bool { return q[i].Priority() > q[j].Priority() }
-func (q queue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
+func (q queue) Less(i, j int) bool { return q[i].payload.Priority() > q[j].payload.Priority() }
 func (q queue) Top() interface{}   { return q[0] }
+
+func (q queue) Swap(i, j int) {
+	q[i], q[j] = q[j], q[i]
+	q[i].index = i
+	q[j].index = j
+}
 
 // Push and Pop use pointer receivers because they modify the slice's length,
 // not just its contents.
 func (q *queue) Push(x interface{}) {
-	*q = append(*q, x.(Op))
+	n := q.Len()
+	y := x.(*item)
+	y.index = n
+	*q = append(*q, y)
 }
 
 func (q *queue) Pop() interface{} {
 	old := *q
 	n := len(old)
 	x := old[n-1]
+	x.index = -1
 	*q = old[0 : n-1]
 	return x
 }
@@ -87,7 +102,8 @@ func (pq *PriorityQueue) enqueue(op Op) bool {
 	}
 
 	pq.hit[op.Key()] = struct{}{}
-	heap.Push(&pq.queue, op)
+	item := item{-1, op}
+	heap.Push(&pq.queue, &item)
 	return true
 }
 
@@ -116,26 +132,9 @@ func (pq *PriorityQueue) Dequeue() Op {
 		return nil
 	}
 
-	op := heap.Pop(&pq.queue).(Op)
-	delete(pq.hit, op.Key())
-	return op
-}
-
-// ScheduledItem is an item in a queue of scheduled items.
-type ScheduledItem interface {
-	Key() string
-	// Scheduled returns the earliest possible time the time is available for
-	// dequeueing.
-	Scheduled() time.Time
-}
-
-type scheduledOp struct {
-	ScheduledItem
-}
-
-// Priority implements Op.
-func (op scheduledOp) Priority() int64 {
-	return -op.Scheduled().Unix()
+	item := heap.Pop(&pq.queue).(*item)
+	delete(pq.hit, item.payload.Key())
+	return item.payload
 }
 
 // DelayedCall is a function that we're not going to run yet.
@@ -188,6 +187,24 @@ func (d *DelayedCall) Reset(delay time.Duration) {
 	d.reset(delay)
 }
 
+// ScheduledItem is an item in a queue of scheduled items.
+type ScheduledItem interface {
+	Key() string
+	// Scheduled returns the earliest possible time the time is available for
+	// dequeueing.
+	Scheduled() time.Time
+}
+
+// scheduledOp adapts a ScheduledItem to an Op
+type scheduledOp struct {
+	ScheduledItem
+}
+
+// Priority implements Op.
+func (op scheduledOp) Priority() int64 {
+	return -op.Scheduled().Unix()
+}
+
 // SchedulingQueue is like a priority queue, but the first item is the oldest
 // scheduled item.
 type SchedulingQueue struct {
@@ -209,8 +226,8 @@ func (sq *SchedulingQueue) front() ScheduledItem {
 	if len(sq.queue) == 0 {
 		return nil
 	}
-	top := sq.PriorityQueue.queue.Top().(scheduledOp)
-	return top.ScheduledItem
+	top := sq.PriorityQueue.queue.Top().(*item)
+	return top.payload.(scheduledOp).ScheduledItem
 }
 
 func (sq *SchedulingQueue) frontChanged() {
@@ -285,8 +302,8 @@ func (sq *SchedulingQueue) Dequeue() ScheduledItem {
 		sq.cond.Wait()
 	}
 
-	op := heap.Pop(&sq.queue).(scheduledOp)
-	delete(sq.hit, op.Key())
+	item := heap.Pop(&sq.queue).(*item)
+	delete(sq.hit, item.payload.Key())
 	sq.frontChanged()
-	return op.ScheduledItem
+	return item.payload.(scheduledOp).ScheduledItem
 }

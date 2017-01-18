@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"flag"
 	"sort"
 	"strconv"
 	"sync"
@@ -41,8 +42,7 @@ func init() {
 
 // TableManagerConfig is the config for a DynamoTableManager
 type TableManagerConfig struct {
-	DynamoDB             DynamoDBClient
-	TableName            string
+	DynamoDB             DynamoDBClientValue
 	DynamoDBPollInterval time.Duration
 
 	PeriodicTableConfig
@@ -52,6 +52,17 @@ type TableManagerConfig struct {
 	MaxChunkAge                time.Duration
 	ProvisionedWriteThroughput int64
 	ProvisionedReadThroughput  int64
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL.")
+	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
+	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
+	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
+	f.Int64Var(&cfg.ProvisionedWriteThroughput, "dynamodb.periodic-table.write-throughput", 3000, "DynamoDB periodic tables write throughput")
+	f.Int64Var(&cfg.ProvisionedReadThroughput, "dynamodb.periodic-table.read-throughput", 300, "DynamoDB periodic tables read throughput")
+	cfg.PeriodicTableConfig.RegisterFlags(f)
 }
 
 // DynamoTableManager creates and manages the provisioned throughput on DynamoDB tables
@@ -140,7 +151,7 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 	if !m.cfg.UsePeriodicTables {
 		return []tableDescription{
 			{
-				name:             m.cfg.TableName,
+				name:             m.cfg.DynamoDB.TableName,
 				provisionedRead:  m.cfg.ProvisionedReadThroughput,
 				provisionedWrite: m.cfg.ProvisionedWriteThroughput,
 			},
@@ -161,7 +172,7 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 	// Add the legacy table
 	{
 		legacyTable := tableDescription{
-			name:             m.cfg.TableName,
+			name:             m.cfg.DynamoDB.TableName,
 			provisionedRead:  m.cfg.ProvisionedReadThroughput,
 			provisionedWrite: minWriteCapacity,
 		}

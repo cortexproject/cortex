@@ -1,5 +1,8 @@
-cmd/cortex/cortex
-cmd/cortex_table_manager/cortex_table_manager
+cmd/distributor/distributor
+cmd/ingester/ingester
+cmd/querier/querier
+cmd/ruler/ruler
+cmd/table-manager/table-manager
 .uptodate
 .pkg
 *.pb.go

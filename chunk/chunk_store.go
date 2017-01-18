@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"sort"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/cortex/util"
 )
 
 const (
@@ -89,20 +91,28 @@ type Store interface {
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	S3         S3Client
-	BucketName string
-	DynamoDB   DynamoDBClient
-	TableName  string
-	ChunkCache *Cache
+	PeriodicTableConfig
+	CacheConfig
+	S3       S3ClientValue
+	DynamoDB DynamoDBClientValue
 
 	// After midnight on this day, we start bucketing indexes by day instead of by
 	// hour.  Only the day matters, not the time within the day.
-	DailyBucketsFrom model.Time
+	DailyBucketsFrom util.DayValue
 
 	// After this time, we will only query for base64-encoded label values.
-	Base64ValuesFrom model.Time
+	Base64ValuesFrom util.DayValue
+}
 
-	PeriodicTableConfig
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.PeriodicTableConfig.RegisterFlags(f)
+	cfg.CacheConfig.RegisterFlags(f)
+
+	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL.")
+	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL.")
+	f.Var(&cfg.DailyBucketsFrom, "dynamodb.daily-buckets-from", "The date in the format YYYY-MM-DD of the first day for which DynamoDB index buckets should be day-sized vs. hour-sized.")
+	f.Var(&cfg.Base64ValuesFrom, "dynamodb.base64-buckets-from", "The date in the format YYYY-MM-DD after which we will stop querying to non-base64 encoded values.")
 }
 
 // PeriodicTableConfig for the use of periodic tables (ie, weekly talbes).  Can
@@ -112,13 +122,21 @@ type PeriodicTableConfig struct {
 	UsePeriodicTables    bool
 	TablePrefix          string
 	TablePeriod          time.Duration
-	PeriodicTableStartAt time.Time
+	PeriodicTableStartAt util.DayValue
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *PeriodicTableConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.UsePeriodicTables, "dynamodb.use-periodic-tables", true, "Should we user periodic tables.")
+	f.StringVar(&cfg.TablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
+	f.DurationVar(&cfg.TablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
+	f.Var(&cfg.PeriodicTableStartAt, "dynamodb.periodic-table.start", "DynamoDB periodic tables start time.")
 }
 
 // AWSStore implements ChunkStore for AWS
 type AWSStore struct {
-	cfg StoreConfig
-
+	cfg    StoreConfig
+	cache  *Cache
 	dynamo *dynamoDBBackoffClient
 }
 
@@ -126,6 +144,7 @@ type AWSStore struct {
 func NewAWSStore(cfg StoreConfig) *AWSStore {
 	return &AWSStore{
 		cfg:    cfg,
+		cache:  NewCache(cfg.CacheConfig),
 		dynamo: newDynamoDBBackoffClient(cfg.DynamoDB),
 	}
 }
@@ -184,7 +203,7 @@ func (c *AWSStore) bigBuckets(from, through model.Time) []bucketSpec {
 
 func (c *AWSStore) tableForBucket(bucketStart int64) string {
 	if !c.cfg.UsePeriodicTables || bucketStart < (c.cfg.PeriodicTableStartAt.Unix()) {
-		return c.cfg.TableName
+		return c.cfg.DynamoDB.TableName
 	}
 	return c.cfg.TablePrefix + strconv.Itoa(int(bucketStart/int64(c.cfg.TablePeriod/time.Second)))
 }
@@ -356,7 +375,7 @@ func (c *AWSStore) putChunk(ctx context.Context, userID string, chunk *Chunk) er
 		var err error
 		_, err = c.cfg.S3.PutObject(&s3.PutObjectInput{
 			Body:   body,
-			Bucket: aws.String(c.cfg.BucketName),
+			Bucket: aws.String(c.cfg.S3.BucketName),
 			Key:    aws.String(chunkName(userID, chunk.ID)),
 		})
 		return err
@@ -365,10 +384,8 @@ func (c *AWSStore) putChunk(ctx context.Context, userID string, chunk *Chunk) er
 		return err
 	}
 
-	if c.cfg.ChunkCache != nil {
-		if err = c.cfg.ChunkCache.StoreChunkData(ctx, userID, chunk); err != nil {
-			log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
-		}
+	if err = c.cache.StoreChunkData(ctx, userID, chunk); err != nil {
+		log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
 	}
 	return nil
 }
@@ -433,11 +450,9 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 	queryChunks.Observe(float64(len(missing)))
 
 	var fromCache []Chunk
-	if c.cfg.ChunkCache != nil {
-		fromCache, missing, err = c.cfg.ChunkCache.FetchChunkData(ctx, userID, missing)
-		if err != nil {
-			log.Warnf("Error fetching from cache: %v", err)
-		}
+	fromCache, missing, err = c.cache.FetchChunkData(ctx, userID, missing)
+	if err != nil {
+		log.Warnf("Error fetching from cache: %v", err)
 	}
 
 	fromS3, err := c.fetchChunkData(ctx, userID, missing)
@@ -445,10 +460,8 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 		return nil, err
 	}
 
-	if c.cfg.ChunkCache != nil {
-		if err = c.cfg.ChunkCache.StoreChunks(ctx, userID, fromS3); err != nil {
-			log.Warnf("Could not store chunks in chunk cache: %v", err)
-		}
+	if err = c.cache.StoreChunks(ctx, userID, fromS3); err != nil {
+		log.Warnf("Could not store chunks in chunk cache: %v", err)
 	}
 
 	// TODO instead of doing this sort, propagate an index and assign chunks
@@ -611,7 +624,7 @@ func (c *AWSStore) lookupChunksForMatcher(ctx context.Context, userID string, bu
 		return nil, err
 	}
 
-	if matcher.Type == metric.Equal && bucket.startTime.Before(c.cfg.Base64ValuesFrom) {
+	if matcher.Type == metric.Equal && bucket.startTime.Before(c.cfg.Base64ValuesFrom.Time) {
 		legacyRangePrefix, err := rangeValueKeyAndValueOnly(matcher.Name, matcher.Value)
 		if err != nil {
 			return nil, err
@@ -715,7 +728,7 @@ func (c *AWSStore) fetchChunkData(ctx context.Context, userID string, chunkSet [
 			err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
 				var err error
 				resp, err = c.cfg.S3.GetObject(&s3.GetObjectInput{
-					Bucket: aws.String(c.cfg.BucketName),
+					Bucket: aws.String(c.cfg.S3.BucketName),
 					Key:    aws.String(chunkName(userID, chunk.ID)),
 				})
 				return err

@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"flag"
 	"fmt"
 	"hash/fnv"
 	"sync"
@@ -38,6 +39,7 @@ var (
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
 	cfg        Config
+	ring       ReadRing
 	clientsMtx sync.RWMutex
 	clients    map[string]cortex.IngesterClient
 
@@ -62,24 +64,31 @@ type ReadRing interface {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	Ring ReadRing
-
 	ReplicationFactor int
 	MinReadSuccesses  int
 	HeartbeatTimeout  time.Duration
 	RemoteTimeout     time.Duration
 }
 
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	flag.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
+	flag.IntVar(&cfg.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
+	flag.DurationVar(&cfg.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
+	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 5*time.Second, "Timeout for downstream ingesters.")
+}
+
 // New constructs a new Distributor
-func New(cfg Config) (*Distributor, error) {
+func New(cfg Config, ring ReadRing) (*Distributor, error) {
 	if 0 > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
 	if cfg.MinReadSuccesses > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("MinReadSuccesses > ReplicationFactor: %d > %d", cfg.MinReadSuccesses, cfg.ReplicationFactor)
 	}
-	return &Distributor{
+	d := &Distributor{
 		cfg:     cfg,
+		ring:    ring,
 		clients: map[string]cortex.IngesterClient{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -118,7 +127,9 @@ func New(cfg Config) (*Distributor, error) {
 			Name:      "distributor_ingester_query_failures_total",
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
-	}, nil
+	}
+	prometheus.MustRegister(d)
+	return d, nil
 }
 
 func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.IngesterClient, error) {
@@ -186,7 +197,7 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		keys[i] = tokenForMetric(userID, sample.Metric)
 	}
 
-	ingesters, err := d.cfg.Ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
+	ingesters, err := d.ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +308,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		ingesters, err := d.cfg.Ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor, ring.Read)
+		ingesters, err := d.ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor, ring.Read)
 		if err != nil {
 			return err
 		}
@@ -360,7 +371,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 // forAllIngesters runs f, in parallel, for all ingesters
 func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}, error)) ([]interface{}, error) {
 	resps, errs := make(chan interface{}), make(chan error)
-	ingesters := d.cfg.Ring.GetAll()
+	ingesters := d.ring.GetAll()
 	for _, ingester := range ingesters {
 		go func(ingester *ring.IngesterDesc) {
 			client, err := d.getClientFor(ingester)
@@ -474,7 +485,7 @@ func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.queryDuration.Describe(ch)
 	ch <- d.receivedSamples.Desc()
 	d.sendDuration.Describe(ch)
-	d.cfg.Ring.Describe(ch)
+	d.ring.Describe(ch)
 	ch <- numClientsDesc
 	d.ingesterAppends.Describe(ch)
 	d.ingesterAppendFailures.Describe(ch)
@@ -487,7 +498,7 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	d.queryDuration.Collect(ch)
 	ch <- d.receivedSamples
 	d.sendDuration.Collect(ch)
-	d.cfg.Ring.Collect(ch)
+	d.ring.Collect(ch)
 	d.ingesterAppends.Collect(ch)
 	d.ingesterAppendFailures.Collect(ch)
 	d.ingesterQueries.Collect(ch)

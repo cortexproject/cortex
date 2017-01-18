@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/local"
@@ -126,6 +127,7 @@ func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matc
 		}
 	}
 	if lastErr != nil {
+		log.Errorf("Error in MergeQuerier.QueryRange: %v", lastErr)
 		return nil, lastErr
 	}
 

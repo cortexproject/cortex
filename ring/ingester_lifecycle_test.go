@@ -9,14 +9,24 @@ import (
 
 func TestIngesterRestart(t *testing.T) {
 	consul := newMockConsulClient()
-	ring := New(consul, time.Second)
+	ring, err := New(Config{
+		ConsulConfig: ConsulConfig{
+			mock: consul,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	{
-		registra, err := RegisterIngester(consul, IngesterRegistrationConfig{
-			NumTokens:      1,
-			Addr:           "localhost",
-			Hostname:       "localhost",
+		registra, err := RegisterIngester(IngesterRegistrationConfig{
+			mock:           ring,
 			skipUnregister: true,
+
+			NumTokens:  1,
+			ListenPort: func(i int) *int { return &i }(0),
+			Addr:       "localhost",
+			Hostname:   "localhost",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -29,11 +39,14 @@ func TestIngesterRestart(t *testing.T) {
 	})
 
 	{
-		registra, err := RegisterIngester(consul, IngesterRegistrationConfig{
-			NumTokens:      1,
-			Addr:           "localhost",
-			Hostname:       "localhost",
+		registra, err := RegisterIngester(IngesterRegistrationConfig{
+			mock:           ring,
 			skipUnregister: true,
+
+			NumTokens:  1,
+			ListenPort: func(i int) *int { return &i }(0),
+			Addr:       "localhost",
+			Hostname:   "localhost",
 		})
 		if err != nil {
 			t.Fatal(err)

@@ -51,3 +51,21 @@ func awsConfigFromURL(url *url.URL) (*aws.Config, error) {
 	}
 	return config, nil
 }
+
+// S3ClientValue is a flag.Value that parses a URL and produces a S3Client
+type S3ClientValue struct {
+	url, BucketName string
+	S3Client
+}
+
+// String implements flag.Value
+func (c *S3ClientValue) String() string {
+	return c.url
+}
+
+// Set implements flag.Value
+func (c *S3ClientValue) Set(v string) error {
+	var err error
+	c.S3Client, c.BucketName, err = NewS3Client(v)
+	return err
+}

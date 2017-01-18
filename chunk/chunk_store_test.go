@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/cortex/util"
 )
 
 func init() {
@@ -24,7 +25,9 @@ func init() {
 
 func setupDynamodb(t *testing.T, dynamoDB DynamoDBClient) {
 	tableManager, err := NewDynamoTableManager(TableManagerConfig{
-		DynamoDB: dynamoDB,
+		DynamoDB: DynamoDBClientValue{
+			DynamoDBClient: dynamoDB,
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -38,8 +41,12 @@ func TestChunkStoreUnprocessed(t *testing.T) {
 	dynamoDB := NewMockDynamoDB(2, 2)
 	setupDynamodb(t, dynamoDB)
 	store := NewAWSStore(StoreConfig{
-		DynamoDB: dynamoDB,
-		S3:       NewMockS3(),
+		DynamoDB: DynamoDBClientValue{
+			DynamoDBClient: dynamoDB,
+		},
+		S3: S3ClientValue{
+			S3Client: NewMockS3(),
+		},
 	})
 
 	ctx := user.WithID(context.Background(), "0")
@@ -73,8 +80,12 @@ func TestChunkStore(t *testing.T) {
 	dynamoDB := NewMockDynamoDB(0, 0)
 	setupDynamodb(t, dynamoDB)
 	store := NewAWSStore(StoreConfig{
-		DynamoDB: dynamoDB,
-		S3:       NewMockS3(),
+		DynamoDB: DynamoDBClientValue{
+			DynamoDBClient: dynamoDB,
+		},
+		S3: S3ClientValue{
+			S3Client: NewMockS3(),
+		},
 	})
 
 	ctx := user.WithID(context.Background(), "0")
@@ -181,8 +192,9 @@ func TestBigBuckets(t *testing.T) {
 
 	scenarios := []struct {
 		from, through, dailyBucketsFrom model.Time
-		periodicTablesFrom              time.Time
+		periodicTablesFrom              model.Time
 		periodicTablesPeriod            time.Duration
+		usePeriodicTables               bool
 		buckets                         []bucketSpec
 	}{
 		// Buckets are by hour until we reach the `dailyBucketsFrom`, after which they are by day.
@@ -230,7 +242,8 @@ func TestBigBuckets(t *testing.T) {
 			from:                 model.TimeFromUnix(0),
 			through:              model.TimeFromUnix(0).Add(4*24*time.Hour) - 1,
 			dailyBucketsFrom:     model.TimeFromUnix(0),
-			periodicTablesFrom:   time.Unix(0, 0),
+			usePeriodicTables:    true,
+			periodicTablesFrom:   model.TimeFromUnix(0),
 			periodicTablesPeriod: 2 * 24 * time.Hour,
 			buckets: mergeBuckets(
 				buckets(periodicPrefix+"0", []string{"d0", "d1"}),
@@ -243,7 +256,8 @@ func TestBigBuckets(t *testing.T) {
 			from:                 model.TimeFromUnix(0),
 			through:              model.TimeFromUnix(0).Add(4*24*time.Hour) - 1,
 			dailyBucketsFrom:     model.TimeFromUnix(0).Add(2*24*time.Hour) - 1,
-			periodicTablesFrom:   time.Unix(0, 0).Add(1 * 24 * time.Hour),
+			usePeriodicTables:    true,
+			periodicTablesFrom:   model.TimeFromUnix(0).Add(1 * 24 * time.Hour),
 			periodicTablesPeriod: 2 * 24 * time.Hour,
 			buckets: mergeBuckets(
 				buckets(tableName, firstDayBuckets),
@@ -254,15 +268,17 @@ func TestBigBuckets(t *testing.T) {
 	}
 	for i, s := range scenarios {
 		t.Run(fmt.Sprintf("Case %d", i), func(t *testing.T) {
-			cs := &AWSStore{
+			cs := AWSStore{
 				cfg: StoreConfig{
-					TableName:        tableName,
-					DailyBucketsFrom: s.dailyBucketsFrom,
+					DynamoDB: DynamoDBClientValue{
+						TableName: tableName,
+					},
+					DailyBucketsFrom: util.DayValue{s.dailyBucketsFrom},
 					PeriodicTableConfig: PeriodicTableConfig{
-						UsePeriodicTables:    !s.periodicTablesFrom.IsZero(),
+						UsePeriodicTables:    s.usePeriodicTables,
 						TablePeriod:          s.periodicTablesPeriod,
 						TablePrefix:          periodicPrefix,
-						PeriodicTableStartAt: s.periodicTablesFrom,
+						PeriodicTableStartAt: util.DayValue{s.periodicTablesFrom},
 					},
 				},
 			}

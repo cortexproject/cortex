@@ -13,7 +13,7 @@ type PriorityQueue struct {
 	lock   sync.Mutex
 	cond   *sync.Cond
 	closed bool
-	hit    map[string]struct{}
+	hit    map[string]int
 	queue  queue
 }
 
@@ -62,7 +62,7 @@ func (q *queue) Pop() interface{} {
 // NewPriorityQueue makes a new priority queue.
 func NewPriorityQueue() *PriorityQueue {
 	pq := &PriorityQueue{
-		hit: map[string]struct{}{},
+		hit: map[string]int{},
 	}
 	pq.cond = sync.NewCond(&pq.lock)
 	heap.Init(&pq.queue)
@@ -91,20 +91,23 @@ func (pq *PriorityQueue) Close() {
 //
 // Return 'true' if the item is newly added to the queue, 'false' if it was
 // already there.
-func (pq *PriorityQueue) enqueue(op Op) bool {
+func (pq *PriorityQueue) enqueue(op Op) {
 	if pq.closed {
 		panic("enqueue on closed queue")
 	}
 
-	_, enqueued := pq.hit[op.Key()]
+	key := op.Key()
+	index, enqueued := pq.hit[key]
 	if enqueued {
-		return false
+		item := pq.queue[index]
+		item.payload = op
+		heap.Fix(&pq.queue, index)
+		pq.hit[key] = item.index
+	} else {
+		item := item{-1, op}
+		heap.Push(&pq.queue, &item)
+		pq.hit[key] = item.index
 	}
-
-	pq.hit[op.Key()] = struct{}{}
-	item := item{-1, op}
-	heap.Push(&pq.queue, &item)
-	return true
 }
 
 // Enqueue adds an operation to the queue in priority order. If the operation
@@ -113,9 +116,8 @@ func (pq *PriorityQueue) Enqueue(op Op) {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
-	if pq.enqueue(op) {
-		pq.cond.Broadcast()
-	}
+	pq.enqueue(op)
+	pq.cond.Broadcast()
 }
 
 // Dequeue will return the op with the highest priority; block if queue is
@@ -267,9 +269,7 @@ func (sq *SchedulingQueue) Enqueue(item ScheduledItem) {
 	sq.lock.Lock()
 	defer sq.lock.Unlock()
 
-	if !sq.enqueue(scheduledOp{item}) {
-		return
-	}
+	sq.enqueue(scheduledOp{item})
 	front := sq.front() // Won't be nil because we just added something!
 	if front.Key() == item.Key() {
 		// New item went to front of the queue.

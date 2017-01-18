@@ -23,6 +23,20 @@ func (i simpleItem) Key() string {
 	return strconv.FormatInt(int64(i), 10)
 }
 
+type richItem struct {
+	priority int64
+	key      string
+	value    string
+}
+
+func (r richItem) Priority() int64 {
+	return r.priority
+}
+
+func (r richItem) Key() string {
+	return r.key
+}
+
 func TestPriorityQueueBasic(t *testing.T) {
 	queue := NewPriorityQueue()
 	assert.Equal(t, 0, queue.Length(), "Expected length = 0")
@@ -71,6 +85,24 @@ func TestPriorityQueueDedupe(t *testing.T) {
 	assert.Equal(t, simpleItem(1), queue.Dequeue().(simpleItem), "Expected to dequeue simpleItem(1)")
 
 	queue.Close()
+	assert.Nil(t, queue.Dequeue(), "Expect nil dequeue")
+}
+
+// If we enqueue a second item with the same key as an existing item, the new
+// item replaces the old, adjusting priority if necessary.
+func TestPriorityQueueRichDedupe(t *testing.T) {
+	queue := NewPriorityQueue()
+	bar := richItem{2, "bar", "middling priority"}
+	foo1 := richItem{1, "foo", "less important than bar"}
+	foo2 := richItem{3, "foo", "more important than bar"}
+	queue.Enqueue(bar)
+	queue.Enqueue(foo1)
+	queue.Enqueue(foo2)
+	queue.Close()
+
+	assert.Equal(t, 2, queue.Length(), "Expected length = 2")
+	assert.Equal(t, foo2, queue.Dequeue().(richItem), fmt.Sprintf("Expected to dequeue %v", foo2))
+	assert.Equal(t, bar, queue.Dequeue().(richItem), fmt.Sprintf("Expected to dequeue %v", bar))
 	assert.Nil(t, queue.Dequeue(), "Expect nil dequeue")
 }
 

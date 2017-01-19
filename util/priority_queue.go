@@ -8,10 +8,14 @@ import (
 	"github.com/jonboulle/clockwork"
 )
 
+const (
+	maxQueueLength = 100000000
+)
+
 // PriorityQueue is a priority queue.
 type PriorityQueue struct {
 	lock   sync.Mutex
-	cond   *sync.Cond
+	ch     chan bool
 	closed bool
 	hit    map[string]int
 	queue  queue
@@ -63,8 +67,8 @@ func (q *queue) Pop() interface{} {
 func NewPriorityQueue() *PriorityQueue {
 	pq := &PriorityQueue{
 		hit: map[string]int{},
+		ch:  make(chan bool, maxQueueLength),
 	}
-	pq.cond = sync.NewCond(&pq.lock)
 	heap.Init(&pq.queue)
 	return pq
 }
@@ -82,7 +86,7 @@ func (pq *PriorityQueue) Close() {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 	pq.closed = true
-	pq.cond.Broadcast()
+	close(pq.ch)
 }
 
 // enqueue adds an operation to the queue in priority order, but does *not*
@@ -114,45 +118,47 @@ func (pq *PriorityQueue) enqueue(op Op) {
 // is already on the queue, it will be ignored.
 func (pq *PriorityQueue) Enqueue(op Op) {
 	pq.lock.Lock()
-	defer pq.lock.Unlock()
-
 	pq.enqueue(op)
-	pq.cond.Broadcast()
+	pq.lock.Unlock()
+	pq.ch <- true
 }
 
 // Dequeue will return the op with the highest priority; block if queue is
 // empty; returns nil if queue is closed.
 func (pq *PriorityQueue) Dequeue() Op {
-	pq.lock.Lock()
-	defer pq.lock.Unlock()
+	for {
+		select {
+		case <-pq.ch:
+			pq.lock.Lock()
+			defer pq.lock.Unlock()
 
-	for len(pq.queue) == 0 && !pq.closed {
-		pq.cond.Wait()
+			if len(pq.queue) == 0 {
+				if pq.closed {
+					return nil
+				}
+				continue
+			}
+			item := heap.Pop(&pq.queue).(*item)
+			delete(pq.hit, item.payload.Key())
+			return item.payload
+		}
 	}
-
-	if len(pq.queue) == 0 && pq.closed {
-		return nil
-	}
-
-	item := heap.Pop(&pq.queue).(*item)
-	delete(pq.hit, item.payload.Key())
-	return item.payload
 }
 
 // DelayedCall is a function that we're not going to run yet.
 type DelayedCall struct {
 	clock      clockwork.Clock
-	f          func()
+	ch         chan bool
 	elapsed    <-chan time.Time
 	cancelled  chan struct{}
 	terminated chan struct{}
 }
 
 // DelayCall runs 'f' after 'delay'.
-func DelayCall(clock clockwork.Clock, delay time.Duration, f func()) *DelayedCall {
+func DelayCall(clock clockwork.Clock, delay time.Duration, ch chan bool) *DelayedCall {
 	call := DelayedCall{
 		clock: clock,
-		f:     f,
+		ch:    ch,
 	}
 	call.reset(delay)
 	return &call
@@ -163,7 +169,7 @@ func (d *DelayedCall) loop() {
 	for {
 		select {
 		case <-d.elapsed:
-			d.f()
+			d.ch <- true
 		case <-d.cancelled:
 			return
 		}
@@ -242,7 +248,7 @@ func (sq *SchedulingQueue) frontChanged() {
 	delay := front.Scheduled().Sub(sq.clock.Now())
 	if delay <= 0 {
 		sq.cancelTimer()
-		sq.cond.Broadcast()
+		sq.ch <- true
 		return
 	}
 
@@ -258,7 +264,7 @@ func (sq *SchedulingQueue) cancelTimer() {
 
 func (sq *SchedulingQueue) rescheduleTimer(delay time.Duration) {
 	if sq.timer == nil {
-		sq.timer = DelayCall(sq.clock, delay, sq.cond.Broadcast)
+		sq.timer = DelayCall(sq.clock, delay, sq.ch)
 	} else {
 		sq.timer.Reset(delay)
 	}
@@ -299,7 +305,7 @@ func (sq *SchedulingQueue) Dequeue() ScheduledItem {
 		}
 		// Either the queue is empty & open, or the first item is scheduled
 		// for some time in the future. Wait for that to change.
-		sq.cond.Wait()
+		<-sq.ch
 	}
 
 	item := heap.Pop(&sq.queue).(*item)

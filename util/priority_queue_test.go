@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -115,8 +113,8 @@ func TestPriorityQueueWait(t *testing.T) {
 		close(done)
 	}()
 
-	runtime.Gosched()
 	queue.Close()
+	runtime.Gosched()
 	select {
 	case <-done:
 	case <-time.After(100 * time.Millisecond):
@@ -180,8 +178,8 @@ func TestSchedulingQueueWaitOnEmpty(t *testing.T) {
 		close(done)
 	}()
 
-	runtime.Gosched()
 	queue.Close()
+	runtime.Gosched()
 	select {
 	case <-done:
 	case <-time.After(100 * time.Millisecond):
@@ -200,8 +198,8 @@ func TestSchedulingQueueWaitOnItem(t *testing.T) {
 		close(done)
 	}()
 
-	runtime.Gosched()
 	queue.Enqueue(oneHourAgo)
+	runtime.Gosched()
 	select {
 	case <-done:
 	case <-time.After(100 * time.Millisecond):
@@ -247,26 +245,4 @@ func TestSchedulingQueueRescheduling(t *testing.T) {
 
 	queue.Enqueue(oneHourAgo)
 	<-done
-}
-
-func TestDelayedCall(t *testing.T) {
-	clock := clockwork.NewFakeClock()
-	var wg sync.WaitGroup
-	var called uint64
-
-	wg.Add(1)
-	DelayCall(clock, 5*time.Hour, func() {
-		atomic.AddUint64(&called, 1)
-		wg.Done()
-	})
-
-	clock.BlockUntil(1)
-	assert.Equal(t, uint64(0), atomic.LoadUint64(&called))
-	clock.Advance(2 * time.Hour)
-	assert.Equal(t, uint64(0), atomic.LoadUint64(&called))
-	clock.Advance(2 * time.Hour)
-	assert.Equal(t, uint64(0), atomic.LoadUint64(&called))
-	clock.Advance(2 * time.Hour)
-	wg.Wait()
-	assert.Equal(t, uint64(1), atomic.LoadUint64(&called))
 }

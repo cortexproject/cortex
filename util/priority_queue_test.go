@@ -37,6 +37,7 @@ func (r richItem) Key() string {
 
 func TestPriorityQueueBasic(t *testing.T) {
 	queue := NewPriorityQueue()
+	queue.paranoid = true
 	assert.Equal(t, 0, queue.Length(), "Expected length = 0")
 
 	queue.Enqueue(simpleItem(1))
@@ -52,6 +53,7 @@ func TestPriorityQueueBasic(t *testing.T) {
 
 func TestPriorityQueuePriorities(t *testing.T) {
 	queue := NewPriorityQueue()
+	queue.paranoid = true
 	queue.Enqueue(simpleItem(1))
 	queue.Enqueue(simpleItem(2))
 
@@ -64,6 +66,7 @@ func TestPriorityQueuePriorities(t *testing.T) {
 
 func TestPriorityQueuePriorities2(t *testing.T) {
 	queue := NewPriorityQueue()
+	queue.paranoid = true
 	queue.Enqueue(simpleItem(2))
 	queue.Enqueue(simpleItem(1))
 
@@ -76,6 +79,7 @@ func TestPriorityQueuePriorities2(t *testing.T) {
 
 func TestPriorityQueueDedupe(t *testing.T) {
 	queue := NewPriorityQueue()
+	queue.paranoid = true
 	queue.Enqueue(simpleItem(1))
 	queue.Enqueue(simpleItem(1))
 
@@ -90,6 +94,7 @@ func TestPriorityQueueDedupe(t *testing.T) {
 // item replaces the old, adjusting priority if necessary.
 func TestPriorityQueueRichDedupe(t *testing.T) {
 	queue := NewPriorityQueue()
+	queue.paranoid = true
 	bar := richItem{2, "bar", "middling priority"}
 	foo1 := richItem{1, "foo", "less important than bar"}
 	foo2 := richItem{3, "foo", "more important than bar"}
@@ -106,6 +111,7 @@ func TestPriorityQueueRichDedupe(t *testing.T) {
 
 func TestPriorityQueueWait(t *testing.T) {
 	queue := NewPriorityQueue()
+	queue.paranoid = true
 
 	done := make(chan struct{})
 	go func() {

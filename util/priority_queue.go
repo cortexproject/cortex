@@ -2,6 +2,7 @@ package util
 
 import (
 	"container/heap"
+	"fmt"
 	"sync"
 	"time"
 
@@ -17,8 +18,10 @@ type PriorityQueue struct {
 	lock   sync.Mutex
 	ch     chan bool
 	closed bool
-	hit    map[string]int
+	hit    map[string]*int
 	queue  queue
+
+	paranoid bool // Whether to check state after operations.
 }
 
 // Op is an operation on the priority queue.
@@ -27,9 +30,9 @@ type Op interface {
 	Priority() int64 // The larger the number the higher the priority.
 }
 
-// item is an item in the queue. It's an Op + an index.
+// item is an item in the queue. It's an Op + an index, sort of.
 type item struct {
-	index   int
+	index   *int
 	payload Op
 }
 
@@ -41,16 +44,16 @@ func (q queue) Top() interface{}   { return q[0] }
 
 func (q queue) Swap(i, j int) {
 	q[i], q[j] = q[j], q[i]
-	q[i].index = i
-	q[j].index = j
+	*q[i].index = i
+	*q[j].index = j
 }
 
 // Push and Pop use pointer receivers because they modify the slice's length,
 // not just its contents.
 func (q *queue) Push(x interface{}) {
-	n := q.Len()
+	n := len(*q)
 	y := x.(*item)
-	y.index = n
+	*y.index = n
 	*q = append(*q, y)
 }
 
@@ -58,7 +61,7 @@ func (q *queue) Pop() interface{} {
 	old := *q
 	n := len(old)
 	x := old[n-1]
-	x.index = -1
+	*x.index = -1
 	*q = old[0 : n-1]
 	return x
 }
@@ -66,10 +69,11 @@ func (q *queue) Pop() interface{} {
 // NewPriorityQueue makes a new priority queue.
 func NewPriorityQueue() *PriorityQueue {
 	pq := &PriorityQueue{
-		hit: map[string]int{},
+		hit: map[string]*int{},
 		ch:  make(chan bool, maxQueueLength),
 	}
 	heap.Init(&pq.queue)
+	pq.checkState()
 	return pq
 }
 
@@ -89,6 +93,41 @@ func (pq *PriorityQueue) Close() {
 	close(pq.ch)
 }
 
+func (pq *PriorityQueue) checkState() {
+	if !pq.paranoid {
+		return
+	}
+	if len(pq.queue) != len(pq.hit) {
+		panic(fmt.Sprintf("queue & dictionary different lengths: %d != %d: %s", len(pq.queue), len(pq.hit), pq.formatState()))
+	}
+	for key, index := range pq.hit {
+		if *index < 0 || *index >= len(pq.queue) {
+			panic(fmt.Sprintf("index out of range: %d %s: %s", index, key, pq.formatState()))
+		}
+		if pq.queue[*index].payload.Key() != key {
+			panic(fmt.Sprintf("dictionary points to wrong item: %d %s != %s: %s", *index, key, pq.queue[*index].payload.Key(), pq.formatState()))
+		}
+	}
+	for i, item := range pq.queue {
+		if i != *item.index {
+			panic(fmt.Sprintf("item has wrong index: %d != %d: %s", i, item.index, pq.formatState()))
+		}
+	}
+	// TODO: All keys in the dictionary are in the queue
+	// TODO: All keys in the queue are in the dictionary
+	// TODO: All indexes in the queue are in the dictionary
+	// TODO: No duplicate indexes in the dictionary
+	// TODO: No duplicate items in the queue
+}
+
+func (pq *PriorityQueue) formatState() string {
+	queue := ""
+	for i, item := range pq.queue {
+		queue += fmt.Sprintf("{ [%d] index=%d, key=%s, priority=%v }", i, item.index, item.payload.Key(), item.payload.Priority())
+	}
+	return fmt.Sprintf("%v: queue (%d)=%s", pq, len(pq.queue), queue)
+}
+
 // enqueue adds an operation to the queue in priority order, but does *not*
 // make it available for dequeueing. If the operation is already on the queue,
 // it will be ignored.
@@ -103,14 +142,14 @@ func (pq *PriorityQueue) enqueue(op Op) {
 	key := op.Key()
 	index, enqueued := pq.hit[key]
 	if enqueued {
-		item := pq.queue[index]
+		item := pq.queue[*index]
 		item.payload = op
-		heap.Fix(&pq.queue, index)
-		pq.hit[key] = item.index
+		heap.Fix(&pq.queue, *index)
 	} else {
-		item := item{-1, op}
+		var i int
+		pq.hit[key] = &i
+		item := item{&i, op}
 		heap.Push(&pq.queue, &item)
-		pq.hit[key] = item.index
 	}
 }
 
@@ -118,7 +157,9 @@ func (pq *PriorityQueue) enqueue(op Op) {
 // is already on the queue, it will be ignored.
 func (pq *PriorityQueue) Enqueue(op Op) {
 	pq.lock.Lock()
+	pq.checkState()
 	pq.enqueue(op)
+	pq.checkState()
 	pq.lock.Unlock()
 	pq.ch <- true
 }
@@ -131,7 +172,7 @@ func (pq *PriorityQueue) Dequeue() Op {
 		case <-pq.ch:
 			pq.lock.Lock()
 			defer pq.lock.Unlock()
-
+			pq.checkState()
 			if len(pq.queue) == 0 {
 				if pq.closed {
 					return nil
@@ -140,6 +181,7 @@ func (pq *PriorityQueue) Dequeue() Op {
 			}
 			item := heap.Pop(&pq.queue).(*item)
 			delete(pq.hit, item.payload.Key())
+			pq.checkState()
 			return item.payload
 		}
 	}

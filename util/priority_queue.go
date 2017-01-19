@@ -154,47 +154,6 @@ type DelayedCall struct {
 	terminated chan struct{}
 }
 
-// DelayCall runs 'f' after 'delay'.
-func DelayCall(clock clockwork.Clock, delay time.Duration, ch chan bool) *DelayedCall {
-	call := DelayedCall{
-		clock: clock,
-		ch:    ch,
-	}
-	call.reset(delay)
-	return &call
-}
-
-func (d *DelayedCall) loop() {
-	defer close(d.terminated)
-	for {
-		select {
-		case <-d.elapsed:
-			d.ch <- true
-		case <-d.cancelled:
-			return
-		}
-	}
-}
-
-// Cancel the delayed call.
-func (d *DelayedCall) Cancel() {
-	close(d.cancelled)
-	<-d.terminated
-}
-
-func (d *DelayedCall) reset(delay time.Duration) {
-	d.cancelled = make(chan struct{})
-	d.terminated = make(chan struct{})
-	d.elapsed = d.clock.After(delay)
-	go d.loop()
-}
-
-// Reset the delayed call to run after 'delay' (as measured from now).
-func (d *DelayedCall) Reset(delay time.Duration) {
-	d.Cancel()
-	d.reset(delay)
-}
-
 // ScheduledItem is an item in a queue of scheduled items.
 type ScheduledItem interface {
 	Key() string
@@ -238,78 +197,46 @@ func (sq *SchedulingQueue) front() ScheduledItem {
 	return top.payload.(scheduledOp).ScheduledItem
 }
 
-func (sq *SchedulingQueue) frontChanged() {
-	front := sq.front()
-	if front == nil {
-		sq.cancelTimer()
-		return
-	}
-
-	delay := front.Scheduled().Sub(sq.clock.Now())
-	if delay <= 0 {
-		sq.cancelTimer()
-		sq.ch <- true
-		return
-	}
-
-	sq.rescheduleTimer(delay)
-}
-
-func (sq *SchedulingQueue) cancelTimer() {
-	if sq.timer != nil {
-		sq.timer.Cancel()
-		sq.timer = nil
-	}
-}
-
-func (sq *SchedulingQueue) rescheduleTimer(delay time.Duration) {
-	if sq.timer == nil {
-		sq.timer = DelayCall(sq.clock, delay, sq.ch)
-	} else {
-		sq.timer.Reset(delay)
-	}
-}
-
 // Enqueue schedules an item for later Dequeueing.
 func (sq *SchedulingQueue) Enqueue(item ScheduledItem) {
 	sq.lock.Lock()
-	defer sq.lock.Unlock()
-
 	sq.enqueue(scheduledOp{item})
-	front := sq.front() // Won't be nil because we just added something!
-	if front.Key() == item.Key() {
-		// New item went to front of the queue.
-		sq.frontChanged()
-	}
+	sq.lock.Unlock()
+	sq.ch <- true
 }
 
 // Dequeue takes an item from the queue. If there are no items, or the first
 // item isn't ready to be scheduled, it blocks.
 func (sq *SchedulingQueue) Dequeue() ScheduledItem {
-	sq.lock.Lock()
-	defer sq.lock.Unlock()
-
 	// Wait until there's something to dequeue.
 	for {
-		front := sq.front()
-		if front == nil && sq.closed {
-			// Queue is empty and can't have anything more added, so no point
-			// waiting.
-			return nil
-		}
-		if front != nil {
-			if !front.Scheduled().After(time.Now()) {
-				// Front item is ready to be run, so no point waiting.
-				break
+		select {
+		case <-sq.ch:
+			sq.lock.Lock()
+			front := sq.front()
+			if front == nil {
+				sq.lock.Unlock()
+				if sq.closed {
+					// Queue is empty and can't have anything more added, so
+					// no point waiting.
+					return nil
+				}
+				continue
 			}
-		}
-		// Either the queue is empty & open, or the first item is scheduled
-		// for some time in the future. Wait for that to change.
-		<-sq.ch
-	}
 
-	item := heap.Pop(&sq.queue).(*item)
-	delete(sq.hit, item.payload.Key())
-	sq.frontChanged()
-	return item.payload.(scheduledOp).ScheduledItem
+			delay := front.Scheduled().Sub(sq.clock.Now())
+			if delay > 0 {
+				go func(d time.Duration) {
+					sq.clock.Sleep(d)
+					sq.ch <- true
+				}(delay)
+				sq.lock.Unlock()
+				continue
+			}
+			item := heap.Pop(&sq.queue).(*item)
+			delete(sq.hit, item.payload.Key())
+			sq.lock.Unlock()
+			return item.payload.(scheduledOp).ScheduledItem
+		}
+	}
 }

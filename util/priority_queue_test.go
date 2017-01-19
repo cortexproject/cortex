@@ -225,7 +225,11 @@ func TestSchedulingQueueBlockingBug(t *testing.T) {
 	queue.Enqueue(soon)
 	clock.BlockUntil(1)
 	clock.Advance(2 * delay)
-	<-done
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Advancing the clock didn't trigger dequeue.")
+	}
 }
 
 func TestSchedulingQueueRescheduling(t *testing.T) {
@@ -235,7 +239,6 @@ func TestSchedulingQueueRescheduling(t *testing.T) {
 	oneHourAgo := sched(clock.Now().Add(-1 * time.Hour))
 	oneHourFromNow := sched(clock.Now().Add(1 * time.Hour))
 	queue.Enqueue(oneHourFromNow)
-	clock.BlockUntil(1)
 
 	done := make(chan struct{})
 	go func() {
@@ -244,5 +247,9 @@ func TestSchedulingQueueRescheduling(t *testing.T) {
 	}()
 
 	queue.Enqueue(oneHourAgo)
-	<-done
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Dequeue never happens.")
+	}
 }

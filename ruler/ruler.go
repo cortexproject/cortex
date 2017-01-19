@@ -56,7 +56,7 @@ type Config struct {
 // Ruler evaluates rules.
 type Ruler struct {
 	engine   *promql.Engine
-	appender SampleAppender
+	pusher   Pusher
 	alertURL *url.URL
 }
 
@@ -66,7 +66,7 @@ func NewRuler(d *distributor.Distributor, c chunk.Store, alertURL *url.URL) Rule
 }
 
 func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) *rules.Group {
-	appender := appenderAdapter{appender: r.appender, ctx: ctx}
+	appender := appenderAdapter{pusher: r.pusher, ctx: ctx}
 	opts := &rules.ManagerOptions{
 		SampleAppender: appender,
 		QueryEngine:    r.engine,

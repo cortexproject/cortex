@@ -2,23 +2,27 @@ package ruler
 
 import (
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/cortex"
+	"github.com/weaveworks/cortex/util"
 )
 
-// SampleAppender is the interface we wish sample appenders had.
-// TODO: Try to get this into Prometheus upstream.
-type SampleAppender interface {
-	AppendMany(context.Context, []*model.Sample) error
+// Pusher is an ingester server that accepts pushes.
+type Pusher interface {
+	Push(context.Context, *remote.WriteRequest) (*cortex.WriteResponse, error)
 }
 
 // appenderAdapter adapts a distributor.Distributor to prometheus.SampleAppender
 type appenderAdapter struct {
-	appender SampleAppender
-	ctx      context.Context
+	pusher Pusher
+	ctx    context.Context
 }
 
 func (a appenderAdapter) Append(sample *model.Sample) error {
-	return a.appender.AppendMany(a.ctx, []*model.Sample{sample})
+	_, err := a.pusher.Push(a.ctx, util.ToWriteRequest([]*model.Sample{sample}))
+	return err
 }
 
 func (a appenderAdapter) NeedsThrottling() bool {

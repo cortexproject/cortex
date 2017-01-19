@@ -100,10 +100,10 @@ func (c *configsAPI) getOrgConfigs(since configID) (map[string]cortexConfigView,
 	}
 	client := &http.Client{}
 	res, err := client.Do(req)
-	defer res.Body.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
 	}

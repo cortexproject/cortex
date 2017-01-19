@@ -697,7 +697,7 @@ func processResponse(resp *dynamodb.QueryOutput, chunkSet *ByID, matcher *metric
 		}
 
 		if matcher != nil && (label != matcher.Name || !matcher.Match(value)) {
-			log.Debugf("Dropping unexpected", chunk.Metric)
+			log.Debug("Dropping chunk for non-matching metric ", chunk.Metric)
 			dropped++
 			continue
 		}

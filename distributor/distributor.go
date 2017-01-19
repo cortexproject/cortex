@@ -54,9 +54,9 @@ type Distributor struct {
 type ReadRing interface {
 	prometheus.Collector
 
-	Get(key uint32, n int, op ring.Operation) ([]ring.IngesterDesc, error)
-	BatchGet(keys []uint32, n int, op ring.Operation) ([][]ring.IngesterDesc, error)
-	GetAll() []ring.IngesterDesc
+	Get(key uint32, n int, op ring.Operation) ([]*ring.IngesterDesc, error)
+	BatchGet(keys []uint32, n int, op ring.Operation) ([][]*ring.IngesterDesc, error)
+	GetAll() []*ring.IngesterDesc
 }
 
 // Config contains the configuration require to
@@ -121,9 +121,9 @@ func New(cfg Config) (*Distributor, error) {
 	}, nil
 }
 
-func (d *Distributor) getClientFor(ingester ring.IngesterDesc) (cortex.IngesterClient, error) {
+func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.IngesterClient, error) {
 	d.clientsMtx.RLock()
-	client, ok := d.clients[ingester.Hostname]
+	client, ok := d.clients[ingester.Addr]
 	d.clientsMtx.RUnlock()
 	if ok {
 		return client, nil
@@ -131,33 +131,25 @@ func (d *Distributor) getClientFor(ingester ring.IngesterDesc) (cortex.IngesterC
 
 	d.clientsMtx.Lock()
 	defer d.clientsMtx.Unlock()
-	client, ok = d.clients[ingester.Hostname]
+	client, ok = d.clients[ingester.Addr]
 	if ok {
 		return client, nil
 	}
 
-	if ingester.GRPCHostname != "" {
-		conn, err := grpc.Dial(
-			ingester.GRPCHostname,
-			grpc.WithInsecure(),
-			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-				middleware.ClientUserHeaderInterceptor,
-			)),
-		)
-		if err != nil {
-			return nil, err
-		}
-		client = cortex.NewIngesterClient(conn)
-	} else {
-		var err error
-		client, err = NewHTTPIngesterClient(ingester.Hostname, d.cfg.RemoteTimeout)
-		if err != nil {
-			return nil, err
-		}
+	conn, err := grpc.Dial(
+		ingester.Addr,
+		grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.ClientUserHeaderInterceptor,
+		)),
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	d.clients[ingester.Hostname] = client
+	client = cortex.NewIngesterClient(conn)
+	d.clients[ingester.Addr] = client
 	return client, nil
 }
 
@@ -200,7 +192,7 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 	}
 
 	sampleTrackers := make([]sampleTracker, len(samples), len(samples))
-	samplesByIngester := map[ring.IngesterDesc][]*sampleTracker{}
+	samplesByIngester := map[*ring.IngesterDesc][]*sampleTracker{}
 	for i := range samples {
 		sampleTrackers[i] = sampleTracker{
 			sample: samples[i],
@@ -212,9 +204,9 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		// Skip those that have not heartbeated in a while. NB these are still
 		// included in the calculation of minSuccess, so if too many failed ingesters
 		// will cause the whole write to fail.
-		liveIngesters := make([]ring.IngesterDesc, 0, len(ingesters[i]))
+		liveIngesters := make([]*ring.IngesterDesc, 0, len(ingesters[i]))
 		for _, ingester := range ingesters[i] {
-			if time.Now().Sub(ingester.Timestamp) <= d.cfg.HeartbeatTimeout {
+			if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= d.cfg.HeartbeatTimeout {
 				liveIngesters = append(liveIngesters, ingester)
 			}
 		}
@@ -234,7 +226,7 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 
 	errs := make(chan error)
 	for hostname, samples := range samplesByIngester {
-		go func(ingester ring.IngesterDesc, samples []*sampleTracker) {
+		go func(ingester *ring.IngesterDesc, samples []*sampleTracker) {
 			errs <- d.sendSamples(ctx, ingester, samples)
 		}(hostname, samples)
 	}
@@ -254,7 +246,7 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 	return &cortex.WriteResponse{}, nil
 }
 
-func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, sampleTrackers []*sampleTracker) error {
+func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker) error {
 	client, err := d.getClientFor(ingester)
 	if err != nil {
 		return err
@@ -268,9 +260,9 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 		return err
 	})
 	if err != nil {
-		d.ingesterAppendFailures.WithLabelValues(ingester.Hostname).Inc()
+		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
-	d.ingesterAppends.WithLabelValues(ingester.Hostname).Inc()
+	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	for i := range sampleTrackers {
 		atomic.AddInt32(&sampleTrackers[i].succeeded, 1)
 	}
@@ -330,10 +322,10 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			}
 
 			resp, err := client.Query(ctx, req)
-			d.ingesterQueries.WithLabelValues(ing.Hostname).Inc()
+			d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
 			if err != nil {
 				lastErr = err
-				d.ingesterQueryFailures.WithLabelValues(ing.Hostname).Inc()
+				d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 				continue
 			}
 			successes++
@@ -370,7 +362,7 @@ func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}
 	resps, errs := make(chan interface{}), make(chan error)
 	ingesters := d.cfg.Ring.GetAll()
 	for _, ingester := range ingesters {
-		go func(ingester ring.IngesterDesc) {
+		go func(ingester *ring.IngesterDesc) {
 			client, err := d.getClientFor(ingester)
 			if err != nil {
 				errs <- err

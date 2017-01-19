@@ -140,7 +140,11 @@ func main() {
 		log.Warnf("Polling DynamoDB more than once a minute. Likely to get throttled: %v", cfg.dynamodbPollInterval)
 	}
 
-	consul, err := ring.NewConsulClient(cfg.consulHost)
+	ringCodec := ring.NewDynamicCodec(
+		ring.JSONCodec{Factory: ring.DescFactory},
+		ring.ProtoCodec{Factory: ring.ProtoDescFactory},
+	)
+	consul, err := ring.NewConsulClient(cfg.consulHost, ringCodec)
 	if err != nil {
 		log.Fatalf("Error initializing Consul client: %v", err)
 	}
@@ -159,9 +163,9 @@ func main() {
 	case modeIngester:
 		cfg.ingesterConfig.Ring = r
 		registration, err := ring.RegisterIngester(consul, ring.IngesterRegistrationConfig{
-			ListenPort: cfg.listenPort,
-			GRPCPort:   cfg.ingesterConfig.GRPCListenPort,
+			ListenPort: cfg.ingesterConfig.GRPCListenPort,
 			NumTokens:  cfg.numTokens,
+			Codec:      ringCodec,
 		})
 		if err != nil {
 			// This only happens for errors in configuration & set-up, not for
@@ -189,7 +193,7 @@ func main() {
 
 		// Deferring a func to make ordering obvious
 		defer func() {
-			registration.ChangeState(ring.Leaving)
+			registration.ChangeState(ring.IngesterState_LEAVING)
 			ing.Stop()
 			registration.Unregister()
 		}()

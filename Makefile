@@ -24,17 +24,21 @@ IMAGE_NAMES=$(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)/%,$(
 images:
 	$(info $(IMAGE_NAMES))
 
+PROTO_DEFS := $(shell find . -type f -name "*.proto" ! -path "./tools/*" ! -path "./vendor/*")
+PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
+
 # List of exes please
 CORTEX_EXE := ./cmd/cortex/cortex
 CORTEX_TABLE_MANAGER_EXE := ./cmd/cortex_table_manager/cortex_table_manager
 EXES = $(CORTEX_EXE) $(CORTEX_TABLE_MANAGER_EXE)
 
 all: $(UPTODATE_FILES)
+test: $(PROTO_GOS)
 
 # And what goes into each exe
-$(CORTEX_EXE): $(shell find . -name '*.go') ui/bindata.go cortex.pb.go
+$(CORTEX_EXE): $(shell find . -name '*.go' ! -path "./tools/*" ! -path "./vendor/*") ui/bindata.go $(PROTO_GOS)
 $(CORTEX_TABLE_MANAGER_EXE): $(shell find ./chunk/ -name '*.go') cmd/cortex_table_manager/main.go
-cortex.pb.go: cortex.proto
+%.pb.go: %.proto
 ui/bindata.go: $(shell find ui/static ui/templates)
 
 # And now what goes into each image
@@ -58,7 +62,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) cortex.pb.go ui/bindata.go lint test shell: cortex-build/$(UPTODATE)
+$(EXES) $(PROTO_GOS) ui/bindata.go lint test shell: cortex-build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
@@ -71,8 +75,8 @@ $(EXES): cortex-build/$(UPTODATE)
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-cortex.pb.go: cortex-build/$(UPTODATE)
-	protoc -I ./vendor:. --go_out=plugins=grpc:. ./cortex.proto
+%.pb.go: cortex-build/$(UPTODATE)
+	protoc -I ./vendor:./$(@D) --go_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 ui/bindata.go: cortex-build/$(UPTODATE)
 	go-bindata -pkg ui -o ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  ui/templates/... ui/static/...
@@ -80,7 +84,7 @@ ui/bindata.go: cortex-build/$(UPTODATE)
 lint: cortex-build/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
-test: cortex-build/$(UPTODATE) cortex.pb.go
+test: cortex-build/$(UPTODATE)
 	./tools/test -no-go-get
 
 shell: cortex-build/$(UPTODATE)
@@ -90,7 +94,7 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) cortex.pb.go ui/bindata.go
+	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) ui/bindata.go
 	go clean ./...
 
 

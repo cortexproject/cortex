@@ -209,6 +209,7 @@ func (sq *SchedulingQueue) Enqueue(item ScheduledItem) {
 // item isn't ready to be scheduled, it blocks.
 func (sq *SchedulingQueue) Dequeue() ScheduledItem {
 	// Wait until there's something to dequeue.
+	var delayer <-chan time.Time
 	for {
 		select {
 		case <-sq.ch:
@@ -226,10 +227,7 @@ func (sq *SchedulingQueue) Dequeue() ScheduledItem {
 
 			delay := front.Scheduled().Sub(sq.clock.Now())
 			if delay > 0 {
-				go func(d time.Duration) {
-					sq.clock.Sleep(d)
-					sq.ch <- true
-				}(delay)
+				delayer = sq.clock.After(delay)
 				sq.lock.Unlock()
 				continue
 			}
@@ -237,6 +235,8 @@ func (sq *SchedulingQueue) Dequeue() ScheduledItem {
 			delete(sq.hit, item.payload.Key())
 			sq.lock.Unlock()
 			return item.payload.(scheduledOp).ScheduledItem
+		case <-delayer:
+			sq.ch <- true
 		}
 	}
 }

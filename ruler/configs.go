@@ -3,6 +3,7 @@ package ruler
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -28,6 +29,16 @@ type cortexConfigView struct {
 type cortexConfigsResponse struct {
 	// Configs maps organization ID to their latest cortexConfigView.
 	Configs map[string]cortexConfigView `json:"configs"`
+}
+
+func configsFromJSON(body io.Reader) (map[string]cortexConfigView, error) {
+	var configs cortexConfigsResponse
+	if err := json.NewDecoder(body).Decode(&configs); err != nil {
+		log.Errorf("configs: couldn't decode JSON body: %v", err)
+		return nil, err
+	}
+	log.Debugf("configs: got response: %v", configs)
+	return configs.Configs, nil
 }
 
 // getLatestConfigID returns the last config ID from a set of configs.
@@ -96,37 +107,5 @@ func (c *configsAPI) getOrgConfigs(since configID) (map[string]cortexConfigView,
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
 	}
-	var configs cortexConfigsResponse
-	if err := json.NewDecoder(res.Body).Decode(&configs); err != nil {
-		log.Errorf("configs: couldn't decode JSON body: %v", err)
-		return nil, err
-	}
-	log.Debugf("configs: got response: %v", configs)
-	return configs.Configs, nil
-}
-
-// getOrgConfig gets the organization's cortex config from a configs api server.
-func (c *configsAPI) getOrgConfig(userID string) (*cortexConfig, error) {
-	url := fmt.Sprintf("%s/api/configs/org/%s/cortex", c.url.String(), userID)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("X-Scope-OrgID", userID)
-	client := &http.Client{}
-	res, err := client.Do(req)
-	defer res.Body.Close()
-	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
-	}
-	var config cortexConfig
-	if err := json.NewDecoder(res.Body).Decode(&config); err != nil {
-		log.Errorf("Couldn't decode JSON body: %v", err)
-		return nil, err
-	}
-	log.Debugf("Got response: %v", config)
-	return &config, nil
+	return configsFromJSON(res.Body)
 }

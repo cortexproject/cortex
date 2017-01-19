@@ -184,6 +184,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 		} else {
 			ingesterDesc.Timestamp = time.Now()
 			ingesterDesc.State = r.state
+			ingesterDesc.GRPCHostname = r.grpcHostname
 			ringDesc.Ingesters[r.id] = ingesterDesc
 		}
 

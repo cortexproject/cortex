@@ -157,10 +157,10 @@ func (pq *PriorityQueue) enqueue(op Op) {
 // is already on the queue, it will be ignored.
 func (pq *PriorityQueue) Enqueue(op Op) {
 	pq.lock.Lock()
+	defer pq.lock.Lock()
 	pq.checkState()
 	pq.enqueue(op)
 	pq.checkState()
-	pq.lock.Unlock()
 	pq.ch <- true
 }
 
@@ -171,14 +171,16 @@ func (pq *PriorityQueue) Dequeue() Op {
 		select {
 		case <-pq.ch:
 			pq.lock.Lock()
-			defer pq.lock.Unlock()
 			pq.checkState()
 			if len(pq.queue) == 0 {
 				if pq.closed {
+					pq.lock.Unlock()
 					return nil
 				}
+				pq.lock.Unlock()
 				continue
 			}
+			defer pq.lock.Unlock()
 			item := heap.Pop(&pq.queue).(*item)
 			delete(pq.hit, item.payload.Key())
 			pq.checkState()
@@ -242,8 +244,8 @@ func (sq *SchedulingQueue) front() ScheduledItem {
 // Enqueue schedules an item for later Dequeueing.
 func (sq *SchedulingQueue) Enqueue(item ScheduledItem) {
 	sq.lock.Lock()
+	defer sq.lock.Unlock()
 	sq.enqueue(scheduledOp{item})
-	sq.lock.Unlock()
 	sq.ch <- true
 }
 
@@ -258,12 +260,13 @@ func (sq *SchedulingQueue) Dequeue() ScheduledItem {
 			sq.lock.Lock()
 			front := sq.front()
 			if front == nil {
-				sq.lock.Unlock()
 				if sq.closed {
 					// Queue is empty and can't have anything more added, so
 					// no point waiting.
+					sq.lock.Unlock()
 					return nil
 				}
+				sq.lock.Unlock()
 				continue
 			}
 
@@ -273,9 +276,9 @@ func (sq *SchedulingQueue) Dequeue() ScheduledItem {
 				sq.lock.Unlock()
 				continue
 			}
+			defer sq.lock.Unlock()
 			item := heap.Pop(&sq.queue).(*item)
 			delete(sq.hit, item.payload.Key())
-			sq.lock.Unlock()
 			return item.payload.(scheduledOp).ScheduledItem
 		case <-delayer:
 			sq.ch <- true

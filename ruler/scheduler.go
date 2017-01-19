@@ -179,7 +179,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigVie
 			// they submit a broken one, we'll keep processing the last known
 			// working configuration, and they'll never know.
 			// TODO: Provide a way of deleting / cancelling recording rules.
-			log.Warnf("Scheduler: invalid Cortex configuration for %v", userID)
+			log.Warnf("Scheduler: invalid Cortex configuration for %v: %v", userID, err)
 			continue
 		}
 

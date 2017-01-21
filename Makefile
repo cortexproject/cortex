@@ -40,6 +40,7 @@ $(CORTEX_EXE): $(shell find . -name '*.go' ! -path "./tools/*" ! -path "./vendor
 $(CORTEX_TABLE_MANAGER_EXE): $(shell find ./chunk/ -name '*.go') cmd/cortex_table_manager/main.go
 %.pb.go: %.proto
 ui/bindata.go: $(shell find ui/static ui/templates)
+test: $(PROTO_GOS)
 
 # And now what goes into each image
 cortex-build/$(UPTODATE): cortex-build/*
@@ -52,12 +53,12 @@ BUILD_IN_CONTAINER := true
 RM := --rm
 GO_FLAGS := -ldflags "-extldflags \"-static\" -linkmode=external -s -w" -tags netgo -i
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
-	rm $@; \
-	echo "\nYour go standard library was built without the 'netgo' build tag."; \
-	echo "To fix that, run"; \
-	echo "    sudo go clean -i net"; \
-	echo "    sudo go install -tags netgo std"; \
-	false; \
+       rm $@; \
+       echo "\nYour go standard library was built without the 'netgo' build tag."; \
+       echo "To fix that, run"; \
+       echo "    sudo go clean -i net"; \
+       echo "    sudo go install -tags netgo std"; \
+       false; \
 }
 
 ifeq ($(BUILD_IN_CONTAINER),true)
@@ -85,7 +86,7 @@ lint: cortex-build/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
 test: cortex-build/$(UPTODATE)
-	./tools/test -no-go-get
+	./tools/test -netgo
 
 shell: cortex-build/$(UPTODATE)
 	bash

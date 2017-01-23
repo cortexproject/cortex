@@ -63,13 +63,12 @@ var (
 type Ingester struct {
 	cfg        Config
 	chunkStore cortex_chunk.Store
-	stopLock   sync.RWMutex
-	stopped    bool
-	quit       chan struct{}
-	done       sync.WaitGroup
+	userStates userStates
 
-	userStateLock sync.Mutex
-	userState     map[string]*userState
+	stopLock sync.RWMutex
+	stopped  bool
+	quit     chan struct{}
+	done     sync.WaitGroup
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -94,15 +93,6 @@ type Config struct {
 	GRPCListenPort    int
 
 	Ring *ring.Ring
-}
-
-type userState struct {
-	userID          string
-	fpLocker        *fingerprintLocker
-	fpToSeries      *seriesMap
-	mapper          *fpMapper
-	index           *invertedIndex
-	ingestedSamples *ewmaRate
 }
 
 type flushOp struct {
@@ -140,7 +130,7 @@ func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
 		chunkStore: chunkStore,
 		quit:       make(chan struct{}),
 
-		userState:   map[string]*userState{},
+		userStates:  newUserStates(cfg.RateUpdatePeriod),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
@@ -222,12 +212,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		return fmt.Errorf("ingester stopping")
 	}
 
-	state, err := i.getStateFor(ctx)
-	if err != nil {
-		return err
-	}
-
-	fp, series, err := state.getOrCreateSeries(sample.Metric)
+	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, sample.Metric)
 	if err != nil {
 		return err
 	}
@@ -250,49 +235,6 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 	return err
 }
 
-func (i *Ingester) getStateFor(ctx context.Context) (*userState, error) {
-	userID, err := user.GetID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no user id")
-	}
-
-	i.userStateLock.Lock()
-	defer i.userStateLock.Unlock()
-	state, ok := i.userState[userID]
-	if !ok {
-		state = &userState{
-			userID:          userID,
-			fpToSeries:      newSeriesMap(),
-			fpLocker:        newFingerprintLocker(16),
-			index:           newInvertedIndex(),
-			ingestedSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
-		}
-		state.mapper = newFPMapper(state.fpToSeries)
-		i.userState[userID] = state
-	}
-	return state, nil
-}
-
-func (u *userState) getOrCreateSeries(metric model.Metric) (model.Fingerprint, *memorySeries, error) {
-	rawFP := metric.FastFingerprint()
-	u.fpLocker.Lock(rawFP)
-	fp := u.mapper.mapFP(rawFP, metric)
-	if fp != rawFP {
-		u.fpLocker.Unlock(rawFP)
-		u.fpLocker.Lock(fp)
-	}
-
-	series, ok := u.fpToSeries.get(fp)
-	if ok {
-		return fp, series, nil
-	}
-
-	series = newMemorySeries(metric)
-	u.fpToSeries.put(fp, series)
-	u.index.add(metric, fp)
-	return fp, series, nil
-}
-
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx context.Context, req *cortex.QueryRequest) (*cortex.QueryResponse, error) {
 	start, end, matchers, err := util.FromQueryRequest(req)
@@ -311,7 +253,7 @@ func (i *Ingester) Query(ctx context.Context, req *cortex.QueryRequest) (*cortex
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	i.queries.Inc()
 
-	state, err := i.getStateFor(ctx)
+	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +291,7 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesRequest) (*cortex.LabelValuesResponse, error) {
-	state, err := i.getStateFor(ctx)
+	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +306,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesReque
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *cortex.MetricsForLabelMatchersRequest) (*cortex.MetricsForLabelMatchersResponse, error) {
-	state, err := i.getStateFor(ctx)
+	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -397,10 +339,11 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *cortex.Metr
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx context.Context, req *cortex.UserStatsRequest) (*cortex.UserStatsResponse, error) {
-	state, err := i.getStateFor(ctx)
+	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
 	}
+
 	return &cortex.UserStatsResponse{
 		IngestionRate: state.ingestedSamples.rate(),
 		NumSeries:     uint64(state.fpToSeries.length()),
@@ -441,7 +384,7 @@ func (i *Ingester) loop() {
 		case <-flushTick:
 			i.sweepUsers(false)
 		case <-rateUpdateTick:
-			i.updateRates()
+			i.userStates.updateRates()
 		case <-i.quit:
 			return
 		}
@@ -454,28 +397,13 @@ func (i *Ingester) sweepUsers(immediate bool) {
 		return
 	}
 
-	i.userStateLock.Lock()
-	userState := make(map[string]*userState, len(i.userState))
-	for id, state := range i.userState {
-		userState[id] = state
-	}
-	i.userStateLock.Unlock()
-
-	for id, state := range userState {
+	for id, state := range i.userStates.cp() {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
 			i.sweepSeries(id, pair.fp, pair.series, immediate)
 			state.fpLocker.Unlock(pair.fp)
 		}
 	}
-
-	i.userStateLock.Lock()
-	for id, state := range userState {
-		if state.fpToSeries.length() == 0 {
-			delete(i.userState, id)
-		}
-	}
-	i.userStateLock.Unlock()
 }
 
 // sweepSeries schedules a series for flushing based on a set of criteria
@@ -544,9 +472,7 @@ func (i *Ingester) flushLoop(j int) {
 }
 
 func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
-	i.userStateLock.Lock()
-	userState, ok := i.userState[userID]
-	i.userStateLock.Unlock()
+	userState, ok := i.userStates.get(userID)
 	if !ok {
 		return nil
 	}
@@ -605,15 +531,6 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 	return i.chunkStore.Put(ctx, wireChunks)
 }
 
-func (i *Ingester) updateRates() {
-	i.userStateLock.Lock()
-	defer i.userStateLock.Unlock()
-
-	for _, u := range i.userState {
-		u.ingestedSamples.tick()
-	}
-}
-
 // Describe implements prometheus.Collector.
 func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- memorySeriesDesc
@@ -630,13 +547,8 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect implements prometheus.Collector.
 func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
-	i.userStateLock.Lock()
-	numUsers := len(i.userState)
-	numSeries := 0
-	for _, state := range i.userState {
-		numSeries += state.fpToSeries.length()
-	}
-	i.userStateLock.Unlock()
+	numUsers := i.userStates.numUsers()
+	numSeries := i.userStates.numSeries()
 
 	ch <- prometheus.MustNewConstMetric(
 		memorySeriesDesc,

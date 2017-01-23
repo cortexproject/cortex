@@ -29,73 +29,69 @@ type ScheduledItem interface {
 }
 
 type item struct {
-	index   *int
+	index   int
 	payload ScheduledItem
 }
 
-type scheduledItems []*item
-
-func (q scheduledItems) Len() int { return len(q) }
-func (q scheduledItems) Less(i, j int) bool {
-	return q[i].payload.Scheduled().Before(q[j].payload.Scheduled())
-}
-func (q scheduledItems) Top() interface{} { return q[0] }
-
-func (q scheduledItems) Swap(i, j int) {
-	q[i], q[j] = q[j], q[i]
+type queueState struct {
+	items []item
+	hit   map[string]int
 }
 
-// Push and Pop use pointer receivers because they modify the slice's length,
-// not just its contents.
-func (q *scheduledItems) Push(x interface{}) {
-	n := len(*q)
-	y := x.(*item)
-	*y.index = n
-	*q = append(*q, y)
+// Less implements heap.Interface
+func (q queueState) Less(i, j int) bool {
+	return q.items[i].payload.Scheduled().Before(q.items[j].payload.Scheduled())
 }
 
-func (q *scheduledItems) Pop() interface{} {
-	old := *q
+// Pop implements heap.Interface
+func (q *queueState) Pop() interface{} {
+	old := q.items
 	n := len(old)
 	x := old[n-1]
-	*x.index = -1
-	*q = old[0 : n-1]
+	delete(q.hit, x.payload.Key())
+	x.index = -1
+	q.items = old[0 : n-1]
 	return x
 }
 
-type queueState struct {
-	items scheduledItems
-	hit   map[string]*int
+// Push implements heap.Interface
+func (q *queueState) Push(x interface{}) {
+	n := len(q.items)
+	y := x.(item)
+	y.index = n
+	q.hit[y.payload.Key()] = n
+	q.items = append(q.items, y)
+}
+
+func (q *queueState) Swap(i, j int) {
+	q.hit[q.items[i].payload.Key()] = j
+	q.hit[q.items[j].payload.Key()] = i
+	q.items[i], q.items[j] = q.items[j], q.items[i]
 }
 
 func (q *queueState) Enqueue(op ScheduledItem) {
 	key := op.Key()
 	i, enqueued := q.hit[key]
 	if enqueued {
-		item := q.items[*i]
-		item.payload = op
-		heap.Fix(&q.items, *i)
+		q.items[i].payload = op
+		heap.Fix(q, i)
 	} else {
-		var index int
-		q.hit[key] = &index
-		item := item{&index, op}
-		heap.Push(&q.items, &item)
+		heap.Push(q, item{-1, op})
 	}
 	queueLength.Set(float64(len(q.items)))
 }
 
 func (q *queueState) Dequeue() ScheduledItem {
-	item := heap.Pop(&q.items).(*item)
-	delete(q.hit, item.payload.Key())
+	item := heap.Pop(q).(item)
 	queueLength.Set(float64(len(q.items)))
 	return item.payload
 }
 
 func (q *queueState) Front() ScheduledItem {
-	return q.items.Top().(*item).payload
+	return q.items[0].payload
 }
 
-func (q *queueState) Length() int {
+func (q *queueState) Len() int {
 	return len(q.items)
 }
 
@@ -126,13 +122,13 @@ func (sq *SchedulingQueue) Close() {
 
 func (sq *SchedulingQueue) run() {
 	q := queueState{
-		items: scheduledItems{},
-		hit:   map[string]*int{},
+		items: []item{},
+		hit:   map[string]int{},
 	}
 
 	for {
 		// Nothing on the queue?  Wait for something to be added.
-		if q.Length() == 0 {
+		if q.Len() == 0 {
 			next, open := <-sq.add
 
 			// Iff sq.add is closed (and there is nothing on the queue),

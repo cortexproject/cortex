@@ -63,6 +63,42 @@ func (q *scheduledItems) Pop() interface{} {
 	return x
 }
 
+type queueState struct {
+	items scheduledItems
+	hit   map[string]*int
+}
+
+func (q *queueState) Enqueue(op ScheduledItem) {
+	key := op.Key()
+	i, enqueued := q.hit[key]
+	if enqueued {
+		item := q.items[*i]
+		item.payload = op
+		heap.Fix(&q.items, *i)
+	} else {
+		var index int
+		q.hit[key] = &index
+		item := item{&index, op}
+		heap.Push(&q.items, &item)
+	}
+	queueLength.Set(float64(len(q.items)))
+}
+
+func (q *queueState) Dequeue() ScheduledItem {
+	item := heap.Pop(&q.items).(*item)
+	delete(q.hit, item.payload.Key())
+	queueLength.Set(float64(len(q.items)))
+	return item.payload
+}
+
+func (q *queueState) Front() ScheduledItem {
+	return q.items.Top().(*item).payload
+}
+
+func (q *queueState) Length() int {
+	return len(q.items)
+}
+
 // SchedulingQueue is like a priority queue, but the first item is the oldest
 // scheduled item. Items are only able to be dequeued after the time they are
 // scheduled to be run.
@@ -89,28 +125,14 @@ func (sq *SchedulingQueue) Close() {
 }
 
 func (sq *SchedulingQueue) run() {
-	items := scheduledItems{}
-	hit := map[string]*int{}
-
-	addItem := func(op ScheduledItem) {
-		key := op.Key()
-		i, enqueued := hit[key]
-		if enqueued {
-			item := items[*i]
-			item.payload = op
-			heap.Fix(&items, *i)
-		} else {
-			var index int
-			hit[key] = &index
-			item := item{&index, op}
-			heap.Push(&items, &item)
-		}
-		queueLength.Set(float64(len(items)))
+	q := queueState{
+		items: scheduledItems{},
+		hit:   map[string]*int{},
 	}
 
 	for {
 		// Nothing on the queue?  Wait for something to be added.
-		if len(items) == 0 {
+		if q.Length() == 0 {
 			next, ok := <-sq.add
 
 			// Iff sq.add is closed (and there is nothing on the queue),
@@ -120,23 +142,21 @@ func (sq *SchedulingQueue) run() {
 				return
 			}
 
-			addItem(next)
+			q.Enqueue(next)
 			continue
 		}
 
-		next := items.Top().(*item).payload
+		next := q.Front()
 		delay := next.Scheduled().Sub(sq.clock.Now())
 
 		// Item on the queue that is ready now?
 		if delay <= 0 {
 			select {
 			case sq.next <- next:
-				item := heap.Pop(&items).(*item)
-				delete(hit, item.payload.Key())
-				queueLength.Set(float64(len(items)))
+				q.Dequeue()
 			case justAdded, ok := <-sq.add:
 				if ok {
-					addItem(justAdded)
+					q.Enqueue(justAdded)
 				}
 			}
 			continue
@@ -148,7 +168,7 @@ func (sq *SchedulingQueue) run() {
 		case <-sq.clock.After(delay):
 		case justAdded, ok := <-sq.add:
 			if ok {
-				addItem(justAdded)
+				q.Enqueue(justAdded)
 			}
 		}
 	}

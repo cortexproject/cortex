@@ -15,6 +15,11 @@ type Pusher interface {
 }
 
 // appenderAdapter adapts a distributor.Distributor to prometheus.SampleAppender
+//
+// Distributors need a context and prometheus.SampleAppender doesn't allow for
+// one. See
+// https://github.com/prometheus/prometheus/pull/2000#discussion_r79108319 for
+// reasons why.
 type appenderAdapter struct {
 	pusher Pusher
 	ctx    context.Context

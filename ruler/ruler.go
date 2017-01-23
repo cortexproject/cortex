@@ -44,6 +44,9 @@ func init() {
 // Config is the configuration for the recording rules server.
 type Config struct {
 	ConfigsAPIURL string
+	// HTTP timeout duration for requests made to the Weave Cloud configs
+	// service.
+	ClientTimeout time.Duration
 	// This is used for template expansion in alerts. Because we don't support
 	// alerts yet, this value doesn't matter. However, it must be a valid URL
 	// in order to navigate Prometheus's code paths.
@@ -102,11 +105,11 @@ func NewServer(cfg Config, ruler Ruler) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := configsAPI{configsAPIURL}
+	c := configsAPI{configsAPIURL, cfg.ClientTimeout}
 	// TODO: Separate configuration for polling interval.
 	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval)
 	if cfg.NumWorkers <= 0 {
-		return nil, fmt.Errorf("Must have at least 1 worker, got %d", cfg.NumWorkers)
+		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
 	workers := make([]worker, cfg.NumWorkers)
 	for i := 0; i < cfg.NumWorkers; i++ {
@@ -151,8 +154,10 @@ type worker struct {
 
 func newWorker(scheduler *scheduler, ruler Ruler) worker {
 	return worker{
-		scheduler: scheduler,
-		ruler:     ruler,
+		scheduler:  scheduler,
+		ruler:      ruler,
+		done:       make(chan struct{}),
+		terminated: make(chan struct{}),
 	}
 }
 

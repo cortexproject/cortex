@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
@@ -17,9 +18,16 @@ import (
 type configID int
 
 type cortexConfig struct {
+	// RulesFiles maps from a rules filename to file contents.
 	RulesFiles map[string]string `json:"rules_files"`
 }
 
+// cortexConfigView is what's returned from the Weave Cloud configs service
+// when we ask for all Cortex configurations.
+//
+// The configs service is essentially a JSON blob store that gives each
+// _version_ of a configuration a unique ID and guarantees that later versions
+// have greater IDs.
 type cortexConfigView struct {
 	ConfigID configID     `json:"id"`
 	Config   cortexConfig `json:"config"`
@@ -31,20 +39,20 @@ type cortexConfigsResponse struct {
 	Configs map[string]cortexConfigView `json:"configs"`
 }
 
-func configsFromJSON(body io.Reader) (map[string]cortexConfigView, error) {
+func configsFromJSON(body io.Reader) (*cortexConfigsResponse, error) {
 	var configs cortexConfigsResponse
 	if err := json.NewDecoder(body).Decode(&configs); err != nil {
 		log.Errorf("configs: couldn't decode JSON body: %v", err)
 		return nil, err
 	}
 	log.Debugf("configs: got response: %v", configs)
-	return configs.Configs, nil
+	return &configs, nil
 }
 
 // getLatestConfigID returns the last config ID from a set of configs.
-func getLatestConfigID(configs map[string]cortexConfigView) configID {
+func (c cortexConfigsResponse) getLatestConfigID() configID {
 	latest := configID(0)
-	for _, config := range configs {
+	for _, config := range c.Configs {
 		if config.ConfigID > latest {
 			latest = config.ConfigID
 		}
@@ -83,12 +91,13 @@ func (c cortexConfig) GetRules() ([]rules.Rule, error) {
 }
 
 type configsAPI struct {
-	url *url.URL
+	url     *url.URL
+	timeout time.Duration
 }
 
 // getOrgConfigs returns all Cortex configurations from a configs api server
-// that have been updated since the given time.
-func (c *configsAPI) getOrgConfigs(since configID) (map[string]cortexConfigView, error) {
+// that have been updated after the given configID was last updated.
+func (c *configsAPI) getOrgConfigs(since configID) (*cortexConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -98,7 +107,7 @@ func (c *configsAPI) getOrgConfigs(since configID) (map[string]cortexConfigView,
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{}
+	client := &http.Client{Timeout: c.timeout}
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err

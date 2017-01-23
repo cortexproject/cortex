@@ -91,6 +91,9 @@ func newScheduler(configsAPI configsAPI, evaluationInterval, pollInterval time.D
 		pollInterval:       pollInterval,
 		q:                  util.NewSchedulingQueue(clockwork.NewRealClock()),
 		cfgs:               map[string]cortexConfig{},
+
+		done:       make(chan struct{}),
+		terminated: make(chan struct{}),
 	}
 }
 
@@ -149,11 +152,10 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 	return nil
 }
 
+// poll the configuration server. Not re-entrant.
 func (s *scheduler) poll() (map[string]cortexConfigView, error) {
-	s.latestMutex.RLock()
 	configID := s.latestConfig
-	s.latestMutex.RUnlock()
-	var cfgs map[string]cortexConfigView
+	var cfgs *cortexConfigsResponse
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
 		cfgs, err = s.configsAPI.getOrgConfigs(configID)
@@ -164,9 +166,9 @@ func (s *scheduler) poll() (map[string]cortexConfigView, error) {
 		return nil, err
 	}
 	s.latestMutex.Lock()
-	s.latestConfig = getLatestConfigID(cfgs)
+	s.latestConfig = cfgs.getLatestConfigID()
 	s.latestMutex.Unlock()
-	return cfgs, nil
+	return cfgs.Configs, nil
 }
 
 func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigView) {

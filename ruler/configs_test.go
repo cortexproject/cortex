@@ -23,7 +23,7 @@ func TestJSONDecoding(t *testing.T) {
 }
 `))
 	assert.Nil(t, err)
-	expected := map[string]cortexConfigView{
+	expected := cortexConfigsResponse{Configs: map[string]cortexConfigView{
 		"2": {
 			ConfigID: 1,
 			Config: cortexConfig{
@@ -32,6 +32,6 @@ func TestJSONDecoding(t *testing.T) {
 				},
 			},
 		},
-	}
-	assert.Equal(t, expected, observed)
+	}}
+	assert.Equal(t, &expected, observed)
 }

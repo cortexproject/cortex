@@ -129,7 +129,8 @@ func main() {
 
 	flag.StringVar(&cfg.rulerConfig.ConfigsAPIURL, "ruler.configs.url", "", "URL of configs API server.")
 	flag.DurationVar(&cfg.rulerConfig.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
-	flag.IntVar(&cfg.rulerConfig.NumWorkers, "ruler.num-workers", 1, "Number of worker routines in this process")
+	flag.DurationVar(&cfg.rulerConfig.ClientTimeout, "ruler.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
+	flag.IntVar(&cfg.rulerConfig.NumWorkers, "ruler.num-workers", 1, "Number of rule evaluator worker routines in this process")
 
 	flag.Parse()
 

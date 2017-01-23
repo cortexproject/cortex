@@ -28,19 +28,14 @@ type ScheduledItem interface {
 	Scheduled() time.Time
 }
 
-type item struct {
-	index   int
-	payload ScheduledItem
-}
-
 type queueState struct {
-	items []item
+	items []ScheduledItem
 	hit   map[string]int
 }
 
 // Less implements heap.Interface
 func (q queueState) Less(i, j int) bool {
-	return q.items[i].payload.Scheduled().Before(q.items[j].payload.Scheduled())
+	return q.items[i].Scheduled().Before(q.items[j].Scheduled())
 }
 
 // Pop implements heap.Interface
@@ -48,8 +43,7 @@ func (q *queueState) Pop() interface{} {
 	old := q.items
 	n := len(old)
 	x := old[n-1]
-	delete(q.hit, x.payload.Key())
-	x.index = -1
+	delete(q.hit, x.Key())
 	q.items = old[0 : n-1]
 	return x
 }
@@ -57,15 +51,14 @@ func (q *queueState) Pop() interface{} {
 // Push implements heap.Interface
 func (q *queueState) Push(x interface{}) {
 	n := len(q.items)
-	y := x.(item)
-	y.index = n
-	q.hit[y.payload.Key()] = n
+	y := x.(ScheduledItem)
+	q.hit[y.Key()] = n
 	q.items = append(q.items, y)
 }
 
 func (q *queueState) Swap(i, j int) {
-	q.hit[q.items[i].payload.Key()] = j
-	q.hit[q.items[j].payload.Key()] = i
+	q.hit[q.items[i].Key()] = j
+	q.hit[q.items[j].Key()] = i
 	q.items[i], q.items[j] = q.items[j], q.items[i]
 }
 
@@ -73,22 +66,22 @@ func (q *queueState) Enqueue(op ScheduledItem) {
 	key := op.Key()
 	i, enqueued := q.hit[key]
 	if enqueued {
-		q.items[i].payload = op
+		q.items[i] = op
 		heap.Fix(q, i)
 	} else {
-		heap.Push(q, item{-1, op})
+		heap.Push(q, op)
 	}
 	queueLength.Set(float64(len(q.items)))
 }
 
 func (q *queueState) Dequeue() ScheduledItem {
-	item := heap.Pop(q).(item)
+	item := heap.Pop(q).(ScheduledItem)
 	queueLength.Set(float64(len(q.items)))
-	return item.payload
+	return item
 }
 
 func (q *queueState) Front() ScheduledItem {
-	return q.items[0].payload
+	return q.items[0]
 }
 
 func (q *queueState) Len() int {
@@ -122,7 +115,7 @@ func (sq *SchedulingQueue) Close() {
 
 func (sq *SchedulingQueue) run() {
 	q := queueState{
-		items: []item{},
+		items: []ScheduledItem{},
 		hit:   map[string]int{},
 	}
 

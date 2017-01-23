@@ -5,7 +5,20 @@ import (
 	"time"
 
 	"github.com/jonboulle/clockwork"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var (
+	queueLength = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "rules_queue_length",
+		Help:      "The length of the rules queue.",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(queueLength)
+}
 
 // ScheduledItem is an item in a queue of scheduled items.
 type ScheduledItem interface {
@@ -78,6 +91,7 @@ func (sq *SchedulingQueue) Close() {
 func (sq *SchedulingQueue) run() {
 	items := scheduledItems{}
 	hit := map[string]*int{}
+
 	addItem := func(op ScheduledItem) {
 		key := op.Key()
 		i, enqueued := hit[key]
@@ -91,7 +105,9 @@ func (sq *SchedulingQueue) run() {
 			item := item{&index, op}
 			heap.Push(&items, &item)
 		}
+		queueLength.Set(float64(len(items)))
 	}
+
 	for {
 		// Nothing on the queue?  Wait for something to be added.
 		if len(items) == 0 {
@@ -117,6 +133,7 @@ func (sq *SchedulingQueue) run() {
 			case sq.next <- next:
 				item := heap.Pop(&items).(*item)
 				delete(hit, item.payload.Key())
+				queueLength.Set(float64(len(items)))
 			case justAdded, ok := <-sq.add:
 				if ok {
 					addItem(justAdded)

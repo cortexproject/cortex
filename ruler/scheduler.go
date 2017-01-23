@@ -19,11 +19,6 @@ const (
 )
 
 var (
-	queueLength = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "rules_queue_length",
-		Help:      "The length of the rules queue.",
-	})
 	totalConfigs = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "configs",
@@ -38,7 +33,6 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(queueLength)
 	prometheus.MustRegister(configsRequestDuration)
 	prometheus.MustRegister(totalConfigs)
 }
@@ -191,7 +185,6 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigVie
 
 func (s *scheduler) addWorkItem(i workItem) {
 	s.q.Enqueue(i)
-	//queueLength.Set(float64(s.q.Length()))
 	log.Debugf("Scheduler: work item added: %v", i)
 }
 
@@ -208,7 +201,6 @@ func (s *scheduler) nextWorkItem() *workItem {
 		log.Infof("Queue closed. No more work items.")
 		return nil
 	}
-	//queueLength.Set(float64(s.q.Length()))
 	item := op.(workItem)
 	log.Debugf("Scheduler: work item granted: %v", item)
 	return &item

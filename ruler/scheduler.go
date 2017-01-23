@@ -10,8 +10,6 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
-
-	"github.com/weaveworks/cortex/util"
 )
 
 const (
@@ -69,7 +67,7 @@ func (w workItem) Defer(interval time.Duration) workItem {
 type scheduler struct {
 	configsAPI         configsAPI // XXX: Maybe make this an interface ConfigSource or similar.
 	evaluationInterval time.Duration
-	q                  *util.SchedulingQueue
+	q                  *SchedulingQueue
 
 	// All the configurations that we have. Only used for instrumentation.
 	cfgs map[string]cortexConfig
@@ -89,7 +87,7 @@ func newScheduler(configsAPI configsAPI, evaluationInterval, pollInterval time.D
 		configsAPI:         configsAPI,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
-		q:                  util.NewSchedulingQueue(clockwork.NewRealClock()),
+		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
 		cfgs:               map[string]cortexConfig{},
 
 		done:       make(chan struct{}),
@@ -193,7 +191,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigVie
 
 func (s *scheduler) addWorkItem(i workItem) {
 	s.q.Enqueue(i)
-	queueLength.Set(float64(s.q.Length()))
+	//queueLength.Set(float64(s.q.Length()))
 	log.Debugf("Scheduler: work item added: %v", i)
 }
 
@@ -210,7 +208,7 @@ func (s *scheduler) nextWorkItem() *workItem {
 		log.Infof("Queue closed. No more work items.")
 		return nil
 	}
-	queueLength.Set(float64(s.q.Length()))
+	//queueLength.Set(float64(s.q.Length()))
 	item := op.(workItem)
 	log.Debugf("Scheduler: work item granted: %v", item)
 	return &item

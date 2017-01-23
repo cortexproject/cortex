@@ -133,11 +133,11 @@ func (sq *SchedulingQueue) run() {
 	for {
 		// Nothing on the queue?  Wait for something to be added.
 		if q.Length() == 0 {
-			next, ok := <-sq.add
+			next, open := <-sq.add
 
 			// Iff sq.add is closed (and there is nothing on the queue),
 			// we can close sq.next and stop this goroutine
-			if !ok {
+			if !open {
 				close(sq.next)
 				return
 			}
@@ -154,8 +154,8 @@ func (sq *SchedulingQueue) run() {
 			select {
 			case sq.next <- next:
 				q.Dequeue()
-			case justAdded, ok := <-sq.add:
-				if ok {
+			case justAdded, open := <-sq.add:
+				if open {
 					q.Enqueue(justAdded)
 				}
 			}
@@ -166,8 +166,8 @@ func (sq *SchedulingQueue) run() {
 		// Wait on a timer _or_ for something to be added.
 		select {
 		case <-sq.clock.After(delay):
-		case justAdded, ok := <-sq.add:
-			if ok {
+		case justAdded, open := <-sq.add:
+			if open {
 				q.Enqueue(justAdded)
 			}
 		}

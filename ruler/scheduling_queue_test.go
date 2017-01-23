@@ -94,6 +94,23 @@ func TestSchedulingQueueWaitOnItem(t *testing.T) {
 	}
 }
 
+// We can dequeue all the items after closing the queue.
+func TestSchedulingQueueEmptiesAfterClosing(t *testing.T) {
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
+
+	twoHoursAgo := sched(clock.Now().Add(-2 * time.Hour))
+	oneHourAgo := sched(clock.Now().Add(-1 * time.Hour))
+
+	queue.Enqueue(twoHoursAgo)
+	queue.Enqueue(oneHourAgo)
+	queue.Close()
+
+	assertDequeues(t, twoHoursAgo, queue)
+	assertDequeues(t, oneHourAgo, queue)
+	assert.Nil(t, queue.Dequeue(), "Expect nil dequeue")
+}
+
 func TestSchedulingQueueBlockingBug(t *testing.T) {
 	clock := clockwork.NewFakeClock()
 	queue := NewSchedulingQueue(clock)
@@ -139,4 +156,81 @@ func TestSchedulingQueueRescheduling(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Dequeue never happens.")
 	}
+}
+
+func TestSchedulingQueueCloseWhileWaiting(t *testing.T) {
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
+
+	oneHourFromNow := sched(clock.Now().Add(1 * time.Hour))
+	queue.Enqueue(oneHourFromNow)
+
+	clock.BlockUntil(1)
+	clock.Advance(30 * time.Minute)
+	queue.Close()
+
+	clock.Advance(1 * time.Hour)
+	assertDequeues(t, oneHourFromNow, queue)
+	assert.Nil(t, queue.Dequeue(), "Expect nil dequeue")
+}
+
+type richItem struct {
+	scheduled time.Time
+	key       string
+	payload   string
+}
+
+func (r richItem) Scheduled() time.Time {
+	return r.scheduled
+}
+
+func (r richItem) Key() string {
+	return r.key
+}
+
+// If we enqueue a second item with the same key as an existing item, the new
+// item replaces the old, adjusting priority if necessary.
+func TestSchedulingQueueDedupe(t *testing.T) {
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
+
+	threeHoursAgo := clock.Now().Add(-3 * time.Hour)
+	twoHoursAgo := clock.Now().Add(-2 * time.Hour)
+	oneHourAgo := clock.Now().Add(-1 * time.Hour)
+
+	bar := richItem{twoHoursAgo, "bar", "middling priority"}
+	foo1 := richItem{oneHourAgo, "foo", "less important than bar"}
+	foo2 := richItem{threeHoursAgo, "foo", "more important than bar"}
+	queue.Enqueue(bar)
+	queue.Enqueue(foo1)
+	queue.Enqueue(foo2)
+	queue.Close()
+
+	assert.Equal(t, foo2, queue.Dequeue().(richItem), fmt.Sprintf("Expected to dequeue %v", foo2))
+	assert.Equal(t, bar, queue.Dequeue().(richItem), fmt.Sprintf("Expected to dequeue %v", bar))
+	assert.Nil(t, queue.Dequeue(), "Expect nil dequeue")
+}
+
+func TestSchedulingQueueDedupe2(t *testing.T) {
+	clock := clockwork.NewFakeClock()
+	queue := NewSchedulingQueue(clock)
+
+	threeHoursAgo := clock.Now().Add(-3 * time.Hour)
+	twoHoursAgo := clock.Now().Add(-2 * time.Hour)
+	oneHourAgo := clock.Now().Add(-1 * time.Hour)
+
+	bar := richItem{twoHoursAgo, "bar", "middling priority"}
+	foo1 := richItem{oneHourAgo, "foo", "less important than bar"}
+	foo2 := richItem{threeHoursAgo, "foo", "more important than bar"}
+	queue.Enqueue(bar)
+	queue.Enqueue(foo2)
+
+	assert.Equal(t, foo2, queue.Dequeue().(richItem), fmt.Sprintf("Expected to dequeue %v", foo2))
+
+	queue.Enqueue(foo1)
+	queue.Close()
+
+	assert.Equal(t, bar, queue.Dequeue().(richItem), fmt.Sprintf("Expected to dequeue %v", bar))
+	assert.Equal(t, foo1, queue.Dequeue().(richItem), fmt.Sprintf("Expected to dequeue %v", foo2))
+	assert.Nil(t, queue.Dequeue(), "Expect nil dequeue")
 }

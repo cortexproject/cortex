@@ -15,11 +15,18 @@ type ScheduledItem interface {
 	Scheduled() time.Time
 }
 
-type scheduledItems []ScheduledItem
+type item struct {
+	index   *int
+	payload ScheduledItem
+}
 
-func (q scheduledItems) Len() int           { return len(q) }
-func (q scheduledItems) Less(i, j int) bool { return q[i].Scheduled().Before(q[j].Scheduled()) }
-func (q scheduledItems) Top() interface{}   { return q[0] }
+type scheduledItems []*item
+
+func (q scheduledItems) Len() int { return len(q) }
+func (q scheduledItems) Less(i, j int) bool {
+	return q[i].payload.Scheduled().Before(q[j].payload.Scheduled())
+}
+func (q scheduledItems) Top() interface{} { return q[0] }
 
 func (q scheduledItems) Swap(i, j int) {
 	q[i], q[j] = q[j], q[i]
@@ -28,7 +35,9 @@ func (q scheduledItems) Swap(i, j int) {
 // Push and Pop use pointer receivers because they modify the slice's length,
 // not just its contents.
 func (q *scheduledItems) Push(x interface{}) {
-	y := x.(ScheduledItem)
+	n := len(*q)
+	y := x.(*item)
+	*y.index = n
 	*q = append(*q, y)
 }
 
@@ -36,18 +45,20 @@ func (q *scheduledItems) Pop() interface{} {
 	old := *q
 	n := len(old)
 	x := old[n-1]
+	*x.index = -1
 	*q = old[0 : n-1]
 	return x
 }
 
 // SchedulingQueue is like a priority queue, but the first item is the oldest
-// scheduled item.
+// scheduled item. Items are only able to be dequeued after the time they are
+// scheduled to be run.
 type SchedulingQueue struct {
 	clock     clockwork.Clock
 	add, next chan ScheduledItem
 }
 
-// NewSchedulingQueue makes a new priority queue.
+// NewSchedulingQueue makes a new scheduling queue.
 func NewSchedulingQueue(clock clockwork.Clock) *SchedulingQueue {
 	sq := &SchedulingQueue{
 		clock: clock,
@@ -58,12 +69,29 @@ func NewSchedulingQueue(clock clockwork.Clock) *SchedulingQueue {
 	return sq
 }
 
+// Close the scheduling queue. No more items can be added. Items can be
+// dequeued until there are none left.
 func (sq *SchedulingQueue) Close() {
 	close(sq.add)
 }
 
 func (sq *SchedulingQueue) run() {
 	items := scheduledItems{}
+	hit := map[string]*int{}
+	addItem := func(op ScheduledItem) {
+		key := op.Key()
+		i, enqueued := hit[key]
+		if enqueued {
+			item := items[*i]
+			item.payload = op
+			heap.Fix(&items, *i)
+		} else {
+			var index int
+			hit[key] = &index
+			item := item{&index, op}
+			heap.Push(&items, &item)
+		}
+	}
 	for {
 		// Nothing on the queue?  Wait for something to be added.
 		if len(items) == 0 {
@@ -76,20 +104,23 @@ func (sq *SchedulingQueue) run() {
 				return
 			}
 
-			heap.Push(&items, next)
+			addItem(next)
 			continue
 		}
 
-		next := items.Top().(ScheduledItem)
+		next := items.Top().(*item).payload
 		delay := next.Scheduled().Sub(sq.clock.Now())
 
 		// Item on the queue that is ready now?
 		if delay <= 0 {
 			select {
 			case sq.next <- next:
-				heap.Pop(&items)
-			case item := <-sq.add:
-				heap.Push(&items, item)
+				item := heap.Pop(&items).(*item)
+				delete(hit, item.payload.Key())
+			case justAdded, ok := <-sq.add:
+				if ok {
+					addItem(justAdded)
+				}
 			}
 			continue
 		}
@@ -98,8 +129,10 @@ func (sq *SchedulingQueue) run() {
 		// Wait on a timer _or_ for something to be added.
 		select {
 		case <-sq.clock.After(delay):
-		case item := <-sq.add:
-			heap.Push(&items, item)
+		case justAdded, ok := <-sq.add:
+			if ok {
+				addItem(justAdded)
+			}
 		}
 	}
 }

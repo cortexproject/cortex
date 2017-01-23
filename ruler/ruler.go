@@ -1,14 +1,12 @@
 package ruler
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
@@ -17,29 +15,127 @@ import (
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/user"
-	"github.com/weaveworks/cortex/util"
 )
+
+var (
+	evalDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "group_evaluation_duration_seconds",
+		Help:      "The duration for a rule group to execute.",
+	})
+	rulesProcessed = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "rules_processed_total",
+		Help:      "How many rules have been processed.",
+	})
+	blockedWorkers = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "blocked_workers",
+		Help:      "How many workers are waiting on an item to be ready.",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(evalDuration)
+	prometheus.MustRegister(rulesProcessed)
+	prometheus.MustRegister(blockedWorkers)
+}
 
 // Config is the configuration for the recording rules server.
 type Config struct {
-	DistributorConfig distributor.Config
-	ConfigsAPIURL     string
-	ExternalURL       string
+	ConfigsAPIURL string
+	// HTTP timeout duration for requests made to the Weave Cloud configs
+	// service.
+	ClientTimeout time.Duration
+	// This is used for template expansion in alerts. Because we don't support
+	// alerts yet, this value doesn't matter. However, it must be a valid URL
+	// in order to navigate Prometheus's code paths.
+	ExternalURL string
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
-	// XXX: Currently single tenant only (which is awful) as the most
-	// expedient way of getting *something* working.
-	UserID string
+	NumWorkers         int
 }
 
-// Ruler is a recording rules server.
+// Ruler evaluates rules.
 type Ruler struct {
-	cfg         Config
-	chunkStore  chunk.Store
-	distributor *distributor.Distributor
+	engine   *promql.Engine
+	pusher   Pusher
+	alertURL *url.URL
+}
 
-	configsAPIURL *url.URL
-	externalURL   *url.URL
+// NewRuler creates a new ruler from a distributor and chunk store.
+func NewRuler(d *distributor.Distributor, c chunk.Store, alertURL *url.URL) Ruler {
+	return Ruler{querier.NewEngine(d, c), d, alertURL}
+}
+
+func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) *rules.Group {
+	appender := appenderAdapter{pusher: r.pusher, ctx: ctx}
+	opts := &rules.ManagerOptions{
+		SampleAppender: appender,
+		QueryEngine:    r.engine,
+		Context:        ctx,
+		ExternalURL:    r.alertURL,
+	}
+	delay := 0 * time.Second // Unused, so 0 value is fine.
+	return rules.NewGroup("default", delay, rs, opts)
+}
+
+// Evaluate a list of rules in the given context.
+func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
+	log.Debugf("Evaluating %d rules...", len(rs))
+	start := time.Now()
+	g := r.newGroup(ctx, rs)
+	g.Eval()
+	// The prometheus routines we're calling have their own instrumentation
+	// but, a) it's rule-based, not group-based, b) it's a summary, not a
+	// histogram, so we can't reliably aggregate.
+	evalDuration.Observe(time.Since(start).Seconds())
+	rulesProcessed.Add(float64(len(rs)))
+}
+
+// Server is a rules server.
+type Server struct {
+	scheduler *scheduler
+	workers   []worker
+}
+
+// NewServer makes a new rule processing server.
+func NewServer(cfg Config, ruler Ruler) (*Server, error) {
+	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
+	if err != nil {
+		return nil, err
+	}
+	c := configsAPI{configsAPIURL, cfg.ClientTimeout}
+	// TODO: Separate configuration for polling interval.
+	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval)
+	if cfg.NumWorkers <= 0 {
+		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
+	}
+	workers := make([]worker, cfg.NumWorkers)
+	for i := 0; i < cfg.NumWorkers; i++ {
+		workers[i] = newWorker(&s, ruler)
+	}
+	return &Server{
+		scheduler: &s,
+		workers:   workers,
+	}, nil
+}
+
+// Run the server.
+func (s *Server) Run() {
+	go s.scheduler.Run()
+	for _, w := range s.workers {
+		go w.Run()
+	}
+	log.Infof("Ruler up and running")
+}
+
+// Stop the server.
+func (s *Server) Stop() {
+	for _, w := range s.workers {
+		w.Stop()
+	}
+	s.scheduler.Stop()
 }
 
 // Worker does a thing until it's told to stop.
@@ -49,186 +145,47 @@ type Worker interface {
 }
 
 type worker struct {
-	delay         time.Duration
-	userID        string
-	configsAPIURL *url.URL
-	opts          *rules.ManagerOptions
+	scheduler *scheduler
+	ruler     Ruler
 
 	done       chan struct{}
 	terminated chan struct{}
 }
 
+func newWorker(scheduler *scheduler, ruler Ruler) worker {
+	return worker{
+		scheduler:  scheduler,
+		ruler:      ruler,
+		done:       make(chan struct{}),
+		terminated: make(chan struct{}),
+	}
+}
+
 func (w *worker) Run() {
 	defer close(w.terminated)
-	var rs []rules.Rule
-	var group *rules.Group
-	tick := time.NewTicker(w.delay)
-	defer tick.Stop()
 	for {
-		var err error
 		select {
 		case <-w.done:
 			return
 		default:
 		}
-		// Select on 'done' again to avoid live-locking.
-		select {
-		case <-w.done:
+		blockedWorkers.Inc()
+		log.Debugf("Waiting for next work item")
+		item := w.scheduler.nextWorkItem()
+		blockedWorkers.Dec()
+		if item == nil {
+			log.Debugf("Queue closed and empty. Terminating worker.")
 			return
-		case <-tick.C:
-			if group == nil {
-				rs, err = w.loadRules()
-				if err != nil {
-					log.Warnf("Could not get configuration for %v: %v", w.userID, err)
-					continue
-				}
-				group = rules.NewGroup("default", w.delay, rs, w.opts)
-			} else {
-				group.Eval()
-			}
 		}
+		log.Debugf("Processing %v", item)
+		ctx := user.WithID(context.Background(), item.userID)
+		w.ruler.Evaluate(ctx, item.rules)
+		w.scheduler.workItemDone(*item)
+		log.Debugf("%v handed back to queue", item)
 	}
-}
-
-func (w *worker) loadRules() ([]rules.Rule, error) {
-	cfg, err := getOrgConfig(w.configsAPIURL, w.userID)
-	if err != nil {
-		return nil, fmt.Errorf("Error fetching config: %v", err)
-	}
-	rs, err := loadRules(cfg.RulesFiles)
-	if err != nil {
-		return nil, fmt.Errorf("Error parsing rules: %v", err)
-	}
-	return rs, nil
 }
 
 func (w *worker) Stop() {
 	close(w.done)
 	<-w.terminated
-}
-
-// New returns a new Ruler.
-func New(chunkStore chunk.Store, cfg Config) (*Ruler, error) {
-	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
-	if err != nil {
-		return nil, err
-	}
-	externalURL, err := url.Parse(cfg.ExternalURL)
-	if err != nil {
-		return nil, err
-	}
-
-	d, err := distributor.New(cfg.DistributorConfig)
-	if err != nil {
-		return nil, err
-	}
-	return &Ruler{
-		cfg:           cfg,
-		chunkStore:    chunkStore,
-		distributor:   d,
-		configsAPIURL: configsAPIURL,
-		externalURL:   externalURL,
-	}, nil
-}
-
-// GetWorkerFor gets a rules recording worker for the given user.
-// It will keep polling until it can construct one.
-func (r *Ruler) GetWorkerFor(userID string) Worker {
-	delay := time.Duration(r.cfg.EvaluationInterval)
-	return &worker{
-		delay:         delay,
-		userID:        userID,
-		configsAPIURL: r.configsAPIURL,
-		opts:          r.getManagerOptions(userID),
-	}
-}
-
-func (r *Ruler) getManagerOptions(userID string) *rules.ManagerOptions {
-	ctx := user.WithID(context.Background(), userID)
-	appender := appenderAdapter{distributor: r.distributor, ctx: ctx}
-	queryable := querier.NewQueryable(r.distributor, r.chunkStore)
-	engine := promql.NewEngine(queryable, nil)
-	return &rules.ManagerOptions{
-		SampleAppender: appender,
-		Notifier:       nil,
-		QueryEngine:    engine,
-		Context:        ctx,
-		ExternalURL:    r.externalURL,
-	}
-}
-
-// loadRules loads rules.
-//
-// Strongly inspired by `loadGroups` in Prometheus.
-func loadRules(files map[string]string) ([]rules.Rule, error) {
-	result := []rules.Rule{}
-	for fn, content := range files {
-		stmts, err := promql.ParseStmts(string(content))
-		if err != nil {
-			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
-		}
-
-		for _, stmt := range stmts {
-			var rule rules.Rule
-
-			switch r := stmt.(type) {
-			case *promql.AlertStmt:
-				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations)
-
-			case *promql.RecordStmt:
-				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)
-
-			default:
-				panic("ruler.loadRules: unknown statement type")
-			}
-			result = append(result, rule)
-		}
-	}
-	return result, nil
-}
-
-// appenderAdapter adapts a distributor.Distributor to prometheus.SampleAppender
-type appenderAdapter struct {
-	distributor *distributor.Distributor
-	ctx         context.Context
-}
-
-func (a appenderAdapter) Append(sample *model.Sample) error {
-	req := util.ToWriteRequest([]*model.Sample{sample})
-	_, err := a.distributor.Push(a.ctx, req)
-	return err
-}
-
-func (a appenderAdapter) NeedsThrottling() bool {
-	// XXX: Just a guess. Who knows?
-	return false
-}
-
-type cortexConfig struct {
-	RulesFiles map[string]string `json:"rules_files"`
-}
-
-// getOrgConfig gets the organization's cortex config from a configs api server.
-func getOrgConfig(configsAPIURL *url.URL, userID string) (*cortexConfig, error) {
-	// TODO: Extract configs client logic into go client library (ala users)
-	// TODO: Fix configs server so that we not need org ID in the URL to get authenticated org
-	url := fmt.Sprintf("%s/api/configs/org/%s/cortex", configsAPIURL.String(), userID)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("X-Scope-OrgID", userID)
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
-	}
-	var config cortexConfig
-	if err := json.NewDecoder(res.Body).Decode(&config); err != nil {
-		return nil, err
-	}
-	return &config, nil
 }

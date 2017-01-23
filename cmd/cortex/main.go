@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -127,8 +128,9 @@ func main() {
 	flag.DurationVar(&cfg.distributorConfig.RemoteTimeout, "distributor.remote-timeout", 5*time.Second, "Timeout for downstream ingesters.")
 
 	flag.StringVar(&cfg.rulerConfig.ConfigsAPIURL, "ruler.configs.url", "", "URL of configs API server.")
-	flag.StringVar(&cfg.rulerConfig.UserID, "ruler.userID", "", "Weave Cloud org to run rules for")
 	flag.DurationVar(&cfg.rulerConfig.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
+	flag.DurationVar(&cfg.rulerConfig.ClientTimeout, "ruler.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
+	flag.IntVar(&cfg.rulerConfig.NumWorkers, "ruler.num-workers", 1, "Number of rule evaluator worker routines in this process")
 
 	flag.Parse()
 
@@ -201,18 +203,14 @@ func main() {
 		prometheus.MustRegister(registration)
 
 	case modeRuler:
-		// XXX: Too much duplication w/ distributor set up.
 		cfg.distributorConfig.Ring = r
-		cfg.rulerConfig.DistributorConfig = cfg.distributorConfig
-		ruler, err := setupRuler(chunkStore, cfg.rulerConfig)
+		ruler, err := setupRuler(cfg.distributorConfig, chunkStore, cfg.rulerConfig)
 		if err != nil {
 			// Some of our initial configuration was fundamentally invalid.
 			log.Fatalf("Could not set up ruler: %v", err)
 		}
-		// XXX: Single-tenanted as part of our initially super hacky way of dogfooding.
-		worker := ruler.GetWorkerFor(cfg.rulerConfig.UserID)
-		go worker.Run()
-		defer worker.Stop()
+		go ruler.Run()
+		defer ruler.Stop()
 
 	default:
 		log.Fatalf("Mode %s not supported!", cfg.mode)
@@ -368,6 +366,16 @@ func setupIngester(
 }
 
 // setupRuler sets up a ruler.
-func setupRuler(chunkStore chunk.Store, cfg ruler.Config) (*ruler.Ruler, error) {
-	return ruler.New(chunkStore, cfg)
+func setupRuler(distributorCfg distributor.Config, chunkStore chunk.Store, cfg ruler.Config) (ruler.Worker, error) {
+	dist, err := distributor.New(distributorCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	externalURL, err := url.Parse(cfg.ExternalURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return ruler.NewServer(cfg, ruler.NewRuler(dist, chunkStore, externalURL))
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
@@ -13,7 +14,13 @@ import (
 	"github.com/weaveworks/cortex/util"
 )
 
-// NewQueryable creates a new promql.Engine for cortex.
+// NewEngine creates a new promql.Engine for cortex.
+func NewEngine(distributor Querier, chunkStore chunk.Store) *promql.Engine {
+	queryable := NewQueryable(distributor, chunkStore)
+	return promql.NewEngine(queryable, nil)
+}
+
+// NewQueryable creates a new Queryable for cortex.
 func NewQueryable(distributor Querier, chunkStore chunk.Store) Queryable {
 	return Queryable{
 		Q: MergeQuerier{

@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/cortex/util"
 )
 
 type userStates struct {
@@ -167,4 +169,36 @@ func (u *userState) unlockedGet(metric model.Metric) (model.Fingerprint, *memory
 	u.fpToSeries.put(fp, series)
 	u.index.add(metric, fp)
 	return fp, series
+}
+
+// forSeriesMatching passes all series matching the given matchers to the provided callback.
+// Deals with locking and the quirks of zero-length matcher values.
+func (u *userState) forSeriesMatching(allMatchers []*metric.LabelMatcher, callback func(model.Fingerprint, *memorySeries) error) error {
+	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
+	fps := u.index.lookup(matchers)
+
+	// fps is sorted, lock them in order to prevent deadlocks
+outer:
+	for _, fp := range fps {
+		u.fpLocker.Lock(fp)
+		series, ok := u.fpToSeries.get(fp)
+		if !ok {
+			u.fpLocker.Unlock(fp)
+			continue
+		}
+
+		for _, filter := range filters {
+			if _, ok := series.metric[filter.Name]; ok {
+				continue outer
+			}
+		}
+
+		err := callback(fp, series)
+		u.fpLocker.Unlock(fp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

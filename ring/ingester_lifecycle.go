@@ -126,7 +126,7 @@ func RegisterIngester(cfg IngesterRegistrationConfig) (*IngesterRegistration, er
 
 // ChangeState changes the state of an ingester in the ring.
 func (r *IngesterRegistration) ChangeState(state IngesterState) {
-	log.Infoln("Changing ingester state to ", state)
+	log.Infof("Changing ingester state to %v", state)
 	r.stateChange <- state
 }
 

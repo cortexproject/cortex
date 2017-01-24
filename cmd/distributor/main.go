@@ -21,13 +21,13 @@ func main() {
 	//   appropriate.
 	// - Config types should map 1:1 with a component type.
 	// - Config types should define flags with a common prefix.
-	// - Its fine to nest configs within configs, but this should match the nesting
-	//   of components within components.
+	// - It's fine to nest configs within configs, but this should match the
+	//   nesting of components within components.
 	// - Limit as much is possible sharing of configuration between config types.
-	//   Where nessecary, use a pointer for this - avoid repetition.
-	// - Where a nesting of components its not obvious, its fine to pass
+	//   Where necessary, use a pointer for this - avoid repetition.
+	// - Where a nesting of components its not obvious, it's fine to pass
 	//   references to other components constructors to compose them.
-	// - First argument for a components contructor should be its matching config
+	// - First argument for a components constructor should be its matching config
 	//   object.
 
 	var (

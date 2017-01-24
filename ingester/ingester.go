@@ -187,9 +187,9 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 	return i, nil
 }
 
-// Ready is used to indicate to k8s when the ingesters are ready for the addition
-// removal of another ingester. Returns 204 when the ingester is ready, 500
-// otherwise.
+// ReadinessHandler is used to indicate to k8s when the ingesters are ready for
+// the addition removal of another ingester. Returns 204 when the ingester is
+// ready, 500 otherwise.
 func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	if i.ring.Ready() {
 		w.WriteHeader(http.StatusNoContent)

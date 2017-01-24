@@ -15,7 +15,7 @@ import (
 func main() {
 	// The pattern for main functions is a series of config objects, which are
 	// registered for command line flags, and then a series of components that
-	// are instatiated and composed.  Some rules of thumb:
+	// are instantiated and composed.  Some rules of thumb:
 	// - Config types should only contain 'simple' types (ints, strings, urls etc).
 	// - Flag validation should be done by the flag; use a flag.Var where
 	//   appropriate.

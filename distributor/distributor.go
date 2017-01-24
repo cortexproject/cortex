@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/storage/remote"
@@ -41,7 +42,9 @@ type Distributor struct {
 	cfg        Config
 	ring       ReadRing
 	clientsMtx sync.RWMutex
-	clients    map[string]cortex.IngesterClient
+	clients    map[string]ingesterClient
+	quit       chan struct{}
+	done       chan struct{}
 
 	queryDuration          *prometheus.HistogramVec
 	receivedSamples        prometheus.Counter
@@ -50,6 +53,11 @@ type Distributor struct {
 	ingesterAppendFailures *prometheus.CounterVec
 	ingesterQueries        *prometheus.CounterVec
 	ingesterQueryFailures  *prometheus.CounterVec
+}
+
+type ingesterClient struct {
+	cortex.IngesterClient
+	conn *grpc.ClientConn
 }
 
 // ReadRing represents the read inferface to the ring.
@@ -64,10 +72,11 @@ type ReadRing interface {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	ReplicationFactor int
-	MinReadSuccesses  int
-	HeartbeatTimeout  time.Duration
-	RemoteTimeout     time.Duration
+	ReplicationFactor   int
+	MinReadSuccesses    int
+	HeartbeatTimeout    time.Duration
+	RemoteTimeout       time.Duration
+	ClientCleanupPeriod time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -76,6 +85,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&cfg.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
 	flag.DurationVar(&cfg.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 5*time.Second, "Timeout for downstream ingesters.")
+	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 }
 
 // New constructs a new Distributor
@@ -89,7 +99,9 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 	d := &Distributor{
 		cfg:     cfg,
 		ring:    ring,
-		clients: map[string]cortex.IngesterClient{},
+		clients: map[string]ingesterClient{},
+		quit:    make(chan struct{}),
+		done:    make(chan struct{}),
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "distributor_query_duration_seconds",
@@ -132,6 +144,50 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 	return d, nil
 }
 
+// Run starts the distributor's maintenance loop.
+func (d *Distributor) Run() {
+	cleanupClients := time.NewTicker(d.cfg.ClientCleanupPeriod)
+	for {
+		select {
+		case <-cleanupClients.C:
+			d.removeStaleIngesterClients()
+		case <-d.quit:
+			close(d.done)
+			return
+		}
+	}
+}
+
+// Stop stops the distributor's maintenance loop.
+func (d *Distributor) Stop() {
+	close(d.quit)
+	<-d.done
+}
+
+func (d *Distributor) removeStaleIngesterClients() {
+	d.clientsMtx.Lock()
+	defer d.clientsMtx.Unlock()
+
+	ingesters := map[string]struct{}{}
+	for _, ing := range d.ring.GetAll() {
+		ingesters[ing.Addr] = struct{}{}
+	}
+
+	for addr, client := range d.clients {
+		if _, ok := ingesters[addr]; !ok {
+			log.Info("Removing stale ingester client for ", addr)
+			delete(d.clients, addr)
+			// Do the gRPC closing in the background since it might take a while and
+			// we're holding a mutex.
+			go func() {
+				if err := client.conn.Close(); err != nil {
+					log.Errorf("Error closing connection to ingester %q: %v", addr, err)
+				}
+			}()
+		}
+	}
+}
+
 func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.IngesterClient, error) {
 	d.clientsMtx.RLock()
 	client, ok := d.clients[ingester.Addr]
@@ -159,7 +215,10 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.Ingester
 		return nil, err
 	}
 
-	client = cortex.NewIngesterClient(conn)
+	client = ingesterClient{
+		IngesterClient: cortex.NewIngesterClient(conn),
+		conn:           conn,
+	}
 	d.clients[ingester.Addr] = client
 	return client, nil
 }

@@ -36,7 +36,6 @@ func init() {
 // IngesterRegistrationConfig is the config for an IngesterRegistration
 type IngesterRegistrationConfig struct {
 	Config
-	mock *Ring
 
 	ListenPort *int
 	NumTokens  int
@@ -45,6 +44,7 @@ type IngesterRegistrationConfig struct {
 	Addr           string
 	Hostname       string
 	skipUnregister bool
+	mock           *Ring
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -74,10 +74,8 @@ type IngesterRegistration struct {
 
 // RegisterIngester registers an ingester with Consul.
 func RegisterIngester(cfg IngesterRegistrationConfig) (*IngesterRegistration, error) {
-	var ring *Ring
-	if cfg.mock != nil {
-		ring = cfg.mock
-	} else {
+	ring := cfg.mock
+	if ring == nil {
 		var err error
 		ring, err = New(cfg.Config)
 		if err != nil {

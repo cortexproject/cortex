@@ -188,7 +188,7 @@ outer:
 		}
 
 		for _, filter := range filters {
-			if _, ok := series.metric[filter.Name]; ok {
+			if !filter.Match(series.metric[filter.Name]) {
 				continue outer
 			}
 		}

@@ -475,7 +475,7 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, allMatcher
 outer:
 	for _, chunk := range allChunks {
 		for _, filter := range filters {
-			if _, ok := chunk.Metric[filter.Name]; ok {
+			if !filter.Match(chunk.Metric[filter.Name]) {
 				continue outer
 			}
 		}

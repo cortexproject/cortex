@@ -1,10 +1,8 @@
 package ring
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -120,84 +118,6 @@ func (p ProtoCodec) Encode(msg interface{}) ([]byte, error) {
 		return nil, err
 	}
 	return snappy.Encode(nil, bytes), nil
-}
-
-// JSONCodec is a Codec for JSON
-type JSONCodec struct {
-	Factory func() interface{}
-}
-
-// Decode implements Codec
-func (j JSONCodec) Decode(bytes []byte) (interface{}, error) {
-	out := j.Factory()
-	if err := json.Unmarshal(bytes, out); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// Encode implemenrs Codec
-func (j JSONCodec) Encode(msg interface{}) ([]byte, error) {
-	return json.Marshal(msg)
-}
-
-// DynamicCodec is a Codec that can read json and proto, and
-// that can serialise to either (selectively).
-// Once it fails to decode JSON, it will start decoding (and
-// writing) protos.
-type DynamicCodec struct {
-	mtx      sync.Mutex
-	useProto bool
-	json     Codec
-	proto    Codec
-}
-
-// NewDynamicCodec makes a new DynamicCodec
-func NewDynamicCodec(json, proto Codec) *DynamicCodec {
-	return &DynamicCodec{
-		useProto: false,
-		json:     json,
-		proto:    proto,
-	}
-}
-
-// UseProto allow you to change the Codec at runtime.
-func (d *DynamicCodec) UseProto(useProto bool) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	if d.useProto != useProto {
-		log.Infof("Using to proto serialization: %v", useProto)
-		d.useProto = useProto
-	}
-}
-
-// Decode implements Codec
-func (d *DynamicCodec) Decode(bytes []byte) (interface{}, error) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-
-	out, err := d.json.Decode(bytes)
-	if err == nil {
-		return out, nil
-	}
-
-	out, err = d.proto.Decode(bytes)
-	if err == nil && !d.useProto {
-		log.Infof("Error decoding json, switching to writing proto: %v", err)
-		d.useProto = true
-	}
-
-	return out, err
-}
-
-// Encode implemenrs Codec
-func (d *DynamicCodec) Encode(msg interface{}) ([]byte, error) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	if d.useProto {
-		return d.proto.Encode(msg)
-	}
-	return d.json.Encode(msg)
 }
 
 // CAS atomically modifies a value in a callback.

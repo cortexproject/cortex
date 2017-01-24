@@ -53,7 +53,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ring holds the information about the members of the consistent hash circle.
 type Ring struct {
 	consul           ConsulClient
-	codec            *DynamicCodec
 	quit, done       chan struct{}
 	heartbeatTimeout time.Duration
 
@@ -67,17 +66,13 @@ type Ring struct {
 
 // New creates a new Ring
 func New(cfg Config) (*Ring, error) {
-	codec := NewDynamicCodec(
-		JSONCodec{Factory: DescFactory},
-		ProtoCodec{Factory: ProtoDescFactory},
-	)
+	codec := ProtoCodec{Factory: ProtoDescFactory}
 	consul, err := NewConsulClient(cfg.ConsulConfig, codec)
 	if err != nil {
 		return nil, err
 	}
 	r := &Ring{
 		consul:           consul,
-		codec:            codec,
 		heartbeatTimeout: cfg.HeartbeatTimeout,
 		quit:             make(chan struct{}),
 		done:             make(chan struct{}),

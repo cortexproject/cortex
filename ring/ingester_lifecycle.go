@@ -60,7 +60,6 @@ type IngesterRegistration struct {
 	consul         ConsulClient
 	numTokens      int
 	skipUnregister bool
-	codec          *DynamicCodec
 
 	id   string
 	addr string
@@ -110,7 +109,6 @@ func RegisterIngester(cfg IngesterRegistrationConfig) (*IngesterRegistration, er
 		consul:         ring.consul,
 		numTokens:      cfg.NumTokens,
 		skipUnregister: cfg.skipUnregister,
-		codec:          ring.codec,
 
 		id: hostname,
 		// hostname is the ip+port of this instance, written to consul so
@@ -202,18 +200,6 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 			ringDesc = newDesc()
 		} else {
 			ringDesc = in.(*Desc)
-		}
-
-		// See if all ingesters can read protos; if so start writing them
-		allIngestersCanReadProtos := true
-		for _, ing := range ringDesc.Ingesters {
-			if !ing.ProtoRing {
-				allIngestersCanReadProtos = false
-				break
-			}
-		}
-		if allIngestersCanReadProtos {
-			r.codec.UseProto(true)
 		}
 
 		ingesterDesc, ok := ringDesc.Ingesters[r.id]

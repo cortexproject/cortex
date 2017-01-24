@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"net/http"
 
 	"github.com/prometheus/common/log"
 
@@ -33,11 +34,12 @@ func main() {
 
 	server := server.New(serverConfig, registration.Ring)
 	chunkStore := chunk.NewAWSStore(chunkStoreConfig)
-	ingester, err := ingester.New(ingesterConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, chunkStore, registration.Ring)
 	if err != nil {
 		log.Fatal(err)
 	}
 	cortex.RegisterIngesterServer(server.GRPC, ingester)
+	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 
 	// Deferring a func to make ordering obvious
 	defer func() {

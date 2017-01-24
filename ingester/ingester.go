@@ -3,6 +3,7 @@ package ingester
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -65,6 +66,7 @@ type Ingester struct {
 	cfg        Config
 	chunkStore cortex_chunk.Store
 	userStates userStates
+	ring       ring.Ring
 
 	stopLock sync.RWMutex
 	stopped  bool
@@ -91,8 +93,6 @@ type Config struct {
 	MaxChunkAge       time.Duration
 	RateUpdatePeriod  time.Duration
 	ConcurrentFlushes int
-
-	Ring *ring.Ring
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -120,7 +120,7 @@ func (o *flushOp) Priority() int64 {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
+func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -187,10 +187,15 @@ func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
 	return i, nil
 }
 
-// Ready is used to indicate to k8s when the ingesters are ready for
-// the addition / removal of another ingester.
-func (i *Ingester) Ready() bool {
-	return i.cfg.Ring.Ready()
+// ReadinessHandler is used to indicate to k8s when the ingesters are ready for
+// the addition removal of another ingester. Returns 204 when the ingester is
+// ready, 500 otherwise.
+func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
+	if i.ring.Ready() {
+		w.WriteHeader(http.StatusNoContent)
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 // Push implements cortex.IngesterServer

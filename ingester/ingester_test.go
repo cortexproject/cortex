@@ -85,7 +85,7 @@ func TestIngesterAppend(t *testing.T) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

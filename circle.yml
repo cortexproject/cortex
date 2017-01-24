@@ -9,7 +9,7 @@ dependencies:
     - "~/docker"
   override:
     - |
-        cd cortex-build && \
+        cd build && \
         ../tools/rebuild-image weaveworks/cortex-build . build.sh Dockerfile && \
         touch .uptodate
 
@@ -24,10 +24,5 @@ deployment:
     branch: master
     commands:
       - docker login -e "$DOCKER_REGISTRY_EMAIL" -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
-      - docker push weaveworks/cortex:$(./tools/image-tag)
-      - docker push weaveworks/cortex_table_manager:$(./tools/image-tag)
       - docker login -e '.' -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io
-      - docker tag weaveworks/cortex:$(./tools/image-tag) quay.io/weaveworks/cortex:$(./tools/image-tag)
-      - docker tag weaveworks/cortex_table_manager:$(./tools/image-tag) quay.io/weaveworks/cortex_table_manager:$(./tools/image-tag)
-      - docker push quay.io/weaveworks/cortex:$(./tools/image-tag)
-      - docker push quay.io/weaveworks/cortex_table_manager:$(./tools/image-tag)
+      - ./push-images

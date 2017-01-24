@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"time"
@@ -47,10 +48,34 @@ type Memcache interface {
 	Set(item *memcache.Item) error
 }
 
+// CacheConfig is config to make a Cache
+type CacheConfig struct {
+	Expiration     time.Duration
+	memcacheConfig MemcacheConfig
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *CacheConfig) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.Expiration, "memcached.expiration", 0, "How long chunks stay in the memcache.")
+	cfg.memcacheConfig.RegisterFlags(f)
+}
+
 // Cache type caches chunks
 type Cache struct {
-	Memcache   Memcache
-	Expiration time.Duration
+	cfg      CacheConfig
+	memcache Memcache
+}
+
+// NewCache makes a new Cache
+func NewCache(cfg CacheConfig) *Cache {
+	var memcache Memcache
+	if cfg.memcacheConfig.Host != "" {
+		memcache = NewMemcacheClient(cfg.memcacheConfig)
+	}
+	return &Cache{
+		cfg:      cfg,
+		memcache: memcache,
+	}
 }
 
 func memcacheStatusCode(err error) string {
@@ -73,6 +98,10 @@ func memcacheKey(userID, chunkID string) string {
 
 // FetchChunkData gets chunks from the chunk cache.
 func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chunk) (found []Chunk, missing []Chunk, err error) {
+	if c.memcache == nil {
+		return nil, chunks, nil
+	}
+
 	memcacheRequests.Add(float64(len(chunks)))
 
 	keys := make([]string, 0, len(chunks))
@@ -83,7 +112,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chun
 	var items map[string]*memcache.Item
 	err = instrument.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		var err error
-		items, err = c.Memcache.GetMulti(keys)
+		items, err = c.memcache.GetMulti(keys)
 		return err
 	})
 	if err != nil {
@@ -111,6 +140,10 @@ func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chun
 
 // StoreChunkData serializes and stores a chunk in the chunk cache.
 func (c *Cache) StoreChunkData(ctx context.Context, userID string, chunk *Chunk) error {
+	if c.memcache == nil {
+		return nil
+	}
+
 	reader, err := chunk.reader()
 	if err != nil {
 		return err
@@ -125,9 +158,9 @@ func (c *Cache) StoreChunkData(ctx context.Context, userID string, chunk *Chunk)
 		item := memcache.Item{
 			Key:        memcacheKey(userID, chunk.ID),
 			Value:      buf,
-			Expiration: int32(c.Expiration.Seconds()),
+			Expiration: int32(c.cfg.Expiration.Seconds()),
 		}
-		return c.Memcache.Set(&item)
+		return c.memcache.Set(&item)
 	})
 }
 

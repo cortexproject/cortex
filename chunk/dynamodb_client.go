@@ -114,6 +114,24 @@ func NewDynamoDBClient(dynamoDBURL string) (DynamoDBClient, string, error) {
 	return dynamoDBClient, tableName, nil
 }
 
+// DynamoDBClientValue is a flag.Value that parses a URL and produces a DynamoDBClient
+type DynamoDBClientValue struct {
+	url, TableName string
+	DynamoDBClient
+}
+
+// String implements flag.Value
+func (c *DynamoDBClientValue) String() string {
+	return c.url
+}
+
+// Set implements flag.Value
+func (c *DynamoDBClientValue) Set(v string) error {
+	var err error
+	c.DynamoDBClient, c.TableName, err = NewDynamoDBClient(v)
+	return err
+}
+
 type dynamoClientAdapter struct {
 	*dynamodb.DynamoDB
 }

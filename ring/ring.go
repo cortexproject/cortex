@@ -4,6 +4,7 @@ package ring
 
 import (
 	"errors"
+	"flag"
 	"math"
 	"sort"
 	"sync"
@@ -35,9 +36,24 @@ func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
 var ErrEmptyRing = errors.New("empty circle")
 
+// Config for a Ring
+type Config struct {
+	ConsulConfig
+
+	HeartbeatTimeout time.Duration
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.ConsulConfig.RegisterFlags(f)
+
+	f.DurationVar(&cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
+}
+
 // Ring holds the information about the members of the consistent hash circle.
 type Ring struct {
 	consul           ConsulClient
+	codec            *DynamicCodec
 	quit, done       chan struct{}
 	heartbeatTimeout time.Duration
 
@@ -50,10 +66,19 @@ type Ring struct {
 }
 
 // New creates a new Ring
-func New(consul ConsulClient, heartbeatTimeout time.Duration) *Ring {
+func New(cfg Config) (*Ring, error) {
+	codec := NewDynamicCodec(
+		JSONCodec{Factory: DescFactory},
+		ProtoCodec{Factory: ProtoDescFactory},
+	)
+	consul, err := NewConsulClient(cfg.ConsulConfig, codec)
+	if err != nil {
+		return nil, err
+	}
 	r := &Ring{
 		consul:           consul,
-		heartbeatTimeout: heartbeatTimeout,
+		codec:            codec,
+		heartbeatTimeout: cfg.HeartbeatTimeout,
 		quit:             make(chan struct{}),
 		done:             make(chan struct{}),
 		ringDesc:         &Desc{},
@@ -74,7 +99,7 @@ func New(consul ConsulClient, heartbeatTimeout time.Duration) *Ring {
 		),
 	}
 	go r.loop()
-	return r
+	return r, nil
 }
 
 // Stop the distributor.

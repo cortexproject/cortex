@@ -7,8 +7,11 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/mtime"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/cortex/util"
 )
 
 const (
@@ -24,13 +27,15 @@ func TestDynamoTableManager(t *testing.T) {
 	dynamoDB := NewMockDynamoDB(0, 0)
 
 	cfg := TableManagerConfig{
-		DynamoDB: dynamoDB,
+		DynamoDB: DynamoDBClientValue{
+			DynamoDBClient: dynamoDB,
+		},
 
 		PeriodicTableConfig: PeriodicTableConfig{
 			UsePeriodicTables:    true,
 			TablePrefix:          tablePrefix,
 			TablePeriod:          tablePeriod,
-			PeriodicTableStartAt: time.Unix(0, 0),
+			PeriodicTableStartAt: util.DayValue{model.TimeFromUnix(0)},
 		},
 
 		CreationGracePeriod:        gracePeriod,

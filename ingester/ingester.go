@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"flag"
 	"fmt"
 	"sync"
 	"time"
@@ -90,9 +91,17 @@ type Config struct {
 	MaxChunkAge       time.Duration
 	RateUpdatePeriod  time.Duration
 	ConcurrentFlushes int
-	GRPCListenPort    int
 
 	Ring *ring.Ring
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
+	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
+	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 1*time.Hour, "Maximum chunk idle time before flushing.")
+	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
+	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 }
 
 type flushOp struct {
@@ -165,6 +174,7 @@ func New(cfg Config, chunkStore cortex_chunk.Store) (*Ingester, error) {
 			Help: "The total number of samples returned from queries.",
 		}),
 	}
+	prometheus.MustRegister(i)
 
 	i.done.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {

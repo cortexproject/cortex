@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"sort"
@@ -31,27 +32,35 @@ type MemcacheConfig struct {
 	UpdateInterval time.Duration
 }
 
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *MemcacheConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&cfg.Host, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
+	f.StringVar(&cfg.Service, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
+	f.DurationVar(&cfg.Timeout, "memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
+	f.DurationVar(&cfg.UpdateInterval, "memcached.update-interval", 1*time.Minute, "Period with which to poll DNS for memcache servers.")
+}
+
 // NewMemcacheClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
-func NewMemcacheClient(config MemcacheConfig) *MemcacheClient {
+func NewMemcacheClient(cfg MemcacheConfig) *MemcacheClient {
 	var servers memcache.ServerList
 	client := memcache.NewFromSelector(&servers)
-	client.Timeout = config.Timeout
+	client.Timeout = cfg.Timeout
 
 	newClient := &MemcacheClient{
 		Client:     client,
 		serverList: &servers,
-		hostname:   config.Host,
-		service:    config.Service,
+		hostname:   cfg.Host,
+		service:    cfg.Service,
 		quit:       make(chan struct{}),
 	}
 	err := newClient.updateMemcacheServers()
 	if err != nil {
-		log.Errorf("Error setting memcache servers to '%v': %v", config.Host, err)
+		log.Errorf("Error setting memcache servers to '%v': %v", cfg.Host, err)
 	}
 
 	newClient.wait.Add(1)
-	go newClient.updateLoop(config.UpdateInterval)
+	go newClient.updateLoop(cfg.UpdateInterval)
 	return newClient
 }
 

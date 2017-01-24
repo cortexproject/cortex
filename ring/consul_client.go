@@ -2,6 +2,7 @@ package ring
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"sync"
 	"time"
@@ -15,6 +16,20 @@ import (
 const (
 	longPollDuration = 10 * time.Second
 )
+
+// ConsulConfig to create a ConsulClient
+type ConsulConfig struct {
+	Host   string
+	Prefix string
+
+	mock ConsulClient
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&cfg.Host, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
+	f.StringVar(&cfg.Prefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
+}
 
 // ConsulClient is a high-level client for Consul, that exposes operations
 // such as CAS and Watch which take callbacks.  It also deals with serialisation
@@ -48,18 +63,26 @@ type consulClient struct {
 }
 
 // NewConsulClient returns a new ConsulClient.
-func NewConsulClient(addr string, codec Codec) (ConsulClient, error) {
+func NewConsulClient(cfg ConsulConfig, codec Codec) (ConsulClient, error) {
+	if cfg.mock != nil {
+		return cfg.mock, nil
+	}
+
 	client, err := consul.NewClient(&consul.Config{
-		Address: addr,
+		Address: cfg.Host,
 		Scheme:  "http",
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &consulClient{
+	var c ConsulClient = &consulClient{
 		kv:    client.KV(),
 		codec: codec,
-	}, nil
+	}
+	if cfg.Prefix != "" {
+		c = PrefixClient(c, cfg.Prefix)
+	}
+	return c, nil
 }
 
 var (

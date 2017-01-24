@@ -3,6 +3,7 @@
 package ring
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"net"
@@ -21,8 +22,41 @@ const (
 	heartbeatInterval = 5 * time.Second
 )
 
+var (
+	consulHeartbeats = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_consul_heartbeats_total",
+		Help: "The total number of heartbeats sent to consul.",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(consulHeartbeats)
+}
+
+// IngesterRegistrationConfig is the config for an IngesterRegistration
+type IngesterRegistrationConfig struct {
+	Config
+	mock *Ring
+
+	ListenPort *int
+	NumTokens  int
+
+	// For testing
+	Addr           string
+	Hostname       string
+	skipUnregister bool
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *IngesterRegistrationConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.Config.RegisterFlags(f)
+	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
+}
+
 // IngesterRegistration manages the connection between the ingester and Consul.
 type IngesterRegistration struct {
+	Ring *Ring
+
 	consul         ConsulClient
 	numTokens      int
 	skipUnregister bool
@@ -37,24 +71,21 @@ type IngesterRegistration struct {
 	// back empty.  Channel is used to tell the actor to update consul on state changes.
 	state       IngesterState
 	stateChange chan IngesterState
-
-	consulHeartbeats prometheus.Counter
-}
-
-// IngesterRegistrationConfig is the config for an IngesterRegistration
-type IngesterRegistrationConfig struct {
-	ListenPort int
-	NumTokens  int
-	Codec      *DynamicCodec
-
-	// For testing
-	Addr           string
-	Hostname       string
-	skipUnregister bool
 }
 
 // RegisterIngester registers an ingester with Consul.
-func RegisterIngester(consulClient ConsulClient, cfg IngesterRegistrationConfig) (*IngesterRegistration, error) {
+func RegisterIngester(cfg IngesterRegistrationConfig) (*IngesterRegistration, error) {
+	var ring *Ring
+	if cfg.mock != nil {
+		ring = cfg.mock
+	} else {
+		var err error
+		ring, err = New(cfg.Config)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	hostname := cfg.Hostname
 	if hostname == "" {
 		var err error
@@ -74,25 +105,22 @@ func RegisterIngester(consulClient ConsulClient, cfg IngesterRegistrationConfig)
 	}
 
 	r := &IngesterRegistration{
-		consul:         consulClient,
+		Ring: ring,
+
+		consul:         ring.consul,
 		numTokens:      cfg.NumTokens,
 		skipUnregister: cfg.skipUnregister,
-		codec:          cfg.Codec,
+		codec:          ring.codec,
 
 		id: hostname,
 		// hostname is the ip+port of this instance, written to consul so
 		// the distributors know where to connect.
-		addr: fmt.Sprintf("%s:%d", addr, cfg.ListenPort),
+		addr: fmt.Sprintf("%s:%d", addr, *cfg.ListenPort),
 		quit: make(chan struct{}),
 
 		// Only read/written on actor goroutine.
 		state:       IngesterState_ACTIVE,
 		stateChange: make(chan IngesterState),
-
-		consulHeartbeats: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_consul_heartbeats_total",
-			Help: "The total number of heartbeats sent to consul.",
-		}),
 	}
 
 	r.wait.Add(1)
@@ -215,7 +243,7 @@ func (r *IngesterRegistration) heartbeat(tokens []uint32) {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}
 		case <-ticker.C:
-			r.consulHeartbeats.Inc()
+			consulHeartbeats.Inc()
 			if err := r.consul.CAS(consulKey, updateConsul); err != nil {
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}
@@ -291,14 +319,4 @@ func getFirstAddressOf(name string) (string, error) {
 	}
 
 	return "", fmt.Errorf("No address found for %s", name)
-}
-
-// Describe implements prometheus.Collector.
-func (r *IngesterRegistration) Describe(ch chan<- *prometheus.Desc) {
-	ch <- r.consulHeartbeats.Desc()
-}
-
-// Collect implements prometheus.Collector.
-func (r *IngesterRegistration) Collect(ch chan<- prometheus.Metric) {
-	ch <- r.consulHeartbeats
 }

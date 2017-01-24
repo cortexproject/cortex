@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+QUAY_PREFIX=quay.io/
+IMAGES=$(make imgaes)
+IMAGE_TAG=$(./tools/image-tag)
+
+for image in ${IMAGES}; do
+  docker push ${image}:latest
+  docker push ${image}:${IMAGE_TAG}
+  docker tag ${image}:latest ${QUAY_PREFIX}${image}:latest
+  docker tag ${image}:${IMAGE_TAG} ${QUAY_PREFIX}${image}:${IMAGE_TAG}
+  docker push ${QUAY_PREFIX}${image}:latest
+  docker push ${QUAY_PREFIX}${image}:${IMAGE_TAG}
+done

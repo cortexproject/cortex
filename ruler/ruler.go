@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"flag"
 	"fmt"
 	"net/url"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/cortex/util"
 )
 
 var (
@@ -43,17 +45,29 @@ func init() {
 
 // Config is the configuration for the recording rules server.
 type Config struct {
-	ConfigsAPIURL string
+	ConfigsAPIURL util.URLValue
+
 	// HTTP timeout duration for requests made to the Weave Cloud configs
 	// service.
 	ClientTimeout time.Duration
+
 	// This is used for template expansion in alerts. Because we don't support
 	// alerts yet, this value doesn't matter. However, it must be a valid URL
 	// in order to navigate Prometheus's code paths.
-	ExternalURL string
+	ExternalURL util.URLValue
+
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
 	NumWorkers         int
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.Var(&cfg.ConfigsAPIURL, "ruler.configs.url", "URL of configs API server.")
+	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
+	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
+	f.DurationVar(&cfg.ClientTimeout, "ruler.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
+	f.IntVar(&cfg.NumWorkers, "ruler.num-workers", 1, "Number of rule evaluator worker routines in this process")
 }
 
 // Ruler evaluates rules.
@@ -64,8 +78,8 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(d *distributor.Distributor, c chunk.Store, alertURL *url.URL) Ruler {
-	return Ruler{querier.NewEngine(d, c), d, alertURL}
+func NewRuler(cfg Config, d *distributor.Distributor, c chunk.Store) Ruler {
+	return Ruler{querier.NewEngine(d, c), d, cfg.ExternalURL.URL}
 }
 
 func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) *rules.Group {
@@ -101,11 +115,7 @@ type Server struct {
 
 // NewServer makes a new rule processing server.
 func NewServer(cfg Config, ruler Ruler) (*Server, error) {
-	configsAPIURL, err := url.Parse(cfg.ConfigsAPIURL)
-	if err != nil {
-		return nil, err
-	}
-	c := configsAPI{configsAPIURL, cfg.ClientTimeout}
+	c := configsAPI{cfg.ConfigsAPIURL.URL, cfg.ClientTimeout}
 	// TODO: Separate configuration for polling interval.
 	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval)
 	if cfg.NumWorkers <= 0 {

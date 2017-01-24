@@ -65,6 +65,9 @@ type URLValue struct {
 
 // String implements flag.Value
 func (v URLValue) String() string {
+	if v.URL == nil {
+		return ""
+	}
 	return v.URL.String()
 }
 

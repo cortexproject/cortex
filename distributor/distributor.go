@@ -141,6 +141,7 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 		}, []string{"ingester"}),
 	}
 	prometheus.MustRegister(d)
+	go d.Run()
 	return d, nil
 }
 

@@ -36,6 +36,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing distributor: %v", err)
 	}
+	defer dist.Stop()
 
 	rulerServer, err := ruler.NewServer(rulerConfig, ruler.NewRuler(rulerConfig, dist, chunkStore))
 	if err != nil {

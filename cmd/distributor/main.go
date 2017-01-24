@@ -48,6 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing distributor: %v", err)
 	}
+	defer dist.Stop()
 
 	server := server.New(serverConfig, r)
 	server.HTTP.Handle("/api/prom/push", http.HandlerFunc(dist.PushHandler))

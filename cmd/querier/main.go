@@ -42,6 +42,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing distributor: %v", err)
 	}
+	defer dist.Stop()
 
 	server := server.New(serverConfig, r)
 	defer server.Stop()

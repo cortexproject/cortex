@@ -13,6 +13,23 @@ import (
 )
 
 func main() {
+	// The pattern for main functions is a series of config objects, which are
+	// registered for command line flags, and then a series of components that
+	// are instantiated and composed.  Some rules of thumb:
+	// - Config types should only contain 'simple' types (ints, strings, urls etc).
+	// - Flag validation should be done by the flag; use a flag.Value where
+	//   appropriate.
+	// - Config types should map 1:1 with a component type.
+	// - Config types should define flags with a common prefix.
+	// - It's fine to nest configs within configs, but this should match the
+	//   nesting of components within components.
+	// - Limit as much is possible sharing of configuration between config types.
+	//   Where necessary, use a pointer for this - avoid repetition.
+	// - Where a nesting of components its not obvious, it's fine to pass
+	//   references to other components constructors to compose them.
+	// - First argument for a components constructor should be its matching config
+	//   object.
+
 	var (
 		serverConfig      server.Config
 		ringConfig        ring.Config

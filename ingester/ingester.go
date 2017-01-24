@@ -66,7 +66,7 @@ type Ingester struct {
 	cfg        Config
 	chunkStore cortex_chunk.Store
 	userStates userStates
-	ring       ring.Ring
+	ring       *ring.Ring
 
 	stopLock sync.RWMutex
 	stopped  bool
@@ -138,6 +138,7 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 		cfg:        cfg,
 		chunkStore: chunkStore,
 		quit:       make(chan struct{}),
+		ring:       ring,
 
 		userStates:  newUserStates(cfg.RateUpdatePeriod),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),

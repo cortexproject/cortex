@@ -144,7 +144,7 @@ func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]*IngesterDesc, 
 }
 
 func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, error) {
-	if len(r.ringDesc.Tokens) == 0 {
+	if r.ringDesc == nil || len(r.ringDesc.Tokens) == 0 {
 		return nil, ErrEmptyRing
 	}
 
@@ -188,6 +188,10 @@ func (r *Ring) GetAll() []*IngesterDesc {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
+	if r.ringDesc == nil {
+		return nil
+	}
+
 	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
@@ -202,6 +206,10 @@ func (r *Ring) GetAll() []*IngesterDesc {
 func (r *Ring) Ready() bool {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil {
+		return false
+	}
 
 	for _, ingester := range r.ringDesc.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {

@@ -258,7 +258,7 @@ func (i *Ingester) Query(ctx context.Context, req *cortex.QueryRequest) (*cortex
 		return nil, err
 	}
 
-	matrix, err := i.query(ctx, start, end, matchers...)
+	matrix, err := i.query(ctx, start, end, matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +266,7 @@ func (i *Ingester) Query(ctx context.Context, req *cortex.QueryRequest) (*cortex
 	return util.ToQueryResponse(matrix), nil
 }
 
-func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
+func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) (model.Matrix, error) {
 	i.queries.Inc()
 
 	state, err := i.userStates.getOrCreate(ctx)
@@ -274,23 +274,12 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 		return nil, err
 	}
 
-	fps := state.index.lookup(matchers)
-
-	// fps is sorted, lock them in order to prevent deadlocks
 	queriedSamples := 0
 	result := model.Matrix{}
-	for _, fp := range fps {
-		state.fpLocker.Lock(fp)
-		series, ok := state.fpToSeries.get(fp)
-		if !ok {
-			state.fpLocker.Unlock(fp)
-			continue
-		}
-
+	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
 		values, err := series.samplesForRange(from, through)
-		state.fpLocker.Unlock(fp)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		result = append(result, &model.SampleStream{
@@ -298,11 +287,10 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 			Values: values,
 		})
 		queriedSamples += len(values)
-	}
-
+		return nil
+	})
 	i.queriedSamples.Add(float64(queriedSamples))
-
-	return result, nil
+	return result, err
 }
 
 // LabelValues returns all label values that are associated with a given label name.
@@ -333,21 +321,21 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *cortex.Metr
 		return nil, err
 	}
 
-	fps := map[model.Fingerprint]struct{}{}
+	metrics := map[model.Fingerprint]model.Metric{}
 	for _, matchers := range matchersSet {
-		for _, fp := range state.index.lookup(matchers) {
-			fps[fp] = struct{}{}
+		if err := state.forSeriesMatching(matchers, func(fp model.Fingerprint, series *memorySeries) error {
+			if _, ok := metrics[fp]; !ok {
+				metrics[fp] = series.metric
+			}
+			return nil
+		}); err != nil {
+			return nil, err
 		}
 	}
 
 	result := []model.Metric{}
-	for fp := range fps {
-		state.fpLocker.Lock(fp)
-		series, ok := state.fpToSeries.get(fp)
-		if ok {
-			result = append(result, series.metric)
-		}
-		state.fpLocker.Unlock(fp)
+	for _, metric := range metrics {
+		result = append(result, metric)
 	}
 
 	return util.ToMetricsForLabelMatchersResponse(result), nil

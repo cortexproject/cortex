@@ -98,6 +98,7 @@ func TestChunkStore(t *testing.T) {
 			model.MetricNameLabel: "foo",
 			"bar":  "baz",
 			"toms": "code",
+			"flip": "flop",
 		},
 		chunks[0],
 		now.Add(-time.Hour),
@@ -134,7 +135,7 @@ func TestChunkStore(t *testing.T) {
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
 
 	test("Just name label", []Chunk{chunk1, chunk2}, nameMatcher)
-	test("Empty matcher", nil, nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", ""))
+	test("Empty matcher", []Chunk{chunk2}, nameMatcher, mustNewLabelMatcher(metric.Equal, "flip", ""))
 	test("Equal bar=baz", []Chunk{chunk1}, nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "baz"))
 	test("Equal bar=beep", []Chunk{chunk2}, nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "beep"))
 	test("Equal toms=code", []Chunk{chunk1, chunk2}, nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"))

@@ -437,12 +437,13 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) (map[str
 }
 
 // Get implements ChunkStore
-func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]Chunk, error) {
+func (c *AWSStore) Get(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]Chunk, error) {
 	userID, err := user.GetID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	missing, err := c.lookupChunks(ctx, userID, from, through, matchers)
 	if err != nil {
 		return nil, err
@@ -468,7 +469,21 @@ func (c *AWSStore) Get(ctx context.Context, from, through model.Time, matchers .
 	// into the result based on that index.
 	allChunks := append(fromCache, fromS3...)
 	sort.Sort(ByID(allChunks))
-	return allChunks, nil
+
+	// Filter out chunks
+	filteredChunks := make([]Chunk, 0, len(allChunks))
+outer:
+	for _, chunk := range allChunks {
+		for _, filter := range filters {
+			if !filter.Match(chunk.Metric[filter.Name]) {
+				continue outer
+			}
+		}
+
+		filteredChunks = append(filteredChunks, chunk)
+	}
+
+	return filteredChunks, nil
 }
 
 func extractMetricName(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, error) {

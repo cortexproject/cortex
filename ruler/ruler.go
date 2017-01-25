@@ -126,14 +126,16 @@ func NewServer(cfg Config, ruler Ruler) (*Server, error) {
 	for i := 0; i < cfg.NumWorkers; i++ {
 		workers[i] = newWorker(&s, ruler)
 	}
-	return &Server{
+	srv := Server{
 		scheduler: &s,
 		workers:   workers,
-	}, nil
+	}
+	go srv.run()
+	return &srv, nil
 }
 
 // Run the server.
-func (s *Server) Run() {
+func (s *Server) run() {
 	go s.scheduler.Run()
 	for _, w := range s.workers {
 		go w.Run()

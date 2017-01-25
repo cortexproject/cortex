@@ -35,7 +35,7 @@ MAIN_GO := $(shell find ./cmd -type f -name main.go ! -path "./tools/*" ! -path 
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
 GO_FILES := $(shell find . -name '*.go' ! -path "./cmd/*" ! -path "./tools/*" ! -path "./vendor/*")
 define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) ui/bindata.go $(PROTO_GOS)
+$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS)
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
@@ -43,8 +43,6 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 # Manually declared dependancies And what goes into each exe
 %.pb.go: %.proto
 all: $(UPTODATE_FILES)
-test: $(PROTO_GOS)
-ui/bindata.go: $(shell find ui/static ui/templates)
 test: $(PROTO_GOS)
 
 # And now what goes into each image
@@ -66,7 +64,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) ui/bindata.go lint test shell: build/$(UPTODATE)
+$(EXES) $(PROTO_GOS) lint test shell: build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
@@ -82,9 +80,6 @@ $(EXES): build/$(UPTODATE)
 %.pb.go: build/$(UPTODATE)
 	protoc -I ./vendor:./$(@D) --go_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
-ui/bindata.go: build/$(UPTODATE)
-	go-bindata -pkg ui -o ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  ui/templates/... ui/static/...
-
 lint: build/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
@@ -98,7 +93,7 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) ui/bindata.go
+	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS)
 	go clean ./...
 
 

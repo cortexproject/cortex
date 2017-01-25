@@ -17,7 +17,6 @@ import (
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/server"
-	"github.com/weaveworks/cortex/ui"
 	"github.com/weaveworks/cortex/user"
 	"github.com/weaveworks/cortex/util"
 )
@@ -64,8 +63,6 @@ func main() {
 	subrouter.PathPrefix("/api/v1").Handler(promRouter)
 	subrouter.Path("/validate_expr").Handler(http.HandlerFunc(dist.ValidateExprHandler))
 	subrouter.Path("/user_stats").Handler(http.HandlerFunc(dist.UserStatsHandler))
-	subrouter.Path("/graph").Handler(ui.GraphHandler())
-	subrouter.PathPrefix("/static/").Handler(ui.StaticAssetsHandler("/api/prom/static/"))
 
 	server.Run()
 }

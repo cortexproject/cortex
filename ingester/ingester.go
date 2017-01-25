@@ -481,8 +481,17 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		if err := i.flushUserSeries(op.userID, op.fp, op.immediate); err != nil {
+		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
+		if err != nil {
 			log.Errorf("Failed to flush user: %v", err)
+		}
+
+		// If we're exiting & we failed to flush, keep trying.
+		for op.immediate && err != nil {
+			err = i.flushUserSeries(op.userID, op.fp, op.immediate)
+			if err != nil {
+				log.Errorf("Failed to flush user: %v", err)
+			}
 		}
 	}
 }

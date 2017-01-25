@@ -42,7 +42,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing ruler: %v", err)
 	}
-	go rulerServer.Run()
 	defer rulerServer.Stop()
 
 	server := server.New(serverConfig, r)

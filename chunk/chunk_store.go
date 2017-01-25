@@ -18,10 +18,10 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/weaveworks/scope/common/instrument"
+	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/util"
 )
 

@@ -5,11 +5,13 @@ import (
 	"time"
 
 	"github.com/jonboulle/clockwork"
+	"golang.org/x/net/context"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/rules"
-	"github.com/weaveworks/scope/common/instrument"
-	"golang.org/x/net/context"
+
+	"github.com/weaveworks/common/instrument"
 )
 
 const (

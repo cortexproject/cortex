@@ -245,7 +245,7 @@
 			"importpath": "github.com/docker/docker/pkg/ioutils",
 			"repository": "https://github.com/docker/docker",
 			"vcs": "git",
-			"revision": "27699ba8b23217525b0b026fa689834db4454a35",
+			"revision": "e9c0de0de65182915d1cd205f06f5c903c20a29f",
 			"branch": "master",
 			"path": "/pkg/ioutils",
 			"notests": true
@@ -254,18 +254,9 @@
 			"importpath": "github.com/docker/docker/pkg/longpath",
 			"repository": "https://github.com/docker/docker",
 			"vcs": "git",
-			"revision": "a58e3e7fefd67ebe57c183e970e5fcda096c9ad1",
+			"revision": "e9c0de0de65182915d1cd205f06f5c903c20a29f",
 			"branch": "master",
 			"path": "pkg/longpath",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/docker/docker/vendor/golang.org/x/net/context",
-			"repository": "https://github.com/docker/docker",
-			"vcs": "git",
-			"revision": "a58e3e7fefd67ebe57c183e970e5fcda096c9ad1",
-			"branch": "master",
-			"path": "vendor/golang.org/x/net/context",
 			"notests": true
 		},
 		{
@@ -623,6 +614,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/sercand/kuberesolver",
+			"repository": "https://github.com/sercand/kuberesolver",
+			"vcs": "git",
+			"revision": "2f561e34ecb6206fcad82f0c5842379188d8db40",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/shiena/ansicolor",
 			"repository": "https://github.com/shiena/ansicolor",
 			"vcs": "git",
@@ -701,165 +700,11 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/weaveworks/common/mtime",
+			"importpath": "github.com/weaveworks/common",
 			"repository": "https://github.com/weaveworks/common",
 			"vcs": "git",
-			"revision": "139d0313ac15170e9de8187b26e7df03b4cb910e",
+			"revision": "f7d1a7f7b792ff618d2afe2c3f2b3f38dac8bef0",
 			"branch": "master",
-			"path": "/mtime",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/common/instrument",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "604661ca2afa686508492ac3eee8c327bf47eb68",
-			"branch": "master",
-			"path": "/common/instrument",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/common/middleware",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "382978496727da8b2d2d03888b83404a908bc65a",
-			"branch": "master",
-			"path": "/common/middleware",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/bitbucket.org/ww/goautoneg",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/bitbucket.org/ww/goautoneg",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/Sirupsen/logrus",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/Sirupsen/logrus",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/beorn7/perks/quantile",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/beorn7/perks/quantile",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/davecgh/go-spew/spew",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/davecgh/go-spew/spew",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/golang/protobuf/proto",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/golang/protobuf/proto",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/gorilla/context",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/gorilla/context",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/gorilla/mux",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/gorilla/mux",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/matttproud/golang_protobuf_extensions/pbutil",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/matttproud/golang_protobuf_extensions/pbutil",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/pmezard/go-difflib/difflib",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/pmezard/go-difflib/difflib",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/prometheus/client_golang/prometheus",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/prometheus/client_golang/prometheus",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/prometheus/client_model/go",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/prometheus/client_model/go",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/prometheus/common/expfmt",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/prometheus/common/expfmt",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/prometheus/common/model",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/prometheus/common/model",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/prometheus/procfs",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/prometheus/procfs",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/weaveworks/scope/vendor/github.com/stretchr/testify/assert",
-			"repository": "https://github.com/weaveworks/scope",
-			"vcs": "git",
-			"revision": "fa784140a4e5163247ebc368ceba71b4d525f095",
-			"branch": "master",
-			"path": "vendor/github.com/stretchr/testify/assert",
 			"notests": true
 		},
 		{

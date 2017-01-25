@@ -12,8 +12,7 @@ service Ingester {
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
 }
 
-message WriteResponse {
-}
+message WriteResponse {}
 
 message QueryRequest {
   int64 start_timestamp_ms = 1;
@@ -33,8 +32,7 @@ message LabelValuesResponse {
   repeated string label_values = 1;
 }
 
-message UserStatsRequest {
-}
+message UserStatsRequest {}
 
 message UserStatsResponse {
   double ingestion_rate = 1;

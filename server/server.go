@@ -14,14 +14,15 @@ import (
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
-	"github.com/weaveworks/scope/common/middleware"
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
+
 	"github.com/weaveworks/cortex/ring"
-	cortex_grpc_middleware "github.com/weaveworks/cortex/util/middleware"
 )
 
 var (
@@ -69,12 +70,14 @@ func New(cfg Config, r *ring.Ring) *Server {
 
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-			cortex_grpc_middleware.ServerLoggingInterceptor(cfg.LogSuccess),
-			cortex_grpc_middleware.ServerInstrumentInterceptor(requestDuration),
+			middleware.ServerLoggingInterceptor(cfg.LogSuccess),
+			middleware.ServerInstrumentInterceptor(requestDuration),
 			otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
-			cortex_grpc_middleware.ServerUserHeaderInterceptor,
+			middleware.ServerUserHeaderInterceptor,
 		)),
 	)
+
+	httpgrpc.RegisterHTTPServer(grpcServer, httpgrpc.NewServer(router))
 
 	return &Server{
 		cfg:  cfg,

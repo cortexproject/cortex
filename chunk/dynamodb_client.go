@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/scope/common/instrument"
+	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
 )
 

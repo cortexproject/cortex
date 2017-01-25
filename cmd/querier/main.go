@@ -12,12 +12,12 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/server"
-	"github.com/weaveworks/cortex/user"
 	"github.com/weaveworks/cortex/util"
 )
 
@@ -51,9 +51,9 @@ func main() {
 	engine := promql.NewEngine(queryable, nil)
 	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable})
 	promRouter := route.New(func(r *http.Request) (context.Context, error) {
-		userID := r.Header.Get(user.UserIDHeaderName)
+		userID := r.Header.Get(user.OrgIDHeaderName)
 		if userID == "" {
-			return nil, fmt.Errorf("no %s header", user.UserIDHeaderName)
+			return nil, fmt.Errorf("no %s header", user.OrgIDHeaderName)
 		}
 		return user.WithID(r.Context(), userID), nil
 	}).WithPrefix("/api/prom/api/v1")

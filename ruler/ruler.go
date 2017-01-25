@@ -12,10 +12,10 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
 
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
-	"github.com/weaveworks/cortex/user"
 	"github.com/weaveworks/cortex/util"
 )
 

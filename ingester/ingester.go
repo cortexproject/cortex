@@ -65,7 +65,7 @@ var (
 type Ingester struct {
 	cfg        Config
 	chunkStore cortex_chunk.Store
-	userStates userStates
+	userStates *userStates
 	ring       *ring.Ring
 
 	stopLock sync.RWMutex

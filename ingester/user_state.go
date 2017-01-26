@@ -28,31 +28,32 @@ type userState struct {
 	ingestedSamples *ewmaRate
 }
 
-func newUserStates(rateUpdatePeriod time.Duration) userStates {
-	return userStates{
+func newUserStates(rateUpdatePeriod time.Duration) *userStates {
+	return &userStates{
 		states:           map[string]*userState{},
 		rateUpdatePeriod: rateUpdatePeriod,
 	}
 }
 
 func (us *userStates) cp() map[string]*userState {
-	us.mtx.Lock()
+	us.mtx.RLock()
+	defer us.mtx.RUnlock()
 	states := make(map[string]*userState, len(us.states))
 	for id, state := range us.states {
 		states[id] = state
 	}
-	us.mtx.Unlock()
 	return states
 }
 
 func (us *userStates) gc() {
 	us.mtx.Lock()
+	defer us.mtx.Unlock()
+
 	for id, state := range us.states {
 		if state.fpToSeries.length() == 0 {
 			delete(us.states, id)
 		}
 	}
-	us.mtx.Unlock()
 }
 
 func (us *userStates) updateRates() {
@@ -67,12 +68,14 @@ func (us *userStates) updateRates() {
 func (us *userStates) numUsers() int {
 	us.mtx.RLock()
 	defer us.mtx.RUnlock()
+
 	return len(us.states)
 }
 
 func (us *userStates) numSeries() int {
 	us.mtx.RLock()
 	defer us.mtx.RUnlock()
+
 	numSeries := 0
 	for _, state := range us.states {
 		numSeries += state.fpToSeries.length()

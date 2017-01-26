@@ -175,17 +175,19 @@ func (d *Distributor) removeStaleIngesterClients() {
 	}
 
 	for addr, client := range d.clients {
-		if _, ok := ingesters[addr]; !ok {
-			log.Info("Removing stale ingester client for ", addr)
-			delete(d.clients, addr)
-			// Do the gRPC closing in the background since it might take a while and
-			// we're holding a mutex.
-			go func() {
-				if err := client.conn.Close(); err != nil {
-					log.Errorf("Error closing connection to ingester %q: %v", addr, err)
-				}
-			}()
+		if _, ok := ingesters[addr]; ok {
+			continue
 		}
+		log.Info("Removing stale ingester client for ", addr)
+		delete(d.clients, addr)
+
+		// Do the gRPC closing in the background since it might take a while and
+		// we're holding a mutex.
+		go func(addr string, conn *grpc.ClientConn) {
+			if err := conn.Close(); err != nil {
+				log.Errorf("Error closing connection to ingester %q: %v", addr, err)
+			}
+		}(addr, client.conn)
 	}
 }
 

@@ -3,7 +3,7 @@ package middleware
 import (
 	"time"
 
-	"github.com/prometheus/common/log"
+	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )

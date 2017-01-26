@@ -10,7 +10,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
-	"github.com/weaveworks/scope/common/instrument"
+	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
 )
 

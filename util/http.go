@@ -11,12 +11,12 @@ import (
 	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/common/user"
 )
 
 // ParseProtoRequest parses a proto from the body of a http request.
 func ParseProtoRequest(w http.ResponseWriter, r *http.Request, req proto.Message, compressed bool) (ctx context.Context, abort bool) {
-	userID := r.Header.Get(user.UserIDHeaderName)
+	userID := r.Header.Get(user.OrgIDHeaderName)
 	if userID == "" {
 		http.Error(w, "", http.StatusUnauthorized)
 		return nil, true

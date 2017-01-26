@@ -11,7 +11,6 @@ import (
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing/opentracing-go"
-	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
@@ -21,11 +20,12 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/storage/remote"
 
+	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/ring"
-	"github.com/weaveworks/cortex/user"
 	"github.com/weaveworks/cortex/util"
-	"github.com/weaveworks/cortex/util/middleware"
 )
 
 var (

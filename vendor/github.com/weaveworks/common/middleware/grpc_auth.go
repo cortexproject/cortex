@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/common/user"
 )
 
 // ClientUserHeaderInterceptor propagates the user ID from the context to gRPC metadata, which eventually ends up as a HTTP2 header.
@@ -19,9 +19,9 @@ func ClientUserHeaderInterceptor(ctx context.Context, method string, req, reply 
 
 	md, ok := metadata.FromContext(ctx)
 	if !ok {
-		md = metadata.New(map[string]string{user.LowerUserIDHeaderName: userID})
+		md = metadata.New(map[string]string{user.LowerOrgIDHeaderName: userID})
 	} else {
-		md[user.LowerUserIDHeaderName] = []string{userID}
+		md[user.LowerOrgIDHeaderName] = []string{userID}
 	}
 	newCtx := metadata.NewContext(ctx, md)
 
@@ -35,7 +35,7 @@ func ServerUserHeaderInterceptor(ctx context.Context, req interface{}, info *grp
 		return nil, fmt.Errorf("no metadata")
 	}
 
-	userIDs, ok := md[user.LowerUserIDHeaderName]
+	userIDs, ok := md[user.LowerOrgIDHeaderName]
 	if !ok || len(userIDs) != 1 {
 		return nil, fmt.Errorf("no user id")
 	}

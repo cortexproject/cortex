@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
-	"github.com/weaveworks/scope/common/instrument"
 	"golang.org/x/net/context"
 )
 

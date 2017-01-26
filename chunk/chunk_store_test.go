@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/cortex/user"
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/util"
 )
 

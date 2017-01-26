@@ -6,18 +6,16 @@ import (
 	"golang.org/x/net/context"
 )
 
-// TODO(jml): typedef for userid, maybe even put in a weaveworks library, so
-// that there's a shared language around the multiple ways of identifying
-// entitiies.
-
 // UserIDContextKey is the key used in contexts to find the userid
-const userIDContextKey = "CortexUserID" // TODO dedupe with storage/local
+type contextKey int
 
-// UserIDHeaderName is a legacy from scope as a service.
-const UserIDHeaderName = "X-Scope-OrgID"
+const userIDContextKey contextKey = 0
 
-// LowerUserIDHeaderName as gRPC / HTTP2.0 headers are lowercased.
-const LowerUserIDHeaderName = "x-scope-orgid"
+// OrgIDHeaderName is a legacy from scope as a service.
+const OrgIDHeaderName = "X-Scope-OrgID"
+
+// LowerOrgIDHeaderName as gRPC / HTTP2.0 headers are lowercased.
+const LowerOrgIDHeaderName = "x-scope-orgid"
 
 // GetID returns the user
 func GetID(ctx context.Context) (string, error) {

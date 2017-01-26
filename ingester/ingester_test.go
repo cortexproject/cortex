@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
-	"github.com/weaveworks/cortex/user"
 	"github.com/weaveworks/cortex/util"
 )
 

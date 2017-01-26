@@ -189,6 +189,7 @@ outer:
 
 		for _, filter := range filters {
 			if !filter.Match(series.metric[filter.Name]) {
+				u.fpLocker.Unlock(fp)
 				continue outer
 			}
 		}

@@ -17,11 +17,27 @@ func ClientUserHeaderInterceptor(ctx context.Context, method string, req, reply 
 		return err
 	}
 
-	md := metadata.New(map[string]string{user.LowerOrgIDHeaderName: userID})
-	if existing, ok := metadata.FromContext(ctx); ok {
-		md = metadata.Join(existing, md)
+	md, ok := metadata.FromContext(ctx)
+	if !ok {
+		md = metadata.New(map[string]string{})
 	}
-	newCtx := metadata.NewContext(ctx, md)
+
+	newCtx := ctx
+	if userIDs, ok := md[user.LowerOrgIDHeaderName]; ok {
+		switch len(userIDs) {
+		case 1:
+			if userIDs[0] != userID {
+				return fmt.Errorf("wrong user ID found")
+			}
+		default:
+			return fmt.Errorf("multiple user IDs found")
+		}
+	} else {
+		md = md.Copy()
+		md[user.LowerOrgIDHeaderName] = []string{userID}
+		newCtx = metadata.NewContext(ctx, md)
+	}
+
 	return invoker(newCtx, method, req, reply, cc, opts...)
 }
 

@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
@@ -21,6 +18,7 @@ import (
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/signals"
 
 	"github.com/weaveworks/cortex/ring"
 )
@@ -77,8 +75,6 @@ func New(cfg Config, r *ring.Ring) *Server {
 		)),
 	)
 
-	httpgrpc.RegisterHTTPServer(grpcServer, httpgrpc.NewServer(router))
-
 	return &Server{
 		cfg:  cfg,
 		HTTP: router,
@@ -104,16 +100,14 @@ func (s *Server) Run() {
 	go http.ListenAndServe(fmt.Sprintf(":%d", s.cfg.HTTPListenPort), instrumented)
 
 	// Setup gRPC server
+	httpgrpc.RegisterHTTPServer(s.GRPC, httpgrpc.NewServer(instrumented))
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.GRPCListenPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	go s.GRPC.Serve(lis)
 
-	term := make(chan os.Signal)
-	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
-	<-term
-	log.Warn("Received SIGTERM, exiting gracefully...")
+	signals.SignalHandlerLoop(log.Base())
 }
 
 // Stop the server.  Does not unblock Run!

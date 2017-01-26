@@ -40,6 +40,7 @@ func (s Server) Handle(ctx context.Context, r *HTTPRequest) (*HTTPResponse, erro
 	}
 	req = req.WithContext(ctx)
 	toHeader(r.Headers, req.Header)
+	req.RequestURI = r.Url
 	recorder := httptest.NewRecorder()
 	s.handler.ServeHTTP(recorder, req)
 	resp := &HTTPResponse{
@@ -96,7 +97,7 @@ func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	req := &HTTPRequest{
 		Method:  r.Method,
-		Url:     r.URL.String(),
+		Url:     r.RequestURI,
 		Body:    body,
 		Headers: fromHeader(r.Header),
 	}

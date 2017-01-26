@@ -17,14 +17,11 @@ func ClientUserHeaderInterceptor(ctx context.Context, method string, req, reply 
 		return err
 	}
 
-	md, ok := metadata.FromContext(ctx)
-	if !ok {
-		md = metadata.New(map[string]string{user.LowerOrgIDHeaderName: userID})
-	} else {
-		md[user.LowerOrgIDHeaderName] = []string{userID}
+	md := metadata.New(map[string]string{user.LowerOrgIDHeaderName: userID})
+	if existing, ok := metadata.FromContext(ctx); ok {
+		md = metadata.Join(existing, md)
 	}
 	newCtx := metadata.NewContext(ctx, md)
-
 	return invoker(newCtx, method, req, reply, cc, opts...)
 }
 

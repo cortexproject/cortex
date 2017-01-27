@@ -71,7 +71,7 @@ func New(cfg Config, r *ring.Ring) *Server {
 		log.Errorf("Failed to create tracer: %v", err)
 	} else {
 		opentracing.InitGlobalTracer(tracer)
-		router.Handle("/metrics", loki.Handler())
+		router.Handle("/traces", loki.Handler())
 	}
 
 	grpcServer := grpc.NewServer(

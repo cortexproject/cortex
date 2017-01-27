@@ -16,10 +16,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
+	"github.com/weaveworks-experiments/loki/pkg/client"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/signals"
-
 	"github.com/weaveworks/cortex/ring"
 )
 
@@ -65,6 +65,14 @@ func New(cfg Config, r *ring.Ring) *Server {
 		router.Handle("/ring", r)
 	}
 	router.Handle("/metrics", prometheus.Handler())
+
+	tracer, err := loki.NewTracer()
+	if err != nil {
+		log.Errorf("Failed to create tracer: %v", err)
+	} else {
+		opentracing.InitGlobalTracer(tracer)
+		router.Handle("/metrics", loki.Handler())
+	}
 
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(

@@ -453,13 +453,17 @@ func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}
 	}
 
 	var lastErr error
-	result := []interface{}{}
+	result, numErrs := []interface{}{}, 0
 	for range ingesters {
 		select {
 		case resp := <-resps:
 			result = append(result, resp)
 		case lastErr = <-errs:
+			numErrs++
 		}
+	}
+	if numErrs > (d.cfg.ReplicationFactor - d.cfg.MinReadSuccesses) {
+		return nil, lastErr
 	}
 	return result, lastErr
 }

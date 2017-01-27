@@ -84,7 +84,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	flag.IntVar(&cfg.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
 	flag.DurationVar(&cfg.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
-	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 5*time.Second, "Timeout for downstream ingesters.")
+	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 }
 
@@ -208,6 +208,7 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.Ingester
 
 	conn, err := grpc.Dial(
 		ingester.Addr,
+		grpc.WithTimeout(d.cfg.RemoteTimeout),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),

@@ -29,6 +29,10 @@ func NewCollector(capacity int) *Collector {
 }
 
 func (c *Collector) Collect(span *zipkincore.Span) error {
+	if span == nil {
+		return fmt.Errorf("cannot collect nil span")
+	}
+
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -59,6 +63,7 @@ func (c *Collector) gather() []*zipkincore.Span {
 		spans = append(spans, c.spans[idx])
 		c.spans[idx] = nil
 	}
+	c.length = 0
 	return spans
 }
 

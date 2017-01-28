@@ -93,10 +93,7 @@ func New(cfg Config, r *ring.Ring) *Server {
 // Run the server; blocks until SIGTERM is received.
 func (s *Server) Run() {
 	// Setup HTTP server
-	instrumented := middleware.Merge(
-		middleware.Func(func(handler http.Handler) http.Handler {
-			return nethttp.Middleware(opentracing.GlobalTracer(), handler)
-		}),
+	intermediate := middleware.Merge(
 		middleware.Log{
 			LogSuccess: s.cfg.LogSuccess,
 		},
@@ -105,10 +102,14 @@ func (s *Server) Run() {
 			RouteMatcher: s.HTTP,
 		},
 	).Wrap(s.HTTP)
+	// for HTTP over gRPC, ensure we don't double-count the tracing context
+	httpgrpc.RegisterHTTPServer(s.GRPC, httpgrpc.NewServer(intermediate))
+	instrumented := middleware.Func(func(handler http.Handler) http.Handler {
+		return nethttp.Middleware(opentracing.GlobalTracer(), handler)
+	}).Wrap(s.HTTP)
 	go http.ListenAndServe(fmt.Sprintf(":%d", s.cfg.HTTPListenPort), instrumented)
 
 	// Setup gRPC server
-	httpgrpc.RegisterHTTPServer(s.GRPC, httpgrpc.NewServer(instrumented))
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.GRPCListenPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)

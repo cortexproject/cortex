@@ -837,7 +837,7 @@
 			"importpath": "github.com/weaveworks-experiments/loki/pkg/client",
 			"repository": "https://github.com/weaveworks-experiments/loki",
 			"vcs": "git",
-			"revision": "7d462993ba68fd10865e6756ae5d59fd97e36f12",
+			"revision": "2bf14b5982fcde5d2430acee54b754f203c60b89",
 			"branch": "master",
 			"path": "/pkg/client",
 			"notests": true

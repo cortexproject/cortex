@@ -465,7 +465,7 @@ func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}
 	if numErrs > (d.cfg.ReplicationFactor - d.cfg.MinReadSuccesses) {
 		return nil, lastErr
 	}
-	return result, lastErr
+	return result, nil
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.

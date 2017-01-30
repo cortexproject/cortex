@@ -11,16 +11,6 @@ import (
 	"github.com/weaveworks/cortex/util"
 )
 
-// IngesterError is an error we got from an ingester.
-type IngesterError struct {
-	StatusCode int
-	err        error
-}
-
-func (i IngesterError) Error() string {
-	return i.err.Error()
-}
-
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	var req remote.WriteRequest
@@ -31,15 +21,6 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err := d.Push(ctx, &req)
 	if err != nil {
-		switch e := err.(type) {
-		case IngesterError:
-			switch {
-			case 400 <= e.StatusCode && e.StatusCode < 500:
-				log.Warnf("push err: %v", err)
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-		}
 		log.Errorf("append err: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}

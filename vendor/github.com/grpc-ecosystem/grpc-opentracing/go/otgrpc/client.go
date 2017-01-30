@@ -1,10 +1,9 @@
 package otgrpc
 
 import (
-	"fmt"
-
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	"github.com/opentracing/opentracing-go/log"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -50,27 +49,26 @@ func OpenTracingClientInterceptor(tracer opentracing.Tracer, optFuncs ...Option)
 		md, ok := metadata.FromContext(ctx)
 		if !ok {
 			md = metadata.New(nil)
+		} else {
+			md = md.Copy()
 		}
 		mdWriter := metadataReaderWriter{md}
 		err = tracer.Inject(clientSpan.Context(), opentracing.HTTPHeaders, mdWriter)
 		// We have no better place to record an error than the Span itself :-/
 		if err != nil {
-			clientSpan.LogEventWithPayload(
-				"Tracer.Inject() failed", map[string]interface{}{
-					"error": fmt.Sprint(err),
-				})
+			clientSpan.LogFields(log.String("event", "Tracer.Inject() failed"), log.Error(err))
 		}
 		ctx = metadata.NewContext(ctx, md)
 		if otgrpcOpts.logPayloads {
-			clientSpan.LogEventWithPayload("gRPC request", req)
+			clientSpan.LogFields(log.Object("gRPC request", req))
 		}
 		err = invoker(ctx, method, req, resp, cc, opts...)
 		if err == nil {
 			if otgrpcOpts.logPayloads {
-				clientSpan.LogEventWithPayload("gRPC response", resp)
+				clientSpan.LogFields(log.Object("gRPC response", resp))
 			}
 		} else {
-			clientSpan.LogEventWithPayload("gRPC error", err)
+			clientSpan.LogFields(log.String("event", "gRPC error"), log.Error(err))
 			ext.Error.Set(clientSpan, true)
 		}
 		if otgrpcOpts.decorator != nil {

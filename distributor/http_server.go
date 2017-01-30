@@ -21,8 +21,13 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err := d.Push(ctx, &req)
 	if err != nil {
+		switch err {
+		case errIngestionRateLimitExceeded:
+			http.Error(w, err.Error(), http.StatusTooManyRequests)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		log.Errorf("append err: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 

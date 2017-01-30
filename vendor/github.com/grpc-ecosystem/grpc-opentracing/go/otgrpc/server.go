@@ -1,8 +1,9 @@
 package otgrpc
 
 import (
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	"github.com/opentracing/opentracing-go/log"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -51,16 +52,16 @@ func OpenTracingServerInterceptor(tracer opentracing.Tracer, optFuncs ...Option)
 
 		ctx = opentracing.ContextWithSpan(ctx, serverSpan)
 		if otgrpcOpts.logPayloads {
-			serverSpan.LogEventWithPayload("gRPC request", req)
+			serverSpan.LogFields(log.Object("gRPC request", req))
 		}
 		resp, err = handler(ctx, req)
 		if err == nil {
 			if otgrpcOpts.logPayloads {
-				serverSpan.LogEventWithPayload("gRPC response", resp)
+				serverSpan.LogFields(log.Object("gRPC response", resp))
 			}
 		} else {
 			ext.Error.Set(serverSpan, true)
-			serverSpan.LogEventWithPayload("gRPC error", err)
+			serverSpan.LogFields(log.String("event", "gRPC error"), log.Error(err))
 		}
 		if otgrpcOpts.decorator != nil {
 			otgrpcOpts.decorator(serverSpan, info.FullMethod, req, resp, err)

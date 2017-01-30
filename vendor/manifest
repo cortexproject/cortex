@@ -406,10 +406,10 @@
 		},
 		{
 			"importpath": "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
-			"repository": "https://github.com/grpc-ecosystem/grpc-opentracing",
+			"repository": "https://github.com/weaveworks/grpc-opentracing",
 			"vcs": "git",
-			"revision": "8fa31758f85ff84c4f21071a156e7a5539a93795",
-			"branch": "master",
+			"revision": "4157d4e69ea35b993f49203437b4175c69ceebfb",
+			"branch": "12-metadata-cow",
 			"path": "/go/otgrpc",
 			"notests": true
 		},

@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -12,6 +13,7 @@ import (
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing/opentracing-go"
 	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,6 +29,8 @@ import (
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
 )
+
+var errIngestionRateLimitExceeded = errors.New("ingestion rate limit exceeded")
 
 var (
 	numClientsDesc = prometheus.NewDesc(
@@ -45,6 +49,10 @@ type Distributor struct {
 	clients    map[string]ingesterClient
 	quit       chan struct{}
 	done       chan struct{}
+
+	// Per-user rate limiters.
+	ingestLimitersMtx sync.Mutex
+	ingestLimiters    map[string]*rate.Limiter
 
 	queryDuration          *prometheus.HistogramVec
 	receivedSamples        prometheus.Counter
@@ -77,6 +85,8 @@ type Config struct {
 	HeartbeatTimeout    time.Duration
 	RemoteTimeout       time.Duration
 	ClientCleanupPeriod time.Duration
+	IngestionRateLimit  float64
+	IngestionBurstSize  int
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -86,6 +96,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.DurationVar(&cfg.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
+	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
+	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 }
 
 // New constructs a new Distributor
@@ -97,11 +109,12 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 		return nil, fmt.Errorf("MinReadSuccesses > ReplicationFactor: %d > %d", cfg.MinReadSuccesses, cfg.ReplicationFactor)
 	}
 	d := &Distributor{
-		cfg:     cfg,
-		ring:    ring,
-		clients: map[string]ingesterClient{},
-		quit:    make(chan struct{}),
-		done:    make(chan struct{}),
+		cfg:            cfg,
+		ring:           ring,
+		clients:        map[string]ingesterClient{},
+		quit:           make(chan struct{}),
+		done:           make(chan struct{}),
+		ingestLimiters: map[string]*rate.Limiter{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
 			Name:      "distributor_query_duration_seconds",
@@ -255,6 +268,11 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 	samples := util.FromWriteRequest(req)
 	d.receivedSamples.Add(float64(len(samples)))
 
+	limiter := d.getOrCreateIngestLimiter(userID)
+	if !limiter.AllowN(time.Now(), len(samples)) {
+		return nil, errIngestionRateLimitExceeded
+	}
+
 	keys := make([]uint32, len(samples), len(samples))
 	for i, sample := range samples {
 		keys[i] = tokenForMetric(userID, sample.Metric)
@@ -286,7 +304,7 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		}
 
 		// This is just a shortcut - if there are not minSuccess available ingesters,
-		// after filtering out dead ones, don't even both trying.
+		// after filtering out dead ones, don't even bother trying.
 		if len(liveIngesters) < sampleTrackers[i].minSuccess {
 			return nil, fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
 				sampleTrackers[i].minSuccess, len(liveIngesters))
@@ -318,6 +336,19 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		}
 	}
 	return &cortex.WriteResponse{}, nil
+}
+
+func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
+	d.ingestLimitersMtx.Lock()
+	defer d.ingestLimitersMtx.Unlock()
+
+	if limiter, ok := d.ingestLimiters[userID]; ok {
+		return limiter
+	}
+
+	limiter := rate.NewLimiter(rate.Limit(d.cfg.IngestionRateLimit), d.cfg.IngestionBurstSize)
+	d.ingestLimiters[userID] = limiter
+	return limiter
 }
 
 func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker) error {

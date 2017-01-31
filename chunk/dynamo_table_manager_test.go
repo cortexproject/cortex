@@ -15,12 +15,14 @@ import (
 )
 
 const (
-	tablePrefix = "cortex_"
-	tablePeriod = 7 * 24 * time.Hour
-	gracePeriod = 15 * time.Minute
-	maxChunkAge = 12 * time.Hour
-	write       = 200
-	read        = 100
+	tablePrefix   = "cortex_"
+	tablePeriod   = 7 * 24 * time.Hour
+	gracePeriod   = 15 * time.Minute
+	maxChunkAge   = 12 * time.Hour
+	inactiveWrite = 1
+	inactiveRead  = 2
+	write         = 200
+	read          = 100
 )
 
 func TestDynamoTableManager(t *testing.T) {
@@ -42,6 +44,8 @@ func TestDynamoTableManager(t *testing.T) {
 		MaxChunkAge:                maxChunkAge,
 		ProvisionedWriteThroughput: write,
 		ProvisionedReadThroughput:  read,
+		InactiveWriteThroughput:    inactiveWrite,
+		InactiveReadThroughput:     inactiveRead,
 	}
 	tableManager, err := NewDynamoTableManager(cfg)
 	if err != nil {
@@ -93,7 +97,7 @@ func TestDynamoTableManager(t *testing.T) {
 		"Move forward by max chunk age + grace period",
 		time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
+			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 		},
 	)
@@ -103,7 +107,7 @@ func TestDynamoTableManager(t *testing.T) {
 		"Move forward by table period - grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(-gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
+			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
@@ -114,7 +118,7 @@ func TestDynamoTableManager(t *testing.T) {
 		"Move forward by table period + grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
+			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
@@ -125,8 +129,8 @@ func TestDynamoTableManager(t *testing.T) {
 		"Move forward by table period + max chunk age + grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: minWriteCapacity},
+			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
+			{name: tablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
 	)
@@ -136,8 +140,8 @@ func TestDynamoTableManager(t *testing.T) {
 		"Nothing changed",
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
 		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: minWriteCapacity},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: minWriteCapacity},
+			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
+			{name: tablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
 	)

@@ -17,9 +17,8 @@ import (
 )
 
 const (
-	readLabel        = "read"
-	writeLabel       = "write"
-	minWriteCapacity = 1
+	readLabel  = "read"
+	writeLabel = "write"
 )
 
 var (
@@ -52,6 +51,8 @@ type TableManagerConfig struct {
 	MaxChunkAge                time.Duration
 	ProvisionedWriteThroughput int64
 	ProvisionedReadThroughput  int64
+	InactiveWriteThroughput    int64
+	InactiveReadThroughput     int64
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -62,6 +63,9 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
 	f.Int64Var(&cfg.ProvisionedWriteThroughput, "dynamodb.periodic-table.write-throughput", 3000, "DynamoDB periodic tables write throughput")
 	f.Int64Var(&cfg.ProvisionedReadThroughput, "dynamodb.periodic-table.read-throughput", 300, "DynamoDB periodic tables read throughput")
+	f.Int64Var(&cfg.InactiveWriteThroughput, "dynamodb.periodic-table.inactive-write-throughput", 1, "DynamoDB periodic tables write throughput for inactive tables.")
+	f.Int64Var(&cfg.InactiveReadThroughput, "dynamodb.periodic-table.inactive-read-throughput", 300, "DynamoDB periodic tables read throughput for inactive tables")
+
 	cfg.PeriodicTableConfig.RegisterFlags(f)
 }
 
@@ -173,12 +177,13 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 	{
 		legacyTable := tableDescription{
 			name:             m.cfg.DynamoDB.TableName,
-			provisionedRead:  m.cfg.ProvisionedReadThroughput,
-			provisionedWrite: minWriteCapacity,
+			provisionedRead:  m.cfg.InactiveReadThroughput,
+			provisionedWrite: m.cfg.InactiveWriteThroughput,
 		}
 
 		// if we are before the switch to periodic table, we need to give this table write throughput
 		if now < (firstTable*tablePeriodSecs)+gracePeriodSecs+maxChunkAgeSecs {
+			legacyTable.provisionedRead = m.cfg.ProvisionedReadThroughput
 			legacyTable.provisionedWrite = m.cfg.ProvisionedWriteThroughput
 		}
 		result = append(result, legacyTable)
@@ -188,12 +193,13 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 		table := tableDescription{
 			// Name construction needs to be consistent with chunk_store.bigBuckets
 			name:             m.cfg.TablePrefix + strconv.Itoa(int(i)),
-			provisionedRead:  m.cfg.ProvisionedReadThroughput,
-			provisionedWrite: minWriteCapacity,
+			provisionedRead:  m.cfg.InactiveReadThroughput,
+			provisionedWrite: m.cfg.InactiveWriteThroughput,
 		}
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput
 		if (i*tablePeriodSecs)-gracePeriodSecs <= now && now < (i*tablePeriodSecs)+tablePeriodSecs+gracePeriodSecs+maxChunkAgeSecs {
+			table.provisionedRead = m.cfg.ProvisionedReadThroughput
 			table.provisionedWrite = m.cfg.ProvisionedWriteThroughput
 		}
 		result = append(result, table)

@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"fmt"
 	"math/rand"
 	"net/url"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 const (
 	// For dynamodb errors
+	tableNameLabel   = "table"
 	errorReasonLabel = "error"
 	otherError       = "other"
 
@@ -25,9 +27,7 @@ const (
 	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
 	minBackoff = 50 * time.Millisecond
 	maxBackoff = 50 * time.Second
-
-	// Number of synchronous dynamodb requests
-	numDynamoRequests = 25
+	maxRetries = 20
 
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
 	dynamoMaxBatchSize = 25
@@ -54,7 +54,7 @@ var (
 		Namespace: "cortex",
 		Name:      "dynamo_failures_total",
 		Help:      "The total number of errors while storing chunks to the chunk store.",
-	}, []string{errorReasonLabel})
+	}, []string{tableNameLabel, errorReasonLabel})
 	dynamoUnprocessedItems = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_unprocessed_items_total",
@@ -69,11 +69,11 @@ func init() {
 	prometheus.MustRegister(dynamoUnprocessedItems)
 }
 
-func recordDynamoError(err error) {
+func recordDynamoError(tableName string, err error) {
 	if awsErr, ok := err.(awserr.Error); ok {
-		dynamoFailures.WithLabelValues(awsErr.Code()).Add(float64(1))
+		dynamoFailures.WithLabelValues(tableName, awsErr.Code()).Add(float64(1))
 	} else {
-		dynamoFailures.WithLabelValues(otherError).Add(float64(1))
+		dynamoFailures.WithLabelValues(tableName, otherError).Add(float64(1))
 	}
 }
 
@@ -215,9 +215,17 @@ func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[s
 		}
 	}
 
+	tableNames := func(reqs map[string][]*dynamodb.WriteRequest) []string {
+		result := []string{}
+		for tableName := range reqs {
+			result = append(result, tableName)
+		}
+		return result
+	}
+
 	outstanding, unprocessed := reqs, map[string][]*dynamodb.WriteRequest{}
-	backoff := minBackoff
-	for dictLen(outstanding)+dictLen(unprocessed) > 0 {
+	backoff, numRetries := minBackoff, 0
+	for dictLen(outstanding)+dictLen(unprocessed) > 0 && numRetries < maxRetries {
 		reqs := map[string][]*dynamodb.WriteRequest{}
 		fillReq(unprocessed, reqs)
 		fillReq(outstanding, reqs)
@@ -237,7 +245,9 @@ func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[s
 		}
 
 		if err != nil {
-			recordDynamoError(err)
+			for _, tableName := range tableNames(reqs) {
+				recordDynamoError(tableName, err)
+			}
 		}
 
 		// If there are unprocessed items, backoff and retry those items.
@@ -254,6 +264,7 @@ func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[s
 			copyUnprocessed(reqs, unprocessed)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
+			numRetries++
 			continue
 		}
 
@@ -263,8 +274,12 @@ func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[s
 		}
 
 		backoff = minBackoff
+		numRetries = 0
 	}
 
+	if valuesLeft := dictLen(outstanding) + dictLen(unprocessed); valuesLeft > 0 {
+		return fmt.Errorf("failed to write chunk after %d retries, %d values remaining", numRetries, valuesLeft)
+	}
 	return nil
 }
 
@@ -283,7 +298,7 @@ func (c *dynamoDBBackoffClient) queryPages(ctx context.Context, input *dynamodb.
 		}
 
 		if err != nil {
-			recordDynamoError(err)
+			recordDynamoError(*input.TableName, err)
 
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
 				time.Sleep(backoff)

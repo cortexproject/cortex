@@ -277,8 +277,8 @@ func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[s
 		numRetries = 0
 	}
 
-	if dictLen(outstanding)+dictLen(unprocessed) > 0 {
-		return fmt.Errorf("failed to write chunk: too many retries")
+	if valuesLeft := dictLen(outstanding) + dictLen(unprocessed); valuesLeft > 0 {
+		return fmt.Errorf("failed to write chunk after %d retries, %d values remaining", numRetries, valuesLeft)
 	}
 	return nil
 }

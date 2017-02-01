@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
@@ -93,6 +94,7 @@ type Config struct {
 	MaxChunkAge       time.Duration
 	RateUpdatePeriod  time.Duration
 	ConcurrentFlushes int
+	ChunkEncoding     string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -102,6 +104,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 1*time.Hour, "Maximum chunk idle time before flushing.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
 }
 
 type flushOp struct {
@@ -132,6 +135,13 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 	}
 	if cfg.ConcurrentFlushes <= 0 {
 		cfg.ConcurrentFlushes = DefaultConcurrentFlush
+	}
+	if cfg.ChunkEncoding == "" {
+		cfg.ChunkEncoding = "1"
+	}
+
+	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
+		return nil, err
 	}
 
 	i := &Ingester{

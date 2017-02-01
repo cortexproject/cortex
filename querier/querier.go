@@ -15,14 +15,19 @@ import (
 	"github.com/weaveworks/cortex/util"
 )
 
+// ChunkStore is the interface we need to get chunks
+type ChunkStore interface {
+	Get(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]chunk.Chunk, error)
+}
+
 // NewEngine creates a new promql.Engine for cortex.
-func NewEngine(distributor Querier, chunkStore chunk.Store) *promql.Engine {
+func NewEngine(distributor Querier, chunkStore ChunkStore) *promql.Engine {
 	queryable := NewQueryable(distributor, chunkStore)
 	return promql.NewEngine(queryable, nil)
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor Querier, chunkStore chunk.Store) Queryable {
+func NewQueryable(distributor Querier, chunkStore ChunkStore) Queryable {
 	return Queryable{
 		Q: MergeQuerier{
 			Queriers: []Querier{
@@ -45,7 +50,7 @@ type Querier interface {
 
 // A ChunkQuerier is a Querier that fetches samples from a ChunkStore.
 type ChunkQuerier struct {
-	Store chunk.Store
+	Store ChunkStore
 }
 
 // Query implements Querier and transforms a list of chunks into sample

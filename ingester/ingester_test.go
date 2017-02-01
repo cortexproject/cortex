@@ -37,10 +37,6 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (s *testStore) Get(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]chunk.Chunk, error) {
-	return nil, nil
-}
-
 func (s *testStore) Stop() {}
 
 func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matrix {

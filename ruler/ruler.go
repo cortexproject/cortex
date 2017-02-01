@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
@@ -90,6 +91,7 @@ func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) *rules.Group {
 		QueryEngine:    r.engine,
 		Context:        ctx,
 		ExternalURL:    r.alertURL,
+		Notifier:       notifier.New(&notifier.Options{}),
 	}
 	delay := 0 * time.Second // Unused, so 0 value is fine.
 	return rules.NewGroup("default", delay, rs, opts)

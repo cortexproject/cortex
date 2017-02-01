@@ -32,6 +32,8 @@ const (
 
 	// DefaultConcurrentFlush is the number of series to flush concurrently
 	DefaultConcurrentFlush = 50
+
+	minReadyDuration = 1 * time.Minute
 )
 
 var (
@@ -73,6 +75,10 @@ type Ingester struct {
 	stopped  bool
 	quit     chan struct{}
 	done     sync.WaitGroup
+
+	readyLock sync.Mutex
+	startTime time.Time
+	ready     bool
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -150,6 +156,8 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 		quit:       make(chan struct{}),
 		ring:       ring,
 
+		startTime: time.Now(),
+
 		userStates:  newUserStates(cfg.RateUpdatePeriod),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 
@@ -202,11 +210,29 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
 func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if i.ring.Ready() {
+	if i.isReady() {
 		w.WriteHeader(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+func (i *Ingester) isReady() bool {
+	i.readyLock.Lock()
+	defer i.readyLock.Unlock()
+
+	if i.ready {
+		return true
+	}
+
+	// Ingester always take at least minReadyDuration to become ready to work
+	// around race conditions with ingesters exiting and updating the ring
+	if time.Now().Sub(i.startTime) < minReadyDuration {
+		return false
+	}
+
+	i.ready = i.ready || i.ring.Ready()
+	return i.ready
 }
 
 // Push implements cortex.IngesterServer

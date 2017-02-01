@@ -225,7 +225,7 @@ func (i *Ingester) isReady() bool {
 		return true
 	}
 
-	// Ingester alway take at least minReadyDuration to become ready to work
+	// Ingester always take at least minReadyDuration to become ready to work
 	// around race conditions with ingesters exiting and updating the ring
 	if time.Now().Sub(i.startTime) < minReadyDuration {
 		return false

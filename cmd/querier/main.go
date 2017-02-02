@@ -48,7 +48,11 @@ func main() {
 	server := server.New(serverConfig, r)
 	defer server.Stop()
 
-	chunkStore := chunk.NewAWSStore(chunkStoreConfig)
+	chunkStore, err := chunk.NewAWSStore(chunkStoreConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	queryable := querier.NewQueryable(dist, chunkStore)
 	engine := promql.NewEngine(queryable, nil)
 	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable})

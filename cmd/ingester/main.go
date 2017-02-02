@@ -34,7 +34,11 @@ func main() {
 	defer registration.Ring.Stop()
 
 	server := server.New(serverConfig, registration.Ring)
-	chunkStore := chunk.NewAWSStore(chunkStoreConfig)
+	chunkStore, err := chunk.NewAWSStore(chunkStoreConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	ingester, err := ingester.New(ingesterConfig, chunkStore, registration.Ring)
 	if err != nil {
 		log.Fatal(err)

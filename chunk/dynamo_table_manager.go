@@ -14,6 +14,8 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/cortex/util"
 )
 
 const (
@@ -67,6 +69,24 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.InactiveReadThroughput, "dynamodb.periodic-table.inactive-read-throughput", 300, "DynamoDB periodic tables read throughput for inactive tables")
 
 	cfg.PeriodicTableConfig.RegisterFlags(f)
+}
+
+// PeriodicTableConfig for the use of periodic tables (ie, weekly talbes).  Can
+// control when to start the periodic tables, how long the period should be,
+// and the prefix to give the tables.
+type PeriodicTableConfig struct {
+	UsePeriodicTables    bool
+	TablePrefix          string
+	TablePeriod          time.Duration
+	PeriodicTableStartAt util.DayValue
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *PeriodicTableConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.UsePeriodicTables, "dynamodb.use-periodic-tables", true, "Should we user periodic tables.")
+	f.StringVar(&cfg.TablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
+	f.DurationVar(&cfg.TablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
+	f.Var(&cfg.PeriodicTableStartAt, "dynamodb.periodic-table.start", "DynamoDB periodic tables start time.")
 }
 
 // DynamoTableManager creates and manages the provisioned throughput on DynamoDB tables

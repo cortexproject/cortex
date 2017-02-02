@@ -9,6 +9,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/chunk"
+
+	"github.com/weaveworks/common/test"
 )
 
 func TestChunkCodec(t *testing.T) {
@@ -38,6 +40,6 @@ func TestChunkCodec(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(want, have) {
-		t.Fatalf("wrong chunks - " + diff(want, have))
+		t.Fatalf("wrong chunks - " + test.Diff(want, have))
 	}
 }

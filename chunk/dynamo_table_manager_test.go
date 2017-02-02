@@ -34,10 +34,12 @@ func TestDynamoTableManager(t *testing.T) {
 		},
 
 		PeriodicTableConfig: PeriodicTableConfig{
-			UsePeriodicTables:    true,
-			TablePrefix:          tablePrefix,
-			TablePeriod:          tablePeriod,
-			PeriodicTableStartAt: util.DayValue{model.TimeFromUnix(0)},
+			UsePeriodicTables: true,
+			TablePrefix:       tablePrefix,
+			TablePeriod:       tablePeriod,
+			PeriodicTableStartAt: util.DayValue{
+				Time: model.TimeFromUnix(0),
+			},
 		},
 
 		CreationGracePeriod:        gracePeriod,

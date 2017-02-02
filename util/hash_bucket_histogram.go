@@ -61,6 +61,10 @@ func (h *hashBucketHistogram) Observe(key string, value uint32) {
 
 func bytesView(v string) []byte {
 	strHeader := (*reflect.StringHeader)(unsafe.Pointer(&v))
-	bytesHeader := reflect.SliceHeader{strHeader.Data, strHeader.Len, strHeader.Len}
+	bytesHeader := reflect.SliceHeader{
+		Data: strHeader.Data,
+		Len:  strHeader.Len,
+		Cap:  strHeader.Len,
+	}
 	return *(*[]byte)(unsafe.Pointer(&bytesHeader))
 }

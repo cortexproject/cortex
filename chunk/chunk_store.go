@@ -47,6 +47,17 @@ var (
 		Help:      "Time spent doing S3 requests.",
 		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
 	}, []string{"operation", "status_code"})
+	rowWrites = util.NewHashBucketHistogram(util.HashBucketHistogramOpts{
+		HistogramOpts: prometheus.HistogramOpts{
+			Namespace: "cortex",
+			Name:      "chunk_store_row_write_total",
+			Help:      "Distribution of write to individual DynamoDB rows",
+			// Assumes at most 1k writes per hash-bucket per scrape; given even load
+			// this would be 1k * 1024 / 15s = 68k writes / s.
+			Buckets: prometheus.LinearBuckets(1, 10, 100),
+		},
+		HashBuckets: 1024,
+	})
 
 	queryChunks = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
@@ -77,6 +88,7 @@ var (
 func init() {
 	prometheus.MustRegister(indexEntriesPerChunk)
 	prometheus.MustRegister(s3RequestDuration)
+	prometheus.MustRegister(rowWrites)
 	prometheus.MustRegister(queryChunks)
 	prometheus.MustRegister(queryDynamoLookups)
 	prometheus.MustRegister(queryRequestPages)
@@ -414,6 +426,7 @@ func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) (map[str
 		entries := 0
 		for _, bucket := range c.bigBuckets(chunk.From, chunk.Through) {
 			hashValue := hashValue(userID, bucket.bucket, metricName)
+			rowWrites.Observe(hashValue, uint32(len(chunk.Metric)))
 			for label, value := range chunk.Metric {
 				if label == model.MetricNameLabel {
 					continue

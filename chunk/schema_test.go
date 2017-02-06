@@ -107,6 +107,22 @@ func TestSchemaComposite(t *testing.T) {
 			},
 		},
 
+		// Test we get only one result when two schema start at same time
+		{
+			compositeSchema{
+				schemas: []compositeSchemaEntry{
+					{model.TimeFromUnix(0), mockSchema(1)},
+					{model.TimeFromUnix(10), mockSchema(2)},
+					{model.TimeFromUnix(10), mockSchema(3)},
+				},
+			},
+			0, 165,
+			[]result{
+				{model.TimeFromUnix(0), model.TimeFromUnix(10) - 1, mockSchema(1)},
+				{model.TimeFromUnix(10), model.TimeFromUnix(165), mockSchema(3)},
+			},
+		},
+
 		// Test all the various combination we can get when there are three schemas
 		{
 			cs, 34, 65,

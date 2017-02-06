@@ -373,14 +373,16 @@ func (c *AWSStore) lookupEntry(ctx context.Context, entry IndexEntry, matcher *m
 				},
 				ComparisonOperator: aws.String("EQ"),
 			},
-			rangeKey: {
-				AttributeValueList: []*dynamodb.AttributeValue{
-					{B: entry.RangeKey},
-				},
-				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
-			},
 		},
 		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+	}
+	if len(entry.RangeKey) > 0 {
+		input.KeyConditions[rangeKey] = &dynamodb.Condition{
+			AttributeValueList: []*dynamodb.AttributeValue{
+				{B: entry.RangeKey},
+			},
+			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
+		}
 	}
 
 	var chunkSet ByID

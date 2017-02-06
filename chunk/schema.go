@@ -148,8 +148,14 @@ func (c compositeSchema) forSchemas(from, through model.Time, callback func(from
 		if i+1 < len(c.schemas) {
 			nextSchemaStarts = c.schemas[i+1].start
 		}
-		end := min(through, nextSchemaStarts-1)
 
+		// If the next schema starts at the same time as this one,
+		// skip this one.
+		if nextSchemaStarts == c.schemas[i].start {
+			continue
+		}
+
+		end := min(through, nextSchemaStarts-1)
 		entries, err := callback(start, end, c.schemas[i].Schema)
 		if err != nil {
 			return nil, err

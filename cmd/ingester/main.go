@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
 	"github.com/weaveworks/cortex"
@@ -38,6 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	prometheus.MustRegister(ingester)
 	cortex.RegisterIngesterServer(server.GRPC, ingester)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 

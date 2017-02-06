@@ -153,7 +153,6 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
 	}
-	prometheus.MustRegister(d)
 	go d.Run()
 	return d, nil
 }

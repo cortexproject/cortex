@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/promql"
@@ -42,6 +43,7 @@ func main() {
 		log.Fatalf("Error initializing distributor: %v", err)
 	}
 	defer dist.Stop()
+	prometheus.MustRegister(dist)
 
 	server := server.New(serverConfig, r)
 	defer server.Stop()

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
 	"github.com/weaveworks/cortex/chunk"
@@ -37,6 +38,7 @@ func main() {
 		log.Fatalf("Error initializing distributor: %v", err)
 	}
 	defer dist.Stop()
+	prometheus.MustRegister(dist)
 
 	rulerServer, err := ruler.NewServer(rulerConfig, ruler.NewRuler(rulerConfig, dist, chunkStore))
 	if err != nil {

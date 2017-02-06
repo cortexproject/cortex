@@ -50,7 +50,7 @@ var (
 	rowWrites = util.NewHashBucketHistogram(util.HashBucketHistogramOpts{
 		HistogramOpts: prometheus.HistogramOpts{
 			Namespace: "cortex",
-			Name:      "chunk_store_row_write_total",
+			Name:      "chunk_store_row_writes_distribution",
 			Help:      "Distribution of writes to individual DynamoDB rows",
 			Buckets:   prometheus.DefBuckets,
 		},

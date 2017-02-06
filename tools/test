@@ -7,9 +7,10 @@ SLOW=
 NO_GO_GET=true
 TAGS=
 PARALLEL=
+TIMEOUT=1m
 
 usage() {
-    echo "$0 [-slow] [-in-container foo] [-netgo] [-(no-)go-get]"
+    echo "$0 [-slow] [-in-container foo] [-netgo] [-(no-)go-get] [-timeout 1m]"
 }
 
 while [ $# -gt 0 ]; do
@@ -34,6 +35,10 @@ while [ $# -gt 0 ]; do
             PARALLEL=true
             shift 1
             ;;
+        "-timeout")
+            TIMEOUT=$2
+            shift 2
+            ;;
         *)
             usage
             exit 2
@@ -41,7 +46,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-GO_TEST_ARGS=($TAGS -cpu 4 -timeout 8m)
+GO_TEST_ARGS=($TAGS -cpu 4 -timeout $TIMEOUT)
 
 if [ -n "$SLOW" ] || [ -n "$CIRCLECI" ]; then
     SLOW=true
@@ -87,7 +92,7 @@ go test -i "${GO_TEST_ARGS[@]}" "${TESTDIRS[@]}"
 run_test() {
     local dir=$1
     if [ -z "$NO_GO_GET" ]; then
-        go get -t $TAGS "$dir"
+        go get -t "$TAGS" "$dir"
     fi
 
     local GO_TEST_ARGS_RUN=("${GO_TEST_ARGS[@]}")

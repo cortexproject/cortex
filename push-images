@@ -9,10 +9,10 @@ IMAGES=$(make images)
 IMAGE_TAG=$(./tools/image-tag)
 
 for image in ${IMAGES}; do
-  if [[ "$image" == *"build"* ]]; then
-    continue
-  fi
-  docker push ${image}:${IMAGE_TAG}
-  docker tag ${image}:${IMAGE_TAG} ${QUAY_PREFIX}${image}:${IMAGE_TAG}
-  docker push ${QUAY_PREFIX}${image}:${IMAGE_TAG}
+    if [[ "$image" == *"build"* ]]; then
+        continue
+    fi
+    docker push ${image}:${IMAGE_TAG}
+    docker tag ${image}:${IMAGE_TAG} ${QUAY_PREFIX}${image}:${IMAGE_TAG}
+    docker push ${QUAY_PREFIX}${image}:${IMAGE_TAG}
 done

@@ -15,8 +15,8 @@ dependencies:
 
 test:
   override:
-    - make RM= lint
-    - make RM= test
+    - make RM= lint -p
+    - make RM= test -p
     - make RM=
 
 deployment:

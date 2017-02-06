@@ -363,14 +363,16 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 		_, err := client.Push(ctx, util.ToWriteRequest(samples))
 		return err
 	})
+	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
 		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+		return err
 	}
-	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
+
 	for i := range sampleTrackers {
 		atomic.AddInt32(&sampleTrackers[i].succeeded, 1)
 	}
-	return err
+	return nil
 }
 
 func metricNameFromLabelMatchers(matchers ...*metric.LabelMatcher) (model.LabelValue, error) {

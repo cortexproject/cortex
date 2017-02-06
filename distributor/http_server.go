@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/remote"
@@ -21,12 +24,20 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err := d.Push(ctx, &req)
 	if err != nil {
+		if grpc.Code(err) == codes.ResourceExhausted && grpc.ErrorDesc(err) == util.ErrUserSeriesLimitExceeded.Error() {
+			err = util.ErrUserSeriesLimitExceeded
+		}
+
+		var code int
 		switch err {
 		case errIngestionRateLimitExceeded:
-			http.Error(w, err.Error(), http.StatusTooManyRequests)
+			code = http.StatusTooManyRequests
+		case util.ErrUserSeriesLimitExceeded:
+			code = http.StatusInsufficientStorage
 		default:
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			code = http.StatusInternalServerError
 		}
+		http.Error(w, err.Error(), code)
 		log.Errorf("append err: %v", err)
 	}
 }

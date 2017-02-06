@@ -6,18 +6,6 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-// Error see https://dave.cheney.net/2016/04/07/constant-errors
-type Error string
-
-func (e Error) Error() string { return string(e) }
-
-// Errors returned by ValidateSample
-const (
-	ErrMissingMetricName = Error("sample missing metric name")
-	ErrInvalidMetricName = Error("sample invalid metric name")
-	ErrInvalidLabel      = Error("sample invalid label")
-)
-
 var (
 	validLabelRE      = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 	validMetricNameRE = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)

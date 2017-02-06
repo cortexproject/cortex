@@ -61,6 +61,7 @@ func NewHashBucketHistogram(opts HashBucketHistogramOpts) HashBucketHistogram {
 		opts:      opts,
 	}
 	result.swapBuckets()
+	go result.loop()
 	return result
 }
 

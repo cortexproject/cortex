@@ -26,7 +26,7 @@ type HashBucketHistogramOpts struct {
 // N buckets of counters and hash the key to a bucket.  Then every second
 // we update a histogram with the bucket values (and zero the buckets).
 //
-// Note, we want this metric to be relatively independant of the number of
+// Note, we want this metric to be relatively independent of the number of
 // hash buckets and QPS of the service - we're trying to measure how well
 // load balanced the write load is.  So we normalise the values in the hash
 // buckets such that if all buckets are '1', then we have even load.  We

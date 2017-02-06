@@ -42,11 +42,9 @@ var (
 	rowWrites = util.NewHashBucketHistogram(util.HashBucketHistogramOpts{
 		HistogramOpts: prometheus.HistogramOpts{
 			Namespace: "cortex",
-			Name:      "chunk_store_row_write_total",
+			Name:      "chunk_store_row_writes_distribution",
 			Help:      "Distribution of writes to individual DynamoDB rows",
-			// Assumes at most 1k writes per hash-bucket per scrape; given even load
-			// this would be 1k * 1024 / 15s = 68k writes / s.
-			Buckets: prometheus.LinearBuckets(1, 10, 100),
+			Buckets:   prometheus.DefBuckets,
 		},
 		HashBuckets: 1024,
 	})

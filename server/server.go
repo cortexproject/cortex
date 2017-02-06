@@ -104,10 +104,12 @@ func (s *Server) Run() {
 	).Wrap(s.HTTP)
 	// for HTTP over gRPC, ensure we don't double-count the tracing context
 	httpgrpc.RegisterHTTPServer(s.GRPC, httpgrpc.NewServer(intermediate))
-	instrumented := middleware.Func(func(handler http.Handler) http.Handler {
-		return nethttp.Middleware(opentracing.GlobalTracer(), handler)
-	}).Wrap(s.HTTP)
-	go http.ListenAndServe(fmt.Sprintf(":%d", s.cfg.HTTPListenPort), instrumented)
+	go http.ListenAndServe(
+		fmt.Sprintf(":%d", s.cfg.HTTPListenPort),
+		middleware.Func(func(handler http.Handler) http.Handler {
+			return nethttp.Middleware(opentracing.GlobalTracer(), handler)
+		}).Wrap(intermediate),
+	)
 
 	// Setup gRPC server
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.GRPCListenPort))

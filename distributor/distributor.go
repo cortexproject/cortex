@@ -252,9 +252,18 @@ func tokenFor(userID string, name model.LabelValue) uint32 {
 }
 
 type sampleTracker struct {
-	sample     *model.Sample
-	minSuccess int
-	succeeded  int32
+	sample      *model.Sample
+	minSuccess  int
+	maxFailures int
+	succeeded   int32
+	failed      int32
+}
+
+type pushTracker struct {
+	samplesPending int32
+	samplesFailed  int32
+	done           chan struct{}
+	err            chan error
 }
 
 // Push implements cortex.IngesterServer
@@ -285,11 +294,15 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 	sampleTrackers := make([]sampleTracker, len(samples), len(samples))
 	samplesByIngester := map[*ring.IngesterDesc][]*sampleTracker{}
 	for i := range samples {
+		// We need a response from a quorum of ingesters, which is n/2 + 1.
+		minSuccess := (len(ingesters[i]) / 2) + 1
+
 		sampleTrackers[i] = sampleTracker{
-			sample: samples[i],
-			// We need a response from a quorum of ingesters, which is n/2 + 1.
-			minSuccess: (len(ingesters[i]) / 2) + 1,
-			succeeded:  0,
+			sample:      samples[i],
+			minSuccess:  minSuccess,
+			maxFailures: len(ingesters[i]) - minSuccess,
+			succeeded:   0,
+			failed:      0,
 		}
 
 		// Skip those that have not heartbeated in a while. NB these are still
@@ -315,26 +328,23 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		}
 	}
 
-	errs := make(chan error)
-	for hostname, samples := range samplesByIngester {
+	pushTracker := pushTracker{
+		samplesPending: int32(len(samples)),
+		samplesFailed:  0,
+		done:           make(chan struct{}),
+		err:            make(chan error),
+	}
+	for ingester, samples := range samplesByIngester {
 		go func(ingester *ring.IngesterDesc, samples []*sampleTracker) {
-			errs <- d.sendSamples(ctx, ingester, samples)
-		}(hostname, samples)
+			d.sendSamples(ctx, ingester, samples, &pushTracker)
+		}(ingester, samples)
 	}
-	var lastErr error
-	for i := 0; i < len(samplesByIngester); i++ {
-		if err := <-errs; err != nil {
-			lastErr = err
-			continue
-		}
+	select {
+	case err := <-pushTracker.err:
+		return nil, err
+	case <-pushTracker.done:
+		return &cortex.WriteResponse{}, nil
 	}
-	for i := range sampleTrackers {
-		if sampleTrackers[i].succeeded < int32(sampleTrackers[i].minSuccess) {
-			return nil, fmt.Errorf("need %d successful writes, only got %d, last error was: %v",
-				sampleTrackers[i].minSuccess, sampleTrackers[i].succeeded, lastErr)
-		}
-	}
-	return &cortex.WriteResponse{}, nil
 }
 
 func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
@@ -350,7 +360,38 @@ func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
 	return limiter
 }
 
-func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker) error {
+func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker, pushTracker *pushTracker) {
+	err := d.sendSamplesErr(ctx, ingester, sampleTrackers)
+
+	// If we suceed, decrement each sample's pending count by one.  If we reach
+	// the requred number of successful puts on this sample, then decrement the
+	// number of pending samples by one.  If we successfully push all samples to
+	// min success ingesters, wake up the waiting rpc so it can return early.
+	// Similarly, track the number of errors, and if it exceeds maxFailures
+	// shortcut the waiting rpc.
+	//
+	// The use of atomic increments here guarantees only a single sendSamples
+	// goroutine will write to either channel.
+	for i := range sampleTrackers {
+		if err != nil {
+			if atomic.AddInt32(&sampleTrackers[i].failed, 1) > int32(sampleTrackers[i].maxFailures) {
+				continue
+			}
+			if atomic.AddInt32(&pushTracker.samplesFailed, 1) == 1 {
+				pushTracker.err <- err
+			}
+		} else {
+			if atomic.AddInt32(&sampleTrackers[i].succeeded, 1) != int32(sampleTrackers[i].minSuccess) {
+				continue
+			}
+			if atomic.AddInt32(&pushTracker.samplesPending, -1) == 0 {
+				pushTracker.done <- struct{}{}
+			}
+		}
+	}
+}
+
+func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker) error {
 	client, err := d.getClientFor(ingester)
 	if err != nil {
 		return err
@@ -366,25 +407,8 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
 		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
-		return err
 	}
-
-	for i := range sampleTrackers {
-		atomic.AddInt32(&sampleTrackers[i].succeeded, 1)
-	}
-	return nil
-}
-
-func metricNameFromLabelMatchers(matchers ...*metric.LabelMatcher) (model.LabelValue, error) {
-	for _, m := range matchers {
-		if m.Name == model.MetricNameLabel {
-			if m.Type != metric.Equal {
-				return "", fmt.Errorf("non-equality matchers are not supported on the metric name")
-			}
-			return m.Value, nil
-		}
-	}
-	return "", fmt.Errorf("no metric name matcher found")
+	return err
 }
 
 // Query implements Querier.
@@ -393,7 +417,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", d.queryDuration, func(ctx context.Context) error {
 		fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
 
-		metricName, err := metricNameFromLabelMatchers(matchers...)
+		metricName, _, err := util.ExtractMetricNameFromMatchers(matchers)
 		if err != nil {
 			return err
 		}

@@ -193,7 +193,6 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 			Help: "The total number of samples returned from queries.",
 		}),
 	}
-	prometheus.MustRegister(i)
 
 	i.done.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {

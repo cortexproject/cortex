@@ -255,7 +255,7 @@ func (i *Ingester) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.
 	var lastPartialErr error
 	for _, sample := range util.FromWriteRequest(req) {
 		if err := i.append(ctx, sample); err != nil {
-			if err == util.ErrUserSeriesLimitExceeded {
+			if err == util.ErrUserSeriesLimitExceeded || err == util.ErrMetricSeriesLimitExceeded {
 				lastPartialErr = grpc.Errorf(codes.ResourceExhausted, err.Error())
 				continue
 			}

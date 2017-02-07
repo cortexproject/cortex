@@ -25,10 +25,10 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	_, err := d.Push(ctx, &req)
 	if err != nil {
 		if grpc.Code(err) == codes.ResourceExhausted {
-			if grpc.ErrorDesc(err) == util.ErrUserSeriesLimitExceeded.Error() {
+			switch grpc.ErrorDesc(err) {
+			case util.ErrUserSeriesLimitExceeded.Error():
 				err = util.ErrUserSeriesLimitExceeded
-			}
-			if grpc.ErrorDesc(err) == util.ErrMetricSeriesLimitExceeded.Error() {
+			case util.ErrMetricSeriesLimitExceeded.Error():
 				err = util.ErrMetricSeriesLimitExceeded
 			}
 		}

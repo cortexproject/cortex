@@ -14,9 +14,9 @@ import (
 )
 
 type userStates struct {
-	mtx              sync.RWMutex
-	states           map[string]*userState
-	rateUpdatePeriod time.Duration
+	mtx    sync.RWMutex
+	states map[string]*userState
+	cfg    *UserStatesConfig
 }
 
 type userState struct {
@@ -28,10 +28,16 @@ type userState struct {
 	ingestedSamples *ewmaRate
 }
 
-func newUserStates(rateUpdatePeriod time.Duration) *userStates {
+// UserStatesConfig configures userStates properties.
+type UserStatesConfig struct {
+	RateUpdatePeriod time.Duration
+	MaxSeriesPerUser int
+}
+
+func newUserStates(cfg *UserStatesConfig) *userStates {
 	return &userStates{
-		states:           map[string]*userState{},
-		rateUpdatePeriod: rateUpdatePeriod,
+		states: map[string]*userState{},
+		cfg:    cfg,
 	}
 }
 
@@ -124,7 +130,11 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 	us.mtx.RLock()
 	state, ok = us.states[userID]
 	if ok {
-		fp, series = state.unlockedGet(metric)
+		fp, series, err = state.unlockedGet(metric, us.cfg.MaxSeriesPerUser)
+		if err != nil {
+			us.mtx.RUnlock()
+			return nil, fp, nil, err
+		}
 	}
 	us.mtx.RUnlock()
 	if ok {
@@ -134,8 +144,8 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 	us.mtx.Lock()
 	defer us.mtx.Unlock()
 	state = us.unlockedGetOrCreate(userID)
-	fp, series = state.unlockedGet(metric)
-	return state, fp, series, nil
+	fp, series, err = state.unlockedGet(metric, us.cfg.MaxSeriesPerUser)
+	return state, fp, series, err
 }
 
 func (us *userStates) unlockedGetOrCreate(userID string) *userState {
@@ -146,7 +156,7 @@ func (us *userStates) unlockedGetOrCreate(userID string) *userState {
 			fpToSeries:      newSeriesMap(),
 			fpLocker:        newFingerprintLocker(16),
 			index:           newInvertedIndex(),
-			ingestedSamples: newEWMARate(0.2, us.rateUpdatePeriod),
+			ingestedSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		us.states[userID] = state
@@ -154,7 +164,7 @@ func (us *userStates) unlockedGetOrCreate(userID string) *userState {
 	return state
 }
 
-func (u *userState) unlockedGet(metric model.Metric) (model.Fingerprint, *memorySeries) {
+func (u *userState) unlockedGet(metric model.Metric, maxSeries int) (model.Fingerprint, *memorySeries, error) {
 	rawFP := metric.FastFingerprint()
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -165,13 +175,23 @@ func (u *userState) unlockedGet(metric model.Metric) (model.Fingerprint, *memory
 
 	series, ok := u.fpToSeries.get(fp)
 	if ok {
-		return fp, series
+		return fp, series, nil
+	}
+
+	// There's theoretically a relatively harmless race here if multiple
+	// goroutines get the length of the series map at the same time, then
+	// all proceed to add a new series. This is likely not worth addressing,
+	// as this should happen rarely (all samples from one push are added
+	// serially), and the overshoot in allowed series would be minimal.
+	if u.fpToSeries.length() >= maxSeries {
+		u.fpLocker.Unlock(fp)
+		return fp, nil, util.ErrUserSeriesLimitExceeded
 	}
 
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
 	u.index.add(metric, fp)
-	return fp, series
+	return fp, series, nil
 }
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.

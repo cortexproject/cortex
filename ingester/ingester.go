@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
@@ -33,6 +36,8 @@ const (
 
 	// DefaultConcurrentFlush is the number of series to flush concurrently
 	DefaultConcurrentFlush = 50
+	// DefaultMaxSeriesPerUser is the maximum number of series allowed per user.
+	DefaultMaxSeriesPerUser = 5000000
 
 	minReadyDuration = 1 * time.Minute
 )
@@ -99,19 +104,20 @@ type Config struct {
 	FlushCheckPeriod  time.Duration
 	MaxChunkIdle      time.Duration
 	MaxChunkAge       time.Duration
-	RateUpdatePeriod  time.Duration
 	ConcurrentFlushes int
 	ChunkEncoding     string
+	UserStatesConfig  UserStatesConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
-	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 1*time.Hour, "Maximum chunk idle time before flushing.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
+	f.DurationVar(&cfg.UserStatesConfig.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
+	f.IntVar(&cfg.UserStatesConfig.MaxSeriesPerUser, "ingester.max-series-per-user", DefaultMaxSeriesPerUser, "Maximum number of active series per user.")
 }
 
 type flushOp struct {
@@ -137,14 +143,17 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 	if cfg.MaxChunkIdle == 0 {
 		cfg.MaxChunkIdle = 1 * time.Hour
 	}
-	if cfg.RateUpdatePeriod == 0 {
-		cfg.RateUpdatePeriod = 15 * time.Second
-	}
 	if cfg.ConcurrentFlushes <= 0 {
 		cfg.ConcurrentFlushes = DefaultConcurrentFlush
 	}
 	if cfg.ChunkEncoding == "" {
 		cfg.ChunkEncoding = "1"
+	}
+	if cfg.UserStatesConfig.MaxSeriesPerUser <= 0 {
+		cfg.UserStatesConfig.MaxSeriesPerUser = DefaultMaxSeriesPerUser
+	}
+	if cfg.UserStatesConfig.RateUpdatePeriod == 0 {
+		cfg.UserStatesConfig.RateUpdatePeriod = 15 * time.Second
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
@@ -159,7 +168,7 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 
 		startTime: time.Now(),
 
-		userStates:  newUserStates(cfg.RateUpdatePeriod),
+		userStates:  newUserStates(&cfg.UserStatesConfig),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
@@ -237,12 +246,18 @@ func (i *Ingester) isReady() bool {
 
 // Push implements cortex.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
+	var lastPartialErr error
 	for _, sample := range util.FromWriteRequest(req) {
 		if err := i.append(ctx, sample); err != nil {
+			if err == util.ErrUserSeriesLimitExceeded {
+				lastPartialErr = grpc.Errorf(codes.ResourceExhausted, err.Error())
+				continue
+			}
 			return nil, err
 		}
 	}
-	return &cortex.WriteResponse{}, nil
+
+	return &cortex.WriteResponse{}, lastPartialErr
 }
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
@@ -418,7 +433,7 @@ func (i *Ingester) loop() {
 	}()
 
 	flushTick := time.Tick(i.cfg.FlushCheckPeriod)
-	rateUpdateTick := time.Tick(i.cfg.RateUpdatePeriod)
+	rateUpdateTick := time.Tick(i.cfg.UserStatesConfig.RateUpdatePeriod)
 	for {
 		select {
 		case <-flushTick:

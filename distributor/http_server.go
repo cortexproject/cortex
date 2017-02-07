@@ -24,15 +24,20 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err := d.Push(ctx, &req)
 	if err != nil {
-		if grpc.Code(err) == codes.ResourceExhausted && grpc.ErrorDesc(err) == util.ErrUserSeriesLimitExceeded.Error() {
-			err = util.ErrUserSeriesLimitExceeded
+		if grpc.Code(err) == codes.ResourceExhausted {
+			if grpc.ErrorDesc(err) == util.ErrUserSeriesLimitExceeded.Error() {
+				err = util.ErrUserSeriesLimitExceeded
+			}
+			if grpc.ErrorDesc(err) == util.ErrMetricSeriesLimitExceeded.Error() {
+				err = util.ErrMetricSeriesLimitExceeded
+			}
 		}
 
 		var code int
 		switch err {
 		case errIngestionRateLimitExceeded:
 			code = http.StatusTooManyRequests
-		case util.ErrUserSeriesLimitExceeded:
+		case util.ErrUserSeriesLimitExceeded, util.ErrMetricSeriesLimitExceeded:
 			code = http.StatusInsufficientStorage
 		default:
 			code = http.StatusInternalServerError

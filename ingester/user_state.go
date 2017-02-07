@@ -30,8 +30,9 @@ type userState struct {
 
 // UserStatesConfig configures userStates properties.
 type UserStatesConfig struct {
-	RateUpdatePeriod time.Duration
-	MaxSeriesPerUser int
+	RateUpdatePeriod   time.Duration
+	MaxSeriesPerUser   int
+	MaxSeriesPerMetric int
 }
 
 func newUserStates(cfg *UserStatesConfig) *userStates {
@@ -130,7 +131,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 	us.mtx.RLock()
 	state, ok = us.states[userID]
 	if ok {
-		fp, series, err = state.unlockedGet(metric, us.cfg.MaxSeriesPerUser)
+		fp, series, err = state.unlockedGet(metric, us.cfg)
 		if err != nil {
 			us.mtx.RUnlock()
 			return nil, fp, nil, err
@@ -144,7 +145,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 	us.mtx.Lock()
 	defer us.mtx.Unlock()
 	state = us.unlockedGetOrCreate(userID)
-	fp, series, err = state.unlockedGet(metric, us.cfg.MaxSeriesPerUser)
+	fp, series, err = state.unlockedGet(metric, us.cfg)
 	return state, fp, series, err
 }
 
@@ -164,7 +165,7 @@ func (us *userStates) unlockedGetOrCreate(userID string) *userState {
 	return state
 }
 
-func (u *userState) unlockedGet(metric model.Metric, maxSeries int) (model.Fingerprint, *memorySeries, error) {
+func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (model.Fingerprint, *memorySeries, error) {
 	rawFP := metric.FastFingerprint()
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -183,9 +184,21 @@ func (u *userState) unlockedGet(metric model.Metric, maxSeries int) (model.Finge
 	// all proceed to add a new series. This is likely not worth addressing,
 	// as this should happen rarely (all samples from one push are added
 	// serially), and the overshoot in allowed series would be minimal.
-	if u.fpToSeries.length() >= maxSeries {
+	if u.fpToSeries.length() >= cfg.MaxSeriesPerUser {
 		u.fpLocker.Unlock(fp)
 		return fp, nil, util.ErrUserSeriesLimitExceeded
+	}
+
+	metricName, err := util.ExtractMetricNameFromMetric(metric)
+	if err != nil {
+		u.fpLocker.Unlock(fp)
+		return fp, nil, err
+	}
+
+	// The same race can happen here as with series-per-user above.
+	if u.index.numSeriesInMetric(metricName) >= cfg.MaxSeriesPerMetric {
+		u.fpLocker.Unlock(fp)
+		return fp, nil, util.ErrMetricSeriesLimitExceeded
 	}
 
 	series = newMemorySeries(metric)

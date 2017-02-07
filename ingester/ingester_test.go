@@ -149,7 +149,7 @@ func TestIngesterAppend(t *testing.T) {
 	}
 }
 
-func TestIngesterSeriesLimitExceeded(t *testing.T) {
+func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	cfg := Config{
 		FlushCheckPeriod: 99999 * time.Hour,
 		MaxChunkIdle:     99999 * time.Hour,
@@ -192,7 +192,93 @@ func TestIngesterSeriesLimitExceeded(t *testing.T) {
 	// Append to two series, expect series-exceeded error.
 	_, err = ing.Push(ctx, util.ToWriteRequest([]*model.Sample{sample2, sample3}))
 	if grpc.ErrorDesc(err) != util.ErrUserSeriesLimitExceeded.Error() {
-		t.Fatalf("expected series-exceeded error, got %v", err)
+		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
+	}
+
+	// Read samples back via ingester queries.
+	matcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "testmetric")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := ing.Query(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := util.FromQueryResponse(resp)
+	sort.Sort(res)
+
+	expected := model.Matrix{
+		{
+			Metric: sample1.Metric,
+			Values: []model.SamplePair{
+				{
+					Timestamp: sample1.Timestamp,
+					Value:     sample1.Value,
+				},
+				{
+					Timestamp: sample2.Timestamp,
+					Value:     sample2.Value,
+				},
+			},
+		},
+	}
+
+	if !reflect.DeepEqual(res, expected) {
+		t.Fatalf("unexpected query result\n\nwant:\n\n%v\n\ngot:\n\n%v\n\n", expected, res)
+	}
+}
+
+func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
+	cfg := Config{
+		FlushCheckPeriod: 99999 * time.Hour,
+		MaxChunkIdle:     99999 * time.Hour,
+		UserStatesConfig: UserStatesConfig{
+			MaxSeriesPerMetric: 1,
+		},
+	}
+	store := &testStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+	ing, err := New(cfg, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	userID := "1"
+	sample1 := &model.Sample{
+		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
+		Timestamp: 0,
+		Value:     1,
+	}
+	sample2 := &model.Sample{
+		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
+		Timestamp: 1,
+		Value:     2,
+	}
+	sample3 := &model.Sample{
+		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "biz"},
+		Timestamp: 1,
+		Value:     3,
+	}
+
+	// Append only one series first, expect no error.
+	ctx := user.WithID(context.Background(), userID)
+	_, err = ing.Push(ctx, util.ToWriteRequest([]*model.Sample{sample1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Append to two series, expect series-exceeded error.
+	_, err = ing.Push(ctx, util.ToWriteRequest([]*model.Sample{sample2, sample3}))
+	if grpc.ErrorDesc(err) != util.ErrMetricSeriesLimitExceeded.Error() {
+		t.Fatalf("expected error about exceeding series per metric, got %v", err)
 	}
 
 	// Read samples back via ingester queries.

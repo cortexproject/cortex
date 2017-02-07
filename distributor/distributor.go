@@ -284,6 +284,10 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 	samples := util.FromWriteRequest(req)
 	d.receivedSamples.Add(float64(len(samples)))
 
+	if len(samples) == 0 {
+		return &cortex.WriteResponse{}, nil
+	}
+
 	limiter := d.getOrCreateIngestLimiter(userID)
 	if !limiter.AllowN(time.Now(), len(samples)) {
 		return nil, errIngestionRateLimitExceeded

@@ -9,15 +9,13 @@ import (
 )
 
 type invertedIndex struct {
-	mtx            sync.RWMutex
-	idx            map[model.LabelName]map[model.LabelValue][]model.Fingerprint // entries are sorted in fp order?
-	seriesInMetric map[model.LabelValue]int
+	mtx sync.RWMutex
+	idx map[model.LabelName]map[model.LabelValue][]model.Fingerprint // entries are sorted in fp order?
 }
 
 func newInvertedIndex() *invertedIndex {
 	return &invertedIndex{
-		idx:            map[model.LabelName]map[model.LabelValue][]model.Fingerprint{},
-		seriesInMetric: map[model.LabelValue]int{},
+		idx: map[model.LabelName]map[model.LabelValue][]model.Fingerprint{},
 	}
 }
 
@@ -39,10 +37,6 @@ func (i *invertedIndex) add(metric model.Metric, fp model.Fingerprint) {
 		fingerprints[j] = fp
 		values[value] = fingerprints
 		i.idx[name] = values
-
-		if name == model.MetricNameLabel {
-			i.seriesInMetric[value]++
-		}
 	}
 }
 
@@ -120,21 +114,7 @@ func (i *invertedIndex) delete(metric model.Metric, fp model.Fingerprint) {
 		} else {
 			i.idx[name] = values
 		}
-
-		if name == model.MetricNameLabel {
-			i.seriesInMetric[value]--
-			if i.seriesInMetric[value] == 0 {
-				delete(i.seriesInMetric, value)
-			}
-		}
 	}
-}
-
-func (i *invertedIndex) numSeriesInMetric(metric model.LabelValue) int {
-	i.mtx.Lock()
-	defer i.mtx.Unlock()
-
-	return i.seriesInMetric[metric]
 }
 
 // intersect two sorted lists of fingerprints.  Assumes there are no duplicate

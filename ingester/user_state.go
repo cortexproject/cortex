@@ -26,6 +26,9 @@ type userState struct {
 	mapper          *fpMapper
 	index           *invertedIndex
 	ingestedSamples *ewmaRate
+
+	seriesInMetricMtx sync.Mutex
+	seriesInMetric    map[model.LabelValue]int
 }
 
 // UserStatesConfig configures userStates properties.
@@ -158,6 +161,7 @@ func (us *userStates) unlockedGetOrCreate(userID string) *userState {
 			fpLocker:        newFingerprintLocker(16),
 			index:           newInvertedIndex(),
 			ingestedSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
+			seriesInMetric:  map[model.LabelValue]int{},
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		us.states[userID] = state
@@ -196,7 +200,7 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 	}
 
 	// The same race can happen here as with series-per-user above.
-	if u.index.numSeriesInMetric(metricName) >= cfg.MaxSeriesPerMetric {
+	if u.numSeriesInMetric(metricName) >= cfg.MaxSeriesPerMetric {
 		u.fpLocker.Unlock(fp)
 		return fp, nil, util.ErrMetricSeriesLimitExceeded
 	}
@@ -204,7 +208,32 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
 	u.index.add(metric, fp)
+	u.incNumSeriesInMetric(metricName)
 	return fp, series, nil
+}
+
+func (u *userState) numSeriesInMetric(metric model.LabelValue) int {
+	u.seriesInMetricMtx.Lock()
+	defer u.seriesInMetricMtx.Unlock()
+
+	return u.seriesInMetric[metric]
+}
+
+func (u *userState) incNumSeriesInMetric(metric model.LabelValue) {
+	u.seriesInMetricMtx.Lock()
+	defer u.seriesInMetricMtx.Unlock()
+
+	u.seriesInMetric[metric]++
+}
+
+func (u *userState) decNumSeriesInMetric(metric model.LabelValue) {
+	u.seriesInMetricMtx.Lock()
+	defer u.seriesInMetricMtx.Unlock()
+
+	u.seriesInMetric[metric]--
+	if u.seriesInMetric[metric] == 0 {
+		delete(u.seriesInMetric, metric)
+	}
 }
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.

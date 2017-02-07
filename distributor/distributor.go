@@ -87,6 +87,9 @@ type Config struct {
 	ClientCleanupPeriod time.Duration
 	IngestionRateLimit  float64
 	IngestionBurstSize  int
+
+	// for testing
+	ingesterClientFactory func(string) cortex.IngesterClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -218,22 +221,27 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.Ingester
 		return client, nil
 	}
 
-	conn, err := grpc.Dial(
-		ingester.Addr,
-		grpc.WithTimeout(d.cfg.RemoteTimeout),
-		grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-			middleware.ClientUserHeaderInterceptor,
-		)),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	client = ingesterClient{
-		IngesterClient: cortex.NewIngesterClient(conn),
-		conn:           conn,
+	if d.cfg.ingesterClientFactory != nil {
+		client = ingesterClient{
+			IngesterClient: d.cfg.ingesterClientFactory(ingester.Addr),
+		}
+	} else {
+		conn, err := grpc.Dial(
+			ingester.Addr,
+			grpc.WithTimeout(d.cfg.RemoteTimeout),
+			grpc.WithInsecure(),
+			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
+				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+				middleware.ClientUserHeaderInterceptor,
+			)),
+		)
+		if err != nil {
+			return nil, err
+		}
+		client = ingesterClient{
+			IngesterClient: cortex.NewIngesterClient(conn),
+			conn:           conn,
+		}
 	}
 	d.clients[ingester.Addr] = client
 	return client, nil
@@ -301,8 +309,6 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 			sample:      samples[i],
 			minSuccess:  minSuccess,
 			maxFailures: len(ingesters[i]) - minSuccess,
-			succeeded:   0,
-			failed:      0,
 		}
 
 		// Skip those that have not heartbeated in a while. NB these are still
@@ -330,7 +336,6 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 
 	pushTracker := pushTracker{
 		samplesPending: int32(len(samples)),
-		samplesFailed:  0,
 		done:           make(chan struct{}),
 		err:            make(chan error),
 	}
@@ -363,8 +368,8 @@ func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
 func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker, pushTracker *pushTracker) {
 	err := d.sendSamplesErr(ctx, ingester, sampleTrackers)
 
-	// If we suceed, decrement each sample's pending count by one.  If we reach
-	// the requred number of successful puts on this sample, then decrement the
+	// If we succeed, decrement each sample's pending count by one.  If we reach
+	// the required number of successful puts on this sample, then decrement the
 	// number of pending samples by one.  If we successfully push all samples to
 	// min success ingesters, wake up the waiting rpc so it can return early.
 	// Similarly, track the number of errors, and if it exceeds maxFailures
@@ -374,7 +379,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 	// goroutine will write to either channel.
 	for i := range sampleTrackers {
 		if err != nil {
-			if atomic.AddInt32(&sampleTrackers[i].failed, 1) > int32(sampleTrackers[i].maxFailures) {
+			if atomic.AddInt32(&sampleTrackers[i].failed, 1) <= int32(sampleTrackers[i].maxFailures) {
 				continue
 			}
 			if atomic.AddInt32(&pushTracker.samplesFailed, 1) == 1 {

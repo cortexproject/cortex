@@ -190,7 +190,7 @@ func (c *AWSStore) updateIndex(ctx context.Context, userID string, chunks []Chun
 func (c *AWSStore) calculateDynamoWrites(userID string, chunks []Chunk) (map[string][]*dynamodb.WriteRequest, error) {
 	writeReqs := map[string][]*dynamodb.WriteRequest{}
 	for _, chunk := range chunks {
-		metricName, err := extractMetricNameFromMetric(chunk.Metric)
+		metricName, err := util.ExtractMetricNameFromMetric(chunk.Metric)
 		if err != nil {
 			return nil, err
 		}
@@ -472,15 +472,6 @@ func (c *AWSStore) fetchChunkData(ctx context.Context, userID string, chunkSet [
 		return nil, errors[0]
 	}
 	return chunks, nil
-}
-
-func extractMetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
-	for name, value := range m {
-		if name == model.MetricNameLabel {
-			return value, nil
-		}
-	}
-	return "", fmt.Errorf("no MetricNameLabel for chunk")
 }
 
 func extractMetricNameFromMatchers(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, error) {

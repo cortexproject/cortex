@@ -1,6 +1,9 @@
 package util
 
 import (
+	"fmt"
+
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
 )
 
@@ -14,4 +17,14 @@ func SplitFiltersAndMatchers(allMatchers []*metric.LabelMatcher) (filters, match
 		}
 	}
 	return
+}
+
+// ExtractMetricNameFromMetric extract the metric name from a model.Metric
+func ExtractMetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
+	for name, value := range m {
+		if name == model.MetricNameLabel {
+			return value, nil
+		}
+	}
+	return "", fmt.Errorf("no MetricNameLabel for chunk")
 }

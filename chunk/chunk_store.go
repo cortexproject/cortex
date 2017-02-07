@@ -282,7 +282,7 @@ outer:
 }
 
 func (c *AWSStore) lookupChunks(ctx context.Context, userID string, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
-	metricName, matchers, err := extractMetricNameFromMatchers(matchers)
+	metricName, matchers, err := util.ExtractMetricNameFromMatchers(matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -472,19 +472,4 @@ func (c *AWSStore) fetchChunkData(ctx context.Context, userID string, chunkSet [
 		return nil, errors[0]
 	}
 	return chunks, nil
-}
-
-func extractMetricNameFromMatchers(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, error) {
-	for i, matcher := range matchers {
-		if matcher.Name != model.MetricNameLabel {
-			continue
-		}
-		if matcher.Type != metric.Equal {
-			return "", nil, fmt.Errorf("must have equality matcher for MetricNameLabel")
-		}
-		metricName := matcher.Value
-		matchers = matchers[:i+copy(matchers[i:], matchers[i+1:])]
-		return metricName, matchers, nil
-	}
-	return "", nil, fmt.Errorf("no matcher for MetricNameLabel")
 }

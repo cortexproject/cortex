@@ -14,10 +14,9 @@ import (
 )
 
 type userStates struct {
-	mtx              sync.RWMutex
-	states           map[string]*userState
-	rateUpdatePeriod time.Duration
-	maxSeriesPerUser int
+	mtx    sync.RWMutex
+	states map[string]*userState
+	cfg    *UserStatesConfig
 }
 
 type userState struct {
@@ -29,11 +28,16 @@ type userState struct {
 	ingestedSamples *ewmaRate
 }
 
-func newUserStates(rateUpdatePeriod time.Duration, maxSeriesPerUser int) *userStates {
+// UserStatesConfig configures userStates properties.
+type UserStatesConfig struct {
+	RateUpdatePeriod time.Duration
+	MaxSeriesPerUser int
+}
+
+func newUserStates(cfg *UserStatesConfig) *userStates {
 	return &userStates{
-		states:           map[string]*userState{},
-		rateUpdatePeriod: rateUpdatePeriod,
-		maxSeriesPerUser: maxSeriesPerUser,
+		states: map[string]*userState{},
+		cfg:    cfg,
 	}
 }
 
@@ -126,7 +130,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 	us.mtx.RLock()
 	state, ok = us.states[userID]
 	if ok {
-		fp, series, err = state.unlockedGet(metric, us.maxSeriesPerUser)
+		fp, series, err = state.unlockedGet(metric, us.cfg.MaxSeriesPerUser)
 		if err != nil {
 			us.mtx.RUnlock()
 			return nil, fp, nil, err
@@ -140,7 +144,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 	us.mtx.Lock()
 	defer us.mtx.Unlock()
 	state = us.unlockedGetOrCreate(userID)
-	fp, series, err = state.unlockedGet(metric, us.maxSeriesPerUser)
+	fp, series, err = state.unlockedGet(metric, us.cfg.MaxSeriesPerUser)
 	return state, fp, series, err
 }
 
@@ -152,7 +156,7 @@ func (us *userStates) unlockedGetOrCreate(userID string) *userState {
 			fpToSeries:      newSeriesMap(),
 			fpLocker:        newFingerprintLocker(16),
 			index:           newInvertedIndex(),
-			ingestedSamples: newEWMARate(0.2, us.rateUpdatePeriod),
+			ingestedSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		us.states[userID] = state

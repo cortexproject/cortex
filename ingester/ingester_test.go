@@ -153,7 +153,9 @@ func TestIngesterSeriesLimitExceeded(t *testing.T) {
 	cfg := Config{
 		FlushCheckPeriod: 99999 * time.Hour,
 		MaxChunkIdle:     99999 * time.Hour,
-		MaxSeriesPerUser: 1,
+		UserStatesConfig: UserStatesConfig{
+			MaxSeriesPerUser: 1,
+		},
 	}
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},

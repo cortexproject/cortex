@@ -429,71 +429,77 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		ingesters, err := d.ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor, ring.Read)
-		if err != nil {
-			return err
-		}
-
-		// We need a response from a quorum of ingesters, which is n/2 + 1.
-		minSuccess := (len(ingesters) / 2) + 1
-		maxErrs := len(ingesters) - minSuccess
-		if len(ingesters) < minSuccess {
-			return fmt.Errorf("could only find %d ingesters for query. Need at least %d", len(ingesters), minSuccess)
-		}
-
 		req, err := util.ToQueryRequest(from, to, matchers)
 		if err != nil {
 			return err
 		}
 
-		// Fetch samples from multiple ingesters
-		var numErrs int32
-		errReceived := make(chan error)
-		results := make(chan model.Matrix, len(ingesters))
-
-		for _, ing := range ingesters {
-			go func(ing *ring.IngesterDesc) {
-				result, err := d.queryIngester(ctx, ing, req)
-				if err != nil {
-					if atomic.AddInt32(&numErrs, 1) == int32(maxErrs+1) {
-						errReceived <- err
-					}
-				} else {
-					results <- result
-				}
-			}(ing)
+		ingesters, err := d.ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor, ring.Read)
+		if err != nil {
+			return err
 		}
 
-		// Only wait for minSuccess ingesters (or an error), and accumulate the samples
-		// by fingerprint, merging them into any existing samples.
-		fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
-		for i := 0; i < minSuccess; i++ {
-			select {
-			case err := <-errReceived:
-				return err
-
-			case result := <-results:
-				for _, ss := range result {
-					fp := ss.Metric.Fingerprint()
-					if mss, ok := fpToSampleStream[fp]; !ok {
-						fpToSampleStream[fp] = &model.SampleStream{
-							Metric: ss.Metric,
-							Values: ss.Values,
-						}
-					} else {
-						mss.Values = util.MergeSamples(fpToSampleStream[fp].Values, ss.Values)
-					}
-				}
-			}
-		}
-
-		result = make(model.Matrix, 0, len(fpToSampleStream))
-		for _, ss := range fpToSampleStream {
-			result = append(result, ss)
-		}
-		return nil
+		result, err = d.queryIngesters(ctx, ingesters, req)
+		return err
 	})
 	return result, err
+}
+
+// Query implements Querier.
+func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.IngesterDesc, req *cortex.QueryRequest) (model.Matrix, error) {
+	// We need a response from a quorum of ingesters, which is n/2 + 1.
+	minSuccess := (len(ingesters) / 2) + 1
+	maxErrs := len(ingesters) - minSuccess
+	if len(ingesters) < minSuccess {
+		return nil, fmt.Errorf("could only find %d ingesters for query. Need at least %d", len(ingesters), minSuccess)
+	}
+
+	// Fetch samples from multiple ingesters
+	var numErrs int32
+	errReceived := make(chan error)
+	results := make(chan model.Matrix, len(ingesters))
+
+	for _, ing := range ingesters {
+		go func(ing *ring.IngesterDesc) {
+			result, err := d.queryIngester(ctx, ing, req)
+			if err != nil {
+				if atomic.AddInt32(&numErrs, 1) == int32(maxErrs+1) {
+					errReceived <- err
+				}
+			} else {
+				results <- result
+			}
+		}(ing)
+	}
+
+	// Only wait for minSuccess ingesters (or an error), and accumulate the samples
+	// by fingerprint, merging them into any existing samples.
+	fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
+	for i := 0; i < minSuccess; i++ {
+		select {
+		case err := <-errReceived:
+			return nil, err
+
+		case result := <-results:
+			for _, ss := range result {
+				fp := ss.Metric.Fingerprint()
+				mss, ok := fpToSampleStream[fp]
+				if !ok {
+					mss = &model.SampleStream{
+						Metric: ss.Metric,
+					}
+					fpToSampleStream[fp] = mss
+				}
+				mss.Values = util.MergeSamples(mss.Values, ss.Values)
+			}
+		}
+	}
+
+	result := model.Matrix{}
+	for _, ss := range fpToSampleStream {
+		result = append(result, ss)
+	}
+	return result, nil
 }
 
 func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc, req *cortex.QueryRequest) (model.Matrix, error) {

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
@@ -50,7 +52,31 @@ func (i mockIngester) Push(ctx context.Context, in *remote.WriteRequest, opts ..
 }
 
 func (i mockIngester) Query(ctx context.Context, in *cortex.QueryRequest, opts ...grpc.CallOption) (*cortex.QueryResponse, error) {
-	return nil, nil
+	if !i.happy {
+		return nil, fmt.Errorf("Fail")
+	}
+	return &cortex.QueryResponse{
+		Timeseries: []*remote.TimeSeries{
+			{
+				Labels: []*remote.LabelPair{
+					{
+						Name:  "__name__",
+						Value: "foo",
+					},
+				},
+				Samples: []*remote.Sample{
+					{
+						Value:       0,
+						TimestampMs: 0,
+					},
+					{
+						Value:       1,
+						TimestampMs: 1,
+					},
+				},
+			},
+		},
+	}, nil
 }
 
 func (i mockIngester) LabelValues(ctx context.Context, in *cortex.LabelValuesRequest, opts ...grpc.CallOption) (*cortex.LabelValuesResponse, error) {
@@ -65,7 +91,7 @@ func (i mockIngester) MetricsForLabelMatchers(ctx context.Context, in *cortex.Me
 	return nil, nil
 }
 
-func TestDistributor(t *testing.T) {
+func TestDistributorPush(t *testing.T) {
 	ctx := user.WithID(context.Background(), "user")
 	for i, tc := range []struct {
 		ingesters        []mockIngester
@@ -128,7 +154,6 @@ func TestDistributor(t *testing.T) {
 
 			d, err := New(Config{
 				ReplicationFactor:   3,
-				MinReadSuccesses:    2,
 				HeartbeatTimeout:    1 * time.Minute,
 				RemoteTimeout:       1 * time.Minute,
 				ClientCleanupPeriod: 1 * time.Minute,
@@ -162,6 +187,102 @@ func TestDistributor(t *testing.T) {
 				request.Timeseries = append(request.Timeseries, ts)
 			}
 			response, err := d.Push(ctx, request)
+			assert.Equal(t, tc.expectedResponse, response, "Wrong response")
+			assert.Equal(t, tc.expectedError, err, "Wrong error")
+		})
+	}
+}
+
+func TestDistributorQuery(t *testing.T) {
+	ctx := user.WithID(context.Background(), "user")
+
+	expectedResponse := func(start, end int) model.Matrix {
+		result := model.Matrix{
+			&model.SampleStream{
+				Metric: model.Metric{"__name__": "foo"},
+			},
+		}
+		for i := start; i < end; i++ {
+			result[0].Values = append(result[0].Values,
+				model.SamplePair{
+					Value:     model.SampleValue(i),
+					Timestamp: model.Time(i),
+				},
+			)
+		}
+		return result
+	}
+
+	for i, tc := range []struct {
+		ingesters        []mockIngester
+		expectedResponse model.Matrix
+		expectedError    error
+	}{
+		// A query to 3 happy ingesters should succeed
+		{
+			ingesters:        []mockIngester{{true}, {true}, {true}},
+			expectedResponse: expectedResponse(0, 2),
+		},
+
+		// A query to 2 happy ingesters should succeed
+		{
+			ingesters:        []mockIngester{{}, {true}, {true}},
+			expectedResponse: expectedResponse(0, 2),
+		},
+
+		// A query to 1 happy ingesters should fail
+		{
+			ingesters:     []mockIngester{{}, {}, {true}},
+			expectedError: fmt.Errorf("Fail"),
+		},
+
+		// A query to 0 happy ingesters should succeed
+		{
+			ingesters:     []mockIngester{{}, {}, {}},
+			expectedError: fmt.Errorf("Fail"),
+		},
+	} {
+		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
+			ingesterDescs := []*ring.IngesterDesc{}
+			ingesters := map[string]mockIngester{}
+			for i, ingester := range tc.ingesters {
+				addr := fmt.Sprintf("%d", i)
+				ingesterDescs = append(ingesterDescs, &ring.IngesterDesc{
+					Addr:      addr,
+					Timestamp: time.Now().Unix(),
+				})
+				ingesters[addr] = ingester
+			}
+
+			ring := mockRing{
+				Counter: prometheus.NewCounter(prometheus.CounterOpts{
+					Name: "foo",
+				}),
+				ingesters: ingesterDescs,
+			}
+
+			d, err := New(Config{
+				ReplicationFactor:   3,
+				HeartbeatTimeout:    1 * time.Minute,
+				RemoteTimeout:       1 * time.Minute,
+				ClientCleanupPeriod: 1 * time.Minute,
+				IngestionRateLimit:  10000,
+				IngestionBurstSize:  10000,
+
+				ingesterClientFactory: func(addr string) cortex.IngesterClient {
+					return ingesters[addr]
+				},
+			}, ring)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer d.Stop()
+
+			matcher, err := metric.NewLabelMatcher(metric.Equal, model.LabelName("__name__"), model.LabelValue("foo"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := d.Query(ctx, 0, 10, matcher)
 			assert.Equal(t, tc.expectedResponse, response, "Wrong response")
 			assert.Equal(t, tc.expectedError, err, "Wrong error")
 		})

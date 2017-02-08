@@ -81,7 +81,6 @@ type ReadRing interface {
 // create a Distributor
 type Config struct {
 	ReplicationFactor   int
-	MinReadSuccesses    int
 	HeartbeatTimeout    time.Duration
 	RemoteTimeout       time.Duration
 	ClientCleanupPeriod time.Duration
@@ -95,7 +94,6 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
-	flag.IntVar(&cfg.MinReadSuccesses, "distributor.min-read-successes", 2, "The minimum number of ingesters from which a read must succeed.")
 	flag.DurationVar(&cfg.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
@@ -107,9 +105,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func New(cfg Config, ring ReadRing) (*Distributor, error) {
 	if 0 > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
-	}
-	if cfg.MinReadSuccesses > cfg.ReplicationFactor {
-		return nil, fmt.Errorf("MinReadSuccesses > ReplicationFactor: %d > %d", cfg.MinReadSuccesses, cfg.ReplicationFactor)
 	}
 	d := &Distributor{
 		cfg:            cfg,
@@ -424,14 +419,12 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
 	var result model.Matrix
 	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", d.queryDuration, func(ctx context.Context) error {
-		fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
-
-		metricName, _, err := util.ExtractMetricNameFromMatchers(matchers)
+		userID, err := user.GetID(ctx)
 		if err != nil {
 			return err
 		}
 
-		userID, err := user.GetID(ctx)
+		metricName, _, err := util.ExtractMetricNameFromMatchers(matchers)
 		if err != nil {
 			return err
 		}
@@ -441,59 +434,82 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		if len(ingesters) < d.cfg.MinReadSuccesses {
-			return fmt.Errorf("could only find %d ingesters for query. Need at least %d", len(ingesters), d.cfg.MinReadSuccesses)
+		// We need a response from a quorum of ingesters, which is n/2 + 1.
+		minSuccess := (len(ingesters) / 2) + 1
+		maxErrs := len(ingesters) - minSuccess
+		if len(ingesters) < minSuccess {
+			return fmt.Errorf("could only find %d ingesters for query. Need at least %d", len(ingesters), minSuccess)
 		}
 
-		// Fetch samples from multiple ingesters and group them by fingerprint (unsorted
-		// and with overlap).
-		successes := 0
-		var lastErr error
+		req, err := util.ToQueryRequest(from, to, matchers)
+		if err != nil {
+			return err
+		}
+
+		// Fetch samples from multiple ingesters
+		var numErrs int32
+		errReceived := make(chan error)
+		results := make(chan model.Matrix, len(ingesters))
+
 		for _, ing := range ingesters {
-			client, err := d.getClientFor(ing)
-			if err != nil {
-				return err
-			}
-
-			req, err := util.ToQueryRequest(from, to, matchers)
-			if err != nil {
-				return err
-			}
-
-			resp, err := client.Query(ctx, req)
-			d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
-			if err != nil {
-				lastErr = err
-				d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
-				continue
-			}
-			successes++
-
-			for _, ss := range util.FromQueryResponse(resp) {
-				fp := ss.Metric.Fingerprint()
-				if mss, ok := fpToSampleStream[fp]; !ok {
-					fpToSampleStream[fp] = &model.SampleStream{
-						Metric: ss.Metric,
-						Values: ss.Values,
+			go func(ing *ring.IngesterDesc) {
+				result, err := d.queryIngester(ctx, ing, req)
+				if err != nil {
+					if atomic.AddInt32(&numErrs, 1) == int32(maxErrs+1) {
+						errReceived <- err
 					}
 				} else {
-					mss.Values = util.MergeSamples(fpToSampleStream[fp].Values, ss.Values)
+					results <- result
 				}
-			}
+			}(ing)
 		}
 
-		if successes < d.cfg.MinReadSuccesses {
-			return fmt.Errorf("too few successful reads, last error was: %v", lastErr)
+		// Only wait for minSuccess ingesters (or an error), and accumulate the samples
+		// by fingerprint, merging them into any existing samples.
+		fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
+		for i := 0; i < minSuccess; i++ {
+			select {
+			case err := <-errReceived:
+				return err
+
+			case result := <-results:
+				for _, ss := range result {
+					fp := ss.Metric.Fingerprint()
+					if mss, ok := fpToSampleStream[fp]; !ok {
+						fpToSampleStream[fp] = &model.SampleStream{
+							Metric: ss.Metric,
+							Values: ss.Values,
+						}
+					} else {
+						mss.Values = util.MergeSamples(fpToSampleStream[fp].Values, ss.Values)
+					}
+				}
+			}
 		}
 
 		result = make(model.Matrix, 0, len(fpToSampleStream))
 		for _, ss := range fpToSampleStream {
 			result = append(result, ss)
 		}
-
 		return nil
 	})
 	return result, err
+}
+
+func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc, req *cortex.QueryRequest) (model.Matrix, error) {
+	client, err := d.getClientFor(ing)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Query(ctx, req)
+	d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
+	if err != nil {
+		d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+		return nil, err
+	}
+
+	return util.FromQueryResponse(resp), nil
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
@@ -527,7 +543,7 @@ func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}
 			numErrs++
 		}
 	}
-	if numErrs > (d.cfg.ReplicationFactor - d.cfg.MinReadSuccesses) {
+	if numErrs > d.cfg.ReplicationFactor/2 {
 		return nil, lastErr
 	}
 	return result, nil

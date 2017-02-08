@@ -600,16 +600,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	series.chunkDescs = series.chunkDescs[len(chunks):]
 	i.memoryChunks.Sub(float64(len(chunks)))
 	if len(series.chunkDescs) == 0 {
-		userState.fpToSeries.del(fp)
-		userState.index.delete(series.metric, fp)
-
-		metricName, err := util.ExtractMetricNameFromMetric(series.metric)
-		if err != nil {
-			// Series without a metric name should never be able to make it into
-			// the ingester's memory storage.
-			panic(err)
-		}
-		userState.decNumSeriesInMetric(metricName)
+		userState.removeSeries(fp, series.metric)
 	}
 	userState.fpLocker.Unlock(fp)
 	return nil

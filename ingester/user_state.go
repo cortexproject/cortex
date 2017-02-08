@@ -199,8 +199,7 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 		return fp, nil, err
 	}
 
-	// The same race can happen here as with series-per-user above.
-	if u.numSeriesInMetric(metricName) >= cfg.MaxSeriesPerMetric {
+	if !u.canAddSeriesFor(metricName, cfg) {
 		u.fpLocker.Unlock(fp)
 		return fp, nil, util.ErrMetricSeriesLimitExceeded
 	}
@@ -208,31 +207,37 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
 	u.index.add(metric, fp)
-	u.incNumSeriesInMetric(metricName)
 	return fp, series, nil
 }
 
-func (u *userState) numSeriesInMetric(metric model.LabelValue) int {
+func (u *userState) canAddSeriesFor(metric model.LabelValue, cfg *UserStatesConfig) bool {
 	u.seriesInMetricMtx.Lock()
 	defer u.seriesInMetricMtx.Unlock()
 
-	return u.seriesInMetric[metric]
-}
-
-func (u *userState) incNumSeriesInMetric(metric model.LabelValue) {
-	u.seriesInMetricMtx.Lock()
-	defer u.seriesInMetricMtx.Unlock()
-
+	if u.seriesInMetric[metric] >= cfg.MaxSeriesPerMetric {
+		return false
+	}
 	u.seriesInMetric[metric]++
+	return true
 }
 
-func (u *userState) decNumSeriesInMetric(metric model.LabelValue) {
+func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
+	u.fpToSeries.del(fp)
+	u.index.delete(metric, fp)
+
+	metricName, err := util.ExtractMetricNameFromMetric(metric)
+	if err != nil {
+		// Series without a metric name should never be able to make it into
+		// the ingester's memory storage.
+		panic(err)
+	}
+
 	u.seriesInMetricMtx.Lock()
 	defer u.seriesInMetricMtx.Unlock()
 
-	u.seriesInMetric[metric]--
-	if u.seriesInMetric[metric] == 0 {
-		delete(u.seriesInMetric, metric)
+	u.seriesInMetric[metricName]--
+	if u.seriesInMetric[metricName] == 0 {
+		delete(u.seriesInMetric, metricName)
 	}
 }
 

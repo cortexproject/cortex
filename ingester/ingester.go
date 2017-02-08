@@ -38,6 +38,8 @@ const (
 	DefaultConcurrentFlush = 50
 	// DefaultMaxSeriesPerUser is the maximum number of series allowed per user.
 	DefaultMaxSeriesPerUser = 5000000
+	// DefaultMaxSeriesPerMetric is the maximum number of series in one metric (of a single user).
+	DefaultMaxSeriesPerMetric = 50000
 
 	minReadyDuration = 1 * time.Minute
 )
@@ -118,6 +120,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
 	f.DurationVar(&cfg.UserStatesConfig.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 	f.IntVar(&cfg.UserStatesConfig.MaxSeriesPerUser, "ingester.max-series-per-user", DefaultMaxSeriesPerUser, "Maximum number of active series per user.")
+	f.IntVar(&cfg.UserStatesConfig.MaxSeriesPerMetric, "ingester.max-series-per-metric", DefaultMaxSeriesPerMetric, "Maximum number of active series per metric name.")
 }
 
 type flushOp struct {
@@ -149,11 +152,14 @@ func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester,
 	if cfg.ChunkEncoding == "" {
 		cfg.ChunkEncoding = "1"
 	}
+	if cfg.UserStatesConfig.RateUpdatePeriod == 0 {
+		cfg.UserStatesConfig.RateUpdatePeriod = 15 * time.Second
+	}
 	if cfg.UserStatesConfig.MaxSeriesPerUser <= 0 {
 		cfg.UserStatesConfig.MaxSeriesPerUser = DefaultMaxSeriesPerUser
 	}
-	if cfg.UserStatesConfig.RateUpdatePeriod == 0 {
-		cfg.UserStatesConfig.RateUpdatePeriod = 15 * time.Second
+	if cfg.UserStatesConfig.MaxSeriesPerMetric <= 0 {
+		cfg.UserStatesConfig.MaxSeriesPerMetric = DefaultMaxSeriesPerMetric
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
@@ -249,7 +255,7 @@ func (i *Ingester) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.
 	var lastPartialErr error
 	for _, sample := range util.FromWriteRequest(req) {
 		if err := i.append(ctx, sample); err != nil {
-			if err == util.ErrUserSeriesLimitExceeded {
+			if err == util.ErrUserSeriesLimitExceeded || err == util.ErrMetricSeriesLimitExceeded {
 				lastPartialErr = grpc.Errorf(codes.ResourceExhausted, err.Error())
 				continue
 			}
@@ -594,8 +600,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	series.chunkDescs = series.chunkDescs[len(chunks):]
 	i.memoryChunks.Sub(float64(len(chunks)))
 	if len(series.chunkDescs) == 0 {
-		userState.fpToSeries.del(fp)
-		userState.index.delete(series.metric, fp)
+		userState.removeSeries(fp, series.metric)
 	}
 	userState.fpLocker.Unlock(fp)
 	return nil

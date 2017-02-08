@@ -26,12 +26,16 @@ type userState struct {
 	mapper          *fpMapper
 	index           *invertedIndex
 	ingestedSamples *ewmaRate
+
+	seriesInMetricMtx sync.Mutex
+	seriesInMetric    map[model.LabelValue]int
 }
 
 // UserStatesConfig configures userStates properties.
 type UserStatesConfig struct {
-	RateUpdatePeriod time.Duration
-	MaxSeriesPerUser int
+	RateUpdatePeriod   time.Duration
+	MaxSeriesPerUser   int
+	MaxSeriesPerMetric int
 }
 
 func newUserStates(cfg *UserStatesConfig) *userStates {
@@ -130,7 +134,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 	us.mtx.RLock()
 	state, ok = us.states[userID]
 	if ok {
-		fp, series, err = state.unlockedGet(metric, us.cfg.MaxSeriesPerUser)
+		fp, series, err = state.unlockedGet(metric, us.cfg)
 		if err != nil {
 			us.mtx.RUnlock()
 			return nil, fp, nil, err
@@ -144,7 +148,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 	us.mtx.Lock()
 	defer us.mtx.Unlock()
 	state = us.unlockedGetOrCreate(userID)
-	fp, series, err = state.unlockedGet(metric, us.cfg.MaxSeriesPerUser)
+	fp, series, err = state.unlockedGet(metric, us.cfg)
 	return state, fp, series, err
 }
 
@@ -157,6 +161,7 @@ func (us *userStates) unlockedGetOrCreate(userID string) *userState {
 			fpLocker:        newFingerprintLocker(16),
 			index:           newInvertedIndex(),
 			ingestedSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
+			seriesInMetric:  map[model.LabelValue]int{},
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		us.states[userID] = state
@@ -164,7 +169,7 @@ func (us *userStates) unlockedGetOrCreate(userID string) *userState {
 	return state
 }
 
-func (u *userState) unlockedGet(metric model.Metric, maxSeries int) (model.Fingerprint, *memorySeries, error) {
+func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (model.Fingerprint, *memorySeries, error) {
 	rawFP := metric.FastFingerprint()
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -183,15 +188,57 @@ func (u *userState) unlockedGet(metric model.Metric, maxSeries int) (model.Finge
 	// all proceed to add a new series. This is likely not worth addressing,
 	// as this should happen rarely (all samples from one push are added
 	// serially), and the overshoot in allowed series would be minimal.
-	if u.fpToSeries.length() >= maxSeries {
+	if u.fpToSeries.length() >= cfg.MaxSeriesPerUser {
 		u.fpLocker.Unlock(fp)
 		return fp, nil, util.ErrUserSeriesLimitExceeded
+	}
+
+	metricName, err := util.ExtractMetricNameFromMetric(metric)
+	if err != nil {
+		u.fpLocker.Unlock(fp)
+		return fp, nil, err
+	}
+
+	if !u.canAddSeriesFor(metricName, cfg) {
+		u.fpLocker.Unlock(fp)
+		return fp, nil, util.ErrMetricSeriesLimitExceeded
 	}
 
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
 	u.index.add(metric, fp)
 	return fp, series, nil
+}
+
+func (u *userState) canAddSeriesFor(metric model.LabelValue, cfg *UserStatesConfig) bool {
+	u.seriesInMetricMtx.Lock()
+	defer u.seriesInMetricMtx.Unlock()
+
+	if u.seriesInMetric[metric] >= cfg.MaxSeriesPerMetric {
+		return false
+	}
+	u.seriesInMetric[metric]++
+	return true
+}
+
+func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
+	u.fpToSeries.del(fp)
+	u.index.delete(metric, fp)
+
+	metricName, err := util.ExtractMetricNameFromMetric(metric)
+	if err != nil {
+		// Series without a metric name should never be able to make it into
+		// the ingester's memory storage.
+		panic(err)
+	}
+
+	u.seriesInMetricMtx.Lock()
+	defer u.seriesInMetricMtx.Unlock()
+
+	u.seriesInMetric[metricName]--
+	if u.seriesInMetric[metricName] == 0 {
+		delete(u.seriesInMetric, metricName)
+	}
 }
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.

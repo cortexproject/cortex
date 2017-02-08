@@ -75,7 +75,7 @@ var (
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
 	cfg        Config
-	chunkStore cortex_chunk.Store
+	chunkStore ChunkStore
 	userStates *userStates
 	ring       *ring.Ring
 
@@ -99,6 +99,11 @@ type Ingester struct {
 	queries          prometheus.Counter
 	queriedSamples   prometheus.Counter
 	memoryChunks     prometheus.Gauge
+}
+
+// ChunkStore is the interface we need to store chunks
+type ChunkStore interface {
+	Put(ctx context.Context, chunks []cortex_chunk.Chunk) error
 }
 
 // Config configures an Ingester.
@@ -139,7 +144,7 @@ func (o *flushOp) Priority() int64 {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore cortex_chunk.Store, ring *ring.Ring) (*Ingester, error) {
+func New(cfg Config, chunkStore ChunkStore, ring *ring.Ring) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}

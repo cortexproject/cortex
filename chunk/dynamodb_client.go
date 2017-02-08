@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,10 +17,16 @@ import (
 )
 
 const (
+	hashKey  = "h"
+	rangeKey = "r"
+	chunkKey = "c"
+
 	// For dynamodb errors
 	tableNameLabel   = "table"
 	errorReasonLabel = "error"
 	otherError       = "other"
+
+	provisionedThroughputExceededException = "ProvisionedThroughputExceededException"
 
 	// Backoff for dynamoDB requests, to match AWS lib - see:
 	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
@@ -31,8 +36,6 @@ const (
 
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
 	dynamoMaxBatchSize = 25
-
-	provisionedThroughputExceededException = "ProvisionedThroughputExceededException"
 )
 
 var (
@@ -69,36 +72,12 @@ func init() {
 	prometheus.MustRegister(dynamoUnprocessedItems)
 }
 
-func recordDynamoError(tableName string, err error) {
-	if awsErr, ok := err.(awserr.Error); ok {
-		dynamoFailures.WithLabelValues(tableName, awsErr.Code()).Add(float64(1))
-	} else {
-		dynamoFailures.WithLabelValues(tableName, otherError).Add(float64(1))
-	}
-}
-
-// DynamoDBClient is a client for DynamoDB
-type DynamoDBClient interface {
-	ListTablesPages(*dynamodb.ListTablesInput, func(p *dynamodb.ListTablesOutput, lastPage bool) (shouldContinue bool)) error
-	CreateTable(*dynamodb.CreateTableInput) (*dynamodb.CreateTableOutput, error)
-	DescribeTable(*dynamodb.DescribeTableInput) (*dynamodb.DescribeTableOutput, error)
-	UpdateTable(*dynamodb.UpdateTableInput) (*dynamodb.UpdateTableOutput, error)
-
-	BatchWriteItem(*dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error)
-	QueryRequest(*dynamodb.QueryInput) (req dynamoRequest, output *dynamodb.QueryOutput)
-}
-
-type dynamoRequest interface {
-	NextPage() dynamoRequest
-	HasNextPage() bool
-	Data() interface{}
-	OperationName() string
-	Send() error
-	Error() error
+type dynamoClientAdapter struct {
+	*dynamodb.DynamoDB
 }
 
 // NewDynamoDBClient makes a new DynamoDBClient
-func NewDynamoDBClient(dynamoDBURL string) (DynamoDBClient, string, error) {
+func NewDynamoDBClient(dynamoDBURL string) (StorageClient, string, error) {
 	url, err := url.Parse(dynamoDBURL)
 	if err != nil {
 		return nil, "", err
@@ -114,126 +93,24 @@ func NewDynamoDBClient(dynamoDBURL string) (DynamoDBClient, string, error) {
 	return dynamoDBClient, tableName, nil
 }
 
-// DynamoDBClientValue is a flag.Value that parses a URL and produces a DynamoDBClient
-type DynamoDBClientValue struct {
-	url, TableName string
-	DynamoDBClient
+func (d dynamoClientAdapter) NewWriteBatch() WriteBatch {
+	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
-// String implements flag.Value
-func (c *DynamoDBClientValue) String() string {
-	return c.url
-}
-
-// Set implements flag.Value
-func (c *DynamoDBClientValue) Set(v string) error {
-	var err error
-	c.DynamoDBClient, c.TableName, err = NewDynamoDBClient(v)
-	return err
-}
-
-type dynamoClientAdapter struct {
-	*dynamodb.DynamoDB
-}
-
-func (d dynamoClientAdapter) QueryRequest(in *dynamodb.QueryInput) (dynamoRequest, *dynamodb.QueryOutput) {
-	req, out := d.DynamoDB.QueryRequest(in)
-	return dynamoRequestAdapter{req}, out
-}
-
-type dynamoRequestAdapter struct {
-	*request.Request
-}
-
-func (d dynamoRequestAdapter) Data() interface{} {
-	return d.Request.Data
-}
-
-func (d dynamoRequestAdapter) OperationName() string {
-	return d.Operation.Name
-}
-
-func (d dynamoRequestAdapter) NextPage() dynamoRequest {
-	if r := d.Request.NextPage(); r != nil {
-		return dynamoRequestAdapter{r}
-	}
-	return nil
-}
-
-func (d dynamoRequestAdapter) Error() error {
-	return d.Request.Error
-}
-
-type dynamoDBBackoffClient struct {
-	client DynamoDBClient
-}
-
-func newDynamoDBBackoffClient(client DynamoDBClient) *dynamoDBBackoffClient {
-	return &dynamoDBBackoffClient{
-		client: client,
-	}
-}
-
-// batchWriteDynamo writes many requests to dynamo in a single batch.
-func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[string][]*dynamodb.WriteRequest) error {
-	min := func(i, j int) int {
-		if i < j {
-			return i
-		}
-		return j
-	}
-
-	dictLen := func(in map[string][]*dynamodb.WriteRequest) int {
-		result := 0
-		for _, reqs := range in {
-			result += len(reqs)
-		}
-		return result
-	}
-
-	// Fill 'out' with WriteRequests from 'in' until it 'out' has at most dynamoMaxBatchSize requests. Remove those requests from 'in'.
-	fillReq := func(in map[string][]*dynamodb.WriteRequest, out map[string][]*dynamodb.WriteRequest) {
-		outLen, inLen := dictLen(out), dictLen(in)
-		toFill := min(inLen, dynamoMaxBatchSize-outLen)
-		for toFill > 0 {
-			for tableName := range in {
-				reqs := in[tableName]
-				taken := min(len(reqs), toFill)
-				if taken > 0 {
-					out[tableName] = append(out[tableName], reqs[:taken]...)
-					in[tableName] = reqs[taken:]
-					toFill -= taken
-				}
-			}
-		}
-	}
-
-	copyUnprocessed := func(in map[string][]*dynamodb.WriteRequest, out map[string][]*dynamodb.WriteRequest) {
-		for tableName, unprocessReqs := range in {
-			out[tableName] = append(out[tableName], unprocessReqs...)
-			dynamoUnprocessedItems.Add(float64(len(unprocessReqs)))
-		}
-	}
-
-	tableNames := func(reqs map[string][]*dynamodb.WriteRequest) []string {
-		result := []string{}
-		for tableName := range reqs {
-			result = append(result, tableName)
-		}
-		return result
-	}
-
-	outstanding, unprocessed := reqs, map[string][]*dynamodb.WriteRequest{}
+// batchWrite writes requests to the underlying storage, handling retires and backoff.
+func (d dynamoClientAdapter) BatchWrite(ctx context.Context, input WriteBatch) error {
+	outstanding := input.(dynamoDBWriteBatch)
+	unprocessed := map[string][]*dynamodb.WriteRequest{}
 	backoff, numRetries := minBackoff, 0
 	for dictLen(outstanding)+dictLen(unprocessed) > 0 && numRetries < maxRetries {
 		reqs := map[string][]*dynamodb.WriteRequest{}
-		fillReq(unprocessed, reqs)
-		fillReq(outstanding, reqs)
+		takeReqs(unprocessed, reqs, dynamoMaxBatchSize)
+		takeReqs(outstanding, reqs, dynamoMaxBatchSize)
 
 		var resp *dynamodb.BatchWriteItemOutput
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(_ context.Context) error {
 			var err error
-			resp, err = c.client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			resp, err = d.DynamoDB.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 				RequestItems:           reqs,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
@@ -245,14 +122,14 @@ func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[s
 		}
 
 		if err != nil {
-			for _, tableName := range tableNames(reqs) {
+			for tableName := range reqs {
 				recordDynamoError(tableName, err)
 			}
 		}
 
 		// If there are unprocessed items, backoff and retry those items.
-		if resp.UnprocessedItems != nil && dictLen(resp.UnprocessedItems) > 0 {
-			copyUnprocessed(resp.UnprocessedItems, unprocessed)
+		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dictLen(unprocessedItems) > 0 {
+			takeReqs(unprocessedItems, unprocessed, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue
@@ -261,7 +138,7 @@ func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[s
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-			copyUnprocessed(reqs, unprocessed)
+			takeReqs(reqs, unprocessed, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			numRetries++
@@ -283,16 +160,36 @@ func (c *dynamoDBBackoffClient) batchWriteDynamo(ctx context.Context, reqs map[s
 	return nil
 }
 
-func (c *dynamoDBBackoffClient) queryPages(ctx context.Context, input *dynamodb.QueryInput, callback func(resp interface{}, lastPage bool) (shouldContinue bool)) error {
-	request, _ := c.client.QueryRequest(input)
-	backoff := minBackoff
+func (d dynamoClientAdapter) QueryPages(ctx context.Context, tableName, hashValue string, rangePrefix []byte, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+	input := &dynamodb.QueryInput{
+		TableName: aws.String(tableName),
+		KeyConditions: map[string]*dynamodb.Condition{
+			hashKey: {
+				AttributeValueList: []*dynamodb.AttributeValue{
+					{S: aws.String(hashValue)},
+				},
+				ComparisonOperator: aws.String("EQ"),
+			},
+		},
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+	}
+	if len(rangePrefix) > 0 {
+		input.KeyConditions[rangeKey] = &dynamodb.Condition{
+			AttributeValueList: []*dynamodb.AttributeValue{
+				{B: rangePrefix},
+			},
+			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
+		}
+	}
 
+	request, _ := d.DynamoDB.QueryRequest(input)
+	backoff := minBackoff
 	for page := request; page != nil; page = page.NextPage() {
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
 
-		if cc := page.Data().(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
+		if cc := page.Data.(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
 			dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages").
 				Add(float64(*cc.CapacityUnits))
 		}
@@ -306,17 +203,116 @@ func (c *dynamoDBBackoffClient) queryPages(ctx context.Context, input *dynamodb.
 				continue
 			}
 
-			return page.Error()
+			return page.Error
 		}
 
-		if getNextPage := callback(page.Data(), !page.HasNextPage()); !getNextPage {
-			return page.Error()
+		queryOutput := page.Data.(*dynamodb.QueryOutput)
+		if getNextPage := callback(dynamoDBReadBatch(queryOutput.Items), !page.HasNextPage()); !getNextPage {
+			return page.Error
 		}
 
 		backoff = minBackoff
 	}
 
 	return nil
+}
+
+func (d dynamoClientAdapter) ListTables() ([]string, error) {
+	table := []string{}
+	if err := d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
+		for _, s := range resp.TableNames {
+			table = append(table, *s)
+		}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+	return table, nil
+}
+
+func (d dynamoClientAdapter) CreateTable(name string, readCapacity, writeCapacity int64) error {
+	input := &dynamodb.CreateTableInput{
+		TableName: aws.String(name),
+		AttributeDefinitions: []*dynamodb.AttributeDefinition{
+			{
+				AttributeName: aws.String(hashKey),
+				AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
+			},
+			{
+				AttributeName: aws.String(rangeKey),
+				AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
+			},
+		},
+		KeySchema: []*dynamodb.KeySchemaElement{
+			{
+				AttributeName: aws.String(hashKey),
+				KeyType:       aws.String(dynamodb.KeyTypeHash),
+			},
+			{
+				AttributeName: aws.String(rangeKey),
+				KeyType:       aws.String(dynamodb.KeyTypeRange),
+			},
+		},
+		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+			ReadCapacityUnits:  aws.Int64(readCapacity),
+			WriteCapacityUnits: aws.Int64(writeCapacity),
+		},
+	}
+	_, err := d.DynamoDB.CreateTable(input)
+	return err
+}
+
+func (d dynamoClientAdapter) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
+	out, err := d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
+		TableName: aws.String(name),
+	})
+	if err != nil {
+		return 0, 0, "", err
+	}
+
+	return *out.Table.ProvisionedThroughput.ReadCapacityUnits, *out.Table.ProvisionedThroughput.WriteCapacityUnits, *out.Table.TableStatus, nil
+}
+
+func (d dynamoClientAdapter) UpdateTable(name string, readCapacity, writeCapacity int64) error {
+	_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
+		TableName: aws.String(name),
+		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+			ReadCapacityUnits:  aws.Int64(readCapacity),
+			WriteCapacityUnits: aws.Int64(writeCapacity),
+		},
+	})
+	return err
+}
+
+type dynamoDBWriteBatch map[string][]*dynamodb.WriteRequest
+
+func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte) {
+	b[tableName] = append(b[tableName], &dynamodb.WriteRequest{
+		PutRequest: &dynamodb.PutRequest{
+			Item: map[string]*dynamodb.AttributeValue{
+				hashKey:  {S: aws.String(hashValue)},
+				rangeKey: {B: rangeValue},
+			},
+		},
+	})
+}
+
+type dynamoDBReadBatch []map[string]*dynamodb.AttributeValue
+
+func (b dynamoDBReadBatch) Len() int {
+	return len(b)
+}
+
+func (b dynamoDBReadBatch) RangeValue(i int) []byte {
+	return b[i][rangeKey].B
+}
+
+func (b dynamoDBReadBatch) Value(i int) []byte {
+	chunkValue, ok := b[i][chunkKey]
+	if !ok {
+		return nil
+	}
+	return chunkValue.B
 }
 
 func nextBackoff(lastBackoff time.Duration) time.Duration {
@@ -327,4 +323,47 @@ func nextBackoff(lastBackoff time.Duration) time.Duration {
 		backoff = maxBackoff
 	}
 	return backoff
+}
+
+func recordDynamoError(tableName string, err error) {
+	if awsErr, ok := err.(awserr.Error); ok {
+		dynamoFailures.WithLabelValues(tableName, awsErr.Code()).Add(float64(1))
+	} else {
+		dynamoFailures.WithLabelValues(tableName, otherError).Add(float64(1))
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func dictLen(b map[string][]*dynamodb.WriteRequest) int {
+	result := 0
+	for _, reqs := range b {
+		result += len(reqs)
+	}
+	return result
+}
+
+// Fill b with WriteRequests from 'from' until it 'b' has at most max requests. Remove those requests from 'from'.
+func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
+	outLen, inLen := dictLen(to), dictLen(from)
+	toFill := inLen
+	if max > 0 {
+		toFill = min(inLen, max-outLen)
+	}
+	for toFill > 0 {
+		for tableName := range from {
+			reqs := from[tableName]
+			taken := min(len(reqs), toFill)
+			if taken > 0 {
+				to[tableName] = append(from[tableName], reqs[:taken]...)
+				from[tableName] = reqs[taken:]
+				toFill -= taken
+			}
+		}
+	}
 }

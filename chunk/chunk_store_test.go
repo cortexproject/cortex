@@ -16,59 +16,15 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-func setupDynamodb(t *testing.T, dynamoDB DynamoDBClient) {
+func setupDynamodb(t *testing.T, dynamoDB StorageClient) {
 	tableManager, err := NewDynamoTableManager(TableManagerConfig{
-		DynamoDB: DynamoDBClientValue{
-			DynamoDBClient: dynamoDB,
-		},
+		mockDynamoDB: dynamoDB,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := tableManager.syncTables(context.Background()); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestChunkStoreUnprocessed(t *testing.T) {
-	dynamoDB := NewMockDynamoDB(2, 2)
-	setupDynamodb(t, dynamoDB)
-	store, err := NewAWSStore(StoreConfig{
-		DynamoDB: DynamoDBClientValue{
-			DynamoDBClient: dynamoDB,
-		},
-		S3: S3ClientValue{
-			S3Client: NewMockS3(),
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx := user.WithID(context.Background(), "0")
-	now := model.Now()
-	chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
-	chunk := NewChunk(
-		model.Fingerprint(1),
-		model.Metric{
-			model.MetricNameLabel: "foo",
-			"bar":  "baz",
-			"toms": "code",
-		},
-		chunks[0],
-		now.Add(-time.Hour),
-		now,
-	)
-	want := []Chunk{chunk}
-	if err := store.Put(ctx, want); err != nil {
-		t.Fatal(err)
-	}
-	have, err := store.Get(ctx, now.Add(-time.Hour), now, mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(want, have) {
-		t.Fatalf("wrong chunks - %s", test.Diff(want, have))
 	}
 }
 
@@ -165,15 +121,11 @@ func TestChunkStore(t *testing.T) {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s/%s", tc.name, schema.name), func(t *testing.T) {
 				log.Infoln("========= Running test", tc.name, "with schema", schema.name)
-				dynamoDB := NewMockDynamoDB(0, 0)
+				dynamoDB := NewMockStorage()
 				setupDynamodb(t, dynamoDB)
-				store, err := NewAWSStore(StoreConfig{
-					DynamoDB: DynamoDBClientValue{
-						DynamoDBClient: dynamoDB,
-					},
-					S3: S3ClientValue{
-						S3Client: NewMockS3(),
-					},
+				store, err := NewStore(StoreConfig{
+					mockDynamoDB:  dynamoDB,
+					mockS3:        NewMockS3(),
 					schemaFactory: schema.fn,
 				})
 				if err != nil {

@@ -48,7 +48,7 @@ func main() {
 	server := server.New(serverConfig, r)
 	defer server.Stop()
 
-	chunkStore, err := chunk.NewAWSStore(chunkStoreConfig)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig)
 	if err != nil {
 		log.Fatal(err)
 	}

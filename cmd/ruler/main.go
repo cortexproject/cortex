@@ -25,7 +25,7 @@ func main() {
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &rulerConfig, &chunkStoreConfig)
 	flag.Parse()
 
-	chunkStore, err := chunk.NewAWSStore(chunkStoreConfig)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig)
 	if err != nil {
 		log.Fatal(err)
 	}

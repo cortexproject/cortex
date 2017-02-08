@@ -80,7 +80,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, d *distributor.Distributor, c chunk.Store) Ruler {
+func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) Ruler {
 	return Ruler{querier.NewEngine(d, c), d, cfg.ExternalURL.URL}
 }
 

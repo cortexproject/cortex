@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/mtime"
 	"golang.org/x/net/context"
@@ -26,12 +24,10 @@ const (
 )
 
 func TestDynamoTableManager(t *testing.T) {
-	dynamoDB := NewMockDynamoDB(0, 0)
+	dynamoDB := NewMockStorage()
 
 	cfg := TableManagerConfig{
-		DynamoDB: DynamoDBClientValue{
-			DynamoDBClient: dynamoDB,
-		},
+		mockDynamoDB: dynamoDB,
 
 		PeriodicTableConfig: PeriodicTableConfig{
 			UsePeriodicTables: true,
@@ -149,14 +145,9 @@ func TestDynamoTableManager(t *testing.T) {
 	)
 }
 
-func expectTables(t *testing.T, dynamo DynamoDBClient, expected []tableDescription) {
-	tables := []string{}
-	if err := dynamo.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
-		for _, s := range resp.TableNames {
-			tables = append(tables, *s)
-		}
-		return true
-	}); err != nil {
+func expectTables(t *testing.T, dynamo StorageClient, expected []tableDescription) {
+	tables, err := dynamo.ListTables()
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,19 +163,17 @@ func expectTables(t *testing.T, dynamo DynamoDBClient, expected []tableDescripti
 			t.Fatalf("Expected '%s', found '%s'", desc.name, tables[i])
 		}
 
-		out, err := dynamo.DescribeTable(&dynamodb.DescribeTableInput{
-			TableName: aws.String(desc.name),
-		})
+		read, write, _, err := dynamo.DescribeTable(desc.name)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if *out.Table.ProvisionedThroughput.ReadCapacityUnits != desc.provisionedRead {
-			t.Fatalf("Expected '%d', found '%d' for table '%s'", desc.provisionedRead, *out.Table.ProvisionedThroughput.ReadCapacityUnits, desc.name)
+		if read != desc.provisionedRead {
+			t.Fatalf("Expected '%d', found '%d' for table '%s'", desc.provisionedRead, read, desc.name)
 		}
 
-		if *out.Table.ProvisionedThroughput.WriteCapacityUnits != desc.provisionedWrite {
-			t.Fatalf("Expected '%d', found '%d' for table '%s'", desc.provisionedWrite, *out.Table.ProvisionedThroughput.WriteCapacityUnits, desc.name)
+		if write != desc.provisionedWrite {
+			t.Fatalf("Expected '%d', found '%d' for table '%s'", desc.provisionedWrite, write, desc.name)
 		}
 	}
 }

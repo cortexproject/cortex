@@ -448,7 +448,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 
 		// Fetch samples from multiple ingesters
 		var numErrs int32
-		errs := make(chan error)
+		errReceived := make(chan error)
 		results := make(chan model.Matrix, len(ingesters))
 
 		for _, ing := range ingesters {
@@ -456,7 +456,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 				result, err := d.queryIngester(ctx, ing, req)
 				if err != nil {
 					if atomic.AddInt32(&numErrs, 1) == int32(maxErrs+1) {
-						errs <- err
+						errReceived <- err
 					}
 				} else {
 					results <- result
@@ -469,7 +469,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 		fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
 		for i := 0; i < minSuccess; i++ {
 			select {
-			case err := <-errs:
+			case err := <-errReceived:
 				return err
 
 			case result := <-results:
@@ -543,7 +543,7 @@ func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}
 			numErrs++
 		}
 	}
-	if numErrs > 1 {
+	if numErrs > d.cfg.ReplicationFactor/2 {
 		return nil, lastErr
 	}
 	return result, nil

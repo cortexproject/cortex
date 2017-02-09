@@ -29,7 +29,7 @@ type mockDynamoDBTable struct {
 
 type mockDynamoDBItem map[string]*dynamodb.AttributeValue
 
-func NewMockDynamoDB(unprocessed int, provisionedErr int) *mockDynamoDBClient {
+func newMockDynamoDB(unprocessed int, provisionedErr int) *mockDynamoDBClient {
 	return &mockDynamoDBClient{
 		tables:         map[string]*mockDynamoDBTable{},
 		unprocessed:    unprocessed,
@@ -96,7 +96,7 @@ func (m *mockDynamoDBClient) BatchWriteItem(input *dynamodb.BatchWriteItemInput)
 }
 
 func TestDynamoDBClient(t *testing.T) {
-	dynamoDB := NewMockDynamoDB(0, 0)
+	dynamoDB := newMockDynamoDB(0, 0)
 	client := dynamoClientAdapter{
 		DynamoDB: dynamoDB,
 	}

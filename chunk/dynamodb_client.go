@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
@@ -73,7 +74,7 @@ func init() {
 }
 
 type dynamoClientAdapter struct {
-	*dynamodb.DynamoDB
+	DynamoDB dynamodbiface.DynamoDBAPI
 }
 
 // NewDynamoDBClient makes a new DynamoDBClient
@@ -106,8 +107,8 @@ func (d dynamoClientAdapter) BatchWrite(ctx context.Context, input WriteBatch) e
 		reqs := map[string][]*dynamodb.WriteRequest{}
 		takeReqs(unprocessed, reqs, dynamoMaxBatchSize)
 		takeReqs(outstanding, reqs, dynamoMaxBatchSize)
-
 		var resp *dynamodb.BatchWriteItemOutput
+
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(_ context.Context) error {
 			var err error
 			resp, err = d.DynamoDB.BatchWriteItem(&dynamodb.BatchWriteItemInput{
@@ -348,7 +349,7 @@ func dictLen(b map[string][]*dynamodb.WriteRequest) int {
 	return result
 }
 
-// Fill b with WriteRequests from 'from' until it 'b' has at most max requests. Remove those requests from 'from'.
+// Fill 'to' with WriteRequests from 'from' until 'to' has at most max requests. Remove those requests from 'from'.
 func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
 	outLen, inLen := dictLen(to), dictLen(from)
 	toFill := inLen
@@ -356,12 +357,11 @@ func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
 		toFill = min(inLen, max-outLen)
 	}
 	for toFill > 0 {
-		for tableName := range from {
-			reqs := from[tableName]
-			taken := min(len(reqs), toFill)
+		for tableName, fromReqs := range from {
+			taken := min(len(fromReqs), toFill)
 			if taken > 0 {
-				to[tableName] = append(from[tableName], reqs[:taken]...)
-				from[tableName] = reqs[taken:]
+				to[tableName] = append(to[tableName], fromReqs[:taken]...)
+				from[tableName] = fromReqs[taken:]
 				toFill -= taken
 			}
 		}

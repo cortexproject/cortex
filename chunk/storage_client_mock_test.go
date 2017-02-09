@@ -111,6 +111,8 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 		if i >= len(items) || !bytes.Equal(items[i], req.rangeValue) {
 			items = append(items, nil)
 			copy(items[i+1:], items[i:])
+		} else {
+			return fmt.Errorf("Dupe write")
 		}
 		items[i] = req.rangeValue
 

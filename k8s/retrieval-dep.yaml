@@ -1,0 +1,29 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: retrieval
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: retrieval
+    spec:
+      containers:
+      - name: retrieval
+        image: prom/prometheus:v1.4.1
+        imagePullPolicy: IfNotPresent
+        args:
+        - -config.file=/etc/prometheus/prometheus.yml
+        - -web.listen-address=:80
+        - -storage.local.engine=none
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/prometheus
+      volumes:
+        - name: config-volume
+          configMap:
+            name: retrieval-config

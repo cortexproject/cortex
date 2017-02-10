@@ -1,0 +1,24 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: table-manager
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: table-manager
+    spec:
+      containers:
+      - name: table-manager
+        image: weaveworks/cortex-table-manager
+        imagePullPolicy: IfNotPresent
+        args:
+        - -server.log-success=true
+        - -server.http-listen-port=80
+        - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000/cortex
+        - -dynamodb.periodic-table.prefix=cortex_weekly_
+        - -dynamodb.periodic-table.start=2017-01-06
+        ports:
+        - containerPort: 80

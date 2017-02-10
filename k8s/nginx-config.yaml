@@ -1,0 +1,39 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: nginx
+data:
+  nginx.conf: |-
+    worker_processes  5;  ## Default: 1
+    error_log  /dev/stderr;
+    pid        nginx.pid;
+    worker_rlimit_nofile 8192;
+
+    events {
+      worker_connections  4096;  ## Default: 1024
+    }
+
+    http {
+      default_type application/octet-stream;
+      log_format   main '$remote_addr - $remote_user [$time_local]  $status '
+        '"$request" $body_bytes_sent "$http_referer" '
+        '"$http_user_agent" "$http_x_forwarded_for"';
+      access_log   /dev/stderr  main;
+      sendfile     on;
+      tcp_nopush   on;
+      resolver 10.0.0.10;
+
+      server { # simple reverse-proxy
+        listen 80;
+        proxy_set_header X-Scope-OrgID 0;
+
+        # pass requests for dynamic content to rails/turbogears/zope, et al
+        location = /api/prom/push {
+          proxy_pass      http://distributor.default.svc.cluster.local$request_uri;
+        }
+
+        location ~ /api/prom/.* {
+          proxy_pass      http://querier.default.svc.cluster.local$request_uri;
+        }
+      }
+    }

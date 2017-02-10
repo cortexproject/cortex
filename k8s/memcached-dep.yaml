@@ -1,0 +1,27 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: memcached
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: memcached
+      annotations:
+        prometheus.io.port: "9150"
+    spec:
+      containers:
+      - name: memcached
+        image: memcached:1.4.25
+        imagePullPolicy: IfNotPresent
+        args:
+        - -m 64 # Maximum memory to use, in megabytes. 64MB is default.
+        - -p 11211 # Default port, but being explicit is nice.
+        ports:
+        - name: clients
+          containerPort: 11211
+        ports:
+        - name: prom
+          containerPort: 9150

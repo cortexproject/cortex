@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingester
+spec:
+  ports:
+    - port: 80
+  selector:
+    name: ingester

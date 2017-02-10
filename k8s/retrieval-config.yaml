@@ -1,0 +1,124 @@
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: retrieval-config
+data:
+  prometheus.yml: |-
+    global:
+      scrape_interval: 30s # By default, scrape targets every 15 seconds.
+
+    remote_write:
+      url: http://nginx.default.svc.cluster.local:80/api/prom/push
+
+    scrape_configs:
+    - job_name: 'kubernetes-pods'
+      kubernetes_sd_configs:
+        - role: pod
+
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+      # You can specify the following annotations (on pods):
+      #   prometheus.io.scrape: false - don't scrape this pod
+      #   prometheus.io.scheme: https - use https for scraping
+      #   prometheus.io.port - scrape this port
+      #   prometheus.io.path - scrape this path
+      relabel_configs:
+
+      # Always use HTTPS for the api server
+      - source_labels: [__meta_kubernetes_service_label_component]
+        regex: apiserver
+        action: replace
+        target_label: __scheme__
+        replacement: https
+
+      # Drop anything annotated with prometheus.io.scrape=false
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: drop
+        regex: false
+
+      # Drop any endpoint who's pod port name ends with -noscrape
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        action: drop
+        regex: .*-noscrape
+
+      # Allow pods to override the scrape scheme with prometheus.io.scheme=https
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+        action: replace
+        target_label: __scheme__
+        regex: ^(https?)$
+        replacement: $1
+
+      # Allow service to override the scrape path with prometheus.io.path=/other_metrics_path
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: ^(.+)$
+        replacement: $1
+
+      # Allow services to override the scrape port with prometheus.io.port=1234
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: (.+?)(\:\d+)?;(\d+)
+        replacement: $1:$3
+
+      # Drop pods without a name label
+      - source_labels: [__meta_kubernetes_pod_label_name]
+        action: drop
+        regex: ^$
+
+      # Rename jobs to be <namespace>/<name, from pod name label>
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_label_name]
+        action: replace
+        separator: /
+        target_label: job
+        replacement: $1
+
+      # Rename instances to be the pod name
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+      # Include node name as a extra field
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: node
+
+    # This scrape config gather all nodes
+    - job_name: 'kubernetes-nodes'
+      kubernetes_sd_configs:
+        - role: node
+
+      # couldn't get prometheus to validate the kublet cert for scraping, so don't bother for now
+      tls_config:
+        insecure_skip_verify: true
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+      relabel_configs:
+      - target_label: __scheme__
+        replacement: https
+      - source_labels: [__meta_kubernetes_node_label_kubernetes_io_hostname]
+        target_label: instance
+
+    # This scrape config just pulls in the default/kubernetes service
+    - job_name: 'kubernetes-service'
+      kubernetes_sd_configs:
+        - role: endpoints
+
+      tls_config:
+        insecure_skip_verify: true
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_label_component]
+        regex: apiserver
+        action: keep
+
+      - target_label: __scheme__
+        replacement: https
+
+      - source_labels: []
+        target_label: job
+        replacement: default/kubernetes

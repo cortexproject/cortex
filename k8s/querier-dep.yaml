@@ -1,0 +1,33 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: querier
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: querier
+    spec:
+      containers:
+      - name: querier
+        image: weaveworks/cortex-querier
+        imagePullPolicy: IfNotPresent
+        args:
+        - -server.log-success=true
+        - -server.http-listen-port=80
+        - -consul.hostname=consul.default.svc.cluster.local:8500
+        - -s3.url=s3://abc:123@s3.default.svc.cluster.local:4569
+        - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000/cortex
+        - -dynamodb.periodic-table.prefix=cortex_weekly_
+        - -dynamodb.periodic-table.start=2017-01-06
+        - -dynamodb.daily-buckets-from=2017-01-10
+        - -dynamodb.base64-buckets-from=2017-01-17
+        - -dynamodb.v4-schema-from=2017-02-05
+        - -memcached.hostname=memcached.default.svc.cluster.local
+        - -memcached.timeout=100ms
+        - -memcached.service=memcached
+        - -distributor.replication-factor=1
+        ports:
+        - containerPort: 80

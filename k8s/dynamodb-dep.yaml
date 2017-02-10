@@ -1,0 +1,20 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: dynamodb
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: dynamodb
+      annotations:
+        prometheus.io.scrape: "false"
+    spec:
+      containers:
+      - name: dynamodb
+        image: deangiberson/aws-dynamodb-local
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000

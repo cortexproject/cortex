@@ -1,0 +1,24 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: distributor
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: distributor
+    spec:
+      containers:
+      - name: distributor
+        image: weaveworks/cortex-distributor
+        imagePullPolicy: IfNotPresent
+        args:
+        - -log.level=debug
+        - -server.log-success=true
+        - -server.http-listen-port=80
+        - -consul.hostname=consul.default.svc.cluster.local:8500
+        - -distributor.replication-factor=1
+        ports:
+        - containerPort: 80

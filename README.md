@@ -67,4 +67,14 @@ To use the Prometheus Service with Grafana, configure your Grafana instance to h
 - User: `user` (this is ignored, but must be non-empty)
 - Password: <Service Token> (the same one your retrieval agent uses)
 
+## Developing
 
+To build & test, install minikube, and run:
+
+    eval $(minikube docker-env)
+    make
+    kubectl create -f ./k8s
+
+Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape it itself.  Try it:
+
+http://192.168.99.100:30080/api/prom/api/v1/query?query=up

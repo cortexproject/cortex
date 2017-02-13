@@ -59,6 +59,15 @@ type Server struct {
 	GRPC *grpc.Server
 }
 
+func init() {
+	tracer, err := loki.NewTracer()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create tracer: %v", err))
+	} else {
+		opentracing.InitGlobalTracer(tracer)
+	}
+}
+
 // New makes a new Server
 func New(cfg Config, r *ring.Ring) *Server {
 	router := mux.NewRouter()
@@ -68,13 +77,7 @@ func New(cfg Config, r *ring.Ring) *Server {
 	router.Handle("/metrics", prometheus.Handler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 
-	tracer, err := loki.NewTracer()
-	if err != nil {
-		log.Errorf("Failed to create tracer: %v", err)
-	} else {
-		opentracing.InitGlobalTracer(tracer)
-		router.Handle("/traces", loki.Handler())
-	}
+	router.Handle("/traces", loki.Handler())
 
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(

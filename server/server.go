@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	_ "net/http/pprof" // anonymous import to get the pprof handler registered
 
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
@@ -65,6 +66,7 @@ func New(cfg Config, r *ring.Ring) *Server {
 		router.Handle("/ring", r)
 	}
 	router.Handle("/metrics", prometheus.Handler())
+	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 
 	tracer, err := loki.NewTracer()
 	if err != nil {

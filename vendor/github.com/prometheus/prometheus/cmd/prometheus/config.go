@@ -27,6 +27,8 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/local"
@@ -47,6 +49,7 @@ var cfg = struct {
 	storage            local.MemorySeriesStorageOptions
 	localStorageEngine string
 	notifier           notifier.Options
+	notifierTimeout    time.Duration
 	queryEngine        promql.EngineOptions
 	web                web.Options
 	remote             remote.Options
@@ -78,6 +81,14 @@ func init() {
 	cfg.fs.StringVar(
 		&cfg.web.ListenAddress, "web.listen-address", ":9090",
 		"Address to listen on for the web interface, API, and telemetry.",
+	)
+	cfg.fs.DurationVar(
+		&cfg.web.ReadTimeout, "web.read-timeout", 30*time.Second,
+		"Maximum duration before timing out read of the request, and closing idle connections.",
+	)
+	cfg.fs.IntVar(
+		&cfg.web.MaxConnections, "web.max-connections", 512,
+		"Maximum number of simultaneous connections.",
 	)
 	cfg.fs.StringVar(
 		&cfg.prometheusURL, "web.external-url", "",
@@ -228,7 +239,7 @@ func init() {
 		"The capacity of the queue for pending alert manager notifications.",
 	)
 	cfg.fs.DurationVar(
-		&cfg.notifier.Timeout, "alertmanager.timeout", 10*time.Second,
+		&cfg.notifierTimeout, "alertmanager.timeout", 10*time.Second,
 		"Alert manager HTTP API timeout.",
 	)
 
@@ -283,7 +294,6 @@ func parse(args []string) error {
 		if err := validateAlertmanagerURL(u); err != nil {
 			return err
 		}
-		cfg.notifier.AlertmanagerURLs = cfg.alertmanagerURLs.slice()
 	}
 
 	cfg.remote.InfluxdbPassword = os.Getenv("INFLUXDB_PW")
@@ -355,6 +365,43 @@ func validateAlertmanagerURL(u string) error {
 		return fmt.Errorf("missing scheme in Alertmanager URL: %s", u)
 	}
 	return nil
+}
+
+func parseAlertmanagerURLToConfig(us string) (*config.AlertmanagerConfig, error) {
+	u, err := url.Parse(us)
+	if err != nil {
+		return nil, err
+	}
+	acfg := &config.AlertmanagerConfig{
+		Scheme:     u.Scheme,
+		PathPrefix: u.Path,
+		Timeout:    cfg.notifierTimeout,
+		ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
+			StaticConfigs: []*config.TargetGroup{
+				{
+					Targets: []model.LabelSet{
+						{
+							model.AddressLabel: model.LabelValue(u.Host),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if u.User != nil {
+		acfg.HTTPClientConfig = config.HTTPClientConfig{
+			BasicAuth: &config.BasicAuth{
+				Username: u.User.Username(),
+			},
+		}
+
+		if password, isSet := u.User.Password(); isSet {
+			acfg.HTTPClientConfig.BasicAuth.Password = password
+		}
+	}
+
+	return acfg, nil
 }
 
 var helpTmpl = `

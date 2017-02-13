@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/retrieval"
 	"github.com/prometheus/prometheus/web/api/v1"
 
 	"github.com/weaveworks/common/user"
@@ -21,6 +22,14 @@ import (
 	"github.com/weaveworks/cortex/server"
 	"github.com/weaveworks/cortex/util"
 )
+
+type dummyTargetRetriever struct{}
+
+func (r dummyTargetRetriever) Targets() []*retrieval.Target { return nil }
+
+type dummyAlertmanagerRetriever struct{}
+
+func (r dummyAlertmanagerRetriever) Alertmanagers() []string { return nil }
 
 func main() {
 	var (
@@ -55,7 +64,7 @@ func main() {
 
 	queryable := querier.NewQueryable(dist, chunkStore)
 	engine := promql.NewEngine(queryable, nil)
-	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable})
+	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable}, dummyTargetRetriever{}, dummyAlertmanagerRetriever{})
 	promRouter := route.New(func(r *http.Request) (context.Context, error) {
 		userID := r.Header.Get(user.OrgIDHeaderName)
 		if userID == "" {

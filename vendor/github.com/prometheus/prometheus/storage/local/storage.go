@@ -87,6 +87,11 @@ var (
 		"The maximum number of chunks that can be waiting for persistence before sample ingestion will stop.",
 		nil, nil,
 	)
+	maxMemChunksDesc = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, subsystem, "max_memory_chunks"),
+		"The configured maximum number of chunks that can be held in memory",
+		nil, nil,
+	)
 )
 
 type quarantineRequest struct {
@@ -173,7 +178,9 @@ type MemorySeriesStorage struct {
 	quarantineStopping, quarantineStopped chan struct{}
 
 	persistErrors                 prometheus.Counter
+	queuedChunksToPersist         prometheus.Counter
 	numSeries                     prometheus.Gauge
+	dirtySeries                   prometheus.Gauge
 	seriesOps                     *prometheus.CounterVec
 	ingestedSamplesCount          prometheus.Counter
 	discardedSamplesCount         *prometheus.CounterVec
@@ -235,11 +242,23 @@ func NewMemorySeriesStorage(o *MemorySeriesStorageOptions) *MemorySeriesStorage 
 			Name:      "persist_errors_total",
 			Help:      "The total number of errors while persisting chunks.",
 		}),
+		queuedChunksToPersist: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "queued_chunks_to_persist_total",
+			Help:      "The total number of chunks queued for persistence.",
+		}),
 		numSeries: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "memory_series",
 			Help:      "The current number of series in memory.",
+		}),
+		dirtySeries: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "memory_dirty_series",
+			Help:      "The current number of series that would require a disk seek during crash recovery.",
 		}),
 		seriesOps: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
@@ -938,6 +957,9 @@ func (s *MemorySeriesStorage) getOrCreateSeries(fp model.Fingerprint, m model.Me
 			// while (which is confusing as it makes the series
 			// appear as archived or purged).
 			cds, err = s.loadChunkDescs(fp, 0)
+			if err == nil && len(cds) == 0 {
+				err = fmt.Errorf("unarchived fingerprint %v (metric %v) has no chunks on disk", fp, m)
+			}
 			if err != nil {
 				s.quarantineSeries(fp, m, err)
 				return nil, err
@@ -1230,7 +1252,7 @@ func (s *MemorySeriesStorage) cycleThroughArchivedFingerprints() chan model.Fing
 func (s *MemorySeriesStorage) loop() {
 	checkpointTimer := time.NewTimer(s.checkpointInterval)
 
-	dirtySeriesCount := 0
+	var dirtySeriesCount int64
 
 	defer func() {
 		checkpointTimer.Stop()
@@ -1241,36 +1263,52 @@ func (s *MemorySeriesStorage) loop() {
 	memoryFingerprints := s.cycleThroughMemoryFingerprints()
 	archivedFingerprints := s.cycleThroughArchivedFingerprints()
 
+	// Checkpoints can happen concurrently with maintenance so even with heavy
+	// checkpointing there will still be sufficient progress on maintenance.
+	checkpointLoopStopped := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-s.loopStopping:
+				checkpointLoopStopped <- struct{}{}
+				return
+			case <-checkpointTimer.C:
+				// We clear this before the checkpoint so that dirtySeriesCount
+				// is an upper bound.
+				atomic.StoreInt64(&dirtySeriesCount, 0)
+				s.dirtySeries.Set(0)
+				err := s.persistence.checkpointSeriesMapAndHeads(s.fpToSeries, s.fpLocker)
+				if err != nil {
+					log.Errorln("Error while checkpointing:", err)
+				}
+				// If a checkpoint takes longer than checkpointInterval, unluckily timed
+				// combination with the Reset(0) call below can lead to a case where a
+				// time is lurking in C leading to repeated checkpointing without break.
+				select {
+				case <-checkpointTimer.C: // Get rid of the lurking time.
+				default:
+				}
+				checkpointTimer.Reset(s.checkpointInterval)
+			}
+		}
+	}()
+
 loop:
 	for {
 		select {
 		case <-s.loopStopping:
 			break loop
-		case <-checkpointTimer.C:
-			err := s.persistence.checkpointSeriesMapAndHeads(s.fpToSeries, s.fpLocker)
-			if err != nil {
-				log.Errorln("Error while checkpointing:", err)
-			} else {
-				dirtySeriesCount = 0
-			}
-			// If a checkpoint takes longer than checkpointInterval, unluckily timed
-			// combination with the Reset(0) call below can lead to a case where a
-			// time is lurking in C leading to repeated checkpointing without break.
-			select {
-			case <-checkpointTimer.C: // Get rid of the lurking time.
-			default:
-			}
-			checkpointTimer.Reset(s.checkpointInterval)
 		case fp := <-memoryFingerprints:
 			if s.maintainMemorySeries(fp, model.Now().Add(-s.dropAfter)) {
-				dirtySeriesCount++
+				dirty := atomic.AddInt64(&dirtySeriesCount, 1)
+				s.dirtySeries.Set(float64(dirty))
 				// Check if we have enough "dirty" series so that we need an early checkpoint.
 				// However, if we are already behind persisting chunks, creating a checkpoint
 				// would be counterproductive, as it would slow down chunk persisting even more,
 				// while in a situation like that, where we are clearly lacking speed of disk
 				// maintenance, the best we can do for crash recovery is to persist chunks as
 				// quickly as possible. So only checkpoint if the urgency score is < 1.
-				if dirtySeriesCount >= s.checkpointDirtySeriesLimit &&
+				if dirty >= int64(s.checkpointDirtySeriesLimit) &&
 					s.calculatePersistenceUrgencyScore() < 1 {
 					checkpointTimer.Reset(0)
 				}
@@ -1284,6 +1322,7 @@ loop:
 	}
 	for range archivedFingerprints {
 	}
+	<-checkpointLoopStopped
 }
 
 // maintainMemorySeries maintains a series that is in memory (i.e. not
@@ -1337,7 +1376,12 @@ func (s *MemorySeriesStorage) maintainMemorySeries(
 
 	defer s.seriesOps.WithLabelValues(memoryMaintenance).Inc()
 
-	if series.maybeCloseHeadChunk() {
+	closed, err := series.maybeCloseHeadChunk()
+	if err != nil {
+		s.quarantineSeries(fp, series.metric, err)
+		s.persistErrors.Inc()
+	}
+	if closed {
 		s.incNumChunksToPersist(1)
 	}
 
@@ -1389,6 +1433,11 @@ func (s *MemorySeriesStorage) maintainMemorySeries(
 // contains no chunks after dropping old chunks, it is purged entirely. In that
 // case, the method returns true.
 //
+// If a persist error is encountered, the series is queued for quarantine. In
+// that case, the method returns true, too, because the series should not be
+// processed anymore (even if it will only be gone for real once quarantining
+// has been completed).
+//
 // The caller must have locked the fp.
 func (s *MemorySeriesStorage) writeMemorySeries(
 	fp model.Fingerprint, series *memorySeries, beforeTime model.Time,
@@ -1430,7 +1479,7 @@ func (s *MemorySeriesStorage) writeMemorySeries(
 		var offset int
 		offset, persistErr = s.persistence.persistChunks(fp, chunks)
 		if persistErr != nil {
-			return false
+			return true
 		}
 		if series.chunkDescsOffset == -1 {
 			// This is the first chunk persisted for a newly created
@@ -1444,10 +1493,10 @@ func (s *MemorySeriesStorage) writeMemorySeries(
 	newFirstTime, offset, numDroppedFromPersistence, allDroppedFromPersistence, persistErr :=
 		s.persistence.dropAndPersistChunks(fp, beforeTime, chunks)
 	if persistErr != nil {
-		return false
+		return true
 	}
 	if persistErr = series.dropChunks(beforeTime); persistErr != nil {
-		return false
+		return true
 	}
 	if len(series.chunkDescs) == 0 && allDroppedFromPersistence {
 		// All chunks dropped from both memory and persistence. Delete the series for good.
@@ -1464,7 +1513,8 @@ func (s *MemorySeriesStorage) writeMemorySeries(
 		series.chunkDescsOffset -= numDroppedFromPersistence
 		if series.chunkDescsOffset < 0 {
 			persistErr = errors.New("dropped more chunks from persistence than from memory")
-			series.chunkDescsOffset = -1
+			series.chunkDescsOffset = 0
+			return true
 		}
 	}
 	return false
@@ -1523,6 +1573,9 @@ func (s *MemorySeriesStorage) getNumChunksToPersist() int {
 // negative 'by' to decrement.
 func (s *MemorySeriesStorage) incNumChunksToPersist(by int) {
 	atomic.AddInt64(&s.numChunksToPersist, int64(by))
+	if by > 0 {
+		s.queuedChunksToPersist.Add(float64(by))
+	}
 }
 
 // calculatePersistenceUrgencyScore calculates and returns an urgency score for
@@ -1726,9 +1779,11 @@ func (s *MemorySeriesStorage) Describe(ch chan<- *prometheus.Desc) {
 	s.mapper.Describe(ch)
 
 	ch <- s.persistErrors.Desc()
+	ch <- s.queuedChunksToPersist.Desc()
 	ch <- maxChunksToPersistDesc
 	ch <- numChunksToPersistDesc
 	ch <- s.numSeries.Desc()
+	ch <- s.dirtySeries.Desc()
 	s.seriesOps.Describe(ch)
 	ch <- s.ingestedSamplesCount.Desc()
 	s.discardedSamplesCount.Describe(ch)
@@ -1745,6 +1800,7 @@ func (s *MemorySeriesStorage) Collect(ch chan<- prometheus.Metric) {
 	s.mapper.Collect(ch)
 
 	ch <- s.persistErrors
+	ch <- s.queuedChunksToPersist
 	ch <- prometheus.MustNewConstMetric(
 		maxChunksToPersistDesc,
 		prometheus.GaugeValue,
@@ -1756,10 +1812,16 @@ func (s *MemorySeriesStorage) Collect(ch chan<- prometheus.Metric) {
 		float64(s.getNumChunksToPersist()),
 	)
 	ch <- s.numSeries
+	ch <- s.dirtySeries
 	s.seriesOps.Collect(ch)
 	ch <- s.ingestedSamplesCount
 	s.discardedSamplesCount.Collect(ch)
 	ch <- s.nonExistentSeriesMatchesCount
+	ch <- prometheus.MustNewConstMetric(
+		maxMemChunksDesc,
+		prometheus.GaugeValue,
+		float64(s.maxMemoryChunks),
+	)
 	ch <- prometheus.MustNewConstMetric(
 		chunk.NumMemChunksDesc,
 		prometheus.GaugeValue,

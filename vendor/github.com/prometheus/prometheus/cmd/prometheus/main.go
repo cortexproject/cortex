@@ -126,6 +126,7 @@ func Main() int {
 	cfg.web.QueryEngine = queryEngine
 	cfg.web.TargetManager = targetManager
 	cfg.web.RuleManager = ruleManager
+	cfg.web.Notifier = notifier
 
 	cfg.web.Version = &web.PrometheusVersion{
 		Version:   version.Version,
@@ -257,6 +258,15 @@ func reloadConfig(filename string, rls ...Reloadable) (err error) {
 	conf, err := config.LoadFile(filename)
 	if err != nil {
 		return fmt.Errorf("couldn't load configuration (-config.file=%s): %v", filename, err)
+	}
+
+	// Add AlertmanagerConfigs for legacy Alertmanager URL flags.
+	for us := range cfg.alertmanagerURLs {
+		acfg, err := parseAlertmanagerURLToConfig(us)
+		if err != nil {
+			return err
+		}
+		conf.AlertingConfig.AlertmanagerConfigs = append(conf.AlertingConfig.AlertmanagerConfigs, acfg)
 	}
 
 	failed := false

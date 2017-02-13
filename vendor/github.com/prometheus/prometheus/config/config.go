@@ -87,6 +87,12 @@ var (
 		HonorLabels: false,
 	}
 
+	// DefaultAlertmanagerConfig is the default alertmanager configuration.
+	DefaultAlertmanagerConfig = AlertmanagerConfig{
+		Scheme:  "http",
+		Timeout: 10 * time.Second,
+	}
+
 	// DefaultRelabelConfig is the default Relabel configuration.
 	DefaultRelabelConfig = RelabelConfig{
 		Action:      RelabelReplace,
@@ -148,6 +154,13 @@ var (
 	DefaultAzureSDConfig = AzureSDConfig{
 		Port:            80,
 		RefreshInterval: model.Duration(5 * time.Minute),
+	}
+
+	// DefaultTritonSDConfig is the default Triton SD configuration.
+	DefaultTritonSDConfig = TritonSDConfig{
+		Port:            9163,
+		RefreshInterval: model.Duration(60 * time.Second),
+		Version:         1,
 	}
 
 	// DefaultRemoteWriteConfig is the default remote write configuration.
@@ -214,25 +227,33 @@ func resolveFilepaths(baseDir string, cfg *Config) {
 		cfg.RuleFiles[i] = join(rf)
 	}
 
-	for _, scfg := range cfg.ScrapeConfigs {
+	clientPaths := func(scfg *HTTPClientConfig) {
 		scfg.BearerTokenFile = join(scfg.BearerTokenFile)
 		scfg.TLSConfig.CAFile = join(scfg.TLSConfig.CAFile)
 		scfg.TLSConfig.CertFile = join(scfg.TLSConfig.CertFile)
 		scfg.TLSConfig.KeyFile = join(scfg.TLSConfig.KeyFile)
-
-		for _, kcfg := range scfg.KubernetesSDConfigs {
+	}
+	sdPaths := func(cfg *ServiceDiscoveryConfig) {
+		for _, kcfg := range cfg.KubernetesSDConfigs {
 			kcfg.BearerTokenFile = join(kcfg.BearerTokenFile)
 			kcfg.TLSConfig.CAFile = join(kcfg.TLSConfig.CAFile)
 			kcfg.TLSConfig.CertFile = join(kcfg.TLSConfig.CertFile)
 			kcfg.TLSConfig.KeyFile = join(kcfg.TLSConfig.KeyFile)
 		}
-
-		for _, mcfg := range scfg.MarathonSDConfigs {
+		for _, mcfg := range cfg.MarathonSDConfigs {
 			mcfg.TLSConfig.CAFile = join(mcfg.TLSConfig.CAFile)
 			mcfg.TLSConfig.CertFile = join(mcfg.TLSConfig.CertFile)
 			mcfg.TLSConfig.KeyFile = join(mcfg.TLSConfig.KeyFile)
 		}
+	}
 
+	for _, cfg := range cfg.ScrapeConfigs {
+		clientPaths(&cfg.HTTPClientConfig)
+		sdPaths(&cfg.ServiceDiscoveryConfig)
+	}
+	for _, cfg := range cfg.AlertingConfig.AlertmanagerConfigs {
+		clientPaths(&cfg.HTTPClientConfig)
+		sdPaths(&cfg.ServiceDiscoveryConfig)
 	}
 }
 
@@ -310,11 +331,6 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		jobNames[scfg.JobName] = struct{}{}
 	}
 	return nil
-}
-
-// AlertingConfig configures alerting and alertmanager related configs
-type AlertingConfig struct {
-	AlertRelabelConfigs []*RelabelConfig `yaml:"alert_relabel_configs,omitempty"`
 }
 
 // GlobalConfig configures values that are used across other configuration
@@ -404,33 +420,8 @@ func (c *TLSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// ScrapeConfig configures a scraping unit for Prometheus.
-type ScrapeConfig struct {
-	// The job name to which the job label is set by default.
-	JobName string `yaml:"job_name"`
-	// Indicator whether the scraped metrics should remain unmodified.
-	HonorLabels bool `yaml:"honor_labels,omitempty"`
-	// A set of query parameters with which the target is scraped.
-	Params url.Values `yaml:"params,omitempty"`
-	// How frequently to scrape the targets of this scrape config.
-	ScrapeInterval model.Duration `yaml:"scrape_interval,omitempty"`
-	// The timeout for scraping targets of this config.
-	ScrapeTimeout model.Duration `yaml:"scrape_timeout,omitempty"`
-	// The HTTP resource path on which to fetch metrics from targets.
-	MetricsPath string `yaml:"metrics_path,omitempty"`
-	// The URL scheme with which to fetch metrics from targets.
-	Scheme string `yaml:"scheme,omitempty"`
-	// The HTTP basic authentication credentials for the targets.
-	BasicAuth *BasicAuth `yaml:"basic_auth,omitempty"`
-	// The bearer token for the targets.
-	BearerToken string `yaml:"bearer_token,omitempty"`
-	// The bearer token file for the targets.
-	BearerTokenFile string `yaml:"bearer_token_file,omitempty"`
-	// HTTP proxy server to use to connect to the targets.
-	ProxyURL URL `yaml:"proxy_url,omitempty"`
-	// TLSConfig to use to connect to the targets.
-	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
-
+// ServiceDiscoveryConfig configures lists of different service discovery mechanisms.
+type ServiceDiscoveryConfig struct {
 	// List of labeled target groups for this job.
 	StaticConfigs []*TargetGroup `yaml:"static_configs,omitempty"`
 	// List of DNS service discovery configurations.
@@ -453,6 +444,76 @@ type ScrapeConfig struct {
 	EC2SDConfigs []*EC2SDConfig `yaml:"ec2_sd_configs,omitempty"`
 	// List of Azure service discovery configurations.
 	AzureSDConfigs []*AzureSDConfig `yaml:"azure_sd_configs,omitempty"`
+	// List of Triton service discovery configurations.
+	TritonSDConfigs []*TritonSDConfig `yaml:"triton_sd_configs,omitempty"`
+
+	// Catches all undefined fields and must be empty after parsing.
+	XXX map[string]interface{} `yaml:",inline"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *ServiceDiscoveryConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type plain ServiceDiscoveryConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	if err := checkOverflow(c.XXX, "service discovery config"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// HTTPClientConfig configures an HTTP client.
+type HTTPClientConfig struct {
+	// The HTTP basic authentication credentials for the targets.
+	BasicAuth *BasicAuth `yaml:"basic_auth,omitempty"`
+	// The bearer token for the targets.
+	BearerToken string `yaml:"bearer_token,omitempty"`
+	// The bearer token file for the targets.
+	BearerTokenFile string `yaml:"bearer_token_file,omitempty"`
+	// HTTP proxy server to use to connect to the targets.
+	ProxyURL URL `yaml:"proxy_url,omitempty"`
+	// TLSConfig to use to connect to the targets.
+	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
+
+	// Catches all undefined fields and must be empty after parsing.
+	XXX map[string]interface{} `yaml:",inline"`
+}
+
+func (c *HTTPClientConfig) validate() error {
+	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
+		return fmt.Errorf("at most one of bearer_token & bearer_token_file must be configured")
+	}
+	if c.BasicAuth != nil && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
+		return fmt.Errorf("at most one of basic_auth, bearer_token & bearer_token_file must be configured")
+	}
+	return nil
+}
+
+// ScrapeConfig configures a scraping unit for Prometheus.
+type ScrapeConfig struct {
+	// The job name to which the job label is set by default.
+	JobName string `yaml:"job_name"`
+	// Indicator whether the scraped metrics should remain unmodified.
+	HonorLabels bool `yaml:"honor_labels,omitempty"`
+	// A set of query parameters with which the target is scraped.
+	Params url.Values `yaml:"params,omitempty"`
+	// How frequently to scrape the targets of this scrape config.
+	ScrapeInterval model.Duration `yaml:"scrape_interval,omitempty"`
+	// The timeout for scraping targets of this config.
+	ScrapeTimeout model.Duration `yaml:"scrape_timeout,omitempty"`
+	// The HTTP resource path on which to fetch metrics from targets.
+	MetricsPath string `yaml:"metrics_path,omitempty"`
+	// The URL scheme with which to fetch metrics from targets.
+	Scheme string `yaml:"scheme,omitempty"`
+	// More than this many samples post metric-relabelling will cause the scrape to fail.
+	SampleLimit uint `yaml:"sample_limit,omitempty"`
+
+	// We cannot do proper Go type embedding below as the parser will then parse
+	// values arbitrarily into the overflow maps of further-down types.
+
+	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
+	HTTPClientConfig       HTTPClientConfig       `yaml:",inline"`
 
 	// List of target relabel configurations.
 	RelabelConfigs []*RelabelConfig `yaml:"relabel_configs,omitempty"`
@@ -477,17 +538,96 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if len(c.JobName) == 0 {
 		return fmt.Errorf("job_name is empty")
 	}
-	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
-		return fmt.Errorf("at most one of bearer_token & bearer_token_file must be configured")
+
+	// The UnmarshalYAML method of HTTPClientConfig is not being called because it's not a pointer.
+	// We cannot make it a pointer as the parser panics for inlined pointer structs.
+	// Thus we just do its validation here.
+	if err := c.HTTPClientConfig.validate(); err != nil {
+		return err
 	}
-	if c.BasicAuth != nil && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
-		return fmt.Errorf("at most one of basic_auth, bearer_token & bearer_token_file must be configured")
-	}
+
 	// Check for users putting URLs in target groups.
 	if len(c.RelabelConfigs) == 0 {
-		for _, tg := range c.StaticConfigs {
+		for _, tg := range c.ServiceDiscoveryConfig.StaticConfigs {
 			for _, t := range tg.Targets {
 				if err = CheckTargetAddress(t[model.AddressLabel]); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// AlertingConfig configures alerting and alertmanager related configs.
+type AlertingConfig struct {
+	AlertRelabelConfigs []*RelabelConfig      `yaml:"alert_relabel_configs,omitempty"`
+	AlertmanagerConfigs []*AlertmanagerConfig `yaml:"alertmanagers,omitempty"`
+
+	// Catches all undefined fields and must be empty after parsing.
+	XXX map[string]interface{} `yaml:",inline"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *AlertingConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Create a clean global config as the previous one was already populated
+	// by the default due to the YAML parser behavior for empty blocks.
+	*c = AlertingConfig{}
+	type plain AlertingConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	if err := checkOverflow(c.XXX, "alerting config"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// AlertmanagersConfig configures how Alertmanagers can be discovered and communicated with.
+type AlertmanagerConfig struct {
+	// We cannot do proper Go type embedding below as the parser will then parse
+	// values arbitrarily into the overflow maps of further-down types.
+
+	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
+	HTTPClientConfig       HTTPClientConfig       `yaml:",inline"`
+
+	// The URL scheme to use when talking to Alertmanagers.
+	Scheme string `yaml:"scheme,omitempty"`
+	// Path prefix to add in front of the push endpoint path.
+	PathPrefix string `yaml:"path_prefix,omitempty"`
+	// The timeout used when sending alerts.
+	Timeout time.Duration `yaml:"timeout,omitempty"`
+
+	// List of Alertmanager relabel configurations.
+	RelabelConfigs []*RelabelConfig `yaml:"relabel_configs,omitempty"`
+
+	// Catches all undefined fields and must be empty after parsing.
+	XXX map[string]interface{} `yaml:",inline"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultAlertmanagerConfig
+	type plain AlertmanagerConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	if err := checkOverflow(c.XXX, "alertmanager config"); err != nil {
+		return err
+	}
+
+	// The UnmarshalYAML method of HTTPClientConfig is not being called because it's not a pointer.
+	// We cannot make it a pointer as the parser panics for inlined pointer structs.
+	// Thus we just do its validation here.
+	if err := c.HTTPClientConfig.validate(); err != nil {
+		return err
+	}
+
+	// Check for users putting URLs in target groups.
+	if len(c.RelabelConfigs) == 0 {
+		for _, tg := range c.ServiceDiscoveryConfig.StaticConfigs {
+			for _, t := range tg.Targets {
+				if err := CheckTargetAddress(t[model.AddressLabel]); err != nil {
 					return err
 				}
 			}
@@ -857,6 +997,11 @@ func (c *KubernetesSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 	if c.BasicAuth != nil && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
 		return fmt.Errorf("at most one of basic_auth, bearer_token & bearer_token_file must be configured")
 	}
+	if c.APIServer.URL == nil &&
+		(c.BasicAuth != nil || c.BearerToken != "" || c.BearerTokenFile != "" ||
+			c.TLSConfig.CAFile != "" || c.TLSConfig.CertFile != "" || c.TLSConfig.KeyFile != "") {
+		return fmt.Errorf("to use custom authentication please provide the 'api_server' URL explicitly")
+	}
 	return nil
 }
 
@@ -957,6 +1102,42 @@ func (c *AzureSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return checkOverflow(c.XXX, "azure_sd_config")
 }
 
+// TritonSDConfig is the configuration for Triton based service discovery.
+type TritonSDConfig struct {
+	Account         string         `yaml:"account"`
+	DNSSuffix       string         `yaml:"dns_suffix"`
+	Endpoint        string         `yaml:"endpoint"`
+	Port            int            `yaml:"port"`
+	RefreshInterval model.Duration `yaml:"refresh_interval,omitempty"`
+	TLSConfig       TLSConfig      `yaml:"tls_config,omitempty"`
+	Version         int            `yaml:"version"`
+	// Catches all undefined fields and must be empty after parsing.
+	XXX map[string]interface{} `yaml:",inline"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *TritonSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultTritonSDConfig
+	type plain TritonSDConfig
+	err := unmarshal((*plain)(c))
+	if err != nil {
+		return err
+	}
+	if c.Account == "" {
+		return fmt.Errorf("Triton SD configuration requires an account")
+	}
+	if c.DNSSuffix == "" {
+		return fmt.Errorf("Triton SD configuration requires a dns_suffix")
+	}
+	if c.Endpoint == "" {
+		return fmt.Errorf("Triton SD configuration requires an endpoint")
+	}
+	if c.RefreshInterval <= 0 {
+		return fmt.Errorf("Triton SD configuration requires RefreshInterval to be a positive integer")
+	}
+	return checkOverflow(c.XXX, "triton_sd_config")
+}
+
 // RelabelAction is the action to be performed on relabeling.
 type RelabelAction string
 
@@ -971,6 +1152,10 @@ const (
 	RelabelHashMod RelabelAction = "hashmod"
 	// RelabelLabelMap copies labels to other labelnames based on a regex.
 	RelabelLabelMap RelabelAction = "labelmap"
+	// RelabelLabelDrop drops any label matching the regex.
+	RelabelLabelDrop RelabelAction = "labeldrop"
+	// RelabelLabelKeep drops any label not matching the regex.
+	RelabelLabelKeep RelabelAction = "labelkeep"
 )
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -980,7 +1165,7 @@ func (a *RelabelAction) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	switch act := RelabelAction(strings.ToLower(s)); act {
-	case RelabelReplace, RelabelKeep, RelabelDrop, RelabelHashMod, RelabelLabelMap:
+	case RelabelReplace, RelabelKeep, RelabelDrop, RelabelHashMod, RelabelLabelMap, RelabelLabelDrop, RelabelLabelKeep:
 		*a = act
 		return nil
 	}

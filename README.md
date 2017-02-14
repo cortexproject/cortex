@@ -9,9 +9,10 @@
 
 Cortex is an API compatible [Prometheus](https://prometheus.io) implementation, that natively supports multitenancy and horizontal scale-out clustering.
 
-Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works). If you have any questions regarding our hosted Prometheus as a service, please contact [help@weave.works](mailto:help@weave.works).
+Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works). 
 
-## Getting started with Weave Cloud & Kubernetes
+
+## Getting Started with Weave Cloud & Kubernetes
 
 Go to https://cloud.weave.works and sign up. Follow the steps to create a new instance.
 
@@ -78,3 +79,14 @@ To build & test, install minikube, and run:
 Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape it itself.  Try it:
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
+
+## <a name="help"></a>Getting help
+
+If you have any questions regarding Cortex our hosted Prometheus as a service:
+
+- Invite yourself to the <a href="https://weaveworks.github.io/community-slack/" target="_blank"> #weave-community </a> slack channel.
+- Ask a question on the <a href="https://weave-community.slack.com/messages/general/"> #weave-community</a> slack channel.
+- Join the <a href="https://www.meetup.com/pro/Weave/"> Weave User Group </a> and get invited to online talks, hands-on training and meetups in your area.
+- Send an email to <a href="mailto:weave-users@weave.works">weave-users@weave.works</a>
+- <a href="https://github.com/weaveworks/Cortex/issues/new">File an issue.</a>
+

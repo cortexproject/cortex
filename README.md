@@ -88,5 +88,6 @@ If you have any questions regarding Cortex our hosted Prometheus as a service:
 - Ask a question on the <a href="https://weave-community.slack.com/messages/general/"> #weave-community</a> slack channel.
 - Join the <a href="https://www.meetup.com/pro/Weave/"> Weave User Group </a> and get invited to online talks, hands-on training and meetups in your area.
 - Send an email to <a href="mailto:weave-users@weave.works">weave-users@weave.works</a>
-- <a href="https://github.com/weaveworks/Cortex/issues/new">File an issue.</a>
+- <a href="https://github.com/weaveworks/cortex/issues/new">File an issue.</a>
 
+Your feedback is always welcome!

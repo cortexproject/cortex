@@ -283,9 +283,14 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		return &cortex.WriteResponse{}, nil
 	}
 
-	limiter := d.getOrCreateIngestLimiter(userID)
-	if !limiter.AllowN(time.Now(), len(samples)) {
-		return nil, errIngestionRateLimitExceeded
+	if err := instrument.TimeRequestHistogram(ctx, "Distributor.Push[limiter]", nil, func(ctx context.Context) error {
+		limiter := d.getOrCreateIngestLimiter(userID)
+		if !limiter.AllowN(time.Now(), len(samples)) {
+			return errIngestionRateLimitExceeded
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	keys := make([]uint32, len(samples), len(samples))
@@ -293,8 +298,15 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		keys[i] = tokenForMetric(userID, sample.Metric)
 	}
 
-	ingesters, err := d.ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
-	if err != nil {
+	var ingesters [][]*ring.IngesterDesc
+	if err := instrument.TimeRequestHistogram(ctx, "Distributor.Push[ring-lookup]", nil, func(ctx context.Context) error {
+		var err error
+		ingesters, err = d.ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
+		if err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 

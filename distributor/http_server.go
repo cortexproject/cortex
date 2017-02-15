@@ -1,9 +1,15 @@
 package distributor
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
+	"github.com/golang/protobuf/proto"
+	"github.com/golang/snappy"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
@@ -11,19 +17,28 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/remote"
 
+	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/util"
 )
 
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	var req remote.WriteRequest
-	ctx, abort := util.ParseProtoRequest(w, r, &req, true)
-	if abort {
+	ctx, err := contextFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	_, err := d.Push(ctx, &req)
-	if err != nil {
+	var req cortex.WriteRequest
+	if err := ParseProtoRequest(ctx, w, r, &req, true); err != nil {
+		log.Errorf(err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if _, err := d.Push(ctx, &req); err != nil {
 		if grpc.Code(err) == codes.ResourceExhausted {
 			switch grpc.ErrorDesc(err) {
 			case util.ErrUserSeriesLimitExceeded.Error():
@@ -55,8 +70,9 @@ type UserStats struct {
 
 // UserStatsHandler handles user stats to the Distributor.
 func (d *Distributor) UserStatsHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, abort := util.ParseProtoRequest(w, r, nil, false)
-	if abort {
+	ctx, err := contextFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -66,7 +82,7 @@ func (d *Distributor) UserStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	util.WriteJSONResponse(w, stats)
+	WriteJSONResponse(w, stats)
 }
 
 // ValidateExprHandler validates a PromQL expression.
@@ -77,7 +93,7 @@ func (d *Distributor) ValidateExprHandler(w http.ResponseWriter, r *http.Request
 	// consistency, but unfortunately its private types (string consts etc.)
 	// aren't reusable.
 	if err == nil {
-		util.WriteJSONResponse(w, map[string]string{
+		WriteJSONResponse(w, map[string]string{
 			"status": "success",
 		})
 		return
@@ -98,7 +114,7 @@ func (d *Distributor) ValidateExprHandler(w http.ResponseWriter, r *http.Request
 		parseErr.Line = 1
 	}
 	w.WriteHeader(http.StatusBadRequest)
-	util.WriteJSONResponse(w, map[string]interface{}{
+	WriteJSONResponse(w, map[string]interface{}{
 		"status":    "error",
 		"errorType": "bad_data",
 		"error":     err.Error(),
@@ -107,4 +123,50 @@ func (d *Distributor) ValidateExprHandler(w http.ResponseWriter, r *http.Request
 			"pos":  parseErr.Pos,
 		},
 	})
+}
+
+func contextFromRequest(r *http.Request) (context.Context, error) {
+	userID := r.Header.Get(user.OrgIDHeaderName)
+	if userID == "" {
+		return r.Context(), fmt.Errorf("No %s header", user.OrgIDHeaderName)
+	}
+	return user.WithID(r.Context(), userID), nil
+}
+
+// ParseProtoRequest parses a proto from the body of a http request.
+func ParseProtoRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, req proto.Message, compressed bool) error {
+	var reader io.Reader = r.Body
+	if compressed {
+		reader = snappy.NewReader(r.Body)
+	}
+
+	buf := bytes.Buffer{}
+	if err := instrument.TimeRequestHistogram(ctx, "Distributor.PushHandler[decompress]", nil, func(_ context.Context) error {
+		_, err := buf.ReadFrom(reader)
+		return err
+	}); err != nil {
+		return err
+	}
+
+	if err := instrument.TimeRequestHistogram(ctx, "Distributor.PushHandler[unmarshall]", nil, func(_ context.Context) error {
+		return proto.Unmarshal(buf.Bytes(), req)
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// WriteJSONResponse writes some JSON as a HTTP response.
+func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err = w.Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
 }

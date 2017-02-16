@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: querier
-        image: weaveworks/cortex-querier
+        image: quay.io/weaveworks/cortex-querier
         imagePullPolicy: IfNotPresent
         args:
         - -server.log-success=true

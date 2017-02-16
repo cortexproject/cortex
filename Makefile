@@ -78,7 +78,7 @@ $(EXES): build/$(UPTODATE)
 	$(NETGO_CHECK)
 
 %.pb.go: build/$(UPTODATE)
-	protoc -I ./vendor:./$(@D) --go_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
+	protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint: build/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .

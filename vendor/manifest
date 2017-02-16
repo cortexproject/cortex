@@ -310,31 +310,13 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/gogo/protobuf/proto",
+			"importpath": "github.com/gogo/protobuf",
 			"repository": "https://github.com/gogo/protobuf",
 			"vcs": "git",
-			"revision": "fb8a359905af6e2b6517cccda0ba25915322ee88",
+			"revision": "d2e1ade2d719b78fe5b061b4c18a9f7111b5bdc8",
 			"branch": "master",
-			"path": "/proto",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/gogo/protobuf/sortkeys",
-			"repository": "https://github.com/gogo/protobuf",
-			"vcs": "git",
-			"revision": "fb8a359905af6e2b6517cccda0ba25915322ee88",
-			"branch": "master",
-			"path": "sortkeys",
-			"notests": true
-		},
-		{
-			"importpath": "github.com/gogo/protobuf/types",
-			"repository": "https://github.com/gogo/protobuf",
-			"vcs": "git",
-			"revision": "fb8a359905af6e2b6517cccda0ba25915322ee88",
-			"branch": "master",
-			"path": "types",
-			"notests": true
+			"notests": true,
+			"allfiles": true
 		},
 		{
 			"importpath": "github.com/golang/glog",

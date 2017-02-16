@@ -8,12 +8,13 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/weaveworks/common/test"
 )
 
 func TestWriteRequest(t *testing.T) {
-	want := []*model.Sample{}
+	want := []model.Sample{}
 	for i := 0; i < 10; i++ {
-		want = append(want, &model.Sample{
+		want = append(want, model.Sample{
 			Metric: model.Metric{
 				model.MetricNameLabel: model.LabelValue(fmt.Sprintf("testmetric_%d", i)),
 				model.JobLabel:        "testjob",
@@ -25,8 +26,8 @@ func TestWriteRequest(t *testing.T) {
 
 	have := FromWriteRequest(ToWriteRequest(want))
 
-	if !reflect.DeepEqual(have, want) {
-		t.Fatalf("Bad FromWriteRequest(ToWriteRequest) round trip")
+	if !reflect.DeepEqual(want, have) {
+		t.Fatalf(test.Diff(want, have))
 	}
 }
 

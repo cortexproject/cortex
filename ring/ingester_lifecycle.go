@@ -115,7 +115,7 @@ func RegisterIngester(cfg IngesterRegistrationConfig) (*IngesterRegistration, er
 		quit: make(chan struct{}),
 
 		// Only read/written on actor goroutine.
-		state:       IngesterState_ACTIVE,
+		state:       ACTIVE,
 		stateChange: make(chan IngesterState),
 	}
 

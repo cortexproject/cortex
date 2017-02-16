@@ -1,15 +1,22 @@
 syntax = "proto3";
 
-import "github.com/prometheus/prometheus/storage/remote/remote.proto";
-
 package cortex;
 
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
 service Ingester {
-  rpc Push(remote.WriteRequest) returns (WriteResponse) {};
+  rpc Push(WriteRequest) returns (WriteResponse) {};
   rpc Query(QueryRequest) returns (QueryResponse) {};
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
   rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
+}
+
+message WriteRequest {
+  repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false];
 }
 
 message WriteResponse {}
@@ -21,7 +28,7 @@ message QueryRequest {
 }
 
 message QueryResponse {
-  repeated remote.TimeSeries timeseries = 1;
+  repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false];
 }
 
 message LabelValuesRequest {
@@ -49,12 +56,29 @@ message MetricsForLabelMatchersResponse {
   repeated Metric metric = 1;
 }
 
+
+message TimeSeries {
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false];
+  // Sorted by time, oldest sample first.
+  repeated Sample samples   = 2 [(gogoproto.nullable) = false];
+}
+
+message LabelPair {
+  bytes name  = 1 [(gogoproto.customtype) = "github.com/weaveworks/cortex/util/wire.Bytes", (gogoproto.nullable) = false];
+  bytes value = 2 [(gogoproto.customtype) = "github.com/weaveworks/cortex/util/wire.Bytes", (gogoproto.nullable) = false];
+}
+
+message Sample {
+  double value       = 1;
+  int64 timestamp_ms = 2;
+}
+
 message LabelMatchers {
   repeated LabelMatcher matchers = 1;
 }
 
 message Metric {
-  repeated remote.LabelPair labels = 1;
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false];
 }
 
 enum MatchType {

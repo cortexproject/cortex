@@ -15,7 +15,6 @@ import (
 
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage/remote"
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"

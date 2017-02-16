@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -44,7 +43,7 @@ type mockIngester struct {
 	happy bool
 }
 
-func (i mockIngester) Push(ctx context.Context, in *remote.WriteRequest, opts ...grpc.CallOption) (*cortex.WriteResponse, error) {
+func (i mockIngester) Push(ctx context.Context, in *cortex.WriteRequest, opts ...grpc.CallOption) (*cortex.WriteResponse, error) {
 	if !i.happy {
 		return nil, fmt.Errorf("Fail")
 	}
@@ -56,15 +55,15 @@ func (i mockIngester) Query(ctx context.Context, in *cortex.QueryRequest, opts .
 		return nil, fmt.Errorf("Fail")
 	}
 	return &cortex.QueryResponse{
-		Timeseries: []*remote.TimeSeries{
+		Timeseries: []cortex.TimeSeries{
 			{
-				Labels: []*remote.LabelPair{
+				Labels: []cortex.LabelPair{
 					{
-						Name:  "__name__",
-						Value: "foo",
+						Name:  []byte("__name__"),
+						Value: []byte("foo"),
 					},
 				},
-				Samples: []*remote.Sample{
+				Samples: []cortex.Sample{
 					{
 						Value:       0,
 						TimestampMs: 0,
@@ -169,16 +168,16 @@ func TestDistributorPush(t *testing.T) {
 			}
 			defer d.Stop()
 
-			request := &remote.WriteRequest{}
+			request := &cortex.WriteRequest{}
 			for i := 0; i < tc.samples; i++ {
-				ts := &remote.TimeSeries{
-					Labels: []*remote.LabelPair{
-						{"__name__", "foo"},
-						{"bar", "baz"},
-						{"sample", fmt.Sprintf("%d", i)},
+				ts := cortex.TimeSeries{
+					Labels: []cortex.LabelPair{
+						{[]byte("__name__"), []byte("foo")},
+						{[]byte("bar"), []byte("baz")},
+						{[]byte("sample"), []byte(fmt.Sprintf("%d", i))},
 					},
 				}
-				ts.Samples = []*remote.Sample{
+				ts.Samples = []cortex.Sample{
 					{
 						Value:       float64(i),
 						TimestampMs: int64(i),

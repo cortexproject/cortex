@@ -171,7 +171,7 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, er
 		// set of replicas for the key.  This means we have to also increase the
 		// size of the replica set for read, but we can read from Leaving ingesters,
 		// so don't skip it in this case.
-		if ingester.State == IngesterState_LEAVING {
+		if ingester.State == LEAVING {
 			n++
 			if op == Write {
 				continue
@@ -214,7 +214,7 @@ func (r *Ring) Ready() bool {
 	for _, ingester := range r.ringDesc.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
 			return false
-		} else if ingester.State != IngesterState_ACTIVE {
+		} else if ingester.State != ACTIVE {
 			return false
 		}
 	}
@@ -272,9 +272,9 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 
 	// Initialised to zero so we emit zero-metrics (instead of not emitting anything)
 	byState := map[string]int{
-		unhealthy:                      0,
-		IngesterState_ACTIVE.String():  0,
-		IngesterState_LEAVING.String(): 0,
+		unhealthy:        0,
+		ACTIVE.String():  0,
+		LEAVING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {

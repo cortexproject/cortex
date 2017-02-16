@@ -310,31 +310,54 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/gogo/protobuf/gogoproto",
+			"repository": "https://github.com/gogo/protobuf",
+			"vcs": "git",
+			"revision": "d2e1ade2d719b78fe5b061b4c18a9f7111b5bdc8",
+			"branch": "master",
+			"path": "/gogoproto",
+			"notests": true,
+			"allfiles": true
+		},
+		{
 			"importpath": "github.com/gogo/protobuf/proto",
 			"repository": "https://github.com/gogo/protobuf",
 			"vcs": "git",
-			"revision": "fb8a359905af6e2b6517cccda0ba25915322ee88",
+			"revision": "d2e1ade2d719b78fe5b061b4c18a9f7111b5bdc8",
 			"branch": "master",
-			"path": "/proto",
-			"notests": true
+			"path": "proto",
+			"notests": true,
+			"allfiles": true
+		},
+		{
+			"importpath": "github.com/gogo/protobuf/protoc-gen-gogo/descriptor",
+			"repository": "https://github.com/gogo/protobuf",
+			"vcs": "git",
+			"revision": "d2e1ade2d719b78fe5b061b4c18a9f7111b5bdc8",
+			"branch": "master",
+			"path": "protoc-gen-gogo/descriptor",
+			"notests": true,
+			"allfiles": true
 		},
 		{
 			"importpath": "github.com/gogo/protobuf/sortkeys",
 			"repository": "https://github.com/gogo/protobuf",
 			"vcs": "git",
-			"revision": "fb8a359905af6e2b6517cccda0ba25915322ee88",
+			"revision": "d2e1ade2d719b78fe5b061b4c18a9f7111b5bdc8",
 			"branch": "master",
 			"path": "sortkeys",
-			"notests": true
+			"notests": true,
+			"allfiles": true
 		},
 		{
 			"importpath": "github.com/gogo/protobuf/types",
 			"repository": "https://github.com/gogo/protobuf",
 			"vcs": "git",
-			"revision": "fb8a359905af6e2b6517cccda0ba25915322ee88",
+			"revision": "d2e1ade2d719b78fe5b061b4c18a9f7111b5bdc8",
 			"branch": "master",
 			"path": "types",
-			"notests": true
+			"notests": true,
+			"allfiles": true
 		},
 		{
 			"importpath": "github.com/golang/glog",
@@ -846,7 +869,7 @@
 			"importpath": "github.com/weaveworks/common",
 			"repository": "https://github.com/weaveworks/common",
 			"vcs": "git",
-			"revision": "bedc14f283dfc82590eee009a41d80c7fdd07fac",
+			"revision": "ceec9d7f5c36c903ff37d06aaa34fd69621b08d7",
 			"branch": "master",
 			"notests": true
 		},

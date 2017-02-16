@@ -34,7 +34,7 @@ spec:
 
       containers:
       - name: ingester
-        image: weaveworks/cortex-ingester
+        image: quay.io/weaveworks/cortex-ingester
         imagePullPolicy: IfNotPresent
         args:
         - -server.log-success=true

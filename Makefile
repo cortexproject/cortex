@@ -3,7 +3,7 @@
 
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
-IMAGE_PREFIX := weaveworks/cortex-
+IMAGE_PREFIX := quay.io/weaveworks/cortex-
 IMAGE_TAG := $(shell ./tools/image-tag)
 UPTODATE := .uptodate
 
@@ -78,7 +78,7 @@ $(EXES): build/$(UPTODATE)
 	$(NETGO_CHECK)
 
 %.pb.go: build/$(UPTODATE)
-	protoc -I ./vendor:./$(@D) --go_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
+	protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint: build/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .

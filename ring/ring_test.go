@@ -17,7 +17,7 @@ func BenchmarkRing(b *testing.B) {
 	for i := 0; i < numIngester; i++ {
 		tokens := generateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.addIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, IngesterState_ACTIVE)
+		desc.addIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
 	}
 
 	consul := newMockConsulClient()

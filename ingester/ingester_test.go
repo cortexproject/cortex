@@ -61,11 +61,11 @@ func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matr
 	return m
 }
 
-func matrixToSamples(m model.Matrix) []*model.Sample {
-	var samples []*model.Sample
+func matrixToSamples(m model.Matrix) []model.Sample {
+	var samples []model.Sample
 	for _, ss := range m {
 		for _, sp := range ss.Values {
-			samples = append(samples, &model.Sample{
+			samples = append(samples, model.Sample{
 				Metric:    ss.Metric,
 				Timestamp: sp.Timestamp,
 				Value:     sp.Value,
@@ -162,17 +162,17 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	}
 
 	userID := "1"
-	sample1 := &model.Sample{
+	sample1 := model.Sample{
 		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
 		Timestamp: 0,
 		Value:     1,
 	}
-	sample2 := &model.Sample{
+	sample2 := model.Sample{
 		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
 		Timestamp: 1,
 		Value:     2,
 	}
-	sample3 := &model.Sample{
+	sample3 := model.Sample{
 		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "biz"},
 		Timestamp: 1,
 		Value:     3,
@@ -180,13 +180,13 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.WithID(context.Background(), userID)
-	_, err = ing.Push(ctx, util.ToWriteRequest([]*model.Sample{sample1}))
+	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, util.ToWriteRequest([]*model.Sample{sample2, sample3}))
+	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
 	if grpc.ErrorDesc(err) != util.ErrUserSeriesLimitExceeded.Error() {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
@@ -248,17 +248,17 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	userID := "1"
-	sample1 := &model.Sample{
+	sample1 := model.Sample{
 		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
 		Timestamp: 0,
 		Value:     1,
 	}
-	sample2 := &model.Sample{
+	sample2 := model.Sample{
 		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
 		Timestamp: 1,
 		Value:     2,
 	}
-	sample3 := &model.Sample{
+	sample3 := model.Sample{
 		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "biz"},
 		Timestamp: 1,
 		Value:     3,
@@ -266,13 +266,13 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.WithID(context.Background(), userID)
-	_, err = ing.Push(ctx, util.ToWriteRequest([]*model.Sample{sample1}))
+	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, util.ToWriteRequest([]*model.Sample{sample2, sample3}))
+	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
 	if grpc.ErrorDesc(err) != util.ErrMetricSeriesLimitExceeded.Error() {
 		t.Fatalf("expected error about exceeding series per metric, got %v", err)
 	}

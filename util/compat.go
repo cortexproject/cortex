@@ -5,23 +5,18 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/prometheus/prometheus/storage/remote"
 
 	"github.com/weaveworks/cortex"
 )
 
 // FromWriteRequest converts a WriteRequest proto into an array of samples.
-func FromWriteRequest(req *remote.WriteRequest) []*model.Sample {
-	var samples []*model.Sample
+func FromWriteRequest(req *cortex.WriteRequest) []model.Sample {
+	// Just guess that there is one sample per timeseries
+	samples := make([]model.Sample, 0, len(req.Timeseries))
 	for _, ts := range req.Timeseries {
-		metric := model.Metric{}
-		for _, l := range ts.Labels {
-			metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-		}
-
 		for _, s := range ts.Samples {
-			samples = append(samples, &model.Sample{
-				Metric:    metric,
+			samples = append(samples, model.Sample{
+				Metric:    fromLabelPairs(ts.Labels),
 				Value:     model.SampleValue(s.Value),
 				Timestamp: model.Time(s.TimestampMs),
 			})
@@ -31,26 +26,19 @@ func FromWriteRequest(req *remote.WriteRequest) []*model.Sample {
 }
 
 // ToWriteRequest converts an array of samples into a WriteRequest proto.
-func ToWriteRequest(samples []*model.Sample) *remote.WriteRequest {
-	req := &remote.WriteRequest{
-		Timeseries: make([]*remote.TimeSeries, 0, len(samples)),
+func ToWriteRequest(samples []model.Sample) *cortex.WriteRequest {
+	req := &cortex.WriteRequest{
+		Timeseries: make([]cortex.TimeSeries, 0, len(samples)),
 	}
 
 	for _, s := range samples {
-		ts := &remote.TimeSeries{
-			Labels: make([]*remote.LabelPair, 0, len(s.Metric)),
-		}
-		for k, v := range s.Metric {
-			ts.Labels = append(ts.Labels,
-				&remote.LabelPair{
-					Name:  string(k),
-					Value: string(v),
-				})
-		}
-		ts.Samples = []*remote.Sample{
-			{
-				Value:       float64(s.Value),
-				TimestampMs: int64(s.Timestamp),
+		ts := cortex.TimeSeries{
+			Labels: toLabelPairs(s.Metric),
+			Samples: []cortex.Sample{
+				{
+					Value:       float64(s.Value),
+					TimestampMs: int64(s.Timestamp),
+				},
 			},
 		}
 		req.Timeseries = append(req.Timeseries, ts)
@@ -88,12 +76,12 @@ func FromQueryRequest(req *cortex.QueryRequest) (model.Time, model.Time, []*metr
 func ToQueryResponse(matrix model.Matrix) *cortex.QueryResponse {
 	resp := &cortex.QueryResponse{}
 	for _, ss := range matrix {
-		ts := &remote.TimeSeries{
+		ts := cortex.TimeSeries{
 			Labels:  toLabelPairs(ss.Metric),
-			Samples: make([]*remote.Sample, 0, len(ss.Values)),
+			Samples: make([]cortex.Sample, 0, len(ss.Values)),
 		}
 		for _, s := range ss.Values {
-			ts.Samples = append(ts.Samples, &remote.Sample{
+			ts.Samples = append(ts.Samples, cortex.Sample{
 				Value:       float64(s.Value),
 				TimestampMs: int64(s.Timestamp),
 			})
@@ -185,13 +173,13 @@ func toLabelMatchers(matchers []*metric.LabelMatcher) ([]*cortex.LabelMatcher, e
 		var mType cortex.MatchType
 		switch matcher.Type {
 		case metric.Equal:
-			mType = cortex.MatchType_EQUAL
+			mType = cortex.EQUAL
 		case metric.NotEqual:
-			mType = cortex.MatchType_NOT_EQUAL
+			mType = cortex.NOT_EQUAL
 		case metric.RegexMatch:
-			mType = cortex.MatchType_REGEX_MATCH
+			mType = cortex.REGEX_MATCH
 		case metric.RegexNoMatch:
-			mType = cortex.MatchType_REGEX_NO_MATCH
+			mType = cortex.REGEX_NO_MATCH
 		default:
 			return nil, fmt.Errorf("invalid matcher type")
 		}
@@ -209,13 +197,13 @@ func fromLabelMatchers(matchers []*cortex.LabelMatcher) ([]*metric.LabelMatcher,
 	for _, matcher := range matchers {
 		var mtype metric.MatchType
 		switch matcher.Type {
-		case cortex.MatchType_EQUAL:
+		case cortex.EQUAL:
 			mtype = metric.Equal
-		case cortex.MatchType_NOT_EQUAL:
+		case cortex.NOT_EQUAL:
 			mtype = metric.NotEqual
-		case cortex.MatchType_REGEX_MATCH:
+		case cortex.REGEX_MATCH:
 			mtype = metric.RegexMatch
-		case cortex.MatchType_REGEX_NO_MATCH:
+		case cortex.REGEX_NO_MATCH:
 			mtype = metric.RegexNoMatch
 		default:
 			return nil, fmt.Errorf("invalid matcher type")
@@ -229,19 +217,19 @@ func fromLabelMatchers(matchers []*cortex.LabelMatcher) ([]*metric.LabelMatcher,
 	return result, nil
 }
 
-func toLabelPairs(metric model.Metric) []*remote.LabelPair {
-	labelPairs := make([]*remote.LabelPair, 0, len(metric))
+func toLabelPairs(metric model.Metric) []cortex.LabelPair {
+	labelPairs := make([]cortex.LabelPair, 0, len(metric))
 	for k, v := range metric {
-		labelPairs = append(labelPairs, &remote.LabelPair{
-			Name:  string(k),
-			Value: string(v),
+		labelPairs = append(labelPairs, cortex.LabelPair{
+			Name:  []byte(k),
+			Value: []byte(v),
 		})
 	}
 	return labelPairs
 }
 
-func fromLabelPairs(labelPairs []*remote.LabelPair) model.Metric {
-	metric := model.Metric{}
+func fromLabelPairs(labelPairs []cortex.LabelPair) model.Metric {
+	metric := make(model.Metric, len(labelPairs))
 	for _, l := range labelPairs {
 		metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
 	}

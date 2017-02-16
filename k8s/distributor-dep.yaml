@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: distributor
-        image: weaveworks/cortex-distributor
+        image: quay.io/weaveworks/cortex-distributor
         imagePullPolicy: IfNotPresent
         args:
         - -log.level=debug

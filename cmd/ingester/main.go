@@ -49,7 +49,7 @@ func main() {
 
 	// Deferring a func to make ordering obvious
 	defer func() {
-		registration.ChangeState(ring.IngesterState_LEAVING)
+		registration.ChangeState(ring.LEAVING)
 		ingester.Stop()
 		registration.Unregister()
 		server.Stop()

@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/prometheus/prometheus/storage/remote"
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
@@ -38,6 +37,7 @@ var (
 		"The current number of ingester clients.",
 		nil, nil,
 	)
+	labelNameBytes = []byte(model.MetricNameLabel)
 )
 
 // Distributor is a storage.SampleAppender and a cortex.Querier which
@@ -242,20 +242,25 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.Ingester
 	return client, nil
 }
 
-func tokenForMetric(userID string, metric model.Metric) uint32 {
-	name := metric[model.MetricNameLabel]
-	return tokenFor(userID, name)
+func tokenForLabels(userID string, labels []cortex.LabelPair) (uint32, error) {
+	for _, label := range labels {
+		if label.Name.Equal(labelNameBytes) {
+			return tokenFor(userID, label.Value), nil
+		}
+	}
+	return 0, fmt.Errorf("No metric name label")
 }
 
-func tokenFor(userID string, name model.LabelValue) uint32 {
+func tokenFor(userID string, name []byte) uint32 {
 	h := fnv.New32()
 	h.Write([]byte(userID))
-	h.Write([]byte(name))
+	h.Write(name)
 	return h.Sum32()
 }
 
 type sampleTracker struct {
-	sample      *model.Sample
+	labels      []cortex.LabelPair
+	sample      cortex.Sample
 	minSuccess  int
 	maxFailures int
 	succeeded   int32
@@ -270,13 +275,30 @@ type pushTracker struct {
 }
 
 // Push implements cortex.IngesterServer
-func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
+func (d *Distributor) Push(ctx context.Context, req *cortex.WriteRequest) (*cortex.WriteResponse, error) {
 	userID, err := user.GetID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	samples := util.FromWriteRequest(req)
+	// First we flatten out the request into a list of samples.
+	// We use the heuristic of 1 sample per TS to size the array.
+	// We also work out the hash value at the same time.
+	samples := make([]sampleTracker, 0, len(req.Timeseries))
+	keys := make([]uint32, 0, len(req.Timeseries))
+	for _, ts := range req.Timeseries {
+		key, err := tokenForLabels(userID, ts.Labels)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range ts.Samples {
+			keys = append(keys, key)
+			samples = append(samples, sampleTracker{
+				labels: ts.Labels,
+				sample: s,
+			})
+		}
+	}
 	d.receivedSamples.Add(float64(len(samples)))
 
 	if len(samples) == 0 {
@@ -288,27 +310,24 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 		return nil, errIngestionRateLimitExceeded
 	}
 
-	keys := make([]uint32, len(samples), len(samples))
-	for i, sample := range samples {
-		keys[i] = tokenForMetric(userID, sample.Metric)
-	}
-
-	ingesters, err := d.ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
-	if err != nil {
+	var ingesters [][]*ring.IngesterDesc
+	if err := instrument.TimeRequestHistogram(ctx, "Distributor.Push[ring-lookup]", nil, func(ctx context.Context) error {
+		var err error
+		ingesters, err = d.ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
+		if err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
-	sampleTrackers := make([]sampleTracker, len(samples), len(samples))
 	samplesByIngester := map[*ring.IngesterDesc][]*sampleTracker{}
 	for i := range samples {
 		// We need a response from a quorum of ingesters, which is n/2 + 1.
 		minSuccess := (len(ingesters[i]) / 2) + 1
-
-		sampleTrackers[i] = sampleTracker{
-			sample:      samples[i],
-			minSuccess:  minSuccess,
-			maxFailures: len(ingesters[i]) - minSuccess,
-		}
+		samples[i].minSuccess = minSuccess
+		samples[i].maxFailures = len(ingesters[i]) - minSuccess
 
 		// Skip those that have not heartbeated in a while. NB these are still
 		// included in the calculation of minSuccess, so if too many failed ingesters
@@ -322,14 +341,14 @@ func (d *Distributor) Push(ctx context.Context, req *remote.WriteRequest) (*cort
 
 		// This is just a shortcut - if there are not minSuccess available ingesters,
 		// after filtering out dead ones, don't even bother trying.
-		if len(liveIngesters) < sampleTrackers[i].minSuccess {
+		if len(liveIngesters) < minSuccess {
 			return nil, fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
-				sampleTrackers[i].minSuccess, len(liveIngesters))
+				minSuccess, len(liveIngesters))
 		}
 
 		for _, liveIngester := range liveIngesters {
 			sampleForIngester := samplesByIngester[liveIngester]
-			samplesByIngester[liveIngester] = append(sampleForIngester, &sampleTrackers[i])
+			samplesByIngester[liveIngester] = append(sampleForIngester, &samples[i])
 		}
 	}
 
@@ -395,17 +414,24 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 	}
 }
 
-func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker) error {
+func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, samples []*sampleTracker) error {
 	client, err := d.getClientFor(ingester)
 	if err != nil {
 		return err
 	}
-	samples := make([]*model.Sample, len(sampleTrackers), len(sampleTrackers))
-	for i := range sampleTrackers {
-		samples[i] = sampleTrackers[i].sample
+
+	req := &cortex.WriteRequest{
+		Timeseries: make([]cortex.TimeSeries, 0, len(samples)),
 	}
+	for _, s := range samples {
+		req.Timeseries = append(req.Timeseries, cortex.TimeSeries{
+			Labels:  s.labels,
+			Samples: []cortex.Sample{s.sample},
+		})
+	}
+
 	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", d.sendDuration, func(ctx context.Context) error {
-		_, err := client.Push(ctx, util.ToWriteRequest(samples))
+		_, err := client.Push(ctx, req)
 		return err
 	})
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
@@ -434,7 +460,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		ingesters, err := d.ring.Get(tokenFor(userID, metricName), d.cfg.ReplicationFactor, ring.Read)
+		ingesters, err := d.ring.Get(tokenFor(userID, []byte(metricName)), d.cfg.ReplicationFactor, ring.Read)
 		if err != nil {
 			return err
 		}

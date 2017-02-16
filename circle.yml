@@ -10,7 +10,7 @@ dependencies:
   override:
     - |
         cd build && \
-        ../tools/rebuild-image weaveworks/cortex-build . build.sh Dockerfile && \
+        ../tools/rebuild-image quay.io/weaveworks/cortex-build . build.sh Dockerfile && \
         touch .uptodate
 
 test:

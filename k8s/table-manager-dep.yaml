@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: table-manager
-        image: weaveworks/cortex-table-manager
+        image: quay.io/weaveworks/cortex-table-manager
         imagePullPolicy: IfNotPresent
         args:
         - -server.log-success=true

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
@@ -18,6 +20,8 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 )
+
+const dialTimeout = 5 * time.Second
 
 // Server implements HTTPServer.  HTTPServer is a generated interface that gRPC
 // servers must implement.
@@ -53,8 +57,12 @@ func (s Server) Handle(ctx context.Context, r *HTTPRequest) (*HTTPResponse, erro
 
 // Client is a http.Handler that forwards the request over gRPC.
 type Client struct {
-	client HTTPClient
-	conn   *grpc.ClientConn
+	mtx       sync.RWMutex
+	service   string
+	namespace string
+	port      string
+	client    HTTPClient
+	conn      *grpc.ClientConn
 }
 
 // NewClient makes a new Client, given a kubernetes service address.  Expects
@@ -69,9 +77,33 @@ func NewClient(address string) (*Client, error) {
 	if len(parts) == 2 {
 		namespace = parts[1]
 	}
-	balancer := kuberesolver.NewWithNamespace(namespace)
-	conn, err := grpc.Dial(
-		fmt.Sprintf("kubernetes://%s:%s", service, port),
+	return &Client{
+		service:   service,
+		namespace: namespace,
+		port:      port,
+	}, nil
+}
+
+func (c *Client) connect(ctx context.Context) error {
+	c.mtx.RLock()
+	connected := c.conn != nil
+	c.mtx.RUnlock()
+	if connected {
+		return nil
+	}
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if c.conn != nil {
+		return nil
+	}
+
+	balancer := kuberesolver.NewWithNamespace(c.namespace)
+	ctxDeadline, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
+	conn, err := grpc.DialContext(
+		ctxDeadline,
+		fmt.Sprintf("kubernetes://%s:%s", c.service, c.port),
 		balancer.DialOption(),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
@@ -80,16 +112,20 @@ func NewClient(address string) (*Client, error) {
 		)),
 	)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &Client{
-		client: NewHTTPClient(conn),
-		conn:   conn,
-	}, nil
+	c.client = NewHTTPClient(conn)
+	c.conn = conn
+	return nil
 }
 
 // ServeHTTP implements http.Handler
 func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := c.connect(r.Context()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

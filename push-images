@@ -13,6 +13,9 @@ for image in ${IMAGES}; do
         continue
     fi
     docker push ${image}:${IMAGE_TAG}
-    docker tag ${image}:${IMAGE_TAG} ${QUAY_PREFIX}${image}:${IMAGE_TAG}
-    docker push ${QUAY_PREFIX}${image}:${IMAGE_TAG}
+
+    # remove the quey prefix and push to docker hub
+    docker_hub_image=${image#$QUAY_PREFIX}
+    docker tag ${image}:${IMAGE_TAG} ${docker_hub_image}:${IMAGE_TAG}
+    docker push ${docker_hub_image}:${IMAGE_TAG}
 done

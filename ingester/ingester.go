@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/prometheus/prometheus/storage/remote"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/user"
@@ -256,10 +255,11 @@ func (i *Ingester) isReady() bool {
 }
 
 // Push implements cortex.IngesterServer
-func (i *Ingester) Push(ctx context.Context, req *remote.WriteRequest) (*cortex.WriteResponse, error) {
+func (i *Ingester) Push(ctx context.Context, req *cortex.WriteRequest) (*cortex.WriteResponse, error) {
 	var lastPartialErr error
-	for _, sample := range util.FromWriteRequest(req) {
-		if err := i.append(ctx, sample); err != nil {
+	samples := util.FromWriteRequest(req)
+	for j := range samples {
+		if err := i.append(ctx, &samples[j]); err != nil {
 			if err == util.ErrUserSeriesLimitExceeded || err == util.ErrMetricSeriesLimitExceeded {
 				lastPartialErr = grpc.Errorf(codes.ResourceExhausted, err.Error())
 				continue

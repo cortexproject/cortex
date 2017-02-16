@@ -9,23 +9,26 @@
 
 Cortex is an API compatible [Prometheus](https://prometheus.io) implementation, that natively supports multitenancy and horizontal scale-out clustering.
 
-Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works). If you have any questions regarding our hosted Prometheus as a service, please contact [help@weave.works](mailto:help@weave.works).
+Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works). 
 
-## Getting started with Weave Cloud & Kubernetes
+
+## Getting Started with Weave Cloud & Kubernetes
 
 Go to https://cloud.weave.works and sign up. Follow the steps to create a new instance.
 
 Once you have created your instance, note down the 'Service Token' listed underneath 'Probes' in the box on the right of the screen. You will use this token to authenticate your local Prometheus with Weave Cloud.
 
+<p align="center"><img src="imgs/weave-cloud-token.png" alt="Weave Cloud Token"></p>
+
 Install the Cortex agent (an unmodified OSS Prometheus) on your Kubernetes cluster using the following command:
 
     $ kubectl -n kube-system apply -f 'https://cloud.weave.works/k8s/cortex.yaml?t=<token>'
 
-Select the Cortex service in the Weave Cloud UI:
+Click Monitor to access the Cortex service in the Weave Cloud UI:
 
-<p align="center"><img src="imgs/cloud.png" alt="Cropped screenshot of Weave Cloud showing Prometheus button as graph"></p>
+<p align="center"><img src="imgs/monitor-cortex.png" alt="Prometheus Monitoring with Weave Cortex"></p>
 
-Weave Cloud gives you some example queries that show you general system information.  You can of course [write your own Prometheus queries](https://prometheus.io/docs/querying/basics/).
+Weave Cloud gives you some example queries that displays general system information.  You can of course [write your own Prometheus queries](https://prometheus.io/docs/querying/basics/).
 
 
 ## About Weave Cortex
@@ -37,7 +40,7 @@ To learn more about Weave Cortex, consult the follow documents / talks:
 - KubeCon Prometheus Day talk "Weave Cortex: Multi-tenant, horizontally scalable Prometheus as a Service" [slides](http://www.slideshare.net/weaveworks/weave-cortex-multitenant-horizontally-scalable-prometheus-as-a-service)
 - Or join us on [our Slack channel](https://slack.weave.works) and ask us directly!
 
-## Using Cortex on other platforms
+## Using Cortex on Other Platforms
 
 Cortex can be used to monitor virtually any application on any platform, as the local agent is a specially configured unmodified OSS Prometheus binary.  You can [download Prometheus from its website](https://prometheus.io/download/).  You will need v1.2.1 or later.
 
@@ -51,10 +54,9 @@ When you've got Prometheus, you will need to [configure it to discover your serv
 Where `<token>` is the Service Token you obtained from Weave Cloud.
 
 Once your local Prometheus is running you can enter Prometheus queries into
-Weave Cloud. Go to https://cloud.weave.works and click the graph icon to the
-right of the instance selector:
+Weave Cloud. Go to https://cloud.weave.works and click Monitor from Weave Cloud header:
 
-<p align="center"><img src="imgs/cloud.png" alt="Cropped screenshot of Weave Cloud showing Prometheus button as graph"></p>
+<p align="center"><img src="imgs/monitor-cortex.png" alt="Prometheus Monitoring with Weave Cortex"></p>
 
 ## Using Cortex to power Grafana dashboards
 
@@ -78,3 +80,15 @@ To build & test, install minikube, and run:
 Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape it itself.  Try it:
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
+
+## <a name="help"></a>Getting Help
+
+If you have any questions regarding Cortex our hosted Prometheus as a service:
+
+- Invite yourself to the <a href="https://weaveworks.github.io/community-slack/" target="_blank"> #weave-community </a> slack channel.
+- Ask a question on the <a href="https://weave-community.slack.com/messages/general/"> #weave-community</a> slack channel.
+- Join the <a href="https://www.meetup.com/pro/Weave/"> Weave User Group </a> and get invited to online talks, hands-on training and meetups in your area.
+- Send an email to <a href="mailto:weave-users@weave.works">weave-users@weave.works</a>
+- <a href="https://github.com/weaveworks/cortex/issues/new">File an issue.</a>
+
+Your feedback is always welcome!

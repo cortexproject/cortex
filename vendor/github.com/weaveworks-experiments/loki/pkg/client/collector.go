@@ -11,20 +11,28 @@ import (
 	"github.com/openzipkin/zipkin-go-opentracing/_thrift/gen-go/zipkincore"
 )
 
-var globalCollector = NewCollector(1024)
+// Want to be able to support a service doing 100 QPS with a 15s scrape interval
+var globalCollector = NewCollector(15 * 100)
 
 type Collector struct {
-	mtx    sync.Mutex
-	spans  []*zipkincore.Span
-	next   int
-	length int
+	mtx      sync.Mutex
+	traceIDs map[int64]int // map from trace ID to index in traces
+	traces   []trace
+	next     int
+	length   int
+}
+
+type trace struct {
+	traceID int64
+	spans   []*zipkincore.Span
 }
 
 func NewCollector(capacity int) *Collector {
 	return &Collector{
-		spans:  make([]*zipkincore.Span, capacity, capacity),
-		next:   0,
-		length: 0,
+		traceIDs: make(map[int64]int, capacity),
+		traces:   make([]trace, capacity, capacity),
+		next:     0,
+		length:   0,
 	}
 }
 
@@ -36,14 +44,29 @@ func (c *Collector) Collect(span *zipkincore.Span) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	c.spans[c.next] = span
-	c.next++
-	c.next %= cap(c.spans) // wrap
+	traceID := span.GetTraceID()
+	idx, ok := c.traceIDs[traceID]
+	if !ok {
+		// Pick a slot in c.spans for this trace
+		idx = c.next
+		c.next++
+		c.next %= cap(c.traces) // wrap
 
-	if c.length < cap(c.spans) {
-		c.length++
+		// If the slot it occupied, we'll need to clear the trace ID index,
+		// otherwise we'll need to number of traces.
+		if c.length == cap(c.traces) {
+			delete(c.traceIDs, c.traces[idx].traceID)
+		} else {
+			c.length++
+		}
+
+		// Initialise said slot.
+		c.traceIDs[traceID] = idx
+		c.traces[idx].traceID = traceID
+		c.traces[idx].spans = c.traces[idx].spans[:0]
 	}
 
+	c.traces[idx].spans = append(c.traces[idx].spans, span)
 	return nil
 }
 
@@ -54,16 +77,23 @@ func (*Collector) Close() error {
 func (c *Collector) gather() []*zipkincore.Span {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+
 	spans := make([]*zipkincore.Span, 0, c.length)
-	for i := 0; i < c.length; i++ {
-		idx := (c.next - c.length + i) % cap(c.spans)
-		if idx < 0 {
-			idx = cap(c.spans) + idx
-		}
-		spans = append(spans, c.spans[idx])
-		c.spans[idx] = nil
+	i, count := c.next-c.length, 0
+	if i < 0 {
+		i = cap(c.traces) + i
+	}
+	for count < c.length {
+		i %= cap(c.traces)
+		spans = append(spans, c.traces[i].spans...)
+		delete(c.traceIDs, c.traces[i].traceID)
+		i++
+		count++
 	}
 	c.length = 0
+	if len(c.traceIDs) != 0 {
+		panic("didn't clear all trace ids")
+	}
 	return spans
 }
 

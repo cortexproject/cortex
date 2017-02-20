@@ -472,7 +472,7 @@ func TestSchemaRangeKey(t *testing.T) {
 
 			// Test we can parse the resulting range keys
 			for _, entry := range have {
-				_, _, _, err := parseRangeValue(entry.RangeKey)
+				_, _, err := parseRangeValue(entry.RangeKey)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -484,19 +484,21 @@ func TestSchemaRangeKey(t *testing.T) {
 func TestParseRangeValue(t *testing.T) {
 	// Test we can decode legacy range values
 	for _, c := range []struct {
-		encoded              []byte
-		name, value, chunkID string
+		encoded        []byte
+		value, chunkID string
 	}{
-		{[]byte{'1', 0, '2', 0, '3', 0}, "1", "2", "3"},
-		{[]byte{0x74, 0x6f, 0x6d, 0x73, 0x00, 0x59, 0x32, 0x39, 0x6b, 0x5a, 0x51,
-			0x00, 0x32, 0x3a, 0x31, 0x34, 0x38, 0x34, 0x36, 0x36, 0x31, 0x32, 0x37,
-			0x39, 0x33, 0x39, 0x34, 0x3a, 0x31, 0x34, 0x38, 0x34, 0x36, 0x36, 0x34,
-			0x38, 0x37, 0x39, 0x33, 0x39, 0x34, 0x00, 0x01, 0x00},
-			"toms", "code", "2:1484661279394:1484664879394"},
+		{[]byte("1\x002\x003\x00"), "2", "3"},
+
+		// v3 Schema base64-encodes the label value
+		{[]byte("toms\x00Y29kZQ\x002:1484661279394:1484664879394\x00\x01\x00"),
+			"code", "2:1484661279394:1484664879394"},
+
+		// v4 Schema doesn't have the label name in the range key
+		{[]byte("\x00Y29kZQ\x002:1484661279394:1484664879394\x00\x01\x00"),
+			"code", "2:1484661279394:1484664879394"},
 	} {
-		name, value, chunkID, err := parseRangeValue(c.encoded)
+		value, chunkID, err := parseRangeValue(c.encoded)
 		assert.Nil(t, err, "parseRangeValue error")
-		assert.Equal(t, model.LabelName(c.name), name, "name")
 		assert.Equal(t, model.LabelValue(c.value), value, "value")
 		assert.Equal(t, c.chunkID, chunkID, "chunkID")
 	}

@@ -394,7 +394,7 @@ func processResponse(resp ReadBatch, chunkSet *ByID, matcher *metric.LabelMatche
 		if rangeValue == nil {
 			return fmt.Errorf("invalid item: %d", i)
 		}
-		_, value, chunkID, err := parseRangeValue(rangeValue)
+		value, chunkID, err := parseRangeValue(rangeValue)
 		if err != nil {
 			return err
 		}

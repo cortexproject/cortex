@@ -71,6 +71,46 @@ func (cfg *SchemaConfig) tableForBucket(bucketStart int64) string {
 	return cfg.TablePrefix + strconv.Itoa(int(bucketStart/int64(cfg.TablePeriod/time.Second)))
 }
 
+type bucketCallback func(from, through model.Time, tableName, hashKey string) ([]IndexEntry, error)
+
+func (cfg SchemaConfig) hourlyBuckets(from, through model.Time, userID string, metricName model.LabelValue, callback bucketCallback) ([]IndexEntry, error) {
+	var (
+		fromHour    = from.Unix() / secondsInHour
+		throughHour = through.Unix() / secondsInHour
+		result      = []IndexEntry{}
+	)
+
+	for i := fromHour; i <= throughHour; i++ {
+		from := model.TimeFromUnix(i * secondsInHour)
+		through := model.TimeFromUnix((i + 1) * secondsInHour)
+		entries, err := callback(from, through, cfg.tableForBucket(i*secondsInHour), fmt.Sprintf("%s:%d:%s", userID, i, metricName))
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, entries...)
+	}
+	return result, nil
+}
+
+func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string, metricName model.LabelValue, callback bucketCallback) ([]IndexEntry, error) {
+	var (
+		fromDay    = from.Unix() / secondsInDay
+		throughDay = through.Unix() / secondsInDay
+		result     = []IndexEntry{}
+	)
+
+	for i := fromDay; i <= throughDay; i++ {
+		from := model.TimeFromUnix(i * secondsInDay)
+		through := model.TimeFromUnix((i + 1) * secondsInDay)
+		entries, err := callback(from, through, cfg.tableForBucket(i*secondsInDay), fmt.Sprintf("%s:d%d:%s", userID, i, metricName))
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, entries...)
+	}
+	return result, nil
+}
+
 // compositeSchema is a Schema which delegates to various schemas depending
 // on when they were activated.
 type compositeSchema struct {
@@ -196,98 +236,80 @@ func (c compositeSchema) GetReadEntriesForMetricLabelValue(from, through model.T
 // - hash key: <userid>:<hour bucket>:<metric name>
 // - range key: <label name>\0<label value>\0<chunk name>
 func v1Schema(cfg SchemaConfig) Schema {
-	return originalSchema{
-		cfg, hourlyBuckets, originalGetWriteEntries, originalGetReadMetricEntries,
-		originalGetReadMetricLabelEntries, originalGetReadMetricLabelValueEntries,
+	return schema{
+		cfg.hourlyBuckets,
+		originalEntries{},
 	}
 }
 
 // v2Schame went to daily buckets in the hash key
 // - hash key: <userid>:d<day bucket>:<metric name>
 func v2Schema(cfg SchemaConfig) Schema {
-	return originalSchema{
-		cfg, dailyBuckets, originalGetWriteEntries, originalGetReadMetricEntries,
-		originalGetReadMetricLabelEntries, originalGetReadMetricLabelValueEntries,
+	return schema{
+		cfg.dailyBuckets,
+		originalEntries{},
 	}
 }
 
 // v3Schema went to base64 encoded label values & a version ID
 // - range key: <label name>\0<base64(label value)>\0<chunk name>\0<version 1>
 func v3Schema(cfg SchemaConfig) Schema {
-	return originalSchema{
-		cfg, dailyBuckets, base64GetWriteEntries, originalGetReadMetricEntries,
-		originalGetReadMetricLabelEntries, base64GetReadMetricLabelValueEntries,
+	return schema{
+		cfg.dailyBuckets,
+		base64Entries{originalEntries{}},
 	}
 }
 
-type originalSchema struct {
-	cfg                         SchemaConfig
-	buckets                     func(cfg SchemaConfig, from, through model.Time, userID string, metricName model.LabelValue, callback func(tableName, hashKey string) ([]IndexEntry, error)) ([]IndexEntry, error)
-	writeEntries                func(tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error)
-	readMetricEntries           func(tableName, hashKey string) ([]IndexEntry, error)
-	readMetricLabelEntries      func(tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error)
-	readMetricLabelValueEntries func(tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error)
-}
-
-func (s originalSchema) GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
-	return s.buckets(s.cfg, from, through, userID, metricName, func(tableName, hashKey string) ([]IndexEntry, error) {
-		return s.writeEntries(tableName, hashKey, labels, chunkID)
-	})
-}
-
-func (s originalSchema) GetReadEntriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexEntry, error) {
-	return s.buckets(s.cfg, from, through, userID, metricName, func(tableName, hashKey string) ([]IndexEntry, error) {
-		return s.readMetricEntries(tableName, hashKey)
-	})
-}
-
-func (s originalSchema) GetReadEntriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexEntry, error) {
-	return s.buckets(s.cfg, from, through, userID, metricName, func(tableName, hashKey string) ([]IndexEntry, error) {
-		return s.readMetricLabelEntries(tableName, hashKey, labelName)
-	})
-}
-
-func (s originalSchema) GetReadEntriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
-	return s.buckets(s.cfg, from, through, userID, metricName, func(tableName, hashKey string) ([]IndexEntry, error) {
-		return s.readMetricLabelValueEntries(tableName, hashKey, labelName, labelValue)
-	})
-}
-
-func hourlyBuckets(cfg SchemaConfig, from, through model.Time, userID string, metricName model.LabelValue, callback func(tableName, hashKey string) ([]IndexEntry, error)) ([]IndexEntry, error) {
-	var (
-		fromHour    = from.Unix() / secondsInHour
-		throughHour = through.Unix() / secondsInHour
-		result      = []IndexEntry{}
-	)
-
-	for i := fromHour; i <= throughHour; i++ {
-		entries, err := callback(cfg.tableForBucket(i*secondsInHour), fmt.Sprintf("%s:%d:%s", userID, i, metricName))
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, entries...)
+// v4 schema went to two schemas in one:
+// 1) - hash key: <userid>:<hour bucket>:<metric name>:<label name>
+//    - range key: \0<base64(label value)>\0<chunk name>\0<version 2>
+// 2) - hash key: <userid>:<hour bucket>:<metric name>
+//    - range key: \0\0<chunk name>\0<version 3>
+func v4Schema(cfg SchemaConfig) Schema {
+	return schema{
+		cfg.dailyBuckets,
+		labelNameInHashKeyEntries{},
 	}
-	return result, nil
 }
 
-func dailyBuckets(cfg SchemaConfig, from, through model.Time, userID string, metricName model.LabelValue, callback func(tableName, hashKey string) ([]IndexEntry, error)) ([]IndexEntry, error) {
-	var (
-		fromDay    = from.Unix() / secondsInDay
-		throughDay = through.Unix() / secondsInDay
-		result     = []IndexEntry{}
-	)
-
-	for i := fromDay; i <= throughDay; i++ {
-		entries, err := callback(cfg.tableForBucket(i*secondsInDay), fmt.Sprintf("%s:d%d:%s", userID, i, metricName))
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, entries...)
-	}
-	return result, nil
+// schema implements Schema given a bucketing function and and set of range key callbacks
+type schema struct {
+	buckets func(from, through model.Time, userID string, metricName model.LabelValue, callback bucketCallback) ([]IndexEntry, error)
+	entries entries
 }
 
-func originalGetWriteEntries(tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+func (s schema) GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	return s.buckets(from, through, userID, metricName, func(_, _ model.Time, tableName, hashKey string) ([]IndexEntry, error) {
+		return s.entries.GetWriteEntries(tableName, hashKey, labels, chunkID)
+	})
+}
+
+func (s schema) GetReadEntriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexEntry, error) {
+	return s.buckets(from, through, userID, metricName, s.entries.GetReadMetricEntries)
+}
+
+func (s schema) GetReadEntriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexEntry, error) {
+	return s.buckets(from, through, userID, metricName, func(from, through model.Time, tableName, hashKey string) ([]IndexEntry, error) {
+		return s.entries.GetReadMetricLabelEntries(from, through, tableName, hashKey, labelName)
+	})
+}
+
+func (s schema) GetReadEntriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
+	return s.buckets(from, through, userID, metricName, func(from, through model.Time, tableName, hashKey string) ([]IndexEntry, error) {
+		return s.entries.GetReadMetricLabelValueEntries(from, through, tableName, hashKey, labelName, labelValue)
+	})
+}
+
+type entries interface {
+	GetWriteEntries(tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error)
+	GetReadMetricEntries(from, through model.Time, tableName, hashKey string) ([]IndexEntry, error)
+	GetReadMetricLabelEntries(from, through model.Time, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error)
+	GetReadMetricLabelValueEntries(from, through model.Time, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error)
+}
+
+type originalEntries struct{}
+
+func (originalEntries) GetWriteEntries(tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	result := []IndexEntry{}
 	for key, value := range labels {
 		if key == model.MetricNameLabel {
@@ -305,7 +327,7 @@ func originalGetWriteEntries(tableName, hashKey string, labels model.Metric, chu
 	return result, nil
 }
 
-func originalGetReadMetricEntries(tableName, hashKey string) ([]IndexEntry, error) {
+func (originalEntries) GetReadMetricEntries(_, _ model.Time, tableName, hashKey string) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
 			TableName: tableName,
@@ -315,7 +337,7 @@ func originalGetReadMetricEntries(tableName, hashKey string) ([]IndexEntry, erro
 	}, nil
 }
 
-func originalGetReadMetricLabelEntries(tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
+func (originalEntries) GetReadMetricLabelEntries(_, _ model.Time, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
 			TableName: tableName,
@@ -325,7 +347,7 @@ func originalGetReadMetricLabelEntries(tableName, hashKey string, labelName mode
 	}, nil
 }
 
-func originalGetReadMetricLabelValueEntries(tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
+func (originalEntries) GetReadMetricLabelValueEntries(_, _ model.Time, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
 	if strings.ContainsRune(string(labelValue), '\x00') {
 		return nil, fmt.Errorf("label values cannot contain null byte")
 	}
@@ -338,7 +360,11 @@ func originalGetReadMetricLabelValueEntries(tableName, hashKey string, labelName
 	}, nil
 }
 
-func base64GetWriteEntries(tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+type base64Entries struct {
+	originalEntries
+}
+
+func (base64Entries) GetWriteEntries(tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	result := []IndexEntry{}
 	for key, value := range labels {
 		if key == model.MetricNameLabel {
@@ -354,7 +380,7 @@ func base64GetWriteEntries(tableName, hashKey string, labels model.Metric, chunk
 	return result, nil
 }
 
-func base64GetReadMetricLabelValueEntries(tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
+func (base64Entries) GetReadMetricLabelValueEntries(_, _ model.Time, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
 	encodedValue := base64.RawStdEncoding.EncodeToString([]byte(labelValue))
 	return []IndexEntry{
 		{
@@ -365,83 +391,61 @@ func base64GetReadMetricLabelValueEntries(tableName, hashKey string, labelName m
 	}, nil
 }
 
-// v4 schema went to two schemas in one:
-// 1) - hash key: <userid>:<hour bucket>:<metric name>:<label name>
-//    - range key: \0<base64(label value)>\0<chunk name>\0<version 2>
-// 2) - hash key: <userid>:<hour bucket>:<metric name>
-//    - range key: \0\0<chunk name>\0<version 3>
-func v4Schema(cfg SchemaConfig) Schema {
-	return labelNameInHashKeySchema{
-		cfg, dailyBuckets,
+type labelNameInHashKeyEntries struct{}
+
+func (labelNameInHashKeyEntries) GetWriteEntries(tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	entries := []IndexEntry{
+		{
+			TableName: tableName,
+			HashKey:   hashKey,
+			RangeKey:  buildRangeKey("", "", chunkID, "2"),
+		},
 	}
-}
 
-type labelNameInHashKeySchema struct {
-	cfg     SchemaConfig
-	buckets func(cfg SchemaConfig, from, through model.Time, userID string, metricName model.LabelValue, callback func(tableName, hashKey string) ([]IndexEntry, error)) ([]IndexEntry, error)
-}
-
-func (s labelNameInHashKeySchema) GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
-	return s.buckets(s.cfg, from, through, userID, metricName, func(tableName, hashKey string) ([]IndexEntry, error) {
-		entries := []IndexEntry{
-			{
-				TableName: tableName,
-				HashKey:   hashKey,
-				RangeKey:  buildRangeKey("", "", chunkID, "2"),
-			},
+	for key, value := range labels {
+		if key == model.MetricNameLabel {
+			continue
 		}
+		encodedValue := base64.RawStdEncoding.EncodeToString([]byte(value))
+		entries = append(entries, IndexEntry{
+			TableName: tableName,
+			HashKey:   hashKey + ":" + string(key),
+			RangeKey:  buildRangeKey("", encodedValue, chunkID, "1"),
+		})
+	}
 
-		for key, value := range labels {
-			if key == model.MetricNameLabel {
-				continue
-			}
-			encodedValue := base64.RawStdEncoding.EncodeToString([]byte(value))
-			entries = append(entries, IndexEntry{
-				TableName: tableName,
-				HashKey:   hashKey + ":" + string(key),
-				RangeKey:  buildRangeKey("", encodedValue, chunkID, "1"),
-			})
-		}
-
-		return entries, nil
-	})
+	return entries, nil
 }
 
-func (s labelNameInHashKeySchema) GetReadEntriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexEntry, error) {
-	return s.buckets(s.cfg, from, through, userID, metricName, func(tableName, hashKey string) ([]IndexEntry, error) {
-		return []IndexEntry{
-			{
-				TableName: tableName,
-				HashKey:   hashKey,
-				RangeKey:  nil,
-			},
-		}, nil
-	})
+func (labelNameInHashKeyEntries) GetReadMetricEntries(_, _ model.Time, tableName, hashKey string) ([]IndexEntry, error) {
+	return []IndexEntry{
+		{
+			TableName: tableName,
+			HashKey:   hashKey,
+			RangeKey:  nil,
+		},
+	}, nil
 }
 
-func (s labelNameInHashKeySchema) GetReadEntriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexEntry, error) {
-	return s.buckets(s.cfg, from, through, userID, metricName, func(tableName, hashKey string) ([]IndexEntry, error) {
-		return []IndexEntry{
-			{
-				TableName: tableName,
-				HashKey:   hashKey + ":" + string(labelName),
-				RangeKey:  buildRangeKey(""),
-			},
-		}, nil
-	})
+func (labelNameInHashKeyEntries) GetReadMetricLabelEntries(_, _ model.Time, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
+	return []IndexEntry{
+		{
+			TableName: tableName,
+			HashKey:   hashKey + ":" + string(labelName),
+			RangeKey:  buildRangeKey(""),
+		},
+	}, nil
 }
 
-func (s labelNameInHashKeySchema) GetReadEntriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
+func (labelNameInHashKeyEntries) GetReadMetricLabelValueEntries(_, _ model.Time, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
 	encodedValue := base64.RawStdEncoding.EncodeToString([]byte(labelValue))
-	return s.buckets(s.cfg, from, through, userID, metricName, func(tableName, hashKey string) ([]IndexEntry, error) {
-		return []IndexEntry{
-			{
-				TableName: tableName,
-				HashKey:   hashKey + ":" + string(labelName),
-				RangeKey:  buildRangeKey("", encodedValue),
-			},
-		}, nil
-	})
+	return []IndexEntry{
+		{
+			TableName: tableName,
+			HashKey:   hashKey + ":" + string(labelName),
+			RangeKey:  buildRangeKey("", encodedValue),
+		},
+	}, nil
 }
 
 func buildRangeKey(ss ...string) []byte {
@@ -457,9 +461,8 @@ func buildRangeKey(ss ...string) []byte {
 	return output
 }
 
-func parseRangeValue(v []byte) (model.LabelName, model.LabelValue, string, error) {
+func parseRangeValue(v []byte) (model.LabelValue, string, error) {
 	var (
-		labelBytes   []byte
 		valueBytes   []byte
 		chunkIDBytes []byte
 		version      []byte
@@ -467,32 +470,37 @@ func parseRangeValue(v []byte) (model.LabelName, model.LabelValue, string, error
 	)
 	next := func(output *[]byte) error {
 		for ; j < len(v); j++ {
-			if v[j] == 0 {
-				*output = v[i:j]
-				j++
-				i = j
-				return nil
+			if v[j] != 0 {
+				continue
 			}
+
+			if output != nil {
+				*output = v[i:j]
+			}
+
+			j++
+			i = j
+			return nil
 		}
 		return fmt.Errorf("invalid range value: %x", v)
 	}
-	if err := next(&labelBytes); err != nil {
-		return "", "", "", err
+	if err := next(nil); err != nil {
+		return "", "", err
 	}
 	if err := next(&valueBytes); err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 	if err := next(&chunkIDBytes); err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 	if err := next(&version); err == nil {
 		// We read a version, need to decode value
 		decodedValueLen := base64.RawStdEncoding.DecodedLen(len(valueBytes))
 		decodedValueBytes := make([]byte, decodedValueLen, decodedValueLen)
 		if _, err := base64.RawStdEncoding.Decode(decodedValueBytes, valueBytes); err != nil {
-			return "", "", "", err
+			return "", "", err
 		}
 		valueBytes = decodedValueBytes
 	}
-	return model.LabelName(labelBytes), model.LabelValue(valueBytes), string(chunkIDBytes), nil
+	return model.LabelValue(valueBytes), string(chunkIDBytes), nil
 }

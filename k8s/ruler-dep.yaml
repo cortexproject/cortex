@@ -19,6 +19,7 @@ spec:
         - -server.log-success=true
         - -server.http-listen-port=80
         - -ruler.configs.url=http://configs.default.svc.cluster.local:80
+        - -ruler.alertmanager-url=http://alertmanager.default.svc.cluster.local/
         - -consul.hostname=consul.default.svc.cluster.local:8500
         - -s3.url=s3://abc:123@default.svc.cluster.local:4569/s3
         - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000/cortex

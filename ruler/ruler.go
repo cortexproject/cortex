@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -60,6 +62,13 @@ type Config struct {
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
 	NumWorkers         int
+
+	// URL of the Alertmanager to send notifications to.
+	AlertmanagerURL string
+	// Capacity of the queue for notifications to be sent to the Alertmanager.
+	NotificationQueueCapacity int
+	// HTTP timeout duration when sending notifications to the Alertmanager.
+	NotificationTimeout time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -70,6 +79,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
 	f.DurationVar(&cfg.ClientTimeout, "ruler.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 	f.IntVar(&cfg.NumWorkers, "ruler.num-workers", 1, "Number of rule evaluator worker routines in this process")
+	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "URL of the Alertmanager to send notifications to.")
+	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
+	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
 }
 
 // Ruler evaluates rules.
@@ -77,11 +89,77 @@ type Ruler struct {
 	engine   *promql.Engine
 	pusher   Pusher
 	alertURL *url.URL
+	notifier *notifier.Notifier
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) Ruler {
-	return Ruler{querier.NewEngine(d, c), d, cfg.ExternalURL.URL}
+func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) (*Ruler, error) {
+	n := notifier.New(&notifier.Options{
+		QueueCapacity: cfg.NotificationQueueCapacity,
+	})
+	ncfg, err := buildNotifierConfig(&cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err = n.ApplyConfig(ncfg); err != nil {
+		return nil, err
+	}
+	go n.Run()
+	return &Ruler{
+		engine:   querier.NewEngine(d, c),
+		pusher:   d,
+		alertURL: cfg.ExternalURL.URL,
+		notifier: n,
+	}, nil
+}
+
+// Builds a Prometheus config.Config from a ruler.Config with just the required
+// options to configure notifications to Alertmanager.
+func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
+	if rulerConfig.AlertmanagerURL == "" {
+		return &config.Config{}, nil
+	}
+
+	u, err := url.Parse(rulerConfig.AlertmanagerURL)
+	if err != nil {
+		return nil, err
+	}
+	amConfig := &config.AlertmanagerConfig{
+		Scheme:     u.Scheme,
+		PathPrefix: u.Path,
+		Timeout:    rulerConfig.NotificationTimeout,
+		ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
+			StaticConfigs: []*config.TargetGroup{
+				{
+					Targets: []model.LabelSet{
+						{
+							model.AddressLabel: model.LabelValue(u.Host),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	promConfig := &config.Config{
+		AlertingConfig: config.AlertingConfig{
+			AlertmanagerConfigs: []*config.AlertmanagerConfig{amConfig},
+		},
+	}
+
+	if u.User != nil {
+		amConfig.HTTPClientConfig = config.HTTPClientConfig{
+			BasicAuth: &config.BasicAuth{
+				Username: u.User.Username(),
+			},
+		}
+
+		if password, isSet := u.User.Password(); isSet {
+			amConfig.HTTPClientConfig.BasicAuth.Password = password
+		}
+	}
+
+	return promConfig, nil
 }
 
 func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) *rules.Group {
@@ -91,7 +169,7 @@ func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) *rules.Group {
 		QueryEngine:    r.engine,
 		Context:        ctx,
 		ExternalURL:    r.alertURL,
-		Notifier:       notifier.New(&notifier.Options{}),
+		Notifier:       r.notifier,
 	}
 	delay := 0 * time.Second // Unused, so 0 value is fine.
 	return rules.NewGroup("default", delay, rs, opts)
@@ -110,6 +188,11 @@ func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 	rulesProcessed.Add(float64(len(rs)))
 }
 
+// Stop stops the Ruler.
+func (r *Ruler) Stop() {
+	r.notifier.Stop()
+}
+
 // Server is a rules server.
 type Server struct {
 	scheduler *scheduler
@@ -117,7 +200,7 @@ type Server struct {
 }
 
 // NewServer makes a new rule processing server.
-func NewServer(cfg Config, ruler Ruler) (*Server, error) {
+func NewServer(cfg Config, ruler *Ruler) (*Server, error) {
 	c := configsAPI{cfg.ConfigsAPIURL.URL, cfg.ClientTimeout}
 	// TODO: Separate configuration for polling interval.
 	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval)
@@ -161,13 +244,13 @@ type Worker interface {
 
 type worker struct {
 	scheduler *scheduler
-	ruler     Ruler
+	ruler     *Ruler
 
 	done       chan struct{}
 	terminated chan struct{}
 }
 
-func newWorker(scheduler *scheduler, ruler Ruler) worker {
+func newWorker(scheduler *scheduler, ruler *Ruler) worker {
 	return worker{
 		scheduler:  scheduler,
 		ruler:      ruler,

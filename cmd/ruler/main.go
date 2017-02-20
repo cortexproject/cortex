@@ -43,9 +43,15 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	rulerServer, err := ruler.NewServer(rulerConfig, ruler.NewRuler(rulerConfig, dist, chunkStore))
+	rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
 	if err != nil {
 		log.Fatalf("Error initializing ruler: %v", err)
+	}
+	defer rlr.Stop()
+
+	rulerServer, err := ruler.NewServer(rulerConfig, rlr)
+	if err != nil {
+		log.Fatalf("Error initializing ruler server: %v", err)
 	}
 	defer rulerServer.Stop()
 

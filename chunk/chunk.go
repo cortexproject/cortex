@@ -47,7 +47,7 @@ func NewChunk(fp model.Fingerprint, metric model.Metric, c prom_chunk.Chunk, fir
 func parseChunkID(id string) (model.Fingerprint, model.Time, model.Time, error) {
 	parts := strings.Split(id, ":")
 	if len(parts) != 3 {
-		return 0, 0, 0, fmt.Errorf("invalid chunk ID")
+		return 0, 0, 0, fmt.Errorf("invalid chunk ID: '%s'", id)
 	}
 	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil {

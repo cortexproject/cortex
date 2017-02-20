@@ -490,12 +490,16 @@ func TestParseRangeValue(t *testing.T) {
 		{[]byte("1\x002\x003\x00"), "2", "3"},
 
 		// v3 Schema base64-encodes the label value
-		{[]byte("toms\x00Y29kZQ\x002:1484661279394:1484664879394\x00\x01\x00"),
+		{[]byte("toms\x00Y29kZQ\x002:1484661279394:1484664879394\x001\x00"),
 			"code", "2:1484661279394:1484664879394"},
 
 		// v4 Schema doesn't have the label name in the range key
-		{[]byte("\x00Y29kZQ\x002:1484661279394:1484664879394\x00\x01\x00"),
+		{[]byte("\x00Y29kZQ\x002:1484661279394:1484664879394\x001\x00"),
 			"code", "2:1484661279394:1484664879394"},
+
+		// v4 Schema version 2 keys don't have the label name or value in the range key
+		{[]byte("\x00\x002:1484661279394:1484664879394\x002\x00"),
+			"", "2:1484661279394:1484664879394"},
 	} {
 		value, chunkID, err := parseRangeValue(c.encoded)
 		assert.Nil(t, err, "parseRangeValue error")

@@ -13,8 +13,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/cortex/util"
 )
 
 const (
@@ -334,13 +336,6 @@ func recordDynamoError(tableName string, err error) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func dictLen(b map[string][]*dynamodb.WriteRequest) int {
 	result := 0
 	for _, reqs := range b {
@@ -354,11 +349,11 @@ func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
 	outLen, inLen := dictLen(to), dictLen(from)
 	toFill := inLen
 	if max > 0 {
-		toFill = min(inLen, max-outLen)
+		toFill = util.Min(inLen, max-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := min(len(fromReqs), toFill)
+			taken := util.Min(len(fromReqs), toFill)
 			if taken > 0 {
 				to[tableName] = append(to[tableName], fromReqs[:taken]...)
 				from[tableName] = fromReqs[taken:]

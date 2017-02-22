@@ -1,4 +1,4 @@
-package ruler
+package configs
 
 import (
 	"encoding/json"
@@ -15,32 +15,34 @@ import (
 
 // TODO: Extract configs client logic into go client library (ala users)
 
-type configID int
+// A ConfigID is the ID of a single organization's Cortex configuration.
+type ConfigID int
 
-type cortexConfig struct {
+// A CortexConfig is a Cortex configuration for a single organization.
+type CortexConfig struct {
 	// RulesFiles maps from a rules filename to file contents.
 	RulesFiles map[string]string `json:"rules_files"`
 }
 
-// cortexConfigView is what's returned from the Weave Cloud configs service
+// CortexConfigView is what's returned from the Weave Cloud configs service
 // when we ask for all Cortex configurations.
 //
 // The configs service is essentially a JSON blob store that gives each
 // _version_ of a configuration a unique ID and guarantees that later versions
 // have greater IDs.
-type cortexConfigView struct {
-	ConfigID configID     `json:"id"`
-	Config   cortexConfig `json:"config"`
+type CortexConfigView struct {
+	ConfigID ConfigID     `json:"id"`
+	Config   CortexConfig `json:"config"`
 }
 
-// cortexConfigsResponse is a response from server for getOrgConfigs
-type cortexConfigsResponse struct {
-	// Configs maps organization ID to their latest cortexConfigView.
-	Configs map[string]cortexConfigView `json:"configs"`
+// CortexConfigsResponse is a response from server for GetOrgConfigs.
+type CortexConfigsResponse struct {
+	// Configs maps organization ID to their latest CortexConfigView.
+	Configs map[string]CortexConfigView `json:"configs"`
 }
 
-func configsFromJSON(body io.Reader) (*cortexConfigsResponse, error) {
-	var configs cortexConfigsResponse
+func configsFromJSON(body io.Reader) (*CortexConfigsResponse, error) {
+	var configs CortexConfigsResponse
 	if err := json.NewDecoder(body).Decode(&configs); err != nil {
 		log.Errorf("configs: couldn't decode JSON body: %v", err)
 		return nil, err
@@ -49,9 +51,9 @@ func configsFromJSON(body io.Reader) (*cortexConfigsResponse, error) {
 	return &configs, nil
 }
 
-// getLatestConfigID returns the last config ID from a set of configs.
-func (c cortexConfigsResponse) getLatestConfigID() configID {
-	latest := configID(0)
+// GetLatestConfigID returns the last config ID from a set of configs.
+func (c CortexConfigsResponse) GetLatestConfigID() ConfigID {
+	latest := ConfigID(0)
 	for _, config := range c.Configs {
 		if config.ConfigID > latest {
 			latest = config.ConfigID
@@ -60,10 +62,10 @@ func (c cortexConfigsResponse) getLatestConfigID() configID {
 	return latest
 }
 
-// Get the rules from the cortex configuration.
+// GetRules gets the rules from the Cortex configuration.
 //
 // Strongly inspired by `loadGroups` in Prometheus.
-func (c cortexConfig) GetRules() ([]rules.Rule, error) {
+func (c CortexConfig) GetRules() ([]rules.Rule, error) {
 	result := []rules.Rule{}
 	for fn, content := range c.RulesFiles {
 		stmts, err := promql.ParseStmts(content)
@@ -90,24 +92,25 @@ func (c cortexConfig) GetRules() ([]rules.Rule, error) {
 	return result, nil
 }
 
-type configsAPI struct {
-	url     *url.URL
-	timeout time.Duration
+// API allows retrieving Cortex configs.
+type API struct {
+	URL     *url.URL
+	Timeout time.Duration
 }
 
-// getOrgConfigs returns all Cortex configurations from a configs api server
-// that have been updated after the given configID was last updated.
-func (c *configsAPI) getOrgConfigs(since configID) (*cortexConfigsResponse, error) {
+// GetOrgConfigs returns all Cortex configurations from a configs API server
+// that have been updated after the given ConfigID was last updated.
+func (c *API) GetOrgConfigs(since ConfigID) (*CortexConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
-	url := fmt.Sprintf("%s/private/api/configs/org/cortex%s", c.url.String(), suffix)
+	url := fmt.Sprintf("%s/private/api/configs/org/cortex%s", c.URL.String(), suffix)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: c.timeout}
+	client := &http.Client{Timeout: c.Timeout}
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err

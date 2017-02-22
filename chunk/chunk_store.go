@@ -219,8 +219,8 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 		indexEntriesPerChunk.Observe(float64(len(entries)))
 
 		for _, entry := range entries {
-			rowWrites.Observe(entry.HashKey, 1)
-			writeReqs.Add(entry.TableName, entry.HashKey, entry.RangeKey)
+			rowWrites.Observe(entry.HashValue, 1)
+			writeReqs.Add(entry.TableName, entry.HashValue, entry.RangeValue)
 		}
 	}
 	return writeReqs, nil

@@ -130,26 +130,26 @@ func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback
 		return fmt.Errorf("table not found")
 	}
 
-	items, ok := table.items[entry.HashKey]
+	items, ok := table.items[entry.HashValue]
 	if !ok {
 		return nil
 	}
 
-	if entry.RangeKey != nil {
-		log.Printf("Lookup prefix %s/%x (%d)", entry.HashKey, entry.RangeKey, len(items))
+	if entry.RangeValuePrefix != nil {
+		log.Printf("Lookup prefix %s/%x (%d)", entry.HashValue, entry.RangeValuePrefix, len(items))
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
-			if bytes.Compare(items[i], entry.RangeKey) > 0 {
+			if bytes.Compare(items[i], entry.RangeValuePrefix) > 0 {
 				return true
 			}
-			return bytes.HasPrefix(items[i], entry.RangeKey)
+			return bytes.HasPrefix(items[i], entry.RangeValuePrefix)
 		})
 		j := sort.Search(len(items)-i, func(j int) bool {
-			if bytes.Compare(items[i+j], entry.RangeKey) < 0 {
+			if bytes.Compare(items[i+j], entry.RangeValuePrefix) < 0 {
 				return false
 			}
-			return !bytes.HasPrefix(items[i+j], entry.RangeKey)
+			return !bytes.HasPrefix(items[i+j], entry.RangeValuePrefix)
 		})
 
 		log.Printf("  found range [%d:%d)", i, i+j)
@@ -158,12 +158,12 @@ func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback
 		}
 		items = items[i : i+j]
 
-	} else if entry.StartRangeKey != nil {
-		log.Printf("Lookup range %s/%x -> ... (%d)", entry.HashKey, entry.StartRangeKey, len(items))
+	} else if entry.RangeValueStart != nil {
+		log.Printf("Lookup range %s/%x -> ... (%d)", entry.HashValue, entry.RangeValueStart, len(items))
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
-			return bytes.Compare(items[i], entry.StartRangeKey) > 0
+			return bytes.Compare(items[i], entry.RangeValueStart) > 0
 		})
 
 		log.Printf("  found range [%d)", i)
@@ -173,7 +173,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback
 		items = items[i:]
 
 	} else {
-		log.Printf("Lookup %s/* (%d)", entry.HashKey, len(items))
+		log.Printf("Lookup %s/* (%d)", entry.HashValue, len(items))
 	}
 
 	result := mockReadBatch{}

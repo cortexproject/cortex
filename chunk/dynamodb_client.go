@@ -169,7 +169,7 @@ func (d dynamoClientAdapter) QueryPages(ctx context.Context, entry IndexEntry, c
 		KeyConditions: map[string]*dynamodb.Condition{
 			hashKey: {
 				AttributeValueList: []*dynamodb.AttributeValue{
-					{S: aws.String(entry.HashKey)},
+					{S: aws.String(entry.HashValue)},
 				},
 				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorEq),
 			},
@@ -177,17 +177,17 @@ func (d dynamoClientAdapter) QueryPages(ctx context.Context, entry IndexEntry, c
 		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 	}
 
-	if entry.RangeKey != nil {
+	if entry.RangeValuePrefix != nil {
 		input.KeyConditions[rangeKey] = &dynamodb.Condition{
 			AttributeValueList: []*dynamodb.AttributeValue{
-				{B: entry.RangeKey},
+				{B: entry.RangeValuePrefix},
 			},
 			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
 		}
-	} else if entry.StartRangeKey != nil {
+	} else if entry.RangeValueStart != nil {
 		input.KeyConditions[rangeKey] = &dynamodb.Condition{
 			AttributeValueList: []*dynamodb.AttributeValue{
-				{B: entry.StartRangeKey},
+				{B: entry.RangeValueStart},
 			},
 			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorGe),
 		}

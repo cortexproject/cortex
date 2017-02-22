@@ -173,15 +173,15 @@ func TestSchemaComposite(t *testing.T) {
 	}
 }
 
-type ByHashKey []IndexEntry
+type ByHashRangeKey []IndexEntry
 
-func (a ByHashKey) Len() int      { return len(a) }
-func (a ByHashKey) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByHashKey) Less(i, j int) bool {
-	if a[i].HashKey != a[j].HashKey {
-		return a[i].HashKey < a[j].HashKey
+func (a ByHashRangeKey) Len() int      { return len(a) }
+func (a ByHashRangeKey) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByHashRangeKey) Less(i, j int) bool {
+	if a[i].HashValue != a[j].HashValue {
+		return a[i].HashValue < a[j].HashValue
 	}
-	return bytes.Compare(a[i].RangeKey, a[j].RangeKey) < 0
+	return bytes.Compare(a[i].RangeValue, a[j].RangeValue) < 0
 }
 
 func mergeResults(rss ...[]IndexEntry) []IndexEntry {
@@ -198,7 +198,7 @@ func TestSchemaHashKeys(t *testing.T) {
 		for i := from; i < through; i++ {
 			want = append(want, IndexEntry{
 				TableName: tableName,
-				HashKey:   fmt.Sprintf(fmtStr, i),
+				HashValue: fmt.Sprintf(fmtStr, i),
 			})
 		}
 		return want
@@ -361,10 +361,10 @@ func TestSchemaHashKeys(t *testing.T) {
 				t.Fatal(err)
 			}
 			for i := range have {
-				have[i].RangeKey = nil
+				have[i].RangeValue = nil
 			}
-			sort.Sort(ByHashKey(have))
-			sort.Sort(ByHashKey(tc.want))
+			sort.Sort(ByHashRangeKey(have))
+			sort.Sort(ByHashRangeKey(tc.want))
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong hash buckets - %s", test.Diff(tc.want, have))
 			}
@@ -402,9 +402,9 @@ func TestSchemaRangeKey(t *testing.T) {
 				continue
 			}
 			result = append(result, IndexEntry{
-				TableName: table,
-				HashKey:   hashKey,
-				RangeKey:  []byte(callback(labelName, labelValue)),
+				TableName:  table,
+				HashValue:  hashKey,
+				RangeValue: []byte(callback(labelName, labelValue)),
 			})
 		}
 		return result
@@ -438,19 +438,19 @@ func TestSchemaRangeKey(t *testing.T) {
 			labelBuckets,
 			[]IndexEntry{
 				{
-					TableName: table,
-					HashKey:   "userid:d0:foo",
-					RangeKey:  []byte("\x00\x00chunkID\x002\x00"),
+					TableName:  table,
+					HashValue:  "userid:d0:foo",
+					RangeValue: []byte("\x00\x00chunkID\x002\x00"),
 				},
 				{
-					TableName: table,
-					HashKey:   "userid:d0:foo:bar",
-					RangeKey:  []byte("\x00YmFyeQ\x00chunkID\x001\x00"),
+					TableName:  table,
+					HashValue:  "userid:d0:foo:bar",
+					RangeValue: []byte("\x00YmFyeQ\x00chunkID\x001\x00"),
 				},
 				{
-					TableName: table,
-					HashKey:   "userid:d0:foo:baz",
-					RangeKey:  []byte("\x00YmF6eQ\x00chunkID\x001\x00"),
+					TableName:  table,
+					HashValue:  "userid:d0:foo:baz",
+					RangeValue: []byte("\x00YmF6eQ\x00chunkID\x001\x00"),
 				},
 			},
 		},
@@ -464,15 +464,15 @@ func TestSchemaRangeKey(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sort.Sort(ByHashKey(have))
-			sort.Sort(ByHashKey(tc.want))
+			sort.Sort(ByHashRangeKey(have))
+			sort.Sort(ByHashRangeKey(tc.want))
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong hash buckets - %s", test.Diff(tc.want, have))
 			}
 
 			// Test we can parse the resulting range keys
 			for _, entry := range have {
-				_, _, err := parseRangeValue(entry.RangeKey)
+				_, _, err := parseRangeValue(entry.RangeValue)
 				if err != nil {
 					t.Fatal(err)
 				}

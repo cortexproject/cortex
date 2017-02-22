@@ -46,15 +46,17 @@ type Schema interface {
 // IndexEntry describes an entry in the chunk index
 type IndexEntry struct {
 	TableName string
-	HashKey   string
+	HashValue string
 
-	// For writes, RangeKey this will always be set.
-	// For reads, one of RangeKey and StartRangeKey might be set:
-	// - If RangeKey is not nil, must read all keys with that prefix.
-	// - If StartRangeKey is not nil, must read all keys from there onwards.
-	// - If neither is set, must read all kets for that row.
-	RangeKey      []byte
-	StartRangeKey []byte
+	// For writes, RangeValue will always be set.
+	RangeValue []byte
+
+	// For reads, one of RangeValuePrefix or RangeValueStart might be set:
+	// - If RangeValuePrefix is not nil, must read all keys with that prefix.
+	// - If RangeValueStart is not nil, must read all keys from there onwards.
+	// - If neither is set, must read all keys for that row.
+	RangeValuePrefix []byte
+	RangeValueStart  []byte
 }
 
 // SchemaConfig contains the config for our chunk index schemas
@@ -358,9 +360,9 @@ func (originalEntries) GetWriteEntries(_, _ uint32, tableName, hashKey string, l
 			return nil, fmt.Errorf("label values cannot contain null byte")
 		}
 		result = append(result, IndexEntry{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  buildRangeKey([]byte(key), []byte(value), chunkIDBytes),
+			TableName:  tableName,
+			HashValue:  hashKey,
+			RangeValue: buildRangeKey([]byte(key), []byte(value), chunkIDBytes),
 		})
 	}
 	return result, nil
@@ -369,9 +371,9 @@ func (originalEntries) GetWriteEntries(_, _ uint32, tableName, hashKey string, l
 func (originalEntries) GetReadMetricEntries(_, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  nil,
+			TableName:        tableName,
+			HashValue:        hashKey,
+			RangeValuePrefix: nil,
 		},
 	}, nil
 }
@@ -379,9 +381,9 @@ func (originalEntries) GetReadMetricEntries(_, _ uint32, tableName, hashKey stri
 func (originalEntries) GetReadMetricLabelEntries(_, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  buildRangeKey([]byte(labelName)),
+			TableName:        tableName,
+			HashValue:        hashKey,
+			RangeValuePrefix: buildRangeKey([]byte(labelName)),
 		},
 	}, nil
 }
@@ -392,9 +394,9 @@ func (originalEntries) GetReadMetricLabelValueEntries(_, _ uint32, tableName, ha
 	}
 	return []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  buildRangeKey([]byte(labelName), []byte(labelValue)),
+			TableName:        tableName,
+			HashValue:        hashKey,
+			RangeValuePrefix: buildRangeKey([]byte(labelName), []byte(labelValue)),
 		},
 	}, nil
 }
@@ -413,9 +415,9 @@ func (base64Entries) GetWriteEntries(_, _ uint32, tableName, hashKey string, lab
 
 		encodedBytes := encodeBase64Value(value)
 		result = append(result, IndexEntry{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  buildRangeKey([]byte(key), encodedBytes, chunkIDBytes, rangeKeyV1),
+			TableName:  tableName,
+			HashValue:  hashKey,
+			RangeValue: buildRangeKey([]byte(key), encodedBytes, chunkIDBytes, rangeKeyV1),
 		})
 	}
 	return result, nil
@@ -425,9 +427,9 @@ func (base64Entries) GetReadMetricLabelValueEntries(_, _ uint32, tableName, hash
 	encodedBytes := encodeBase64Value(labelValue)
 	return []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  buildRangeKey([]byte(labelName), encodedBytes),
+			TableName:        tableName,
+			HashValue:        hashKey,
+			RangeValuePrefix: buildRangeKey([]byte(labelName), encodedBytes),
 		},
 	}, nil
 }
@@ -438,9 +440,9 @@ func (labelNameInHashKeyEntries) GetWriteEntries(_, _ uint32, tableName, hashKey
 	chunkIDBytes := []byte(chunkID)
 	entries := []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  buildRangeKey(nil, nil, chunkIDBytes, rangeKeyV2),
+			TableName:  tableName,
+			HashValue:  hashKey,
+			RangeValue: buildRangeKey(nil, nil, chunkIDBytes, rangeKeyV2),
 		},
 	}
 
@@ -450,9 +452,9 @@ func (labelNameInHashKeyEntries) GetWriteEntries(_, _ uint32, tableName, hashKey
 		}
 		encodedBytes := encodeBase64Value(value)
 		entries = append(entries, IndexEntry{
-			TableName: tableName,
-			HashKey:   hashKey + ":" + string(key),
-			RangeKey:  buildRangeKey(nil, encodedBytes, chunkIDBytes, rangeKeyV1),
+			TableName:  tableName,
+			HashValue:  hashKey + ":" + string(key),
+			RangeValue: buildRangeKey(nil, encodedBytes, chunkIDBytes, rangeKeyV1),
 		})
 	}
 
@@ -463,8 +465,7 @@ func (labelNameInHashKeyEntries) GetReadMetricEntries(_, _ uint32, tableName, ha
 	return []IndexEntry{
 		{
 			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  nil,
+			HashValue: hashKey,
 		},
 	}, nil
 }
@@ -473,8 +474,7 @@ func (labelNameInHashKeyEntries) GetReadMetricLabelEntries(_, _ uint32, tableNam
 	return []IndexEntry{
 		{
 			TableName: tableName,
-			HashKey:   hashKey + ":" + string(labelName),
-			RangeKey:  buildRangeKey(nil),
+			HashValue: hashKey + ":" + string(labelName),
 		},
 	}, nil
 }
@@ -483,9 +483,9 @@ func (labelNameInHashKeyEntries) GetReadMetricLabelValueEntries(_, _ uint32, tab
 	encodedBytes := encodeBase64Value(labelValue)
 	return []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey + ":" + string(labelName),
-			RangeKey:  buildRangeKey(nil, encodedBytes),
+			TableName:        tableName,
+			HashValue:        hashKey + ":" + string(labelName),
+			RangeValuePrefix: buildRangeKey(nil, encodedBytes),
 		},
 	}, nil
 }
@@ -509,9 +509,9 @@ func (v5Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, l
 
 	entries := []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV3),
+			TableName:  tableName,
+			HashValue:  hashKey,
+			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV3),
 		},
 	}
 
@@ -521,9 +521,9 @@ func (v5Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, l
 		}
 		encodedValueBytes := encodeBase64Value(value)
 		entries = append(entries, IndexEntry{
-			TableName: tableName,
-			HashKey:   hashKey + ":" + string(key),
-			RangeKey:  buildRangeKey(encodedThroughBytes, encodedValueBytes, chunkIDBytes, rangeKeyV4),
+			TableName:  tableName,
+			HashValue:  hashKey + ":" + string(key),
+			RangeValue: buildRangeKey(encodedThroughBytes, encodedValueBytes, chunkIDBytes, rangeKeyV4),
 		})
 	}
 
@@ -534,9 +534,9 @@ func (v5Entries) GetReadMetricEntries(from, _ uint32, tableName, hashKey string)
 	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
-			TableName:     tableName,
-			HashKey:       hashKey,
-			StartRangeKey: buildRangeKey(encodedFromBytes),
+			TableName:       tableName,
+			HashValue:       hashKey,
+			RangeValueStart: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
@@ -545,9 +545,9 @@ func (v5Entries) GetReadMetricLabelEntries(from, _ uint32, tableName, hashKey st
 	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
-			TableName:     tableName,
-			HashKey:       hashKey + ":" + string(labelName),
-			StartRangeKey: buildRangeKey(encodedFromBytes),
+			TableName:       tableName,
+			HashValue:       hashKey + ":" + string(labelName),
+			RangeValueStart: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
@@ -557,9 +557,9 @@ func (v5Entries) GetReadMetricLabelValueEntries(from, _ uint32, tableName, hashK
 	encodedValueBytes := encodeBase64Value(labelValue)
 	return []IndexEntry{
 		{
-			TableName:     tableName,
-			HashKey:       hashKey + ":" + string(labelName),
-			StartRangeKey: buildRangeKey(encodedFromBytes, encodedValueBytes),
+			TableName:       tableName,
+			HashValue:       hashKey + ":" + string(labelName),
+			RangeValueStart: buildRangeKey(encodedFromBytes, encodedValueBytes),
 		},
 	}, nil
 }

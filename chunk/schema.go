@@ -2,9 +2,9 @@ package chunk
 
 import (
 	"bytes"
-	"encoding/base32"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"sort"
@@ -494,13 +494,19 @@ func (labelNameInHashKeyEntries) GetReadMetricLabelValueEntries(_, _ uint32, tab
 type v5Entries struct{}
 
 func encodeTime(t uint32) []byte {
-	// timestamps are base32hex encoded such that it doesn't contain null byte,
+	// timestamps are hex encoded such that it doesn't contain null byte,
 	// but is still lexicographically sortable.
 	throughBytes := make([]byte, 4, 4)
 	binary.BigEndian.PutUint32(throughBytes, t)
 	encodedThroughBytes := make([]byte, 8, 8)
-	base32.HexEncoding.Encode(encodedThroughBytes, throughBytes)
+	hex.Encode(encodedThroughBytes, throughBytes)
 	return encodedThroughBytes
+}
+
+func decodeTime(bs []byte) uint32 {
+	buf := make([]byte, 4, 4)
+	hex.Decode(buf, bs)
+	return binary.BigEndian.Uint32(buf)
 }
 
 func (v5Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error) {

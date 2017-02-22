@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"math"
+	"math/rand"
 	"reflect"
 	"sort"
 	"testing"
@@ -388,6 +390,7 @@ func TestSchemaRangeKey(t *testing.T) {
 		dailyBuckets  = v2Schema(cfg)
 		base64Keys    = v3Schema(cfg)
 		labelBuckets  = v4Schema(cfg)
+		tsRangeKeys   = v5Schema(cfg)
 		metric        = model.Metric{
 			model.MetricNameLabel: metricName,
 			"bar": "bary",
@@ -454,6 +457,26 @@ func TestSchemaRangeKey(t *testing.T) {
 				},
 			},
 		},
+		{
+			tsRangeKeys,
+			[]IndexEntry{
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x003\x00"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:bar",
+					RangeValue: []byte("0036ee7f\x00YmFyeQ\x00chunkID\x004\x00"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:baz",
+					RangeValue: []byte("0036ee7f\x00YmF6eQ\x00chunkID\x004\x00"),
+				},
+			},
+		},
 	} {
 		t.Run(fmt.Sprintf("TestSchameRangeKey[%d]", i), func(t *testing.T) {
 			have, err := tc.Schema.GetWriteEntries(
@@ -489,21 +512,50 @@ func TestParseRangeValue(t *testing.T) {
 	}{
 		{[]byte("1\x002\x003\x00"), "2", "3"},
 
-		// v3 Schema base64-encodes the label value
+		// version 1 range keys (v3 Schema) base64-encodes the label value
 		{[]byte("toms\x00Y29kZQ\x002:1484661279394:1484664879394\x001\x00"),
 			"code", "2:1484661279394:1484664879394"},
 
-		// v4 Schema doesn't have the label name in the range key
+		// version 1 range keys (v4 Schema) doesn't have the label name in the range key
 		{[]byte("\x00Y29kZQ\x002:1484661279394:1484664879394\x001\x00"),
 			"code", "2:1484661279394:1484664879394"},
 
-		// v4 Schema version 2 keys don't have the label name or value in the range key
+		// version 2 range keys (also v4 Schema) don't have the label name or value in the range key
 		{[]byte("\x00\x002:1484661279394:1484664879394\x002\x00"),
 			"", "2:1484661279394:1484664879394"},
+
+		// version 3 range keys (v5 Schema) have timestamp in first 'dimension'
+		{[]byte("a1b2c3d4\x00\x002:1484661279394:1484664879394\x003\x00"),
+			"", "2:1484661279394:1484664879394"},
+
+		// version 4 range keys (also v5 Schema) have timestamp in first 'dimension',
+		// base64 value in second
+		{[]byte("a1b2c3d4\x00Y29kZQ\x002:1484661279394:1484664879394\x004\x00"),
+			"code", "2:1484661279394:1484664879394"},
 	} {
 		value, chunkID, err := parseRangeValue(c.encoded)
 		assert.Nil(t, err, "parseRangeValue error")
 		assert.Equal(t, model.LabelValue(c.value), value, "value")
 		assert.Equal(t, c.chunkID, chunkID, "chunkID")
+	}
+}
+
+func TestSchemaTimeEncoding(t *testing.T) {
+	assert.Equal(t, uint32(0), decodeTime(encodeTime(0)), "0")
+	assert.Equal(t, uint32(math.MaxUint32), decodeTime(encodeTime(math.MaxUint32)), "MaxUint32")
+
+	for i := 0; i < 100; i++ {
+		a, b := uint32(rand.Int31()), uint32(rand.Int31())
+
+		assert.Equal(t, a, decodeTime(encodeTime(a)), "a")
+		assert.Equal(t, b, decodeTime(encodeTime(b)), "b")
+
+		if a < b {
+			assert.Equal(t, -1, bytes.Compare(encodeTime(a), encodeTime(b)), "lt")
+		} else if a > b {
+			assert.Equal(t, 1, bytes.Compare(encodeTime(a), encodeTime(b)), "gt")
+		} else {
+			assert.Equal(t, 1, bytes.Compare(encodeTime(a), encodeTime(b)), "eq")
+		}
 	}
 }

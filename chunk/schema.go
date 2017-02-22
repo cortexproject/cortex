@@ -47,7 +47,14 @@ type Schema interface {
 type IndexEntry struct {
 	TableName string
 	HashKey   string
-	RangeKey  []byte
+
+	// For writes, RangeKey this will always be set.
+	// For reads, one of RangeKey and StartRangeKey might be set:
+	// - If RangeKey is not nil, must read all keys with that prefix.
+	// - If StartRangeKey is not nil, must read all keys from there onwards.
+	// - If neither is set, must read all kets for that row.
+	RangeKey      []byte
+	StartRangeKey []byte
 }
 
 // SchemaConfig contains the config for our chunk index schemas
@@ -486,15 +493,19 @@ func (labelNameInHashKeyEntries) GetReadMetricLabelValueEntries(_, _ uint32, tab
 // v5Entries includes chunk end time in range key - see #298.
 type v5Entries struct{}
 
+func encodeTime(t uint32) []byte {
+	// timestamps are base32hex encoded such that it doesn't contain null byte,
+	// but is still lexicographically sortable.
+	throughBytes := make([]byte, 4, 4)
+	binary.BigEndian.PutUint32(throughBytes, t)
+	encodedThroughBytes := make([]byte, 8, 8)
+	base32.HexEncoding.Encode(encodedThroughBytes, throughBytes)
+	return encodedThroughBytes
+}
+
 func (v5Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	chunkIDBytes := []byte(chunkID)
-
-	// encodedFromBytes timestamp is base32hex encoded such that it doesn't contain null byte,
-	// but is still lexicographically sortable.
-	throughBytes := make([]byte, 8, 8)
-	binary.BigEndian.PutUint64(throughBytes, uint64(through))
-	encodedThroughBytes := make([]byte, 16, 16)
-	base32.HexEncoding.Encode(encodedThroughBytes, throughBytes)
+	encodedThroughBytes := encodeTime(through)
 
 	entries := []IndexEntry{
 		{
@@ -519,33 +530,36 @@ func (v5Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, l
 	return entries, nil
 }
 
-func (v5Entries) GetReadMetricEntries(_, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
+func (v5Entries) GetReadMetricEntries(from, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
+	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey,
-			RangeKey:  nil,
+			TableName:     tableName,
+			HashKey:       hashKey,
+			StartRangeKey: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
 
-func (v5Entries) GetReadMetricLabelEntries(_, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
+func (v5Entries) GetReadMetricLabelEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
+	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey + ":" + string(labelName),
-			RangeKey:  nil,
+			TableName:     tableName,
+			HashKey:       hashKey + ":" + string(labelName),
+			StartRangeKey: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
 
-func (v5Entries) GetReadMetricLabelValueEntries(_, _ uint32, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
-	encodedBytes := encodeBase64Value(labelValue)
+func (v5Entries) GetReadMetricLabelValueEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
+	encodedFromBytes := encodeTime(from)
+	encodedValueBytes := encodeBase64Value(labelValue)
 	return []IndexEntry{
 		{
-			TableName: tableName,
-			HashKey:   hashKey + ":" + string(labelName),
-			RangeKey:  buildRangeKey(nil, encodedBytes),
+			TableName:     tableName,
+			HashKey:       hashKey + ":" + string(labelName),
+			StartRangeKey: buildRangeKey(encodedFromBytes, encodedValueBytes),
 		},
 	}, nil
 }

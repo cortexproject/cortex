@@ -163,25 +163,33 @@ func (d dynamoClientAdapter) BatchWrite(ctx context.Context, input WriteBatch) e
 	return nil
 }
 
-func (d dynamoClientAdapter) QueryPages(ctx context.Context, tableName, hashValue string, rangePrefix []byte, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (d dynamoClientAdapter) QueryPages(ctx context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	input := &dynamodb.QueryInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(entry.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{
 			hashKey: {
 				AttributeValueList: []*dynamodb.AttributeValue{
-					{S: aws.String(hashValue)},
+					{S: aws.String(entry.HashKey)},
 				},
-				ComparisonOperator: aws.String("EQ"),
+				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorEq),
 			},
 		},
 		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 	}
-	if len(rangePrefix) > 0 {
+
+	if entry.RangeKey != nil {
 		input.KeyConditions[rangeKey] = &dynamodb.Condition{
 			AttributeValueList: []*dynamodb.AttributeValue{
-				{B: rangePrefix},
+				{B: entry.RangeKey},
 			},
 			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
+		}
+	} else if entry.StartRangeKey != nil {
+		input.KeyConditions[rangeKey] = &dynamodb.Condition{
+			AttributeValueList: []*dynamodb.AttributeValue{
+				{B: entry.StartRangeKey},
+			},
+			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorGe),
 		}
 	}
 

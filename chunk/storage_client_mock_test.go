@@ -121,45 +121,63 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	return nil
 }
 
-func (m *MockStorage) QueryPages(ctx context.Context, tableName, hashValue string, rangePrefix []byte, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	table, ok := m.tables[tableName]
+	table, ok := m.tables[entry.TableName]
 	if !ok {
 		return fmt.Errorf("table not found")
 	}
 
-	items, ok := table.items[hashValue]
+	items, ok := table.items[entry.HashKey]
 	if !ok {
 		return nil
 	}
 
-	var found []mockItem
-	log.Printf("Lookup prefix %s/%x (%d)", hashValue, rangePrefix, len(items))
+	if entry.RangeKey != nil {
+		log.Printf("Lookup prefix %s/%x (%d)", entry.HashKey, entry.RangeKey, len(items))
 
-	// the smallest index i in [0, n) at which f(i) is true
-	i := sort.Search(len(items), func(i int) bool {
-		if bytes.Compare(items[i], rangePrefix) > 0 {
-			return true
-		}
-		return bytes.HasPrefix(items[i], rangePrefix)
-	})
-	j := sort.Search(len(items)-i, func(j int) bool {
-		if bytes.Compare(items[i+j], rangePrefix) < 0 {
-			return false
-		}
-		return !bytes.HasPrefix(items[i+j], rangePrefix)
-	})
+		// the smallest index i in [0, n) at which f(i) is true
+		i := sort.Search(len(items), func(i int) bool {
+			if bytes.Compare(items[i], entry.RangeKey) > 0 {
+				return true
+			}
+			return bytes.HasPrefix(items[i], entry.RangeKey)
+		})
+		j := sort.Search(len(items)-i, func(j int) bool {
+			if bytes.Compare(items[i+j], entry.RangeKey) < 0 {
+				return false
+			}
+			return !bytes.HasPrefix(items[i+j], entry.RangeKey)
+		})
 
-	log.Printf("  found range [%d:%d)", i, i+j)
-	if i > len(items) || j == 0 {
-		return nil
+		log.Printf("  found range [%d:%d)", i, i+j)
+		if i > len(items) || j == 0 {
+			return nil
+		}
+		items = items[i : i+j]
+
+	} else if entry.StartRangeKey != nil {
+		log.Printf("Lookup range %s/%x -> ... (%d)", entry.HashKey, entry.StartRangeKey, len(items))
+
+		// the smallest index i in [0, n) at which f(i) is true
+		i := sort.Search(len(items), func(i int) bool {
+			return bytes.Compare(items[i], entry.StartRangeKey) > 0
+		})
+
+		log.Printf("  found range [%d)", i)
+		if i > len(items) {
+			return nil
+		}
+		items = items[i:]
+
+	} else {
+		log.Printf("Lookup %s/* (%d)", entry.HashKey, len(items))
 	}
-	found = items[i : i+j]
 
 	result := mockReadBatch{}
-	for _, item := range found {
+	for _, item := range items {
 		result = append(result, item)
 	}
 

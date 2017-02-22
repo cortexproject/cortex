@@ -373,7 +373,7 @@ func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher
 func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metric.LabelMatcher) (ByID, error) {
 	var chunkSet ByID
 	var processingError error
-	if err := c.storage.QueryPages(ctx, entry.TableName, entry.HashKey, entry.RangeKey, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
+	if err := c.storage.QueryPages(ctx, entry, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
 		processingError = processResponse(resp, &chunkSet, matcher)
 		return processingError != nil && !lastPage
 	}); err != nil {

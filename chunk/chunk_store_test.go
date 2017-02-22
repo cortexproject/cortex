@@ -64,6 +64,7 @@ func TestChunkStore(t *testing.T) {
 		{"v2 schema", v2Schema},
 		{"v3 schema", v3Schema},
 		{"v4 schema", v4Schema},
+		{"v5 schema", v5Schema},
 	}
 
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")

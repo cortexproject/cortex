@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"math"
+	"math/rand"
 	"reflect"
 	"sort"
 	"testing"
@@ -173,15 +175,15 @@ func TestSchemaComposite(t *testing.T) {
 	}
 }
 
-type ByHashKey []IndexEntry
+type ByHashRangeKey []IndexEntry
 
-func (a ByHashKey) Len() int      { return len(a) }
-func (a ByHashKey) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByHashKey) Less(i, j int) bool {
-	if a[i].HashKey != a[j].HashKey {
-		return a[i].HashKey < a[j].HashKey
+func (a ByHashRangeKey) Len() int      { return len(a) }
+func (a ByHashRangeKey) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByHashRangeKey) Less(i, j int) bool {
+	if a[i].HashValue != a[j].HashValue {
+		return a[i].HashValue < a[j].HashValue
 	}
-	return bytes.Compare(a[i].RangeKey, a[j].RangeKey) < 0
+	return bytes.Compare(a[i].RangeValue, a[j].RangeValue) < 0
 }
 
 func mergeResults(rss ...[]IndexEntry) []IndexEntry {
@@ -198,7 +200,7 @@ func TestSchemaHashKeys(t *testing.T) {
 		for i := from; i < through; i++ {
 			want = append(want, IndexEntry{
 				TableName: tableName,
-				HashKey:   fmt.Sprintf(fmtStr, i),
+				HashValue: fmt.Sprintf(fmtStr, i),
 			})
 		}
 		return want
@@ -361,10 +363,10 @@ func TestSchemaHashKeys(t *testing.T) {
 				t.Fatal(err)
 			}
 			for i := range have {
-				have[i].RangeKey = nil
+				have[i].RangeValue = nil
 			}
-			sort.Sort(ByHashKey(have))
-			sort.Sort(ByHashKey(tc.want))
+			sort.Sort(ByHashRangeKey(have))
+			sort.Sort(ByHashRangeKey(tc.want))
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong hash buckets - %s", test.Diff(tc.want, have))
 			}
@@ -388,6 +390,7 @@ func TestSchemaRangeKey(t *testing.T) {
 		dailyBuckets  = v2Schema(cfg)
 		base64Keys    = v3Schema(cfg)
 		labelBuckets  = v4Schema(cfg)
+		tsRangeKeys   = v5Schema(cfg)
 		metric        = model.Metric{
 			model.MetricNameLabel: metricName,
 			"bar": "bary",
@@ -402,9 +405,9 @@ func TestSchemaRangeKey(t *testing.T) {
 				continue
 			}
 			result = append(result, IndexEntry{
-				TableName: table,
-				HashKey:   hashKey,
-				RangeKey:  []byte(callback(labelName, labelValue)),
+				TableName:  table,
+				HashValue:  hashKey,
+				RangeValue: []byte(callback(labelName, labelValue)),
 			})
 		}
 		return result
@@ -438,19 +441,39 @@ func TestSchemaRangeKey(t *testing.T) {
 			labelBuckets,
 			[]IndexEntry{
 				{
-					TableName: table,
-					HashKey:   "userid:d0:foo",
-					RangeKey:  []byte("\x00\x00chunkID\x002\x00"),
+					TableName:  table,
+					HashValue:  "userid:d0:foo",
+					RangeValue: []byte("\x00\x00chunkID\x002\x00"),
 				},
 				{
-					TableName: table,
-					HashKey:   "userid:d0:foo:bar",
-					RangeKey:  []byte("\x00YmFyeQ\x00chunkID\x001\x00"),
+					TableName:  table,
+					HashValue:  "userid:d0:foo:bar",
+					RangeValue: []byte("\x00YmFyeQ\x00chunkID\x001\x00"),
 				},
 				{
-					TableName: table,
-					HashKey:   "userid:d0:foo:baz",
-					RangeKey:  []byte("\x00YmF6eQ\x00chunkID\x001\x00"),
+					TableName:  table,
+					HashValue:  "userid:d0:foo:baz",
+					RangeValue: []byte("\x00YmF6eQ\x00chunkID\x001\x00"),
+				},
+			},
+		},
+		{
+			tsRangeKeys,
+			[]IndexEntry{
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x003\x00"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:bar",
+					RangeValue: []byte("0036ee7f\x00YmFyeQ\x00chunkID\x004\x00"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:baz",
+					RangeValue: []byte("0036ee7f\x00YmF6eQ\x00chunkID\x004\x00"),
 				},
 			},
 		},
@@ -464,15 +487,15 @@ func TestSchemaRangeKey(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sort.Sort(ByHashKey(have))
-			sort.Sort(ByHashKey(tc.want))
+			sort.Sort(ByHashRangeKey(have))
+			sort.Sort(ByHashRangeKey(tc.want))
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong hash buckets - %s", test.Diff(tc.want, have))
 			}
 
 			// Test we can parse the resulting range keys
 			for _, entry := range have {
-				_, _, _, err := parseRangeValue(entry.RangeKey)
+				_, _, err := parseRangeValue(entry.RangeValue)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -484,20 +507,55 @@ func TestSchemaRangeKey(t *testing.T) {
 func TestParseRangeValue(t *testing.T) {
 	// Test we can decode legacy range values
 	for _, c := range []struct {
-		encoded              []byte
-		name, value, chunkID string
+		encoded        []byte
+		value, chunkID string
 	}{
-		{[]byte{'1', 0, '2', 0, '3', 0}, "1", "2", "3"},
-		{[]byte{0x74, 0x6f, 0x6d, 0x73, 0x00, 0x59, 0x32, 0x39, 0x6b, 0x5a, 0x51,
-			0x00, 0x32, 0x3a, 0x31, 0x34, 0x38, 0x34, 0x36, 0x36, 0x31, 0x32, 0x37,
-			0x39, 0x33, 0x39, 0x34, 0x3a, 0x31, 0x34, 0x38, 0x34, 0x36, 0x36, 0x34,
-			0x38, 0x37, 0x39, 0x33, 0x39, 0x34, 0x00, 0x01, 0x00},
-			"toms", "code", "2:1484661279394:1484664879394"},
+		{[]byte("1\x002\x003\x00"), "2", "3"},
+
+		// version 1 range keys (v3 Schema) base64-encodes the label value
+		{[]byte("toms\x00Y29kZQ\x002:1484661279394:1484664879394\x001\x00"),
+			"code", "2:1484661279394:1484664879394"},
+
+		// version 1 range keys (v4 Schema) doesn't have the label name in the range key
+		{[]byte("\x00Y29kZQ\x002:1484661279394:1484664879394\x001\x00"),
+			"code", "2:1484661279394:1484664879394"},
+
+		// version 2 range keys (also v4 Schema) don't have the label name or value in the range key
+		{[]byte("\x00\x002:1484661279394:1484664879394\x002\x00"),
+			"", "2:1484661279394:1484664879394"},
+
+		// version 3 range keys (v5 Schema) have timestamp in first 'dimension'
+		{[]byte("a1b2c3d4\x00\x002:1484661279394:1484664879394\x003\x00"),
+			"", "2:1484661279394:1484664879394"},
+
+		// version 4 range keys (also v5 Schema) have timestamp in first 'dimension',
+		// base64 value in second
+		{[]byte("a1b2c3d4\x00Y29kZQ\x002:1484661279394:1484664879394\x004\x00"),
+			"code", "2:1484661279394:1484664879394"},
 	} {
-		name, value, chunkID, err := parseRangeValue(c.encoded)
+		value, chunkID, err := parseRangeValue(c.encoded)
 		assert.Nil(t, err, "parseRangeValue error")
-		assert.Equal(t, model.LabelName(c.name), name, "name")
 		assert.Equal(t, model.LabelValue(c.value), value, "value")
 		assert.Equal(t, c.chunkID, chunkID, "chunkID")
+	}
+}
+
+func TestSchemaTimeEncoding(t *testing.T) {
+	assert.Equal(t, uint32(0), decodeTime(encodeTime(0)), "0")
+	assert.Equal(t, uint32(math.MaxUint32), decodeTime(encodeTime(math.MaxUint32)), "MaxUint32")
+
+	for i := 0; i < 100; i++ {
+		a, b := uint32(rand.Int31()), uint32(rand.Int31())
+
+		assert.Equal(t, a, decodeTime(encodeTime(a)), "a")
+		assert.Equal(t, b, decodeTime(encodeTime(b)), "b")
+
+		if a < b {
+			assert.Equal(t, -1, bytes.Compare(encodeTime(a), encodeTime(b)), "lt")
+		} else if a > b {
+			assert.Equal(t, 1, bytes.Compare(encodeTime(a), encodeTime(b)), "gt")
+		} else {
+			assert.Equal(t, 1, bytes.Compare(encodeTime(a), encodeTime(b)), "eq")
+		}
 	}
 }

@@ -219,8 +219,8 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 		indexEntriesPerChunk.Observe(float64(len(entries)))
 
 		for _, entry := range entries {
-			rowWrites.Observe(entry.HashKey, 1)
-			writeReqs.Add(entry.TableName, entry.HashKey, entry.RangeKey)
+			rowWrites.Observe(entry.HashValue, 1)
+			writeReqs.Add(entry.TableName, entry.HashValue, entry.RangeValue)
 		}
 	}
 	return writeReqs, nil
@@ -373,7 +373,7 @@ func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher
 func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metric.LabelMatcher) (ByID, error) {
 	var chunkSet ByID
 	var processingError error
-	if err := c.storage.QueryPages(ctx, entry.TableName, entry.HashKey, entry.RangeKey, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
+	if err := c.storage.QueryPages(ctx, entry, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
 		processingError = processResponse(resp, &chunkSet, matcher)
 		return processingError != nil && !lastPage
 	}); err != nil {
@@ -394,7 +394,7 @@ func processResponse(resp ReadBatch, chunkSet *ByID, matcher *metric.LabelMatche
 		if rangeValue == nil {
 			return fmt.Errorf("invalid item: %d", i)
 		}
-		_, value, chunkID, err := parseRangeValue(rangeValue)
+		value, chunkID, err := parseRangeValue(rangeValue)
 		if err != nil {
 			return err
 		}

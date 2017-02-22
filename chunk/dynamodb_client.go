@@ -13,8 +13,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/cortex/util"
 )
 
 const (
@@ -161,25 +163,33 @@ func (d dynamoClientAdapter) BatchWrite(ctx context.Context, input WriteBatch) e
 	return nil
 }
 
-func (d dynamoClientAdapter) QueryPages(ctx context.Context, tableName, hashValue string, rangePrefix []byte, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (d dynamoClientAdapter) QueryPages(ctx context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	input := &dynamodb.QueryInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(entry.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{
 			hashKey: {
 				AttributeValueList: []*dynamodb.AttributeValue{
-					{S: aws.String(hashValue)},
+					{S: aws.String(entry.HashValue)},
 				},
-				ComparisonOperator: aws.String("EQ"),
+				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorEq),
 			},
 		},
 		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 	}
-	if len(rangePrefix) > 0 {
+
+	if entry.RangeValuePrefix != nil {
 		input.KeyConditions[rangeKey] = &dynamodb.Condition{
 			AttributeValueList: []*dynamodb.AttributeValue{
-				{B: rangePrefix},
+				{B: entry.RangeValuePrefix},
 			},
 			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
+		}
+	} else if entry.RangeValueStart != nil {
+		input.KeyConditions[rangeKey] = &dynamodb.Condition{
+			AttributeValueList: []*dynamodb.AttributeValue{
+				{B: entry.RangeValueStart},
+			},
+			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorGe),
 		}
 	}
 
@@ -334,13 +344,6 @@ func recordDynamoError(tableName string, err error) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func dictLen(b map[string][]*dynamodb.WriteRequest) int {
 	result := 0
 	for _, reqs := range b {
@@ -354,11 +357,11 @@ func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
 	outLen, inLen := dictLen(to), dictLen(from)
 	toFill := inLen
 	if max > 0 {
-		toFill = min(inLen, max-outLen)
+		toFill = util.Min(inLen, max-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := min(len(fromReqs), toFill)
+			taken := util.Min(len(fromReqs), toFill)
 			if taken > 0 {
 				to[tableName] = append(to[tableName], fromReqs[:taken]...)
 				from[tableName] = fromReqs[taken:]

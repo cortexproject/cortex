@@ -73,8 +73,8 @@ type scheduler struct {
 	latestConfig configID
 	latestMutex  sync.RWMutex
 
-	done       chan struct{}
-	terminated chan struct{}
+	stop chan struct{}
+	done chan struct{}
 }
 
 // newScheduler makes a new scheduler.
@@ -86,15 +86,15 @@ func newScheduler(configsAPI configsAPI, evaluationInterval, pollInterval time.D
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
 		cfgs:               map[string]cortexConfig{},
 
-		done:       make(chan struct{}),
-		terminated: make(chan struct{}),
+		stop: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 }
 
 // Run polls the source of configurations for changes.
 func (s *scheduler) Run() {
 	log.Debugf("Scheduler started")
-	defer close(s.terminated)
+	defer close(s.done)
 	// Load initial set of all configurations before polling for new ones.
 	s.addNewConfigs(time.Now(), s.loadAllConfigs())
 	ticker := time.NewTicker(s.pollInterval)
@@ -105,16 +105,17 @@ func (s *scheduler) Run() {
 			if err != nil {
 				log.Warnf("Scheduler: error updating configs: %v", err)
 			}
-		case <-s.done:
+		case <-s.stop:
 			ticker.Stop()
+			return
 		}
 	}
 }
 
 func (s *scheduler) Stop() {
-	close(s.done)
+	close(s.stop)
 	s.q.Close()
-	<-s.terminated
+	<-s.done
 	log.Debugf("Scheduler stopped")
 }
 
@@ -186,6 +187,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigVie
 }
 
 func (s *scheduler) addWorkItem(i workItem) {
+	// The queue is keyed by user ID, so items for existing user IDs will be replaced.
 	s.q.Enqueue(i)
 	log.Debugf("Scheduler: work item added: %v", i)
 }

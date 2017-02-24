@@ -3,7 +3,6 @@ package ingester
 import (
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"net/http"
 	"sync"
 	"time"
@@ -466,9 +465,7 @@ func (i *Ingester) sweepUsers(immediate bool) {
 	for id, state := range i.userStates.cp() {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
-			if err := i.sweepSeries(id, pair.fp, pair.series, immediate); err != nil {
-				log.Errorf("Error sweeping series: %v", err)
-			}
+			i.sweepSeries(id, pair.fp, pair.series, immediate)
 			state.fpLocker.Unlock(pair.fp)
 		}
 	}
@@ -478,33 +475,18 @@ func (i *Ingester) sweepUsers(immediate bool) {
 //
 // NB we don't close the head chunk here, as the series could wait in the queue
 // for some time, and we want to encourage chunks to be as full as possible.
-func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memorySeries, immediate bool) error {
-	flush := i.shouldFlushSeries(series, immediate)
-	if !flush {
-		return nil
+func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memorySeries, immediate bool) {
+	if len(series.chunkDescs) <= 0 {
+		return
 	}
 
-	return i.enqueueSeriesForFlushing(userID, fp, series, immediate)
-}
-
-func (i *Ingester) enqueueSeriesForFlushing(userID string, fp model.Fingerprint, series *memorySeries, immediate bool) error {
-	metricName, err := util.ExtractMetricNameFromMetric(series.metric)
-	if err != nil {
-		return err
-	}
-
-	h := fnv.New32()
-	if _, err := h.Write([]byte(userID)); err != nil {
-		return err
-	}
-	if _, err := h.Write([]byte(metricName)); err != nil {
-		return err
-	}
-
-	flushQueueIndex := int(h.Sum32() % uint32(i.cfg.ConcurrentFlushes))
 	firstTime := series.firstTime()
-	i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate})
-	return nil
+	flush := i.shouldFlushSeries(series, immediate)
+
+	if flush {
+		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
+		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate})
+	}
 }
 
 func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) bool {

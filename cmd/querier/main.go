@@ -14,12 +14,12 @@ import (
 	"github.com/prometheus/prometheus/retrieval"
 	"github.com/prometheus/prometheus/web/api/v1"
 
+	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/ring"
-	"github.com/weaveworks/cortex/server"
 	"github.com/weaveworks/cortex/util"
 )
 
@@ -33,7 +33,9 @@ func (r dummyAlertmanagerRetriever) Alertmanagers() []string { return nil }
 
 func main() {
 	var (
-		serverConfig      server.Config
+		serverConfig = server.Config{
+			MetricsNamespace: "cortex",
+		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
 		chunkStoreConfig  chunk.StoreConfig
@@ -54,7 +56,8 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	server := server.New(serverConfig, r)
+	server := server.New(serverConfig)
+	server.HTTP.Handle("/ring", r)
 	defer server.Stop()
 
 	chunkStore, err := chunk.NewStore(chunkStoreConfig)

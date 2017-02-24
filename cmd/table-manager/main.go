@@ -5,21 +5,23 @@ import (
 
 	"github.com/prometheus/common/log"
 
+	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/chunk"
-	"github.com/weaveworks/cortex/server"
 	"github.com/weaveworks/cortex/util"
 )
 
 func main() {
 	var (
-		serverConfig       = server.Config{}
+		serverConfig = server.Config{
+			MetricsNamespace: "cortex",
+		}
 		tableManagerConfig = chunk.TableManagerConfig{}
 	)
 	util.RegisterFlags(&serverConfig, &tableManagerConfig)
 	flag.Parse()
 
 	// Have to initialise server first, as its sets up tracing.
-	server := server.New(serverConfig, nil)
+	server := server.New(serverConfig)
 
 	tableManager, err := chunk.NewDynamoTableManager(tableManagerConfig)
 	if err != nil {

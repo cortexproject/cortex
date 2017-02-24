@@ -7,17 +7,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
+	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/ingester"
 	"github.com/weaveworks/cortex/ring"
-	"github.com/weaveworks/cortex/server"
 	"github.com/weaveworks/cortex/util"
 )
 
 func main() {
 	var (
-		serverConfig               server.Config
+		serverConfig = server.Config{
+			MetricsNamespace: "cortex",
+		}
 		ingesterRegistrationConfig ring.IngesterRegistrationConfig
 		chunkStoreConfig           chunk.StoreConfig
 		ingesterConfig             ingester.Config
@@ -33,7 +35,7 @@ func main() {
 	}
 	defer registration.Ring.Stop()
 
-	server := server.New(serverConfig, registration.Ring)
+	server := server.New(serverConfig)
 	chunkStore, err := chunk.NewStore(chunkStoreConfig)
 	if err != nil {
 		log.Fatal(err)
@@ -45,6 +47,7 @@ func main() {
 	}
 	prometheus.MustRegister(ingester)
 	cortex.RegisterIngesterServer(server.GRPC, ingester)
+	server.HTTP.Handle("/ring", registration.Ring)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 
 	// Deferring a func to make ordering obvious

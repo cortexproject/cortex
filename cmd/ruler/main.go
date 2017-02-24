@@ -6,17 +6,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
+	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/ruler"
-	"github.com/weaveworks/cortex/server"
 	"github.com/weaveworks/cortex/util"
 )
 
 func main() {
 	var (
-		serverConfig      server.Config
+		serverConfig = server.Config{
+			MetricsNamespace: "cortex",
+		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
 		rulerConfig       ruler.Config
@@ -55,7 +57,8 @@ func main() {
 	}
 	defer rulerServer.Stop()
 
-	server := server.New(serverConfig, r)
+	server := server.New(serverConfig)
+	server.HTTP.Handle("/ring", r)
 	defer server.Stop()
 	server.Run()
 }

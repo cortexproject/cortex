@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
+	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/ring"
-	"github.com/weaveworks/cortex/server"
 	"github.com/weaveworks/cortex/util"
 )
 
@@ -32,7 +32,9 @@ func main() {
 	//   object.
 
 	var (
-		serverConfig      server.Config
+		serverConfig = server.Config{
+			MetricsNamespace: "cortex",
+		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
 	)
@@ -52,7 +54,8 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	server := server.New(serverConfig, r)
+	server := server.New(serverConfig)
+	server.HTTP.Handle("/ring", r)
 	server.HTTP.Handle("/api/prom/push", http.HandlerFunc(dist.PushHandler))
 	defer server.Stop()
 

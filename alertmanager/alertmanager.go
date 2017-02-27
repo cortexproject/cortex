@@ -26,9 +26,12 @@ import (
 	"github.com/weaveworks/mesh"
 )
 
+const notificationLogMaintenancePeriod = 15 * time.Minute
+
 // Config configures an Alertmanager.
 type Config struct {
-	UserID      string
+	UserID string
+	// Used to persist notification logs and silences on disk.
 	DataDir     string
 	Logger      log.Logger
 	MeshRouter  *mesh.Router
@@ -69,8 +72,8 @@ func New(cfg *Config) (*Alertmanager, error) {
 		}),
 		nflog.WithRetention(cfg.Retention),
 		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
-		nflog.WithMaintenance(15*time.Minute, am.stop, am.wg.Done),
-		// TODO: Build a registry that can merge metrics from multiple users.
+		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
+		// TODO(cortex): Build a registry that can merge metrics from multiple users.
 		// For now, these metrics are ignored, as we can't register the same
 		// metric twice with a single registry.
 		nflog.WithMetrics(prometheus.NewRegistry()),
@@ -87,7 +90,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
 		Retention:    cfg.Retention,
 		Logger:       am.logger.With("component", "silences"),
-		// TODO: Build a registry that can merge metrics from multiple users.
+		// TODO(cortex): Build a registry that can merge metrics from multiple users.
 		// For now, these metrics are ignored, as we can't register the same
 		// metric twice with a single registry.
 		Metrics: prometheus.NewRegistry(),
@@ -143,7 +146,7 @@ func (am *Alertmanager) ApplyConfig(conf *config.Config) error {
 		pipeline notify.Stage
 	)
 
-	// TODO: How to support template files?
+	// TODO(cortex): How to support template files?
 	if len(conf.Templates) != 0 {
 		return fmt.Errorf("template files are not yet supported")
 	}

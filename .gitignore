@@ -1,3 +1,4 @@
+cmd/alertmanager/alertmanager
 cmd/distributor/distributor
 cmd/ingester/ingester
 cmd/querier/querier

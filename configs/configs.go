@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -21,7 +22,8 @@ type ConfigID int
 // A CortexConfig is a Cortex configuration for a single organization.
 type CortexConfig struct {
 	// RulesFiles maps from a rules filename to file contents.
-	RulesFiles map[string]string `json:"rules_files"`
+	RulesFiles         map[string]string `json:"rules_files"`
+	AlertmanagerConfig string            `json:"alertmanager_config"`
 }
 
 // CortexConfigView is what's returned from the Weave Cloud configs service
@@ -90,6 +92,15 @@ func (c CortexConfig) GetRules() ([]rules.Rule, error) {
 		}
 	}
 	return result, nil
+}
+
+// GetAlertmanagerConfig returns the Alertmanager config from the Cortex configuration.
+func (c CortexConfig) GetAlertmanagerConfig() (*config.Config, error) {
+	cfg, err := config.Load(c.AlertmanagerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing Alertmanager config: %s", err)
+	}
+	return cfg, nil
 }
 
 // API allows retrieving Cortex configs.

@@ -3,7 +3,9 @@ package ruler
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"golang.org/x/net/context"
+	"golang.org/x/net/context/ctxhttp"
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
@@ -87,30 +90,30 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Ruler evaluates rules.
 type Ruler struct {
-	engine   *promql.Engine
-	pusher   Pusher
-	alertURL *url.URL
-	notifier *notifier.Notifier
+	engine        *promql.Engine
+	pusher        Pusher
+	alertURL      *url.URL
+	notifierCfg   *config.Config
+	queueCapacity int
+
+	// Per-user notifiers with separate queues.
+	notifiersMtx sync.Mutex
+	notifiers    map[string]*notifier.Notifier
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) (*Ruler, error) {
-	n := notifier.New(&notifier.Options{
-		QueueCapacity: cfg.NotificationQueueCapacity,
-	})
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
-	if err = n.ApplyConfig(ncfg); err != nil {
-		return nil, err
-	}
-	go n.Run()
 	return &Ruler{
-		engine:   querier.NewEngine(d, c),
-		pusher:   d,
-		alertURL: cfg.ExternalURL.URL,
-		notifier: n,
+		engine:        querier.NewEngine(d, c),
+		pusher:        d,
+		alertURL:      cfg.ExternalURL.URL,
+		notifierCfg:   ncfg,
+		queueCapacity: cfg.NotificationQueueCapacity,
+		notifiers:     map[string]*notifier.Notifier{},
 	}, nil
 }
 
@@ -163,25 +166,65 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	return promConfig, nil
 }
 
-func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) *rules.Group {
+func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, error) {
 	appender := appenderAdapter{pusher: r.pusher, ctx: ctx}
+	userID, err := user.GetID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	notifier, err := r.getOrCreateNotifier(userID)
+	if err != nil {
+		return nil, err
+	}
 	opts := &rules.ManagerOptions{
 		SampleAppender: appender,
 		QueryEngine:    r.engine,
 		Context:        ctx,
 		ExternalURL:    r.alertURL,
-		Notifier:       r.notifier,
+		Notifier:       notifier,
 	}
 	delay := 0 * time.Second // Unused, so 0 value is fine.
-	return rules.NewGroup("default", delay, rs, opts)
+	return rules.NewGroup("default", delay, rs, opts), nil
+}
+
+func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
+	r.notifiersMtx.Lock()
+	defer r.notifiersMtx.Unlock()
+
+	n, ok := r.notifiers[userID]
+	if ok {
+		return n, nil
+	}
+
+	n = notifier.New(&notifier.Options{
+		QueueCapacity: r.queueCapacity,
+		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
+			req.Header.Set(user.OrgIDHeaderName, userID)
+			return ctxhttp.Do(ctx, client, req)
+		},
+	})
+
+	// This should never fail, unless there's a programming mistake.
+	if err := n.ApplyConfig(r.notifierCfg); err != nil {
+		return nil, err
+	}
+	go n.Run()
+
+	// TODO: Remove notifiers for stale users. Right now this is a slow leak.
+	r.notifiers[userID] = n
+	return n, nil
 }
 
 // Evaluate a list of rules in the given context.
 func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 	log.Debugf("Evaluating %d rules...", len(rs))
 	start := time.Now()
-	g := r.newGroup(ctx, rs)
-	g.Eval()
+	g, err := r.newGroup(ctx, rs)
+	if err != nil {
+		log.Errorf("Failed to create rule group: %v", err)
+	} else {
+		g.Eval()
+	}
 	// The prometheus routines we're calling have their own instrumentation
 	// but, a) it's rule-based, not group-based, b) it's a summary, not a
 	// histogram, so we can't reliably aggregate.
@@ -191,7 +234,12 @@ func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 
 // Stop stops the Ruler.
 func (r *Ruler) Stop() {
-	r.notifier.Stop()
+	r.notifiersMtx.Lock()
+	defer r.notifiersMtx.Unlock()
+
+	for _, n := range r.notifiers {
+		n.Stop()
+	}
 }
 
 // Server is a rules server.

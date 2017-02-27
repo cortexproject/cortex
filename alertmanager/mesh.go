@@ -49,7 +49,7 @@ func initMesh(addr, hwaddr, nickname, pw string) *mesh.Router {
 
 	password := []byte(pw)
 	if len(password) == 0 {
-		// Emtpy password is used to disable secure communication. Using a nil
+		// Empty password is used to disable secure communication. Using a nil
 		// password disables encryption in mesh.
 		password = nil
 	}

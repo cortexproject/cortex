@@ -250,6 +250,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/cenkalti/backoff",
+			"repository": "https://github.com/cenkalti/backoff",
+			"vcs": "git",
+			"revision": "b02f2bbce11d7ea6b97f282ef1771b0fe2f65ef3",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/davecgh/go-spew/spew",
 			"repository": "https://github.com/davecgh/go-spew",
 			"vcs": "git",
@@ -386,12 +394,12 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/golang/protobuf/ptypes/any",
+			"importpath": "github.com/golang/protobuf/ptypes",
 			"repository": "https://github.com/golang/protobuf",
 			"vcs": "git",
-			"revision": "1f49d83d9aa00e6ce4fc8258c71cc7786aec968a",
+			"revision": "69b215d01a5606c843240eab4937eab3acee6530",
 			"branch": "master",
-			"path": "ptypes/any",
+			"path": "/ptypes",
 			"notests": true
 		},
 		{
@@ -713,6 +721,339 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/prometheus/alertmanager/api",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "/api",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/config",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "/config",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/dispatch",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "dispatch",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/inhibit",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "inhibit",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/nflog",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "nflog",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/notify",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "notify",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/provider",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "provider",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/silence",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "silence",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/template",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "template",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/types",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "types",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/ui",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "/ui",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/Sirupsen/logrus",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/Sirupsen/logrus",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/beorn7/perks/quantile",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/beorn7/perks/quantile",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/cenkalti/backoff",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/cenkalti/backoff",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/golang/protobuf/proto",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/golang/protobuf/proto",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/golang/protobuf/ptypes",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/golang/protobuf/ptypes",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/julienschmidt/httprouter",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/julienschmidt/httprouter",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/matttproud/golang_protobuf_extensions/pbutil",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/matttproud/golang_protobuf_extensions/pbutil",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/client_golang/prometheus",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/client_golang/prometheus",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/client_model/go",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/client_model/go",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/common/expfmt",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/common/expfmt",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/common/log",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/common/log",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/common/model",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/common/model",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/common/route",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/common/route",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/common/version",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/common/version",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/prometheus/procfs",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/prometheus/procfs",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/satori/go.uuid",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/satori/go.uuid",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/github.com/weaveworks/mesh",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/github.com/weaveworks/mesh",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/golang.org/x/crypto/curve25519",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/golang.org/x/crypto/curve25519",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/golang.org/x/crypto/nacl/box",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/golang.org/x/crypto/nacl/box",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/golang.org/x/crypto/nacl/secretbox",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/golang.org/x/crypto/nacl/secretbox",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/golang.org/x/crypto/poly1305",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/golang.org/x/crypto/poly1305",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/golang.org/x/crypto/salsa20/salsa",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/golang.org/x/crypto/salsa20/salsa",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/golang.org/x/net/context",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/golang.org/x/net/context",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/golang.org/x/sys/windows",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/golang.org/x/sys/windows",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/prometheus/alertmanager/vendor/gopkg.in/yaml.v2",
+			"repository": "https://github.com/prometheus/alertmanager",
+			"vcs": "git",
+			"revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3",
+			"branch": "master",
+			"path": "vendor/gopkg.in/yaml.v2",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/prometheus/client_golang/prometheus",
 			"repository": "https://github.com/prometheus/client_golang",
 			"vcs": "git",
@@ -759,6 +1100,14 @@
 			"repository": "https://github.com/rcrowley/go-metrics",
 			"vcs": "git",
 			"revision": "1f30fe9094a513ce4c700b9a54458bbb0c96996c",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/satori/go.uuid",
+			"repository": "https://github.com/satori/go.uuid",
+			"vcs": "git",
+			"revision": "b061729afc07e77a8aa4fad0a2fd840958f1942a",
 			"branch": "master",
 			"notests": true
 		},
@@ -874,12 +1223,65 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/weaveworks/mesh",
+			"repository": "https://github.com/weaveworks/mesh",
+			"vcs": "git",
+			"revision": "5015f896ab62d3e9fe757456c757521ce0c3faff",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "go4.org/syncutil/singleflight",
 			"repository": "https://github.com/camlistore/go4",
 			"vcs": "git",
 			"revision": "5af682b5815ea6e8f790ed27069dcb046d8a5cfe",
 			"branch": "master",
 			"path": "/syncutil/singleflight",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/curve25519",
+			"repository": "https://go.googlesource.com/crypto",
+			"vcs": "git",
+			"revision": "453249f01cfeb54c3d549ddb75ff152ca243f9d8",
+			"branch": "master",
+			"path": "curve25519",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/nacl/box",
+			"repository": "https://go.googlesource.com/crypto",
+			"vcs": "git",
+			"revision": "453249f01cfeb54c3d549ddb75ff152ca243f9d8",
+			"branch": "master",
+			"path": "/nacl/box",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/nacl/secretbox",
+			"repository": "https://go.googlesource.com/crypto",
+			"vcs": "git",
+			"revision": "453249f01cfeb54c3d549ddb75ff152ca243f9d8",
+			"branch": "master",
+			"path": "nacl/secretbox",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/poly1305",
+			"repository": "https://go.googlesource.com/crypto",
+			"vcs": "git",
+			"revision": "453249f01cfeb54c3d549ddb75ff152ca243f9d8",
+			"branch": "master",
+			"path": "poly1305",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/salsa20/salsa",
+			"repository": "https://go.googlesource.com/crypto",
+			"vcs": "git",
+			"revision": "453249f01cfeb54c3d549ddb75ff152ca243f9d8",
+			"branch": "master",
+			"path": "salsa20/salsa",
 			"notests": true
 		},
 		{

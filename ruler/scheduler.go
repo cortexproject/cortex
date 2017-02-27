@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/cortex/configs"
 )
 
 const (
@@ -61,40 +62,40 @@ func (w workItem) Defer(interval time.Duration) workItem {
 }
 
 type scheduler struct {
-	configsAPI         configsAPI // XXX: Maybe make this an interface ConfigSource or similar.
+	configsAPI         configs.API // XXX: Maybe make this an interface ConfigSource or similar.
 	evaluationInterval time.Duration
 	q                  *SchedulingQueue
 
 	// All the configurations that we have. Only used for instrumentation.
-	cfgs map[string]cortexConfig
+	cfgs map[string]configs.CortexConfig
 
 	pollInterval time.Duration
 
-	latestConfig configID
+	latestConfig configs.ConfigID
 	latestMutex  sync.RWMutex
 
-	done       chan struct{}
-	terminated chan struct{}
+	stop chan struct{}
+	done chan struct{}
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(configsAPI configsAPI, evaluationInterval, pollInterval time.Duration) scheduler {
+func newScheduler(configsAPI configs.API, evaluationInterval, pollInterval time.Duration) scheduler {
 	return scheduler{
 		configsAPI:         configsAPI,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
-		cfgs:               map[string]cortexConfig{},
+		cfgs:               map[string]configs.CortexConfig{},
 
-		done:       make(chan struct{}),
-		terminated: make(chan struct{}),
+		stop: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 }
 
 // Run polls the source of configurations for changes.
 func (s *scheduler) Run() {
 	log.Debugf("Scheduler started")
-	defer close(s.terminated)
+	defer close(s.done)
 	// Load initial set of all configurations before polling for new ones.
 	s.addNewConfigs(time.Now(), s.loadAllConfigs())
 	ticker := time.NewTicker(s.pollInterval)
@@ -105,22 +106,23 @@ func (s *scheduler) Run() {
 			if err != nil {
 				log.Warnf("Scheduler: error updating configs: %v", err)
 			}
-		case <-s.done:
+		case <-s.stop:
 			ticker.Stop()
+			return
 		}
 	}
 }
 
 func (s *scheduler) Stop() {
-	close(s.done)
+	close(s.stop)
 	s.q.Close()
-	<-s.terminated
+	<-s.done
 	log.Debugf("Scheduler stopped")
 }
 
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
-func (s *scheduler) loadAllConfigs() map[string]cortexConfigView {
+func (s *scheduler) loadAllConfigs() map[string]configs.CortexConfigView {
 	backoff := minBackoff
 	for {
 		cfgs, err := s.poll()
@@ -147,12 +149,12 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 }
 
 // poll the configuration server. Not re-entrant.
-func (s *scheduler) poll() (map[string]cortexConfigView, error) {
+func (s *scheduler) poll() (map[string]configs.CortexConfigView, error) {
 	configID := s.latestConfig
-	var cfgs *cortexConfigsResponse
+	var cfgs *configs.CortexConfigsResponse
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
-		cfgs, err = s.configsAPI.getOrgConfigs(configID)
+		cfgs, err = s.configsAPI.GetOrgConfigs(configID)
 		return err
 	})
 	if err != nil {
@@ -160,12 +162,12 @@ func (s *scheduler) poll() (map[string]cortexConfigView, error) {
 		return nil, err
 	}
 	s.latestMutex.Lock()
-	s.latestConfig = cfgs.getLatestConfigID()
+	s.latestConfig = cfgs.GetLatestConfigID()
 	s.latestMutex.Unlock()
 	return cfgs.Configs, nil
 }
 
-func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigView) {
+func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.CortexConfigView) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	log.Debugf("Adding %d configurations", len(cfgs))
 	for userID, config := range cfgs {
@@ -186,6 +188,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]cortexConfigVie
 }
 
 func (s *scheduler) addWorkItem(i workItem) {
+	// The queue is keyed by user ID, so items for existing user IDs will be replaced.
 	s.q.Enqueue(i)
 	log.Debugf("Scheduler: work item added: %v", i)
 }

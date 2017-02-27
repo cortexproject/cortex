@@ -1,4 +1,4 @@
-package ruler
+package configs
 
 import (
 	"strings"
@@ -23,10 +23,10 @@ func TestJSONDecoding(t *testing.T) {
 }
 `))
 	assert.Nil(t, err)
-	expected := cortexConfigsResponse{Configs: map[string]cortexConfigView{
+	expected := CortexConfigsResponse{Configs: map[string]CortexConfigView{
 		"2": {
 			ConfigID: 1,
-			Config: cortexConfig{
+			Config: CortexConfig{
 				RulesFiles: map[string]string{
 					"recording.rules": ":scope_authfe_request_duration_seconds:99quantile = histogram_quantile(0.99, sum(rate(scope_request_duration_seconds_bucket{ws=\"false\",job=\"authfe\",route!~\"(admin|metrics).*\"}[5m])) by (le))\n",
 				},

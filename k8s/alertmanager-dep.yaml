@@ -12,17 +12,13 @@ spec:
     spec:
       containers:
       - name: alertmanager
-        image: prom/alertmanager:v0.5.1
+        image: quay.io/weaveworks/cortex-alertmanager
         imagePullPolicy: IfNotPresent
         args:
-        - -config.file=/etc/alertmanager/alertmanager.yml
-        - -web.listen-address=:80
+        - -log.level=debug
+        - -server.log-success=true
+        - -server.http-listen-port=80
+        - -alertmanager.configs.url=http://configs.default.svc.cluster.local:80
+        - -alertmanager.web.external-url=/api/prom/alertmanager
         ports:
         - containerPort: 80
-        volumeMounts:
-        - name: config-volume
-          mountPath: /etc/alertmanager
-      volumes:
-        - name: config-volume
-          configMap:
-            name: alertmanager-config

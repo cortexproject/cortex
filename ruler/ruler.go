@@ -17,6 +17,7 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/configs"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/util"
@@ -201,7 +202,10 @@ type Server struct {
 
 // NewServer makes a new rule processing server.
 func NewServer(cfg Config, ruler *Ruler) (*Server, error) {
-	c := configsAPI{cfg.ConfigsAPIURL.URL, cfg.ClientTimeout}
+	c := configs.API{
+		URL:     cfg.ConfigsAPIURL.URL,
+		Timeout: cfg.ClientTimeout,
+	}
 	// TODO: Separate configuration for polling interval.
 	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval)
 	if cfg.NumWorkers <= 0 {

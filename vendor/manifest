@@ -1091,7 +1091,7 @@
 			"importpath": "github.com/prometheus/prometheus",
 			"repository": "https://github.com/prometheus/prometheus",
 			"vcs": "git",
-			"revision": "e7c8a612dea86e30039b96fc8ec2a3a11b12b4a1",
+			"revision": "07491c9f1bf51fc985c8370ea43282d539cec9e7",
 			"branch": "master",
 			"notests": true
 		},

@@ -1218,8 +1218,8 @@
 			"importpath": "github.com/weaveworks/common",
 			"repository": "https://github.com/weaveworks/common",
 			"vcs": "git",
-			"revision": "db1ec394475d75bde9daeb6d221eb8ca75332b21",
-			"branch": "standard-server",
+			"revision": "d5b134a763dd430baa9c982848a12f09fe3e0a68",
+			"branch": "harmonize-users",
 			"notests": true
 		},
 		{

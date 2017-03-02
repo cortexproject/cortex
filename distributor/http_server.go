@@ -17,27 +17,20 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/util"
 )
 
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, err := contextFromRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-
 	var req cortex.WriteRequest
-	if err := ParseProtoRequest(ctx, w, r, &req, true); err != nil {
+	if err := ParseProtoRequest(r.Context(), w, r, &req, true); err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if _, err := d.Push(ctx, &req); err != nil {
+	if _, err := d.Push(r.Context(), &req); err != nil {
 		if grpc.Code(err) == codes.ResourceExhausted {
 			switch grpc.ErrorDesc(err) {
 			case util.ErrUserSeriesLimitExceeded.Error():
@@ -69,13 +62,7 @@ type UserStats struct {
 
 // UserStatsHandler handles user stats to the Distributor.
 func (d *Distributor) UserStatsHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, err := contextFromRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	stats, err := d.UserStats(ctx)
+	stats, err := d.UserStats(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -122,14 +109,6 @@ func (d *Distributor) ValidateExprHandler(w http.ResponseWriter, r *http.Request
 			"pos":  parseErr.Pos,
 		},
 	})
-}
-
-func contextFromRequest(r *http.Request) (context.Context, error) {
-	userID := r.Header.Get(user.OrgIDHeaderName)
-	if userID == "" {
-		return r.Context(), fmt.Errorf("No %s header", user.OrgIDHeaderName)
-	}
-	return user.WithID(r.Context(), userID), nil
 }
 
 // ParseProtoRequest parses a proto from the body of a http request.

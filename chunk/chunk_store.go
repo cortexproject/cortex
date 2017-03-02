@@ -135,7 +135,7 @@ func chunkName(userID, chunkID string) string {
 
 // Put implements ChunkStore
 func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
-	userID, err := user.GetID(ctx)
+	userID, err := user.Extract(ctx)
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 
 // Get implements ChunkStore
 func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]Chunk, error) {
-	userID, err := user.GetID(ctx)
+	userID, err := user.Extract(ctx)
 	if err != nil {
 		return nil, err
 	}

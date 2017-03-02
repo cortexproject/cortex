@@ -17,6 +17,9 @@ import (
 	"flag"
 	"log"
 
+	"google.golang.org/grpc"
+
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/alertmanager"
 	"github.com/weaveworks/cortex/util"
@@ -26,6 +29,12 @@ func main() {
 	var (
 		serverConfig = server.Config{
 			MetricsNamespace: "cortex",
+			GRPCMiddleware: []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			},
+			HTTPMiddleware: []middleware.Interface{
+				middleware.AuthenticateUser,
+			},
 		}
 		alertmanagerConfig alertmanager.MultitenantAlertmanagerConfig
 	)
@@ -39,8 +48,10 @@ func main() {
 	go multiAM.Run()
 	defer multiAM.Stop()
 
-	server := server.New(serverConfig)
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
+	}
 	server.HTTP.PathPrefix("/api/prom").Handler(multiAM)
-	defer server.Stop()
 	server.Run()
 }

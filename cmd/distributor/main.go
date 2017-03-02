@@ -6,7 +6,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"google.golang.org/grpc"
 
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/ring"
@@ -34,6 +36,12 @@ func main() {
 	var (
 		serverConfig = server.Config{
 			MetricsNamespace: "cortex",
+			GRPCMiddleware: []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			},
+			HTTPMiddleware: []middleware.Interface{
+				middleware.AuthenticateUser,
+			},
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
@@ -54,10 +62,11 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	server := server.New(serverConfig)
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
+	}
 	server.HTTP.Handle("/ring", r)
 	server.HTTP.Handle("/api/prom/push", http.HandlerFunc(dist.PushHandler))
-	defer server.Stop()
-
 	server.Run()
 }

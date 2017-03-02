@@ -6,7 +6,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"google.golang.org/grpc"
 
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
@@ -19,6 +21,12 @@ func main() {
 	var (
 		serverConfig = server.Config{
 			MetricsNamespace: "cortex",
+			GRPCMiddleware: []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			},
+			HTTPMiddleware: []middleware.Interface{
+				middleware.AuthenticateUser,
+			},
 		}
 		ingesterRegistrationConfig ring.IngesterRegistrationConfig
 		chunkStoreConfig           chunk.StoreConfig
@@ -35,7 +43,10 @@ func main() {
 	}
 	defer registration.Ring.Stop()
 
-	server := server.New(serverConfig)
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
+	}
 	chunkStore, err := chunk.NewStore(chunkStoreConfig)
 	if err != nil {
 		log.Fatal(err)
@@ -55,8 +66,8 @@ func main() {
 		registration.ChangeState(ring.LEAVING)
 		ingester.Stop()
 		registration.Unregister()
-		server.Stop()
 	}()
 
+	// TODO this will block until the server is shutdown, which is not what we want.
 	server.Run()
 }

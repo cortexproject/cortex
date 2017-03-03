@@ -1,12 +1,12 @@
 package util
 
-import "github.com/weaveworks/common/error"
+import "github.com/weaveworks/common/errors"
 
 // Errors returned by Cortex components.
 const (
-	ErrMissingMetricName         = error.Error("sample missing metric name")
-	ErrInvalidMetricName         = error.Error("sample invalid metric name")
-	ErrInvalidLabel              = error.Error("sample invalid label")
-	ErrUserSeriesLimitExceeded   = error.Error("per-user series limit exceeded")
-	ErrMetricSeriesLimitExceeded = error.Error("per-metric series limit exceeded")
+	ErrMissingMetricName         = errors.Error("sample missing metric name")
+	ErrInvalidMetricName         = errors.Error("sample invalid metric name")
+	ErrInvalidLabel              = errors.Error("sample invalid label")
+	ErrUserSeriesLimitExceeded   = errors.Error("per-user series limit exceeded")
+	ErrMetricSeriesLimitExceeded = errors.Error("per-metric series limit exceeded")
 )

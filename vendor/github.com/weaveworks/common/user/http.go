@@ -22,6 +22,10 @@ func InjectIntoHTTPRequest(ctx context.Context, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	r.Header.Add(orgIDHeaderName, userID)
+	existingID := r.Header.Get(orgIDHeaderName)
+	if existingID != "" && existingID != userID {
+		return ErrDifferentIDPresent
+	}
+	r.Header.Set(orgIDHeaderName, userID)
 	return nil
 }

@@ -39,9 +39,6 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
-			HTTPMiddleware: []middleware.Interface{
-				middleware.AuthenticateUser,
-			},
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
@@ -67,6 +64,6 @@ func main() {
 		log.Fatalf("Error initializing server: %v", err)
 	}
 	server.HTTP.Handle("/ring", r)
-	server.HTTP.Handle("/api/prom/push", http.HandlerFunc(dist.PushHandler))
+	server.HTTP.Handle("/api/prom/push", middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.PushHandler)))
 	server.Run()
 }

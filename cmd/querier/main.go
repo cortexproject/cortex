@@ -38,9 +38,6 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
-			HTTPMiddleware: []middleware.Interface{
-				middleware.AuthenticateUser,
-			},
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
@@ -82,9 +79,9 @@ func main() {
 	api.Register(promRouter)
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
-	subrouter.PathPrefix("/api/v1").Handler(promRouter)
-	subrouter.Path("/validate_expr").Handler(http.HandlerFunc(dist.ValidateExprHandler))
-	subrouter.Path("/user_stats").Handler(http.HandlerFunc(dist.UserStatsHandler))
+	subrouter.PathPrefix("/api/v1").Handler(middleware.AuthenticateUser.Wrap(promRouter))
+	subrouter.Path("/validate_expr").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
+	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 
 	server.Run()
 }

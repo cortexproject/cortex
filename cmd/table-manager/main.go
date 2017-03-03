@@ -19,9 +19,6 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
-			HTTPMiddleware: []middleware.Interface{
-				middleware.AuthenticateUser,
-			},
 		}
 		tableManagerConfig = chunk.TableManagerConfig{}
 	)

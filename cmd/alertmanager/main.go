@@ -32,9 +32,6 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
-			HTTPMiddleware: []middleware.Interface{
-				middleware.AuthenticateUser,
-			},
 		}
 		alertmanagerConfig alertmanager.MultitenantAlertmanagerConfig
 	)
@@ -52,6 +49,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing server: %v", err)
 	}
-	server.HTTP.PathPrefix("/api/prom").Handler(multiAM)
+	server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(multiAM))
 	server.Run()
 }

@@ -24,9 +24,6 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
-			HTTPMiddleware: []middleware.Interface{
-				middleware.AuthenticateUser,
-			},
 		}
 		ingesterRegistrationConfig ring.IngesterRegistrationConfig
 		chunkStoreConfig           chunk.StoreConfig

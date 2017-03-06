@@ -49,6 +49,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing server: %v", err)
 	}
+	defer server.Shutdown()
+
 	server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(multiAM))
 	server.Run()
 }

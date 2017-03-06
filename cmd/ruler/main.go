@@ -66,6 +66,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing server: %v", err)
 	}
+	defer server.Shutdown()
+
 	server.HTTP.Handle("/ring", r)
 	server.Run()
 }

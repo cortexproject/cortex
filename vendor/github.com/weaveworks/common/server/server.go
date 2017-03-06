@@ -36,7 +36,6 @@ func init() {
 // Config for a Server
 type Config struct {
 	MetricsNamespace string
-	LogSuccess       bool
 	HTTPListenPort   int
 	GRPCListenPort   int
 
@@ -51,7 +50,6 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.LogSuccess, "server.log-success", false, "Log successful requests")
 	f.IntVar(&cfg.HTTPListenPort, "server.http-listen-port", 80, "HTTP server listen port.")
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 5*time.Second, "Timeout for graceful shutdowns")
@@ -99,7 +97,7 @@ func New(cfg Config) (*Server, error) {
 
 	// Setup gRPC server
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
-		middleware.ServerLoggingInterceptor(cfg.LogSuccess),
+		middleware.ServerLoggingInterceptor,
 		middleware.ServerInstrumentInterceptor(requestDuration),
 		otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
 	}
@@ -116,9 +114,7 @@ func New(cfg Config) (*Server, error) {
 	router.Handle("/traces", loki.Handler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 	httpMiddleware := []middleware.Interface{
-		middleware.Log{
-			LogSuccess: cfg.LogSuccess,
-		},
+		middleware.Log{},
 		middleware.Instrument{
 			Duration:     requestDuration,
 			RouteMatcher: router,
@@ -150,8 +146,6 @@ func New(cfg Config) (*Server, error) {
 // Run the server; blocks until SIGTERM is received.
 func (s *Server) Run() {
 	go s.httpServer.Serve(s.httpListener)
-	httpServerCtx, cancel := context.WithCancel(context.Background())
-	defer s.httpServer.Shutdown(httpServerCtx)
 
 	// Setup gRPC server
 	// for HTTP over gRPC, ensure we don't double-count the middleware
@@ -161,15 +155,18 @@ func (s *Server) Run() {
 
 	// Wait for a signal
 	s.handler.Loop()
-
-	go func() {
-		time.Sleep(s.cfg.ServerGracefulShutdownTimeout)
-		cancel()
-		s.GRPC.Stop()
-	}()
 }
 
-// Stop the server, gracefully.  Unblocks Run().
+// Stop unblocks Run().
 func (s *Server) Stop() {
 	s.handler.Stop()
+}
+
+// Shutdown the server, gracefully.  Should be defered after New().
+func (s *Server) Shutdown() {
+	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.ServerGracefulShutdownTimeout)
+	defer cancel() // releases resources if httpServer.Churdown completes before timeout elapses
+
+	s.httpServer.Shutdown(ctx)
+	s.GRPC.Stop()
 }

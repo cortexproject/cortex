@@ -25,18 +25,18 @@ func main() {
 	util.RegisterFlags(&serverConfig, &tableManagerConfig)
 	flag.Parse()
 
-	// Have to initialise server first, as its sets up tracing.
-	server, err := server.New(serverConfig)
-	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
-	}
-
 	tableManager, err := chunk.NewDynamoTableManager(tableManagerConfig)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB table manager: %v", err)
 	}
 	tableManager.Start()
 	defer tableManager.Stop()
+
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
+	}
+	defer server.Shutdown()
 
 	server.Run()
 }

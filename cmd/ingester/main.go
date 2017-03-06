@@ -40,10 +40,6 @@ func main() {
 	}
 	defer registration.Ring.Stop()
 
-	server, err := server.New(serverConfig)
-	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
-	}
 	chunkStore, err := chunk.NewStore(chunkStoreConfig)
 	if err != nil {
 		log.Fatal(err)
@@ -54,17 +50,19 @@ func main() {
 		log.Fatal(err)
 	}
 	prometheus.MustRegister(ingester)
+
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
+	}
 	cortex.RegisterIngesterServer(server.GRPC, ingester)
 	server.HTTP.Handle("/ring", registration.Ring)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
-
-	// Deferring a func to make ordering obvious
-	defer func() {
-		registration.ChangeState(ring.LEAVING)
-		ingester.Stop()
-		registration.Unregister()
-	}()
-
-	// TODO this will block until the server is shutdown, which is not what we want.
 	server.Run()
+
+	// Shutdown order is important!
+	registration.ChangeState(ring.LEAVING)
+	ingester.Stop()
+	registration.Unregister()
+	server.Shutdown()
 }

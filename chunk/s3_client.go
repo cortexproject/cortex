@@ -35,19 +35,23 @@ func NewS3Client(s3URL string) (S3Client, string, error) {
 	return s3Client, bucketName, nil
 }
 
-func awsConfigFromURL(url *url.URL) (*aws.Config, error) {
-	if url.User == nil {
-		return nil, fmt.Errorf("must specify username & password in URL")
+// awsConfigFromURL returns AWS config from given URL. It expects escaped AWS Access key ID & Secret Access Key to be
+// encoded in the URL. It also expects region specified as a host (letting AWS generate full endpoint) or fully valid
+// endpoint with dummy region assumed (e.g for URLs to emulated services).
+func awsConfigFromURL(awsURL *url.URL) (*aws.Config, error) {
+	if awsURL.User == nil {
+		return nil, fmt.Errorf("must specify escaped Access Key & Secret Access in URL")
 	}
-	password, _ := url.User.Password()
-	creds := credentials.NewStaticCredentials(url.User.Username(), password, "")
+
+	password, _ := awsURL.User.Password()
+	creds := credentials.NewStaticCredentials(awsURL.User.Username(), password, "")
 	config := aws.NewConfig().
 		WithCredentials(creds).
 		WithMaxRetries(0) // We do our own retries, so we can monitor them
-	if strings.Contains(url.Host, ".") {
-		config = config.WithEndpoint(fmt.Sprintf("http://%s", url.Host)).WithRegion("dummy")
-	} else {
-		config = config.WithRegion(url.Host)
+	if strings.Contains(awsURL.Host, ".") {
+		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)).WithRegion("dummy"), nil
 	}
-	return config, nil
+
+	// Let AWS generate default endpoint based on region passed as a host in URL.
+	return config.WithRegion(awsURL.Host), nil
 }

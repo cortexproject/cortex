@@ -70,8 +70,10 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchemaConfig.RegisterFlags(f)
 	cfg.CacheConfig.RegisterFlags(f)
 
-	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL.")
-	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL.")
+	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
+		"If only region is specified as a host, proper endpoint will be deducted.")
+	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
+		"If only region is specified as a host, proper endpoint will be deducted.")
 }
 
 // Store implements Store

@@ -2,54 +2,47 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"net/http"
-	"time"
 
-	"github.com/Sirupsen/logrus"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/tylerb/graceful"
+	"github.com/prometheus/common/log"
+	"google.golang.org/grpc"
 
-	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/configs/api"
 	"github.com/weaveworks/cortex/configs/db"
+	"github.com/weaveworks/cortex/util"
 )
-
-func init() {
-	prometheus.MustRegister(common.RequestDuration)
-	prometheus.MustRegister(common.DatabaseRequestDuration)
-}
 
 func main() {
 	var (
-		logLevel           = flag.String("log.level", "info", "Logging level to use: debug | info | warn | error")
-		port               = flag.Int("port", 80, "port to listen on")
-		stopTimeout        = flag.Duration("stop.timeout", 5*time.Second, "How long to wait for remaining requests to finish during shutdown")
-		databaseURI        = flag.String("database-uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found (for dev you can use memory://)")
-		databaseMigrations = flag.String("database-migrations", "", "Path where the database migration files can be found")
+		serverConfig = server.Config{
+			MetricsNamespace: "cortex",
+			// XXX: Cargo-culted from distributor. Probably don't need this
+			// for configs just yet?
+			GRPCMiddleware: []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			},
+		}
+		dbConfig  db.Config
+		apiConfig api.Config
 	)
+	util.RegisterFlags(&serverConfig, &dbConfig, &apiConfig)
 	flag.Parse()
-	if err := logging.Setup(*logLevel); err != nil {
-		logrus.Fatalf("Error configuring logging: %v", err)
-		return
-	}
 
-	db := db.MustNew(*databaseURI, *databaseMigrations)
+	db, err := db.New(dbConfig)
+	if err != nil {
+		log.Fatalf("Error initializing database: %v", err)
+	}
 	defer db.Close()
 
-	logrus.Debug("Debug logging enabled")
-	logrus.Infof("Listening on port %d", *port)
-	mux := http.NewServeMux()
-	config := api.Config{
-		Database:     db,
-		UserIDHeader: api.DefaultUserIDHeader,
-		OrgIDHeader:  api.DefaultOrgIDHeader,
-	}
-	mux.Handle("/", api.New(config))
-	mux.Handle("/metrics", prometheus.Handler())
+	a := api.New(apiConfig, db)
 
-	if err := graceful.RunWithErr(fmt.Sprintf(":%d", *port), *stopTimeout, mux); err != nil {
-		logrus.Fatal(err)
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
 	}
-	logrus.Info("Gracefully shut down")
+	defer server.Shutdown()
+
+	server.HTTP.Handle("/", a)
+	server.Run()
 }

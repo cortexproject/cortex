@@ -1,14 +1,26 @@
 package db
 
 import (
+	"flag"
+	"fmt"
 	"net/url"
-
-	"github.com/Sirupsen/logrus"
 
 	"github.com/weaveworks/cortex/configs"
 	"github.com/weaveworks/cortex/configs/db/memory"
 	"github.com/weaveworks/cortex/configs/db/postgres"
 )
+
+// Config configures the database.
+type Config struct {
+	URI           string
+	MigrationsDir string
+}
+
+// RegisterFlags adds the flags required to configure this to the given FlagSet.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	flag.StringVar(&cfg.URI, "database.uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found (for dev you can use memory://)")
+	flag.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
+}
 
 // DB is the interface for the database.
 type DB interface {
@@ -25,26 +37,23 @@ type DB interface {
 	Close() error
 }
 
-// MustNew creates a new database from the URI, or panics.
-// XXX: Copied from `users/db/db.go`.
-func MustNew(databaseURI, migrationsDir string) DB {
-	u, err := url.Parse(databaseURI)
+// New creates a new database.
+func New(cfg Config) (DB, error) {
+	u, err := url.Parse(cfg.URI)
 	if err != nil {
-		logrus.Fatal(err)
+		return nil, err
 	}
 	var d DB
 	switch u.Scheme {
 	case "memory":
-		d, err = memory.New(databaseURI, migrationsDir)
+		d, err = memory.New(cfg.URI, cfg.MigrationsDir)
 	case "postgres":
-		d, err = postgres.New(databaseURI, migrationsDir)
+		d, err = postgres.New(cfg.URI, cfg.MigrationsDir)
 	default:
-		logrus.Fatalf("Unknown database type: %s", u.Scheme)
+		return nil, fmt.Errorf("Unknown database type: %s", u.Scheme)
 	}
 	if err != nil {
-		logrus.Fatal(err)
+		return nil, err
 	}
-	// XXX: Current instrumentation doesn't provide a way to distinguish
-	// between backend databases (e.g. configs, users).
-	return traced{timed{d, common.DatabaseRequestDuration}}
+	return traced{timed{d}}, nil
 }

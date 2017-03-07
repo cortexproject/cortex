@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -10,7 +11,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/cortex/configs"
 	"github.com/weaveworks/cortex/configs/db"
 )
@@ -31,14 +31,19 @@ type API struct {
 
 // Config describes the configuration for the configs API.
 type Config struct {
-	Database     db.DB
 	UserIDHeader string
 	OrgIDHeader  string
 }
 
+// RegisterFlags adds the flags required to configure this to the given FlagSet.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	flag.StringVar(&cfg.UserIDHeader, "user-id-header", DefaultUserIDHeader, "Name of header that contains user ID")
+	flag.StringVar(&cfg.OrgIDHeader, "org-id-header", DefaultOrgIDHeader, "Name of header that contains user ID")
+}
+
 // New creates a new API
-func New(config Config) *API {
-	a := &API{Config: config, db: config.Database}
+func New(config Config, database db.DB) *API {
+	a := &API{Config: config, db: database}
 	a.Handler = a.routes()
 	return a
 }
@@ -73,13 +78,7 @@ func (a *API) routes() http.Handler {
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}
-	return middleware.Merge(
-		middleware.Log{},
-		middleware.Instrument{
-			RouteMatcher: r,
-			Duration:     common.RequestDuration,
-		},
-	).Wrap(r)
+	return r
 }
 
 // authorize checks whether the given header provides access to entity.

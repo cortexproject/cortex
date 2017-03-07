@@ -1,6 +1,6 @@
-FROM alpine:3.4
+FROM       quay.io/prometheus/busybox:latest
 MAINTAINER Weaveworks Inc <help@weave.works>
 WORKDIR /
-COPY cmd/configs/configs /
-COPY db/migrations /migrations/
-ENTRYPOINT ["/configs"]
+COPY configs /bin/configs
+COPY migrations /migrations/
+ENTRYPOINT [ "/bin/configs" ]

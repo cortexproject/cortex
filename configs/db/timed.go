@@ -7,10 +7,22 @@ import (
 	"golang.org/x/net/context"
 )
 
+var (
+	databaseRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "database_request_duration_seconds",
+		Help:      "Time spent (in seconds) doing database requests.",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"method", "status_code"})
+)
+
+func init() {
+	prometheus.MustRegister(databaseRequestDuration)
+}
+
 // timed adds prometheus timings to another database implementation
 type timed struct {
-	d        DB
-	Duration *prometheus.HistogramVec
+	d DB
 }
 
 func (t timed) errorCode(err error) string {
@@ -23,7 +35,7 @@ func (t timed) errorCode(err error) string {
 }
 
 func (t timed) timeRequest(method string, f func(context.Context) error) error {
-	return instrument.TimeRequestHistogramStatus(context.TODO(), method, t.Duration, t.errorCode, f)
+	return instrument.TimeRequestHistogramStatus(context.TODO(), method, databaseRequestDuration, t.errorCode, f)
 }
 
 func (t timed) GetUserConfig(userID configs.UserID, subsystem configs.Subsystem) (cfg configs.ConfigView, err error) {

@@ -20,7 +20,7 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
-	"github.com/weaveworks/cortex/configs"
+	configs "github.com/weaveworks/cortex/configs/client"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
 	"github.com/weaveworks/cortex/util"

@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/cortex/configs"
+	configs "github.com/weaveworks/cortex/configs/client"
 )
 
 const (

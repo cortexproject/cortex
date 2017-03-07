@@ -29,7 +29,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	userID, err := user.GetID(ctx)
+	userID, err := user.Extract(ctx)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func TestIngesterAppend(t *testing.T) {
 
 	// Append samples.
 	for _, userID := range userIDs {
-		ctx := user.WithID(context.Background(), userID)
+		ctx := user.Inject(context.Background(), userID)
 		_, err = ing.Push(ctx, util.ToWriteRequest(matrixToSamples(testData[userID])))
 		if err != nil {
 			t.Fatal(err)
@@ -107,7 +107,7 @@ func TestIngesterAppend(t *testing.T) {
 
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
-		ctx := user.WithID(context.Background(), userID)
+		ctx := user.Inject(context.Background(), userID)
 		matcher, err := metric.NewLabelMatcher(metric.RegexMatch, model.JobLabel, ".+")
 		if err != nil {
 			t.Fatal(err)
@@ -179,7 +179,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Append only one series first, expect no error.
-	ctx := user.WithID(context.Background(), userID)
+	ctx := user.Inject(context.Background(), userID)
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
 	if err != nil {
 		t.Fatal(err)
@@ -265,7 +265,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Append only one series first, expect no error.
-	ctx := user.WithID(context.Background(), userID)
+	ctx := user.Inject(context.Background(), userID)
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
 	if err != nil {
 		t.Fatal(err)

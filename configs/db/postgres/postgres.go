@@ -10,7 +10,7 @@ import (
 	_ "github.com/lib/pq"                         // Import the postgres sql driver
 	_ "github.com/mattes/migrate/driver/postgres" // Import the postgres migrations driver
 	"github.com/mattes/migrate/migrate"
-	"github.com/weaveworks/service/configs"
+	"github.com/weaveworks/cortex/configs"
 )
 
 const (

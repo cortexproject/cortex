@@ -11,9 +11,8 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/service/common"
-	"github.com/weaveworks/service/configs"
-	"github.com/weaveworks/service/configs/db"
+	"github.com/weaveworks/cortex/configs"
+	"github.com/weaveworks/cortex/configs/db"
 )
 
 const (

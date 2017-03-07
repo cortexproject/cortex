@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/weaveworks/service/configs"
-	"github.com/weaveworks/service/configs/api"
+	"github.com/weaveworks/cortex/configs"
+	"github.com/weaveworks/cortex/configs/api"
 )
 
 // The root page returns 200 OK.

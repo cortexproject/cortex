@@ -11,9 +11,8 @@ import (
 	"github.com/tylerb/graceful"
 
 	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/service/common"
-	"github.com/weaveworks/service/configs/api"
-	"github.com/weaveworks/service/configs/db"
+	"github.com/weaveworks/cortex/configs/api"
+	"github.com/weaveworks/cortex/configs/db"
 )
 
 func init() {

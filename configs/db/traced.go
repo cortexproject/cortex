@@ -2,7 +2,7 @@ package db
 
 import (
 	"github.com/Sirupsen/logrus"
-	"github.com/weaveworks/service/configs"
+	"github.com/weaveworks/cortex/configs"
 )
 
 // traced adds logrus trace lines on each db call

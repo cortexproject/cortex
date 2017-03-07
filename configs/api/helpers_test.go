@@ -11,10 +11,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/weaveworks/service/configs"
-	"github.com/weaveworks/service/configs/api"
-	"github.com/weaveworks/service/configs/db"
-	"github.com/weaveworks/service/configs/db/dbtest"
+	"github.com/weaveworks/cortex/configs"
+	"github.com/weaveworks/cortex/configs/api"
+	"github.com/weaveworks/cortex/configs/db"
+	"github.com/weaveworks/cortex/configs/db/dbtest"
 )
 
 var (

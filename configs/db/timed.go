@@ -3,7 +3,7 @@ package db
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/service/configs"
+	"github.com/weaveworks/cortex/configs"
 	"golang.org/x/net/context"
 )
 

@@ -3,7 +3,7 @@ package memory
 import (
 	"database/sql"
 
-	"github.com/weaveworks/service/configs"
+	"github.com/weaveworks/cortex/configs"
 )
 
 type config struct {

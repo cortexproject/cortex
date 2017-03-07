@@ -5,10 +5,9 @@ import (
 
 	"github.com/Sirupsen/logrus"
 
-	"github.com/weaveworks/service/common"
-	"github.com/weaveworks/service/configs"
-	"github.com/weaveworks/service/configs/db/memory"
-	"github.com/weaveworks/service/configs/db/postgres"
+	"github.com/weaveworks/cortex/configs"
+	"github.com/weaveworks/cortex/configs/db/memory"
+	"github.com/weaveworks/cortex/configs/db/postgres"
 )
 
 // DB is the interface for the database.

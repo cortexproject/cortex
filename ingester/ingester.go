@@ -272,7 +272,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortex.WriteRequest) (*cortex.
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 	if err := util.ValidateSample(sample); err != nil {
-		userID, _ := user.GetID(ctx) // ignore err, userID will be empty string if err
+		userID, _ := user.Extract(ctx) // ignore err, userID will be empty string if err
 		log.Errorf("Error validating sample from user '%s': %v", userID, err)
 		return nil
 	}
@@ -576,7 +576,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	}
 
 	// flush the chunks without locking the series, as we don't want to hold the series lock for the duration of the dynamo/s3 rpcs.
-	ctx := user.WithID(context.Background(), userID)
+	ctx := user.Inject(context.Background(), userID)
 	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
 		return err

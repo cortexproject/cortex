@@ -168,7 +168,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 
 func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, error) {
 	appender := appenderAdapter{pusher: r.pusher, ctx: ctx}
-	userID, err := user.GetID(ctx)
+	userID, err := user.Extract(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,9 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 	n = notifier.New(&notifier.Options{
 		QueueCapacity: r.queueCapacity,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
-			req.Header.Set(user.OrgIDHeaderName, userID)
+			if err := user.InjectIntoHTTPRequest(ctx, req); err != nil {
+				return nil, err
+			}
 			return ctxhttp.Do(ctx, client, req)
 		},
 	})
@@ -328,7 +330,7 @@ func (w *worker) Run() {
 			return
 		}
 		log.Debugf("Processing %v", item)
-		ctx := user.WithID(context.Background(), item.userID)
+		ctx := user.Inject(context.Background(), item.userID)
 		w.ruler.Evaluate(ctx, item.rules)
 		w.scheduler.workItemDone(*item)
 		log.Debugf("%v handed back to queue", item)

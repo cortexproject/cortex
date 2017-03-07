@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"net/http"
 
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -14,8 +14,8 @@ import (
 	"github.com/prometheus/prometheus/retrieval"
 	"github.com/prometheus/prometheus/web/api/v1"
 
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/querier"
@@ -35,6 +35,9 @@ func main() {
 	var (
 		serverConfig = server.Config{
 			MetricsNamespace: "cortex",
+			GRPCMiddleware: []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			},
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
@@ -56,9 +59,12 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	server := server.New(serverConfig)
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
+	}
+	defer server.Shutdown()
 	server.HTTP.Handle("/ring", r)
-	defer server.Stop()
 
 	chunkStore, err := chunk.NewStore(chunkStoreConfig)
 	if err != nil {
@@ -69,18 +75,14 @@ func main() {
 	engine := promql.NewEngine(queryable, nil)
 	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable}, dummyTargetRetriever{}, dummyAlertmanagerRetriever{})
 	promRouter := route.New(func(r *http.Request) (context.Context, error) {
-		userID := r.Header.Get(user.OrgIDHeaderName)
-		if userID == "" {
-			return nil, fmt.Errorf("no %s header", user.OrgIDHeaderName)
-		}
-		return user.WithID(r.Context(), userID), nil
+		return r.Context(), nil
 	}).WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
-	subrouter.PathPrefix("/api/v1").Handler(promRouter)
-	subrouter.Path("/validate_expr").Handler(http.HandlerFunc(dist.ValidateExprHandler))
-	subrouter.Path("/user_stats").Handler(http.HandlerFunc(dist.UserStatsHandler))
+	subrouter.PathPrefix("/api/v1").Handler(middleware.AuthenticateUser.Wrap(promRouter))
+	subrouter.Path("/validate_expr").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
+	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 
 	server.Run()
 }

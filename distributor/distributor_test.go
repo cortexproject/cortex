@@ -91,7 +91,7 @@ func (i mockIngester) MetricsForLabelMatchers(ctx context.Context, in *cortex.Me
 }
 
 func TestDistributorPush(t *testing.T) {
-	ctx := user.WithID(context.Background(), "user")
+	ctx := user.Inject(context.Background(), "user")
 	for i, tc := range []struct {
 		ingesters        []mockIngester
 		samples          int
@@ -193,7 +193,7 @@ func TestDistributorPush(t *testing.T) {
 }
 
 func TestDistributorQuery(t *testing.T) {
-	ctx := user.WithID(context.Background(), "user")
+	ctx := user.Inject(context.Background(), "user")
 
 	expectedResponse := func(start, end int) model.Matrix {
 		result := model.Matrix{

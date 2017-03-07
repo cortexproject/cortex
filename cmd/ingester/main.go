@@ -6,7 +6,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"google.golang.org/grpc"
 
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
@@ -19,6 +21,9 @@ func main() {
 	var (
 		serverConfig = server.Config{
 			MetricsNamespace: "cortex",
+			GRPCMiddleware: []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			},
 		}
 		ingesterRegistrationConfig ring.IngesterRegistrationConfig
 		chunkStoreConfig           chunk.StoreConfig
@@ -35,7 +40,6 @@ func main() {
 	}
 	defer registration.Ring.Stop()
 
-	server := server.New(serverConfig)
 	chunkStore, err := chunk.NewStore(chunkStoreConfig)
 	if err != nil {
 		log.Fatal(err)
@@ -46,17 +50,19 @@ func main() {
 		log.Fatal(err)
 	}
 	prometheus.MustRegister(ingester)
+
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
+	}
 	cortex.RegisterIngesterServer(server.GRPC, ingester)
 	server.HTTP.Handle("/ring", registration.Ring)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
-
-	// Deferring a func to make ordering obvious
-	defer func() {
-		registration.ChangeState(ring.LEAVING)
-		ingester.Stop()
-		registration.Unregister()
-		server.Stop()
-	}()
-
 	server.Run()
+
+	// Shutdown order is important!
+	registration.ChangeState(ring.LEAVING)
+	ingester.Stop()
+	registration.Unregister()
+	server.Shutdown()
 }

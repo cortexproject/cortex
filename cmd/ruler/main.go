@@ -5,7 +5,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"google.golang.org/grpc"
 
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/distributor"
@@ -18,6 +20,9 @@ func main() {
 	var (
 		serverConfig = server.Config{
 			MetricsNamespace: "cortex",
+			GRPCMiddleware: []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			},
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
@@ -57,8 +62,12 @@ func main() {
 	}
 	defer rulerServer.Stop()
 
-	server := server.New(serverConfig)
+	server, err := server.New(serverConfig)
+	if err != nil {
+		log.Fatalf("Error initializing server: %v", err)
+	}
+	defer server.Shutdown()
+
 	server.HTTP.Handle("/ring", r)
-	defer server.Stop()
 	server.Run()
 }

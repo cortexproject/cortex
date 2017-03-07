@@ -1,15 +1,12 @@
 package util
 
-// Error see https://dave.cheney.net/2016/04/07/constant-errors.
-type Error string
-
-func (e Error) Error() string { return string(e) }
+import "github.com/weaveworks/common/errors"
 
 // Errors returned by Cortex components.
 const (
-	ErrMissingMetricName         = Error("sample missing metric name")
-	ErrInvalidMetricName         = Error("sample invalid metric name")
-	ErrInvalidLabel              = Error("sample invalid label")
-	ErrUserSeriesLimitExceeded   = Error("per-user series limit exceeded")
-	ErrMetricSeriesLimitExceeded = Error("per-metric series limit exceeded")
+	ErrMissingMetricName         = errors.Error("sample missing metric name")
+	ErrInvalidMetricName         = errors.Error("sample invalid metric name")
+	ErrInvalidLabel              = errors.Error("sample invalid label")
+	ErrUserSeriesLimitExceeded   = errors.Error("per-user series limit exceeded")
+	ErrMetricSeriesLimitExceeded = errors.Error("per-metric series limit exceeded")
 )

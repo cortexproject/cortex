@@ -101,7 +101,7 @@ func (us *userStates) get(userID string) (*userState, bool) {
 }
 
 func (us *userStates) getOrCreate(ctx context.Context) (*userState, error) {
-	userID, err := user.GetID(ctx)
+	userID, err := user.Extract(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}
@@ -119,7 +119,7 @@ func (us *userStates) getOrCreate(ctx context.Context) (*userState, error) {
 }
 
 func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric) (*userState, model.Fingerprint, *memorySeries, error) {
-	userID, err := user.GetID(ctx)
+	userID, err := user.Extract(ctx)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("no user id")
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/configs"
@@ -259,9 +260,9 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.CortexC
 
 // ServeHTTP serves the Alertmanager's web UI and API.
 func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	userID := req.Header.Get(user.OrgIDHeaderName)
-	if userID == "" {
-		http.Error(w, fmt.Sprintf("missing user ID"), http.StatusUnauthorized)
+	userID, _, err := user.ExtractFromHTTPRequest(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	am.alertmanagersMtx.Lock()

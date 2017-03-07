@@ -29,7 +29,7 @@ func setupDynamodb(t *testing.T, dynamoDB StorageClient) {
 }
 
 func TestChunkStore(t *testing.T) {
-	ctx := user.WithID(context.Background(), "0")
+	ctx := user.Inject(context.Background(), "0")
 	now := model.Now()
 	chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
 	chunk1 := NewChunk(

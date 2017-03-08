@@ -3,7 +3,6 @@
 package dbtest
 
 import (
-	"flag"
 	"fmt"
 	"testing"
 
@@ -15,9 +14,6 @@ import (
 )
 
 var (
-	databaseURI        = flag.String("database-uri", "postgres://postgres@configs-db.weave.local/configs_test?sslmode=disable", "Uri of a test database")
-	databaseMigrations = flag.String("database-migrations", "/migrations", "Path where the database migration files can be found")
-
 	done        chan error
 	errRollback = fmt.Errorf("Rolling back test data")
 )
@@ -26,7 +22,10 @@ var (
 func Setup(t *testing.T) db.DB {
 	require.NoError(t, logging.Setup("debug"))
 	// Don't use db.MustNew, here so we can do a transaction around the whole test, to rollback.
-	pg, err := postgres.New(*databaseURI, *databaseMigrations)
+	pg, err := postgres.New(
+		"postgres://postgres@configs-db.cortex.local/configs_test?sslmode=disable",
+		"/migrations",
+	)
 	require.NoError(t, err)
 
 	newDB := make(chan db.DB)

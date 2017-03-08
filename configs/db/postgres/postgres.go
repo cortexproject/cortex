@@ -32,17 +32,17 @@ type dbProxy interface {
 }
 
 // New creates a new postgres DB
-func New(databaseURI, migrationsDir string) (DB, error) {
+func New(uri, migrationsDir string) (DB, error) {
 	if migrationsDir != "" {
 		logrus.Infof("Running Database Migrations...")
-		if errs, ok := migrate.UpSync(databaseURI, migrationsDir); !ok {
+		if errs, ok := migrate.UpSync(uri, migrationsDir); !ok {
 			for _, err := range errs {
 				logrus.Error(err)
 			}
 			return DB{}, errors.New("Database migrations failed")
 		}
 	}
-	db, err := sql.Open("postgres", databaseURI)
+	db, err := sql.Open("postgres", uri)
 	return DB{
 		dbProxy:              db,
 		StatementBuilderType: statementBuilder(db),

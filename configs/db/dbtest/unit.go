@@ -3,7 +3,6 @@
 package dbtest
 
 import (
-	"flag"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,15 +11,13 @@ import (
 	"github.com/weaveworks/cortex/configs/db"
 )
 
-var (
-	databaseURI        = flag.String("database-uri", "memory://", "Uri of a test database")
-	databaseMigrations = flag.String("database-migrations", "", "Path where the database migration files can be found")
-)
-
 // Setup sets up stuff for testing, creating a new database
 func Setup(t *testing.T) db.DB {
 	require.NoError(t, logging.Setup("debug"))
-	database := db.MustNew(*databaseURI, *databaseMigrations)
+	database, err := db.New(db.Config{
+		URI: "memory://",
+	})
+	require.NoError(t, err)
 	return database
 }
 

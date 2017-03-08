@@ -18,6 +18,7 @@ test:
     - make RM= lint -p
     - make RM= test -p
     - make RM=
+    - make RM= configs-integration-test
 
 deployment:
   push:

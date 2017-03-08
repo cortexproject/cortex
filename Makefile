@@ -91,6 +91,19 @@ shell: build/$(UPTODATE)
 
 endif
 
+configs-integration-test: cmd/configs/$(UPTODATE)
+	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
+	docker run $(RM) \
+		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
+		-v $(shell pwd)/cmd/configs/migrations:/migrations \
+		--workdir /go/src/github.com/weaveworks/cortex \
+		--link "$$DB_CONTAINER":configs-db.cortex.local \
+		golang:1.8.0 \
+		/bin/bash -c "go test -tags integration -timeout 30s ./configs/..."; \
+	status=$$?; \
+	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
+	exit $$status
+
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS)

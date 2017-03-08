@@ -1,4 +1,4 @@
-package configs
+package client
 
 import (
 	"strings"

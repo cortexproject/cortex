@@ -17,7 +17,7 @@ import (
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/configs"
+	configs "github.com/weaveworks/cortex/configs/client"
 	"github.com/weaveworks/cortex/util"
 	"github.com/weaveworks/mesh"
 )

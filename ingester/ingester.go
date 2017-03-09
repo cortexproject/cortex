@@ -40,6 +40,10 @@ const (
 	DefaultMaxSeriesPerMetric = 50000
 
 	minReadyDuration = 1 * time.Minute
+
+	// Backoff for retrying 'immediate' flushes. Only counts for queue
+	// position, not wallclock time.
+	flushBackoff = 1 * time.Second
 )
 
 var (
@@ -532,15 +536,14 @@ func (i *Ingester) flushLoop(j int) {
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			log.Errorf("Failed to flush user: %v", err)
+			log.Errorf("Failed to flush user %v: %v", op.userID, err)
 		}
 
-		// If we're exiting & we failed to flush, keep trying.
-		for op.immediate && err != nil {
-			err = i.flushUserSeries(op.userID, op.fp, op.immediate)
-			if err != nil {
-				log.Errorf("Failed to flush user: %v", err)
-			}
+		// If we're exiting & we failed to flush, put the failed operation
+		// back in the queue at a later point.
+		if op.immediate && err != nil {
+			op.from = op.from.Add(flushBackoff)
+			i.flushQueues[j].Enqueue(op)
 		}
 	}
 }

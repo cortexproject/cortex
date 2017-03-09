@@ -41,9 +41,9 @@ const (
 
 	minReadyDuration = 1 * time.Minute
 
-	// Backoff for retrying 'immediate' flushes.
-	minBackoff = 100 * time.Millisecond
-	maxBackoff = 2 * time.Second
+	// Backoff for retrying 'immediate' flushes. Only counts for queue
+	// position, not wallclock time.
+	flushBackoff = 1 * time.Second
 )
 
 var (
@@ -527,7 +527,6 @@ func (i *Ingester) flushLoop(j int) {
 		i.done.Done()
 	}()
 
-	backoff := minBackoff
 	for {
 		o := i.flushQueues[j].Dequeue()
 		if o == nil {
@@ -543,12 +542,8 @@ func (i *Ingester) flushLoop(j int) {
 		// If we're exiting & we failed to flush, put the failed operation
 		// back in the queue at a later point.
 		if op.immediate && err != nil {
-			op.from = op.from.Add(backoff)
+			op.from = op.from.Add(flushBackoff)
 			i.flushQueues[j].Enqueue(op)
-			backoff *= 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
 		}
 	}
 }

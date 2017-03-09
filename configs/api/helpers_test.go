@@ -45,8 +45,8 @@ func request(t *testing.T, method, urlStr string, body io.Reader) *httptest.Resp
 	return w
 }
 
-// requestAsOrg makes a request to the configs API as the given user.
-func requestAsOrg(t *testing.T, userID configs.OrgID, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
+// requestAsUser makes a request to the configs API as the given user.
+func requestAsUser(t *testing.T, userID string, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
@@ -62,9 +62,9 @@ func makeString(pattern string) string {
 	return fmt.Sprintf(pattern, counter)
 }
 
-// makeOrgID makes an arbitrary organization ID. Guaranteed to be unique within a test.
-func makeOrgID() configs.OrgID {
-	return configs.OrgID(makeString("org%d"))
+// makeUserID makes an arbitrary user ID. Guaranteed to be unique within a test.
+func makeUserID() string {
+	return makeString("user%d")
 }
 
 // makeConfig makes some arbitrary configuration.

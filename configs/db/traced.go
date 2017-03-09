@@ -14,22 +14,22 @@ func (t traced) trace(name string, args ...interface{}) {
 	logrus.Debugf("%s: %#v", name, args)
 }
 
-func (t traced) GetConfig(orgID configs.OrgID) (cfg configs.ConfigView, err error) {
-	defer func() { t.trace("GetConfig", orgID, cfg, err) }()
-	return t.d.GetConfig(orgID)
+func (t traced) GetConfig(userID string) (cfg configs.ConfigView, err error) {
+	defer func() { t.trace("GetConfig", userID, cfg, err) }()
+	return t.d.GetConfig(userID)
 }
 
-func (t traced) SetConfig(orgID configs.OrgID, cfg configs.Config) (err error) {
-	defer func() { t.trace("SetConfig", orgID, cfg, err) }()
-	return t.d.SetConfig(orgID, cfg)
+func (t traced) SetConfig(userID string, cfg configs.Config) (err error) {
+	defer func() { t.trace("SetConfig", userID, cfg, err) }()
+	return t.d.SetConfig(userID, cfg)
 }
 
-func (t traced) GetAllConfigs() (cfgs map[configs.OrgID]configs.ConfigView, err error) {
+func (t traced) GetAllConfigs() (cfgs map[string]configs.ConfigView, err error) {
 	defer func() { t.trace("GetAllConfigs", cfgs, err) }()
 	return t.d.GetAllConfigs()
 }
 
-func (t traced) GetConfigs(since configs.ID) (cfgs map[configs.OrgID]configs.ConfigView, err error) {
+func (t traced) GetConfigs(since configs.ID) (cfgs map[string]configs.ConfigView, err error) {
 	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
 	return t.d.GetConfigs(since)
 }

@@ -27,16 +27,16 @@ func Test_Root_OK(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// postConfig posts an organisation config.
-func postConfig(t *testing.T, orgID configs.OrgID, config configs.Config) configs.ConfigView {
-	w := requestAsOrg(t, orgID, "POST", endpoint, jsonObject(config).Reader(t))
+// postConfig posts a config.
+func postConfig(t *testing.T, userID string, config configs.Config) configs.ConfigView {
+	w := requestAsUser(t, userID, "POST", endpoint, jsonObject(config).Reader(t))
 	require.Equal(t, http.StatusNoContent, w.Code)
-	return getConfig(t, orgID)
+	return getConfig(t, userID)
 }
 
-// getConfig gets an organisation config.
-func getConfig(t *testing.T, orgID configs.OrgID) configs.ConfigView {
-	w := requestAsOrg(t, orgID, "GET", endpoint, nil)
+// getConfig gets a config.
+func getConfig(t *testing.T, userID string) configs.ConfigView {
+	w := requestAsUser(t, userID, "GET", endpoint, nil)
 	return parseConfigView(t, w.Body.Bytes())
 }
 
@@ -54,8 +54,8 @@ func Test_GetConfig_NotFound(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	orgID := makeOrgID()
-	w := requestAsOrg(t, orgID, "GET", endpoint, nil)
+	userID := makeUserID()
+	w := requestAsUser(t, userID, "GET", endpoint, nil)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -73,15 +73,15 @@ func Test_PostConfig_CreatesConfig(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	orgID := makeOrgID()
+	userID := makeUserID()
 	config := makeConfig()
 	content := jsonObject(config)
 	{
-		w := requestAsOrg(t, orgID, "POST", endpoint, content.Reader(t))
+		w := requestAsUser(t, userID, "POST", endpoint, content.Reader(t))
 		assert.Equal(t, http.StatusNoContent, w.Code)
 	}
 	{
-		w := requestAsOrg(t, orgID, "GET", endpoint, nil)
+		w := requestAsUser(t, userID, "GET", endpoint, nil)
 		assert.Equal(t, config, parseConfigView(t, w.Body.Bytes()).Config)
 	}
 }
@@ -91,27 +91,27 @@ func Test_PostConfig_UpdatesConfig(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	orgID := makeOrgID()
-	view1 := postConfig(t, orgID, makeConfig())
+	userID := makeUserID()
+	view1 := postConfig(t, userID, makeConfig())
 	config2 := makeConfig()
-	view2 := postConfig(t, orgID, config2)
+	view2 := postConfig(t, userID, config2)
 	assert.True(t, view2.ID > view1.ID, "%v > %v", view2.ID, view1.ID)
 	assert.Equal(t, config2, view2.Config)
 }
 
 // Different users can have different configurations.
-func Test_PostConfig_MultipleOrgs(t *testing.T) {
+func Test_PostConfig_MultipleUsers(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	orgID1 := makeOrgID()
-	orgID2 := makeOrgID()
-	config1 := postConfig(t, orgID1, makeConfig())
-	config2 := postConfig(t, orgID2, makeConfig())
+	userID1 := makeUserID()
+	userID2 := makeUserID()
+	config1 := postConfig(t, userID1, makeConfig())
+	config2 := postConfig(t, userID2, makeConfig())
 
-	foundConfig1 := getConfig(t, orgID1)
+	foundConfig1 := getConfig(t, userID1)
 	assert.Equal(t, config1, foundConfig1)
-	foundConfig2 := getConfig(t, orgID2)
+	foundConfig2 := getConfig(t, userID2)
 	assert.Equal(t, config2, foundConfig2)
 	assert.True(t, config2.ID > config1.ID, "%v > %v", config2.ID, config1.ID)
 }
@@ -126,7 +126,7 @@ func Test_GetAllConfigs_Empty(t *testing.T) {
 	var found api.ConfigsView
 	err := json.Unmarshal(w.Body.Bytes(), &found)
 	assert.NoError(t, err, "Could not unmarshal JSON")
-	assert.Equal(t, api.ConfigsView{Configs: map[configs.OrgID]configs.ConfigView{}}, found)
+	assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{}}, found)
 }
 
 // GetAllConfigs returns all created configs.
@@ -134,16 +134,16 @@ func Test_GetAllConfigs(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	orgID := makeOrgID()
+	userID := makeUserID()
 	config := makeConfig()
-	view := postConfig(t, orgID, config)
+	view := postConfig(t, userID, config)
 	w := request(t, "GET", privateEndpoint, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var found api.ConfigsView
 	err := json.Unmarshal(w.Body.Bytes(), &found)
 	assert.NoError(t, err, "Could not unmarshal JSON")
-	assert.Equal(t, api.ConfigsView{Configs: map[configs.OrgID]configs.ConfigView{
-		orgID: view,
+	assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{
+		userID: view,
 	}}, found)
 }
 
@@ -152,18 +152,18 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	orgID := makeOrgID()
-	postConfig(t, orgID, makeConfig())
-	postConfig(t, orgID, makeConfig())
-	lastCreated := postConfig(t, orgID, makeConfig())
+	userID := makeUserID()
+	postConfig(t, userID, makeConfig())
+	postConfig(t, userID, makeConfig())
+	lastCreated := postConfig(t, userID, makeConfig())
 
 	w := request(t, "GET", privateEndpoint, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var found api.ConfigsView
 	err := json.Unmarshal(w.Body.Bytes(), &found)
 	assert.NoError(t, err, "Could not unmarshal JSON")
-	assert.Equal(t, api.ConfigsView{Configs: map[configs.OrgID]configs.ConfigView{
-		orgID: lastCreated,
+	assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{
+		userID: lastCreated,
 	}}, found)
 }
 
@@ -171,17 +171,17 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	postConfig(t, makeOrgID(), makeConfig())
-	config2 := postConfig(t, makeOrgID(), makeConfig())
-	orgID3 := makeOrgID()
-	config3 := postConfig(t, orgID3, makeConfig())
+	postConfig(t, makeUserID(), makeConfig())
+	config2 := postConfig(t, makeUserID(), makeConfig())
+	userID3 := makeUserID()
+	config3 := postConfig(t, userID3, makeConfig())
 
 	w := request(t, "GET", fmt.Sprintf("%s?since=%d", privateEndpoint, config2.ID), nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var found api.ConfigsView
 	err := json.Unmarshal(w.Body.Bytes(), &found)
 	assert.NoError(t, err, "Could not unmarshal JSON")
-	assert.Equal(t, api.ConfigsView{Configs: map[configs.OrgID]configs.ConfigView{
-		orgID3: config3,
+	assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{
+		userID3: config3,
 	}}, found)
 }

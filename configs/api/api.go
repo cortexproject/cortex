@@ -67,7 +67,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := a.db.GetConfig(configs.OrgID(userID))
+	cfg, err := a.db.GetConfig(userID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "No configuration", http.StatusNotFound)
 		return
@@ -101,7 +101,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.db.SetConfig(configs.OrgID(userID), cfg); err != nil {
+	if err := a.db.SetConfig(userID, cfg); err != nil {
 		// XXX: Untested
 		log.Errorf("Error storing config: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -110,14 +110,14 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ConfigsView renders multiple configurations.
+// ConfigsView renders multiple configurations, mapping userID to ConfigView.
 // Exposed only for tests.
 type ConfigsView struct {
-	Configs map[configs.OrgID]configs.ConfigView `json:"configs"`
+	Configs map[string]configs.ConfigView `json:"configs"`
 }
 
 func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
-	var cfgs map[configs.OrgID]configs.ConfigView
+	var cfgs map[string]configs.ConfigView
 	var err error
 	rawSince := r.FormValue("since")
 	if rawSince == "" {

@@ -61,7 +61,7 @@ func New(uri, migrationsDir string) (DB, error) {
 
 var statementBuilder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith
 
-func (d DB) findConfigs(filter squirrel.Sqlizer) (map[configs.OrgID]configs.ConfigView, error) {
+func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.ConfigView, error) {
 	rows, err := d.Select("id", "owner_id", "config").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
@@ -72,12 +72,12 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[configs.OrgID]configs.Conf
 		return nil, err
 	}
 	defer rows.Close()
-	cfgs := map[configs.OrgID]configs.ConfigView{}
+	cfgs := map[string]configs.ConfigView{}
 	for rows.Next() {
 		var cfg configs.ConfigView
 		var cfgBytes []byte
-		var entityID string
-		err = rows.Scan(&cfg.ID, &entityID, &cfgBytes)
+		var userID string
+		err = rows.Scan(&cfg.ID, &userID, &cfgBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -85,18 +85,18 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[configs.OrgID]configs.Conf
 		if err != nil {
 			return nil, err
 		}
-		cfgs[configs.OrgID(entityID)] = cfg
+		cfgs[userID] = cfg
 	}
 	return cfgs, nil
 }
 
-// GetConfig gets a org's configuration.
-func (d DB) GetConfig(orgID configs.OrgID) (configs.ConfigView, error) {
+// GetConfig gets a configuration.
+func (d DB) GetConfig(userID string) (configs.ConfigView, error) {
 	var cfgView configs.ConfigView
 	var cfgBytes []byte
 	err := d.Select("id", "config").
 		From("configs").
-		Where(squirrel.And{activeConfig, squirrel.Eq{"owner_id": string(orgID)}}).
+		Where(squirrel.And{activeConfig, squirrel.Eq{"owner_id": userID}}).
 		OrderBy("id DESC").
 		Limit(1).
 		QueryRow().Scan(&cfgView.ID, &cfgBytes)
@@ -107,27 +107,26 @@ func (d DB) GetConfig(orgID configs.OrgID) (configs.ConfigView, error) {
 	return cfgView, err
 }
 
-// SetConfig sets a org's configuration.
-func (d DB) SetConfig(orgID configs.OrgID, cfg configs.Config) error {
+// SetConfig sets a configuration.
+func (d DB) SetConfig(userID string, cfg configs.Config) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
 	}
 	_, err = d.Insert("configs").
 		Columns("owner_id", "owner_type", "subsystem", "config").
-		Values(string(orgID), entityType, subsystem, cfgBytes).
+		Values(userID, entityType, subsystem, cfgBytes).
 		Exec()
 	return err
 }
 
-// GetAllConfigs gets all of the organization configs.
-func (d DB) GetAllConfigs() (map[configs.OrgID]configs.ConfigView, error) {
+// GetAllConfigs gets all of the configs.
+func (d DB) GetAllConfigs() (map[string]configs.ConfigView, error) {
 	return d.findConfigs(activeConfig)
 }
 
-// GetConfigs gets all of the organization configs for a subsystem that
-// have changed recently.
-func (d DB) GetConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
+// GetConfigs gets all of the configs that have changed recently.
+func (d DB) GetConfigs(since configs.ID) (map[string]configs.ConfigView, error) {
 	return d.findConfigs(squirrel.And{
 		activeConfig,
 		squirrel.Gt{"id": since},

@@ -38,21 +38,21 @@ func (t timed) timeRequest(method string, f func(context.Context) error) error {
 	return instrument.TimeRequestHistogramStatus(context.TODO(), method, databaseRequestDuration, t.errorCode, f)
 }
 
-func (t timed) GetConfig(orgID configs.OrgID) (cfg configs.ConfigView, err error) {
+func (t timed) GetConfig(userID string) (cfg configs.ConfigView, err error) {
 	t.timeRequest("GetConfig", func(_ context.Context) error {
-		cfg, err = t.d.GetConfig(orgID)
+		cfg, err = t.d.GetConfig(userID)
 		return err
 	})
 	return
 }
 
-func (t timed) SetConfig(orgID configs.OrgID, cfg configs.Config) (err error) {
+func (t timed) SetConfig(userID string, cfg configs.Config) (err error) {
 	return t.timeRequest("SetConfig", func(_ context.Context) error {
-		return t.d.SetConfig(orgID, cfg)
+		return t.d.SetConfig(userID, cfg)
 	})
 }
 
-func (t timed) GetAllConfigs() (cfgs map[configs.OrgID]configs.ConfigView, err error) {
+func (t timed) GetAllConfigs() (cfgs map[string]configs.ConfigView, err error) {
 	t.timeRequest("GetAllConfigs", func(_ context.Context) error {
 		cfgs, err = t.d.GetAllConfigs()
 		return err
@@ -60,7 +60,7 @@ func (t timed) GetAllConfigs() (cfgs map[configs.OrgID]configs.ConfigView, err e
 	return
 }
 
-func (t timed) GetConfigs(since configs.ID) (cfgs map[configs.OrgID]configs.ConfigView, err error) {
+func (t timed) GetConfigs(since configs.ID) (cfgs map[string]configs.ConfigView, err error) {
 	t.timeRequest("GetConfigs", func(_ context.Context) error {
 		cfgs, err = t.d.GetConfigs(since)
 		return err

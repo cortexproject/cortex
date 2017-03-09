@@ -20,50 +20,49 @@ func (c config) toView() configs.ConfigView {
 
 // DB is an in-memory database for testing, and local development
 type DB struct {
-	cfgs map[configs.OrgID]config
+	cfgs map[string]config
 	id   uint
 }
 
 // New creates a new in-memory database
 func New(_, _ string) (*DB, error) {
 	return &DB{
-		cfgs: map[configs.OrgID]config{},
+		cfgs: map[string]config{},
 		id:   0,
 	}, nil
 }
 
-// GetConfig gets the org's configuration.
-func (d *DB) GetConfig(orgID configs.OrgID) (configs.ConfigView, error) {
-	c, ok := d.cfgs[orgID]
+// GetConfig gets the user's configuration.
+func (d *DB) GetConfig(userID string) (configs.ConfigView, error) {
+	c, ok := d.cfgs[userID]
 	if !ok {
 		return configs.ConfigView{}, sql.ErrNoRows
 	}
 	return c.toView(), nil
 }
 
-// SetConfig sets configuration for a org.
-func (d *DB) SetConfig(orgID configs.OrgID, cfg configs.Config) error {
-	d.cfgs[orgID] = config{cfg: cfg, id: configs.ID(d.id)}
+// SetConfig sets configuration for a user.
+func (d *DB) SetConfig(userID string, cfg configs.Config) error {
+	d.cfgs[userID] = config{cfg: cfg, id: configs.ID(d.id)}
 	d.id++
 	return nil
 }
 
-// GetAllConfigs gets all of the organization configs for a subsystem.
-func (d *DB) GetAllConfigs() (map[configs.OrgID]configs.ConfigView, error) {
-	cfgs := map[configs.OrgID]configs.ConfigView{}
-	for org, c := range d.cfgs {
-		cfgs[org] = c.toView()
+// GetAllConfigs gets all of the configs.
+func (d *DB) GetAllConfigs() (map[string]configs.ConfigView, error) {
+	cfgs := map[string]configs.ConfigView{}
+	for user, c := range d.cfgs {
+		cfgs[user] = c.toView()
 	}
 	return cfgs, nil
 }
 
-// GetConfigs gets all of the organization configs for a subsystem that
-// have changed recently.
-func (d *DB) GetConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
-	cfgs := map[configs.OrgID]configs.ConfigView{}
-	for org, c := range d.cfgs {
+// GetConfigs gets all of the configs that have changed recently.
+func (d *DB) GetConfigs(since configs.ID) (map[string]configs.ConfigView, error) {
+	cfgs := map[string]configs.ConfigView{}
+	for user, c := range d.cfgs {
 		if c.id > since {
-			cfgs[org] = c.toView()
+			cfgs[user] = c.toView()
 		}
 	}
 	return cfgs, nil

@@ -152,9 +152,9 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 func (s *scheduler) poll() (map[string]configs.CortexConfigView, error) {
 	configID := s.latestConfig
 	var cfgs *configs.CortexConfigsResponse
-	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, func(_ context.Context) error {
+	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
-		cfgs, err = s.configsAPI.GetOrgConfigs(configID)
+		cfgs, err = s.configsAPI.GetConfigs(configID)
 		return err
 	})
 	if err != nil {

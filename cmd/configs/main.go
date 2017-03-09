@@ -43,6 +43,6 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	server.HTTP.Handle("/", a)
+	a.RegisterRoutes(server.HTTP)
 	server.Run()
 }

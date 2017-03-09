@@ -530,7 +530,7 @@ func (i *Ingester) flushLoop(j int) {
 	for {
 		o := i.flushQueues[j].Dequeue()
 		if o == nil {
-			break
+			return
 		}
 		op := o.(*flushOp)
 

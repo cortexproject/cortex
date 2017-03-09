@@ -15,9 +15,9 @@ var ServerLoggingInterceptor = func(ctx context.Context, req interface{}, info *
 	begin := time.Now()
 	resp, err := handler(ctx, req)
 	if err != nil {
-		log.Debugf("%s %s (%v) %s", gRPC, info.FullMethod, err, time.Since(begin))
+		log.Warnf("%s %s (%v) %s", gRPC, info.FullMethod, err, time.Since(begin))
 	} else {
-		log.Infof("%s %s (success) %s", gRPC, info.FullMethod, time.Since(begin))
+		log.Debugf("%s %s (success) %s", gRPC, info.FullMethod, time.Since(begin))
 	}
 	return resp, err
 }

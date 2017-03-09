@@ -15,7 +15,6 @@ spec:
         image: quay.io/weaveworks/cortex-table-manager
         imagePullPolicy: IfNotPresent
         args:
-        - -server.log-success=true
         - -server.http-listen-port=80
         - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000/cortex
         - -dynamodb.periodic-table.prefix=cortex_weekly_

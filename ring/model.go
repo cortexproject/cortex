@@ -16,16 +16,18 @@ func (ts ByToken) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
 
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
-	return newDesc()
+	return NewDesc()
 }
 
-func newDesc() *Desc {
+// NewDesc returns an empty ring.Desc
+func NewDesc() *Desc {
 	return &Desc{
 		Ingesters: map[string]*IngesterDesc{},
 	}
 }
 
-func (d *Desc) addIngester(id, addr string, tokens []uint32, state IngesterState) {
+// AddIngester adds the given ingester to the ring.
+func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]*IngesterDesc{}
 	}
@@ -33,7 +35,6 @@ func (d *Desc) addIngester(id, addr string, tokens []uint32, state IngesterState
 		Addr:      addr,
 		Timestamp: time.Now().Unix(),
 		State:     state,
-		ProtoRing: true,
 	}
 
 	for _, token := range tokens {
@@ -46,7 +47,8 @@ func (d *Desc) addIngester(id, addr string, tokens []uint32, state IngesterState
 	sort.Sort(ByToken(d.Tokens))
 }
 
-func (d *Desc) removeIngester(id string) {
+// RemoveIngester removes the given ingester and all its tokens.
+func (d *Desc) RemoveIngester(id string) {
 	delete(d.Ingesters, id)
 	output := []*TokenDesc{}
 	for i := 0; i < len(d.Tokens); i++ {
@@ -55,4 +57,40 @@ func (d *Desc) removeIngester(id string) {
 		}
 	}
 	d.Tokens = output
+}
+
+// ClaimTokens transfters all the tokens from one ingester to another.
+func (d *Desc) ClaimTokens(from, to string) []uint32 {
+	var result []uint32
+	for i := 0; i < len(d.Tokens); i++ {
+		if d.Tokens[i].Ingester == from {
+			d.Tokens[i].Ingester = to
+			result = append(result, d.Tokens[i].Token)
+		}
+	}
+	return result
+}
+
+// FindIngestersByState returns the list of ingesterd in the given state
+func (d *Desc) FindIngestersByState(state IngesterState) []*IngesterDesc {
+	var result []*IngesterDesc
+	for _, ing := range d.Ingesters {
+		if ing.State == state {
+			result = append(result, ing)
+		}
+	}
+	return result
+}
+
+// Ready is true when all ingesters are active and healthy.
+func (d *Desc) Ready(heartbeatTimeout time.Duration) bool {
+	for _, ingester := range d.Ingesters {
+		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
+			return false
+		} else if ingester.State != ACTIVE {
+			return false
+		}
+	}
+
+	return len(d.Tokens) > 0
 }

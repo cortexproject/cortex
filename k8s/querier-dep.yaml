@@ -15,7 +15,6 @@ spec:
         image: quay.io/weaveworks/cortex-querier
         imagePullPolicy: IfNotPresent
         args:
-        - -server.log-success=true
         - -server.http-listen-port=80
         - -consul.hostname=consul.default.svc.cluster.local:8500
         - -s3.url=s3://abc:123@s3.default.svc.cluster.local:4569

@@ -16,6 +16,9 @@ import (
 
 const (
 	unhealthy = "Unhealthy"
+
+	// ConsulKey is the key under which we store the ring in consul.
+	ConsulKey = "ring"
 )
 
 // Operation can be Read or Write
@@ -105,7 +108,7 @@ func (r *Ring) Stop() {
 
 func (r *Ring) loop() {
 	defer close(r.done)
-	r.consul.WatchKey(consulKey, r.quit, func(value interface{}) bool {
+	r.consul.WatchKey(ConsulKey, r.quit, func(value interface{}) bool {
 		if value == nil {
 			log.Infof("Ring doesn't exist in consul yet.")
 			return true
@@ -165,17 +168,18 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, er
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
-		// Ingesters that are Leaving do not count to the replication limit. We do
+		// Ingesters that are not ACTIVE do not count to the replication limit. We do
 		// not want to Write to them because they are about to go away, but we do
 		// want to write the extra replica somewhere.  So we increase the size of the
 		// set of replicas for the key.  This means we have to also increase the
 		// size of the replica set for read, but we can read from Leaving ingesters,
 		// so don't skip it in this case.
-		if ingester.State == LEAVING {
+		if op == Write && ingester.State != ACTIVE {
 			n++
-			if op == Write {
-				continue
-			}
+			continue
+		} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
+			n++
+			continue
 		}
 
 		ingesters = append(ingesters, ingester)
@@ -200,26 +204,6 @@ func (r *Ring) GetAll() []*IngesterDesc {
 		ingesters = append(ingesters, ingester)
 	}
 	return ingesters
-}
-
-// Ready is true when all ingesters are active and healthy.
-func (r *Ring) Ready() bool {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-
-	if r.ringDesc == nil {
-		return false
-	}
-
-	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
-			return false
-		} else if ingester.State != ACTIVE {
-			return false
-		}
-	}
-
-	return len(r.ringDesc.Tokens) > 0
 }
 
 func (r *Ring) search(key uint32) int {

@@ -71,10 +71,10 @@ func (r *Ring) forget(id string) error {
 		}
 
 		ringDesc := in.(*Desc)
-		ringDesc.removeIngester(id)
+		ringDesc.RemoveIngester(id)
 		return ringDesc, true, nil
 	}
-	return r.consul.CAS(consulKey, unregister)
+	return r.consul.CAS(ConsulKey, unregister)
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {

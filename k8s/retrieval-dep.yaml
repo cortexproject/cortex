@@ -17,7 +17,6 @@ spec:
         args:
         - -config.file=/etc/prometheus/prometheus.yml
         - -web.listen-address=:80
-        - -storage.local.engine=none
         ports:
         - containerPort: 80
         volumeMounts:

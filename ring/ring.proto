@@ -8,10 +8,11 @@ message Desc {
 }
 
 message IngesterDesc {
+	reserved 4, 5; // old, deprecated fields
+
 	string addr = 1;
 	int64 timestamp = 2;
 	IngesterState state = 3;
-	bool protoRing = 5;
 }
 
 message TokenDesc {
@@ -22,4 +23,7 @@ message TokenDesc {
 enum IngesterState {
 	ACTIVE = 0;
 	LEAVING = 1;
+
+	PENDING = 2;
+	JOINING = 3;
 }

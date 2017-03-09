@@ -20,7 +20,7 @@ type ConsulConfig struct {
 	Host   string
 	Prefix string
 
-	mock ConsulClient
+	Mock ConsulClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -36,6 +36,7 @@ type ConsulClient interface {
 	CAS(key string, f CASCallback) error
 	WatchPrefix(path string, done <-chan struct{}, f func(string, interface{}) bool)
 	WatchKey(key string, done <-chan struct{}, f func(interface{}) bool)
+	Get(key string) (interface{}, error)
 	PutBytes(key string, buf []byte) error
 }
 
@@ -62,8 +63,8 @@ type consulClient struct {
 
 // NewConsulClient returns a new ConsulClient.
 func NewConsulClient(cfg ConsulConfig, codec Codec) (ConsulClient, error) {
-	if cfg.mock != nil {
-		return cfg.mock, nil
+	if cfg.Mock != nil {
+		return cfg.Mock, nil
 	}
 
 	client, err := consul.NewClient(&consul.Config{
@@ -327,6 +328,14 @@ func (c *consulClient) PutBytes(key string, buf []byte) error {
 	return err
 }
 
+func (c *consulClient) Get(key string) (interface{}, error) {
+	kvp, _, err := c.kv.Get(key, &consul.QueryOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return c.codec.Decode(kvp.Value)
+}
+
 type prefixedConsulClient struct {
 	prefix string
 	consul ConsulClient
@@ -356,4 +365,8 @@ func (c *prefixedConsulClient) WatchKey(key string, done <-chan struct{}, f func
 // PutBytes writes bytes to Consul.
 func (c *prefixedConsulClient) PutBytes(key string, buf []byte) error {
 	return c.consul.PutBytes(c.prefix+key, buf)
+}
+
+func (c *prefixedConsulClient) Get(key string) (interface{}, error) {
+	return c.consul.Get(c.prefix + key)
 }

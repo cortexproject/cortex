@@ -16,7 +16,6 @@ spec:
         imagePullPolicy: IfNotPresent
         args:
         - -log.level=debug
-        - -server.log-success=true
         - -server.http-listen-port=80
         - -ruler.configs.url=http://configs.default.svc.cluster.local:80
         - -ruler.alertmanager-url=http://alertmanager.default.svc.cluster.local/

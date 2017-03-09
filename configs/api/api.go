@@ -66,10 +66,10 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		handler            http.HandlerFunc
 	}{
 		{"root", "GET", "/", a.admin},
-		{"get_org_config", "GET", "/api/configs/org/{subsystem}", a.getOrgConfig},
-		{"set_org_config", "POST", "/api/configs/org/{subsystem}", a.setOrgConfig},
+		{"get_org_config", "GET", "/api/configs/org/cortex", a.getOrgConfig},
+		{"set_org_config", "POST", "/api/configs/org/cortex", a.setOrgConfig},
 		// Internal APIs.
-		{"private_get_org_configs", "GET", "/private/api/configs/org/{subsystem}", a.getOrgConfigs},
+		{"private_get_org_configs", "GET", "/private/api/configs/org/cortex", a.getOrgConfigs},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}
@@ -96,10 +96,7 @@ func (a *API) getOrgConfig(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(code)
 		return
 	}
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-
-	cfg, err := a.db.GetOrgConfig(orgID, subsystem)
+	cfg, err := a.db.GetOrgConfig(orgID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "No configuration", http.StatusNotFound)
 		return
@@ -132,10 +129,7 @@ func (a *API) setOrgConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-	if err := a.db.SetOrgConfig(orgID, subsystem, cfg); err != nil {
+	if err := a.db.SetOrgConfig(orgID, cfg); err != nil {
 		// XXX: Untested
 		log.Errorf("Error storing config: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -151,14 +145,11 @@ type OrgConfigsView struct {
 }
 
 func (a *API) getOrgConfigs(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-
 	var cfgs map[configs.OrgID]configs.ConfigView
 	var err error
 	rawSince := r.FormValue("since")
 	if rawSince == "" {
-		cfgs, err = a.db.GetAllOrgConfigs(subsystem)
+		cfgs, err = a.db.GetAllOrgConfigs()
 	} else {
 		since, err := strconv.ParseUint(rawSince, 10, 0)
 		if err != nil {
@@ -166,7 +157,7 @@ func (a *API) getOrgConfigs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, err = a.db.GetOrgConfigs(subsystem, configs.ID(since))
+		cfgs, err = a.db.GetOrgConfigs(configs.ID(since))
 	}
 
 	if err != nil {

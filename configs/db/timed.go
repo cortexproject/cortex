@@ -38,31 +38,31 @@ func (t timed) timeRequest(method string, f func(context.Context) error) error {
 	return instrument.TimeRequestHistogramStatus(context.TODO(), method, databaseRequestDuration, t.errorCode, f)
 }
 
-func (t timed) GetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem) (cfg configs.ConfigView, err error) {
+func (t timed) GetOrgConfig(orgID configs.OrgID) (cfg configs.ConfigView, err error) {
 	t.timeRequest("GetOrgConfig", func(_ context.Context) error {
-		cfg, err = t.d.GetOrgConfig(orgID, subsystem)
+		cfg, err = t.d.GetOrgConfig(orgID)
 		return err
 	})
 	return
 }
 
-func (t timed) SetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem, cfg configs.Config) (err error) {
+func (t timed) SetOrgConfig(orgID configs.OrgID, cfg configs.Config) (err error) {
 	return t.timeRequest("SetOrgConfig", func(_ context.Context) error {
-		return t.d.SetOrgConfig(orgID, subsystem, cfg)
+		return t.d.SetOrgConfig(orgID, cfg)
 	})
 }
 
-func (t timed) GetAllOrgConfigs(subsystem configs.Subsystem) (cfgs map[configs.OrgID]configs.ConfigView, err error) {
+func (t timed) GetAllOrgConfigs() (cfgs map[configs.OrgID]configs.ConfigView, err error) {
 	t.timeRequest("GetAllOrgConfigs", func(_ context.Context) error {
-		cfgs, err = t.d.GetAllOrgConfigs(subsystem)
+		cfgs, err = t.d.GetAllOrgConfigs()
 		return err
 	})
 	return
 }
 
-func (t timed) GetOrgConfigs(subsystem configs.Subsystem, since configs.ID) (cfgs map[configs.OrgID]configs.ConfigView, err error) {
+func (t timed) GetOrgConfigs(since configs.ID) (cfgs map[configs.OrgID]configs.ConfigView, err error) {
 	t.timeRequest("GetOrgConfigs", func(_ context.Context) error {
-		cfgs, err = t.d.GetOrgConfigs(subsystem, since)
+		cfgs, err = t.d.GetOrgConfigs(since)
 		return err
 	})
 	return

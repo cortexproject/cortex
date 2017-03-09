@@ -20,21 +20,21 @@ func (c config) toView() configs.ConfigView {
 
 // DB is an in-memory database for testing, and local development
 type DB struct {
-	orgCfgs map[configs.OrgID]map[configs.Subsystem]config
+	orgCfgs map[configs.OrgID]config
 	id      uint
 }
 
 // New creates a new in-memory database
 func New(_, _ string) (*DB, error) {
 	return &DB{
-		orgCfgs: map[configs.OrgID]map[configs.Subsystem]config{},
+		orgCfgs: map[configs.OrgID]config{},
 		id:      0,
 	}, nil
 }
 
 // GetOrgConfig gets the org's configuration.
-func (d *DB) GetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem) (configs.ConfigView, error) {
-	c, ok := d.orgCfgs[orgID][subsystem]
+func (d *DB) GetOrgConfig(orgID configs.OrgID) (configs.ConfigView, error) {
+	c, ok := d.orgCfgs[orgID]
 	if !ok {
 		return configs.ConfigView{}, sql.ErrNoRows
 	}
@@ -42,37 +42,27 @@ func (d *DB) GetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem) (con
 }
 
 // SetOrgConfig sets configuration for a org.
-func (d *DB) SetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem, cfg configs.Config) error {
-	// XXX: Is this really how you assign a thing to a nested map?
-	org, ok := d.orgCfgs[orgID]
-	if !ok {
-		org = map[configs.Subsystem]config{}
-	}
+func (d *DB) SetOrgConfig(orgID configs.OrgID, cfg configs.Config) error {
+	d.orgCfgs[orgID] = config{cfg: cfg, id: configs.ID(d.id)}
 	d.id++
-	org[subsystem] = config{cfg: cfg, id: configs.ID(d.id)}
-	d.orgCfgs[orgID] = org
 	return nil
 }
 
 // GetAllOrgConfigs gets all of the organization configs for a subsystem.
-func (d *DB) GetAllOrgConfigs(subsystem configs.Subsystem) (map[configs.OrgID]configs.ConfigView, error) {
+func (d *DB) GetAllOrgConfigs() (map[configs.OrgID]configs.ConfigView, error) {
 	cfgs := map[configs.OrgID]configs.ConfigView{}
-	for org, subsystems := range d.orgCfgs {
-		c, ok := subsystems[subsystem]
-		if ok {
-			cfgs[org] = c.toView()
-		}
+	for org, c := range d.orgCfgs {
+		cfgs[org] = c.toView()
 	}
 	return cfgs, nil
 }
 
 // GetOrgConfigs gets all of the organization configs for a subsystem that
 // have changed recently.
-func (d *DB) GetOrgConfigs(subsystem configs.Subsystem, since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
+func (d *DB) GetOrgConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
 	cfgs := map[configs.OrgID]configs.ConfigView{}
-	for org, subsystems := range d.orgCfgs {
-		c, ok := subsystems[subsystem]
-		if ok && c.id > since {
+	for org, c := range d.orgCfgs {
+		if c.id > since {
 			cfgs[org] = c.toView()
 		}
 	}

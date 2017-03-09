@@ -14,24 +14,24 @@ func (t traced) trace(name string, args ...interface{}) {
 	logrus.Debugf("%s: %#v", name, args)
 }
 
-func (t traced) GetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem) (cfg configs.ConfigView, err error) {
-	defer func() { t.trace("GetOrgConfig", orgID, subsystem, cfg, err) }()
-	return t.d.GetOrgConfig(orgID, subsystem)
+func (t traced) GetOrgConfig(orgID configs.OrgID) (cfg configs.ConfigView, err error) {
+	defer func() { t.trace("GetOrgConfig", orgID, cfg, err) }()
+	return t.d.GetOrgConfig(orgID)
 }
 
-func (t traced) SetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem, cfg configs.Config) (err error) {
-	defer func() { t.trace("SetOrgConfig", orgID, subsystem, cfg, err) }()
-	return t.d.SetOrgConfig(orgID, subsystem, cfg)
+func (t traced) SetOrgConfig(orgID configs.OrgID, cfg configs.Config) (err error) {
+	defer func() { t.trace("SetOrgConfig", orgID, cfg, err) }()
+	return t.d.SetOrgConfig(orgID, cfg)
 }
 
-func (t traced) GetAllOrgConfigs(subsystem configs.Subsystem) (cfgs map[configs.OrgID]configs.ConfigView, err error) {
-	defer func() { t.trace("GetAllOrgConfigs", subsystem, cfgs, err) }()
-	return t.d.GetAllOrgConfigs(subsystem)
+func (t traced) GetAllOrgConfigs() (cfgs map[configs.OrgID]configs.ConfigView, err error) {
+	defer func() { t.trace("GetAllOrgConfigs", cfgs, err) }()
+	return t.d.GetAllOrgConfigs()
 }
 
-func (t traced) GetOrgConfigs(subsystem configs.Subsystem, since configs.ID) (cfgs map[configs.OrgID]configs.ConfigView, err error) {
-	defer func() { t.trace("GetOrgConfigs", subsystem, since, cfgs, err) }()
-	return t.d.GetOrgConfigs(subsystem, since)
+func (t traced) GetOrgConfigs(since configs.ID) (cfgs map[configs.OrgID]configs.ConfigView, err error) {
+	defer func() { t.trace("GetOrgConfigs", since, cfgs, err) }()
+	return t.d.GetOrgConfigs(since)
 }
 
 func (t traced) Close() (err error) {

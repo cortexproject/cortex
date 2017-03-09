@@ -24,11 +24,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // DB is the interface for the database.
 type DB interface {
-	GetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem) (configs.ConfigView, error)
-	SetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem, cfg configs.Config) error
+	GetOrgConfig(orgID configs.OrgID) (configs.ConfigView, error)
+	SetOrgConfig(orgID configs.OrgID, cfg configs.Config) error
 
-	GetAllOrgConfigs(subsystem configs.Subsystem) (map[configs.OrgID]configs.ConfigView, error)
-	GetOrgConfigs(subsystem configs.Subsystem, since configs.ID) (map[configs.OrgID]configs.ConfigView, error)
+	GetAllOrgConfigs() (map[configs.OrgID]configs.ConfigView, error)
+	GetOrgConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error)
 
 	Close() error
 }

@@ -13,6 +13,11 @@ import (
 	"github.com/weaveworks/cortex/configs/api"
 )
 
+const (
+	endpoint        = "/api/configs/org/cortex"
+	privateEndpoint = "/private/api/configs/org/cortex"
+)
+
 // The root page returns 200 OK.
 func Test_Root_OK(t *testing.T) {
 	setup(t)
@@ -23,16 +28,14 @@ func Test_Root_OK(t *testing.T) {
 }
 
 // postOrgConfig posts an organisation config.
-func postOrgConfig(t *testing.T, orgID configs.OrgID, subsystem configs.Subsystem, config configs.Config) configs.ConfigView {
-	endpoint := fmt.Sprintf("/api/configs/org/%s", subsystem)
+func postOrgConfig(t *testing.T, orgID configs.OrgID, config configs.Config) configs.ConfigView {
 	w := requestAsOrg(t, orgID, "POST", endpoint, jsonObject(config).Reader(t))
 	require.Equal(t, http.StatusNoContent, w.Code)
-	return getOrgConfig(t, orgID, subsystem)
+	return getOrgConfig(t, orgID)
 }
 
 // getOrgConfig gets an organisation config.
-func getOrgConfig(t *testing.T, orgID configs.OrgID, subsystem configs.Subsystem) configs.ConfigView {
-	endpoint := fmt.Sprintf("/api/configs/org/%s", subsystem)
+func getOrgConfig(t *testing.T, orgID configs.OrgID) configs.ConfigView {
 	w := requestAsOrg(t, orgID, "GET", endpoint, nil)
 	return parseConfigView(t, w.Body.Bytes())
 }
@@ -42,8 +45,7 @@ func Test_GetOrgConfig_Anonymous(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	subsystem := makeSubsystem()
-	w := request(t, "GET", fmt.Sprintf("/api/configs/org/%s", subsystem), nil)
+	w := request(t, "GET", endpoint, nil)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
@@ -53,8 +55,7 @@ func Test_GetOrgConfig_NotFound(t *testing.T) {
 	defer cleanup(t)
 
 	orgID := makeOrgID()
-	subsystem := makeSubsystem()
-	w := requestAsOrg(t, orgID, "GET", fmt.Sprintf("/api/configs/org/%s", subsystem), nil)
+	w := requestAsOrg(t, orgID, "GET", endpoint, nil)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -63,8 +64,7 @@ func Test_PostOrgConfig_Anonymous(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	subsystem := makeSubsystem()
-	w := request(t, "POST", fmt.Sprintf("/api/configs/org/%s", subsystem), nil)
+	w := request(t, "POST", endpoint, nil)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
@@ -74,10 +74,8 @@ func Test_PostOrgConfig_CreatesConfig(t *testing.T) {
 	defer cleanup(t)
 
 	orgID := makeOrgID()
-	subsystem := makeSubsystem()
 	config := makeConfig()
 	content := jsonObject(config)
-	endpoint := fmt.Sprintf("/api/configs/org/%s", subsystem)
 	{
 		w := requestAsOrg(t, orgID, "POST", endpoint, content.Reader(t))
 		assert.Equal(t, http.StatusNoContent, w.Code)
@@ -94,29 +92,11 @@ func Test_PostOrgConfig_UpdatesConfig(t *testing.T) {
 	defer cleanup(t)
 
 	orgID := makeOrgID()
-	subsystem := makeSubsystem()
-	view1 := postOrgConfig(t, orgID, subsystem, makeConfig())
+	view1 := postOrgConfig(t, orgID, makeConfig())
 	config2 := makeConfig()
-	view2 := postOrgConfig(t, orgID, subsystem, config2)
+	view2 := postOrgConfig(t, orgID, config2)
 	assert.True(t, view2.ID > view1.ID, "%v > %v", view2.ID, view1.ID)
 	assert.Equal(t, config2, view2.Config)
-}
-
-// Different subsystems can have different configurations.
-func Test_PostOrgConfig_MultipleSubsystems(t *testing.T) {
-	setup(t)
-	defer cleanup(t)
-
-	orgID := makeOrgID()
-	subsystem1 := makeSubsystem()
-	subsystem2 := makeSubsystem()
-	config1 := postOrgConfig(t, orgID, subsystem1, makeConfig())
-	config2 := postOrgConfig(t, orgID, subsystem2, makeConfig())
-	foundConfig1 := getOrgConfig(t, orgID, subsystem1)
-	assert.Equal(t, config1, foundConfig1)
-	foundConfig2 := getOrgConfig(t, orgID, subsystem2)
-	assert.Equal(t, config2, foundConfig2)
-	assert.True(t, config2.ID > config1.ID, "%v > %v", config2.ID, config1.ID)
 }
 
 // Different users can have different configurations.
@@ -126,13 +106,12 @@ func Test_PostOrgConfig_MultipleOrgs(t *testing.T) {
 
 	orgID1 := makeOrgID()
 	orgID2 := makeOrgID()
-	subsystem := makeSubsystem()
-	config1 := postOrgConfig(t, orgID1, subsystem, makeConfig())
-	config2 := postOrgConfig(t, orgID2, subsystem, makeConfig())
+	config1 := postOrgConfig(t, orgID1, makeConfig())
+	config2 := postOrgConfig(t, orgID2, makeConfig())
 
-	foundConfig1 := getOrgConfig(t, orgID1, subsystem)
+	foundConfig1 := getOrgConfig(t, orgID1)
 	assert.Equal(t, config1, foundConfig1)
-	foundConfig2 := getOrgConfig(t, orgID2, subsystem)
+	foundConfig2 := getOrgConfig(t, orgID2)
 	assert.Equal(t, config2, foundConfig2)
 	assert.True(t, config2.ID > config1.ID, "%v > %v", config2.ID, config1.ID)
 }
@@ -142,9 +121,7 @@ func Test_GetAllOrgConfigs_Empty(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	subsystem := makeSubsystem()
-	endpoint := fmt.Sprintf("/private/api/configs/org/%s", subsystem)
-	w := request(t, "GET", endpoint, nil)
+	w := request(t, "GET", privateEndpoint, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var found api.OrgConfigsView
 	err := json.Unmarshal(w.Body.Bytes(), &found)
@@ -158,11 +135,9 @@ func Test_GetAllOrgConfigs(t *testing.T) {
 	defer cleanup(t)
 
 	orgID := makeOrgID()
-	subsystem := makeSubsystem()
 	config := makeConfig()
-	view := postOrgConfig(t, orgID, subsystem, config)
-	endpoint := fmt.Sprintf("/private/api/configs/org/%s", subsystem)
-	w := request(t, "GET", endpoint, nil)
+	view := postOrgConfig(t, orgID, config)
+	w := request(t, "GET", privateEndpoint, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var found api.OrgConfigsView
 	err := json.Unmarshal(w.Body.Bytes(), &found)
@@ -178,13 +153,11 @@ func Test_GetAllOrgConfigs_Newest(t *testing.T) {
 	defer cleanup(t)
 
 	orgID := makeOrgID()
-	subsystem := makeSubsystem()
-	postOrgConfig(t, orgID, subsystem, makeConfig())
-	postOrgConfig(t, orgID, subsystem, makeConfig())
-	lastCreated := postOrgConfig(t, orgID, subsystem, makeConfig())
+	postOrgConfig(t, orgID, makeConfig())
+	postOrgConfig(t, orgID, makeConfig())
+	lastCreated := postOrgConfig(t, orgID, makeConfig())
 
-	endpoint := fmt.Sprintf("/private/api/configs/org/%s", subsystem)
-	w := request(t, "GET", endpoint, nil)
+	w := request(t, "GET", privateEndpoint, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var found api.OrgConfigsView
 	err := json.Unmarshal(w.Body.Bytes(), &found)
@@ -198,14 +171,12 @@ func Test_GetOrgConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	subsystem := makeSubsystem()
-	postOrgConfig(t, makeOrgID(), subsystem, makeConfig())
-	config2 := postOrgConfig(t, makeOrgID(), subsystem, makeConfig())
+	postOrgConfig(t, makeOrgID(), makeConfig())
+	config2 := postOrgConfig(t, makeOrgID(), makeConfig())
 	orgID3 := makeOrgID()
-	config3 := postOrgConfig(t, orgID3, subsystem, makeConfig())
+	config3 := postOrgConfig(t, orgID3, makeConfig())
 
-	endpoint := fmt.Sprintf("/private/api/configs/org/%s?since=%d", subsystem, config2.ID)
-	w := request(t, "GET", endpoint, nil)
+	w := request(t, "GET", fmt.Sprintf("%s?since=%d", privateEndpoint, config2.ID), nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var found api.OrgConfigsView
 	err := json.Unmarshal(w.Body.Bytes(), &found)

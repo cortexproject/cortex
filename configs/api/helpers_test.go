@@ -67,11 +67,6 @@ func makeOrgID() configs.OrgID {
 	return configs.OrgID(makeString("org%d"))
 }
 
-// makeSubsystem makes an arbitrary name for a subsystem.
-func makeSubsystem() configs.Subsystem {
-	return configs.Subsystem(makeString("subsystem%d"))
-}
-
 // makeConfig makes some arbitrary configuration.
 func makeConfig() configs.Config {
 	arbitraryKey := makeString("key%d")

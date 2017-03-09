@@ -15,6 +15,9 @@ import (
 
 const (
 	orgType = "org"
+	// TODO: This is a legacy from when configs was more general. Update the
+	// schema so this isn't needed.
+	subsystem = "cortex"
 )
 
 // DB is a postgres db, for dev and production
@@ -50,10 +53,10 @@ func New(uri, migrationsDir string) (DB, error) {
 
 var statementBuilder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith
 
-func configMatches(id, entityType, subsystem string) squirrel.Sqlizer {
+func configMatches(id, entityType string) squirrel.Sqlizer {
 	// TODO: Tests for deleted_at requirement.
 	return squirrel.And{
-		configsMatch(entityType, subsystem),
+		configsMatch(entityType),
 		squirrel.Eq{
 			"owner_id": id,
 		},
@@ -61,20 +64,22 @@ func configMatches(id, entityType, subsystem string) squirrel.Sqlizer {
 }
 
 // configsMatch returns a matcher for configs of a particular type.
-func configsMatch(entityType, subsystem string) squirrel.Sqlizer {
+func configsMatch(entityType string) squirrel.Sqlizer {
 	return squirrel.Eq{
 		"deleted_at": nil,
 		"owner_type": entityType,
-		"subsystem":  subsystem,
+		// TODO: legacy of configs being more generic. Update the schema to be
+		// more appropriate for cortex.
+		"subsystem": subsystem,
 	}
 }
 
-func (d DB) findConfig(entityID, entityType, subsystem string) (configs.ConfigView, error) {
+func (d DB) findConfig(entityID, entityType string) (configs.ConfigView, error) {
 	var cfgView configs.ConfigView
 	var cfgBytes []byte
 	err := d.Select("id", "config").
 		From("configs").
-		Where(configMatches(entityID, entityType, subsystem)).
+		Where(configMatches(entityID, entityType)).
 		OrderBy("id DESC").
 		Limit(1).
 		QueryRow().Scan(&cfgView.ID, &cfgBytes)
@@ -114,26 +119,26 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.ConfigView,
 	return cfgs, nil
 }
 
-func (d DB) insertConfig(id, entityType string, subsystem configs.Subsystem, cfg configs.Config) error {
+func (d DB) insertConfig(id, entityType string, cfg configs.Config) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
 	}
 	_, err = d.Insert("configs").
 		Columns("owner_id", "owner_type", "subsystem", "config").
-		Values(id, entityType, string(subsystem), cfgBytes).
+		Values(id, entityType, subsystem, cfgBytes).
 		Exec()
 	return err
 }
 
 // GetOrgConfig gets a org's configuration.
-func (d DB) GetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem) (configs.ConfigView, error) {
-	return d.findConfig(string(orgID), orgType, string(subsystem))
+func (d DB) GetOrgConfig(orgID configs.OrgID) (configs.ConfigView, error) {
+	return d.findConfig(string(orgID), orgType)
 }
 
 // SetOrgConfig sets a org's configuration.
-func (d DB) SetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem, cfg configs.Config) error {
-	return d.insertConfig(string(orgID), orgType, subsystem, cfg)
+func (d DB) SetOrgConfig(orgID configs.OrgID, cfg configs.Config) error {
+	return d.insertConfig(string(orgID), orgType, cfg)
 }
 
 // toOrgConfigs = mapKeys configs.OrgID
@@ -145,9 +150,9 @@ func toOrgConfigs(rawCfgs map[string]configs.ConfigView) map[configs.OrgID]confi
 	return cfgs
 }
 
-// GetAllOrgConfigs gets all of the organization configs for a subsystem.
-func (d DB) GetAllOrgConfigs(subsystem configs.Subsystem) (map[configs.OrgID]configs.ConfigView, error) {
-	rawCfgs, err := d.findConfigs(configsMatch(orgType, string(subsystem)))
+// GetAllOrgConfigs gets all of the organization configs.
+func (d DB) GetAllOrgConfigs() (map[configs.OrgID]configs.ConfigView, error) {
+	rawCfgs, err := d.findConfigs(configsMatch(orgType))
 	if err != nil {
 		return nil, err
 	}
@@ -156,9 +161,9 @@ func (d DB) GetAllOrgConfigs(subsystem configs.Subsystem) (map[configs.OrgID]con
 
 // GetOrgConfigs gets all of the organization configs for a subsystem that
 // have changed recently.
-func (d DB) GetOrgConfigs(subsystem configs.Subsystem, since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
+func (d DB) GetOrgConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
 	rawCfgs, err := d.findConfigs(squirrel.And{
-		configsMatch(orgType, string(subsystem)),
+		configsMatch(orgType),
 		squirrel.Gt{"id": since},
 	})
 	if err != nil {

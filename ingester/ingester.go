@@ -523,24 +523,34 @@ func (i *Ingester) flushLoop(j int) {
 		i.done.Done()
 	}()
 
+	failures := []*flushOp{}
+
 	for {
 		o := i.flushQueues[j].Dequeue()
 		if o == nil {
-			return
+			break
 		}
 		op := o.(*flushOp)
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			log.Errorf("Failed to flush user: %v", err)
+			log.Errorf("Failed to flush user %v: %v", op.userID, err)
 		}
 
-		// If we're exiting & we failed to flush, keep trying.
-		for op.immediate && err != nil {
-			err = i.flushUserSeries(op.userID, op.fp, op.immediate)
-			if err != nil {
-				log.Errorf("Failed to flush user: %v", err)
-			}
+		// If we're exiting & we failed to flush, put the failure at the back
+		// of the queue--we'll try when we're done with the others.
+		if op.immediate && err != nil {
+			failures = append(failures, op)
+		}
+	}
+
+	for len(failures) > 0 {
+		op := failures[0]
+		failures = failures[1:]
+		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
+		if err != nil {
+			log.Errorf("Failed to flush user %v: %v", op.userID, err)
+			failures = append(failures, op)
 		}
 	}
 }

@@ -44,7 +44,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // New creates a new API
 func New(config Config, database db.DB) *API {
 	a := &API{Config: config, db: database}
-	a.Handler = a.routes()
+	r := mux.NewRouter()
+	a.RegisterRoutes(r)
+	a.Handler = r
 	return a
 }
 
@@ -61,8 +63,8 @@ func (a *API) admin(w http.ResponseWriter, r *http.Request) {
 `)
 }
 
-func (a *API) routes() http.Handler {
-	r := mux.NewRouter()
+// RegisterRoutes registers the configs API HTTP routes with the provided Router.
+func (a *API) RegisterRoutes(r *mux.Router) {
 	for _, route := range []struct {
 		name, method, path string
 		handler            http.HandlerFunc
@@ -78,7 +80,6 @@ func (a *API) routes() http.Handler {
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}
-	return r
 }
 
 // authorize checks whether the given header provides access to entity.

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// TODO: These a legacy from when configs was more general. Update the
+	// TODO: These are a legacy from when configs was more general. Update the
 	// schema so this isn't needed.
 	entityType = "org"
 	subsystem  = "cortex"

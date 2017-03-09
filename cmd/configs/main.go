@@ -23,10 +23,9 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		dbConfig  db.Config
-		apiConfig api.Config
+		dbConfig db.Config
 	)
-	util.RegisterFlags(&serverConfig, &dbConfig, &apiConfig)
+	util.RegisterFlags(&serverConfig, &dbConfig)
 	flag.Parse()
 
 	db, err := db.New(dbConfig)
@@ -35,7 +34,7 @@ func main() {
 	}
 	defer db.Close()
 
-	a := api.New(apiConfig, db)
+	a := api.New(db)
 
 	server, err := server.New(serverConfig)
 	if err != nil {

@@ -3,7 +3,6 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,35 +10,20 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/configs"
 	"github.com/weaveworks/cortex/configs/db"
-)
-
-const (
-	// DefaultOrgIDHeader is the default OrgID header.
-	DefaultOrgIDHeader = "X-Scope-OrgID"
 )
 
 // API implements the configs api.
 type API struct {
 	db db.DB
 	http.Handler
-	Config
-}
-
-// Config describes the configuration for the configs API.
-type Config struct {
-	OrgIDHeader string
-}
-
-// RegisterFlags adds the flags required to configure this to the given FlagSet.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.OrgIDHeader, "org-id-header", DefaultOrgIDHeader, "Name of header that contains org ID")
 }
 
 // New creates a new API
-func New(config Config, database db.DB) *API {
-	a := &API{Config: config, db: database}
+func New(database db.DB) *API {
+	a := &API{db: database}
 	r := mux.NewRouter()
 	a.RegisterRoutes(r)
 	a.Handler = r
@@ -75,28 +59,15 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 	}
 }
 
-// authorize checks whether the given header provides access to entity.
-func authorize(r *http.Request, header, entityID string) (string, int) {
-	token := r.Header.Get(header)
-	if token == "" {
-		return "", http.StatusUnauthorized
-	}
-	return token, 0
-}
-
-func (a *API) authorizeOrg(r *http.Request) (configs.OrgID, int) {
-	entity, err := authorize(r, a.OrgIDHeader, "orgID")
-	return configs.OrgID(entity), err
-}
-
 // getConfig returns the request configuration.
 func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
-	orgID, code := a.authorizeOrg(r)
-	if code != 0 {
-		w.WriteHeader(code)
+	userID, _, err := user.ExtractFromHTTPRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	cfg, err := a.db.GetConfig(orgID)
+
+	cfg, err := a.db.GetConfig(configs.OrgID(userID))
 	if err == sql.ErrNoRows {
 		http.Error(w, "No configuration", http.StatusNotFound)
 		return
@@ -117,11 +88,12 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
-	orgID, code := a.authorizeOrg(r)
-	if code != 0 {
-		w.WriteHeader(code)
+	userID, _, err := user.ExtractFromHTTPRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+
 	var cfg configs.Config
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		// XXX: Untested
@@ -129,7 +101,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.db.SetConfig(orgID, cfg); err != nil {
+	if err := a.db.SetConfig(configs.OrgID(userID), cfg); err != nil {
 		// XXX: Untested
 		log.Errorf("Error storing config: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

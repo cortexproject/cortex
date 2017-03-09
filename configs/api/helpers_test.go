@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/configs"
 	"github.com/weaveworks/cortex/configs/api"
 	"github.com/weaveworks/cortex/configs/db"
@@ -26,9 +27,7 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = api.New(api.Config{
-		OrgIDHeader: api.DefaultOrgIDHeader,
-	}, database)
+	app = api.New(database)
 	counter = 0
 }
 
@@ -51,7 +50,8 @@ func requestAsOrg(t *testing.T, userID configs.OrgID, method, urlStr string, bod
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
-	r.Header.Add(app.OrgIDHeader, string(userID))
+	r = r.WithContext(user.Inject(r.Context(), string(userID)))
+	user.InjectIntoHTTPRequest(r.Context(), r)
 	app.ServeHTTP(w, r)
 	return w
 }

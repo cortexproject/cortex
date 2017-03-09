@@ -20,40 +20,16 @@ func (c config) toView() configs.ConfigView {
 
 // DB is an in-memory database for testing, and local development
 type DB struct {
-	userCfgs map[configs.UserID]map[configs.Subsystem]config
-	orgCfgs  map[configs.OrgID]map[configs.Subsystem]config
-	id       uint
+	orgCfgs map[configs.OrgID]map[configs.Subsystem]config
+	id      uint
 }
 
 // New creates a new in-memory database
 func New(_, _ string) (*DB, error) {
 	return &DB{
-		userCfgs: map[configs.UserID]map[configs.Subsystem]config{},
-		orgCfgs:  map[configs.OrgID]map[configs.Subsystem]config{},
-		id:       0,
+		orgCfgs: map[configs.OrgID]map[configs.Subsystem]config{},
+		id:      0,
 	}, nil
-}
-
-// GetUserConfig gets the user's configuration.
-func (d *DB) GetUserConfig(userID configs.UserID, subsystem configs.Subsystem) (configs.ConfigView, error) {
-	c, ok := d.userCfgs[userID][subsystem]
-	if !ok {
-		return configs.ConfigView{}, sql.ErrNoRows
-	}
-	return c.toView(), nil
-}
-
-// SetUserConfig sets configuration for a user.
-func (d *DB) SetUserConfig(userID configs.UserID, subsystem configs.Subsystem, cfg configs.Config) error {
-	// XXX: Is this really how you assign a thing to a nested map?
-	user, ok := d.userCfgs[userID]
-	if !ok {
-		user = map[configs.Subsystem]config{}
-	}
-	d.id++
-	user[subsystem] = config{cfg: cfg, id: configs.ID(d.id)}
-	d.userCfgs[userID] = user
-	return nil
 }
 
 // GetOrgConfig gets the org's configuration.
@@ -98,31 +74,6 @@ func (d *DB) GetOrgConfigs(subsystem configs.Subsystem, since configs.ID) (map[c
 		c, ok := subsystems[subsystem]
 		if ok && c.id > since {
 			cfgs[org] = c.toView()
-		}
-	}
-	return cfgs, nil
-}
-
-// GetAllUserConfigs gets all of the user configs for a subsystem.
-func (d *DB) GetAllUserConfigs(subsystem configs.Subsystem) (map[configs.UserID]configs.ConfigView, error) {
-	cfgs := map[configs.UserID]configs.ConfigView{}
-	for user, subsystems := range d.userCfgs {
-		c, ok := subsystems[subsystem]
-		if ok {
-			cfgs[user] = c.toView()
-		}
-	}
-	return cfgs, nil
-}
-
-// GetUserConfigs gets all of the user configs for a subsystem that have
-// changed recently.
-func (d *DB) GetUserConfigs(subsystem configs.Subsystem, since configs.ID) (map[configs.UserID]configs.ConfigView, error) {
-	cfgs := map[configs.UserID]configs.ConfigView{}
-	for user, subsystems := range d.userCfgs {
-		c, ok := subsystems[subsystem]
-		if ok && c.id > since {
-			cfgs[user] = c.toView()
 		}
 	}
 	return cfgs, nil

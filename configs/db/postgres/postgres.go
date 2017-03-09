@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	orgType  = "org"
-	userType = "user"
+	orgType = "org"
 )
 
 // DB is a postgres db, for dev and production
@@ -127,16 +126,6 @@ func (d DB) insertConfig(id, entityType string, subsystem configs.Subsystem, cfg
 	return err
 }
 
-// GetUserConfig gets a user's configuration.
-func (d DB) GetUserConfig(userID configs.UserID, subsystem configs.Subsystem) (configs.ConfigView, error) {
-	return d.findConfig(string(userID), userType, string(subsystem))
-}
-
-// SetUserConfig sets a user's configuration.
-func (d DB) SetUserConfig(userID configs.UserID, subsystem configs.Subsystem, cfg configs.Config) error {
-	return d.insertConfig(string(userID), userType, subsystem, cfg)
-}
-
 // GetOrgConfig gets a org's configuration.
 func (d DB) GetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem) (configs.ConfigView, error) {
 	return d.findConfig(string(orgID), orgType, string(subsystem))
@@ -176,37 +165,6 @@ func (d DB) GetOrgConfigs(subsystem configs.Subsystem, since configs.ID) (map[co
 		return nil, err
 	}
 	return toOrgConfigs(rawCfgs), nil
-}
-
-// toUserConfigs = mapKeys configs.UserID
-func toUserConfigs(rawCfgs map[string]configs.ConfigView) map[configs.UserID]configs.ConfigView {
-	cfgs := map[configs.UserID]configs.ConfigView{}
-	for entityID, cfg := range rawCfgs {
-		cfgs[configs.UserID(entityID)] = cfg
-	}
-	return cfgs
-}
-
-// GetAllUserConfigs gets all of the user configs for a subsystem.
-func (d DB) GetAllUserConfigs(subsystem configs.Subsystem) (map[configs.UserID]configs.ConfigView, error) {
-	rawCfgs, err := d.findConfigs(configsMatch(userType, string(subsystem)))
-	if err != nil {
-		return nil, err
-	}
-	return toUserConfigs(rawCfgs), nil
-}
-
-// GetUserConfigs gets all of the user configs for a subsystem that have
-// changed recently.
-func (d DB) GetUserConfigs(subsystem configs.Subsystem, since configs.ID) (map[configs.UserID]configs.ConfigView, error) {
-	rawCfgs, err := d.findConfigs(squirrel.And{
-		configsMatch(userType, string(subsystem)),
-		squirrel.Gt{"id": since},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return toUserConfigs(rawCfgs), nil
 }
 
 // Transaction runs the given function in a postgres transaction. If fn returns

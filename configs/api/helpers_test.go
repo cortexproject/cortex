@@ -27,8 +27,7 @@ var (
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
 	app = api.New(api.Config{
-		UserIDHeader: api.DefaultUserIDHeader,
-		OrgIDHeader:  api.DefaultOrgIDHeader,
+		OrgIDHeader: api.DefaultOrgIDHeader,
 	}, database)
 	counter = 0
 }
@@ -47,16 +46,6 @@ func request(t *testing.T, method, urlStr string, body io.Reader) *httptest.Resp
 	return w
 }
 
-// requestAsUser makes a request to the configs API as the given user.
-func requestAsUser(t *testing.T, userID configs.UserID, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
-	w := httptest.NewRecorder()
-	r, err := http.NewRequest(method, urlStr, body)
-	require.NoError(t, err)
-	r.Header.Add(app.UserIDHeader, string(userID))
-	app.ServeHTTP(w, r)
-	return w
-}
-
 // requestAsOrg makes a request to the configs API as the given user.
 func requestAsOrg(t *testing.T, userID configs.OrgID, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
@@ -71,11 +60,6 @@ func requestAsOrg(t *testing.T, userID configs.OrgID, method, urlStr string, bod
 func makeString(pattern string) string {
 	counter++
 	return fmt.Sprintf(pattern, counter)
-}
-
-// makeUserID makes an arbitrary user ID. Guaranteed to be unique within a test.
-func makeUserID() configs.UserID {
-	return configs.UserID(makeString("user%d"))
 }
 
 // makeOrgID makes an arbitrary organization ID. Guaranteed to be unique within a test.

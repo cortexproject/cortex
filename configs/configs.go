@@ -4,9 +4,6 @@ package configs
 // changes, it gets a new ID.
 type ID int
 
-// UserID is how users are identified.
-type UserID string
-
 // OrgID is how organizations are identified.
 type OrgID string
 

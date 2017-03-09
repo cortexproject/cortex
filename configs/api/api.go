@@ -3,7 +3,6 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,39 +10,20 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/configs"
 	"github.com/weaveworks/cortex/configs/db"
-)
-
-const (
-	// DefaultUserIDHeader is the default UserID header.
-	DefaultUserIDHeader = "X-Scope-UserID"
-	// DefaultOrgIDHeader is the default OrgID header.
-	DefaultOrgIDHeader = "X-Scope-OrgID"
 )
 
 // API implements the configs api.
 type API struct {
 	db db.DB
 	http.Handler
-	Config
-}
-
-// Config describes the configuration for the configs API.
-type Config struct {
-	UserIDHeader string
-	OrgIDHeader  string
-}
-
-// RegisterFlags adds the flags required to configure this to the given FlagSet.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.UserIDHeader, "user-id-header", DefaultUserIDHeader, "Name of header that contains user ID")
-	flag.StringVar(&cfg.OrgIDHeader, "org-id-header", DefaultOrgIDHeader, "Name of header that contains user ID")
 }
 
 // New creates a new API
-func New(config Config, database db.DB) *API {
-	a := &API{Config: config, db: database}
+func New(database db.DB) *API {
+	a := &API{db: database}
 	r := mux.NewRouter()
 	a.RegisterRoutes(r)
 	a.Handler = r
@@ -70,53 +50,24 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		handler            http.HandlerFunc
 	}{
 		{"root", "GET", "/", a.admin},
-		{"get_user_config", "GET", "/api/configs/user/{subsystem}", a.getUserConfig},
-		{"set_user_config", "POST", "/api/configs/user/{subsystem}", a.setUserConfig},
-		{"get_org_config", "GET", "/api/configs/org/{subsystem}", a.getOrgConfig},
-		{"set_org_config", "POST", "/api/configs/org/{subsystem}", a.setOrgConfig},
+		{"get_config", "GET", "/api/configs/org/cortex", a.getConfig},
+		{"set_config", "POST", "/api/configs/org/cortex", a.setConfig},
 		// Internal APIs.
-		{"private_get_user_configs", "GET", "/private/api/configs/user/{subsystem}", a.getUserConfigs},
-		{"private_get_org_configs", "GET", "/private/api/configs/org/{subsystem}", a.getOrgConfigs},
+		{"private_get_configs", "GET", "/private/api/configs/org/cortex", a.getConfigs},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}
 }
 
-// authorize checks whether the given header provides access to entity.
-func authorize(r *http.Request, header, entityID string) (string, int) {
-	token := r.Header.Get(header)
-	if token == "" {
-		return "", http.StatusUnauthorized
-	}
-	return token, 0
-}
-
-// authorizeUser checks whether the user in the headers matches the userID in
-// the URL.
-func (a *API) authorizeUser(r *http.Request) (configs.UserID, int) {
-	entity, err := authorize(r, a.UserIDHeader, "userID")
-	return configs.UserID(entity), err
-}
-
-// authorizeOrg checks whether the user in the headers matches the userID in
-// the URL.
-func (a *API) authorizeOrg(r *http.Request) (configs.OrgID, int) {
-	entity, err := authorize(r, a.OrgIDHeader, "orgID")
-	return configs.OrgID(entity), err
-}
-
-// getUserConfig returns the requested configuration.
-func (a *API) getUserConfig(w http.ResponseWriter, r *http.Request) {
-	userID, code := a.authorizeUser(r)
-	if code != 0 {
-		w.WriteHeader(code)
+// getConfig returns the request configuration.
+func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
+	userID, _, err := user.ExtractFromHTTPRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-
-	cfg, err := a.db.GetUserConfig(userID, subsystem)
+	cfg, err := a.db.GetConfig(userID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "No configuration", http.StatusNotFound)
 		return
@@ -136,12 +87,13 @@ func (a *API) getUserConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *API) setUserConfig(w http.ResponseWriter, r *http.Request) {
-	userID, code := a.authorizeUser(r)
-	if code != 0 {
-		w.WriteHeader(code)
+func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
+	userID, _, err := user.ExtractFromHTTPRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+
 	var cfg configs.Config
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		// XXX: Untested
@@ -149,10 +101,7 @@ func (a *API) setUserConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-	if err := a.db.SetUserConfig(userID, subsystem, cfg); err != nil {
+	if err := a.db.SetConfig(userID, cfg); err != nil {
 		// XXX: Untested
 		log.Errorf("Error storing config: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -161,76 +110,18 @@ func (a *API) setUserConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// getOrgConfig returns the request configuration.
-func (a *API) getOrgConfig(w http.ResponseWriter, r *http.Request) {
-	orgID, code := a.authorizeOrg(r)
-	if code != 0 {
-		w.WriteHeader(code)
-		return
-	}
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-
-	cfg, err := a.db.GetOrgConfig(orgID, subsystem)
-	if err == sql.ErrNoRows {
-		http.Error(w, "No configuration", http.StatusNotFound)
-		return
-	} else if err != nil {
-		// XXX: Untested
-		log.Errorf("Error getting config: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(cfg); err != nil {
-		// XXX: Untested
-		log.Errorf("Error encoding config: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func (a *API) setOrgConfig(w http.ResponseWriter, r *http.Request) {
-	orgID, code := a.authorizeOrg(r)
-	if code != 0 {
-		w.WriteHeader(code)
-		return
-	}
-	var cfg configs.Config
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		// XXX: Untested
-		log.Errorf("Error decoding json body: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-	if err := a.db.SetOrgConfig(orgID, subsystem, cfg); err != nil {
-		// XXX: Untested
-		log.Errorf("Error storing config: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// OrgConfigsView renders multiple configurations.
+// ConfigsView renders multiple configurations, mapping userID to ConfigView.
 // Exposed only for tests.
-type OrgConfigsView struct {
-	Configs map[configs.OrgID]configs.ConfigView `json:"configs"`
+type ConfigsView struct {
+	Configs map[string]configs.ConfigView `json:"configs"`
 }
 
-func (a *API) getOrgConfigs(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-
-	var cfgs map[configs.OrgID]configs.ConfigView
+func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
+	var cfgs map[string]configs.ConfigView
 	var err error
 	rawSince := r.FormValue("since")
 	if rawSince == "" {
-		cfgs, err = a.db.GetAllOrgConfigs(subsystem)
+		cfgs, err = a.db.GetAllConfigs()
 	} else {
 		since, err := strconv.ParseUint(rawSince, 10, 0)
 		if err != nil {
@@ -238,7 +129,7 @@ func (a *API) getOrgConfigs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, err = a.db.GetOrgConfigs(subsystem, configs.ID(since))
+		cfgs, err = a.db.GetConfigs(configs.ID(since))
 	}
 
 	if err != nil {
@@ -248,48 +139,7 @@ func (a *API) getOrgConfigs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view := OrgConfigsView{Configs: cfgs}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		// XXX: Untested
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-// UserConfigsView renders multiple configurations.
-// Exposed only for tests.
-type UserConfigsView struct {
-	Configs map[configs.UserID]configs.ConfigView `json:"configs"`
-}
-
-func (a *API) getUserConfigs(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	subsystem := configs.Subsystem(vars["subsystem"])
-
-	var cfgs map[configs.UserID]configs.ConfigView
-	var err error
-	rawSince := r.FormValue("since")
-	if rawSince == "" {
-		cfgs, err = a.db.GetAllUserConfigs(subsystem)
-	} else {
-		since, err := strconv.ParseUint(rawSince, 10, 0)
-		if err != nil {
-			log.Infof("Invalid config ID: %v", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		cfgs, err = a.db.GetUserConfigs(subsystem, configs.ID(since))
-	}
-
-	if err != nil {
-		// XXX: Untested
-		log.Errorf("Error getting configs: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	view := UserConfigsView{Configs: cfgs}
+	view := ConfigsView{Configs: cfgs}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		// XXX: Untested

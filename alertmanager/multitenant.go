@@ -198,7 +198,7 @@ func (am *MultitenantAlertmanager) poll() (map[string]configs.CortexConfigView, 
 	var cfgs *configs.CortexConfigsResponse
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
-		cfgs, err = am.configsAPI.GetOrgConfigs(configID)
+		cfgs, err = am.configsAPI.GetConfigs(configID)
 		return err
 	})
 	if err != nil {

@@ -16,10 +16,10 @@ import (
 
 // TODO: Extract configs client logic into go client library (ala users)
 
-// A ConfigID is the ID of a single organization's Cortex configuration.
+// A ConfigID is the ID of a single users's Cortex configuration.
 type ConfigID int
 
-// A CortexConfig is a Cortex configuration for a single organization.
+// A CortexConfig is a Cortex configuration for a single user.
 type CortexConfig struct {
 	// RulesFiles maps from a rules filename to file contents.
 	RulesFiles         map[string]string `json:"rules_files"`
@@ -37,9 +37,9 @@ type CortexConfigView struct {
 	Config   CortexConfig `json:"config"`
 }
 
-// CortexConfigsResponse is a response from server for GetOrgConfigs.
+// CortexConfigsResponse is a response from server for GetConfigs.
 type CortexConfigsResponse struct {
-	// Configs maps organization ID to their latest CortexConfigView.
+	// Configs maps user ID to their latest CortexConfigView.
 	Configs map[string]CortexConfigView `json:"configs"`
 }
 
@@ -109,9 +109,9 @@ type API struct {
 	Timeout time.Duration
 }
 
-// GetOrgConfigs returns all Cortex configurations from a configs API server
+// GetConfigs returns all Cortex configurations from a configs API server
 // that have been updated after the given ConfigID was last updated.
-func (c *API) GetOrgConfigs(since ConfigID) (*CortexConfigsResponse, error) {
+func (c *API) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)

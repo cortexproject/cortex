@@ -14,8 +14,18 @@ import (
 )
 
 const (
-	orgType  = "org"
-	userType = "user"
+	// TODO: These are a legacy from when configs was more general. Update the
+	// schema so this isn't needed.
+	entityType = "org"
+	subsystem  = "cortex"
+)
+
+var (
+	activeConfig = squirrel.Eq{
+		"deleted_at": nil,
+		"owner_type": entityType,
+		"subsystem":  subsystem,
+	}
 )
 
 // DB is a postgres db, for dev and production
@@ -51,41 +61,6 @@ func New(uri, migrationsDir string) (DB, error) {
 
 var statementBuilder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith
 
-func configMatches(id, entityType, subsystem string) squirrel.Sqlizer {
-	// TODO: Tests for deleted_at requirement.
-	return squirrel.And{
-		configsMatch(entityType, subsystem),
-		squirrel.Eq{
-			"owner_id": id,
-		},
-	}
-}
-
-// configsMatch returns a matcher for configs of a particular type.
-func configsMatch(entityType, subsystem string) squirrel.Sqlizer {
-	return squirrel.Eq{
-		"deleted_at": nil,
-		"owner_type": entityType,
-		"subsystem":  subsystem,
-	}
-}
-
-func (d DB) findConfig(entityID, entityType, subsystem string) (configs.ConfigView, error) {
-	var cfgView configs.ConfigView
-	var cfgBytes []byte
-	err := d.Select("id", "config").
-		From("configs").
-		Where(configMatches(entityID, entityType, subsystem)).
-		OrderBy("id DESC").
-		Limit(1).
-		QueryRow().Scan(&cfgView.ID, &cfgBytes)
-	if err != nil {
-		return cfgView, err
-	}
-	err = json.Unmarshal(cfgBytes, &cfgView.Config)
-	return cfgView, err
-}
-
 func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.ConfigView, error) {
 	rows, err := d.Select("id", "owner_id", "config").
 		Options("DISTINCT ON (owner_id)").
@@ -101,8 +76,8 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.ConfigView,
 	for rows.Next() {
 		var cfg configs.ConfigView
 		var cfgBytes []byte
-		var entityID string
-		err = rows.Scan(&cfg.ID, &entityID, &cfgBytes)
+		var userID string
+		err = rows.Scan(&cfg.ID, &userID, &cfgBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -110,103 +85,52 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.ConfigView,
 		if err != nil {
 			return nil, err
 		}
-		cfgs[entityID] = cfg
+		cfgs[userID] = cfg
 	}
 	return cfgs, nil
 }
 
-func (d DB) insertConfig(id, entityType string, subsystem configs.Subsystem, cfg configs.Config) error {
+// GetConfig gets a configuration.
+func (d DB) GetConfig(userID string) (configs.ConfigView, error) {
+	var cfgView configs.ConfigView
+	var cfgBytes []byte
+	err := d.Select("id", "config").
+		From("configs").
+		Where(squirrel.And{activeConfig, squirrel.Eq{"owner_id": userID}}).
+		OrderBy("id DESC").
+		Limit(1).
+		QueryRow().Scan(&cfgView.ID, &cfgBytes)
+	if err != nil {
+		return cfgView, err
+	}
+	err = json.Unmarshal(cfgBytes, &cfgView.Config)
+	return cfgView, err
+}
+
+// SetConfig sets a configuration.
+func (d DB) SetConfig(userID string, cfg configs.Config) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
 	}
 	_, err = d.Insert("configs").
 		Columns("owner_id", "owner_type", "subsystem", "config").
-		Values(id, entityType, string(subsystem), cfgBytes).
+		Values(userID, entityType, subsystem, cfgBytes).
 		Exec()
 	return err
 }
 
-// GetUserConfig gets a user's configuration.
-func (d DB) GetUserConfig(userID configs.UserID, subsystem configs.Subsystem) (configs.ConfigView, error) {
-	return d.findConfig(string(userID), userType, string(subsystem))
+// GetAllConfigs gets all of the configs.
+func (d DB) GetAllConfigs() (map[string]configs.ConfigView, error) {
+	return d.findConfigs(activeConfig)
 }
 
-// SetUserConfig sets a user's configuration.
-func (d DB) SetUserConfig(userID configs.UserID, subsystem configs.Subsystem, cfg configs.Config) error {
-	return d.insertConfig(string(userID), userType, subsystem, cfg)
-}
-
-// GetOrgConfig gets a org's configuration.
-func (d DB) GetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem) (configs.ConfigView, error) {
-	return d.findConfig(string(orgID), orgType, string(subsystem))
-}
-
-// SetOrgConfig sets a org's configuration.
-func (d DB) SetOrgConfig(orgID configs.OrgID, subsystem configs.Subsystem, cfg configs.Config) error {
-	return d.insertConfig(string(orgID), orgType, subsystem, cfg)
-}
-
-// toOrgConfigs = mapKeys configs.OrgID
-func toOrgConfigs(rawCfgs map[string]configs.ConfigView) map[configs.OrgID]configs.ConfigView {
-	cfgs := map[configs.OrgID]configs.ConfigView{}
-	for entityID, cfg := range rawCfgs {
-		cfgs[configs.OrgID(entityID)] = cfg
-	}
-	return cfgs
-}
-
-// GetAllOrgConfigs gets all of the organization configs for a subsystem.
-func (d DB) GetAllOrgConfigs(subsystem configs.Subsystem) (map[configs.OrgID]configs.ConfigView, error) {
-	rawCfgs, err := d.findConfigs(configsMatch(orgType, string(subsystem)))
-	if err != nil {
-		return nil, err
-	}
-	return toOrgConfigs(rawCfgs), nil
-}
-
-// GetOrgConfigs gets all of the organization configs for a subsystem that
-// have changed recently.
-func (d DB) GetOrgConfigs(subsystem configs.Subsystem, since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
-	rawCfgs, err := d.findConfigs(squirrel.And{
-		configsMatch(orgType, string(subsystem)),
+// GetConfigs gets all of the configs that have changed recently.
+func (d DB) GetConfigs(since configs.ID) (map[string]configs.ConfigView, error) {
+	return d.findConfigs(squirrel.And{
+		activeConfig,
 		squirrel.Gt{"id": since},
 	})
-	if err != nil {
-		return nil, err
-	}
-	return toOrgConfigs(rawCfgs), nil
-}
-
-// toUserConfigs = mapKeys configs.UserID
-func toUserConfigs(rawCfgs map[string]configs.ConfigView) map[configs.UserID]configs.ConfigView {
-	cfgs := map[configs.UserID]configs.ConfigView{}
-	for entityID, cfg := range rawCfgs {
-		cfgs[configs.UserID(entityID)] = cfg
-	}
-	return cfgs
-}
-
-// GetAllUserConfigs gets all of the user configs for a subsystem.
-func (d DB) GetAllUserConfigs(subsystem configs.Subsystem) (map[configs.UserID]configs.ConfigView, error) {
-	rawCfgs, err := d.findConfigs(configsMatch(userType, string(subsystem)))
-	if err != nil {
-		return nil, err
-	}
-	return toUserConfigs(rawCfgs), nil
-}
-
-// GetUserConfigs gets all of the user configs for a subsystem that have
-// changed recently.
-func (d DB) GetUserConfigs(subsystem configs.Subsystem, since configs.ID) (map[configs.UserID]configs.ConfigView, error) {
-	rawCfgs, err := d.findConfigs(squirrel.And{
-		configsMatch(userType, string(subsystem)),
-		squirrel.Gt{"id": since},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return toUserConfigs(rawCfgs), nil
 }
 
 // Transaction runs the given function in a postgres transaction. If fn returns

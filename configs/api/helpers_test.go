@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/configs"
 	"github.com/weaveworks/cortex/configs/api"
 	"github.com/weaveworks/cortex/configs/db"
@@ -26,10 +27,7 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = api.New(api.Config{
-		UserIDHeader: api.DefaultUserIDHeader,
-		OrgIDHeader:  api.DefaultOrgIDHeader,
-	}, database)
+	app = api.New(database)
 	counter = 0
 }
 
@@ -48,21 +46,12 @@ func request(t *testing.T, method, urlStr string, body io.Reader) *httptest.Resp
 }
 
 // requestAsUser makes a request to the configs API as the given user.
-func requestAsUser(t *testing.T, userID configs.UserID, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
+func requestAsUser(t *testing.T, userID string, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
-	r.Header.Add(app.UserIDHeader, string(userID))
-	app.ServeHTTP(w, r)
-	return w
-}
-
-// requestAsOrg makes a request to the configs API as the given user.
-func requestAsOrg(t *testing.T, userID configs.OrgID, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
-	w := httptest.NewRecorder()
-	r, err := http.NewRequest(method, urlStr, body)
-	require.NoError(t, err)
-	r.Header.Add(app.OrgIDHeader, string(userID))
+	r = r.WithContext(user.Inject(r.Context(), userID))
+	user.InjectIntoHTTPRequest(r.Context(), r)
 	app.ServeHTTP(w, r)
 	return w
 }
@@ -74,18 +63,8 @@ func makeString(pattern string) string {
 }
 
 // makeUserID makes an arbitrary user ID. Guaranteed to be unique within a test.
-func makeUserID() configs.UserID {
-	return configs.UserID(makeString("user%d"))
-}
-
-// makeOrgID makes an arbitrary organization ID. Guaranteed to be unique within a test.
-func makeOrgID() configs.OrgID {
-	return configs.OrgID(makeString("org%d"))
-}
-
-// makeSubsystem makes an arbitrary name for a subsystem.
-func makeSubsystem() configs.Subsystem {
-	return configs.Subsystem(makeString("subsystem%d"))
+func makeUserID() string {
+	return makeString("user%d")
 }
 
 // makeConfig makes some arbitrary configuration.

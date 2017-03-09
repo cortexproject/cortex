@@ -90,8 +90,8 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[configs.OrgID]configs.Conf
 	return cfgs, nil
 }
 
-// GetOrgConfig gets a org's configuration.
-func (d DB) GetOrgConfig(orgID configs.OrgID) (configs.ConfigView, error) {
+// GetConfig gets a org's configuration.
+func (d DB) GetConfig(orgID configs.OrgID) (configs.ConfigView, error) {
 	var cfgView configs.ConfigView
 	var cfgBytes []byte
 	err := d.Select("id", "config").
@@ -107,8 +107,8 @@ func (d DB) GetOrgConfig(orgID configs.OrgID) (configs.ConfigView, error) {
 	return cfgView, err
 }
 
-// SetOrgConfig sets a org's configuration.
-func (d DB) SetOrgConfig(orgID configs.OrgID, cfg configs.Config) error {
+// SetConfig sets a org's configuration.
+func (d DB) SetConfig(orgID configs.OrgID, cfg configs.Config) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -120,14 +120,14 @@ func (d DB) SetOrgConfig(orgID configs.OrgID, cfg configs.Config) error {
 	return err
 }
 
-// GetAllOrgConfigs gets all of the organization configs.
-func (d DB) GetAllOrgConfigs() (map[configs.OrgID]configs.ConfigView, error) {
+// GetAllConfigs gets all of the organization configs.
+func (d DB) GetAllConfigs() (map[configs.OrgID]configs.ConfigView, error) {
 	return d.findConfigs(activeConfig)
 }
 
-// GetOrgConfigs gets all of the organization configs for a subsystem that
+// GetConfigs gets all of the organization configs for a subsystem that
 // have changed recently.
-func (d DB) GetOrgConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
+func (d DB) GetConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
 	return d.findConfigs(squirrel.And{
 		activeConfig,
 		squirrel.Gt{"id": since},

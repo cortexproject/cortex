@@ -32,8 +32,8 @@ func New(_, _ string) (*DB, error) {
 	}, nil
 }
 
-// GetOrgConfig gets the org's configuration.
-func (d *DB) GetOrgConfig(orgID configs.OrgID) (configs.ConfigView, error) {
+// GetConfig gets the org's configuration.
+func (d *DB) GetConfig(orgID configs.OrgID) (configs.ConfigView, error) {
 	c, ok := d.cfgs[orgID]
 	if !ok {
 		return configs.ConfigView{}, sql.ErrNoRows
@@ -41,15 +41,15 @@ func (d *DB) GetOrgConfig(orgID configs.OrgID) (configs.ConfigView, error) {
 	return c.toView(), nil
 }
 
-// SetOrgConfig sets configuration for a org.
-func (d *DB) SetOrgConfig(orgID configs.OrgID, cfg configs.Config) error {
+// SetConfig sets configuration for a org.
+func (d *DB) SetConfig(orgID configs.OrgID, cfg configs.Config) error {
 	d.cfgs[orgID] = config{cfg: cfg, id: configs.ID(d.id)}
 	d.id++
 	return nil
 }
 
-// GetAllOrgConfigs gets all of the organization configs for a subsystem.
-func (d *DB) GetAllOrgConfigs() (map[configs.OrgID]configs.ConfigView, error) {
+// GetAllConfigs gets all of the organization configs for a subsystem.
+func (d *DB) GetAllConfigs() (map[configs.OrgID]configs.ConfigView, error) {
 	cfgs := map[configs.OrgID]configs.ConfigView{}
 	for org, c := range d.cfgs {
 		cfgs[org] = c.toView()
@@ -57,9 +57,9 @@ func (d *DB) GetAllOrgConfigs() (map[configs.OrgID]configs.ConfigView, error) {
 	return cfgs, nil
 }
 
-// GetOrgConfigs gets all of the organization configs for a subsystem that
+// GetConfigs gets all of the organization configs for a subsystem that
 // have changed recently.
-func (d *DB) GetOrgConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
+func (d *DB) GetConfigs(since configs.ID) (map[configs.OrgID]configs.ConfigView, error) {
 	cfgs := map[configs.OrgID]configs.ConfigView{}
 	for org, c := range d.cfgs {
 		if c.id > since {

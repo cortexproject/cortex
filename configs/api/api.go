@@ -66,10 +66,10 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		handler            http.HandlerFunc
 	}{
 		{"root", "GET", "/", a.admin},
-		{"get_org_config", "GET", "/api/configs/org/cortex", a.getOrgConfig},
-		{"set_org_config", "POST", "/api/configs/org/cortex", a.setOrgConfig},
+		{"get_config", "GET", "/api/configs/org/cortex", a.getConfig},
+		{"set_config", "POST", "/api/configs/org/cortex", a.setConfig},
 		// Internal APIs.
-		{"private_get_org_configs", "GET", "/private/api/configs/org/cortex", a.getOrgConfigs},
+		{"private_get_configs", "GET", "/private/api/configs/org/cortex", a.getConfigs},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}
@@ -89,14 +89,14 @@ func (a *API) authorizeOrg(r *http.Request) (configs.OrgID, int) {
 	return configs.OrgID(entity), err
 }
 
-// getOrgConfig returns the request configuration.
-func (a *API) getOrgConfig(w http.ResponseWriter, r *http.Request) {
+// getConfig returns the request configuration.
+func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	orgID, code := a.authorizeOrg(r)
 	if code != 0 {
 		w.WriteHeader(code)
 		return
 	}
-	cfg, err := a.db.GetOrgConfig(orgID)
+	cfg, err := a.db.GetConfig(orgID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "No configuration", http.StatusNotFound)
 		return
@@ -116,7 +116,7 @@ func (a *API) getOrgConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *API) setOrgConfig(w http.ResponseWriter, r *http.Request) {
+func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	orgID, code := a.authorizeOrg(r)
 	if code != 0 {
 		w.WriteHeader(code)
@@ -129,7 +129,7 @@ func (a *API) setOrgConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := a.db.SetOrgConfig(orgID, cfg); err != nil {
+	if err := a.db.SetConfig(orgID, cfg); err != nil {
 		// XXX: Untested
 		log.Errorf("Error storing config: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -138,18 +138,18 @@ func (a *API) setOrgConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// OrgConfigsView renders multiple configurations.
+// ConfigsView renders multiple configurations.
 // Exposed only for tests.
-type OrgConfigsView struct {
+type ConfigsView struct {
 	Configs map[configs.OrgID]configs.ConfigView `json:"configs"`
 }
 
-func (a *API) getOrgConfigs(w http.ResponseWriter, r *http.Request) {
+func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 	var cfgs map[configs.OrgID]configs.ConfigView
 	var err error
 	rawSince := r.FormValue("since")
 	if rawSince == "" {
-		cfgs, err = a.db.GetAllOrgConfigs()
+		cfgs, err = a.db.GetAllConfigs()
 	} else {
 		since, err := strconv.ParseUint(rawSince, 10, 0)
 		if err != nil {
@@ -157,7 +157,7 @@ func (a *API) getOrgConfigs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, err = a.db.GetOrgConfigs(configs.ID(since))
+		cfgs, err = a.db.GetConfigs(configs.ID(since))
 	}
 
 	if err != nil {
@@ -167,7 +167,7 @@ func (a *API) getOrgConfigs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view := OrgConfigsView{Configs: cfgs}
+	view := ConfigsView{Configs: cfgs}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		// XXX: Untested

@@ -266,6 +266,7 @@ func (am *MultitenantAlertmanager) Run() {
 			// XXX: Not 100% sure this is necessary. Stable ordering seems
 			// like a nice property to jml
 			sort.Strings(peers)
+			log.Infof("Updating alertmanager peers from %v to %v", am.meshRouter.getPeers(), peers)
 			am.meshRouter.ConnectionMaker.InitiateConnections(peers, true)
 		case now := <-ticker.C:
 			err := am.updateConfigs(now)

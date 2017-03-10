@@ -230,6 +230,10 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 
 // Get implements ChunkStore
 func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]Chunk, error) {
+	if through < from {
+		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
+	}
+
 	userID, err := user.Extract(ctx)
 	if err != nil {
 		return nil, err

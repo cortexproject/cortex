@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -168,7 +169,10 @@ type MultitenantAlertmanagerConfig struct {
 	MeshHWAddr     string
 	MeshNickname   string
 	MeshPassword   string
-	MeshPeers      stringset
+
+	MeshPeerHost         string
+	MeshPeerService      string
+	MeshPeerPollInterval time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -186,7 +190,10 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.MeshHWAddr, "alertmanager.mesh.hardware-address", mustHardwareAddr(), "MAC address, i.e. Mesh peer ID")
 	flag.StringVar(&cfg.MeshNickname, "alertmanager.mesh.nickname", mustHostname(), "Mesh peer nickname")
 	flag.StringVar(&cfg.MeshPassword, "alertmanager.mesh.password", "", "Password to join the Mesh peer network (empty password disables encryption)")
-	flag.Var(&cfg.MeshPeers, "alertmanager.mesh.peer", "Initial Mesh peers (may be repeated)")
+
+	flag.StringVar(&cfg.MeshPeerService, "alertmanager.mesh.peer.service", "alertmanager", "SRV service used to discover peers.")
+	flag.StringVar(&cfg.MeshPeerHost, "alertmanager.mesh.peer.host", "", "Hostname for mesh peers.")
+	flag.DurationVar(&cfg.MeshPeerPollInterval, "alertmanager.mesh.peer.poll-interval", 1*time.Minute, "Period with which to poll DNS for mesh peers.")
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -205,7 +212,8 @@ type MultitenantAlertmanager struct {
 	latestConfig configs.ID
 	latestMutex  sync.RWMutex
 
-	meshRouter *gossipFactory
+	meshRouter   *gossipFactory
+	srvDiscovery *SRVDiscovery
 
 	stop chan struct{}
 	done chan struct{}
@@ -221,9 +229,6 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 	mrouter := initMesh(cfg.MeshListenAddr, cfg.MeshHWAddr, cfg.MeshNickname, cfg.MeshPassword)
 
 	mrouter.Start()
-	defer mrouter.Stop()
-
-	mrouter.ConnectionMaker.InitiateConnections(cfg.MeshPeers.slice(), true)
 
 	configsAPI := configs_client.AlertManagerConfigsAPI{
 		URL:     cfg.ConfigsAPIURL.URL,
@@ -231,15 +236,17 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 	}
 
 	gf := newGossipFactory(mrouter)
-	return &MultitenantAlertmanager{
+	am := &MultitenantAlertmanager{
 		cfg:           cfg,
 		configsAPI:    configsAPI,
 		cfgs:          map[string]configs.Config{},
 		alertmanagers: map[string]*Alertmanager{},
 		meshRouter:    &gf,
+		srvDiscovery:  NewSRVDiscovery(cfg.MeshPeerService, cfg.MeshPeerHost, cfg.MeshPeerPollInterval),
 		stop:          make(chan struct{}),
 		done:          make(chan struct{}),
-	}, nil
+	}
+	return am, nil
 }
 
 // Run the MultitenantAlertmanager.
@@ -251,6 +258,15 @@ func (am *MultitenantAlertmanager) Run() {
 	ticker := time.NewTicker(am.cfg.PollInterval)
 	for {
 		select {
+		case addrs := <-am.srvDiscovery.Addresses:
+			var peers []string
+			for _, srv := range addrs {
+				peers = append(peers, fmt.Sprintf("%s:%d", srv.Target, srv.Port))
+			}
+			// XXX: Not 100% sure this is necessary. Stable ordering seems
+			// like a nice property to jml
+			sort.Strings(peers)
+			am.meshRouter.ConnectionMaker.InitiateConnections(peers, true)
 		case now := <-ticker.C:
 			err := am.updateConfigs(now)
 			if err != nil {
@@ -265,11 +281,13 @@ func (am *MultitenantAlertmanager) Run() {
 
 // Stop stops the MultitenantAlertmanager.
 func (am *MultitenantAlertmanager) Stop() {
+	am.srvDiscovery.Stop()
 	close(am.stop)
 	<-am.done
 	for _, am := range am.alertmanagers {
 		am.Stop()
 	}
+	am.meshRouter.Stop()
 	log.Debugf("MultitenantAlertmanager stopped")
 }
 

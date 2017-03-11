@@ -392,7 +392,8 @@ func TestSchemaRangeKey(t *testing.T) {
 		base64Keys    = v3Schema(cfg)
 		labelBuckets  = v4Schema(cfg)
 		tsRangeKeys   = v5Schema(cfg)
-		metric        = model.Metric{
+		//v6RangeKeys   = v6Schema(cfg)
+		metric = model.Metric{
 			model.MetricNameLabel: metricName,
 			"bar": "bary",
 			"baz": "bazy",
@@ -478,6 +479,8 @@ func TestSchemaRangeKey(t *testing.T) {
 				},
 			},
 		},
+
+		// TODO v6 test case
 	} {
 		t.Run(fmt.Sprintf("TestSchameRangeKey[%d]", i), func(t *testing.T) {
 			have, err := tc.Schema.GetWriteEntries(
@@ -496,7 +499,7 @@ func TestSchemaRangeKey(t *testing.T) {
 
 			// Test we can parse the resulting range keys
 			for _, entry := range have {
-				_, _, err := parseRangeValue(entry.RangeValue)
+				_, _, err := parseRangeValue(entry.RangeValue, entry.Value)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -534,10 +537,10 @@ func TestParseRangeValue(t *testing.T) {
 		{[]byte("a1b2c3d4\x00Y29kZQ\x002:1484661279394:1484664879394\x004\x00"),
 			"code", "2:1484661279394:1484664879394"},
 	} {
-		value, chunkID, err := parseRangeValue(c.encoded)
+		chunk, labelValue, err := parseRangeValue(c.encoded, nil)
 		assert.Nil(t, err, "parseRangeValue error")
-		assert.Equal(t, model.LabelValue(c.value), value, "value")
-		assert.Equal(t, c.chunkID, chunkID, "chunkID")
+		assert.Equal(t, model.LabelValue(c.value), labelValue, "value")
+		assert.Equal(t, c.chunkID, chunk.ID, "chunkID")
 	}
 }
 

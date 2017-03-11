@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"sort"
@@ -29,6 +30,7 @@ var (
 	rangeKeyV2 = []byte{'2'}
 	rangeKeyV3 = []byte{'3'}
 	rangeKeyV4 = []byte{'4'}
+	rangeKeyV5 = []byte{'5'}
 )
 
 // Schema interface defines methods to calculate the hash and range keys needed
@@ -50,6 +52,9 @@ type IndexEntry struct {
 
 	// For writes, RangeValue will always be set.
 	RangeValue []byte
+
+	// New for v6 schema, Value is not written as part of the range key.
+	Value []byte
 
 	// For reads, one of RangeValuePrefix or RangeValueStart might be set:
 	// - If RangeValuePrefix is not nil, must read all keys with that prefix.
@@ -312,11 +317,21 @@ func v4Schema(cfg SchemaConfig) Schema {
 }
 
 // v5 schema is an extension of v4, with the chunk end time in the
-// range key to improve query latency.
+// range key to improve query latency.  However, it did it wrong
+// so the chunk end times are ignored.
 func v5Schema(cfg SchemaConfig) Schema {
 	return schema{
 		cfg.dailyBuckets,
 		v5Entries{},
+	}
+}
+
+// v6 schema is an extension of v5, with correct chunk end times, and
+// the label value moved out of the range key.
+func v6Schema(cfg SchemaConfig) Schema {
+	return schema{
+		cfg.dailyBuckets,
+		v6Entries{},
 	}
 }
 
@@ -573,6 +588,71 @@ func (v5Entries) GetReadMetricLabelValueEntries(_, _ uint32, tableName, hashKey 
 	}, nil
 }
 
+// v6Entries fixes issues with v5 time encoding being wrong (see #337), and
+// moves label value out of range key (see #199).
+type v6Entries struct{}
+
+func (v6Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	chunkIDBytes := []byte(chunkID)
+	encodedThroughBytes := encodeTime(through)
+
+	entries := []IndexEntry{
+		{
+			TableName:  tableName,
+			HashValue:  hashKey,
+			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV3),
+		},
+	}
+
+	for key, value := range labels {
+		if key == model.MetricNameLabel {
+			continue
+		}
+		entries = append(entries, IndexEntry{
+			TableName:  tableName,
+			HashValue:  hashKey + ":" + string(key),
+			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV5),
+			Value:      []byte(value),
+		})
+	}
+
+	return entries, nil
+}
+
+func (v6Entries) GetReadMetricEntries(_, through uint32, tableName, hashKey string) ([]IndexEntry, error) {
+	encodedThroughBytes := encodeTime(through)
+	return []IndexEntry{
+		{
+			TableName:  tableName,
+			HashValue:  hashKey,
+			RangeValue: buildRangeKey(encodedThroughBytes),
+		},
+	}, nil
+}
+
+func (v6Entries) GetReadMetricLabelEntries(_, through uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
+	encodedThroughBytes := encodeTime(through)
+	return []IndexEntry{
+		{
+			TableName:  tableName,
+			HashValue:  hashKey + ":" + string(labelName),
+			RangeValue: buildRangeKey(encodedThroughBytes),
+		},
+	}, nil
+}
+
+func (v6Entries) GetReadMetricLabelValueEntries(_, through uint32, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
+	encodedThroughBytes := encodeTime(through)
+	return []IndexEntry{
+		{
+			TableName:  tableName,
+			HashValue:  hashKey + ":" + string(labelName),
+			RangeValue: buildRangeKey(encodedThroughBytes),
+			Value:      []byte(labelValue),
+		},
+	}, nil
+}
+
 func buildRangeKey(ss ...[]byte) []byte {
 	length := 0
 	for _, s := range ss {
@@ -602,50 +682,71 @@ func decodeBase64Value(bs []byte) (model.LabelValue, error) {
 	return model.LabelValue(decoded), nil
 }
 
-func parseRangeValue(v []byte) (model.LabelValue, string, error) {
+func parseRangeValue(rangeValue []byte, value []byte) (Chunk, model.LabelValue, error) {
 	components := make([][]byte, 0, 5)
 	i, j := 0, 0
-	for j < len(v) {
-		if v[j] != 0 {
+	for j < len(rangeValue) {
+		if rangeValue[j] != 0 {
 			j++
 			continue
 		}
 
-		components = append(components, v[i:j])
+		components = append(components, rangeValue[i:j])
 		j++
 		i = j
 	}
 
 	switch {
 	case len(components) < 3:
-		return "", "", fmt.Errorf("invalid range value: %x", v)
+		return Chunk{}, "", fmt.Errorf("invalid range value: %x", rangeValue)
 
 	// v1 & v2 schema had three components - label name, label value and chunk ID.
 	// No version number.
 	case len(components) == 3:
-		return model.LabelValue(components[1]), string(components[2]), nil
+		chunk := Chunk{ID: string(components[2])}
+
+		if value != nil {
+			if err := json.Unmarshal(value, &chunk); err != nil {
+				return Chunk{}, "", err
+			}
+			chunk.metadataInIndex = true
+		}
+
+		return chunk, model.LabelValue(components[1]), nil
 
 	// v3 schema had four components - label name, label value, chunk ID and version.
 	// "version" is 1 and label value is base64 encoded.
 	case bytes.Equal(components[3], rangeKeyV1):
-		value, err := decodeBase64Value(components[1])
-		return value, string(components[2]), err
+		chunk := Chunk{ID: string(components[2])}
+		labelValue, err := decodeBase64Value(components[1])
+		return chunk, labelValue, err
 
 	// v4 schema wrote v3 range keys and a new range key - version 2,
 	// with four components - <empty>, <empty>, chunk ID and version.
 	case bytes.Equal(components[3], rangeKeyV2):
-		return "", string(components[2]), nil
+		chunk := Chunk{ID: string(components[2])}
+		return chunk, model.LabelValue(""), nil
 
 	// v5 schema version 3 range key is chunk end time, <empty>, chunk ID, version
 	case bytes.Equal(components[3], rangeKeyV3):
-		return "", string(components[2]), nil
+		chunk := Chunk{ID: string(components[2])}
+		return chunk, model.LabelValue(""), nil
 
 	// v5 schema version 4 range key is chunk end time, label value, chunk ID, version
 	case bytes.Equal(components[3], rangeKeyV4):
-		value, err := decodeBase64Value(components[1])
-		return value, string(components[2]), err
+		chunk := Chunk{ID: string(components[2])}
+		labelValue, err := decodeBase64Value(components[1])
+		return chunk, labelValue, err
+
+	// v6 schema added version 5 range keys, which have the label value written in
+	// to the value, not the range key.
+	case bytes.Equal(components[3], rangeKeyV5):
+		chunk := Chunk{ID: string(components[2])}
+		labelValue := model.LabelValue(value)
+		return chunk, labelValue, nil
 
 	default:
-		return "", "", fmt.Errorf("unrecognised version: '%v'", string(components[3]))
+		return Chunk{}, model.LabelValue(""), fmt.Errorf("unrecognised version: '%v'", string(components[3]))
 	}
+
 }

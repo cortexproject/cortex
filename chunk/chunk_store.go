@@ -1,7 +1,6 @@
 package chunk
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"sort"
@@ -222,7 +221,7 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 
 		for _, entry := range entries {
 			rowWrites.Observe(entry.HashValue, 1)
-			writeReqs.Add(entry.TableName, entry.HashValue, entry.RangeValue)
+			writeReqs.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
 		}
 	}
 	return writeReqs, nil
@@ -400,23 +399,12 @@ func processResponse(resp ReadBatch, chunkSet *ByID, matcher *metric.LabelMatche
 		if rangeValue == nil {
 			return fmt.Errorf("invalid item: %d", i)
 		}
-		value, chunkID, err := parseRangeValue(rangeValue)
+		chunk, labelValue, err := parseRangeValue(rangeValue, resp.Value(i))
 		if err != nil {
 			return err
 		}
 
-		chunk := Chunk{
-			ID: chunkID,
-		}
-
-		if value := resp.Value(i); value != nil {
-			if err := json.Unmarshal(value, &chunk); err != nil {
-				return err
-			}
-			chunk.metadataInIndex = true
-		}
-
-		if matcher != nil && !matcher.Match(value) {
+		if matcher != nil && !matcher.Match(labelValue) {
 			log.Debug("Dropping chunk for non-matching metric ", chunk.Metric)
 			continue
 		}

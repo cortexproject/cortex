@@ -106,8 +106,8 @@ func (cfg SchemaConfig) hourlyBuckets(from, through model.Time, userID string, m
 	)
 
 	for i := fromHour; i <= throughHour; i++ {
-		relativeFrom := util.Max64(i*millisecondsInHour, int64(from))
-		relativeThrough := util.Min64((i+1)*millisecondsInHour, int64(through))
+		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInHour))
+		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInDay))
 		entries, err := callback(uint32(relativeFrom), uint32(relativeThrough), cfg.tableForBucket(i*secondsInHour), fmt.Sprintf("%s:%d:%s", userID, i, metricName))
 		if err != nil {
 			return nil, err
@@ -125,8 +125,8 @@ func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string, me
 	)
 
 	for i := fromDay; i <= throughDay; i++ {
-		relativeFrom := util.Max64(i*millisecondsInDay, int64(from))
-		relativeThrough := util.Min64((i+1)*millisecondsInDay, int64(through))
+		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInDay))
+		relativeThrough := util.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
 		entries, err := callback(uint32(relativeFrom), uint32(relativeThrough), cfg.tableForBucket(i*secondsInDay), fmt.Sprintf("%s:d%d:%s", userID, i, metricName))
 		if err != nil {
 			return nil, err

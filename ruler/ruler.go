@@ -224,9 +224,10 @@ func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 	g, err := r.newGroup(ctx, rs)
 	if err != nil {
 		log.Errorf("Failed to create rule group: %v", err)
-	} else {
-		g.Eval()
+		return
 	}
+	g.Eval()
+
 	// The prometheus routines we're calling have their own instrumentation
 	// but, a) it's rule-based, not group-based, b) it's a summary, not a
 	// histogram, so we can't reliably aggregate.

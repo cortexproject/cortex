@@ -163,7 +163,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
-			return bytes.Compare(items[i], entry.RangeValueStart) > 0
+			return bytes.Compare(items[i], entry.RangeValueStart) >= 0
 		})
 
 		log.Printf("  found range [%d)", i)

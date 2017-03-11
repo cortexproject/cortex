@@ -599,12 +599,22 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*desc) error {
 	wireChunks := make([]cortex_chunk.Chunk, 0, len(chunkDescs))
 	for _, chunkDesc := range chunkDescs {
+		wireChunks = append(wireChunks, cortex_chunk.NewChunk(fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime))
+	}
+
+	err := i.chunkStore.Put(ctx, wireChunks)
+	if err != nil {
+		return err
+	}
+
+	// Record statistsics only when actual put request did not return error.
+	for _, chunkDesc := range chunkDescs {
 		i.chunkUtilization.Observe(chunkDesc.C.Utilization())
 		i.chunkLength.Observe(float64(chunkDesc.C.Len()))
 		i.chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
-		wireChunks = append(wireChunks, cortex_chunk.NewChunk(fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime))
 	}
-	return i.chunkStore.Put(ctx, wireChunks)
+
+	return nil
 }
 
 // Describe implements prometheus.Collector.

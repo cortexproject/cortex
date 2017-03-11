@@ -536,36 +536,29 @@ func (v5Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, l
 	return entries, nil
 }
 
-func (v5Entries) GetReadMetricEntries(from, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
-	encodedFromBytes := encodeTime(from)
+func (v5Entries) GetReadMetricEntries(_, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
-			TableName:       tableName,
-			HashValue:       hashKey,
-			RangeValueStart: buildRangeKey(encodedFromBytes),
+			TableName: tableName,
+			HashValue: hashKey,
 		},
 	}, nil
 }
 
-func (v5Entries) GetReadMetricLabelEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
-	encodedFromBytes := encodeTime(from)
+func (v5Entries) GetReadMetricLabelEntries(_, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
-			TableName:       tableName,
-			HashValue:       hashKey + ":" + string(labelName),
-			RangeValueStart: buildRangeKey(encodedFromBytes),
+			TableName: tableName,
+			HashValue: hashKey + ":" + string(labelName),
 		},
 	}, nil
 }
 
-func (v5Entries) GetReadMetricLabelValueEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
-	encodedFromBytes := encodeTime(from)
-	encodedValueBytes := encodeBase64Value(labelValue)
+func (v5Entries) GetReadMetricLabelValueEntries(_, _ uint32, tableName, hashKey string, labelName model.LabelName, _ model.LabelValue) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
-			TableName:       tableName,
-			HashValue:       hashKey + ":" + string(labelName),
-			RangeValueStart: buildRangeKey(encodedFromBytes, encodedValueBytes),
+			TableName: tableName,
+			HashValue: hashKey + ":" + string(labelName),
 		},
 	}, nil
 }

@@ -234,7 +234,7 @@ func TestChunkStoreRandom(t *testing.T) {
 				assert.False(t, chunk.Through.Before(startTime))
 			}
 
-			// And check we go all the chunks we want
+			// And check we got all the chunks we want
 			numChunks := (end / chunkLen) - (start / chunkLen)
 			assert.Equal(t, int(numChunks), len(chunks), s.name)
 		}

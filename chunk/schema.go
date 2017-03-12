@@ -125,6 +125,16 @@ func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string, me
 	)
 
 	for i := fromDay; i <= throughDay; i++ {
+		// The idea here is that the hash key contains the bucket start time (rounded to
+		// the nearest day).  The range key can contain the offset from that, to the
+		// (start/end) of the chunk. For chunks that span multiple buckets, these
+		// offsets will be capped to the bucket boundaries, i.e. start will be
+		// positive in the first bucket, then zero in the next etc.
+		//
+		// The reason for doing all this is to reduce the size of the time stamps we
+		// include in the range keys - we use a uint32 - as we then have to base 32
+		// encode it.
+
 		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInDay))
 		relativeThrough := util.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
 		entries, err := callback(uint32(relativeFrom), uint32(relativeThrough), cfg.tableForBucket(i*secondsInDay), fmt.Sprintf("%s:d%d:%s", userID, i, metricName))

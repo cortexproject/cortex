@@ -13,6 +13,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 	"github.com/weaveworks/cortex/util"
 )
@@ -557,5 +558,39 @@ func TestSchemaTimeEncoding(t *testing.T) {
 		} else {
 			assert.Equal(t, 1, bytes.Compare(encodeTime(a), encodeTime(b)), "eq")
 		}
+	}
+}
+
+func TestSchemaDailyBuckets(t *testing.T) {
+	const (
+		userID     = "0"
+		metricName = model.LabelValue("name")
+		tableName  = "table"
+	)
+	var (
+		config = SchemaConfig{
+			OriginalTableName: tableName,
+		}
+	)
+
+	for _, c := range []struct {
+		from, through model.Time
+	}{
+		{
+			from:    model.TimeFromUnix(0),
+			through: model.TimeFromUnix(2 * 24 * 3600),
+		},
+	} {
+		var i int64
+		_, err := config.dailyBuckets(c.from, c.through, userID, metricName, func(from, through uint32, tableName, hashKey string) ([]IndexEntry, error) {
+			fmt.Println(i, int64(c.from), int64(c.through), from, through)
+			require.True(t, (i*millisecondsInDay)+int64(from) >= int64(c.from), "%d <= %d", (i*millisecondsInDay)+int64(from), int64(c.from))
+			require.True(t, (i*millisecondsInDay)+int64(from) <= int64(c.through), "%d >= %d", (i*millisecondsInDay)+int64(from), int64(c.through))
+			require.True(t, (i*millisecondsInDay)+int64(through) >= int64(c.from), "%d <= %d", (i*millisecondsInDay)+int64(through), int64(c.from))
+			require.True(t, (i*millisecondsInDay)+int64(through) <= int64(c.through), "%d >= %d", (i*millisecondsInDay)+int64(through), int64(c.through))
+			i++
+			return nil, nil
+		})
+		assert.NoError(t, err)
 	}
 }

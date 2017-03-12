@@ -106,8 +106,8 @@ func (cfg SchemaConfig) hourlyBuckets(from, through model.Time, userID string, m
 	)
 
 	for i := fromHour; i <= throughHour; i++ {
-		relativeFrom := util.Max64(i*millisecondsInHour, int64(from))
-		relativeThrough := util.Min64((i+1)*millisecondsInHour, int64(through))
+		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInHour))
+		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInDay))
 		entries, err := callback(uint32(relativeFrom), uint32(relativeThrough), cfg.tableForBucket(i*secondsInHour), fmt.Sprintf("%s:%d:%s", userID, i, metricName))
 		if err != nil {
 			return nil, err
@@ -125,8 +125,18 @@ func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string, me
 	)
 
 	for i := fromDay; i <= throughDay; i++ {
-		relativeFrom := util.Max64(i*millisecondsInDay, int64(from))
-		relativeThrough := util.Min64((i+1)*millisecondsInDay, int64(through))
+		// The idea here is that the hash key contains the bucket start time (rounded to
+		// the nearest day).  The range key can contain the offset from that, to the
+		// (start/end) of the chunk. For chunks that span multiple buckets, these
+		// offsets will be capped to the bucket boundaries, i.e. start will be
+		// positive in the first bucket, then zero in the next etc.
+		//
+		// The reason for doing all this is to reduce the size of the time stamps we
+		// include in the range keys - we use a uint32 - as we then have to base 32
+		// encode it.
+
+		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInDay))
+		relativeThrough := util.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
 		entries, err := callback(uint32(relativeFrom), uint32(relativeThrough), cfg.tableForBucket(i*secondsInDay), fmt.Sprintf("%s:d%d:%s", userID, i, metricName))
 		if err != nil {
 			return nil, err
@@ -536,36 +546,29 @@ func (v5Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, l
 	return entries, nil
 }
 
-func (v5Entries) GetReadMetricEntries(from, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
-	encodedFromBytes := encodeTime(from)
+func (v5Entries) GetReadMetricEntries(_, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
-			TableName:       tableName,
-			HashValue:       hashKey,
-			RangeValueStart: buildRangeKey(encodedFromBytes),
+			TableName: tableName,
+			HashValue: hashKey,
 		},
 	}, nil
 }
 
-func (v5Entries) GetReadMetricLabelEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
-	encodedFromBytes := encodeTime(from)
+func (v5Entries) GetReadMetricLabelEntries(_, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
-			TableName:       tableName,
-			HashValue:       hashKey + ":" + string(labelName),
-			RangeValueStart: buildRangeKey(encodedFromBytes),
+			TableName: tableName,
+			HashValue: hashKey + ":" + string(labelName),
 		},
 	}, nil
 }
 
-func (v5Entries) GetReadMetricLabelValueEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
-	encodedFromBytes := encodeTime(from)
-	encodedValueBytes := encodeBase64Value(labelValue)
+func (v5Entries) GetReadMetricLabelValueEntries(_, _ uint32, tableName, hashKey string, labelName model.LabelName, _ model.LabelValue) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
-			TableName:       tableName,
-			HashValue:       hashKey + ":" + string(labelName),
-			RangeValueStart: buildRangeKey(encodedFromBytes, encodedValueBytes),
+			TableName: tableName,
+			HashValue: hashKey + ":" + string(labelName),
 		},
 	}, nil
 }

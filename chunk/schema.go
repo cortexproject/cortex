@@ -53,7 +53,7 @@ type IndexEntry struct {
 	// For writes, RangeValue will always be set.
 	RangeValue []byte
 
-	// New for v6 schema, Value is not written as part of the range key.
+	// New for v6 schema, label value is not written as part of the range key.
 	Value []byte
 
 	// For reads, one of RangeValuePrefix or RangeValueStart might be set:
@@ -739,7 +739,7 @@ func parseRangeValue(rangeValue []byte, value []byte) (Chunk, model.LabelValue, 
 		return chunk, labelValue, err
 
 	// v6 schema added version 5 range keys, which have the label value written in
-	// to the value, not the range key.
+	// to the value, not the range key. So they are [chunk end time, <empty>, chunk ID, version].
 	case bytes.Equal(components[3], rangeKeyV5):
 		chunk := Chunk{ID: string(components[2])}
 		labelValue := model.LabelValue(value)

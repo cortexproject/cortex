@@ -62,7 +62,7 @@ func (w workItem) Defer(interval time.Duration) workItem {
 }
 
 type scheduler struct {
-	configsAPI         configs.API // XXX: Maybe make this an interface ConfigSource or similar.
+	configsAPI         configs.RulesAPI
 	evaluationInterval time.Duration
 	q                  *SchedulingQueue
 
@@ -79,7 +79,7 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(configsAPI configs.API, evaluationInterval, pollInterval time.Duration) scheduler {
+func newScheduler(configsAPI configs.RulesAPI, evaluationInterval, pollInterval time.Duration) scheduler {
 	return scheduler{
 		configsAPI:         configsAPI,
 		evaluationInterval: evaluationInterval,

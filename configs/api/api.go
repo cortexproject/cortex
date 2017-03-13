@@ -50,10 +50,18 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		handler            http.HandlerFunc
 	}{
 		{"root", "GET", "/", a.admin},
+		// Deprecated public APIs
 		{"get_config", "GET", "/api/configs/org/cortex", a.getConfig},
 		{"set_config", "POST", "/api/configs/org/cortex", a.setConfig},
+		// Dedicated APIs for updating rules config. In the future, these *must*
+		// be used.
+		{"get_rules", "GET", "/api/prom/configs/rules", a.getConfig},
+		{"set_rules", "POST", "/api/prom/configs/rules", a.setConfig},
+		{"get_alertmanager_config", "GET", "/api/prom/configs/alertmanager", a.getConfig},
+		{"set_alertmanager_config", "POST", "/api/prom/configs/alertmanager", a.setConfig},
 		// Internal APIs.
-		{"private_get_configs", "GET", "/private/api/configs/org/cortex", a.getConfigs},
+		{"private_get_rules", "GET", "/private/api/prom/configs/rules", a.getConfigs},
+		{"private_get_alertmanager_config", "GET", "/private/api/prom/configs/alertmanager", a.getConfigs},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}

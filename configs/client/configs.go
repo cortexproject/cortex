@@ -103,25 +103,12 @@ func (c CortexConfig) GetAlertmanagerConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-// API allows retrieving Cortex configs.
-type API struct {
-	URL     *url.URL
-	Timeout time.Duration
-}
-
-// GetConfigs returns all Cortex configurations from a configs API server
-// that have been updated after the given ConfigID was last updated.
-func (c *API) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
-	suffix := ""
-	if since != 0 {
-		suffix = fmt.Sprintf("?since=%d", since)
-	}
-	url := fmt.Sprintf("%s/private/api/configs/org/cortex%s", c.URL.String(), suffix)
-	req, err := http.NewRequest("GET", url, nil)
+func getConfigs(endpoint string, timeout time.Duration, since ConfigID) (*CortexConfigsResponse, error) {
+	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: c.Timeout}
+	client := &http.Client{Timeout: timeout}
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -131,4 +118,38 @@ func (c *API) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
 		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
 	}
 	return configsFromJSON(res.Body)
+}
+
+// AlertManagerConfigsAPI allows retrieving alert configs.
+type AlertManagerConfigsAPI struct {
+	URL     *url.URL
+	Timeout time.Duration
+}
+
+// GetConfigs returns all Cortex configurations from a configs API server
+// that have been updated after the given ConfigID was last updated.
+func (c *AlertManagerConfigsAPI) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
+	suffix := ""
+	if since != 0 {
+		suffix = fmt.Sprintf("?since=%d", since)
+	}
+	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.URL.String(), suffix)
+	return getConfigs(endpoint, c.Timeout, since)
+}
+
+// RulesAPI allows retrieving recording and alerting rules.
+type RulesAPI struct {
+	URL     *url.URL
+	Timeout time.Duration
+}
+
+// GetConfigs returns all Cortex configurations from a configs API server
+// that have been updated after the given ConfigID was last updated.
+func (c *RulesAPI) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
+	suffix := ""
+	if since != 0 {
+		suffix = fmt.Sprintf("?since=%d", since)
+	}
+	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.URL.String(), suffix)
+	return getConfigs(endpoint, c.Timeout, since)
 }

@@ -13,6 +13,9 @@ service Ingester {
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
   rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
+
+  // TransferChunks allows leaving ingester (client) to stream chunks directly to joining ingesters (server).
+  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
 }
 
 message WriteRequest {
@@ -56,6 +59,22 @@ message MetricsForLabelMatchersResponse {
   repeated Metric metric = 1;
 }
 
+message TimeSeriesChunk {
+  string from_ingester_id = 1;
+  string user_id = 2;
+  repeated LabelPair labels = 3 [(gogoproto.nullable) = false];
+  repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
+}
+
+message Chunk {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+  int32 encoding = 3;
+  bytes data = 4;
+}
+
+message TransferChunksResponse {
+}
 
 message TimeSeries {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false];

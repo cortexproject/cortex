@@ -3,10 +3,11 @@ package ingester
 import (
 	"flag"
 	"fmt"
-	"net/http"
+	"os"
 	"sync"
 	"time"
 
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
-	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex"
@@ -38,12 +38,6 @@ const (
 	DefaultMaxSeriesPerUser = 5000000
 	// DefaultMaxSeriesPerMetric is the maximum number of series in one metric (of a single user).
 	DefaultMaxSeriesPerMetric = 50000
-
-	minReadyDuration = 1 * time.Minute
-
-	// Backoff for retrying 'immediate' flushes. Only counts for queue
-	// position, not wallclock time.
-	flushBackoff = 1 * time.Second
 )
 
 var (
@@ -73,19 +67,90 @@ var (
 	ErrDuplicateSampleForTimestamp = fmt.Errorf("sample with repeated timestamp but different value")
 )
 
+// Config for an Ingester.
+type Config struct {
+	ringConfig       ring.Config
+	userStatesConfig UserStatesConfig
+
+	// Config for the ingester lifecycle control
+	ListenPort       *int
+	NumTokens        int
+	HeartbeatPeriod  time.Duration
+	JoinAfter        time.Duration
+	SearchPendingFor time.Duration
+	ClaimOnRollout   bool
+
+	// Config for chunk flushing
+	FlushCheckPeriod  time.Duration
+	MaxChunkIdle      time.Duration
+	MaxChunkAge       time.Duration
+	ConcurrentFlushes int
+	ChunkEncoding     string
+
+	// For testing, you can override the address and UD of this ingester
+	addr           string
+	id             string
+	skipUnregister bool
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.ringConfig.RegisterFlags(f)
+	cfg.userStatesConfig.RegisterFlags(f)
+
+	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
+	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
+	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")
+	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
+	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
+
+	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
+	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 1*time.Hour, "Maximum chunk idle time before flushing.")
+	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
+	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
+
+	addr, err := util.GetFirstAddressOf(infName)
+	if err != nil {
+		log.Fatalf("Failed to get address of %s: %v", infName, err)
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("Failed to get hostname: %v", err)
+	}
+
+	f.StringVar(&cfg.addr, "ingester.addr", addr, "IP address to register into consul.")
+	f.StringVar(&cfg.id, "ingester.id", hostname, "ID to register into consul.")
+}
+
 // Ingester deals with "in flight" chunks.
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
 	cfg        Config
 	chunkStore ChunkStore
-	userStates *userStates
-	ring       *ring.Ring
+	consul     ring.ConsulClient
 
-	stopLock sync.RWMutex
-	stopped  bool
-	quit     chan struct{}
-	done     sync.WaitGroup
+	userStatesMtx sync.RWMutex
+	userStates    *userStates
 
+	// These values are initialised at startup, and never change
+	id   string
+	addr string
+
+	// Controls the lifecycle of the ingester
+	stopLock  sync.RWMutex
+	stopped   bool
+	quit      chan struct{}
+	done      sync.WaitGroup
+	actorChan chan func()
+
+	// We need to remember the ingester state just in case consul goes away and comes
+	// back empty.  And it changes during lifecycle of ingester.
+	state  ring.IngesterState
+	tokens []uint32
+
+	// Controls the ready-reporting
 	readyLock sync.Mutex
 	startTime time.Time
 	ready     bool
@@ -108,45 +173,8 @@ type ChunkStore interface {
 	Put(ctx context.Context, chunks []cortex_chunk.Chunk) error
 }
 
-// Config configures an Ingester.
-type Config struct {
-	FlushCheckPeriod  time.Duration
-	MaxChunkIdle      time.Duration
-	MaxChunkAge       time.Duration
-	ConcurrentFlushes int
-	ChunkEncoding     string
-	UserStatesConfig  UserStatesConfig
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
-	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 1*time.Hour, "Maximum chunk idle time before flushing.")
-	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
-	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
-	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
-	f.DurationVar(&cfg.UserStatesConfig.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-	f.IntVar(&cfg.UserStatesConfig.MaxSeriesPerUser, "ingester.max-series-per-user", DefaultMaxSeriesPerUser, "Maximum number of active series per user.")
-	f.IntVar(&cfg.UserStatesConfig.MaxSeriesPerMetric, "ingester.max-series-per-metric", DefaultMaxSeriesPerMetric, "Maximum number of active series per metric name.")
-}
-
-type flushOp struct {
-	from      model.Time
-	userID    string
-	fp        model.Fingerprint
-	immediate bool
-}
-
-func (o *flushOp) Key() string {
-	return fmt.Sprintf("%s-%d-%v", o.userID, o.fp, o.immediate)
-}
-
-func (o *flushOp) Priority() int64 {
-	return -int64(o.from)
-}
-
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore ChunkStore, ring *ring.Ring) (*Ingester, error) {
+func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -159,29 +187,40 @@ func New(cfg Config, chunkStore ChunkStore, ring *ring.Ring) (*Ingester, error) 
 	if cfg.ChunkEncoding == "" {
 		cfg.ChunkEncoding = "1"
 	}
-	if cfg.UserStatesConfig.RateUpdatePeriod == 0 {
-		cfg.UserStatesConfig.RateUpdatePeriod = 15 * time.Second
+	if cfg.userStatesConfig.RateUpdatePeriod == 0 {
+		cfg.userStatesConfig.RateUpdatePeriod = 15 * time.Second
 	}
-	if cfg.UserStatesConfig.MaxSeriesPerUser <= 0 {
-		cfg.UserStatesConfig.MaxSeriesPerUser = DefaultMaxSeriesPerUser
+	if cfg.userStatesConfig.MaxSeriesPerUser <= 0 {
+		cfg.userStatesConfig.MaxSeriesPerUser = DefaultMaxSeriesPerUser
 	}
-	if cfg.UserStatesConfig.MaxSeriesPerMetric <= 0 {
-		cfg.UserStatesConfig.MaxSeriesPerMetric = DefaultMaxSeriesPerMetric
+	if cfg.userStatesConfig.MaxSeriesPerMetric <= 0 {
+		cfg.userStatesConfig.MaxSeriesPerMetric = DefaultMaxSeriesPerMetric
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
 		return nil, err
 	}
 
+	codec := ring.ProtoCodec{Factory: ring.ProtoDescFactory}
+	consul, err := ring.NewConsulClient(cfg.ringConfig.ConsulConfig, codec)
+	if err != nil {
+		return nil, err
+	}
+
 	i := &Ingester{
 		cfg:        cfg,
+		consul:     consul,
 		chunkStore: chunkStore,
-		quit:       make(chan struct{}),
-		ring:       ring,
+		userStates: newUserStates(&cfg.userStatesConfig),
 
+		addr: fmt.Sprintf("%s:%d", cfg.addr, *cfg.ListenPort),
+		id:   cfg.id,
+
+		quit:      make(chan struct{}),
+		actorChan: make(chan func()),
+		state:     ring.PENDING,
 		startTime: time.Now(),
 
-		userStates:  newUserStates(&cfg.UserStatesConfig),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
@@ -225,36 +264,8 @@ func New(cfg Config, chunkStore ChunkStore, ring *ring.Ring) (*Ingester, error) 
 
 	i.done.Add(1)
 	go i.loop()
+
 	return i, nil
-}
-
-// ReadinessHandler is used to indicate to k8s when the ingesters are ready for
-// the addition removal of another ingester. Returns 204 when the ingester is
-// ready, 500 otherwise.
-func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if i.isReady() {
-		w.WriteHeader(http.StatusNoContent)
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-}
-
-func (i *Ingester) isReady() bool {
-	i.readyLock.Lock()
-	defer i.readyLock.Unlock()
-
-	if i.ready {
-		return true
-	}
-
-	// Ingester always take at least minReadyDuration to become ready to work
-	// around race conditions with ingesters exiting and updating the ring
-	if time.Now().Sub(i.startTime) < minReadyDuration {
-		return false
-	}
-
-	i.ready = i.ready || i.ring.Ready()
-	return i.ready
 }
 
 // Push implements cortex.IngesterServer
@@ -293,6 +304,8 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		return fmt.Errorf("ingester stopping")
 	}
 
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
 	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, sample.Metric)
 	if err != nil {
 		return err
@@ -334,6 +347,8 @@ func (i *Ingester) Query(ctx context.Context, req *cortex.QueryRequest) (*cortex
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) (model.Matrix, error) {
 	i.queries.Inc()
 
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
@@ -360,6 +375,8 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesRequest) (*cortex.LabelValuesResponse, error) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
@@ -375,6 +392,8 @@ func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesReque
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *cortex.MetricsForLabelMatchersRequest) (*cortex.MetricsForLabelMatchersResponse, error) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
@@ -408,6 +427,8 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *cortex.Metr
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx context.Context, req *cortex.UserStatsRequest) (*cortex.UserStatsResponse, error) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
@@ -417,204 +438,6 @@ func (i *Ingester) UserStats(ctx context.Context, req *cortex.UserStatsRequest) 
 		IngestionRate: state.ingestedSamples.rate(),
 		NumSeries:     uint64(state.fpToSeries.length()),
 	}, nil
-}
-
-// Stop stops the Ingester.
-func (i *Ingester) Stop() {
-	i.stopLock.Lock()
-	i.stopped = true
-	i.stopLock.Unlock()
-
-	// Closing i.quit triggers i.loop() to exit; i.loop() exiting
-	// will trigger i.flushLoop()s to exit.
-	close(i.quit)
-
-	i.done.Wait()
-}
-
-func (i *Ingester) loop() {
-	defer func() {
-		i.sweepUsers(true)
-
-		// We close flush queue here to ensure the flushLoops pick
-		// up all the flushes triggered by the last run
-		for _, flushQueue := range i.flushQueues {
-			flushQueue.Close()
-		}
-
-		log.Infof("Ingester.loop() exited gracefully")
-		i.done.Done()
-	}()
-
-	flushTick := time.Tick(i.cfg.FlushCheckPeriod)
-	rateUpdateTick := time.Tick(i.cfg.UserStatesConfig.RateUpdatePeriod)
-	for {
-		select {
-		case <-flushTick:
-			i.sweepUsers(false)
-		case <-rateUpdateTick:
-			i.userStates.updateRates()
-		case <-i.quit:
-			return
-		}
-	}
-}
-
-// sweepUsers periodically schedules series for flushing and garbage collects users with no series
-func (i *Ingester) sweepUsers(immediate bool) {
-	if i.chunkStore == nil {
-		return
-	}
-
-	for id, state := range i.userStates.cp() {
-		for pair := range state.fpToSeries.iter() {
-			state.fpLocker.Lock(pair.fp)
-			i.sweepSeries(id, pair.fp, pair.series, immediate)
-			state.fpLocker.Unlock(pair.fp)
-		}
-	}
-}
-
-// sweepSeries schedules a series for flushing based on a set of criteria
-//
-// NB we don't close the head chunk here, as the series could wait in the queue
-// for some time, and we want to encourage chunks to be as full as possible.
-func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memorySeries, immediate bool) {
-	if len(series.chunkDescs) <= 0 {
-		return
-	}
-
-	firstTime := series.firstTime()
-	flush := i.shouldFlushSeries(series, immediate)
-
-	if flush {
-		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate})
-	}
-}
-
-func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) bool {
-	// Series should be scheduled for flushing if they have more than one chunk
-	if immediate || len(series.chunkDescs) > 1 {
-		return true
-	}
-
-	// Or if the only existing chunk need flushing
-	if len(series.chunkDescs) > 0 {
-		return i.shouldFlushChunk(series.chunkDescs[0])
-	}
-
-	return false
-}
-
-func (i *Ingester) shouldFlushChunk(c *desc) bool {
-	// Chunks should be flushed if their oldest entry is older than MaxChunkAge
-	if model.Now().Sub(c.FirstTime) > i.cfg.MaxChunkAge {
-		return true
-	}
-
-	// Chunk should be flushed if their last entry is older then MaxChunkIdle
-	if model.Now().Sub(c.LastTime) > i.cfg.MaxChunkIdle {
-		return true
-	}
-
-	return false
-}
-
-func (i *Ingester) flushLoop(j int) {
-	defer func() {
-		log.Info("Ingester.flushLoop() exited")
-		i.done.Done()
-	}()
-
-	for {
-		o := i.flushQueues[j].Dequeue()
-		if o == nil {
-			return
-		}
-		op := o.(*flushOp)
-
-		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
-		if err != nil {
-			log.Errorf("Failed to flush user %v: %v", op.userID, err)
-		}
-
-		// If we're exiting & we failed to flush, put the failed operation
-		// back in the queue at a later point.
-		if op.immediate && err != nil {
-			op.from = op.from.Add(flushBackoff)
-			i.flushQueues[j].Enqueue(op)
-		}
-	}
-}
-
-func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
-	userState, ok := i.userStates.get(userID)
-	if !ok {
-		return nil
-	}
-
-	series, ok := userState.fpToSeries.get(fp)
-	if !ok {
-		return nil
-	}
-
-	userState.fpLocker.Lock(fp)
-	if !i.shouldFlushSeries(series, immediate) {
-		userState.fpLocker.Unlock(fp)
-		return nil
-	}
-
-	// Assume we're going to flush everything, and maybe don't flush the head chunk if it doesn't need it.
-	chunks := series.chunkDescs
-	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head())) {
-		series.closeHead()
-	} else {
-		chunks = chunks[:len(chunks)-1]
-	}
-	userState.fpLocker.Unlock(fp)
-
-	if len(chunks) == 0 {
-		return nil
-	}
-
-	// flush the chunks without locking the series, as we don't want to hold the series lock for the duration of the dynamo/s3 rpcs.
-	ctx := user.Inject(context.Background(), userID)
-	err := i.flushChunks(ctx, fp, series.metric, chunks)
-	if err != nil {
-		return err
-	}
-
-	// now remove the chunks
-	userState.fpLocker.Lock(fp)
-	series.chunkDescs = series.chunkDescs[len(chunks):]
-	i.memoryChunks.Sub(float64(len(chunks)))
-	if len(series.chunkDescs) == 0 {
-		userState.removeSeries(fp, series.metric)
-	}
-	userState.fpLocker.Unlock(fp)
-	return nil
-}
-
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*desc) error {
-	wireChunks := make([]cortex_chunk.Chunk, 0, len(chunkDescs))
-	for _, chunkDesc := range chunkDescs {
-		wireChunks = append(wireChunks, cortex_chunk.NewChunk(fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime))
-	}
-
-	err := i.chunkStore.Put(ctx, wireChunks)
-	if err != nil {
-		return err
-	}
-
-	// Record statistsics only when actual put request did not return error.
-	for _, chunkDesc := range chunkDescs {
-		i.chunkUtilization.Observe(chunkDesc.C.Utilization())
-		i.chunkLength.Observe(float64(chunkDesc.C.Len()))
-		i.chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
-	}
-
-	return nil
 }
 
 // Describe implements prometheus.Collector.
@@ -633,6 +456,8 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect implements prometheus.Collector.
 func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
 	numUsers := i.userStates.numUsers()
 	numSeries := i.userStates.numSeries()
 

@@ -13,7 +13,6 @@ import (
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/ingester"
-	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
 )
 
@@ -25,44 +24,33 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		ingesterRegistrationConfig ring.IngesterRegistrationConfig
-		chunkStoreConfig           chunk.StoreConfig
-		ingesterConfig             ingester.Config
+		chunkStoreConfig chunk.StoreConfig
+		ingesterConfig   ingester.Config
 	)
-	// IngesterRegistrator needs to know our gRPC listen port
-	ingesterRegistrationConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &ingesterRegistrationConfig, &chunkStoreConfig, &ingesterConfig)
+	// Ingester needs to know our gRPC listen port.
+	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
+	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &ingesterConfig)
 	flag.Parse()
-
-	registration, err := ring.RegisterIngester(ingesterRegistrationConfig)
-	if err != nil {
-		log.Fatalf("Could not register ingester: %v", err)
-	}
-	defer registration.Ring.Stop()
 
 	chunkStore, err := chunk.NewStore(chunkStoreConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	ingester, err := ingester.New(ingesterConfig, chunkStore, registration.Ring)
-	if err != nil {
-		log.Fatal(err)
-	}
-	prometheus.MustRegister(ingester)
-
 	server, err := server.New(serverConfig)
 	if err != nil {
 		log.Fatalf("Error initializing server: %v", err)
 	}
+	defer server.Shutdown()
+
+	ingester, err := ingester.New(ingesterConfig, chunkStore)
+	if err != nil {
+		log.Fatal(err)
+	}
+	prometheus.MustRegister(ingester)
+	defer ingester.Shutdown()
+
 	cortex.RegisterIngesterServer(server.GRPC, ingester)
-	server.HTTP.Handle("/ring", registration.Ring)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	server.Run()
-
-	// Shutdown order is important!
-	registration.ChangeState(ring.LEAVING)
-	ingester.Stop()
-	registration.Unregister()
-	server.Shutdown()
 }

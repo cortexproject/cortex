@@ -9,6 +9,8 @@ spec:
     metadata:
       labels:
         name: nginx
+      annotations:
+        prometheus.io.scrape: "false"
     spec:
       containers:
       - name: nginx

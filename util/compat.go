@@ -16,7 +16,7 @@ func FromWriteRequest(req *cortex.WriteRequest) []model.Sample {
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
 			samples = append(samples, model.Sample{
-				Metric:    fromLabelPairs(ts.Labels),
+				Metric:    FromLabelPairs(ts.Labels),
 				Value:     model.SampleValue(s.Value),
 				Timestamp: model.Time(s.TimestampMs),
 			})
@@ -33,7 +33,7 @@ func ToWriteRequest(samples []model.Sample) *cortex.WriteRequest {
 
 	for _, s := range samples {
 		ts := cortex.TimeSeries{
-			Labels: toLabelPairs(s.Metric),
+			Labels: ToLabelPairs(s.Metric),
 			Samples: []cortex.Sample{
 				{
 					Value:       float64(s.Value),
@@ -77,7 +77,7 @@ func ToQueryResponse(matrix model.Matrix) *cortex.QueryResponse {
 	resp := &cortex.QueryResponse{}
 	for _, ss := range matrix {
 		ts := cortex.TimeSeries{
-			Labels:  toLabelPairs(ss.Metric),
+			Labels:  ToLabelPairs(ss.Metric),
 			Samples: make([]cortex.Sample, 0, len(ss.Values)),
 		}
 		for _, s := range ss.Values {
@@ -96,7 +96,7 @@ func FromQueryResponse(resp *cortex.QueryResponse) model.Matrix {
 	m := make(model.Matrix, 0, len(resp.Timeseries))
 	for _, ts := range resp.Timeseries {
 		var ss model.SampleStream
-		ss.Metric = fromLabelPairs(ts.Labels)
+		ss.Metric = FromLabelPairs(ts.Labels)
 		ss.Values = make([]model.SamplePair, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
 			ss.Values = append(ss.Values, model.SamplePair{
@@ -152,7 +152,7 @@ func ToMetricsForLabelMatchersResponse(metrics []model.Metric) *cortex.MetricsFo
 	}
 	for _, metric := range metrics {
 		resp.Metric = append(resp.Metric, &cortex.Metric{
-			Labels: toLabelPairs(metric),
+			Labels: ToLabelPairs(metric),
 		})
 	}
 	return resp
@@ -162,7 +162,7 @@ func ToMetricsForLabelMatchersResponse(metrics []model.Metric) *cortex.MetricsFo
 func FromMetricsForLabelMatchersResponse(resp *cortex.MetricsForLabelMatchersResponse) []model.Metric {
 	metrics := []model.Metric{}
 	for _, m := range resp.Metric {
-		metrics = append(metrics, fromLabelPairs(m.Labels))
+		metrics = append(metrics, FromLabelPairs(m.Labels))
 	}
 	return metrics
 }
@@ -217,7 +217,8 @@ func fromLabelMatchers(matchers []*cortex.LabelMatcher) ([]*metric.LabelMatcher,
 	return result, nil
 }
 
-func toLabelPairs(metric model.Metric) []cortex.LabelPair {
+// ToLabelPairs builds a []cortex.LabelPair from a model.Metric
+func ToLabelPairs(metric model.Metric) []cortex.LabelPair {
 	labelPairs := make([]cortex.LabelPair, 0, len(metric))
 	for k, v := range metric {
 		labelPairs = append(labelPairs, cortex.LabelPair{
@@ -228,7 +229,8 @@ func toLabelPairs(metric model.Metric) []cortex.LabelPair {
 	return labelPairs
 }
 
-func fromLabelPairs(labelPairs []cortex.LabelPair) model.Metric {
+// FromLabelPairs unpack a []cortex.LabelPair to a model.Metric
+func FromLabelPairs(labelPairs []cortex.LabelPair) model.Metric {
 	metric := make(model.Metric, len(labelPairs))
 	for _, l := range labelPairs {
 		metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)

@@ -12,24 +12,24 @@ const (
 
 func BenchmarkRing(b *testing.B) {
 	// Make a random ring with N ingesters, and M tokens per ingests
-	desc := newDesc()
+	desc := NewDesc()
 	takenTokens := []uint32{}
 	for i := 0; i < numIngester; i++ {
-		tokens := generateTokens(numTokens, takenTokens)
+		tokens := GenerateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.addIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
+		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
 	}
 
-	consul := newMockConsulClient()
+	consul := NewMockConsulClient()
 	ringBytes, err := ProtoCodec{}.Encode(desc)
 	if err != nil {
 		b.Fatal(err)
 	}
-	consul.PutBytes(consulKey, ringBytes)
+	consul.PutBytes(ConsulKey, ringBytes)
 
 	r, err := New(Config{
 		ConsulConfig: ConsulConfig{
-			mock: consul,
+			Mock: consul,
 		},
 	})
 	if err != nil {
@@ -39,7 +39,7 @@ func BenchmarkRing(b *testing.B) {
 	// Generate a batch of N random keys, and look them up
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		keys := generateTokens(100, nil)
+		keys := GenerateTokens(100, nil)
 		r.BatchGet(keys, 3, Write)
 	}
 }

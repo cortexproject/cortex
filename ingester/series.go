@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -155,6 +156,17 @@ func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 		values = append(values, chValues...)
 	}
 	return values, nil
+}
+
+func (s *memorySeries) setChunks(descs []*desc) error {
+	if len(s.chunkDescs) != 0 {
+		return fmt.Errorf("series already has chunks")
+	}
+
+	s.chunkDescs = descs
+	s.lastSampleValueSet = true
+	s.lastTime = descs[len(descs)-1].LastTime
+	return nil
 }
 
 type desc struct {

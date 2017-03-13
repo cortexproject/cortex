@@ -6,7 +6,6 @@ import (
 	"sort"
 	"sync"
 	"testing"
-	"time"
 
 	"google.golang.org/grpc"
 
@@ -76,14 +75,11 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 }
 
 func TestIngesterAppend(t *testing.T) {
-	cfg := Config{
-		FlushCheckPeriod: 99999 * time.Hour,
-		MaxChunkIdle:     99999 * time.Hour,
-	}
+	cfg := defaultIngesterTestConfig()
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
-	ing, err := New(cfg, store, nil)
+	ing, err := New(cfg, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +127,7 @@ func TestIngesterAppend(t *testing.T) {
 	}
 
 	// Read samples back via chunk store.
-	ing.Stop()
+	ing.Shutdown()
 	for _, userID := range userIDs {
 		res, err := chunk.ChunksToMatrix(store.chunks[userID])
 		if err != nil {
@@ -146,17 +142,15 @@ func TestIngesterAppend(t *testing.T) {
 }
 
 func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
-	cfg := Config{
-		FlushCheckPeriod: 99999 * time.Hour,
-		MaxChunkIdle:     99999 * time.Hour,
-		UserStatesConfig: UserStatesConfig{
-			MaxSeriesPerUser: 1,
-		},
+	cfg := defaultIngesterTestConfig()
+	cfg.userStatesConfig = UserStatesConfig{
+		MaxSeriesPerUser: 1,
 	}
+
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
-	ing, err := New(cfg, store, nil)
+	ing, err := New(cfg, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,17 +226,15 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 }
 
 func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
-	cfg := Config{
-		FlushCheckPeriod: 99999 * time.Hour,
-		MaxChunkIdle:     99999 * time.Hour,
-		UserStatesConfig: UserStatesConfig{
-			MaxSeriesPerMetric: 1,
-		},
+	cfg := defaultIngesterTestConfig()
+	cfg.userStatesConfig = UserStatesConfig{
+		MaxSeriesPerMetric: 1,
 	}
+
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
-	ing, err := New(cfg, store, nil)
+	ing, err := New(cfg, store)
 	if err != nil {
 		t.Fatal(err)
 	}

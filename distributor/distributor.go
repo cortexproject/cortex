@@ -5,16 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/mwitkow/go-grpc-middleware"
-	"github.com/opentracing/opentracing-go"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
-	"google.golang.org/grpc"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -22,9 +19,9 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex"
+	ingester_client "github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
 )
@@ -46,7 +43,7 @@ type Distributor struct {
 	cfg        Config
 	ring       ReadRing
 	clientsMtx sync.RWMutex
-	clients    map[string]ingesterClient
+	clients    map[string]cortex.IngesterClient
 	quit       chan struct{}
 	done       chan struct{}
 
@@ -61,11 +58,6 @@ type Distributor struct {
 	ingesterAppendFailures *prometheus.CounterVec
 	ingesterQueries        *prometheus.CounterVec
 	ingesterQueryFailures  *prometheus.CounterVec
-}
-
-type ingesterClient struct {
-	cortex.IngesterClient
-	conn *grpc.ClientConn
 }
 
 // ReadRing represents the read inferface to the ring.
@@ -88,7 +80,7 @@ type Config struct {
 	IngestionBurstSize  int
 
 	// for testing
-	ingesterClientFactory func(string) cortex.IngesterClient
+	ingesterClientFactory func(addr string, timeout time.Duration) (cortex.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -106,10 +98,14 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 	if 0 > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
+	if cfg.ingesterClientFactory == nil {
+		cfg.ingesterClientFactory = ingester_client.MakeIngesterClient
+	}
+
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
-		clients:        map[string]ingesterClient{},
+		clients:        map[string]cortex.IngesterClient{},
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		ingestLimiters: map[string]*rate.Limiter{},
@@ -193,11 +189,11 @@ func (d *Distributor) removeStaleIngesterClients() {
 
 		// Do the gRPC closing in the background since it might take a while and
 		// we're holding a mutex.
-		go func(addr string, conn *grpc.ClientConn) {
-			if err := conn.Close(); err != nil {
+		go func(addr string, closer io.Closer) {
+			if err := closer.Close(); err != nil {
 				log.Errorf("Error closing connection to ingester %q: %v", addr, err)
 			}
-		}(addr, client.conn)
+		}(addr, client.(io.Closer))
 	}
 }
 
@@ -216,27 +212,9 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.Ingester
 		return client, nil
 	}
 
-	if d.cfg.ingesterClientFactory != nil {
-		client = ingesterClient{
-			IngesterClient: d.cfg.ingesterClientFactory(ingester.Addr),
-		}
-	} else {
-		conn, err := grpc.Dial(
-			ingester.Addr,
-			grpc.WithTimeout(d.cfg.RemoteTimeout),
-			grpc.WithInsecure(),
-			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-				middleware.ClientUserHeaderInterceptor,
-			)),
-		)
-		if err != nil {
-			return nil, err
-		}
-		client = ingesterClient{
-			IngesterClient: cortex.NewIngesterClient(conn),
-			conn:           conn,
-		}
+	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.RemoteTimeout)
+	if err != nil {
+		return nil, err
 	}
 	d.clients[ingester.Addr] = client
 	return client, nil

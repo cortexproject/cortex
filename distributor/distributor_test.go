@@ -40,6 +40,7 @@ func (r mockRing) GetAll() []*ring.IngesterDesc {
 }
 
 type mockIngester struct {
+	cortex.IngesterClient
 	happy bool
 }
 
@@ -78,18 +79,6 @@ func (i mockIngester) Query(ctx context.Context, in *cortex.QueryRequest, opts .
 	}, nil
 }
 
-func (i mockIngester) LabelValues(ctx context.Context, in *cortex.LabelValuesRequest, opts ...grpc.CallOption) (*cortex.LabelValuesResponse, error) {
-	return nil, nil
-}
-
-func (i mockIngester) UserStats(ctx context.Context, in *cortex.UserStatsRequest, opts ...grpc.CallOption) (*cortex.UserStatsResponse, error) {
-	return nil, nil
-}
-
-func (i mockIngester) MetricsForLabelMatchers(ctx context.Context, in *cortex.MetricsForLabelMatchersRequest, opts ...grpc.CallOption) (*cortex.MetricsForLabelMatchersResponse, error) {
-	return nil, nil
-}
-
 func TestDistributorPush(t *testing.T) {
 	ctx := user.Inject(context.Background(), "user")
 	for i, tc := range []struct {
@@ -106,22 +95,34 @@ func TestDistributorPush(t *testing.T) {
 
 		// A push to 3 happy ingesters should succeed
 		{
-			samples:          10,
-			ingesters:        []mockIngester{{true}, {true}, {true}},
+			samples: 10,
+			ingesters: []mockIngester{
+				{happy: true},
+				{happy: true},
+				{happy: true},
+			},
 			expectedResponse: &cortex.WriteResponse{},
 		},
 
 		// A push to 2 happy ingesters should succeed
 		{
-			samples:          10,
-			ingesters:        []mockIngester{{}, {true}, {true}},
+			samples: 10,
+			ingesters: []mockIngester{
+				{},
+				{happy: true},
+				{happy: true},
+			},
 			expectedResponse: &cortex.WriteResponse{},
 		},
 
 		// A push to 1 happy ingesters should fail
 		{
-			samples:       10,
-			ingesters:     []mockIngester{{}, {}, {true}},
+			samples: 10,
+			ingesters: []mockIngester{
+				{},
+				{},
+				{happy: true},
+			},
 			expectedError: fmt.Errorf("Fail"),
 		},
 
@@ -159,8 +160,8 @@ func TestDistributorPush(t *testing.T) {
 				IngestionRateLimit:  10000,
 				IngestionBurstSize:  10000,
 
-				ingesterClientFactory: func(addr string) cortex.IngesterClient {
-					return ingesters[addr]
+				ingesterClientFactory: func(addr string, _ time.Duration) (cortex.IngesterClient, error) {
+					return ingesters[addr], nil
 				},
 			}, ring)
 			if err != nil {
@@ -219,25 +220,41 @@ func TestDistributorQuery(t *testing.T) {
 	}{
 		// A query to 3 happy ingesters should succeed
 		{
-			ingesters:        []mockIngester{{true}, {true}, {true}},
+			ingesters: []mockIngester{
+				{happy: true},
+				{happy: true},
+				{happy: true},
+			},
 			expectedResponse: expectedResponse(0, 2),
 		},
 
 		// A query to 2 happy ingesters should succeed
 		{
-			ingesters:        []mockIngester{{}, {true}, {true}},
+			ingesters: []mockIngester{
+				{happy: false},
+				{happy: true},
+				{happy: true},
+			},
 			expectedResponse: expectedResponse(0, 2),
 		},
 
 		// A query to 1 happy ingesters should fail
 		{
-			ingesters:     []mockIngester{{}, {}, {true}},
+			ingesters: []mockIngester{
+				{happy: false},
+				{happy: false},
+				{happy: true},
+			},
 			expectedError: fmt.Errorf("Fail"),
 		},
 
 		// A query to 0 happy ingesters should succeed
 		{
-			ingesters:     []mockIngester{{}, {}, {}},
+			ingesters: []mockIngester{
+				{happy: false},
+				{happy: false},
+				{happy: false},
+			},
 			expectedError: fmt.Errorf("Fail"),
 		},
 	} {
@@ -268,8 +285,8 @@ func TestDistributorQuery(t *testing.T) {
 				IngestionRateLimit:  10000,
 				IngestionBurstSize:  10000,
 
-				ingesterClientFactory: func(addr string) cortex.IngesterClient {
-					return ingesters[addr]
+				ingesterClientFactory: func(addr string, _ time.Duration) (cortex.IngesterClient, error) {
+					return ingesters[addr], nil
 				},
 			}, ring)
 			if err != nil {

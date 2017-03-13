@@ -41,7 +41,8 @@ endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
 # Manually declared dependancies And what goes into each exe
-%.pb.go: %.proto
+cortex.pb.go: cortex.proto
+ring/ring.pb.go: ring/ring.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 

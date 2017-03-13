@@ -10,7 +10,7 @@ spec:
       labels:
         name: memcached
       annotations:
-        prometheus.io.port: "9150"
+        prometheus.io.scrape: "false"
     spec:
       containers:
       - name: memcached
@@ -22,6 +22,3 @@ spec:
         ports:
         - name: clients
           containerPort: 11211
-        ports:
-        - name: prom
-          containerPort: 9150

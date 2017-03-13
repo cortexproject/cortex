@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -219,5 +220,64 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{
 			userID3: config3,
 		}}, found)
+	}
+}
+
+func Test_ValidateAlertmanagerConfig(t *testing.T) {
+	tests := []struct {
+		config      string
+		shouldFail  bool
+		errContains string
+	}{
+		{
+			config:      "invalid config",
+			shouldFail:  true,
+			errContains: "error parsing YAML",
+		}, {
+			config: `
+        route:
+          receiver: noop
+        templates:
+        - "/path/to/file"
+
+        receivers:
+        - name: noop`,
+			shouldFail:  true,
+			errContains: "template files are not supported in Cortex yet",
+		}, {
+			config: `
+        global:
+          smtp_smarthost: localhost:25
+          smtp_from: alertmanager@example.org
+        route:
+          receiver: noop
+
+        receivers:
+        - name: noop
+          email_configs:
+          - to: myteam@foobar.org`,
+			shouldFail:  true,
+			errContains: "email notifications are not supported in Cortex yet",
+		},
+	}
+
+	userID := makeUserID()
+	for i, test := range tests {
+		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", strings.NewReader(test.config))
+		data := map[string]string{}
+		err := json.Unmarshal(resp.Body.Bytes(), &data)
+		assert.NoError(t, err, "test case %d", i)
+
+		success := map[string]string{
+			"status": "success",
+		}
+		if !test.shouldFail {
+			assert.Equal(t, success, data, "test case %d", i)
+			assert.Equal(t, http.StatusOK, resp.Code, "test case %d", i)
+			continue
+		}
+
+		assert.Equal(t, "error", data["status"], "test case %d", i)
+		assert.Contains(t, data["error"], test.errContains, "test case %d", i)
 	}
 }

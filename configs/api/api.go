@@ -4,15 +4,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
+	amconfig "github.com/prometheus/alertmanager/config"
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/configs"
 	"github.com/weaveworks/cortex/configs/db"
+	"github.com/weaveworks/cortex/util"
 )
 
 // API implements the configs api.
@@ -56,6 +59,7 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		{"set_rules", "POST", "/api/prom/configs/rules", a.setConfig},
 		{"get_alertmanager_config", "GET", "/api/prom/configs/alertmanager", a.getConfig},
 		{"set_alertmanager_config", "POST", "/api/prom/configs/alertmanager", a.setConfig},
+		{"validate_alertmanager_config", "POST", "/api/prom/configs/alertmanager/validate", a.validateAlertmanagerConfig},
 		// Internal APIs.
 		{"private_get_rules", "GET", "/private/api/prom/configs/rules", a.getConfigs},
 		{"private_get_alertmanager_config", "GET", "/private/api/prom/configs/alertmanager", a.getConfigs},
@@ -113,6 +117,47 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf("Error reading request body: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err = validateAlertmanagerConfig(string(cfg)); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		util.WriteJSONResponse(w, map[string]string{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	util.WriteJSONResponse(w, map[string]string{
+		"status": "success",
+	})
+}
+
+func validateAlertmanagerConfig(cfg string) error {
+	amCfg, err := amconfig.Load(cfg)
+	if err != nil {
+		return fmt.Errorf("error parsing YAML: %s", err)
+	}
+
+	if len(amCfg.Templates) != 0 {
+		return fmt.Errorf("template files are not supported in Cortex yet")
+	}
+
+	for _, recv := range amCfg.Receivers {
+		if len(recv.EmailConfigs) != 0 {
+			return fmt.Errorf("email notifications are not supported in Cortex yet")
+		}
+	}
+
+	return nil
 }
 
 // ConfigsView renders multiple configurations, mapping userID to ConfigView.

@@ -14,7 +14,7 @@ service Ingester {
   rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
 
-  // TransferChunks allows leaving ingester to stream chunks directly to joining ingesters.
+  // TransferChunks allows leaving ingester (client) to stream chunks directly to joining ingesters (server).
   rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
 }
 

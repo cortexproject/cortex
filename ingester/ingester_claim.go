@@ -64,7 +64,7 @@ func (i *Ingester) TransferChunks(stream cortex.Ingester_TransferChunksServer) e
 		prevNumChunks := len(series.chunkDescs)
 
 		err = series.setChunks(descs)
-		state.fpLocker.Unlock(fp)
+		state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
 		if err != nil {
 			return err
 		}

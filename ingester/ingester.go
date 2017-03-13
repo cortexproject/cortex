@@ -72,12 +72,13 @@ type Config struct {
 	ringConfig       ring.Config
 	userStatesConfig UserStatesConfig
 
-	// Config for the ingester lifecycle contol
-	ListenPort      *int
-	NumTokens       int
-	HeartbeatPeriod time.Duration
-	JoinAfter       time.Duration
-	ClaimOnRollout  bool
+	// Config for the ingester lifecycle control
+	ListenPort       *int
+	NumTokens        int
+	HeartbeatPeriod  time.Duration
+	JoinAfter        time.Duration
+	SearchPendingFor time.Duration
+	ClaimOnRollout   bool
 
 	// Config for chunk flushing
 	FlushCheckPeriod  time.Duration
@@ -86,9 +87,9 @@ type Config struct {
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
-	// For testing
-	Addr           string
-	Hostname       string
+	// For testing, you can override the address and UD of this ingester
+	addr           string
+	id             string
 	skipUnregister bool
 }
 
@@ -100,6 +101,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
 	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
 	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")
+	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
 	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
 
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
@@ -108,7 +110,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
 
-	addr, err := getFirstAddressOf(infName)
+	addr, err := util.GetFirstAddressOf(infName)
 	if err != nil {
 		log.Fatalf("Failed to get address of %s: %v", infName, err)
 	}
@@ -118,8 +120,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		log.Fatalf("Failed to get hostname: %v", err)
 	}
 
-	f.StringVar(&cfg.Addr, "ingester.addr", addr, "IP address to register into consul.")
-	f.StringVar(&cfg.Hostname, "ingester.id", hostname, "ID to register into consul.")
+	f.StringVar(&cfg.addr, "ingester.addr", addr, "IP address to register into consul.")
+	f.StringVar(&cfg.id, "ingester.id", hostname, "ID to register into consul.")
 }
 
 // Ingester deals with "in flight" chunks.
@@ -211,8 +213,8 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		chunkStore: chunkStore,
 		userStates: newUserStates(&cfg.userStatesConfig),
 
-		addr: fmt.Sprintf("%s:%d", cfg.Addr, *cfg.ListenPort),
-		id:   cfg.Hostname,
+		addr: fmt.Sprintf("%s:%d", cfg.addr, *cfg.ListenPort),
+		id:   cfg.id,
 
 		quit:      make(chan struct{}),
 		actorChan: make(chan func()),

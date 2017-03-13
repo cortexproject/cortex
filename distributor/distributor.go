@@ -80,7 +80,7 @@ type Config struct {
 	IngestionBurstSize  int
 
 	// for testing
-	ingesterClientFactory func(string, time.Duration) (cortex.IngesterClient, error)
+	ingesterClientFactory func(addr string, timeout time.Duration) (cortex.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

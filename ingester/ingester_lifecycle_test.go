@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/log"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/cortex/ring"
 )
 
@@ -22,23 +23,22 @@ func defaultIngesterTestConfig() Config {
 		NumTokens:       1,
 		HeartbeatPeriod: 5 * time.Second,
 		ListenPort:      func(i int) *int { return &i }(0),
-		Addr:            "localhost",
-		Hostname:        "localhost",
+		addr:            "localhost",
+		id:              "localhost",
 
 		FlushCheckPeriod: 99999 * time.Hour,
 		MaxChunkIdle:     99999 * time.Hour,
 	}
 }
 
+// TestIngesterRestart tests a restarting ingester doesn't keep adding more tokens.
 func TestIngesterRestart(t *testing.T) {
 	config := defaultIngesterTestConfig()
 	config.skipUnregister = true
 
 	{
 		ingester, err := New(config, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
 	}
@@ -49,9 +49,7 @@ func TestIngesterRestart(t *testing.T) {
 
 	{
 		ingester, err := New(config, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
 	}

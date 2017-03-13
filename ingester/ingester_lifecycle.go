@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	infName            = "eth0"
-	claimRemoteTimeout = 10 * time.Second
-	minReadyDuration   = 1 * time.Minute
+	infName                 = "eth0"
+	minReadyDuration        = 1 * time.Minute
+	pendingSearchIterations = 10
 )
 
 var (
@@ -73,7 +73,7 @@ func (i *Ingester) isReady() bool {
 	return i.ready
 }
 
-// ChangeState of the ingester, for use off the loop() goroutine.
+// ChangeState of the ingester, for use off of the loop() goroutine.
 func (i *Ingester) ChangeState(state ring.IngesterState) error {
 	err := make(chan error)
 	i.actorChan <- func() {
@@ -82,7 +82,7 @@ func (i *Ingester) ChangeState(state ring.IngesterState) error {
 	return <-err
 }
 
-// ClaimTokensFor takes all the tokans for the supplied ingester and assigns them to this ingester.
+// ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
 func (i *Ingester) ClaimTokensFor(ingesterID string) error {
 	err := make(chan error)
 
@@ -100,7 +100,7 @@ func (i *Ingester) ClaimTokensFor(ingesterID string) error {
 		}
 
 		if err := i.consul.CAS(ring.ConsulKey, claimTokens); err != nil {
-			log.Errorf("Failed to write to consul, sleeping: %v", err)
+			log.Errorf("Failed to write to consul: %v", err)
 		}
 
 		i.tokens = tokens
@@ -113,8 +113,8 @@ func (i *Ingester) ClaimTokensFor(ingesterID string) error {
 // Shutdown stops the ingester.  It will:
 // - send chunks to another ingester, if it can.
 // - otherwise, flush chunks to the chunk store.
-// - remote config from Consul.
-// - block until we'll successfully shutdown.
+// - remove config from Consul.
+// - block until we've successfully shutdown.
 func (i *Ingester) Shutdown() {
 	// This will prevent us accepting any more samples
 	i.stopLock.Lock()
@@ -185,7 +185,7 @@ loop:
 		}
 	}
 
-	// Shutdown order is important!
+	// Mark ourselved as Leaving so no more samples are send to us.
 	i.changeState(ring.LEAVING)
 
 	flushRequired := true
@@ -195,9 +195,13 @@ loop:
 		}
 		flushRequired = false
 	}
-
 	if flushRequired {
 		i.flushAllChunks()
+	}
+
+	// Close the flush queues, will wait for chunks to be flushed.
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
 	}
 
 	if !i.cfg.skipUnregister {
@@ -205,10 +209,6 @@ loop:
 			log.Fatalf("Failed to unregister from consul: %v", err)
 		}
 		log.Infof("Ingester removed from consul")
-	}
-
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
 	}
 }
 
@@ -234,11 +234,7 @@ func (i *Ingester) initRing() error {
 
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
 		i.state = ingesterDesc.State
-		for _, token := range ringDesc.Tokens {
-			if token.Ingester == i.id {
-				i.tokens = append(i.tokens, token.Token)
-			}
-		}
+		i.tokens, _ = ringDesc.TokensFor(i.id)
 
 		log.Infof("Existing entry found in ring with state=%s, tokens=%v.", i.state, i.tokens)
 		return ringDesc, true, nil
@@ -256,15 +252,7 @@ func (i *Ingester) autoJoin() error {
 		}
 
 		// At this point, we should not have any tokens, and we should be in PENDING state.
-
-		var takenTokens, myTokens []uint32
-		for _, token := range ringDesc.Tokens {
-			takenTokens = append(takenTokens, token.Token)
-			if token.Ingester == i.id {
-				myTokens = append(myTokens, token.Token)
-			}
-		}
-
+		myTokens, takenTokens := ringDesc.TokensFor(i.id)
 		if len(myTokens) > 0 {
 			log.Errorf("%d tokens already exist for this ingester - wasn't expecting any!", len(myTokens))
 		}
@@ -308,7 +296,7 @@ func (i *Ingester) updateConsul() error {
 	})
 }
 
-// changeState updates consul with state transistions for us.  NB this must be
+// changeState updates consul with state transitions for us.  NB this must be
 // called from loop()!  Use ChangeState for calls from outside of loop().
 func (i *Ingester) changeState(state ring.IngesterState) error {
 	// Only the following state transitions can be triggered externally
@@ -333,7 +321,7 @@ func (i *Ingester) transferChunks() error {
 	}
 
 	log.Infof("Sending chunks to %v", targetIngester.Addr)
-	client, err := client.MakeIngesterClient(targetIngester.Addr, claimRemoteTimeout)
+	client, err := client.MakeIngesterClient(targetIngester.Addr, i.cfg.SearchPendingFor)
 	if err != nil {
 		return err
 	}
@@ -380,7 +368,7 @@ func (i *Ingester) transferChunks() error {
 
 // findTargetIngester finds an ingester in PENDING state.
 func (i *Ingester) findTargetIngester() *ring.IngesterDesc {
-	for j := 0; j < 10; j++ {
+	for j := 0; j < pendingSearchIterations; j++ {
 		ringDesc, err := i.consul.Get(ring.ConsulKey)
 		if err != nil {
 			log.Errorf("Error talking to consul: %v", err)
@@ -391,7 +379,7 @@ func (i *Ingester) findTargetIngester() *ring.IngesterDesc {
 		ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
 		if len(ingesters) <= 0 {
 			log.Warnf("No pending ingesters found...")
-			time.Sleep(1 * time.Second)
+			time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
 			continue
 		}
 

@@ -59,7 +59,8 @@ func (d *Desc) RemoveIngester(id string) {
 	d.Tokens = output
 }
 
-// ClaimTokens transfters all the tokens from one ingester to another.
+// ClaimTokens transfers all the tokens from one ingester to another,
+// returning the claimed token.
 func (d *Desc) ClaimTokens(from, to string) []uint32 {
 	var result []uint32
 	for i := 0; i < len(d.Tokens); i++ {
@@ -71,7 +72,7 @@ func (d *Desc) ClaimTokens(from, to string) []uint32 {
 	return result
 }
 
-// FindIngestersByState returns the list of ingesterd in the given state
+// FindIngestersByState returns the list of ingesters in the given state
 func (d *Desc) FindIngestersByState(state IngesterState) []*IngesterDesc {
 	var result []*IngesterDesc
 	for _, ing := range d.Ingesters {
@@ -93,4 +94,16 @@ func (d *Desc) Ready(heartbeatTimeout time.Duration) bool {
 	}
 
 	return len(d.Tokens) > 0
+}
+
+// TokensFor partitions the tokens into those for the given ID, and those for others.
+func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
+	var takenTokens, myTokens []uint32
+	for _, token := range d.Tokens {
+		takenTokens = append(takenTokens, token.Token)
+		if token.Ingester == id {
+			myTokens = append(myTokens, token.Token)
+		}
+	}
+	return myTokens, takenTokens
 }

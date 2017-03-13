@@ -9,4 +9,6 @@ const (
 	ErrInvalidLabel              = errors.Error("sample invalid label")
 	ErrUserSeriesLimitExceeded   = errors.Error("per-user series limit exceeded")
 	ErrMetricSeriesLimitExceeded = errors.Error("per-metric series limit exceeded")
+	ErrLabelNameTooLong          = errors.Error("label name too long")
+	ErrLabelValueTooLong         = errors.Error("label value too long")
 )

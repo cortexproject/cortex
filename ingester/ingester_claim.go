@@ -49,6 +49,9 @@ func (i *Ingester) TransferChunks(stream cortex.Ingester_TransferChunksServer) e
 			return err
 		}
 
+		// We can't send "extra" fiels with a streaming call, so we repeat
+		// wireSeries.FromIngesterId and assume it is the same every time
+		// tound this loop.
 		fromIngesterID = wireSeries.FromIngesterId
 		metric := util.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.Inject(stream.Context(), wireSeries.UserId)

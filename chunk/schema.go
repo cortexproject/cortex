@@ -648,7 +648,6 @@ func (v6Entries) GetReadMetricLabelValueEntries(_, through uint32, tableName, ha
 			TableName:  tableName,
 			HashValue:  hashKey + ":" + string(labelName),
 			RangeValue: buildRangeKey(encodedThroughBytes),
-			Value:      []byte(labelValue),
 		},
 	}, nil
 }

@@ -52,6 +52,10 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		{"root", "GET", "/", a.admin},
 		{"get_config", "GET", "/api/configs/org/cortex", a.getConfig},
 		{"set_config", "POST", "/api/configs/org/cortex", a.setConfig},
+		// Dedicated APIs for updating rules config. In future, these *must*
+		// be used.
+		{"get_rules", "GET", "/api/configs/rules", a.getConfig},
+		{"set_rules", "POST", "/api/configs/rules", a.setConfig},
 		// Internal APIs.
 		{"private_get_configs", "GET", "/private/api/configs/org/cortex", a.getConfigs},
 	} {

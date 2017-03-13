@@ -120,20 +120,20 @@ func getConfigs(endpoint string, timeout time.Duration, since ConfigID) (*Cortex
 	return configsFromJSON(res.Body)
 }
 
-// AlertConfigsAPI allows retrieving alert configs.
-type AlertConfigsAPI struct {
+// AlertManagerConfigsAPI allows retrieving alert configs.
+type AlertManagerConfigsAPI struct {
 	URL     *url.URL
 	Timeout time.Duration
 }
 
 // GetConfigs returns all Cortex configurations from a configs API server
 // that have been updated after the given ConfigID was last updated.
-func (c *AlertConfigsAPI) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
+func (c *AlertManagerConfigsAPI) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
-	endpoint := fmt.Sprintf("%s/private/api/prom/alerts%s", c.URL.String(), suffix)
+	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.URL.String(), suffix)
 	return getConfigs(endpoint, c.Timeout, since)
 }
 
@@ -150,6 +150,6 @@ func (c *RulesAPI) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
-	endpoint := fmt.Sprintf("%s/private/api/prom/rules%s", c.URL.String(), suffix)
+	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.URL.String(), suffix)
 	return getConfigs(endpoint, c.Timeout, since)
 }

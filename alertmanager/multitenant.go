@@ -86,7 +86,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
-	configsAPI configs.AlertConfigsAPI
+	configsAPI configs.AlertManagerConfigsAPI
 
 	// All the organization configurations that we have. Only used for instrumentation.
 	cfgs map[string]configs.CortexConfig
@@ -117,7 +117,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 
 	mrouter.ConnectionMaker.InitiateConnections(cfg.MeshPeers.slice(), true)
 
-	configsAPI := configs.AlertConfigsAPI{
+	configsAPI := configs.AlertManagerConfigsAPI{
 		URL:     cfg.ConfigsAPIURL.URL,
 		Timeout: cfg.ClientTimeout,
 	}

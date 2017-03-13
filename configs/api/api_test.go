@@ -14,18 +14,18 @@ import (
 )
 
 const (
-	rulesEndpoint        = "/api/prom/rules"
-	rulesPrivateEndpoint = "/private/api/prom/rules"
+	rulesEndpoint        = "/api/prom/configs/rules"
+	rulesPrivateEndpoint = "/private/api/prom/configs/rules"
 
-	alertConfigEndpoint        = "/api/prom/alerts"
-	alertConfigPrivateEndpoint = "/private/api/prom/alerts"
+	alertManagerConfigEndpoint        = "/api/prom/configs/alertmanager"
+	alertManagerConfigPrivateEndpoint = "/private/api/prom/configs/alertmanager"
 )
 
 var (
-	rulesClient       = configurable{rulesEndpoint, rulesPrivateEndpoint}
-	alertConfigClient = configurable{alertConfigEndpoint, alertConfigPrivateEndpoint}
+	rulesClient              = configurable{rulesEndpoint, rulesPrivateEndpoint}
+	alertManagerConfigClient = configurable{alertManagerConfigEndpoint, alertManagerConfigPrivateEndpoint}
 
-	allClients = []configurable{rulesClient, alertConfigClient}
+	allClients = []configurable{rulesClient, alertManagerConfigClient}
 )
 
 // The root page returns 200 OK.

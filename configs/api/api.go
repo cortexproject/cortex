@@ -53,15 +53,15 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		// Deprecated public APIs
 		{"get_config", "GET", "/api/configs/org/cortex", a.getConfig},
 		{"set_config", "POST", "/api/configs/org/cortex", a.setConfig},
-		// Dedicated APIs for updating rules config. In future, these *must*
+		// Dedicated APIs for updating rules config. In the future, these *must*
 		// be used.
-		{"get_rules", "GET", "/api/prom/rules", a.getConfig},
-		{"set_rules", "POST", "/api/prom/rules", a.setConfig},
-		{"get_alert_config", "GET", "/api/prom/alerts", a.getConfig},
-		{"set_alert_config", "POST", "/api/prom/alerts", a.setConfig},
+		{"get_rules", "GET", "/api/prom/configs/rules", a.getConfig},
+		{"set_rules", "POST", "/api/prom/configs/rules", a.setConfig},
+		{"get_alertmanager_config", "GET", "/api/prom/configs/alertmanager", a.getConfig},
+		{"set_alertmanager_config", "POST", "/api/prom/configs/alertmanager", a.setConfig},
 		// Internal APIs.
-		{"private_get_rules", "GET", "/private/api/prom/rules", a.getConfigs},
-		{"private_get_alerts", "GET", "/private/api/prom/alerts", a.getConfigs},
+		{"private_get_rules", "GET", "/private/api/prom/configs/rules", a.getConfigs},
+		{"private_get_alertmanager_config", "GET", "/private/api/prom/configs/alertmanager", a.getConfigs},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}

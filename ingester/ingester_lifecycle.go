@@ -372,7 +372,7 @@ func (i *Ingester) findTargetIngester() *ring.IngesterDesc {
 		ringDesc, err := i.consul.Get(ring.ConsulKey)
 		if err != nil {
 			log.Errorf("Error talking to consul: %v", err)
-			time.Sleep(1 * time.Second)
+			time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
 			continue
 		}
 

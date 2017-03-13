@@ -8,14 +8,21 @@ QUAY_PREFIX=quay.io/
 IMAGES=$(make images)
 IMAGE_TAG=$(./tools/image-tag)
 
-for image in ${IMAGES}; do
-    if [[ "$image" == *"build"* ]]; then
-        continue
-    fi
-    docker push ${image}:${IMAGE_TAG}
+push_image() {
+	local image="$1"
+	docker push ${image}:${IMAGE_TAG}
 
-    # remove the quey prefix and push to docker hub
-    docker_hub_image=${image#$QUAY_PREFIX}
-    docker tag ${image}:${IMAGE_TAG} ${docker_hub_image}:${IMAGE_TAG}
-    docker push ${docker_hub_image}:${IMAGE_TAG}
+	# remove the quey prefix and push to docker hub
+	docker_hub_image=${image#$QUAY_PREFIX}
+	docker tag ${image}:${IMAGE_TAG} ${docker_hub_image}:${IMAGE_TAG}
+	docker push ${docker_hub_image}:${IMAGE_TAG}
+}
+
+for image in ${IMAGES}; do
+	if [[ "$image" == *"build"* ]]; then
+		continue
+	fi
+	push_image "${image}" &
 done
+
+wait

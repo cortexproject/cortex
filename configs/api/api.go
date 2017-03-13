@@ -59,8 +59,6 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		{"set_rules", "POST", "/api/prom/rules", a.setConfig},
 		{"get_alert_config", "GET", "/api/prom/alerts", a.getConfig},
 		{"set_alert_config", "POST", "/api/prom/alerts", a.setConfig},
-		// Deprecated internal APIs.
-		{"private_get_configs", "GET", "/private/api/configs/org/cortex", a.getConfigs},
 		// Internal APIs.
 		{"private_get_rules", "GET", "/private/api/prom/rules", a.getConfigs},
 		{"private_get_alerts", "GET", "/private/api/prom/alerts", a.getConfigs},

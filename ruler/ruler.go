@@ -252,7 +252,7 @@ type Server struct {
 
 // NewServer makes a new rule processing server.
 func NewServer(cfg Config, ruler *Ruler) (*Server, error) {
-	c := configs.API{
+	c := configs.RulesAPI{
 		URL:     cfg.ConfigsAPIURL.URL,
 		Timeout: cfg.ClientTimeout,
 	}

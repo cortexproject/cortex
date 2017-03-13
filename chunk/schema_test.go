@@ -392,6 +392,7 @@ func TestSchemaRangeKey(t *testing.T) {
 		base64Keys    = v3Schema(cfg)
 		labelBuckets  = v4Schema(cfg)
 		tsRangeKeys   = v5Schema(cfg)
+		v6RangeKeys   = v6Schema(cfg)
 		metric        = model.Metric{
 			model.MetricNameLabel: metricName,
 			"bar": "bary",
@@ -399,16 +400,18 @@ func TestSchemaRangeKey(t *testing.T) {
 		}
 	)
 
-	mkEntries := func(hashKey string, callback func(labelName model.LabelName, labelValue model.LabelValue) string) []IndexEntry {
+	mkEntries := func(hashKey string, callback func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte)) []IndexEntry {
 		result := []IndexEntry{}
 		for labelName, labelValue := range metric {
 			if labelName == model.MetricNameLabel {
 				continue
 			}
+			rangeValue, value := callback(labelName, labelValue)
 			result = append(result, IndexEntry{
 				TableName:  table,
 				HashValue:  hashKey,
-				RangeValue: []byte(callback(labelName, labelValue)),
+				RangeValue: rangeValue,
+				Value:      value,
 			})
 		}
 		return result
@@ -421,21 +424,21 @@ func TestSchemaRangeKey(t *testing.T) {
 		// Basic test case for the various bucketing schemes
 		{
 			hourlyBuckets,
-			mkEntries("userid:0:foo", func(labelName model.LabelName, labelValue model.LabelValue) string {
-				return fmt.Sprintf("%s\x00%s\x00%s\x00", labelName, labelValue, chunkID)
+			mkEntries("userid:0:foo", func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte) {
+				return []byte(fmt.Sprintf("%s\x00%s\x00%s\x00", labelName, labelValue, chunkID)), nil
 			}),
 		},
 		{
 			dailyBuckets,
-			mkEntries("userid:d0:foo", func(labelName model.LabelName, labelValue model.LabelValue) string {
-				return fmt.Sprintf("%s\x00%s\x00%s\x00", labelName, labelValue, chunkID)
+			mkEntries("userid:d0:foo", func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte) {
+				return []byte(fmt.Sprintf("%s\x00%s\x00%s\x00", labelName, labelValue, chunkID)), nil
 			}),
 		},
 		{
 			base64Keys,
-			mkEntries("userid:d0:foo", func(labelName model.LabelName, labelValue model.LabelValue) string {
+			mkEntries("userid:d0:foo", func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte) {
 				encodedValue := base64.RawStdEncoding.EncodeToString([]byte(labelValue))
-				return fmt.Sprintf("%s\x00%s\x00%s\x001\x00", labelName, encodedValue, chunkID)
+				return []byte(fmt.Sprintf("%s\x00%s\x00%s\x001\x00", labelName, encodedValue, chunkID)), nil
 			}),
 		},
 		{
@@ -478,6 +481,28 @@ func TestSchemaRangeKey(t *testing.T) {
 				},
 			},
 		},
+		{
+			v6RangeKeys,
+			[]IndexEntry{
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x003\x00"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:bar",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
+					Value:      []byte("bary"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:baz",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
+					Value:      []byte("bazy"),
+				},
+			},
+		},
 	} {
 		t.Run(fmt.Sprintf("TestSchameRangeKey[%d]", i), func(t *testing.T) {
 			have, err := tc.Schema.GetWriteEntries(
@@ -496,7 +521,7 @@ func TestSchemaRangeKey(t *testing.T) {
 
 			// Test we can parse the resulting range keys
 			for _, entry := range have {
-				_, _, err := parseRangeValue(entry.RangeValue)
+				_, _, err := parseRangeValue(entry.RangeValue, entry.Value)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -534,10 +559,10 @@ func TestParseRangeValue(t *testing.T) {
 		{[]byte("a1b2c3d4\x00Y29kZQ\x002:1484661279394:1484664879394\x004\x00"),
 			"code", "2:1484661279394:1484664879394"},
 	} {
-		value, chunkID, err := parseRangeValue(c.encoded)
+		chunk, labelValue, err := parseRangeValue(c.encoded, nil)
 		assert.Nil(t, err, "parseRangeValue error")
-		assert.Equal(t, model.LabelValue(c.value), value, "value")
-		assert.Equal(t, c.chunkID, chunkID, "chunkID")
+		assert.Equal(t, model.LabelValue(c.value), labelValue, "value")
+		assert.Equal(t, c.chunkID, chunk.ID, "chunkID")
 	}
 }
 

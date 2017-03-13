@@ -3,11 +3,11 @@ package chunk
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"sort"
 	"sync"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
 )
 
@@ -21,7 +21,10 @@ type mockTable struct {
 	write, read int64
 }
 
-type mockItem []byte
+type mockItem struct {
+	rangeValue []byte
+	value      []byte
+}
 
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
@@ -100,21 +103,24 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 			return fmt.Errorf("table not found")
 		}
 
-		log.Printf("Write %s/%x", req.hashValue, req.rangeValue)
+		log.Debugf("Write %s/%x", req.hashValue, req.rangeValue)
 
 		items := table.items[req.hashValue]
 
 		// insert in order
 		i := sort.Search(len(items), func(i int) bool {
-			return bytes.Compare(items[i], req.rangeValue) >= 0
+			return bytes.Compare(items[i].rangeValue, req.rangeValue) >= 0
 		})
-		if i >= len(items) || !bytes.Equal(items[i], req.rangeValue) {
-			items = append(items, nil)
+		if i >= len(items) || !bytes.Equal(items[i].rangeValue, req.rangeValue) {
+			items = append(items, mockItem{})
 			copy(items[i+1:], items[i:])
 		} else {
 			return fmt.Errorf("Dupe write")
 		}
-		items[i] = req.rangeValue
+		items[i] = mockItem{
+			rangeValue: req.rangeValue,
+			value:      req.value,
+		}
 
 		table.items[req.hashValue] = items
 	}
@@ -136,44 +142,44 @@ func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback
 	}
 
 	if entry.RangeValuePrefix != nil {
-		log.Printf("Lookup prefix %s/%x (%d)", entry.HashValue, entry.RangeValuePrefix, len(items))
+		log.Debugf("Lookup prefix %s/%x (%d)", entry.HashValue, entry.RangeValuePrefix, len(items))
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
-			if bytes.Compare(items[i], entry.RangeValuePrefix) > 0 {
+			if bytes.Compare(items[i].rangeValue, entry.RangeValuePrefix) > 0 {
 				return true
 			}
-			return bytes.HasPrefix(items[i], entry.RangeValuePrefix)
+			return bytes.HasPrefix(items[i].rangeValue, entry.RangeValuePrefix)
 		})
 		j := sort.Search(len(items)-i, func(j int) bool {
-			if bytes.Compare(items[i+j], entry.RangeValuePrefix) < 0 {
+			if bytes.Compare(items[i+j].rangeValue, entry.RangeValuePrefix) < 0 {
 				return false
 			}
-			return !bytes.HasPrefix(items[i+j], entry.RangeValuePrefix)
+			return !bytes.HasPrefix(items[i+j].rangeValue, entry.RangeValuePrefix)
 		})
 
-		log.Printf("  found range [%d:%d)", i, i+j)
+		log.Debugf("  found range [%d:%d)", i, i+j)
 		if i > len(items) || j == 0 {
 			return nil
 		}
 		items = items[i : i+j]
 
 	} else if entry.RangeValueStart != nil {
-		log.Printf("Lookup range %s/%x -> ... (%d)", entry.HashValue, entry.RangeValueStart, len(items))
+		log.Debugf("Lookup range %s/%x -> ... (%d)", entry.HashValue, entry.RangeValueStart, len(items))
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
-			return bytes.Compare(items[i], entry.RangeValueStart) >= 0
+			return bytes.Compare(items[i].rangeValue, entry.RangeValueStart) >= 0
 		})
 
-		log.Printf("  found range [%d)", i)
+		log.Debugf("  found range [%d)", i)
 		if i > len(items) {
 			return nil
 		}
 		items = items[i:]
 
 	} else {
-		log.Printf("Lookup %s/* (%d)", entry.HashValue, len(items))
+		log.Debugf("Lookup %s/* (%d)", entry.HashValue, len(items))
 	}
 
 	result := mockReadBatch{}
@@ -188,25 +194,27 @@ func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback
 type mockWriteBatch []struct {
 	tableName, hashValue string
 	rangeValue           []byte
+	value                []byte
 }
 
-func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte) {
+func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
 	*b = append(*b, struct {
 		tableName, hashValue string
 		rangeValue           []byte
-	}{tableName, hashValue, rangeValue})
+		value                []byte
+	}{tableName, hashValue, rangeValue, value})
 }
 
-type mockReadBatch [][]byte
+type mockReadBatch []mockItem
 
 func (b mockReadBatch) Len() int {
 	return len(b)
 }
 
 func (b mockReadBatch) RangeValue(i int) []byte {
-	return b[i]
+	return b[i].rangeValue
 }
 
 func (b mockReadBatch) Value(i int) []byte {
-	return nil
+	return b[i].value
 }

@@ -22,15 +22,12 @@ type StorageClient interface {
 
 // WriteBatch represents a batch of writes
 type WriteBatch interface {
-	Add(tableName, hashValue string, rangeValue []byte)
+	Add(tableName, hashValue string, rangeValue []byte, value []byte)
 }
 
 // ReadBatch represents the results of a QueryPages
 type ReadBatch interface {
 	Len() int
 	RangeValue(index int) []byte
-
-	// Value is deprecated - it exists to support an old schema where the chunk
-	// metadata was written to the chunk index.
 	Value(index int) []byte
 }

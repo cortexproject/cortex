@@ -22,7 +22,7 @@ import (
 const (
 	hashKey  = "h"
 	rangeKey = "r"
-	chunkKey = "c"
+	valueKey = "c"
 
 	// For dynamodb errors
 	tableNameLabel   = "table"
@@ -291,13 +291,19 @@ func (d dynamoClientAdapter) UpdateTable(name string, readCapacity, writeCapacit
 
 type dynamoDBWriteBatch map[string][]*dynamodb.WriteRequest
 
-func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte) {
+func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+	item := map[string]*dynamodb.AttributeValue{
+		hashKey:  {S: aws.String(hashValue)},
+		rangeKey: {B: rangeValue},
+	}
+
+	if value != nil {
+		item[valueKey] = &dynamodb.AttributeValue{B: value}
+	}
+
 	b[tableName] = append(b[tableName], &dynamodb.WriteRequest{
 		PutRequest: &dynamodb.PutRequest{
-			Item: map[string]*dynamodb.AttributeValue{
-				hashKey:  {S: aws.String(hashValue)},
-				rangeKey: {B: rangeValue},
-			},
+			Item: item,
 		},
 	})
 }
@@ -313,7 +319,7 @@ func (b dynamoDBReadBatch) RangeValue(i int) []byte {
 }
 
 func (b dynamoDBReadBatch) Value(i int) []byte {
-	chunkValue, ok := b[i][chunkKey]
+	chunkValue, ok := b[i][valueKey]
 	if !ok {
 		return nil
 	}

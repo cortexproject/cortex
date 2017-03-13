@@ -17,7 +17,7 @@ UPTODATE := .uptodate
 	touch $@
 
 # Get a list of directories containing Dockerfiles
-DOCKERFILES := $(shell find . -type f -name Dockerfile ! -path "./tools/*" ! -path "./vendor/*")
+DOCKERFILES := $(shell find . -name tools -prune -o -name vendor -prune -o -type f -name 'Dockerfile' -print)
 UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES))
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
@@ -26,14 +26,14 @@ images:
 	@echo > /dev/null
 
 # Generating proto code is automated.
-PROTO_DEFS := $(shell find . -type f -name "*.proto" ! -path "./tools/*" ! -path "./vendor/*")
+PROTO_DEFS := $(shell find . -name tools -prune -o -name vendor -prune -o -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
 # Building binaries is now automated.  The convention is to build a binary
 # for every directory with main.go in it, in the ./cmd directory.
-MAIN_GO := $(shell find ./cmd -type f -name main.go ! -path "./tools/*" ! -path "./vendor/*")
+MAIN_GO := $(shell find . -name tools -prune -o -name vendor -prune -o -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
-GO_FILES := $(shell find . -name '*.go' ! -path "./cmd/*" ! -path "./tools/*" ! -path "./vendor/*")
+GO_FILES := $(shell find . -name tools -prune -o -name vendor -prune -o -name cmd -prune -o -type f -name '*.go' -print)
 define dep_exe
 $(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS)
 $(dir $(1))$(UPTODATE): $(1)
@@ -67,10 +67,24 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 
 $(EXES) $(PROTO_GOS) lint test shell: build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
-	$(SUDO) docker run $(RM) -ti \
+	$(SUDO) time docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
 		$(IMAGE_PREFIX)build $@
+
+configs-integration-test: build/$(UPTODATE)
+	@mkdir -p $(shell pwd)/.pkg
+	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
+	$(SUDO) docker run $(RM) -ti \
+		-v $(shell pwd)/.pkg:/go/pkg \
+		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
+		-v $(shell pwd)/cmd/configs/migrations:/migrations \
+		--workdir /go/src/github.com/weaveworks/cortex \
+		--link "$$DB_CONTAINER":configs-db.cortex.local \
+		$(IMAGE_PREFIX)build $@; \
+	status=$$?; \
+	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
+	exit $$status
 
 else
 
@@ -90,20 +104,10 @@ test: build/$(UPTODATE)
 shell: build/$(UPTODATE)
 	bash
 
-endif
+configs-integration-test:
+	/bin/bash -c "go test -tags netgo,integration -timeout 30s ./configs/..."
 
-configs-integration-test: cmd/configs/$(UPTODATE)
-	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
-	docker run $(RM) \
-		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
-		-v $(shell pwd)/cmd/configs/migrations:/migrations \
-		--workdir /go/src/github.com/weaveworks/cortex \
-		--link "$$DB_CONTAINER":configs-db.cortex.local \
-		golang:1.8.0 \
-		/bin/bash -c "go test -tags integration -timeout 30s ./configs/..."; \
-	status=$$?; \
-	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
-	exit $$status
+endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true

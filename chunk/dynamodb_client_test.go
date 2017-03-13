@@ -102,7 +102,7 @@ func TestDynamoDBClient(t *testing.T) {
 	}
 	batch := client.NewWriteBatch()
 	for i := 0; i < 30; i++ {
-		batch.Add("table", fmt.Sprintf("hash%d", i), []byte(fmt.Sprintf("range%d", i)))
+		batch.Add("table", fmt.Sprintf("hash%d", i), []byte(fmt.Sprintf("range%d", i)), nil)
 	}
 	dynamoDB.createTable("table")
 

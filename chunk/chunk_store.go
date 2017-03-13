@@ -312,7 +312,7 @@ func (c *Store) lookupMatchers(ctx context.Context, userID string, from, through
 	incomingChunkSets := make(chan ByID)
 	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
-		go func(matcher *metric.LabelMatcher) {
+		go func(matcher metric.LabelMatcher) {
 			var entries []IndexEntry
 			var err error
 			if matcher.Type != metric.Equal {
@@ -324,13 +324,13 @@ func (c *Store) lookupMatchers(ctx context.Context, userID string, from, through
 				incomingErrors <- err
 				return
 			}
-			incoming, err := c.lookupEntries(ctx, entries, matcher)
+			incoming, err := c.lookupEntries(ctx, entries, &matcher)
 			if err != nil {
 				incomingErrors <- err
 			} else {
 				incomingChunkSets <- incoming
 			}
-		}(matcher)
+		}(*matcher)
 	}
 
 	var chunkSets []ByID

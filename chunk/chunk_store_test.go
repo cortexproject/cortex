@@ -62,69 +62,69 @@ func TestChunkStore(t *testing.T) {
 		name string
 		fn   func(cfg SchemaConfig) Schema
 	}{
-		{"v1 schema", v1Schema},
-		{"v2 schema", v2Schema},
-		{"v3 schema", v3Schema},
-		{"v4 schema", v4Schema},
+		//{"v1 schema", v1Schema},
+		//{"v2 schema", v2Schema},
+		//{"v3 schema", v3Schema},
+		//{"v4 schema", v4Schema},
 		{"v5 schema", v5Schema},
-		{"v6 schema", v6Schema},
+		//{"v6 schema", v6Schema},
 	}
 
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
 
 	for _, tc := range []struct {
-		name     string
+		query    string
 		expect   []Chunk
 		matchers []*metric.LabelMatcher
 	}{
 		{
-			"Just name label",
+			`foo`,
 			[]Chunk{chunk1, chunk2},
 			[]*metric.LabelMatcher{nameMatcher},
 		},
 		{
-			"Empty matcher",
+			`foo{flip=""}`,
 			[]Chunk{chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "flip", "")},
 		},
 		{
-			"Equal bar=baz",
+			`foo{bar="baz"}`,
 			[]Chunk{chunk1},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 		{
-			"Equal bar=beep",
+			`foo{bar="beep"}`,
 			[]Chunk{chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "beep")},
 		},
 		{
-			"Equal toms=code",
+			`foo{toms="code"}`,
 			[]Chunk{chunk1, chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code")},
 		},
 		{
-			"Not equal",
+			`foo{bar!="baz"}`,
 			[]Chunk{chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.NotEqual, "bar", "baz")},
 		},
 		{
-			"Regex match",
+			`foo{bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
 		},
 		{
-			"Multiple matchers",
+			`foo{toms="code", bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
 		},
 		{
-			"Multiple matchers II",
+			`foo{toms="code", bar="baz"}`,
 			[]Chunk{chunk1}, []*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 	} {
 		for _, schema := range schemas {
-			t.Run(fmt.Sprintf("%s/%s", tc.name, schema.name), func(t *testing.T) {
-				log.Infoln("========= Running test", tc.name, "with schema", schema.name)
+			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
+				log.Infoln("========= Running query", tc.query, "with schema", schema.name)
 				dynamoDB := NewMockStorage()
 				setupDynamodb(t, dynamoDB)
 				store, err := NewStore(StoreConfig{
@@ -146,7 +146,7 @@ func TestChunkStore(t *testing.T) {
 				}
 
 				if !reflect.DeepEqual(tc.expect, chunks) {
-					t.Fatalf("%s: wrong chunks - %s", tc.name, test.Diff(tc.expect, chunks))
+					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks))
 				}
 			})
 		}

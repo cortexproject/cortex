@@ -1,8 +1,11 @@
 package chunk
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"sort"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -130,10 +133,6 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}, nil
 }
 
-func chunkName(userID, chunkID string) string {
-	return fmt.Sprintf("%s/%s", userID, chunkID)
-}
-
 // Put implements ChunkStore
 func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 	userID, err := user.Extract(ctx)
@@ -141,7 +140,19 @@ func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 		return err
 	}
 
-	err = c.putChunks(ctx, userID, chunks)
+	// Encode the chunk first, as a side effect is to calculate the checksum.
+	bufs := [][]byte{}
+	keys := []string{}
+	for i := range chunks {
+		encoded, err := chunks[i].encode()
+		if err != nil {
+			return err
+		}
+		bufs = append(bufs, encoded)
+		keys = append(keys, chunks[i].externalKey())
+	}
+
+	err = c.putChunks(ctx, keys, bufs)
 	if err != nil {
 		return err
 	}
@@ -150,16 +161,16 @@ func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 }
 
 // putChunks writes a collection of chunks to S3 in parallel.
-func (c *Store) putChunks(ctx context.Context, userID string, chunks []Chunk) error {
+func (c *Store) putChunks(ctx context.Context, keys []string, bufs [][]byte) error {
 	incomingErrors := make(chan error)
-	for _, chunk := range chunks {
-		go func(chunk Chunk) {
-			incomingErrors <- c.putChunk(ctx, userID, &chunk)
-		}(chunk)
+	for i := range bufs {
+		go func(i int) {
+			incomingErrors <- c.putChunk(ctx, keys[i], bufs[i])
+		}(i)
 	}
 
 	var lastErr error
-	for range chunks {
+	for range keys {
 		err := <-incomingErrors
 		if err != nil {
 			lastErr = err
@@ -169,18 +180,13 @@ func (c *Store) putChunks(ctx context.Context, userID string, chunks []Chunk) er
 }
 
 // putChunk puts a chunk into S3.
-func (c *Store) putChunk(ctx context.Context, userID string, chunk *Chunk) error {
-	body, err := chunk.reader()
-	if err != nil {
-		return err
-	}
-
-	err = instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
+func (c *Store) putChunk(ctx context.Context, key string, buf []byte) error {
+	err := instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
 		var err error
 		_, err = c.s3.PutObject(&s3.PutObjectInput{
-			Body:   body,
+			Body:   bytes.NewReader(buf),
 			Bucket: aws.String(c.bucketName),
-			Key:    aws.String(chunkName(userID, chunk.ID)),
+			Key:    aws.String(key),
 		})
 		return err
 	})
@@ -188,8 +194,8 @@ func (c *Store) putChunk(ctx context.Context, userID string, chunk *Chunk) error
 		return err
 	}
 
-	if err = c.cache.StoreChunkData(ctx, userID, *chunk); err != nil {
-		log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
+	if err := c.cache.StoreChunkData(ctx, key, buf); err != nil {
+		log.Warnf("Could not store %v in chunk cache: %v", key, err)
 	}
 	return nil
 }
@@ -213,7 +219,7 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 			return nil, err
 		}
 
-		entries, err := c.schema.GetWriteEntries(chunk.From, chunk.Through, userID, metricName, chunk.Metric, chunk.ID)
+		entries, err := c.schema.GetWriteEntries(chunk.From, chunk.Through, userID, metricName, chunk.Metric, chunk.externalKey())
 		if err != nil {
 			return nil, err
 		}
@@ -233,15 +239,10 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
 	}
 
-	userID, err := user.Extract(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 
 	// Fetch chunk descriptors (just ID really) from storage
-	chunks, err := c.lookupMatchers(ctx, userID, from, through, matchers)
+	chunks, err := c.lookupMatchers(ctx, from, through, matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -249,30 +250,29 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	// Filter out chunks that are not in the selected time range.
 	filtered := make([]Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
-		_, chunkFrom, chunkThrough, err := parseChunkID(chunk.ID)
 		if err != nil {
 			return nil, err
 		}
-		if chunkThrough < from || through < chunkFrom {
+		if chunk.Through < from || through < chunk.From {
 			continue
 		}
 		filtered = append(filtered, chunk)
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	fromCache, missing, err := c.cache.FetchChunkData(ctx, userID, filtered)
+	fromCache, missing, err := c.cache.FetchChunkData(ctx, filtered)
 	if err != nil {
 		log.Warnf("Error fetching from cache: %v", err)
 	}
 
-	fromS3, err := c.fetchChunkData(ctx, userID, missing)
+	fromS3, err := c.fetchChunkData(ctx, missing)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = c.cache.StoreChunks(ctx, userID, fromS3); err != nil {
-		log.Warnf("Could not store chunks in chunk cache: %v", err)
-	}
+	//if err = c.cache.StoreChunks(ctx, userID, fromS3); err != nil {
+	//	log.Warnf("Could not store chunks in chunk cache: %v", err)
+	//}
 
 	// TODO instead of doing this sort, propagate an index and assign chunks
 	// into the result based on that index.
@@ -295,8 +295,13 @@ outer:
 	return filteredChunks, nil
 }
 
-func (c *Store) lookupMatchers(ctx context.Context, userID string, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
+func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
 	metricName, matchers, err := util.ExtractMetricNameFromMatchers(matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := user.Extract(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +384,7 @@ func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metr
 	var chunkSet ByID
 	var processingError error
 	if err := c.storage.QueryPages(ctx, entry, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
-		processingError = processResponse(resp, &chunkSet, matcher)
+		processingError = processResponse(ctx, resp, &chunkSet, matcher)
 		return processingError != nil && !lastPage
 	}); err != nil {
 		log.Errorf("Error querying storage: %v", err)
@@ -393,15 +398,29 @@ func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metr
 	return chunkSet, nil
 }
 
-func processResponse(resp ReadBatch, chunkSet *ByID, matcher *metric.LabelMatcher) error {
+func processResponse(ctx context.Context, resp ReadBatch, chunkSet *ByID, matcher *metric.LabelMatcher) error {
+	userID, err := user.Extract(ctx)
+	if err != nil {
+		return err
+	}
+
 	for i := 0; i < resp.Len(); i++ {
-		rangeValue := resp.RangeValue(i)
-		if rangeValue == nil {
-			return fmt.Errorf("invalid item: %d", i)
-		}
-		chunk, labelValue, err := parseRangeValue(rangeValue, resp.Value(i))
+		chunkKey, labelValue, metadataInIndex, err := parseRangeValue(resp.RangeValue(i), resp.Value(i))
 		if err != nil {
 			return err
+		}
+
+		chunk, err := parseExternalKey(userID, chunkKey)
+		if err != nil {
+			return err
+		}
+
+		// This can be removed in Nov 2017
+		if metadataInIndex && resp.Value(i) != nil {
+			if err := json.Unmarshal(resp.Value(i), &chunk); err != nil {
+				return err
+			}
+			chunk.metadataInIndex = true
 		}
 
 		if matcher != nil && !matcher.Match(labelValue) {
@@ -413,7 +432,7 @@ func processResponse(resp ReadBatch, chunkSet *ByID, matcher *metric.LabelMatche
 	return nil
 }
 
-func (c *Store) fetchChunkData(ctx context.Context, userID string, chunkSet []Chunk) ([]Chunk, error) {
+func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, error) {
 	incomingChunks := make(chan Chunk)
 	incomingErrors := make(chan error)
 	for _, chunk := range chunkSet {
@@ -423,7 +442,7 @@ func (c *Store) fetchChunkData(ctx context.Context, userID string, chunkSet []Ch
 				var err error
 				resp, err = c.s3.GetObject(&s3.GetObjectInput{
 					Bucket: aws.String(c.bucketName),
-					Key:    aws.String(chunkName(userID, chunk.ID)),
+					Key:    aws.String(chunk.externalKey()),
 				})
 				return err
 			})
@@ -432,7 +451,14 @@ func (c *Store) fetchChunkData(ctx context.Context, userID string, chunkSet []Ch
 				return
 			}
 			defer resp.Body.Close()
-			if err := chunk.decode(resp.Body); err != nil {
+
+			buf, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				incomingErrors <- err
+				return
+			}
+
+			if err := chunk.decode(buf); err != nil {
 				incomingErrors <- err
 				return
 			}

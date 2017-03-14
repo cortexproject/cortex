@@ -6,7 +6,7 @@ import (
 )
 
 func c(id string) Chunk {
-	return Chunk{ID: id}
+	return Chunk{UserID: id}
 }
 
 func TestIntersect(t *testing.T) {

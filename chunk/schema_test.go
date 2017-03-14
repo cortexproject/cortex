@@ -521,10 +521,8 @@ func TestSchemaRangeKey(t *testing.T) {
 
 			// Test we can parse the resulting range keys
 			for _, entry := range have {
-				_, _, err := parseRangeValue(entry.RangeValue, entry.Value)
-				if err != nil {
-					t.Fatal(err)
-				}
+				_, _, _, err := parseRangeValue(entry.RangeValue, entry.Value)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -559,10 +557,10 @@ func TestParseRangeValue(t *testing.T) {
 		{[]byte("a1b2c3d4\x00Y29kZQ\x002:1484661279394:1484664879394\x004\x00"),
 			"code", "2:1484661279394:1484664879394"},
 	} {
-		chunk, labelValue, err := parseRangeValue(c.encoded, nil)
-		assert.Nil(t, err, "parseRangeValue error")
-		assert.Equal(t, model.LabelValue(c.value), labelValue, "value")
-		assert.Equal(t, c.chunkID, chunk.ID, "chunkID")
+		chunkID, labelValue, _, err := parseRangeValue(c.encoded, nil)
+		require.NoError(t, err)
+		assert.Equal(t, model.LabelValue(c.value), labelValue)
+		assert.Equal(t, c.chunkID, chunkID)
 	}
 }
 

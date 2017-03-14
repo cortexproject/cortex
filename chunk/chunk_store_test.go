@@ -33,30 +33,17 @@ func setupDynamodb(t *testing.T, dynamoDB StorageClient) {
 func TestChunkStore(t *testing.T) {
 	ctx := user.Inject(context.Background(), "0")
 	now := model.Now()
-	chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
-	chunk1 := NewChunk(
-		model.Fingerprint(1),
-		model.Metric{
-			model.MetricNameLabel: "foo",
-			"bar":  "baz",
-			"toms": "code",
-			"flip": "flop",
-		},
-		chunks[0],
-		now.Add(-time.Hour),
-		now,
-	)
-	chunk2 := NewChunk(
-		model.Fingerprint(2),
-		model.Metric{
-			model.MetricNameLabel: "foo",
-			"bar":  "beep",
-			"toms": "code",
-		},
-		chunks[0],
-		now.Add(-time.Hour),
-		now,
-	)
+	chunk1 := dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar":  "baz",
+		"toms": "code",
+		"flip": "flop",
+	})
+	chunk2 := dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar":  "beep",
+		"toms": "code",
+	})
 
 	schemas := []struct {
 		name string
@@ -145,6 +132,12 @@ func TestChunkStore(t *testing.T) {
 					t.Fatal(err)
 				}
 
+				// Zero out the checksums, as the inputs above didn't have the checksums calculated
+				for i := range chunks {
+					chunks[i].Checksum = 0
+					chunks[i].ChecksumSet = false
+				}
+
 				if !reflect.DeepEqual(tc.expect, chunks) {
 					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks))
 				}
@@ -196,6 +189,7 @@ func TestChunkStoreRandom(t *testing.T) {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
 		chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: ts, Value: 0})
 		chunk := NewChunk(
+			userID,
 			model.Fingerprint(1),
 			model.Metric{
 				model.MetricNameLabel: "foo",

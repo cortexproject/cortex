@@ -171,13 +171,17 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*desc) error {
-	wireChunks := make([]chunk.Chunk, 0, len(chunkDescs))
-	for _, chunkDesc := range chunkDescs {
-		wireChunks = append(wireChunks, chunk.NewChunk(fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime))
+	userID, err := user.Extract(ctx)
+	if err != nil {
+		return err
 	}
 
-	err := i.chunkStore.Put(ctx, wireChunks)
-	if err != nil {
+	wireChunks := make([]chunk.Chunk, 0, len(chunkDescs))
+	for _, chunkDesc := range chunkDescs {
+		wireChunks = append(wireChunks, chunk.NewChunk(userID, fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime))
+	}
+
+	if err := i.chunkStore.Put(ctx, wireChunks); err != nil {
 		return err
 	}
 

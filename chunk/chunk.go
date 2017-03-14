@@ -85,9 +85,8 @@ func NewChunk(userID string, fp model.Fingerprint, metric model.Metric, c prom_c
 func parseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") {
 		return parseLegacyChunkID(userID, externalKey)
-	} else {
-		return parseNewExternalKey(externalKey)
 	}
+	return parseNewExternalKey(externalKey)
 }
 
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
@@ -252,7 +251,7 @@ func (c *Chunk) decode(input []byte) error {
 		c.Encoding = prom_chunk.DoubleDelta
 	}
 
-	// Finally, unmarshal the actualy chunk data.
+	// Finally, unmarshal the actual chunk data.
 	c.Data, err = prom_chunk.NewForEncoding(c.Encoding)
 	if err != nil {
 		return err

@@ -22,7 +22,6 @@ import (
 const (
 	ErrInvalidChunkID  = errors.Error("invalid chunk ID")
 	ErrInvalidChecksum = errors.Error("invalid chunk checksum")
-	ErrWrongUserID     = errors.Error("wrong user ID")
 	ErrWrongMetadata   = errors.Error("wrong chunk metadata")
 )
 

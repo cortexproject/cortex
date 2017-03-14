@@ -197,7 +197,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			},
 			chunks[0],
 			ts,
-			ts.Add(chunkLen),
+			ts.Add(chunkLen*time.Second),
 		)
 		for _, s := range schemas {
 			if err := s.store.Put(ctx, []Chunk{chunk}); err != nil {
@@ -231,7 +231,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			}
 
 			// And check we got all the chunks we want
-			numChunks := (end / chunkLen) - (start / chunkLen)
+			numChunks := (end / chunkLen) - (start / chunkLen) + 1
 			assert.Equal(t, int(numChunks), len(chunks), s.name)
 		}
 	}

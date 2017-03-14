@@ -77,7 +77,7 @@ func TestChunkCache(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		id := ids[rand.Intn(len(ids))]
-		found, missing, err := c.FetchChunkData(context.Background(), userID, []Chunk{Chunk{ID: id}})
+		found, missing, err := c.FetchChunkData(context.Background(), userID, []Chunk{{ID: id}})
 		assert.NoError(t, err)
 		assert.Empty(t, missing)
 		assert.Len(t, found, 1)

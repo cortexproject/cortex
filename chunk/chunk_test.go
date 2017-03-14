@@ -46,7 +46,7 @@ func TestChunkCodec(t *testing.T) {
 		{
 			chunk: dummyChunk(),
 			err:   ErrInvalidChecksum,
-			f:     func(_ *Chunk, buf []byte) { buf[4] += 1 },
+			f:     func(_ *Chunk, buf []byte) { buf[4]++ },
 		},
 
 		// Checksum should fail
@@ -60,7 +60,7 @@ func TestChunkCodec(t *testing.T) {
 		{
 			chunk: dummyChunk(),
 			err:   ErrWrongMetadata,
-			f:     func(c *Chunk, _ []byte) { c.Fingerprint += 1 },
+			f:     func(c *Chunk, _ []byte) { c.Fingerprint++ },
 		},
 	} {
 		buf, err := c.chunk.encode()

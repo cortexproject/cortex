@@ -194,7 +194,7 @@ func (c *Store) putChunk(ctx context.Context, key string, buf []byte) error {
 		return err
 	}
 
-	if err := c.cache.StoreChunkData(ctx, key, buf); err != nil {
+	if err := c.cache.StoreChunk(ctx, key, buf); err != nil {
 		log.Warnf("Could not store %v in chunk cache: %v", key, err)
 	}
 	return nil
@@ -270,9 +270,9 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 		return nil, err
 	}
 
-	//if err = c.cache.StoreChunks(ctx, userID, fromS3); err != nil {
-	//	log.Warnf("Could not store chunks in chunk cache: %v", err)
-	//}
+	if err = c.writeBackCache(ctx, fromS3); err != nil {
+		log.Warnf("Could not store chunks in chunk cache: %v", err)
+	}
 
 	// TODO instead of doing this sort, propagate an index and assign chunks
 	// into the result based on that index.
@@ -480,4 +480,19 @@ func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, 
 		return nil, errors[0]
 	}
 	return chunks, nil
+}
+
+func (c *Store) writeBackCache(ctx context.Context, chunks []Chunk) error {
+	bufs := [][]byte{}
+	keys := []string{}
+	for i := range chunks {
+		encoded, err := chunks[i].encode()
+		if err != nil {
+			return err
+		}
+		bufs = append(bufs, encoded)
+		keys = append(keys, chunks[i].externalKey())
+	}
+
+	return c.cache.StoreChunks(ctx, keys, bufs)
 }

@@ -24,6 +24,12 @@ var (
 		Help:      "Total count of chunks found in memcache.",
 	})
 
+	memcacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "memcache_corrupt_chunks_total",
+		Help:      "Total count of number of corrupt chunks found in memcache.",
+	})
+
 	memcacheRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "memcache_request_duration_seconds",
@@ -36,6 +42,7 @@ var (
 func init() {
 	prometheus.MustRegister(memcacheRequests)
 	prometheus.MustRegister(memcacheHits)
+	prometheus.MustRegister(memcacheCorrupt)
 	prometheus.MustRegister(memcacheRequestDuration)
 }
 
@@ -120,7 +127,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 		}
 
 		if err := chunks[i].decode(item.Value); err != nil {
-			// TODO metric for failed decodes
+			memcacheCorrupt.Inc()
 			log.Errorf("Failed to decode chunk from cache: %v", err)
 			missing = append(missing, chunks[i])
 			continue
@@ -133,8 +140,8 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 	return found, missing, nil
 }
 
-// StoreChunkData serializes and stores a chunk in the chunk cache.
-func (c *Cache) StoreChunkData(ctx context.Context, key string, buf []byte) error {
+// StoreChunk serializes and stores a chunk in the chunk cache.
+func (c *Cache) StoreChunk(ctx context.Context, key string, buf []byte) error {
 	if c.memcache == nil {
 		return nil
 	}
@@ -149,19 +156,20 @@ func (c *Cache) StoreChunkData(ctx context.Context, key string, buf []byte) erro
 	})
 }
 
-//// StoreChunks serializes and stores multiple chunks in the chunk cache.
-//func (c *Cache) StoreChunks(ctx context.Context, userID string, chunks []Chunk) error {
-//	errs := make(chan error)
-//	for _, chunk := range chunks {
-//		go func(chunk Chunk) {
-//			errs <- c.StoreChunkData(ctx, userID, chunk)
-//		}(chunk)
-//	}
-//	var errOut error
-//	for i := 0; i < len(chunks); i++ {
-//		if err := <-errs; err != nil {
-//			errOut = err
-//		}
-//	}
-//	return errOut
-//}
+// StoreChunks serializes and stores multiple chunks in the chunk cache.
+func (c *Cache) StoreChunks(ctx context.Context, keys []string, bufs [][]byte) error {
+	errs := make(chan error)
+	for i := range keys {
+		go func(i int) {
+			errs <- c.StoreChunk(ctx, keys[i], bufs[i])
+		}(i)
+	}
+	var errOut error
+	for range keys {
+		if err := <-errs; err != nil {
+			log.Errorf("Error putting chunk to memcache: %v", err)
+			errOut = err
+		}
+	}
+	return errOut
+}

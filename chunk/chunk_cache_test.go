@@ -13,7 +13,7 @@ import (
 )
 
 type mockMemcache struct {
-	sync.Mutex
+	sync.RWMutex
 	contents map[string][]byte
 }
 
@@ -24,8 +24,8 @@ func newMockMemcache() *mockMemcache {
 }
 
 func (m *mockMemcache) GetMulti(keys []string) (map[string]*memcache.Item, error) {
-	m.Lock()
-	defer m.Unlock()
+	m.RLock()
+	defer m.RUnlock()
 	result := map[string]*memcache.Item{}
 	for _, k := range keys {
 		if c, ok := m.contents[k]; ok {
@@ -78,7 +78,7 @@ func TestChunkCache(t *testing.T) {
 		require.NoError(t, err)
 
 		key := chunk.externalKey()
-		err = c.StoreChunkData(context.Background(), key, buf)
+		err = c.StoreChunk(context.Background(), key, buf)
 		require.NoError(t, err)
 
 		keys = append(keys, key)
@@ -98,4 +98,17 @@ func TestChunkCache(t *testing.T) {
 		require.Len(t, found, 1)
 		require.Equal(t, chunks[index], found[0])
 	}
+
+	// test getting them all
+	receivedChunks := []Chunk{}
+	for i := 0; i < len(keys); i++ {
+		chunk, err := parseExternalKey(userID, keys[i])
+		require.NoError(t, err)
+		receivedChunks = append(receivedChunks, chunk)
+	}
+	found, missing, err := c.FetchChunkData(context.Background(), receivedChunks)
+	require.NoError(t, err)
+	require.Empty(t, missing)
+	require.Len(t, found, len(keys))
+	require.Equal(t, chunks, receivedChunks)
 }

@@ -119,18 +119,27 @@ func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chun
 		return nil, chunks, err
 	}
 
-	for _, chunk := range chunks {
-		item, ok := items[memcacheKey(userID, chunk.ID)]
+	for i := range chunks {
+		item, ok := items[memcacheKey(userID, chunks[i].ID)]
 		if !ok {
-			missing = append(missing, chunk)
+			missing = append(missing, chunks[i])
 			continue
 		}
 
+		chunk := Chunk{}
 		if err := chunk.decode(bytes.NewReader(item.Value)); err != nil {
 			log.Errorf("Failed to decode chunk from cache: %v", err)
 			missing = append(missing, chunk)
 			continue
 		}
+
+		// Check we fetched the right chunk
+		if chunk.ID != "" && chunk.ID != chunks[i].ID {
+			log.Errorf("Fetched wrong chunk from memcache, id=%s", chunks[i].ID)
+			missing = append(missing, chunk)
+		}
+
+		chunk.ID = chunks[i].ID
 		found = append(found, chunk)
 	}
 

@@ -19,7 +19,7 @@ import (
 
 // Chunk contains encoded timeseries data
 type Chunk struct {
-	ID      string       `json:"-"`
+	ID      string       `json:"id"`
 	From    model.Time   `json:"from"`
 	Through model.Time   `json:"through"`
 	Metric  model.Metric `json:"metric"`

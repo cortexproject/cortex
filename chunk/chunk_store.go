@@ -188,7 +188,7 @@ func (c *Store) putChunk(ctx context.Context, userID string, chunk *Chunk) error
 		return err
 	}
 
-	if err = c.cache.StoreChunkData(ctx, userID, chunk); err != nil {
+	if err = c.cache.StoreChunkData(ctx, userID, *chunk); err != nil {
 		log.Warnf("Could not store %v in chunk cache: %v", chunk.ID, err)
 	}
 	return nil

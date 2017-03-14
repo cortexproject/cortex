@@ -148,7 +148,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chun
 }
 
 // StoreChunkData serializes and stores a chunk in the chunk cache.
-func (c *Cache) StoreChunkData(ctx context.Context, userID string, chunk *Chunk) error {
+func (c *Cache) StoreChunkData(ctx context.Context, userID string, chunk Chunk) error {
 	if c.memcache == nil {
 		return nil
 	}
@@ -177,9 +177,9 @@ func (c *Cache) StoreChunkData(ctx context.Context, userID string, chunk *Chunk)
 func (c *Cache) StoreChunks(ctx context.Context, userID string, chunks []Chunk) error {
 	errs := make(chan error)
 	for _, chunk := range chunks {
-		go func(chunk *Chunk) {
+		go func(chunk Chunk) {
 			errs <- c.StoreChunkData(ctx, userID, chunk)
-		}(&chunk)
+		}(chunk)
 	}
 	var errOut error
 	for i := 0; i < len(chunks); i++ {

@@ -187,7 +187,10 @@ func TestChunkStoreRandom(t *testing.T) {
 	const chunkLen = 13 * 3600 // in seconds
 	for i := 0; i < 100; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: ts, Value: 0})
+		chunks, _ := chunk.New().Add(model.SamplePair{
+			Timestamp: ts,
+			Value:     model.SampleValue(float64(i)),
+		})
 		chunk := NewChunk(
 			userID,
 			model.Fingerprint(1),
@@ -228,6 +231,10 @@ func TestChunkStoreRandom(t *testing.T) {
 			for _, chunk := range chunks {
 				assert.False(t, chunk.From.After(endTime))
 				assert.False(t, chunk.Through.Before(startTime))
+				samples, err := chunk.samples()
+				assert.NoError(t, err)
+				assert.Equal(t, 1, len(samples))
+				// TODO verify chunk contents
 			}
 
 			// And check we got all the chunks we want

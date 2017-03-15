@@ -1,10 +1,7 @@
 package chunk
 
 import (
-	"bytes"
 	"flag"
-	"fmt"
-	"io/ioutil"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -27,6 +24,12 @@ var (
 		Help:      "Total count of chunks found in memcache.",
 	})
 
+	memcacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "memcache_corrupt_chunks_total",
+		Help:      "Total count of number of corrupt chunks found in memcache.",
+	})
+
 	memcacheRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "memcache_request_duration_seconds",
@@ -39,6 +42,7 @@ var (
 func init() {
 	prometheus.MustRegister(memcacheRequests)
 	prometheus.MustRegister(memcacheHits)
+	prometheus.MustRegister(memcacheCorrupt)
 	prometheus.MustRegister(memcacheRequestDuration)
 }
 
@@ -92,12 +96,8 @@ func memcacheStatusCode(err error) string {
 	}
 }
 
-func memcacheKey(userID, chunkID string) string {
-	return fmt.Sprintf("%s/%s", userID, chunkID)
-}
-
 // FetchChunkData gets chunks from the chunk cache.
-func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chunk) (found []Chunk, missing []Chunk, err error) {
+func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chunk, missing []Chunk, err error) {
 	if c.memcache == nil {
 		return nil, chunks, nil
 	}
@@ -106,7 +106,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chun
 
 	keys := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
-		keys = append(keys, memcacheKey(userID, chunk.ID))
+		keys = append(keys, chunk.externalKey())
 	}
 
 	var items map[string]*memcache.Item
@@ -119,44 +119,36 @@ func (c *Cache) FetchChunkData(ctx context.Context, userID string, chunks []Chun
 		return nil, chunks, err
 	}
 
-	for _, chunk := range chunks {
-		item, ok := items[memcacheKey(userID, chunk.ID)]
+	for i, externalKey := range keys {
+		item, ok := items[externalKey]
 		if !ok {
-			missing = append(missing, chunk)
+			missing = append(missing, chunks[i])
 			continue
 		}
 
-		if err := chunk.decode(bytes.NewReader(item.Value)); err != nil {
+		if err := chunks[i].decode(item.Value); err != nil {
+			memcacheCorrupt.Inc()
 			log.Errorf("Failed to decode chunk from cache: %v", err)
-			missing = append(missing, chunk)
+			missing = append(missing, chunks[i])
 			continue
 		}
-		found = append(found, chunk)
+
+		found = append(found, chunks[i])
 	}
 
 	memcacheHits.Add(float64(len(found)))
 	return found, missing, nil
 }
 
-// StoreChunkData serializes and stores a chunk in the chunk cache.
-func (c *Cache) StoreChunkData(ctx context.Context, userID string, chunk *Chunk) error {
+// StoreChunk serializes and stores a chunk in the chunk cache.
+func (c *Cache) StoreChunk(ctx context.Context, key string, buf []byte) error {
 	if c.memcache == nil {
 		return nil
 	}
 
-	reader, err := chunk.reader()
-	if err != nil {
-		return err
-	}
-
-	buf, err := ioutil.ReadAll(reader)
-	if err != nil {
-		return err
-	}
-
 	return instrument.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		item := memcache.Item{
-			Key:        memcacheKey(userID, chunk.ID),
+			Key:        key,
 			Value:      buf,
 			Expiration: int32(c.cfg.Expiration.Seconds()),
 		}
@@ -165,16 +157,17 @@ func (c *Cache) StoreChunkData(ctx context.Context, userID string, chunk *Chunk)
 }
 
 // StoreChunks serializes and stores multiple chunks in the chunk cache.
-func (c *Cache) StoreChunks(ctx context.Context, userID string, chunks []Chunk) error {
+func (c *Cache) StoreChunks(ctx context.Context, keys []string, bufs [][]byte) error {
 	errs := make(chan error)
-	for _, chunk := range chunks {
-		go func(chunk *Chunk) {
-			errs <- c.StoreChunkData(ctx, userID, chunk)
-		}(&chunk)
+	for i := range keys {
+		go func(i int) {
+			errs <- c.StoreChunk(ctx, keys[i], bufs[i])
+		}(i)
 	}
 	var errOut error
-	for i := 0; i < len(chunks); i++ {
+	for range keys {
 		if err := <-errs; err != nil {
+			log.Errorf("Error putting chunk to memcache: %v", err)
 			errOut = err
 		}
 	}

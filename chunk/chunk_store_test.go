@@ -31,32 +31,19 @@ func setupDynamodb(t *testing.T, dynamoDB StorageClient) {
 }
 
 func TestChunkStore(t *testing.T) {
-	ctx := user.Inject(context.Background(), "0")
+	ctx := user.Inject(context.Background(), userID)
 	now := model.Now()
-	chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
-	chunk1 := NewChunk(
-		model.Fingerprint(1),
-		model.Metric{
-			model.MetricNameLabel: "foo",
-			"bar":  "baz",
-			"toms": "code",
-			"flip": "flop",
-		},
-		chunks[0],
-		now.Add(-time.Hour),
-		now,
-	)
-	chunk2 := NewChunk(
-		model.Fingerprint(2),
-		model.Metric{
-			model.MetricNameLabel: "foo",
-			"bar":  "beep",
-			"toms": "code",
-		},
-		chunks[0],
-		now.Add(-time.Hour),
-		now,
-	)
+	chunk1 := dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar":  "baz",
+		"toms": "code",
+		"flip": "flop",
+	})
+	chunk2 := dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar":  "beep",
+		"toms": "code",
+	})
 
 	schemas := []struct {
 		name string
@@ -73,58 +60,58 @@ func TestChunkStore(t *testing.T) {
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
 
 	for _, tc := range []struct {
-		name     string
+		query    string
 		expect   []Chunk
 		matchers []*metric.LabelMatcher
 	}{
 		{
-			"Just name label",
+			`foo`,
 			[]Chunk{chunk1, chunk2},
 			[]*metric.LabelMatcher{nameMatcher},
 		},
 		{
-			"Empty matcher",
+			`foo{flip=""}`,
 			[]Chunk{chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "flip", "")},
 		},
 		{
-			"Equal bar=baz",
+			`foo{bar="baz"}`,
 			[]Chunk{chunk1},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 		{
-			"Equal bar=beep",
+			`foo{bar="beep"}`,
 			[]Chunk{chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "beep")},
 		},
 		{
-			"Equal toms=code",
+			`foo{toms="code"}`,
 			[]Chunk{chunk1, chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code")},
 		},
 		{
-			"Not equal",
+			`foo{bar!="baz"}`,
 			[]Chunk{chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.NotEqual, "bar", "baz")},
 		},
 		{
-			"Regex match",
+			`foo{bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
 		},
 		{
-			"Multiple matchers",
+			`foo{toms="code", bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
 			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
 		},
 		{
-			"Multiple matchers II",
+			`foo{toms="code", bar="baz"}`,
 			[]Chunk{chunk1}, []*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 	} {
 		for _, schema := range schemas {
-			t.Run(fmt.Sprintf("%s/%s", tc.name, schema.name), func(t *testing.T) {
-				log.Infoln("========= Running test", tc.name, "with schema", schema.name)
+			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
+				log.Infoln("========= Running query", tc.query, "with schema", schema.name)
 				dynamoDB := NewMockStorage()
 				setupDynamodb(t, dynamoDB)
 				store, err := NewStore(StoreConfig{
@@ -145,8 +132,14 @@ func TestChunkStore(t *testing.T) {
 					t.Fatal(err)
 				}
 
+				// Zero out the checksums, as the inputs above didn't have the checksums calculated
+				for i := range chunks {
+					chunks[i].Checksum = 0
+					chunks[i].ChecksumSet = false
+				}
+
 				if !reflect.DeepEqual(tc.expect, chunks) {
-					t.Fatalf("%s: wrong chunks - %s", tc.name, test.Diff(tc.expect, chunks))
+					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks))
 				}
 			})
 		}
@@ -162,7 +155,7 @@ func mustNewLabelMatcher(matchType metric.MatchType, name model.LabelName, value
 }
 
 func TestChunkStoreRandom(t *testing.T) {
-	ctx := user.Inject(context.Background(), "0")
+	ctx := user.Inject(context.Background(), userID)
 	schemas := []struct {
 		name  string
 		fn    func(cfg SchemaConfig) Schema
@@ -196,6 +189,7 @@ func TestChunkStoreRandom(t *testing.T) {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
 		chunks, _ := chunk.New().Add(model.SamplePair{Timestamp: ts, Value: 0})
 		chunk := NewChunk(
+			userID,
 			model.Fingerprint(1),
 			model.Metric{
 				model.MetricNameLabel: "foo",
@@ -203,7 +197,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			},
 			chunks[0],
 			ts,
-			ts.Add(chunkLen),
+			ts.Add(chunkLen*time.Second),
 		)
 		for _, s := range schemas {
 			if err := s.store.Put(ctx, []Chunk{chunk}); err != nil {
@@ -237,7 +231,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			}
 
 			// And check we got all the chunks we want
-			numChunks := (end / chunkLen) - (start / chunkLen)
+			numChunks := (end / chunkLen) - (start / chunkLen) + 1
 			assert.Equal(t, int(numChunks), len(chunks), s.name)
 		}
 	}

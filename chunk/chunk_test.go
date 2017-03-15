@@ -1,45 +1,123 @@
 package chunk
 
 import (
-	//"bytes"
-	//"io/ioutil"
-	"reflect"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/chunk"
-
-	"github.com/weaveworks/common/test"
+	"github.com/stretchr/testify/require"
 )
 
-func TestChunkCodec(t *testing.T) {
+const userID = "userID"
+
+func dummyChunk() Chunk {
+	return dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar":  "baz",
+		"toms": "code",
+	})
+}
+
+func dummyChunkFor(metric model.Metric) Chunk {
 	now := model.Now()
 	cs, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
-	want := Chunk{
-		ID:      "",
-		From:    now.Add(-time.Hour),
-		Through: now,
-		Metric: model.Metric{
-			model.MetricNameLabel: "foo",
-			"bar":  "baz",
-			"toms": "code",
+	chunk := NewChunk(
+		userID,
+		metric.Fingerprint(),
+		metric,
+		cs[0],
+		now.Add(-time.Hour),
+		now,
+	)
+	return chunk
+}
+
+func TestChunkCodec(t *testing.T) {
+	for i, c := range []struct {
+		chunk Chunk
+		err   error
+		f     func(*Chunk, []byte)
+	}{
+		// Basic round trip
+		{chunk: dummyChunk()},
+
+		// Checksum should fail
+		{
+			chunk: dummyChunk(),
+			err:   ErrInvalidChecksum,
+			f:     func(_ *Chunk, buf []byte) { buf[4]++ },
 		},
-		Encoding: chunk.DoubleDelta,
-		Data:     cs[0],
-	}
 
-	r, err := want.reader()
-	if err != nil {
-		t.Fatalf("reader() error: %v", err)
-	}
+		// Checksum should fail
+		{
+			chunk: dummyChunk(),
+			err:   ErrInvalidChecksum,
+			f:     func(c *Chunk, _ []byte) { c.Checksum = 123 },
+		},
 
-	have := Chunk{}
-	if err := have.decode(r); err != nil {
-		t.Fatalf("decode() error: %v", err)
-	}
+		// Metadata test should fail
+		{
+			chunk: dummyChunk(),
+			err:   ErrWrongMetadata,
+			f:     func(c *Chunk, _ []byte) { c.Fingerprint++ },
+		},
 
-	if !reflect.DeepEqual(want, have) {
-		t.Fatalf("wrong chunks - " + test.Diff(want, have))
+		// Metadata test should fail
+		{
+			chunk: dummyChunk(),
+			err:   ErrWrongMetadata,
+			f:     func(c *Chunk, _ []byte) { c.UserID = "foo" },
+		},
+	} {
+		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
+			buf, err := c.chunk.encode()
+			require.NoError(t, err)
+
+			have, err := parseExternalKey(userID, c.chunk.externalKey())
+			require.NoError(t, err)
+
+			if c.f != nil {
+				c.f(&have, buf)
+			}
+
+			err = have.decode(buf)
+			require.Equal(t, err, c.err)
+
+			if c.err == nil {
+				require.Equal(t, have, c.chunk)
+			}
+		})
+	}
+}
+
+func TestParseExternalKey(t *testing.T) {
+	for _, c := range []struct {
+		key   string
+		chunk Chunk
+		err   error
+	}{
+		{key: "2:1484661279394:1484664879394", chunk: Chunk{
+			UserID:      userID,
+			Fingerprint: model.Fingerprint(2),
+			From:        model.Time(1484661279394),
+			Through:     model.Time(1484664879394),
+		}},
+
+		{key: userID + "/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{
+			UserID:      userID,
+			Fingerprint: model.Fingerprint(2),
+			From:        model.Time(655200000),
+			Through:     model.Time(655200000),
+			ChecksumSet: true,
+			Checksum:    4165752645,
+		}},
+
+		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
+	} {
+		chunk, err := parseExternalKey(userID, c.key)
+		require.Equal(t, c.err, err)
+		require.Equal(t, c.chunk, chunk)
 	}
 }

@@ -70,6 +70,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer chunkStore.Stop()
 
 	queryable := querier.NewQueryable(dist, chunkStore)
 	engine := promql.NewEngine(queryable, nil)

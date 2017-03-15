@@ -133,6 +133,10 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}, nil
 }
 
+func (c *Store) Stop() {
+	c.cache.Stop()
+}
+
 // Put implements ChunkStore
 func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 	userID, err := user.Extract(ctx)
@@ -483,17 +487,13 @@ func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, 
 	return chunks, nil
 }
 
-func (c *Store) writeBackCache(ctx context.Context, chunks []Chunk) error {
-	bufs := [][]byte{}
-	keys := []string{}
+func (c *Store) writeBackCache(_ context.Context, chunks []Chunk) error {
 	for i := range chunks {
 		encoded, err := chunks[i].encode()
 		if err != nil {
 			return err
 		}
-		bufs = append(bufs, encoded)
-		keys = append(keys, chunks[i].externalKey())
+		c.cache.BackgroundWrite(chunks[i].externalKey(), encoded)
 	}
-
-	return c.cache.StoreChunks(ctx, keys, bufs)
+	return nil
 }

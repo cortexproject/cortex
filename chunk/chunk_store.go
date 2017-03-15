@@ -385,7 +385,7 @@ func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metr
 	var processingError error
 	if err := c.storage.QueryPages(ctx, entry, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
 		processingError = processResponse(ctx, resp, &chunkSet, matcher)
-		return processingError != nil && !lastPage
+		return processingError == nil && !lastPage
 	}); err != nil {
 		log.Errorf("Error querying storage: %v", err)
 		return nil, err

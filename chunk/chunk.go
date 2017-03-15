@@ -73,14 +73,14 @@ func NewChunk(userID string, fp model.Fingerprint, metric model.Metric, c prom_c
 // to fetch the Chunk data from Memcache/S3, and then fully populate the chunk
 // with decode().
 //
-// Per-checksums, the keys written to DynamoDB looked like
+// Pre-checksums, the keys written to DynamoDB looked like
 // `<fingerprint>:<start time>:<end time>` (aka the ID), and the key for
 // memcache and S3 was `<user id>/<fingerprint>:<start time>:<end time>.
 // Finger prints and times were written in base-10.
 //
-// Post-checksums, externals keys became the same across DynamoDB, Memcache
-// and S3.  Numbers was hex encoded.  Keys look like:
-// <user id>/<fingerprint>:<start time>:<end time>:<checksum>.
+// Post-checksums, externals keys become the same across DynamoDB, Memcache
+// and S3.  Numbers become hex encoded.  Keys look like:
+// `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`.
 func parseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") {
 		return parseLegacyChunkID(userID, externalKey)

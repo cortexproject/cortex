@@ -31,7 +31,7 @@ func setupDynamodb(t *testing.T, dynamoDB StorageClient) {
 }
 
 func TestChunkStore(t *testing.T) {
-	ctx := user.Inject(context.Background(), "0")
+	ctx := user.Inject(context.Background(), userID)
 	now := model.Now()
 	chunk1 := dummyChunkFor(model.Metric{
 		model.MetricNameLabel: "foo",
@@ -49,12 +49,12 @@ func TestChunkStore(t *testing.T) {
 		name string
 		fn   func(cfg SchemaConfig) Schema
 	}{
-		//{"v1 schema", v1Schema},
-		//{"v2 schema", v2Schema},
-		//{"v3 schema", v3Schema},
-		//{"v4 schema", v4Schema},
+		{"v1 schema", v1Schema},
+		{"v2 schema", v2Schema},
+		{"v3 schema", v3Schema},
+		{"v4 schema", v4Schema},
 		{"v5 schema", v5Schema},
-		//{"v6 schema", v6Schema},
+		{"v6 schema", v6Schema},
 	}
 
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
@@ -155,7 +155,7 @@ func mustNewLabelMatcher(matchType metric.MatchType, name model.LabelName, value
 }
 
 func TestChunkStoreRandom(t *testing.T) {
-	ctx := user.Inject(context.Background(), "0")
+	ctx := user.Inject(context.Background(), userID)
 	schemas := []struct {
 		name  string
 		fn    func(cfg SchemaConfig) Schema

@@ -606,7 +606,6 @@ func TestSchemaDailyBuckets(t *testing.T) {
 	} {
 		var i int64
 		_, err := config.dailyBuckets(c.from, c.through, userID, metricName, func(from, through uint32, tableName, hashKey string) ([]IndexEntry, error) {
-			fmt.Println(i, int64(c.from), int64(c.through), from, through)
 			require.True(t, (i*millisecondsInDay)+int64(from) >= int64(c.from), "%d <= %d", (i*millisecondsInDay)+int64(from), int64(c.from))
 			require.True(t, (i*millisecondsInDay)+int64(from) <= int64(c.through), "%d >= %d", (i*millisecondsInDay)+int64(from), int64(c.through))
 			require.True(t, (i*millisecondsInDay)+int64(through) >= int64(c.from), "%d <= %d", (i*millisecondsInDay)+int64(through), int64(c.from))

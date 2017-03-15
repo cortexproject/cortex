@@ -85,7 +85,14 @@ func parseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") {
 		return parseLegacyChunkID(userID, externalKey)
 	}
-	return parseNewExternalKey(externalKey)
+	chunk, err := parseNewExternalKey(externalKey)
+	if err != nil {
+		return Chunk{}, err
+	}
+	if chunk.UserID != userID {
+		return Chunk{}, ErrWrongMetadata
+	}
+	return chunk, nil
 }
 
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
@@ -149,18 +156,22 @@ func parseNewExternalKey(key string) (Chunk, error) {
 	}, nil
 }
 
-// externalKey returns the key you can use to fetch this chunk from external storage.
-// For newer chunks, this key includes a checksum.
+// externalKey returns the key you can use to fetch this chunk from external
+// storage. For newer chunks, this key includes a checksum.
 func (c *Chunk) externalKey() string {
-	// Some chunks have a stored in dynamodb, some do now.  We must generate keys
-	// appropriatedly.
+	// Some chunks have a checksum stored in dynamodb, some do not.  We must
+	// generate keys appropriately.
 	if c.ChecksumSet {
+		// This is the inverse of parseNewExternalKey.
 		return fmt.Sprintf("%s/%x:%x:%x:%x", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through), c.Checksum)
 	}
+	// This is the inverse of parseLegacyExternalKey, with "<user id>/" prepended.
+	// Legacy chunks had the user ID prefix on s3/memcache, but not in DynamoDB.
+	// See comment on parseExternalKey.
 	return fmt.Sprintf("%s/%d:%d:%d", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through))
 }
 
-// encode writes the chunk out to a big write buffer, then calculate the checksum.
+// encode writes the chunk out to a big write buffer, then calculates the checksum.
 func (c *Chunk) encode() ([]byte, error) {
 	var buf bytes.Buffer
 
@@ -198,7 +209,7 @@ func (c *Chunk) encode() ([]byte, error) {
 	return output, nil
 }
 
-// decode the chunk from the given buffer, and confirm the chunk if the one we
+// decode the chunk from the given buffer, and confirm the chunk is the one we
 // expected.
 func (c *Chunk) decode(input []byte) error {
 	// Legacy chunks were written with metadata in the index.
@@ -211,7 +222,7 @@ func (c *Chunk) decode(input []byte) error {
 		return c.Data.UnmarshalFromBuf(input)
 	}
 
-	// First, calculate the checksum of the chunk and confirm is matches
+	// First, calculate the checksum of the chunk and confirm it matches
 	// what we expected.
 	if c.ChecksumSet && c.Checksum != crc32.Checksum(input, castagnoliTable) {
 		return ErrInvalidChecksum

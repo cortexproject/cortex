@@ -140,7 +140,7 @@ func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 		return err
 	}
 
-	// Encode the chunk first, as a side effect is to calculate the checksum.
+	// Encode the chunk first - checksum is calculated as a side effect.
 	bufs := [][]byte{}
 	keys := []string{}
 	for i := range chunks {
@@ -277,7 +277,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	// TODO instead of doing this sort, propagate an index and assign chunks
 	// into the result based on that index.
 	allChunks := append(fromCache, fromS3...)
-	sort.Sort(ByID(allChunks))
+	sort.Sort(ByKey(allChunks))
 
 	// Filter out chunks
 	filteredChunks := make([]Chunk, 0, len(allChunks))
@@ -314,10 +314,10 @@ func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, ma
 		return c.lookupEntries(ctx, entries, nil)
 	}
 
-	incomingChunkSets := make(chan ByID)
+	incomingChunkSets := make(chan ByKey)
 	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
-		go func(matcher metric.LabelMatcher) {
+		go func(matcher *metric.LabelMatcher) {
 			var entries []IndexEntry
 			var err error
 			if matcher.Type != metric.Equal {
@@ -329,16 +329,16 @@ func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, ma
 				incomingErrors <- err
 				return
 			}
-			incoming, err := c.lookupEntries(ctx, entries, &matcher)
+			incoming, err := c.lookupEntries(ctx, entries, matcher)
 			if err != nil {
 				incomingErrors <- err
 			} else {
 				incomingChunkSets <- incoming
 			}
-		}(*matcher)
+		}(matcher)
 	}
 
-	var chunkSets []ByID
+	var chunkSets []ByKey
 	var lastErr error
 	for i := 0; i < len(matchers); i++ {
 		select {
@@ -352,8 +352,8 @@ func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, ma
 	return nWayIntersect(chunkSets), lastErr
 }
 
-func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher *metric.LabelMatcher) (ByID, error) {
-	incomingChunkSets := make(chan ByID)
+func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher *metric.LabelMatcher) (ByKey, error) {
+	incomingChunkSets := make(chan ByKey)
 	incomingErrors := make(chan error)
 	for _, entry := range entries {
 		go func(entry IndexEntry) {
@@ -366,7 +366,7 @@ func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher
 		}(entry)
 	}
 
-	var chunks ByID
+	var chunks ByKey
 	var lastErr error
 	for i := 0; i < len(entries); i++ {
 		select {
@@ -380,8 +380,8 @@ func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher
 	return chunks, lastErr
 }
 
-func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metric.LabelMatcher) (ByID, error) {
-	var chunkSet ByID
+func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metric.LabelMatcher) (ByKey, error) {
+	var chunkSet ByKey
 	var processingError error
 	if err := c.storage.QueryPages(ctx, entry, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
 		processingError = processResponse(ctx, resp, &chunkSet, matcher)
@@ -393,12 +393,12 @@ func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metr
 		log.Errorf("Error processing storage response: %v", processingError)
 		return nil, processingError
 	}
-	sort.Sort(ByID(chunkSet))
+	sort.Sort(ByKey(chunkSet))
 	chunkSet = unique(chunkSet)
 	return chunkSet, nil
 }
 
-func processResponse(ctx context.Context, resp ReadBatch, chunkSet *ByID, matcher *metric.LabelMatcher) error {
+func processResponse(ctx context.Context, resp ReadBatch, chunkSet *ByKey, matcher *metric.LabelMatcher) error {
 	userID, err := user.Extract(ctx)
 	if err != nil {
 		return err
@@ -415,7 +415,8 @@ func processResponse(ctx context.Context, resp ReadBatch, chunkSet *ByID, matche
 			return err
 		}
 
-		// This can be removed in Nov 2017
+		// This can be removed in Dev 2017, 13 months after the last chunks
+		// was written with metadata in the index.
 		if metadataInIndex && resp.Value(i) != nil {
 			if err := json.Unmarshal(resp.Value(i), &chunk); err != nil {
 				return err

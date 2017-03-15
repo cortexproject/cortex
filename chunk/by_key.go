@@ -1,19 +1,19 @@
 package chunk
 
-// ByID allow you to sort chunks by ID
-type ByID []Chunk
+// ByKey allow you to sort chunks by ID
+type ByKey []Chunk
 
-func (cs ByID) Len() int           { return len(cs) }
-func (cs ByID) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
-func (cs ByID) Less(i, j int) bool { return cs[i].externalKey() < cs[j].externalKey() }
+func (cs ByKey) Len() int           { return len(cs) }
+func (cs ByKey) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
+func (cs ByKey) Less(i, j int) bool { return cs[i].externalKey() < cs[j].externalKey() }
 
 // unique will remove duplicates from the input
-func unique(cs ByID) ByID {
+func unique(cs ByKey) ByKey {
 	if len(cs) == 0 {
 		return nil
 	}
 
-	result := make(ByID, 1, len(cs))
+	result := make(ByKey, 1, len(cs))
 	result[0] = cs[0]
 	i, j := 0, 1
 	for j < len(cs) {
@@ -30,8 +30,8 @@ func unique(cs ByID) ByID {
 
 // merge will merge & dedupe two lists of chunks.
 // list musts be sorted and not contain dupes.
-func merge(a, b ByID) ByID {
-	result := make(ByID, 0, len(a)+len(b))
+func merge(a, b ByKey) ByKey {
+	result := make(ByKey, 0, len(a)+len(b))
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
 		if a[i].externalKey() < b[j].externalKey() {
@@ -56,11 +56,11 @@ func merge(a, b ByID) ByID {
 }
 
 // nWayIntersect will interesct n sorted lists of chunks.
-func nWayIntersect(sets []ByID) ByID {
+func nWayIntersect(sets []ByKey) ByKey {
 	l := len(sets)
 	switch l {
 	case 0:
-		return ByID{}
+		return ByKey{}
 	case 1:
 		return sets[0]
 	case 2:
@@ -87,6 +87,6 @@ func nWayIntersect(sets []ByID) ByID {
 			left  = nWayIntersect(sets[:split])
 			right = nWayIntersect(sets[split:])
 		)
-		return nWayIntersect([]ByID{left, right})
+		return nWayIntersect([]ByKey{left, right})
 	}
 }

@@ -3,7 +3,6 @@ package chunk
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"sort"
 	"sync"
 	"testing"
@@ -73,7 +72,6 @@ func (m *mockDynamoDBClient) BatchWriteItem(input *dynamodb.BatchWriteItemInput)
 
 			hashValue := *writeRequest.PutRequest.Item[hashKey].S
 			rangeValue := writeRequest.PutRequest.Item[rangeKey].B
-			log.Printf("Write %s/%x", hashValue, rangeValue)
 
 			items := table.items[hashValue]
 

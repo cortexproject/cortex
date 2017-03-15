@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"flag"
+	"sync"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -27,7 +28,13 @@ var (
 	memcacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "memcache_corrupt_chunks_total",
-		Help:      "Total count of number of corrupt chunks found in memcache.",
+		Help:      "Total count of corrupt chunks found in memcache.",
+	})
+
+	memcacheDroppedWriteBack = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "memcache_dropped_write_back",
+		Help:      "Total count of dropped write backs to memcache.",
 	})
 
 	memcacheRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -54,13 +61,17 @@ type Memcache interface {
 
 // CacheConfig is config to make a Cache
 type CacheConfig struct {
-	Expiration     time.Duration
-	memcacheConfig MemcacheConfig
+	Expiration          time.Duration
+	WriteBackGoroutines int
+	WriteBackBuffer     int
+	memcacheConfig      MemcacheConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *CacheConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.Expiration, "memcached.expiration", 0, "How long chunks stay in the memcache.")
+	f.IntVar(&cfg.WriteBackGoroutines, "memcache.write-back-goroutines", 10, "How many goroutines to use to write back to memcache.")
+	f.IntVar(&cfg.WriteBackBuffer, "memcache.write-back-buffer", 10000, "How many chunks to buffer for background write back.")
 	cfg.memcacheConfig.RegisterFlags(f)
 }
 
@@ -68,6 +79,15 @@ func (cfg *CacheConfig) RegisterFlags(f *flag.FlagSet) {
 type Cache struct {
 	cfg      CacheConfig
 	memcache Memcache
+
+	wg       sync.WaitGroup
+	quit     chan struct{}
+	bgWrites chan backgroundWrite
+}
+
+type backgroundWrite struct {
+	key string
+	buf []byte
 }
 
 // NewCache makes a new Cache
@@ -76,10 +96,23 @@ func NewCache(cfg CacheConfig) *Cache {
 	if cfg.memcacheConfig.Host != "" {
 		memcache = NewMemcacheClient(cfg.memcacheConfig)
 	}
-	return &Cache{
+	c := &Cache{
 		cfg:      cfg,
 		memcache: memcache,
+		quit:     make(chan struct{}),
+		bgWrites: make(chan backgroundWrite, cfg.WriteBackBuffer),
 	}
+	c.wg.Add(cfg.WriteBackGoroutines)
+	for i := 0; i < cfg.WriteBackGoroutines; i++ {
+		go c.writeBackLoop()
+	}
+	return c
+}
+
+// Stop the background flushing goroutines.
+func (c *Cache) Stop() {
+	close(c.quit)
+	c.wg.Wait()
 }
 
 func memcacheStatusCode(err error) string {
@@ -156,20 +189,31 @@ func (c *Cache) StoreChunk(ctx context.Context, key string, buf []byte) error {
 	})
 }
 
-// StoreChunks serializes and stores multiple chunks in the chunk cache.
-func (c *Cache) StoreChunks(ctx context.Context, keys []string, bufs [][]byte) error {
-	errs := make(chan error)
-	for i := range keys {
-		go func(i int) {
-			errs <- c.StoreChunk(ctx, keys[i], bufs[i])
-		}(i)
+// BackgroundWrite writes chunks for the cache in the background
+func (c *Cache) BackgroundWrite(key string, buf []byte) {
+	bgWrite := backgroundWrite{
+		key: key,
+		buf: buf,
 	}
-	var errOut error
-	for range keys {
-		if err := <-errs; err != nil {
-			log.Errorf("Error putting chunk to memcache: %v", err)
-			errOut = err
+	select {
+	case c.bgWrites <- bgWrite:
+	default:
+		memcacheDroppedWriteBack.Inc()
+	}
+}
+
+func (c *Cache) writeBackLoop() {
+	defer c.wg.Done()
+
+	for {
+		select {
+		case bgWrite := <-c.bgWrites:
+			err := c.StoreChunk(context.Background(), bgWrite.key, bgWrite.buf)
+			if err != nil {
+				log.Errorf("Error writing to memcache: %v", err)
+			}
+		case <-c.quit:
+			return
 		}
 	}
-	return errOut
 }

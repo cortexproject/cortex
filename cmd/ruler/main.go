@@ -36,6 +36,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer chunkStore.Stop()
 
 	r, err := ring.New(ringConfig)
 	if err != nil {

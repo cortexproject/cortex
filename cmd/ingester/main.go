@@ -32,16 +32,17 @@ func main() {
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &ingesterConfig)
 	flag.Parse()
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	server, err := server.New(serverConfig)
 	if err != nil {
 		log.Fatalf("Error initializing server: %v", err)
 	}
 	defer server.Shutdown()
+
+	chunkStore, err := chunk.NewStore(chunkStoreConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer chunkStore.Stop()
 
 	ingester, err := ingester.New(ingesterConfig, chunkStore)
 	if err != nil {

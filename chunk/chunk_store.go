@@ -133,6 +133,7 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}, nil
 }
 
+// Stop any background goroutines (ie in the cache.)
 func (c *Store) Stop() {
 	c.cache.Stop()
 }

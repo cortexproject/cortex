@@ -28,13 +28,13 @@ var (
 	memcacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "memcache_corrupt_chunks_total",
-		Help:      "Total count of number of corrupt chunks found in memcache.",
+		Help:      "Total count of corrupt chunks found in memcache.",
 	})
 
 	memcacheDroppedWriteBack = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "memcache_dropped_write_back",
-		Help:      "Total count of number of dropped write backs to memcache.",
+		Help:      "Total count of dropped write backs to memcache.",
 	})
 
 	memcacheRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -109,6 +109,7 @@ func NewCache(cfg CacheConfig) *Cache {
 	return c
 }
 
+// Stop the background flushing goroutines.
 func (c *Cache) Stop() {
 	close(c.quit)
 	c.wg.Wait()

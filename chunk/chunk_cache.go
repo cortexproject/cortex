@@ -210,7 +210,7 @@ func (c *Cache) writeBackLoop() {
 		case bgWrite := <-c.bgWrites:
 			err := c.StoreChunk(context.Background(), bgWrite.key, bgWrite.buf)
 			if err != nil {
-				log.Errorf("Error write to memcache: %v", err)
+				log.Errorf("Error writing to memcache: %v", err)
 			}
 		case <-c.quit:
 			return

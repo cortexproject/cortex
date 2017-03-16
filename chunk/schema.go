@@ -627,34 +627,34 @@ func (v6Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, l
 }
 
 func (v6Entries) GetReadMetricEntries(from, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
-	encodedThroughBytes := encodeTime(from)
+	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
 			TableName:       tableName,
 			HashValue:       hashKey,
-			RangeValueStart: buildRangeKey(encodedThroughBytes),
+			RangeValueStart: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
 
 func (v6Entries) GetReadMetricLabelEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
-	encodedThroughBytes := encodeTime(from)
+	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
 			TableName:       tableName,
 			HashValue:       hashKey + ":" + string(labelName),
-			RangeValueStart: buildRangeKey(encodedThroughBytes),
+			RangeValueStart: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
 
 func (v6Entries) GetReadMetricLabelValueEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
-	encodedThroughBytes := encodeTime(from)
+	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
 			TableName:       tableName,
 			HashValue:       hashKey + ":" + string(labelName),
-			RangeValueStart: buildRangeKey(encodedThroughBytes),
+			RangeValueStart: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/test"
@@ -22,12 +23,9 @@ func setupDynamodb(t *testing.T, dynamoDB StorageClient) {
 	tableManager, err := NewDynamoTableManager(TableManagerConfig{
 		mockDynamoDB: dynamoDB,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tableManager.syncTables(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = tableManager.syncTables(context.Background())
+	require.NoError(t, err)
 }
 
 func TestChunkStore(t *testing.T) {
@@ -119,18 +117,14 @@ func TestChunkStore(t *testing.T) {
 					mockS3:        NewMockS3(),
 					schemaFactory: schema.fn,
 				})
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 
 				if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
 					t.Fatal(err)
 				}
 
 				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 
 				// Zero out the checksums, as the inputs above didn't have the checksums calculated
 				for i := range chunks {
@@ -177,9 +171,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			mockS3:        NewMockS3(),
 			schemaFactory: schemas[i].fn,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		schemas[i].store = store
 	}
 
@@ -203,9 +195,8 @@ func TestChunkStoreRandom(t *testing.T) {
 			ts.Add(chunkLen*time.Second),
 		)
 		for _, s := range schemas {
-			if err := s.store.Put(ctx, []Chunk{chunk}); err != nil {
-				t.Fatal(err)
-			}
+			err := s.store.Put(ctx, []Chunk{chunk})
+			require.NoError(t, err)
 		}
 	}
 
@@ -223,9 +214,7 @@ func TestChunkStoreRandom(t *testing.T) {
 				mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"),
 				mustNewLabelMatcher(metric.Equal, "bar", "baz"),
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			// We need to check that each chunk is in the time range
 			for _, chunk := range chunks {
@@ -241,5 +230,73 @@ func TestChunkStoreRandom(t *testing.T) {
 			numChunks := (end / chunkLen) - (start / chunkLen) + 1
 			assert.Equal(t, int(numChunks), len(chunks), s.name)
 		}
+	}
+}
+
+func TestChunkStoreLeastRead(t *testing.T) {
+	// Test we don't read too much from the index
+
+	ctx := user.Inject(context.Background(), userID)
+	dynamoDB := NewMockStorage()
+	setupDynamodb(t, dynamoDB)
+	store, err := NewStore(StoreConfig{
+		mockDynamoDB:  dynamoDB,
+		mockS3:        NewMockS3(),
+		schemaFactory: v6Schema,
+	})
+	require.NoError(t, err)
+
+	// Put 24 chunks 1hr chunks in the store
+	const chunkLen = 60 // in seconds
+	for i := 0; i < 24; i++ {
+		ts := model.TimeFromUnix(int64(i * chunkLen))
+		chunks, _ := chunk.New().Add(model.SamplePair{
+			Timestamp: ts,
+			Value:     model.SampleValue(float64(i)),
+		})
+		chunk := NewChunk(
+			userID,
+			model.Fingerprint(1),
+			model.Metric{
+				model.MetricNameLabel: "foo",
+				"bar": "baz",
+			},
+			chunks[0],
+			ts,
+			ts.Add(chunkLen*time.Second),
+		)
+		err := store.Put(ctx, []Chunk{chunk})
+		require.NoError(t, err)
+	}
+
+	// pick a random numbers and do a query to end of row
+	for i := 1; i < 24; i++ {
+		start := int64(i * chunkLen)
+		end := int64(24 * chunkLen)
+		assert.True(t, start <= end)
+
+		startTime := model.TimeFromUnix(start)
+		endTime := model.TimeFromUnix(end)
+
+		chunks, err := store.Get(ctx, startTime, endTime,
+			mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"),
+			mustNewLabelMatcher(metric.Equal, "bar", "baz"),
+		)
+		if err != nil {
+			t.Fatal(t, err)
+		}
+
+		// We need to check that each chunk is in the time range
+		for _, chunk := range chunks {
+			assert.False(t, chunk.From.After(endTime))
+			assert.False(t, chunk.Through.Before(startTime))
+			samples, err := chunk.samples()
+			assert.NoError(t, err)
+			assert.Equal(t, 1, len(samples))
+		}
+
+		// And check we got all the chunks we want
+		numChunks := 24 - (start / chunkLen) + 1
+		assert.Equal(t, int(numChunks), len(chunks))
 	}
 }

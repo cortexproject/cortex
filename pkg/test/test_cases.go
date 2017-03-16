@@ -1,7 +1,6 @@
 package test
 
 import (
-	"container/heap"
 	"flag"
 	"math"
 	"math/rand"
@@ -12,15 +11,16 @@ import (
 	api "github.com/prometheus/client_golang/api/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
 )
 
 var (
 	testRate         = flag.Float64("test-rate", 1, "Query QPS")
-	testQueryMinSize = flag.Duration("test-query-min-size", 5*time.Minute, "The min query size to Prometheus")
-	testQueryMaxSize = flag.Duration("test-query-max-size", 4*60*time.Minute, "The max query size to Prometheus.")
-	testQueryStep    = flag.Duration("test-query-step", 3*time.Second, "The query step.")
-	testEpsilon      = flag.Float64("test-epsilion", 0.05, "Amount samples are allowed to be off by")
+	testQueryMinSize = flag.Duration("test-query-min-size", 5*time.Minute, "The min query size to Prometheus.")
+	testQueryMaxSize = flag.Duration("test-query-max-size", 60*time.Minute, "The max query size to Prometheus.")
+	testTimeEpsilon  = flag.Duration("test-time-epsilion", 1*time.Second, "Amount samples are allowed to be off by")
+	testEpsilon      = flag.Float64("test-epsilion", 0.01, "Amount samples are allowed to be off by this %%")
 	prometheusAddr   = flag.String("prometheus-address", "", "Address of Prometheus instance to query.")
 
 	// By default, we only query for values from when this process started
@@ -34,6 +34,12 @@ var (
 		},
 		[]string{"result"},
 	)
+	prometheusRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Subsystem: subsystem,
+		Name:      "prometheus_request_duration_seconds",
+		Help:      "Time spent doing Prometheus requests.",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"operation", "status_code"})
 )
 
 func init() {
@@ -44,7 +50,7 @@ func init() {
 type TestCase interface {
 	prometheus.Collector
 
-	Query() string
+	Query(ctx context.Context, client api.QueryAPI, start time.Time, duration time.Duration) ([]model.SamplePair, error)
 	ExpectedValueAt(time.Time) float64
 }
 
@@ -122,105 +128,49 @@ func (ts *TestCases) runRandomTest() {
 	ts.mtx.Unlock()
 
 	// pick a random time to start testStart and now
+	// pick a random length between minDuration and maxDuration
 	now := time.Now()
 	start := testStart.Time.Add(time.Duration(rand.Int63n(int64(now.Sub(testStart.Time)))))
+	duration := *testQueryMinSize +
+		time.Duration(rand.Int63n(int64(*testQueryMaxSize)-int64(*testQueryMinSize)))
 
-	// pick a random length between minDuration and min(testQueryMaxSize, now)
-	duration := *testQueryMinSize + time.Duration(rand.Int63n(int64(
-		minDuration(
-			now.Sub(start),
-			*testQueryMaxSize-*testQueryMinSize,
-		),
-	)))
-
-	log.Println("query =", tc.Query(), "start = ", start, "duration =", duration)
-
-	value, err := ts.client.QueryRange(context.Background(), tc.Query(), api.Range{
-		Start: start,
-		End:   start.Add(duration),
-		Step:  *testQueryStep,
+	var pairs []model.SamplePair
+	err := instrument.TimeRequestHistogram(context.Background(), "Prometheus.Query", prometheusRequestDuration, func(ctx context.Context) error {
+		var err error
+		pairs, err = tc.Query(ctx, ts.client, start, duration)
+		return err
 	})
 	if err != nil {
-		log.Errorf("Error querying Prometheus: %v", err)
+		log.Errorf("Error running test: %v", err)
 		return
 	}
-	if value.Type() != model.ValMatrix {
-		log.Errorf("Didn't get matrix from Prom!")
-		return
-	}
-
-	ms, ok := value.(model.Matrix)
-	if !ok {
-		log.Errorf("Didn't get matrix from Prom!")
-		return
-	}
-
 	success := sampleResult.WithLabelValues("success")
 	failure := sampleResult.WithLabelValues("fail")
 
-	mergeSamples(ms, func(s model.SamplePair) {
-		expected := tc.ExpectedValueAt(s.Timestamp.Time())
-		correct := within(float64(s.Value), expected, *testEpsilon)
+	for _, pair := range pairs {
+		correct := timeEpsilonCorrect(tc.ExpectedValueAt, pair) || valueEpsilonCorrect(tc.ExpectedValueAt, pair)
 		if correct {
 			success.Inc()
 		} else {
 			failure.Inc()
-			log.Errorf("Wrong value: %f !~ %f", s.Value, expected)
-		}
-	})
-}
-
-type SampleStreamHeap []*model.SampleStream
-
-func (h SampleStreamHeap) Len() int { return len(h) }
-func (h SampleStreamHeap) Less(i, j int) bool {
-	return h[i].Values[0].Timestamp < h[j].Values[0].Timestamp
-}
-func (h SampleStreamHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
-func (h *SampleStreamHeap) Push(x interface{}) { *h = append(*h, x.(*model.SampleStream)) }
-func (h *SampleStreamHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
-}
-
-// We assume only one value is valid, but as the test exporter might restart,
-// we will have a series per-instance.  Also, need to deal with staleness.
-// Sould be N log(n), where N is total samples and n is number of timeseries.
-func mergeSamples(m model.Matrix, callback func(model.SamplePair)) {
-	// To deal with staleness, we track last value by fingerprint
-	// and ignore repetition (and ignore the first sample we see
-	// for each fingerprint).
-	lastSeen := map[model.Fingerprint]model.SampleValue{}
-	h := &SampleStreamHeap{}
-	for _, stream := range m {
-		if len(stream.Values) > 0 {
-			heap.Push(h, stream)
-		}
-	}
-
-	for h.Len() > 0 {
-		stream := heap.Pop(h).(*model.SampleStream)
-		fingerprint := stream.Metric.FastFingerprint()
-		pair := stream.Values[0]
-		lastValue, ok := lastSeen[fingerprint]
-		if ok && lastValue != pair.Value {
-			callback(pair)
-		}
-
-		lastSeen[fingerprint] = pair.Value
-
-		if len(stream.Values) > 1 {
-			stream.Values = stream.Values[1:]
-			heap.Push(h, stream)
+			log.Errorf("Wrong value: %f !~ %f", tc.ExpectedValueAt(pair.Timestamp.Time()), pair.Value)
 		}
 	}
 }
 
-func within(a, b, epsilon float64) bool {
-	return math.Abs((a-b)/a) < epsilon
+func timeEpsilonCorrect(f func(time.Time) float64, pair model.SamplePair) bool {
+	minExpected := f(pair.Timestamp.Time().Add(-*testTimeEpsilon))
+	maxExpected := f(pair.Timestamp.Time().Add(*testTimeEpsilon))
+	if minExpected > maxExpected {
+		minExpected, maxExpected = maxExpected, minExpected
+	}
+	return minExpected < float64(pair.Value) && float64(pair.Value) < maxExpected
+}
+
+func valueEpsilonCorrect(f func(time.Time) float64, pair model.SamplePair) bool {
+	expected := f(pair.Timestamp.Time())
+	delta := math.Abs((float64(pair.Value) - expected) / expected)
+	return delta < *testEpsilon
 }
 
 func maxDuration(a, b time.Duration) time.Duration {

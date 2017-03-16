@@ -50,9 +50,6 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		handler            http.HandlerFunc
 	}{
 		{"root", "GET", "/", a.admin},
-		// Deprecated public APIs
-		{"get_config", "GET", "/api/configs/org/cortex", a.getConfig},
-		{"set_config", "POST", "/api/configs/org/cortex", a.setConfig},
 		// Dedicated APIs for updating rules config. In the future, these *must*
 		// be used.
 		{"get_rules", "GET", "/api/prom/configs/rules", a.getConfig},

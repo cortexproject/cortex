@@ -42,10 +42,8 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 		var code int
 		switch err {
-		case errIngestionRateLimitExceeded:
+		case errIngestionRateLimitExceeded, util.ErrUserSeriesLimitExceeded, util.ErrMetricSeriesLimitExceeded:
 			code = http.StatusTooManyRequests
-		case util.ErrUserSeriesLimitExceeded, util.ErrMetricSeriesLimitExceeded:
-			code = http.StatusInsufficientStorage
 		default:
 			code = http.StatusInternalServerError
 		}

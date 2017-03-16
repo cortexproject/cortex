@@ -4,6 +4,7 @@ import (
 	"flag"
 	"math"
 	"math/rand"
+	"net/http"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 )
 
@@ -22,6 +24,7 @@ var (
 	testTimeEpsilon  = flag.Duration("test-time-epsilion", 1*time.Second, "Amount samples are allowed to be off by")
 	testEpsilon      = flag.Float64("test-epsilion", 0.01, "Amount samples are allowed to be off by this %%")
 	prometheusAddr   = flag.String("prometheus-address", "", "Address of Prometheus instance to query.")
+	userID           = flag.String("user-id", "", "UserID to send to Cortex.")
 
 	// By default, we only query for values from when this process started
 	testStart = NewTimeValue(time.Now())
@@ -66,9 +69,15 @@ type Runner struct {
 
 // NewTestCases makes a new TestCases.
 func NewTestCases() (*Runner, error) {
-	client, err := api.New(api.Config{
+	cfg := api.Config{
 		Address: *prometheusAddr,
-	})
+	}
+	if *userID != "" {
+		cfg.Middleware = func(r *http.Request) {
+			user.InjectIntoHTTPRequest(user.Inject(context.Background(), *userID), r)
+		}
+	}
+	client, err := api.New(cfg)
 	if err != nil {
 		return nil, err
 	}

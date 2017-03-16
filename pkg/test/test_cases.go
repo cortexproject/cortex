@@ -47,25 +47,25 @@ func init() {
 	prometheus.MustRegister(sampleResult)
 }
 
-// TestCase is a metric that can query itself.
-type TestCase interface {
+// Case is a metric that can query itself.
+type Case interface {
 	prometheus.Collector
 
 	Query(ctx context.Context, client api.QueryAPI, start time.Time, duration time.Duration) ([]model.SamplePair, error)
 	ExpectedValueAt(time.Time) float64
 }
 
-// TestCases runs a bunch of test cases, periodically checking their value.
-type TestCases struct {
+// Runner runs a bunch of test cases, periodically checking their value.
+type Runner struct {
 	mtx    sync.RWMutex
-	cases  []TestCase
+	cases  []Case
 	quit   chan struct{}
 	wg     sync.WaitGroup
 	client api.QueryAPI
 }
 
 // NewTestCases makes a new TestCases.
-func NewTestCases() (*TestCases, error) {
+func NewTestCases() (*Runner, error) {
 	client, err := api.New(api.Config{
 		Address: *prometheusAddr,
 	})
@@ -73,7 +73,7 @@ func NewTestCases() (*TestCases, error) {
 		return nil, err
 	}
 
-	tc := &TestCases{
+	tc := &Runner{
 		quit:   make(chan struct{}),
 		client: api.NewQueryAPI(client),
 	}
@@ -83,20 +83,20 @@ func NewTestCases() (*TestCases, error) {
 }
 
 // Stop the checking goroutine.
-func (ts *TestCases) Stop() {
+func (ts *Runner) Stop() {
 	close(ts.quit)
 	ts.wg.Wait()
 }
 
 // Add a new TestCase.
-func (ts *TestCases) Add(tc TestCase) {
+func (ts *Runner) Add(tc Case) {
 	ts.mtx.Lock()
 	defer ts.mtx.Unlock()
 	ts.cases = append(ts.cases, tc)
 }
 
 // Describe implements prometheus.Collector.
-func (ts *TestCases) Describe(c chan<- *prometheus.Desc) {
+func (ts *Runner) Describe(c chan<- *prometheus.Desc) {
 	ts.mtx.RLock()
 	defer ts.mtx.RUnlock()
 	for _, t := range ts.cases {
@@ -105,7 +105,7 @@ func (ts *TestCases) Describe(c chan<- *prometheus.Desc) {
 }
 
 // Collect implements prometheus.Collector.
-func (ts *TestCases) Collect(c chan<- prometheus.Metric) {
+func (ts *Runner) Collect(c chan<- prometheus.Metric) {
 	ts.mtx.RLock()
 	defer ts.mtx.RUnlock()
 	for _, t := range ts.cases {
@@ -113,7 +113,7 @@ func (ts *TestCases) Collect(c chan<- prometheus.Metric) {
 	}
 }
 
-func (ts *TestCases) verifyLoop() {
+func (ts *Runner) verifyLoop() {
 	defer ts.wg.Done()
 
 	ticker := time.NewTicker(time.Second / time.Duration(*testRate))
@@ -129,7 +129,7 @@ func (ts *TestCases) verifyLoop() {
 	}
 }
 
-func (ts *TestCases) runRandomTest() {
+func (ts *Runner) runRandomTest() {
 	ts.mtx.Lock()
 	tc := ts.cases[rand.Intn(len(ts.cases))]
 	ts.mtx.Unlock()

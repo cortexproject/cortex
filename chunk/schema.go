@@ -626,35 +626,35 @@ func (v6Entries) GetWriteEntries(_, through uint32, tableName, hashKey string, l
 	return entries, nil
 }
 
-func (v6Entries) GetReadMetricEntries(_, through uint32, tableName, hashKey string) ([]IndexEntry, error) {
-	encodedThroughBytes := encodeTime(through)
+func (v6Entries) GetReadMetricEntries(from, _ uint32, tableName, hashKey string) ([]IndexEntry, error) {
+	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
-			TableName:  tableName,
-			HashValue:  hashKey,
-			RangeValue: buildRangeKey(encodedThroughBytes),
+			TableName:       tableName,
+			HashValue:       hashKey,
+			RangeValueStart: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
 
-func (v6Entries) GetReadMetricLabelEntries(_, through uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
-	encodedThroughBytes := encodeTime(through)
+func (v6Entries) GetReadMetricLabelEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName) ([]IndexEntry, error) {
+	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
-			TableName:  tableName,
-			HashValue:  hashKey + ":" + string(labelName),
-			RangeValue: buildRangeKey(encodedThroughBytes),
+			TableName:       tableName,
+			HashValue:       hashKey + ":" + string(labelName),
+			RangeValueStart: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
 
-func (v6Entries) GetReadMetricLabelValueEntries(_, through uint32, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
-	encodedThroughBytes := encodeTime(through)
+func (v6Entries) GetReadMetricLabelValueEntries(from, _ uint32, tableName, hashKey string, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
+	encodedFromBytes := encodeTime(from)
 	return []IndexEntry{
 		{
-			TableName:  tableName,
-			HashValue:  hashKey + ":" + string(labelName),
-			RangeValue: buildRangeKey(encodedThroughBytes),
+			TableName:       tableName,
+			HashValue:       hashKey + ":" + string(labelName),
+			RangeValueStart: buildRangeKey(encodedFromBytes),
 		},
 	}, nil
 }

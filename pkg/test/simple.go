@@ -26,6 +26,7 @@ type simpleTestCase struct {
 	expectedValueAt func(time.Time) float64
 }
 
+// NewSimpleTestCase makes a new simpleTestCase
 func NewSimpleTestCase(name string, f func(time.Time) float64) TestCase {
 	return &simpleTestCase{
 		GaugeFunc: prometheus.NewGaugeFunc(
@@ -58,12 +59,12 @@ func (tc *simpleTestCase) Query(ctx context.Context, client api.QueryAPI, start 
 		return nil, err
 	}
 	if value.Type() != model.ValMatrix {
-		return nil, fmt.Errorf("Didn't get matrix from Prom!")
+		return nil, fmt.Errorf("didn't get matrix from Prom!")
 	}
 
 	ms, ok := value.(model.Matrix)
 	if !ok {
-		return nil, fmt.Errorf("Didn't get matrix from Prom!")
+		return nil, fmt.Errorf("didn't get matrix from Prom!")
 	}
 
 	result := []model.SamplePair{}

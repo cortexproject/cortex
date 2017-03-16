@@ -47,6 +47,7 @@ func init() {
 	prometheus.MustRegister(sampleResult)
 }
 
+// TestCase is a metric that can query itself.
 type TestCase interface {
 	prometheus.Collector
 
@@ -54,6 +55,7 @@ type TestCase interface {
 	ExpectedValueAt(time.Time) float64
 }
 
+// TestCases runs a bunch of test cases, periodically checking their value.
 type TestCases struct {
 	mtx    sync.RWMutex
 	cases  []TestCase
@@ -62,6 +64,7 @@ type TestCases struct {
 	client api.QueryAPI
 }
 
+// NewTestCases makes a new TestCases.
 func NewTestCases() (*TestCases, error) {
 	client, err := api.New(api.Config{
 		Address: *prometheusAddr,
@@ -79,17 +82,20 @@ func NewTestCases() (*TestCases, error) {
 	return tc, nil
 }
 
+// Stop the checking goroutine.
 func (ts *TestCases) Stop() {
 	close(ts.quit)
 	ts.wg.Wait()
 }
 
+// Add a new TestCase.
 func (ts *TestCases) Add(tc TestCase) {
 	ts.mtx.Lock()
 	defer ts.mtx.Unlock()
 	ts.cases = append(ts.cases, tc)
 }
 
+// Describe implements prometheus.Collector.
 func (ts *TestCases) Describe(c chan<- *prometheus.Desc) {
 	ts.mtx.RLock()
 	defer ts.mtx.RUnlock()
@@ -98,6 +104,7 @@ func (ts *TestCases) Describe(c chan<- *prometheus.Desc) {
 	}
 }
 
+// Collect implements prometheus.Collector.
 func (ts *TestCases) Collect(c chan<- prometheus.Metric) {
 	ts.mtx.RLock()
 	defer ts.mtx.RUnlock()

@@ -18,20 +18,17 @@ type S3Client interface {
 }
 
 // NewS3Client makes a new S3Client
-func NewS3Client(s3URL string) (S3Client, string, error) {
-	url, err := url.Parse(s3URL)
+func NewS3Client(s3URL *url.URL) (S3Client, string, error) {
+	bucketName := strings.TrimPrefix(s3URL.Path, "/")
+	if s3URL.Scheme == "inmemory" {
+		return NewMockS3(), bucketName, nil
+	}
+
+	s3Config, err := awsConfigFromURL(s3URL)
 	if err != nil {
 		return nil, "", err
 	}
-
-	s3Config, err := awsConfigFromURL(url)
-	if err != nil {
-		return nil, "", err
-	}
-
 	s3Client := s3.New(session.New(s3Config))
-	bucketName := strings.TrimPrefix(url.Path, "/")
-
 	return s3Client, bucketName, nil
 }
 

@@ -55,13 +55,7 @@ func init() {
 type StoreConfig struct {
 	SchemaConfig
 	CacheConfig
-	S3       util.URLValue
-	DynamoDB util.URLValue
-
-	mockS3         S3Client
-	mockBucketName string
-	mockDynamoDB   StorageClient
-	mockTableName  string
+	S3 util.URLValue
 
 	// For injecting different schemas in tests.
 	schemaFactory func(cfg SchemaConfig) Schema
@@ -73,9 +67,7 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlags(f)
 
 	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
-		"If only region is specified as a host, proper endpoint will be deducted.")
-	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
-		"If only region is specified as a host, proper endpoint will be deducted.")
+		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
 
 // Store implements Store
@@ -83,7 +75,6 @@ type Store struct {
 	cfg StoreConfig
 
 	storage    StorageClient
-	tableName  string
 	s3         S3Client
 	bucketName string
 	cache      *Cache
@@ -91,28 +82,14 @@ type Store struct {
 }
 
 // NewStore makes a new ChunkStore
-func NewStore(cfg StoreConfig) (*Store, error) {
-	dynamoDBClient, tableName := cfg.mockDynamoDB, cfg.mockTableName
-	if dynamoDBClient == nil {
-		var err error
-		dynamoDBClient, tableName, err = NewDynamoDBClient(cfg.DynamoDB.String())
-		if err != nil {
-			return nil, err
-		}
+func NewStore(cfg StoreConfig, dynamoDBClient StorageClient, originalTableName string) (*Store, error) {
+	s3Client, bucketName, err := NewS3Client(cfg.S3.URL)
+	if err != nil {
+		return nil, err
 	}
 
-	s3Client, bucketName := cfg.mockS3, cfg.mockBucketName
-	if s3Client == nil {
-		var err error
-		s3Client, bucketName, err = NewS3Client(cfg.S3.String())
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	cfg.SchemaConfig.OriginalTableName = tableName
+	cfg.SchemaConfig.OriginalTableName = originalTableName
 	var schema Schema
-	var err error
 	if cfg.schemaFactory == nil {
 		schema, err = newCompositeSchema(cfg.SchemaConfig)
 	} else {
@@ -125,7 +102,6 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	return &Store{
 		cfg:        cfg,
 		storage:    dynamoDBClient,
-		tableName:  tableName,
 		s3:         s3Client,
 		bucketName: bucketName,
 		schema:     schema,

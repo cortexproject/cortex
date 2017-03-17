@@ -3,6 +3,7 @@ package chunk
 import (
 	"fmt"
 	"math/rand"
+	"net/url"
 	"reflect"
 	"testing"
 	"time"
@@ -17,12 +18,11 @@ import (
 
 	"github.com/weaveworks/common/test"
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/util"
 )
 
-func setupDynamodb(t *testing.T, dynamoDB StorageClient) {
-	tableManager, err := NewDynamoTableManager(TableManagerConfig{
-		mockDynamoDB: dynamoDB,
-	})
+func setupDynamodb(t *testing.T, client StorageClient, tableName string) {
+	tableManager, err := NewDynamoTableManager(TableManagerConfig{}, client, tableName)
 	require.NoError(t, err)
 	err = tableManager.syncTables(context.Background())
 	require.NoError(t, err)
@@ -110,13 +110,13 @@ func TestChunkStore(t *testing.T) {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				log.Infoln("========= Running query", tc.query, "with schema", schema.name)
-				dynamoDB := NewMockStorage()
-				setupDynamodb(t, dynamoDB)
+				dynamoDBClient := NewMockStorage()
+				tableName := ""
+				setupDynamodb(t, dynamoDBClient, tableName)
 				store, err := NewStore(StoreConfig{
-					mockDynamoDB:  dynamoDB,
-					mockS3:        NewMockS3(),
+					S3:            util.URLValue{mustURL(t, "inmemory:///test-s3-bucket")},
 					schemaFactory: schema.fn,
-				})
+				}, dynamoDBClient, tableName)
 				require.NoError(t, err)
 
 				if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
@@ -138,6 +138,13 @@ func TestChunkStore(t *testing.T) {
 			})
 		}
 	}
+}
+
+// mustURL returns a URL.
+func mustURL(t *testing.T, urlStr string) *url.URL {
+	url, err := url.Parse(urlStr)
+	require.NoError(t, err)
+	return url
 }
 
 func mustNewLabelMatcher(matchType metric.MatchType, name model.LabelName, value model.LabelValue) *metric.LabelMatcher {
@@ -163,14 +170,14 @@ func TestChunkStoreRandom(t *testing.T) {
 		{name: "v6 schema", fn: v6Schema},
 	}
 
+	tableName := ""
 	for i := range schemas {
-		dynamoDB := NewMockStorage()
-		setupDynamodb(t, dynamoDB)
+		dynamoDBClient := NewMockStorage()
+		setupDynamodb(t, dynamoDBClient, tableName)
 		store, err := NewStore(StoreConfig{
-			mockDynamoDB:  dynamoDB,
-			mockS3:        NewMockS3(),
+			S3:            util.URLValue{mustURL(t, "inmemory:///test-s3-bucket")},
 			schemaFactory: schemas[i].fn,
-		})
+		}, dynamoDBClient, tableName)
 		require.NoError(t, err)
 		schemas[i].store = store
 	}
@@ -235,15 +242,14 @@ func TestChunkStoreRandom(t *testing.T) {
 
 func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
-
 	ctx := user.Inject(context.Background(), userID)
 	dynamoDB := NewMockStorage()
-	setupDynamodb(t, dynamoDB)
+	tableName := ""
+	setupDynamodb(t, dynamoDB, tableName)
 	store, err := NewStore(StoreConfig{
-		mockDynamoDB:  dynamoDB,
-		mockS3:        NewMockS3(),
+		S3:            util.URLValue{mustURL(t, "inmemory:///test-s3-bucket")},
 		schemaFactory: v6Schema,
-	})
+	}, dynamoDB, tableName)
 	require.NoError(t, err)
 
 	// Put 24 chunks 1hr chunks in the store
@@ -265,6 +271,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			ts,
 			ts.Add(chunkLen*time.Second),
 		)
+		log.Infof("Loop %d", i)
 		err := store.Put(ctx, []Chunk{chunk})
 		require.NoError(t, err)
 	}

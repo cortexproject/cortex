@@ -1,9 +1,9 @@
 package chunk
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
-	"net/url"
 	"strings"
 	"time"
 
@@ -69,24 +69,36 @@ func init() {
 	prometheus.MustRegister(dynamoFailures)
 }
 
+// DynamoDBClientConfig specifies config for a DynamoDB client.
+type DynamoDBClientConfig struct {
+	URL util.URLValue
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *DynamoDBClientConfig) RegisterFlags(f *flag.FlagSet) {
+	f.Var(&cfg.URL, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
+		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
+}
+
 type dynamoClientAdapter struct {
 	DynamoDB dynamodbiface.DynamoDBAPI
 }
 
 // NewDynamoDBClient makes a new DynamoDBClient
-func NewDynamoDBClient(dynamoDBURL string) (StorageClient, string, error) {
-	url, err := url.Parse(dynamoDBURL)
-	if err != nil {
-		return nil, "", err
+func NewDynamoDBClient(cfg DynamoDBClientConfig) (StorageClient, string, error) {
+	dynamoDBURL := cfg.URL.URL
+	tableName := strings.TrimPrefix(dynamoDBURL.Path, "/")
+
+	if dynamoDBURL.Scheme == "inmemory" {
+		return NewMockStorage(), tableName, nil
 	}
 
-	dynamoDBConfig, err := awsConfigFromURL(url)
+	dynamoDBConfig, err := awsConfigFromURL(dynamoDBURL)
 	if err != nil {
 		return nil, "", err
 	}
 
 	dynamoDBClient := dynamoClientAdapter{dynamodb.New(session.New(dynamoDBConfig))}
-	tableName := strings.TrimPrefix(url.Path, "/")
 	return dynamoDBClient, tableName, nil
 }
 

@@ -42,11 +42,7 @@ func init() {
 
 // TableManagerConfig is the config for a DynamoTableManager
 type TableManagerConfig struct {
-	DynamoDB             util.URLValue
 	DynamoDBPollInterval time.Duration
-
-	mockDynamoDB  StorageClient
-	mockTableName string
 
 	PeriodicTableConfig
 
@@ -61,7 +57,6 @@ type TableManagerConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
-	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL.")
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
@@ -101,16 +96,7 @@ type DynamoTableManager struct {
 }
 
 // NewDynamoTableManager makes a new DynamoTableManager
-func NewDynamoTableManager(cfg TableManagerConfig) (*DynamoTableManager, error) {
-	dynamoDBClient, tableName := cfg.mockDynamoDB, cfg.mockTableName
-	if dynamoDBClient == nil {
-		var err error
-		dynamoDBClient, tableName, err = NewDynamoDBClient(cfg.DynamoDB.String())
-		if err != nil {
-			return nil, err
-		}
-	}
-
+func NewDynamoTableManager(cfg TableManagerConfig, dynamoDBClient StorageClient, tableName string) (*DynamoTableManager, error) {
 	m := &DynamoTableManager{
 		cfg:       cfg,
 		dynamoDB:  dynamoDBClient,

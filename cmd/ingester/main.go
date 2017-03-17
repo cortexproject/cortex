@@ -24,12 +24,13 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		chunkStoreConfig chunk.StoreConfig
-		ingesterConfig   ingester.Config
+		chunkStoreConfig     chunk.StoreConfig
+		dynamoDBClientConfig chunk.DynamoDBClientConfig
+		ingesterConfig       ingester.Config
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &ingesterConfig)
+	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &dynamoDBClientConfig, &ingesterConfig)
 	flag.Parse()
 
 	server, err := server.New(serverConfig)
@@ -38,7 +39,12 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig)
+	dynamoDBClient, tableName, err := chunk.NewDynamoDBClient(dynamoDBClientConfig)
+	if err != nil {
+		log.Fatalf("Error initializing DynamoDB client: %v", err)
+	}
+
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, dynamoDBClient, tableName)
 	if err != nil {
 		log.Fatal(err)
 	}

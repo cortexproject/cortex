@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+// MockS3 is a fake S3Client.
 type MockS3 struct {
 	mtx     sync.RWMutex
 	buckets map[string]*mockS3Bucket
@@ -25,6 +26,7 @@ func NewMockS3() *MockS3 {
 	}
 }
 
+// PutObject implements S3Client.
 func (m *MockS3) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
 	buf, err := ioutil.ReadAll(input.Body)
 	if err != nil {
@@ -46,6 +48,7 @@ func (m *MockS3) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutput, error
 	return &s3.PutObjectOutput{}, nil
 }
 
+// GetObject implements S3Client.
 func (m *MockS3) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()

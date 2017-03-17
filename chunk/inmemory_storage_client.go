@@ -11,6 +11,7 @@ import (
 	"golang.org/x/net/context"
 )
 
+// MockStorage is a fake in-memory StorageClient.
 type MockStorage struct {
 	mtx    sync.RWMutex
 	tables map[string]*mockTable
@@ -26,12 +27,14 @@ type mockItem struct {
 	value      []byte
 }
 
+// NewMockStorage creates a new MockStorage.
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
 		tables: map[string]*mockTable{},
 	}
 }
 
+// ListTables implements StorageClient.
 func (m *MockStorage) ListTables() ([]string, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
@@ -45,6 +48,7 @@ func (m *MockStorage) ListTables() ([]string, error) {
 	return tableNames, nil
 }
 
+// CreateTable implements StorageClient.
 func (m *MockStorage) CreateTable(name string, read, write int64) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -62,6 +66,7 @@ func (m *MockStorage) CreateTable(name string, read, write int64) error {
 	return nil
 }
 
+// DescribeTable implements StorageClient.
 func (m *MockStorage) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
@@ -74,6 +79,7 @@ func (m *MockStorage) DescribeTable(name string) (readCapacity, writeCapacity in
 	return table.read, table.write, dynamodb.TableStatusActive, nil
 }
 
+// UpdateTable implements StorageClient.
 func (m *MockStorage) UpdateTable(name string, readCapacity, writeCapacity int64) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -89,10 +95,12 @@ func (m *MockStorage) UpdateTable(name string, readCapacity, writeCapacity int64
 	return nil
 }
 
+// NewWriteBatch implements StorageClient.
 func (m *MockStorage) NewWriteBatch() WriteBatch {
 	return &mockWriteBatch{}
 }
 
+// BatchWrite implements StorageClient.
 func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -127,6 +135,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	return nil
 }
 
+// QueryPages implements StorageClient.
 func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()

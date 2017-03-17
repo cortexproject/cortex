@@ -27,8 +27,6 @@ func TestDynamoTableManager(t *testing.T) {
 	dynamoDB := NewMockStorage()
 
 	cfg := TableManagerConfig{
-		mockDynamoDB: dynamoDB,
-
 		PeriodicTableConfig: PeriodicTableConfig{
 			UsePeriodicTables: true,
 			TablePrefix:       tablePrefix,
@@ -45,7 +43,7 @@ func TestDynamoTableManager(t *testing.T) {
 		InactiveWriteThroughput:    inactiveWrite,
 		InactiveReadThroughput:     inactiveRead,
 	}
-	tableManager, err := NewDynamoTableManager(cfg)
+	tableManager, err := NewDynamoTableManager(cfg, dynamoDB, "")
 	if err != nil {
 		t.Fatal(err)
 	}

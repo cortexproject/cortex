@@ -191,7 +191,7 @@ loop:
 	flushRequired := true
 	if i.cfg.ClaimOnRollout {
 		if err := i.transferChunks(); err != nil {
-			log.Fatalf("Failed to transfer chunks to another ingester: %v", err)
+			log.Errorf("Failed to transfer chunks to another ingester: %v", err)
 		}
 		flushRequired = false
 	}
@@ -315,9 +315,9 @@ func (i *Ingester) changeState(state ring.IngesterState) error {
 // transferChunks finds an ingester in PENDING state and transfers our chunks
 // to it.
 func (i *Ingester) transferChunks() error {
-	targetIngester := i.findTargetIngester()
-	if targetIngester == nil {
-		return fmt.Errorf("cannot find ingester to transfer chunks to")
+	targetIngester, err := i.findTargetIngester()
+	if err != nil {
+		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
 	}
 
 	log.Infof("Sending chunks to %v", targetIngester.Addr)
@@ -367,25 +367,34 @@ func (i *Ingester) transferChunks() error {
 }
 
 // findTargetIngester finds an ingester in PENDING state.
-func (i *Ingester) findTargetIngester() *ring.IngesterDesc {
-	for j := 0; j < pendingSearchIterations; j++ {
+func (i *Ingester) findTargetIngester() (*ring.IngesterDesc, error) {
+	findIngester := func() (*ring.IngesterDesc, error) {
 		ringDesc, err := i.consul.Get(ring.ConsulKey)
 		if err != nil {
-			log.Errorf("Error talking to consul: %v", err)
-			time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
-			continue
+			return nil, err
 		}
 
 		ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
 		if len(ingesters) <= 0 {
-			log.Warnf("No pending ingesters found...")
-			time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
-			continue
+			return nil, fmt.Errorf("no pending ingesters")
 		}
 
-		return ingesters[0]
+		return ingesters[0], nil
 	}
-	return nil
+
+	deadline := time.Now().Add(i.cfg.SearchPendingFor)
+	for {
+		ingester, err := findIngester()
+		if err != nil {
+			log.Errorf("Error looking for pending ingester: %v", err)
+			if time.Now().Before(deadline) {
+				time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
+			} else {
+				return nil, err
+			}
+		}
+		return ingester, nil
+	}
 }
 
 // flushChunks writes all remaining chunks to the chunkStore,

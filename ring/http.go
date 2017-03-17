@@ -23,6 +23,7 @@ const tpl = `
 		<p>Current time: {{ .Now }}</p>
 		<p>{{ .Message }}</p>
 		<form action="" method="POST">
+			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
 			<table width="100%" border="1">
 				<thead>
 					<tr>

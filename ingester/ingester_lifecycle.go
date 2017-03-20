@@ -16,7 +16,6 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex"
-	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
 )
@@ -321,7 +320,7 @@ func (i *Ingester) transferChunks() error {
 	}
 
 	log.Infof("Sending chunks to %v", targetIngester.Addr)
-	client, err := client.MakeIngesterClient(targetIngester.Addr, i.cfg.SearchPendingFor)
+	client, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.cfg.SearchPendingFor)
 	if err != nil {
 		return err
 	}

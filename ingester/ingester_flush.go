@@ -97,7 +97,7 @@ func (i *Ingester) shouldFlushChunk(c *desc) bool {
 
 func (i *Ingester) flushLoop(j int) {
 	defer func() {
-		log.Info("Ingester.flushLoop() exited")
+		log.Debug("Ingester.flushLoop() exited")
 		i.done.Done()
 	}()
 

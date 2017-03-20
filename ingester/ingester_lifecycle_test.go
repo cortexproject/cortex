@@ -61,6 +61,35 @@ func TestIngesterRestart(t *testing.T) {
 	})
 }
 
+func TestIngesterTransfer(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	store := &testStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+	ing1, err := New(cfg, store)
+	require.NoError(t, err)
+
+	const userID = "1"
+
+	var (
+		ts  = model.TimeFromUnix(123)
+		val = model.SampleValue(456)
+	)
+
+	ctx := user.Inject(context.Background(), userID)
+	_, err = ing1.Push(ctx, util.ToWriteRequest([]model.Sample{
+		{
+			Metric: model.Metric{
+				model.MetricNameLabel: "foo",
+			},
+			Timestamp: ts,
+			Value:     val,
+		},
+	}))
+	require.NoError(t, err)
+
+}
+
 func numTokens(c ring.ConsulClient, name string) int {
 	ringDesc, err := c.Get(ring.ConsulKey)
 	if err != nil {

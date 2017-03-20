@@ -389,6 +389,7 @@ func (i *Ingester) findTargetIngester() (*ring.IngesterDesc, error) {
 			log.Errorf("Error looking for pending ingester: %v", err)
 			if time.Now().Before(deadline) {
 				time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
+				continue
 			} else {
 				return nil, err
 			}

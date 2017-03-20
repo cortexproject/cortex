@@ -103,16 +103,23 @@ type awsStorageClient struct {
 
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
 func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, string, error) {
-	dynamoDBURL := cfg.DynamoDB.URL
-	tableName := strings.TrimPrefix(dynamoDBURL.Path, "/")
+	tableName := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
 
-	if dynamoDBURL.Scheme == "inmemory" {
+	if cfg.DynamoDB.URL.Scheme == "inmemory" {
 		return NewMockStorage(), tableName, nil
 	}
 
-	dynamoDBConfig, err := awsConfigFromURL(dynamoDBURL)
+	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, "", err
+	}
+
+	dynamoDB := dynamodb.New(session.New(dynamoDBConfig))
+	if cfg.S3.URL == nil {
+		storageClient := awsStorageClient{
+			DynamoDB: dynamoDB,
+		}
+		return storageClient, tableName, nil
 	}
 
 	s3Config, err := awsConfigFromURL(cfg.S3.URL)
@@ -123,7 +130,7 @@ func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, string, error) {
 	bucketName := aws.String(strings.TrimPrefix(cfg.S3.URL.Path, "/"))
 
 	storageClient := awsStorageClient{
-		DynamoDB:   dynamodb.New(session.New(dynamoDBConfig)),
+		DynamoDB:   dynamoDB,
 		S3:         s3Client,
 		bucketName: bucketName,
 	}

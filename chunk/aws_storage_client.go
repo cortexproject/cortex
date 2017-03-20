@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
@@ -439,4 +441,25 @@ func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
 			}
 		}
 	}
+}
+
+// awsConfigFromURL returns AWS config from given URL. It expects escaped AWS Access key ID & Secret Access Key to be
+// encoded in the URL. It also expects region specified as a host (letting AWS generate full endpoint) or fully valid
+// endpoint with dummy region assumed (e.g for URLs to emulated services).
+func awsConfigFromURL(awsURL *url.URL) (*aws.Config, error) {
+	if awsURL.User == nil {
+		return nil, fmt.Errorf("must specify escaped Access Key & Secret Access in URL")
+	}
+
+	password, _ := awsURL.User.Password()
+	creds := credentials.NewStaticCredentials(awsURL.User.Username(), password, "")
+	config := aws.NewConfig().
+		WithCredentials(creds).
+		WithMaxRetries(0) // We do our own retries, so we can monitor them
+	if strings.Contains(awsURL.Host, ".") {
+		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)).WithRegion("dummy"), nil
+	}
+
+	// Let AWS generate default endpoint based on region passed as a host in URL.
+	return config.WithRegion(awsURL.Host), nil
 }

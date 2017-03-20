@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/prometheus/common/log"
 )
 
 const tpl = `
@@ -21,7 +22,6 @@ const tpl = `
 	<body>
 		<h1>Cortex Ring Status</h1>
 		<p>Current time: {{ .Now }}</p>
-		<p>{{ .Message }}</p>
 		<form action="" method="POST">
 			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
 			<table width="100%" border="1">
@@ -79,14 +79,15 @@ func (r *Ring) forget(id string) error {
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	message := ""
 	if req.Method == http.MethodPost {
 		ingesterID := req.FormValue("forget")
 		if err := r.forget(ingesterID); err != nil {
-			message = fmt.Sprintf("Error forgetting ingester: %v", err)
-		} else {
-			message = fmt.Sprintf("Ingester %s forgotten", ingesterID)
+			log.Errorf("Error forgetting ingester: %v", err)
 		}
+
+		// Implement PRG pattern to prevent double-POST and work with CSRF middleware.
+		// https://en.wikipedia.org/wiki/Post/Redirect/Get
+		http.Redirect(w, req, req.RequestURI, http.StatusFound)
 	}
 
 	r.mtx.RLock()
@@ -125,12 +126,10 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	if err := tmpl.Execute(w, struct {
 		Ingesters []interface{}
-		Message   string
 		Now       time.Time
 		Ring      string
 	}{
 		Ingesters: ingesters,
-		Message:   message,
 		Now:       time.Now(),
 		Ring:      proto.MarshalTextString(r.ringDesc),
 	}); err != nil {

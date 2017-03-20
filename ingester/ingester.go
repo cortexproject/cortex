@@ -20,6 +20,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex"
 	cortex_chunk "github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
 )
@@ -87,10 +88,11 @@ type Config struct {
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
-	// For testing, you can override the address and UD of this ingester
-	addr           string
-	id             string
-	skipUnregister bool
+	// For testing, you can override the address and ID of this ingester
+	addr                  string
+	id                    string
+	skipUnregister        bool
+	ingesterClientFactory func(addr string, timeout time.Duration) (cortex.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -195,6 +197,9 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	}
 	if cfg.userStatesConfig.MaxSeriesPerMetric <= 0 {
 		cfg.userStatesConfig.MaxSeriesPerMetric = DefaultMaxSeriesPerMetric
+	}
+	if cfg.ingesterClientFactory == nil {
+		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {

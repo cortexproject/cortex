@@ -2,16 +2,17 @@ package ingester
 
 import (
 	"fmt"
-	"reflect"
 	"sort"
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/chunk"
@@ -22,6 +23,12 @@ type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
 	chunks map[string][]chunk.Chunk
+}
+
+func newTestStore() *testStore {
+	return &testStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
 }
 
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
@@ -76,13 +83,9 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 
 func TestIngesterAppend(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
-	store := &testStore{
-		chunks: map[string][]chunk.Chunk{},
-	}
+	store := newTestStore()
 	ing, err := New(cfg, store)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	userIDs := []string{"1", "2", "3"}
 
@@ -96,48 +99,33 @@ func TestIngesterAppend(t *testing.T) {
 	for _, userID := range userIDs {
 		ctx := user.Inject(context.Background(), userID)
 		_, err = ing.Push(ctx, util.ToWriteRequest(matrixToSamples(testData[userID])))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
 		ctx := user.Inject(context.Background(), userID)
 		matcher, err := metric.NewLabelMatcher(metric.RegexMatch, model.JobLabel, ".+")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		resp, err := ing.Query(ctx, req)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		res := util.FromQueryResponse(resp)
 		sort.Sort(res)
-		if !reflect.DeepEqual(res, testData[userID]) {
-			t.Fatalf("unexpected query result\n\nwant:\n\n%v\n\ngot:\n\n%v\n\n", testData[userID], res)
-		}
+		assert.Equal(t, testData[userID], res)
 	}
 
 	// Read samples back via chunk store.
 	ing.Shutdown()
 	for _, userID := range userIDs {
 		res, err := chunk.ChunksToMatrix(store.chunks[userID])
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		sort.Sort(res)
-
-		if !reflect.DeepEqual(res, testData[userID]) {
-			t.Fatalf("unexpected chunk store result\n\nwant:\n\n%v\n\ngot:\n\n%v\n\n", testData[userID], res)
-		}
+		assert.Equal(t, testData[userID], res)
 	}
 }
 
@@ -147,13 +135,9 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 		MaxSeriesPerUser: 1,
 	}
 
-	store := &testStore{
-		chunks: map[string][]chunk.Chunk{},
-	}
+	store := newTestStore()
 	ing, err := New(cfg, store)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	userID := "1"
 	sample1 := model.Sample{
@@ -175,9 +159,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	// Append only one series first, expect no error.
 	ctx := user.Inject(context.Background(), userID)
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
@@ -187,19 +169,13 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 	// Read samples back via ingester queries.
 	matcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "testmetric")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	resp, err := ing.Query(ctx, req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	res := util.FromQueryResponse(resp)
 	sort.Sort(res)
@@ -220,9 +196,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 		},
 	}
 
-	if !reflect.DeepEqual(res, expected) {
-		t.Fatalf("unexpected query result\n\nwant:\n\n%v\n\ngot:\n\n%v\n\n", expected, res)
-	}
+	assert.Equal(t, expected, res)
 }
 
 func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
@@ -231,13 +205,9 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 		MaxSeriesPerMetric: 1,
 	}
 
-	store := &testStore{
-		chunks: map[string][]chunk.Chunk{},
-	}
+	store := newTestStore()
 	ing, err := New(cfg, store)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	userID := "1"
 	sample1 := model.Sample{
@@ -259,9 +229,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	// Append only one series first, expect no error.
 	ctx := user.Inject(context.Background(), userID)
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
@@ -271,19 +239,13 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 	// Read samples back via ingester queries.
 	matcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "testmetric")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	resp, err := ing.Query(ctx, req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	res := util.FromQueryResponse(resp)
 	sort.Sort(res)
@@ -304,7 +266,5 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 		},
 	}
 
-	if !reflect.DeepEqual(res, expected) {
-		t.Fatalf("unexpected query result\n\nwant:\n\n%v\n\ngot:\n\n%v\n\n", expected, res)
-	}
+	assert.Equal(t, expected, res)
 }

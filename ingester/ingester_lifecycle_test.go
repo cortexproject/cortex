@@ -22,7 +22,10 @@ import (
 	"github.com/weaveworks/cortex/util"
 )
 
-const userID = "1"
+const (
+	userID    = "1"
+	aLongTime = 60 * time.Second
+)
 
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewMockConsulClient()
@@ -84,7 +87,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.id = "ingester1"
 	cfg1.addr = "ingester1"
 	cfg1.ClaimOnRollout = true
-	cfg1.SearchPendingFor = 10 * time.Second
+	cfg1.SearchPendingFor = aLongTime
 	ing1, err := New(cfg1, nil)
 	require.NoError(t, err)
 
@@ -114,7 +117,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2 := cfg
 	cfg2.id = "ingester2"
 	cfg2.addr = "ingester2"
-	cfg2.JoinAfter = 60 * time.Second
+	cfg2.JoinAfter = aLongTime
 	ing2, err := New(cfg2, nil)
 	require.NoError(t, err)
 

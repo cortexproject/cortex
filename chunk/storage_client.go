@@ -20,8 +20,8 @@ type StorageClient interface {
 	UpdateTable(name string, readCapacity, writeCapacity int64) error
 
 	// For storing and retrieving objects
-	PutObject(string, []byte) error
-	GetObject(string) ([]byte, error)
+	PutObject(ctx context.Context, key string, data []byte) error
+	GetObject(ctx context.Context, key string) ([]byte, error)
 }
 
 // WriteBatch represents a batch of writes

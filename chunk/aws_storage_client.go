@@ -64,12 +64,19 @@ var (
 		Name:      "dynamo_failures_total",
 		Help:      "The total number of errors while storing chunks to the chunk store.",
 	}, []string{tableNameLabel, errorReasonLabel})
+	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "s3_request_duration_seconds",
+		Help:      "Time spent doing S3 requests.",
+		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
+	}, []string{"operation", "status_code"})
 )
 
 func init() {
 	prometheus.MustRegister(dynamoRequestDuration)
 	prometheus.MustRegister(dynamoConsumedCapacity)
 	prometheus.MustRegister(dynamoFailures)
+	prometheus.MustRegister(s3RequestDuration)
 }
 
 // AWSStorageConfig specifies config for storing data on AWS.
@@ -320,10 +327,15 @@ func (a awsStorageClient) UpdateTable(name string, readCapacity, writeCapacity i
 	return err
 }
 
-func (a awsStorageClient) GetObject(key string) ([]byte, error) {
-	resp, err := a.S3.GetObject(&s3.GetObjectInput{
-		Bucket: a.bucketName,
-		Key:    aws.String(key),
+func (a awsStorageClient) GetObject(ctx context.Context, key string) ([]byte, error) {
+	var resp *s3.GetObjectOutput
+	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
+		var err error
+		resp, err = a.S3.GetObject(&s3.GetObjectInput{
+			Bucket: a.bucketName,
+			Key:    aws.String(key),
+		})
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -336,13 +348,15 @@ func (a awsStorageClient) GetObject(key string) ([]byte, error) {
 	return buf, nil
 }
 
-func (a awsStorageClient) PutObject(key string, buf []byte) error {
-	_, err := a.S3.PutObject(&s3.PutObjectInput{
-		Body:   bytes.NewReader(buf),
-		Bucket: a.bucketName,
-		Key:    aws.String(key),
+func (a awsStorageClient) PutObject(ctx context.Context, key string, buf []byte) error {
+	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
+		_, err := a.S3.PutObject(&s3.PutObjectInput{
+			Body:   bytes.NewReader(buf),
+			Bucket: a.bucketName,
+			Key:    aws.String(key),
+		})
+		return err
 	})
-	return err
 }
 
 type dynamoDBWriteBatch map[string][]*dynamodb.WriteRequest

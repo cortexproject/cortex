@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/user"
@@ -24,12 +23,6 @@ var (
 		Help:      "Number of entries written to storage per chunk.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
-	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "s3_request_duration_seconds",
-		Help:      "Time spent doing S3 requests.",
-		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
-	}, []string{"operation", "status_code"})
 	rowWrites = util.NewHashBucketHistogram(util.HashBucketHistogramOpts{
 		HistogramOpts: prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -43,7 +36,6 @@ var (
 
 func init() {
 	prometheus.MustRegister(indexEntriesPerChunk)
-	prometheus.MustRegister(s3RequestDuration)
 	prometheus.MustRegister(rowWrites)
 }
 
@@ -146,9 +138,7 @@ func (c *Store) putChunks(ctx context.Context, keys []string, bufs [][]byte) err
 
 // putChunk puts a chunk into S3.
 func (c *Store) putChunk(ctx context.Context, key string, buf []byte) error {
-	err := instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
-		return c.storage.PutObject(key, buf)
-	})
+	err := c.storage.PutObject(ctx, key, buf)
 	if err != nil {
 		return err
 	}
@@ -397,12 +387,7 @@ func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, 
 	incomingErrors := make(chan error)
 	for _, chunk := range chunkSet {
 		go func(chunk Chunk) {
-			var buf []byte
-			err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
-				var err error
-				buf, err = c.storage.GetObject(chunk.externalKey())
-				return err
-			})
+			buf, err := c.storage.GetObject(ctx, chunk.externalKey())
 			if err != nil {
 				incomingErrors <- err
 				return

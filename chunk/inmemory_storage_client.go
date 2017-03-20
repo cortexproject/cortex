@@ -203,7 +203,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback
 }
 
 // PutObject implements S3Client.
-func (m *MockStorage) PutObject(key string, buf []byte) error {
+func (m *MockStorage) PutObject(_ context.Context, key string, buf []byte) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -212,7 +212,7 @@ func (m *MockStorage) PutObject(key string, buf []byte) error {
 }
 
 // GetObject implements S3Client.
-func (m *MockStorage) GetObject(key string) ([]byte, error) {
+func (m *MockStorage) GetObject(_ context.Context, key string) ([]byte, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

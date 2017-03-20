@@ -1,69 +1,41 @@
 package chunk
 
 import (
-	"bytes"
 	"fmt"
-	"io/ioutil"
 	"sync"
-
-	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 // MockS3 is a fake S3Client.
 type MockS3 struct {
 	mtx     sync.RWMutex
-	buckets map[string]*mockS3Bucket
-}
-
-type mockS3Bucket struct {
 	objects map[string][]byte
 }
 
 // NewMockS3 returns a new MockS3
 func NewMockS3() *MockS3 {
 	return &MockS3{
-		buckets: map[string]*mockS3Bucket{},
+		objects: map[string][]byte{},
 	}
 }
 
 // PutObject implements S3Client.
-func (m *MockS3) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
-	buf, err := ioutil.ReadAll(input.Body)
-	if err != nil {
-		return nil, err
-	}
-
+func (m *MockS3) PutObject(key string, buf []byte) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	bucket, ok := m.buckets[*input.Bucket]
-	if !ok {
-		bucket = &mockS3Bucket{
-			objects: map[string][]byte{},
-		}
-		m.buckets[*input.Bucket] = bucket
-	}
-
-	bucket.objects[*input.Key] = buf
-	return &s3.PutObjectOutput{}, nil
+	m.objects[key] = buf
+	return nil
 }
 
 // GetObject implements S3Client.
-func (m *MockS3) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+func (m *MockS3) GetObject(key string) ([]byte, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	bucket, ok := m.buckets[*input.Bucket]
+	buf, ok := m.objects[key]
 	if !ok {
-		return nil, fmt.Errorf("not found")
+		return nil, fmt.Errorf("%v not found", key)
 	}
 
-	buf, ok := bucket.objects[*input.Key]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-
-	return &s3.GetObjectOutput{
-		Body: ioutil.NopCloser(bytes.NewBuffer(buf)),
-	}, nil
+	return buf, nil
 }

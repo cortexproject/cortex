@@ -1,15 +1,11 @@
 package chunk
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"sort"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
@@ -74,16 +70,15 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 type Store struct {
 	cfg StoreConfig
 
-	storage    StorageClient
-	s3         S3Client
-	bucketName string
-	cache      *Cache
-	schema     Schema
+	storage StorageClient
+	s3      S3Client
+	cache   *Cache
+	schema  Schema
 }
 
 // NewStore makes a new ChunkStore
 func NewStore(cfg StoreConfig, dynamoDBClient StorageClient, originalTableName string) (*Store, error) {
-	s3Client, bucketName, err := NewS3Client(cfg.S3.URL)
+	s3Client, err := NewS3Client(cfg.S3.URL)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +95,11 @@ func NewStore(cfg StoreConfig, dynamoDBClient StorageClient, originalTableName s
 	}
 
 	return &Store{
-		cfg:        cfg,
-		storage:    dynamoDBClient,
-		s3:         s3Client,
-		bucketName: bucketName,
-		schema:     schema,
-		cache:      NewCache(cfg.CacheConfig),
+		cfg:     cfg,
+		storage: dynamoDBClient,
+		s3:      s3Client,
+		schema:  schema,
+		cache:   NewCache(cfg.CacheConfig),
 	}, nil
 }
 
@@ -163,13 +157,7 @@ func (c *Store) putChunks(ctx context.Context, keys []string, bufs [][]byte) err
 // putChunk puts a chunk into S3.
 func (c *Store) putChunk(ctx context.Context, key string, buf []byte) error {
 	err := instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
-		var err error
-		_, err = c.s3.PutObject(&s3.PutObjectInput{
-			Body:   bytes.NewReader(buf),
-			Bucket: aws.String(c.bucketName),
-			Key:    aws.String(key),
-		})
-		return err
+		return c.s3.PutObject(key, buf)
 	})
 	if err != nil {
 		return err
@@ -419,27 +407,16 @@ func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, 
 	incomingErrors := make(chan error)
 	for _, chunk := range chunkSet {
 		go func(chunk Chunk) {
-			var resp *s3.GetObjectOutput
+			var buf []byte
 			err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
 				var err error
-				resp, err = c.s3.GetObject(&s3.GetObjectInput{
-					Bucket: aws.String(c.bucketName),
-					Key:    aws.String(chunk.externalKey()),
-				})
+				buf, err = c.s3.GetObject(chunk.externalKey())
 				return err
 			})
 			if err != nil {
 				incomingErrors <- err
 				return
 			}
-			defer resp.Body.Close()
-
-			buf, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-
 			if err := chunk.decode(buf); err != nil {
 				incomingErrors <- err
 				return

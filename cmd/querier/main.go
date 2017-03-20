@@ -39,12 +39,12 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		ringConfig           ring.Config
-		distributorConfig    distributor.Config
-		chunkStoreConfig     chunk.StoreConfig
-		dynamoDBClientConfig chunk.DynamoDBClientConfig
+		ringConfig        ring.Config
+		distributorConfig distributor.Config
+		chunkStoreConfig  chunk.StoreConfig
+		awsClientConfig   chunk.AWSStorageConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &chunkStoreConfig, &dynamoDBClientConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &chunkStoreConfig, &awsClientConfig)
 	flag.Parse()
 
 	r, err := ring.New(ringConfig)
@@ -67,12 +67,12 @@ func main() {
 	defer server.Shutdown()
 	server.HTTP.Handle("/ring", r)
 
-	dynamoDBClient, tableName, err := chunk.NewDynamoDBClient(dynamoDBClientConfig)
+	awsClient, tableName, err := chunk.NewAWSStorageClient(awsClientConfig)
 	if err != nil {
-		log.Fatalf("Error initializing DynamoDB client: %v", err)
+		log.Fatalf("Error initializing AWS storage client: %v", err)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, dynamoDBClient, tableName)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, awsClient, tableName)
 	if err != nil {
 		log.Fatal(err)
 	}

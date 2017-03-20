@@ -24,21 +24,21 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		ringConfig           ring.Config
-		distributorConfig    distributor.Config
-		rulerConfig          ruler.Config
-		chunkStoreConfig     chunk.StoreConfig
-		dynamoDBClientConfig chunk.DynamoDBClientConfig
+		ringConfig        ring.Config
+		distributorConfig distributor.Config
+		rulerConfig       ruler.Config
+		chunkStoreConfig  chunk.StoreConfig
+		awsClientConfig   chunk.AWSStorageConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &rulerConfig, &chunkStoreConfig, &dynamoDBClientConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &rulerConfig, &chunkStoreConfig, &awsClientConfig)
 	flag.Parse()
 
-	dynamoDBClient, tableName, err := chunk.NewDynamoDBClient(dynamoDBClientConfig)
+	awsClient, tableName, err := chunk.NewAWSStorageClient(awsClientConfig)
 	if err != nil {
-		log.Fatalf("Error initializing DynamoDB client: %v", err)
+		log.Fatalf("Error initializing AWS storage client: %v", err)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, dynamoDBClient, tableName)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, awsClient, tableName)
 	if err != nil {
 		log.Fatal(err)
 	}

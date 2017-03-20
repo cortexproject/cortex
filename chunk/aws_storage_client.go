@@ -72,31 +72,28 @@ func init() {
 	prometheus.MustRegister(dynamoFailures)
 }
 
-// TODO(jml): Rename to AWSStorageConfig
-// DynamoDBClientConfig specifies config for a DynamoDB client.
-type DynamoDBClientConfig struct {
+// AWSStorageConfig specifies config for storing data on AWS.
+type AWSStorageConfig struct {
 	DynamoDB util.URLValue
 	S3       util.URLValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *DynamoDBClientConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *AWSStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
 	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
 
-// TODO(jml): Rename
-type dynamoClientAdapter struct {
+type awsStorageClient struct {
 	DynamoDB   dynamodbiface.DynamoDBAPI
 	S3         *s3.S3
 	bucketName *string
 }
 
-// TODO(jml): Rename
-// NewDynamoDBClient makes a new DynamoDBClient
-func NewDynamoDBClient(cfg DynamoDBClientConfig) (StorageClient, string, error) {
+// NewAWSStorageClient makes a new AWS-backed StorageClient.
+func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, string, error) {
 	dynamoDBURL := cfg.DynamoDB.URL
 	tableName := strings.TrimPrefix(dynamoDBURL.Path, "/")
 
@@ -116,20 +113,20 @@ func NewDynamoDBClient(cfg DynamoDBClientConfig) (StorageClient, string, error) 
 	s3Client := s3.New(session.New(s3Config))
 	bucketName := aws.String(strings.TrimPrefix(cfg.S3.URL.Path, "/"))
 
-	dynamoDBClient := dynamoClientAdapter{
+	storageClient := awsStorageClient{
 		DynamoDB:   dynamodb.New(session.New(dynamoDBConfig)),
 		S3:         s3Client,
 		bucketName: bucketName,
 	}
-	return dynamoDBClient, tableName, nil
+	return storageClient, tableName, nil
 }
 
-func (d dynamoClientAdapter) NewWriteBatch() WriteBatch {
+func (a awsStorageClient) NewWriteBatch() WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
 // batchWrite writes requests to the underlying storage, handling retires and backoff.
-func (d dynamoClientAdapter) BatchWrite(ctx context.Context, input WriteBatch) error {
+func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) error {
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := map[string][]*dynamodb.WriteRequest{}
 	backoff, numRetries := minBackoff, 0
@@ -141,7 +138,7 @@ func (d dynamoClientAdapter) BatchWrite(ctx context.Context, input WriteBatch) e
 
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(_ context.Context) error {
 			var err error
-			resp, err = d.DynamoDB.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			resp, err = a.DynamoDB.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 				RequestItems:           reqs,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
@@ -191,7 +188,7 @@ func (d dynamoClientAdapter) BatchWrite(ctx context.Context, input WriteBatch) e
 	return nil
 }
 
-func (d dynamoClientAdapter) QueryPages(ctx context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (a awsStorageClient) QueryPages(ctx context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(entry.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{
@@ -221,7 +218,7 @@ func (d dynamoClientAdapter) QueryPages(ctx context.Context, entry IndexEntry, c
 		}
 	}
 
-	request, _ := d.DynamoDB.QueryRequest(input)
+	request, _ := a.DynamoDB.QueryRequest(input)
 	backoff := minBackoff
 	for page := request; page != nil; page = page.NextPage() {
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
@@ -256,9 +253,9 @@ func (d dynamoClientAdapter) QueryPages(ctx context.Context, entry IndexEntry, c
 	return nil
 }
 
-func (d dynamoClientAdapter) ListTables() ([]string, error) {
+func (a awsStorageClient) ListTables() ([]string, error) {
 	table := []string{}
-	if err := d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
+	if err := a.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
 		for _, s := range resp.TableNames {
 			table = append(table, *s)
 		}
@@ -269,7 +266,7 @@ func (d dynamoClientAdapter) ListTables() ([]string, error) {
 	return table, nil
 }
 
-func (d dynamoClientAdapter) CreateTable(name string, readCapacity, writeCapacity int64) error {
+func (a awsStorageClient) CreateTable(name string, readCapacity, writeCapacity int64) error {
 	input := &dynamodb.CreateTableInput{
 		TableName: aws.String(name),
 		AttributeDefinitions: []*dynamodb.AttributeDefinition{
@@ -297,12 +294,12 @@ func (d dynamoClientAdapter) CreateTable(name string, readCapacity, writeCapacit
 			WriteCapacityUnits: aws.Int64(writeCapacity),
 		},
 	}
-	_, err := d.DynamoDB.CreateTable(input)
+	_, err := a.DynamoDB.CreateTable(input)
 	return err
 }
 
-func (d dynamoClientAdapter) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
-	out, err := d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
+func (a awsStorageClient) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
+	out, err := a.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
 		TableName: aws.String(name),
 	})
 	if err != nil {
@@ -312,8 +309,8 @@ func (d dynamoClientAdapter) DescribeTable(name string) (readCapacity, writeCapa
 	return *out.Table.ProvisionedThroughput.ReadCapacityUnits, *out.Table.ProvisionedThroughput.WriteCapacityUnits, *out.Table.TableStatus, nil
 }
 
-func (d dynamoClientAdapter) UpdateTable(name string, readCapacity, writeCapacity int64) error {
-	_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
+func (a awsStorageClient) UpdateTable(name string, readCapacity, writeCapacity int64) error {
+	_, err := a.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
 		TableName: aws.String(name),
 		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
 			ReadCapacityUnits:  aws.Int64(readCapacity),
@@ -323,9 +320,9 @@ func (d dynamoClientAdapter) UpdateTable(name string, readCapacity, writeCapacit
 	return err
 }
 
-func (d dynamoClientAdapter) GetObject(key string) ([]byte, error) {
-	resp, err := d.S3.GetObject(&s3.GetObjectInput{
-		Bucket: d.bucketName,
+func (a awsStorageClient) GetObject(key string) ([]byte, error) {
+	resp, err := a.S3.GetObject(&s3.GetObjectInput{
+		Bucket: a.bucketName,
 		Key:    aws.String(key),
 	})
 	if err != nil {
@@ -339,10 +336,10 @@ func (d dynamoClientAdapter) GetObject(key string) ([]byte, error) {
 	return buf, nil
 }
 
-func (d dynamoClientAdapter) PutObject(key string, buf []byte) error {
-	_, err := d.S3.PutObject(&s3.PutObjectInput{
+func (a awsStorageClient) PutObject(key string, buf []byte) error {
+	_, err := a.S3.PutObject(&s3.PutObjectInput{
 		Body:   bytes.NewReader(buf),
-		Bucket: d.bucketName,
+		Bucket: a.bucketName,
 		Key:    aws.String(key),
 	})
 	return err

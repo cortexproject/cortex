@@ -95,7 +95,7 @@ func (m *mockDynamoDBClient) BatchWriteItem(input *dynamodb.BatchWriteItemInput)
 
 func TestDynamoDBClient(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
-	client := dynamoClientAdapter{
+	client := awsStorageClient{
 		DynamoDB: dynamoDB,
 	}
 	batch := client.NewWriteBatch()

@@ -13,8 +13,9 @@ import (
 
 // MockStorage is a fake in-memory StorageClient.
 type MockStorage struct {
-	mtx    sync.RWMutex
-	tables map[string]*mockTable
+	mtx     sync.RWMutex
+	tables  map[string]*mockTable
+	objects map[string][]byte
 }
 
 type mockTable struct {
@@ -30,7 +31,8 @@ type mockItem struct {
 // NewMockStorage creates a new MockStorage.
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
-		tables: map[string]*mockTable{},
+		tables:  map[string]*mockTable{},
+		objects: map[string][]byte{},
 	}
 }
 
@@ -198,6 +200,28 @@ func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback
 
 	callback(result, true)
 	return nil
+}
+
+// PutObject implements S3Client.
+func (m *MockStorage) PutObject(key string, buf []byte) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	m.objects[key] = buf
+	return nil
+}
+
+// GetObject implements S3Client.
+func (m *MockStorage) GetObject(key string) ([]byte, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	buf, ok := m.objects[key]
+	if !ok {
+		return nil, fmt.Errorf("%v not found", key)
+	}
+
+	return buf, nil
 }
 
 type mockWriteBatch []struct {

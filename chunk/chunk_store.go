@@ -51,7 +51,6 @@ func init() {
 type StoreConfig struct {
 	SchemaConfig
 	CacheConfig
-	S3 util.URLValue
 
 	// For injecting different schemas in tests.
 	schemaFactory func(cfg SchemaConfig) Schema
@@ -61,9 +60,6 @@ type StoreConfig struct {
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchemaConfig.RegisterFlags(f)
 	cfg.CacheConfig.RegisterFlags(f)
-
-	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
-		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
 
 // Store implements Store
@@ -71,20 +67,15 @@ type Store struct {
 	cfg StoreConfig
 
 	storage StorageClient
-	s3      S3Client
 	cache   *Cache
 	schema  Schema
 }
 
 // NewStore makes a new ChunkStore
-func NewStore(cfg StoreConfig, dynamoDBClient StorageClient, originalTableName string) (*Store, error) {
-	s3Client, err := NewS3Client(cfg.S3.URL)
-	if err != nil {
-		return nil, err
-	}
-
+func NewStore(cfg StoreConfig, storage StorageClient, originalTableName string) (*Store, error) {
 	cfg.SchemaConfig.OriginalTableName = originalTableName
 	var schema Schema
+	var err error
 	if cfg.schemaFactory == nil {
 		schema, err = newCompositeSchema(cfg.SchemaConfig)
 	} else {
@@ -96,8 +87,7 @@ func NewStore(cfg StoreConfig, dynamoDBClient StorageClient, originalTableName s
 
 	return &Store{
 		cfg:     cfg,
-		storage: dynamoDBClient,
-		s3:      s3Client,
+		storage: storage,
 		schema:  schema,
 		cache:   NewCache(cfg.CacheConfig),
 	}, nil
@@ -157,7 +147,7 @@ func (c *Store) putChunks(ctx context.Context, keys []string, bufs [][]byte) err
 // putChunk puts a chunk into S3.
 func (c *Store) putChunk(ctx context.Context, key string, buf []byte) error {
 	err := instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
-		return c.s3.PutObject(key, buf)
+		return c.storage.PutObject(key, buf)
 	})
 	if err != nil {
 		return err
@@ -410,7 +400,7 @@ func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, 
 			var buf []byte
 			err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
 				var err error
-				buf, err = c.s3.GetObject(chunk.externalKey())
+				buf, err = c.storage.GetObject(chunk.externalKey())
 				return err
 			})
 			if err != nil {

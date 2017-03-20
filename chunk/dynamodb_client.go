@@ -1,8 +1,10 @@
 package chunk
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
@@ -69,24 +72,32 @@ func init() {
 	prometheus.MustRegister(dynamoFailures)
 }
 
+// TODO(jml): Rename to AWSStorageConfig
 // DynamoDBClientConfig specifies config for a DynamoDB client.
 type DynamoDBClientConfig struct {
-	URL util.URLValue
+	DynamoDB util.URLValue
+	S3       util.URLValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *DynamoDBClientConfig) RegisterFlags(f *flag.FlagSet) {
-	f.Var(&cfg.URL, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
+	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
+	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
+		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
 
+// TODO(jml): Rename
 type dynamoClientAdapter struct {
-	DynamoDB dynamodbiface.DynamoDBAPI
+	DynamoDB   dynamodbiface.DynamoDBAPI
+	S3         *s3.S3
+	bucketName *string
 }
 
+// TODO(jml): Rename
 // NewDynamoDBClient makes a new DynamoDBClient
 func NewDynamoDBClient(cfg DynamoDBClientConfig) (StorageClient, string, error) {
-	dynamoDBURL := cfg.URL.URL
+	dynamoDBURL := cfg.DynamoDB.URL
 	tableName := strings.TrimPrefix(dynamoDBURL.Path, "/")
 
 	if dynamoDBURL.Scheme == "inmemory" {
@@ -98,7 +109,18 @@ func NewDynamoDBClient(cfg DynamoDBClientConfig) (StorageClient, string, error) 
 		return nil, "", err
 	}
 
-	dynamoDBClient := dynamoClientAdapter{dynamodb.New(session.New(dynamoDBConfig))}
+	s3Config, err := awsConfigFromURL(cfg.S3.URL)
+	if err != nil {
+		return nil, "", err
+	}
+	s3Client := s3.New(session.New(s3Config))
+	bucketName := aws.String(strings.TrimPrefix(cfg.S3.URL.Path, "/"))
+
+	dynamoDBClient := dynamoClientAdapter{
+		DynamoDB:   dynamodb.New(session.New(dynamoDBConfig)),
+		S3:         s3Client,
+		bucketName: bucketName,
+	}
 	return dynamoDBClient, tableName, nil
 }
 
@@ -297,6 +319,31 @@ func (d dynamoClientAdapter) UpdateTable(name string, readCapacity, writeCapacit
 			ReadCapacityUnits:  aws.Int64(readCapacity),
 			WriteCapacityUnits: aws.Int64(writeCapacity),
 		},
+	})
+	return err
+}
+
+func (d dynamoClientAdapter) GetObject(key string) ([]byte, error) {
+	resp, err := d.S3.GetObject(&s3.GetObjectInput{
+		Bucket: d.bucketName,
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	buf, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
+func (d dynamoClientAdapter) PutObject(key string, buf []byte) error {
+	_, err := d.S3.PutObject(&s3.PutObjectInput{
+		Body:   bytes.NewReader(buf),
+		Bucket: d.bucketName,
+		Key:    aws.String(key),
 	})
 	return err
 }

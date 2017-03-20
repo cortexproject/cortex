@@ -4,7 +4,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-// StorageClient is a client for DynamoDB
+// StorageClient is a client for the persistent storage for Cortex. (e.g. DynamoDB + S3).
 type StorageClient interface {
 	// For the write path
 	NewWriteBatch() WriteBatch
@@ -18,6 +18,10 @@ type StorageClient interface {
 	CreateTable(name string, readCapacity, writeCapacity int64) error
 	DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error)
 	UpdateTable(name string, readCapacity, writeCapacity int64) error
+
+	// For storing and retrieving objects
+	PutObject(string, []byte) error
+	GetObject(string) ([]byte, error)
 }
 
 // WriteBatch represents a batch of writes

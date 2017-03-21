@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestExtractMetricNameFromMatchers(t *testing.T) {
@@ -46,8 +47,6 @@ func TestExtractMetricNameFromMatchers(t *testing.T) {
 		}
 
 		expOutMatchers := []*metric.LabelMatcher{labelMatcher1, labelMatcher2}
-		if !reflect.DeepEqual(expOutMatchers, outMatchers) {
-			t.Fatalf("%d. Unexpected outMatchers; want %v, got %v", i, expOutMatchers, outMatchers)
-		}
+		assert.Equal(t, expOutMatchers, outMatchers, "unexpected outMatchers for test case %d", i)
 	}
 }

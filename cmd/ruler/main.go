@@ -28,17 +28,17 @@ func main() {
 		distributorConfig distributor.Config
 		rulerConfig       ruler.Config
 		chunkStoreConfig  chunk.StoreConfig
-		awsClientConfig   chunk.AWSStorageConfig
+		storageConfig     chunk.StorageClientConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &rulerConfig, &chunkStoreConfig, &awsClientConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &rulerConfig, &chunkStoreConfig, &storageConfig)
 	flag.Parse()
 
-	awsClient, tableName, err := chunk.NewAWSStorageClient(awsClientConfig)
+	storageClient, tableName, err := chunk.NewStorageClient(storageConfig)
 	if err != nil {
-		log.Fatalf("Error initializing AWS storage client: %v", err)
+		log.Fatalf("Error initializing storage client: %v", err)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, awsClient, tableName)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, storageClient, tableName)
 	if err != nil {
 		log.Fatal(err)
 	}

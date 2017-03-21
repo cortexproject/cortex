@@ -1,6 +1,9 @@
 package chunk
 
 import (
+	"flag"
+	"fmt"
+
 	"golang.org/x/net/context"
 )
 
@@ -34,4 +37,29 @@ type ReadBatch interface {
 	Len() int
 	RangeValue(index int) []byte
 	Value(index int) []byte
+}
+
+// StorageClientConfig chooses which storage client to use.
+type StorageClientConfig struct {
+	StorageClient string
+	AWSStorageConfig
+}
+
+// RegisterFlags adds the flags required to configure this flag set.
+func (cfg *StorageClientConfig) RegisterFlags(f *flag.FlagSet) {
+	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "aws", "Which storage client to use (aws, inmemory).")
+	cfg.AWSStorageConfig.RegisterFlags(f)
+}
+
+// NewStorageClient makes a storage client based on the configuration.
+func NewStorageClient(cfg StorageClientConfig) (StorageClient, string, error) {
+	switch cfg.StorageClient {
+	case "inmemory":
+		return NewMockStorage(), "", nil
+	case "aws":
+		client, tableName, err := NewAWSStorageClient(cfg.AWSStorageConfig)
+		return client, tableName, err
+	default:
+		return nil, "", fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.StorageClient)
+	}
 }

@@ -106,10 +106,6 @@ type awsStorageClient struct {
 func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, string, error) {
 	tableName := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
 
-	if cfg.DynamoDB.URL.Scheme == "inmemory" {
-		return NewMockStorage(), tableName, nil
-	}
-
 	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, "", err

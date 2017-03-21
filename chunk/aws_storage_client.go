@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 
@@ -97,7 +98,7 @@ func (cfg *AWSStorageConfig) RegisterFlags(f *flag.FlagSet) {
 
 type awsStorageClient struct {
 	DynamoDB   dynamodbiface.DynamoDBAPI
-	S3         *s3.S3
+	S3         s3iface.S3API
 	bucketName *string
 }
 

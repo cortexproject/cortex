@@ -115,7 +115,7 @@ type awsStorageClient struct {
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
 func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
 	if cfg.DynamoDB.URL == nil {
-		return nil, fmt.Errorf("No URL specified for DynamoDB.")
+		return nil, fmt.Errorf("no URL specified for DynamoDB")
 	}
 	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
 	if err != nil {
@@ -124,7 +124,7 @@ func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
 	dynamoDB := dynamodb.New(session.New(dynamoDBConfig))
 
 	if cfg.S3.URL == nil {
-		return nil, fmt.Errorf("No URL specified for S3.")
+		return nil, fmt.Errorf("no URL specified for S3")
 	}
 	s3Config, err := awsConfigFromURL(cfg.S3.URL)
 	if err != nil {
@@ -349,7 +349,7 @@ type dynamoTableClient struct {
 // newDynamoTableClient makes a new DynamoTableClient.
 func newDynamoTableClient(cfg DynamoDBConfig) (DynamoTableClient, error) {
 	if cfg.DynamoDB.URL == nil {
-		return nil, fmt.Errorf("No URL specified for DynamoDB.")
+		return nil, fmt.Errorf("no URL specified for DynamoDB")
 	}
 	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
 	if err != nil {

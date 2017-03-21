@@ -103,12 +103,10 @@ type awsStorageClient struct {
 }
 
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
-func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, string, error) {
-	tableName := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
-
+func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
 	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	dynamoDB := dynamodb.New(session.New(dynamoDBConfig))
@@ -116,12 +114,12 @@ func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, string, error) {
 		storageClient := awsStorageClient{
 			DynamoDB: dynamoDB,
 		}
-		return storageClient, tableName, nil
+		return storageClient, nil
 	}
 
 	s3Config, err := awsConfigFromURL(cfg.S3.URL)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	s3Client := s3.New(session.New(s3Config))
 	bucketName := aws.String(strings.TrimPrefix(cfg.S3.URL.Path, "/"))
@@ -131,7 +129,7 @@ func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, string, error) {
 		S3:         s3Client,
 		bucketName: bucketName,
 	}
-	return storageClient, tableName, nil
+	return storageClient, nil
 }
 
 func (a awsStorageClient) NewWriteBatch() WriteBatch {

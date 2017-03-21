@@ -65,7 +65,17 @@ type Store struct {
 
 // NewStore makes a new ChunkStore
 func NewStore(cfg StoreConfig, storage StorageClient, originalTableName string) (*Store, error) {
-	cfg.SchemaConfig.OriginalTableName = originalTableName
+	// TODO(jml): Remove this and stop taking an originalTableName parameter
+	// once deprecation period expires. See storage_client.go - 2017-03-21.
+	if originalTableName != "" {
+		if cfg.SchemaConfig.OriginalTableName == "" {
+			log.Warnf("Setting original table name to %v based on path of DynamoDB URL. This will be disabled in a later release.")
+			cfg.SchemaConfig.OriginalTableName = originalTableName
+		} else {
+			log.Warnf("Ignoring table name %v from DynamoDB URL. Using %v from explicit flag instead", originalTableName, cfg.SchemaConfig.OriginalTableName)
+		}
+	}
+
 	var schema Schema
 	var err error
 	if cfg.schemaFactory == nil {

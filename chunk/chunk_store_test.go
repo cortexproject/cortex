@@ -19,18 +19,14 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-func setupDynamodb(t *testing.T, client StorageClient, tableName string) {
-	tableManager, err := NewDynamoTableManager(TableManagerConfig{}, client, tableName)
-	require.NoError(t, err)
-	err = tableManager.syncTables(context.Background())
-	require.NoError(t, err)
-}
-
 // newTestStore creates a new Store for testing.
 func newTestChunkStore(t *testing.T, cfg StoreConfig) *Store {
 	tableName := ""
 	storage := NewMockStorage()
-	setupDynamodb(t, storage, tableName)
+	tableManager, err := NewDynamoTableManager(TableManagerConfig{}, storage, tableName)
+	require.NoError(t, err)
+	err = tableManager.syncTables(context.Background())
+	require.NoError(t, err)
 	store, err := NewStore(cfg, storage, tableName)
 	require.NoError(t, err)
 	return store

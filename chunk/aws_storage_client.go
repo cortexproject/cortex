@@ -331,7 +331,7 @@ func (a awsStorageClient) UpdateTable(name string, readCapacity, writeCapacity i
 	return err
 }
 
-func (a awsStorageClient) GetObject(ctx context.Context, key string) ([]byte, error) {
+func (a awsStorageClient) GetChunk(ctx context.Context, key string) ([]byte, error) {
 	var resp *s3.GetObjectOutput
 	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
 		var err error
@@ -352,7 +352,7 @@ func (a awsStorageClient) GetObject(ctx context.Context, key string) ([]byte, er
 	return buf, nil
 }
 
-func (a awsStorageClient) PutObject(ctx context.Context, key string, buf []byte) error {
+func (a awsStorageClient) PutChunk(ctx context.Context, key string, buf []byte) error {
 	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
 		_, err := a.S3.PutObject(&s3.PutObjectInput{
 			Body:   bytes.NewReader(buf),

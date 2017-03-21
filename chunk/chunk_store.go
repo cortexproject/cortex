@@ -148,7 +148,7 @@ func (c *Store) putChunks(ctx context.Context, keys []string, bufs [][]byte) err
 
 // putChunk puts a chunk into S3.
 func (c *Store) putChunk(ctx context.Context, key string, buf []byte) error {
-	err := c.storage.PutObject(ctx, key, buf)
+	err := c.storage.PutChunk(ctx, key, buf)
 	if err != nil {
 		return err
 	}
@@ -397,7 +397,7 @@ func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, 
 	incomingErrors := make(chan error)
 	for _, chunk := range chunkSet {
 		go func(chunk Chunk) {
-			buf, err := c.storage.GetObject(ctx, chunk.externalKey())
+			buf, err := c.storage.GetChunk(ctx, chunk.externalKey())
 			if err != nil {
 				incomingErrors <- err
 				return

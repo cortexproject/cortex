@@ -24,9 +24,9 @@ type StorageClient interface {
 	DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error)
 	UpdateTable(name string, readCapacity, writeCapacity int64) error
 
-	// For storing and retrieving objects
-	PutObject(ctx context.Context, key string, data []byte) error
-	GetObject(ctx context.Context, key string) ([]byte, error)
+	// For storing and retrieving chunks
+	PutChunk(ctx context.Context, key string, data []byte) error
+	GetChunk(ctx context.Context, key string) ([]byte, error)
 }
 
 // WriteBatch represents a batch of writes

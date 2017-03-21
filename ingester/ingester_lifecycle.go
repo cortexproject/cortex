@@ -64,7 +64,7 @@ func (i *Ingester) isReady() bool {
 
 	ringDesc, err := i.consul.Get(ring.ConsulKey)
 	if err != nil {
-		log.Error("Error talking to consul: %v", err)
+		log.Errorf("Error talking to consul: %v", err)
 		return false
 	}
 

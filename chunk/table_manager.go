@@ -2,8 +2,10 @@ package chunk
 
 import (
 	"flag"
+	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,11 +42,50 @@ func init() {
 	prometheus.MustRegister(tableCapacity)
 }
 
+// DynamoTableClient is a client for telling Dynamo what to do with tables.
+type DynamoTableClient interface {
+	ListTables() ([]string, error)
+	CreateTable(name string, readCapacity, writeCapacity int64) error
+	DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error)
+	UpdateTable(name string, readCapacity, writeCapacity int64) error
+}
+
+// DynamoTableClientConfig configures the DynamoDB table client.
+type DynamoTableClientConfig struct {
+	DynamoClient string
+	DynamoDBConfig
+}
+
+// RegisterFlags adds the flags required to configure this flag set.
+func (cfg *DynamoTableClientConfig) RegisterFlags(f *flag.FlagSet) {
+	flag.StringVar(&cfg.DynamoClient, "table-manager.dynamo-client", "aws", "Which DynamoDB table client to use (aws, inmemory).")
+	cfg.DynamoDBConfig.RegisterFlags(f)
+}
+
+// NewDynamoTableClient creates a new DynamoTableClient.
+func NewDynamoTableClient(cfg DynamoTableClientConfig) (DynamoTableClient, string, error) {
+	switch cfg.DynamoClient {
+	case "inmemory":
+		return NewMockStorage(), "", nil
+	case "aws":
+		// TODO(jml): Remove this once deprecation period expires - 2017-03-21.
+		tableName := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
+		if len(tableName) > 0 {
+			log.Warnf("Specifying fallback table name in DynamoDB URL is deprecated.")
+		}
+		client, err := newDynamoTableClient(cfg.DynamoDBConfig)
+		return client, tableName, err
+	default:
+		return nil, "", fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.DynamoClient)
+	}
+}
+
 // TableManagerConfig is the config for a DynamoTableManager
 type TableManagerConfig struct {
 	DynamoDBPollInterval time.Duration
 
 	PeriodicTableConfig
+	OriginalTableName string
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod        time.Duration
@@ -66,9 +107,11 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.InactiveReadThroughput, "dynamodb.periodic-table.inactive-read-throughput", 300, "DynamoDB periodic tables read throughput for inactive tables")
 
 	cfg.PeriodicTableConfig.RegisterFlags(f)
+	// XXX: Should this be in PeriodicTableConfig?
+	flag.StringVar(&cfg.OriginalTableName, "dynamodb.original-table-name", "", "The name of the DynamoDB table used before versioned schemas were introduced.")
 }
 
-// PeriodicTableConfig for the use of periodic tables (ie, weekly talbes).  Can
+// PeriodicTableConfig for the use of periodic tables (ie, weekly tables).  Can
 // control when to start the periodic tables, how long the period should be,
 // and the prefix to give the tables.
 type PeriodicTableConfig struct {
@@ -80,7 +123,7 @@ type PeriodicTableConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *PeriodicTableConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.UsePeriodicTables, "dynamodb.use-periodic-tables", true, "Should we user periodic tables.")
+	f.BoolVar(&cfg.UsePeriodicTables, "dynamodb.use-periodic-tables", true, "Should we use periodic tables.")
 	f.StringVar(&cfg.TablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
 	f.DurationVar(&cfg.TablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
 	f.Var(&cfg.PeriodicTableStartAt, "dynamodb.periodic-table.start", "DynamoDB periodic tables start time.")
@@ -88,20 +131,27 @@ func (cfg *PeriodicTableConfig) RegisterFlags(f *flag.FlagSet) {
 
 // DynamoTableManager creates and manages the provisioned throughput on DynamoDB tables
 type DynamoTableManager struct {
-	dynamoDB  StorageClient
-	tableName string
-	cfg       TableManagerConfig
-	done      chan struct{}
-	wait      sync.WaitGroup
+	dynamoDB DynamoTableClient
+	cfg      TableManagerConfig
+	done     chan struct{}
+	wait     sync.WaitGroup
 }
 
 // NewDynamoTableManager makes a new DynamoTableManager
-func NewDynamoTableManager(cfg TableManagerConfig, dynamoDBClient StorageClient, tableName string) (*DynamoTableManager, error) {
+func NewDynamoTableManager(cfg TableManagerConfig, dynamoDBClient DynamoTableClient, originalTableName string) (*DynamoTableManager, error) {
+	if originalTableName != "" {
+		if cfg.OriginalTableName == "" {
+			log.Warnf("Setting original table name to %v based on path of DynamoDB URL. This will be disabled in a later release.")
+			cfg.OriginalTableName = originalTableName
+		} else {
+			log.Warnf("Ignoring table name %v from DynamoDB URL. Using %v from explicit flag instead", originalTableName, cfg.OriginalTableName)
+		}
+	}
+
 	m := &DynamoTableManager{
-		cfg:       cfg,
-		dynamoDB:  dynamoDBClient,
-		tableName: tableName,
-		done:      make(chan struct{}),
+		cfg:      cfg,
+		dynamoDB: dynamoDBClient,
+		done:     make(chan struct{}),
 	}
 	return m, nil
 }
@@ -176,7 +226,7 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 	if !m.cfg.UsePeriodicTables {
 		return []tableDescription{
 			{
-				name:             m.tableName,
+				name:             m.cfg.OriginalTableName,
 				provisionedRead:  m.cfg.ProvisionedReadThroughput,
 				provisionedWrite: m.cfg.ProvisionedWriteThroughput,
 			},
@@ -197,7 +247,7 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 	// Add the legacy table
 	{
 		legacyTable := tableDescription{
-			name:             m.tableName,
+			name:             m.cfg.OriginalTableName,
 			provisionedRead:  m.cfg.InactiveReadThroughput,
 			provisionedWrite: m.cfg.InactiveWriteThroughput,
 		}

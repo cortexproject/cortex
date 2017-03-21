@@ -143,7 +143,7 @@ func TestDynamoTableManager(t *testing.T) {
 	)
 }
 
-func expectTables(t *testing.T, dynamo StorageClient, expected []tableDescription) {
+func expectTables(t *testing.T, dynamo DynamoTableClient, expected []tableDescription) {
 	tables, err := dynamo.ListTables()
 	if err != nil {
 		t.Fatal(err)

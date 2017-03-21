@@ -82,16 +82,26 @@ func init() {
 	prometheus.MustRegister(s3RequestDuration)
 }
 
+// DynamoDBConfig specifies config for a DynamoDB database.
+type DynamoDBConfig struct {
+	DynamoDB util.URLValue
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
+	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
+		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
+}
+
 // AWSStorageConfig specifies config for storing data on AWS.
 type AWSStorageConfig struct {
-	DynamoDB util.URLValue
-	S3       util.URLValue
+	DynamoDBConfig
+	S3 util.URLValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *AWSStorageConfig) RegisterFlags(f *flag.FlagSet) {
-	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
-		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
+	cfg.DynamoDBConfig.RegisterFlags(f)
 	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
@@ -104,19 +114,18 @@ type awsStorageClient struct {
 
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
 func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
+	if cfg.DynamoDB.URL == nil {
+		return nil, fmt.Errorf("No URL specified for DynamoDB.")
+	}
 	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, err
 	}
-
 	dynamoDB := dynamodb.New(session.New(dynamoDBConfig))
-	if cfg.S3.URL == nil {
-		storageClient := awsStorageClient{
-			DynamoDB: dynamoDB,
-		}
-		return storageClient, nil
-	}
 
+	if cfg.S3.URL == nil {
+		return nil, fmt.Errorf("No URL specified for S3.")
+	}
 	s3Config, err := awsConfigFromURL(cfg.S3.URL)
 	if err != nil {
 		return nil, err
@@ -264,73 +273,6 @@ func (a awsStorageClient) QueryPages(ctx context.Context, entry IndexEntry, call
 	return nil
 }
 
-func (a awsStorageClient) ListTables() ([]string, error) {
-	table := []string{}
-	if err := a.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
-		for _, s := range resp.TableNames {
-			table = append(table, *s)
-		}
-		return true
-	}); err != nil {
-		return nil, err
-	}
-	return table, nil
-}
-
-func (a awsStorageClient) CreateTable(name string, readCapacity, writeCapacity int64) error {
-	input := &dynamodb.CreateTableInput{
-		TableName: aws.String(name),
-		AttributeDefinitions: []*dynamodb.AttributeDefinition{
-			{
-				AttributeName: aws.String(hashKey),
-				AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
-			},
-			{
-				AttributeName: aws.String(rangeKey),
-				AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
-			},
-		},
-		KeySchema: []*dynamodb.KeySchemaElement{
-			{
-				AttributeName: aws.String(hashKey),
-				KeyType:       aws.String(dynamodb.KeyTypeHash),
-			},
-			{
-				AttributeName: aws.String(rangeKey),
-				KeyType:       aws.String(dynamodb.KeyTypeRange),
-			},
-		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(readCapacity),
-			WriteCapacityUnits: aws.Int64(writeCapacity),
-		},
-	}
-	_, err := a.DynamoDB.CreateTable(input)
-	return err
-}
-
-func (a awsStorageClient) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
-	out, err := a.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
-		TableName: aws.String(name),
-	})
-	if err != nil {
-		return 0, 0, "", err
-	}
-
-	return *out.Table.ProvisionedThroughput.ReadCapacityUnits, *out.Table.ProvisionedThroughput.WriteCapacityUnits, *out.Table.TableStatus, nil
-}
-
-func (a awsStorageClient) UpdateTable(name string, readCapacity, writeCapacity int64) error {
-	_, err := a.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
-		TableName: aws.String(name),
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(readCapacity),
-			WriteCapacityUnits: aws.Int64(writeCapacity),
-		},
-	})
-	return err
-}
-
 func (a awsStorageClient) GetChunk(ctx context.Context, key string) ([]byte, error) {
 	var resp *s3.GetObjectOutput
 	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
@@ -398,6 +340,92 @@ func (b dynamoDBReadBatch) Value(i int) []byte {
 		return nil
 	}
 	return chunkValue.B
+}
+
+type dynamoTableClient struct {
+	DynamoDB dynamodbiface.DynamoDBAPI
+}
+
+// newDynamoTableClient makes a new DynamoTableClient.
+func newDynamoTableClient(cfg DynamoDBConfig) (DynamoTableClient, error) {
+	if cfg.DynamoDB.URL == nil {
+		return nil, fmt.Errorf("No URL specified for DynamoDB.")
+	}
+	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
+	if err != nil {
+		return nil, err
+	}
+	dynamoDB := dynamodb.New(session.New(dynamoDBConfig))
+	return dynamoTableClient{
+		DynamoDB: dynamoDB,
+	}, nil
+}
+
+func (d dynamoTableClient) ListTables() ([]string, error) {
+	table := []string{}
+	if err := d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
+		for _, s := range resp.TableNames {
+			table = append(table, *s)
+		}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+	return table, nil
+}
+
+func (d dynamoTableClient) CreateTable(name string, readCapacity, writeCapacity int64) error {
+	input := &dynamodb.CreateTableInput{
+		TableName: aws.String(name),
+		AttributeDefinitions: []*dynamodb.AttributeDefinition{
+			{
+				AttributeName: aws.String(hashKey),
+				AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
+			},
+			{
+				AttributeName: aws.String(rangeKey),
+				AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
+			},
+		},
+		KeySchema: []*dynamodb.KeySchemaElement{
+			{
+				AttributeName: aws.String(hashKey),
+				KeyType:       aws.String(dynamodb.KeyTypeHash),
+			},
+			{
+				AttributeName: aws.String(rangeKey),
+				KeyType:       aws.String(dynamodb.KeyTypeRange),
+			},
+		},
+		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+			ReadCapacityUnits:  aws.Int64(readCapacity),
+			WriteCapacityUnits: aws.Int64(writeCapacity),
+		},
+	}
+	_, err := d.DynamoDB.CreateTable(input)
+	return err
+}
+
+func (d dynamoTableClient) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
+	out, err := d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
+		TableName: aws.String(name),
+	})
+	if err != nil {
+		return 0, 0, "", err
+	}
+
+	return *out.Table.ProvisionedThroughput.ReadCapacityUnits, *out.Table.ProvisionedThroughput.WriteCapacityUnits, *out.Table.TableStatus, nil
+}
+
+func (d dynamoTableClient) UpdateTable(name string, readCapacity, writeCapacity int64) error {
+	_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
+		TableName: aws.String(name),
+		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+			ReadCapacityUnits:  aws.Int64(readCapacity),
+			WriteCapacityUnits: aws.Int64(writeCapacity),
+		},
+	})
+	return err
 }
 
 func nextBackoff(lastBackoff time.Duration) time.Duration {

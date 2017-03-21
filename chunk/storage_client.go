@@ -18,12 +18,6 @@ type StorageClient interface {
 	// For the read path
 	QueryPages(ctx context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error
 
-	// For table management
-	ListTables() ([]string, error)
-	CreateTable(name string, readCapacity, writeCapacity int64) error
-	DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error)
-	UpdateTable(name string, readCapacity, writeCapacity int64) error
-
 	// For storing and retrieving chunks
 	PutChunk(ctx context.Context, key string, data []byte) error
 	GetChunk(ctx context.Context, key string) ([]byte, error)

@@ -20,19 +20,18 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		// TODO(jml): need a different thing because we want a different interface (dynamo specific, not storage general)
-		storageClientConfig = chunk.StorageClientConfig{}
-		tableManagerConfig  = chunk.TableManagerConfig{}
+		dynamoTableClientConfig = chunk.DynamoTableClientConfig{}
+		tableManagerConfig      = chunk.TableManagerConfig{}
 	)
-	util.RegisterFlags(&serverConfig, &storageClientConfig, &tableManagerConfig)
+	util.RegisterFlags(&serverConfig, &dynamoTableClientConfig, &tableManagerConfig)
 	flag.Parse()
 
-	storageClient, tableName, err := chunk.NewStorageClient(storageClientConfig)
+	dynamoClient, tableName, err := chunk.NewDynamoTableClient(dynamoTableClientConfig)
 	if err != nil {
-		log.Fatalf("Error initializing client: %v", err)
+		log.Fatalf("Error initializing DynamoDB client: %v", err)
 	}
 
-	tableManager, err := chunk.NewDynamoTableManager(tableManagerConfig, storageClient, tableName)
+	tableManager, err := chunk.NewDynamoTableManager(tableManagerConfig, dynamoClient, tableName)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB table manager: %v", err)
 	}

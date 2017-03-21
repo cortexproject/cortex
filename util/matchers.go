@@ -31,6 +31,7 @@ func ExtractMetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
 
 // ExtractMetricNameFromMatchers extracts the metric name from a set of matchers
 func ExtractMetricNameFromMatchers(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, error) {
+	outMatchers := make([]*metric.LabelMatcher, len(matchers)-1)
 	for i, matcher := range matchers {
 		if matcher.Name != model.MetricNameLabel {
 			continue
@@ -39,8 +40,9 @@ func ExtractMetricNameFromMatchers(matchers []*metric.LabelMatcher) (model.Label
 			return "", nil, fmt.Errorf("must have equality matcher for MetricNameLabel")
 		}
 		metricName := matcher.Value
-		matchers = matchers[:i+copy(matchers[i:], matchers[i+1:])]
-		return metricName, matchers, nil
+		copy(outMatchers, matchers[:i])
+		copy(outMatchers[i:], matchers[i+1:])
+		return metricName, outMatchers, nil
 	}
 	return "", nil, fmt.Errorf("no matcher for MetricNameLabel")
 }

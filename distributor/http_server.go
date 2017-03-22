@@ -2,7 +2,6 @@ package distributor
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,7 +65,7 @@ func (d *Distributor) UserStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJSONResponse(w, stats)
+	util.WriteJSONResponse(w, stats)
 }
 
 // ValidateExprHandler validates a PromQL expression.
@@ -77,7 +76,7 @@ func (d *Distributor) ValidateExprHandler(w http.ResponseWriter, r *http.Request
 	// consistency, but unfortunately its private types (string consts etc.)
 	// aren't reusable.
 	if err == nil {
-		WriteJSONResponse(w, map[string]string{
+		util.WriteJSONResponse(w, map[string]string{
 			"status": "success",
 		})
 		return
@@ -98,7 +97,7 @@ func (d *Distributor) ValidateExprHandler(w http.ResponseWriter, r *http.Request
 		parseErr.Line = 1
 	}
 	w.WriteHeader(http.StatusBadRequest)
-	WriteJSONResponse(w, map[string]interface{}{
+	util.WriteJSONResponse(w, map[string]interface{}{
 		"status":    "error",
 		"errorType": "bad_data",
 		"error":     err.Error(),
@@ -131,18 +130,4 @@ func ParseProtoRequest(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	}
 
 	return nil
-}
-
-// WriteJSONResponse writes some JSON as a HTTP response.
-func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if _, err = w.Write(data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
 }

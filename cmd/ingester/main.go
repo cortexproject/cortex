@@ -25,11 +25,12 @@ func main() {
 			},
 		}
 		chunkStoreConfig chunk.StoreConfig
+		storageConfig    chunk.StorageClientConfig
 		ingesterConfig   ingester.Config
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &ingesterConfig)
+	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig, &ingesterConfig)
 	flag.Parse()
 
 	server, err := server.New(serverConfig)
@@ -38,7 +39,12 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig)
+	storageClient, tableName, err := chunk.NewStorageClient(storageConfig)
+	if err != nil {
+		log.Fatalf("Error initializing storage client: %v", err)
+	}
+
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, storageClient, tableName)
 	if err != nil {
 		log.Fatal(err)
 	}

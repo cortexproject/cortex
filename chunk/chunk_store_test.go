@@ -19,13 +19,17 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-func setupDynamodb(t *testing.T, dynamoDB StorageClient) {
-	tableManager, err := NewDynamoTableManager(TableManagerConfig{
-		mockDynamoDB: dynamoDB,
-	})
+// newTestStore creates a new Store for testing.
+func newTestChunkStore(t *testing.T, cfg StoreConfig) *Store {
+	tableName := ""
+	storage := NewMockStorage()
+	tableManager, err := NewDynamoTableManager(TableManagerConfig{}, storage, tableName)
 	require.NoError(t, err)
 	err = tableManager.syncTables(context.Background())
 	require.NoError(t, err)
+	store, err := NewStore(cfg, storage, tableName)
+	require.NoError(t, err)
+	return store
 }
 
 func TestChunkStore(t *testing.T) {
@@ -110,14 +114,9 @@ func TestChunkStore(t *testing.T) {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				log.Infoln("========= Running query", tc.query, "with schema", schema.name)
-				dynamoDB := NewMockStorage()
-				setupDynamodb(t, dynamoDB)
-				store, err := NewStore(StoreConfig{
-					mockDynamoDB:  dynamoDB,
-					mockS3:        NewMockS3(),
+				store := newTestChunkStore(t, StoreConfig{
 					schemaFactory: schema.fn,
 				})
-				require.NoError(t, err)
 
 				if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
 					t.Fatal(err)
@@ -164,15 +163,9 @@ func TestChunkStoreRandom(t *testing.T) {
 	}
 
 	for i := range schemas {
-		dynamoDB := NewMockStorage()
-		setupDynamodb(t, dynamoDB)
-		store, err := NewStore(StoreConfig{
-			mockDynamoDB:  dynamoDB,
-			mockS3:        NewMockS3(),
+		schemas[i].store = newTestChunkStore(t, StoreConfig{
 			schemaFactory: schemas[i].fn,
 		})
-		require.NoError(t, err)
-		schemas[i].store = store
 	}
 
 	// put 100 chunks from 0 to 99
@@ -235,16 +228,10 @@ func TestChunkStoreRandom(t *testing.T) {
 
 func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
-
 	ctx := user.Inject(context.Background(), userID)
-	dynamoDB := NewMockStorage()
-	setupDynamodb(t, dynamoDB)
-	store, err := NewStore(StoreConfig{
-		mockDynamoDB:  dynamoDB,
-		mockS3:        NewMockS3(),
+	store := newTestChunkStore(t, StoreConfig{
 		schemaFactory: v6Schema,
 	})
-	require.NoError(t, err)
 
 	// Put 24 chunks 1hr chunks in the store
 	const chunkLen = 60 // in seconds
@@ -265,6 +252,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			ts,
 			ts.Add(chunkLen*time.Second),
 		)
+		log.Infof("Loop %d", i)
 		err := store.Put(ctx, []Chunk{chunk})
 		require.NoError(t, err)
 	}

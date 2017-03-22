@@ -1,20 +1,15 @@
 package chunk
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"sort"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/user"
@@ -28,12 +23,6 @@ var (
 		Help:      "Number of entries written to storage per chunk.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
-	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "s3_request_duration_seconds",
-		Help:      "Time spent doing S3 requests.",
-		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
-	}, []string{"operation", "status_code"})
 	rowWrites = util.NewHashBucketHistogram(util.HashBucketHistogramOpts{
 		HistogramOpts: prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -47,7 +36,6 @@ var (
 
 func init() {
 	prometheus.MustRegister(indexEntriesPerChunk)
-	prometheus.MustRegister(s3RequestDuration)
 	prometheus.MustRegister(rowWrites)
 }
 
@@ -55,13 +43,6 @@ func init() {
 type StoreConfig struct {
 	SchemaConfig
 	CacheConfig
-	S3       util.URLValue
-	DynamoDB util.URLValue
-
-	mockS3         S3Client
-	mockBucketName string
-	mockDynamoDB   StorageClient
-	mockTableName  string
 
 	// For injecting different schemas in tests.
 	schemaFactory func(cfg SchemaConfig) Schema
@@ -71,46 +52,30 @@ type StoreConfig struct {
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchemaConfig.RegisterFlags(f)
 	cfg.CacheConfig.RegisterFlags(f)
-
-	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
-		"If only region is specified as a host, proper endpoint will be deducted.")
-	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
-		"If only region is specified as a host, proper endpoint will be deducted.")
 }
 
 // Store implements Store
 type Store struct {
 	cfg StoreConfig
 
-	storage    StorageClient
-	tableName  string
-	s3         S3Client
-	bucketName string
-	cache      *Cache
-	schema     Schema
+	storage StorageClient
+	cache   *Cache
+	schema  Schema
 }
 
 // NewStore makes a new ChunkStore
-func NewStore(cfg StoreConfig) (*Store, error) {
-	dynamoDBClient, tableName := cfg.mockDynamoDB, cfg.mockTableName
-	if dynamoDBClient == nil {
-		var err error
-		dynamoDBClient, tableName, err = NewDynamoDBClient(cfg.DynamoDB.String())
-		if err != nil {
-			return nil, err
+func NewStore(cfg StoreConfig, storage StorageClient, originalTableName string) (*Store, error) {
+	// TODO(jml): Remove this and stop taking an originalTableName parameter
+	// once deprecation period expires. See storage_client.go - 2017-03-21.
+	if originalTableName != "" {
+		if cfg.SchemaConfig.OriginalTableName == "" {
+			log.Warnf("Setting original table name to %v based on path of DynamoDB URL. This will be disabled in a later release.")
+			cfg.SchemaConfig.OriginalTableName = originalTableName
+		} else {
+			log.Warnf("Ignoring table name %v from DynamoDB URL. Using %v from explicit flag instead", originalTableName, cfg.SchemaConfig.OriginalTableName)
 		}
 	}
 
-	s3Client, bucketName := cfg.mockS3, cfg.mockBucketName
-	if s3Client == nil {
-		var err error
-		s3Client, bucketName, err = NewS3Client(cfg.S3.String())
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	cfg.SchemaConfig.OriginalTableName = tableName
 	var schema Schema
 	var err error
 	if cfg.schemaFactory == nil {
@@ -123,13 +88,10 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}
 
 	return &Store{
-		cfg:        cfg,
-		storage:    dynamoDBClient,
-		tableName:  tableName,
-		s3:         s3Client,
-		bucketName: bucketName,
-		schema:     schema,
-		cache:      NewCache(cfg.CacheConfig),
+		cfg:     cfg,
+		storage: storage,
+		schema:  schema,
+		cache:   NewCache(cfg.CacheConfig),
 	}, nil
 }
 
@@ -186,15 +148,7 @@ func (c *Store) putChunks(ctx context.Context, keys []string, bufs [][]byte) err
 
 // putChunk puts a chunk into S3.
 func (c *Store) putChunk(ctx context.Context, key string, buf []byte) error {
-	err := instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
-		var err error
-		_, err = c.s3.PutObject(&s3.PutObjectInput{
-			Body:   bytes.NewReader(buf),
-			Bucket: aws.String(c.bucketName),
-			Key:    aws.String(key),
-		})
-		return err
-	})
+	err := c.storage.PutChunk(ctx, key, buf)
 	if err != nil {
 		return err
 	}
@@ -443,27 +397,11 @@ func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, 
 	incomingErrors := make(chan error)
 	for _, chunk := range chunkSet {
 		go func(chunk Chunk) {
-			var resp *s3.GetObjectOutput
-			err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
-				var err error
-				resp, err = c.s3.GetObject(&s3.GetObjectInput{
-					Bucket: aws.String(c.bucketName),
-					Key:    aws.String(chunk.externalKey()),
-				})
-				return err
-			})
+			buf, err := c.storage.GetChunk(ctx, chunk.externalKey())
 			if err != nil {
 				incomingErrors <- err
 				return
 			}
-			defer resp.Body.Close()
-
-			buf, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-
 			if err := chunk.decode(buf); err != nil {
 				incomingErrors <- err
 				return

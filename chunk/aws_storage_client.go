@@ -109,19 +109,15 @@ func (cfg *AWSStorageConfig) RegisterFlags(f *flag.FlagSet) {
 type awsStorageClient struct {
 	DynamoDB   dynamodbiface.DynamoDBAPI
 	S3         s3iface.S3API
-	bucketName *string
+	bucketName string
 }
 
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
 func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
-	if cfg.DynamoDB.URL == nil {
-		return nil, fmt.Errorf("no URL specified for DynamoDB")
-	}
-	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
+	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, err
 	}
-	dynamoDB := dynamodb.New(session.New(dynamoDBConfig))
 
 	if cfg.S3.URL == nil {
 		return nil, fmt.Errorf("no URL specified for S3")
@@ -131,7 +127,7 @@ func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
 		return nil, err
 	}
 	s3Client := s3.New(session.New(s3Config))
-	bucketName := aws.String(strings.TrimPrefix(cfg.S3.URL.Path, "/"))
+	bucketName := strings.TrimPrefix(cfg.S3.URL.Path, "/")
 
 	storageClient := awsStorageClient{
 		DynamoDB:   dynamoDB,
@@ -278,7 +274,7 @@ func (a awsStorageClient) GetChunk(ctx context.Context, key string) ([]byte, err
 	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
 		var err error
 		resp, err = a.S3.GetObject(&s3.GetObjectInput{
-			Bucket: a.bucketName,
+			Bucket: aws.String(a.bucketName),
 			Key:    aws.String(key),
 		})
 		return err
@@ -298,7 +294,7 @@ func (a awsStorageClient) PutChunk(ctx context.Context, key string, buf []byte) 
 	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
 		_, err := a.S3.PutObject(&s3.PutObjectInput{
 			Body:   bytes.NewReader(buf),
-			Bucket: a.bucketName,
+			Bucket: aws.String(a.bucketName),
 			Key:    aws.String(key),
 		})
 		return err
@@ -348,14 +344,10 @@ type dynamoTableClient struct {
 
 // newDynamoTableClient makes a new DynamoTableClient.
 func newDynamoTableClient(cfg DynamoDBConfig) (DynamoTableClient, error) {
-	if cfg.DynamoDB.URL == nil {
-		return nil, fmt.Errorf("no URL specified for DynamoDB")
-	}
-	dynamoDBConfig, err := awsConfigFromURL(cfg.DynamoDB.URL)
+	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, err
 	}
-	dynamoDB := dynamodb.New(session.New(dynamoDBConfig))
 	return dynamoTableClient{
 		DynamoDB: dynamoDB,
 	}, nil
@@ -471,6 +463,18 @@ func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
 			}
 		}
 	}
+}
+
+// dynamoClientFromURL creates a new DynamoDB client from a URL.
+func dynamoClientFromURL(awsURL *url.URL) (dynamodbiface.DynamoDBAPI, error) {
+	if awsURL == nil {
+		return nil, fmt.Errorf("no URL specified for DynamoDB")
+	}
+	config, err := awsConfigFromURL(awsURL)
+	if err != nil {
+		return nil, err
+	}
+	return dynamodb.New(session.New(config)), nil
 }
 
 // awsConfigFromURL returns AWS config from given URL. It expects escaped AWS Access key ID & Secret Access Key to be

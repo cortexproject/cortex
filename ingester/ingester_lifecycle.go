@@ -191,8 +191,9 @@ loop:
 	if i.cfg.ClaimOnRollout {
 		if err := i.transferChunks(); err != nil {
 			log.Errorf("Failed to transfer chunks to another ingester: %v", err)
+		} else {
+			flushRequired = false
 		}
-		flushRequired = false
 	}
 	if flushRequired {
 		i.flushAllChunks()

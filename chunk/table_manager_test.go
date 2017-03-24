@@ -43,7 +43,7 @@ func TestDynamoTableManager(t *testing.T) {
 		InactiveWriteThroughput:    inactiveWrite,
 		InactiveReadThroughput:     inactiveRead,
 	}
-	tableManager, err := NewDynamoTableManager(cfg, dynamoDB, "")
+	tableManager, err := NewDynamoTableManager(cfg, dynamoDB)
 	if err != nil {
 		t.Fatal(err)
 	}

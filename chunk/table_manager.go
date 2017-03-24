@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -63,20 +62,14 @@ func (cfg *DynamoTableClientConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewDynamoTableClient creates a new DynamoTableClient.
-func NewDynamoTableClient(cfg DynamoTableClientConfig) (DynamoTableClient, string, error) {
+func NewDynamoTableClient(cfg DynamoTableClientConfig) (DynamoTableClient, error) {
 	switch cfg.DynamoClient {
 	case "inmemory":
-		return NewMockStorage(), "", nil
+		return NewMockStorage(), nil
 	case "aws":
-		// TODO(jml): Remove this once deprecation period expires - 2017-03-21.
-		tableName := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
-		if len(tableName) > 0 {
-			log.Warnf("Specifying fallback table name in DynamoDB URL is deprecated.")
-		}
-		client, err := newDynamoTableClient(cfg.DynamoDBConfig)
-		return client, tableName, err
+		return newDynamoTableClient(cfg.DynamoDBConfig)
 	default:
-		return nil, "", fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.DynamoClient)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.DynamoClient)
 	}
 }
 
@@ -138,22 +131,12 @@ type DynamoTableManager struct {
 }
 
 // NewDynamoTableManager makes a new DynamoTableManager
-func NewDynamoTableManager(cfg TableManagerConfig, dynamoDBClient DynamoTableClient, originalTableName string) (*DynamoTableManager, error) {
-	if originalTableName != "" {
-		if cfg.OriginalTableName == "" {
-			log.Warnf("Setting original table name to %v based on path of DynamoDB URL. This will be disabled in a later release.")
-			cfg.OriginalTableName = originalTableName
-		} else {
-			log.Warnf("Ignoring table name %v from DynamoDB URL. Using %v from explicit flag instead", originalTableName, cfg.OriginalTableName)
-		}
-	}
-
-	m := &DynamoTableManager{
+func NewDynamoTableManager(cfg TableManagerConfig, dynamoDBClient DynamoTableClient) (*DynamoTableManager, error) {
+	return &DynamoTableManager{
 		cfg:      cfg,
 		dynamoDB: dynamoDBClient,
 		done:     make(chan struct{}),
-	}
-	return m, nil
+	}, nil
 }
 
 // Start the DynamoTableManager

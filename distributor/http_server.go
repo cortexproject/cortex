@@ -17,7 +17,7 @@ import (
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	var req cortex.WriteRequest
-	if err := util.ParseProtoRequest(r.Context(), w, r, &req, true); err != nil {
+	if err := util.ParseProtoRequest(r.Context(), r, &req, true); err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

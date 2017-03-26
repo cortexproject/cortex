@@ -1,13 +1,10 @@
 package querier
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
@@ -204,7 +201,7 @@ func (qm MergeQuerier) Close() error {
 func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req cortex.ReadRequest
-	if err := util.ParseProtoRequest(ctx, w, r, &req, true); err != nil {
+	if err := util.ParseProtoRequest(ctx, r, &req, true); err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -239,24 +236,8 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 
 	resp := util.ToQueryResponse(matrix)
 
-	data, err := proto.Marshal(resp)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Errorf("error marshaling remote read response: %v", err)
-		return
-	}
-
-	buf := bytes.Buffer{}
-	if _, err := snappy.NewWriter(&buf).Write(data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Errorf("error compressing read response: %v", err)
-		return
-	}
-
-	if _, err := w.Write(buf.Bytes()); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Errorf("error sending read response: %v", err)
-		return
+	if err := util.SerializeProtoResponse(w, resp); err != nil {
+		log.Errorf("error sending remote read response: %v", err)
 	}
 }
 

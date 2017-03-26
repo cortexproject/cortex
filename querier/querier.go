@@ -17,7 +17,6 @@ import (
 
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
-	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/util"
 )
 
@@ -205,7 +204,7 @@ func (qm MergeQuerier) Close() error {
 func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req cortex.ReadRequest
-	if err := distributor.ParseProtoRequest(ctx, w, r, &req, true); err != nil {
+	if err := util.ParseProtoRequest(ctx, w, r, &req, true); err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

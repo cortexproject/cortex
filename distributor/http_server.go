@@ -1,21 +1,15 @@
 package distributor
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"net/http"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/snappy"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/util"
 )
@@ -23,7 +17,7 @@ import (
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	var req cortex.WriteRequest
-	if err := ParseProtoRequest(r.Context(), w, r, &req, true); err != nil {
+	if err := util.ParseProtoRequest(r.Context(), w, r, &req, true); err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -106,28 +100,4 @@ func (d *Distributor) ValidateExprHandler(w http.ResponseWriter, r *http.Request
 			"pos":  parseErr.Pos,
 		},
 	})
-}
-
-// ParseProtoRequest parses a proto from the body of a http request.
-func ParseProtoRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, req proto.Message, compressed bool) error {
-	var reader io.Reader = r.Body
-	if compressed {
-		reader = snappy.NewReader(r.Body)
-	}
-
-	buf := bytes.Buffer{}
-	if err := instrument.TimeRequestHistogram(ctx, "Distributor.PushHandler[decompress]", nil, func(_ context.Context) error {
-		_, err := buf.ReadFrom(reader)
-		return err
-	}); err != nil {
-		return err
-	}
-
-	if err := instrument.TimeRequestHistogram(ctx, "Distributor.PushHandler[unmarshall]", nil, func(_ context.Context) error {
-		return proto.Unmarshal(buf.Bytes(), req)
-	}); err != nil {
-		return err
-	}
-
-	return nil
 }

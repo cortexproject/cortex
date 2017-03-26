@@ -1,9 +1,13 @@
 package querier
 
 import (
+	"bytes"
 	"fmt"
+	"net/http"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
@@ -11,7 +15,9 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
+	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/distributor"
 	"github.com/weaveworks/cortex/util"
 )
 
@@ -78,7 +84,7 @@ func (q *ChunkQuerier) MetricsForLabelMatchers(ctx context.Context, from, throug
 
 // Queryable is an adapter between Prometheus' Queryable and Querier.
 type Queryable struct {
-	Q local.Querier
+	Q MergeQuerier
 }
 
 // Querier implements Queryable
@@ -92,10 +98,10 @@ type MergeQuerier struct {
 	Queriers []Querier
 }
 
-// QueryRange fetches series for a given time range and label matchers from multiple
-// promql.Queriers and returns the merged results as a map of series iterators.
-func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
-	// Fetch samples from all queriers in parallel
+// Query fetches series for a given time range and label matchers from multiple
+// promql.Queriers and returns the merged results as a model.Matrix.
+func (qm MergeQuerier) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
+	// Fetch samples from all queriers in parallel.
 	matrices := make(chan model.Matrix)
 	errors := make(chan error)
 	for _, q := range qm.Queriers {
@@ -109,36 +115,25 @@ func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matc
 		}(q)
 	}
 
-	// Group them by fingerprint (unsorted and with overlap).
-	fpToIt := map[model.Fingerprint]local.SeriesIterator{}
-	var lastErr error
-	for i := 0; i < len(qm.Queriers); i++ {
-		select {
-		case err := <-errors:
-			lastErr = err
+	matrix, err := mergeMatrices(matrices, errors, len(qm.Queriers))
+	if err != nil {
+		log.Errorf("Error in MergeQuerier.Query: %v", err)
 
-		case matrix := <-matrices:
-			for _, ss := range matrix {
-				fp := ss.Metric.Fingerprint()
-				if it, ok := fpToIt[fp]; !ok {
-					fpToIt[fp] = sampleStreamIterator{
-						ss: ss,
-					}
-				} else {
-					ssIt := it.(sampleStreamIterator)
-					ssIt.ss.Values = util.MergeSamples(ssIt.ss.Values, ss.Values)
-				}
-			}
-		}
 	}
-	if lastErr != nil {
-		log.Errorf("Error in MergeQuerier.QueryRange: %v", lastErr)
-		return nil, lastErr
+	return matrix, err
+}
+
+// QueryRange fetches series for a given time range and label matchers from multiple
+// promql.Queriers and returns the merged results as a map of series iterators.
+func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
+	matrix, err := qm.Query(ctx, from, to, matchers...)
+	if err != nil {
+		return nil, err
 	}
 
-	iterators := make([]local.SeriesIterator, 0, len(fpToIt))
-	for _, it := range fpToIt {
-		iterators = append(iterators, it)
+	iterators := make([]local.SeriesIterator, 0, len(matrix))
+	for _, ss := range matrix {
+		iterators = append(iterators, sampleStreamIterator{ss: ss})
 	}
 
 	return iterators, nil
@@ -204,6 +199,97 @@ func (qm MergeQuerier) LabelValuesForLabelName(ctx context.Context, name model.L
 // Close is a noop
 func (qm MergeQuerier) Close() error {
 	return nil
+}
+
+// RemoteReadHandler handles Prometheus remote read requests.
+func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var req cortex.ReadRequest
+	if err := distributor.ParseProtoRequest(ctx, w, r, &req, true); err != nil {
+		log.Errorf(err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Fetch samples for all queries in parallel.
+	matrices := make(chan model.Matrix)
+	errors := make(chan error)
+	for _, q := range req.Queries {
+		go func(q *cortex.QueryRequest) {
+			from, to, matchers, err := util.FromQueryRequest(q)
+			if err != nil {
+				errors <- err
+				return
+			}
+
+			matrix, err := qm.Query(ctx, from, to, matchers...)
+			if err != nil {
+				errors <- err
+			} else {
+				matrices <- matrix
+			}
+		}(q)
+	}
+
+	matrix, err := mergeMatrices(matrices, errors, len(req.Queries))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Errorf("error executing remote read request: %v", err)
+		return
+	}
+
+	resp := util.ToQueryResponse(matrix)
+
+	data, err := proto.Marshal(resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Errorf("error marshaling remote read response: %v", err)
+		return
+	}
+
+	buf := bytes.Buffer{}
+	if _, err := snappy.NewWriter(&buf).Write(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Errorf("error compressing read response: %v", err)
+		return
+	}
+
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Errorf("error sending read response: %v", err)
+		return
+	}
+}
+
+func mergeMatrices(matrices chan model.Matrix, errors chan error, n int) (model.Matrix, error) {
+	// Group samples from all matrices by fingerprint.
+	fpToSS := map[model.Fingerprint]*model.SampleStream{}
+	var lastErr error
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-errors:
+			lastErr = err
+
+		case matrix := <-matrices:
+			for _, ss := range matrix {
+				fp := ss.Metric.Fingerprint()
+				if fpSS, ok := fpToSS[fp]; !ok {
+					fpToSS[fp] = ss
+				} else {
+					fpSS.Values = util.MergeSamples(fpSS.Values, ss.Values)
+				}
+			}
+		}
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+
+	matrix := make(model.Matrix, 0, len(fpToSS))
+	for _, ss := range fpToSS {
+		matrix = append(matrix, ss)
+	}
+	return matrix, nil
 }
 
 // DummyStorage creates a local.Storage compatible struct from a

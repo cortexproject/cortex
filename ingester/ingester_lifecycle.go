@@ -158,7 +158,7 @@ loop:
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
 			if i.state == ring.PENDING {
-				log.Infof("Auto-joining cluster after timout.")
+				log.Infof("Auto-joining cluster after timeout.")
 				if err := i.autoJoin(); err != nil {
 					log.Fatalf("failed to pick tokens in consul: %v", err)
 				}

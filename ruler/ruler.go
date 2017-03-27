@@ -199,6 +199,10 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 	n = notifier.New(&notifier.Options{
 		QueueCapacity: r.queueCapacity,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
+			// Note: The passed-in context comes from the Prometheus rule group code
+			// and does *not* contain the userID. So it needs to be added to the context
+			// here before using the context to inject the userID into the HTTP request.
+			ctx = user.Inject(ctx, userID)
 			if err := user.InjectIntoHTTPRequest(ctx, req); err != nil {
 				return nil, err
 			}

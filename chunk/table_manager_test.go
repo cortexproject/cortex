@@ -50,11 +50,12 @@ func TestDynamoTableManager(t *testing.T) {
 
 	test := func(name string, tm time.Time, expected []tableDescription) {
 		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
 			mtime.NowForce(tm)
-			if err := tableManager.syncTables(context.Background()); err != nil {
+			if err := tableManager.syncTables(ctx); err != nil {
 				t.Fatal(err)
 			}
-			expectTables(t, dynamoDB, expected)
+			expectTables(ctx, t, dynamoDB, expected)
 		})
 	}
 
@@ -143,8 +144,8 @@ func TestDynamoTableManager(t *testing.T) {
 	)
 }
 
-func expectTables(t *testing.T, dynamo DynamoTableClient, expected []tableDescription) {
-	tables, err := dynamo.ListTables()
+func expectTables(ctx context.Context, t *testing.T, dynamo DynamoTableClient, expected []tableDescription) {
+	tables, err := dynamo.ListTables(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +162,7 @@ func expectTables(t *testing.T, dynamo DynamoTableClient, expected []tableDescri
 			t.Fatalf("Expected '%s', found '%s'", desc.name, tables[i])
 		}
 
-		read, write, _, err := dynamo.DescribeTable(desc.name)
+		read, write, _, err := dynamo.DescribeTable(ctx, desc.name)
 		if err != nil {
 			t.Fatal(err)
 		}

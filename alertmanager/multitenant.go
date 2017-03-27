@@ -237,23 +237,26 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.CortexC
 				ExternalURL: am.cfg.ExternalURL.URL,
 			})
 			if err != nil {
-				log.Warnf("MultitenantAlertmanager: unable to start Alertmanager for %v: %v", userID, err)
+				log.Warnf("MultitenantAlertmanager: unable to start Alertmanager for user %v: %v", userID, err)
 				continue
 			}
+
+			if err := newAM.ApplyConfig(amConfig); err != nil {
+				log.Warnf("MultitenantAlertmanager: unable to apply initial config for user %v: %v", userID, err)
+				continue
+			}
+
 			am.alertmanagersMtx.Lock()
 			am.alertmanagers[userID] = newAM
 			am.alertmanagersMtx.Unlock()
-		}
-
-		// If the config changed, apply the new one.
-		if am.cfgs[userID].AlertmanagerConfig != config.Config.AlertmanagerConfig {
-			am.cfgs[userID] = config.Config
+		} else if am.cfgs[userID].AlertmanagerConfig != config.Config.AlertmanagerConfig {
+			// If the config changed, apply the new one.
 			err := am.alertmanagers[userID].ApplyConfig(amConfig)
 			if err != nil {
-				log.Warnf("MultitenantAlertmanager: unable to apply Alertmanager config for %v: %v", userID, err)
+				log.Warnf("MultitenantAlertmanager: unable to apply Alertmanager config for user %v: %v", userID, err)
 			}
 		}
-
+		am.cfgs[userID] = config.Config
 	}
 	totalConfigs.Set(float64(len(am.cfgs)))
 }

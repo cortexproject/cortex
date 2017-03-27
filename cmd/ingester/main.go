@@ -39,12 +39,12 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	storageClient, tableName, err := chunk.NewStorageClient(storageConfig)
+	storageClient, err := chunk.NewStorageClient(storageConfig)
 	if err != nil {
 		log.Fatalf("Error initializing storage client: %v", err)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, storageClient, tableName)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, storageClient)
 	if err != nil {
 		log.Fatal(err)
 	}

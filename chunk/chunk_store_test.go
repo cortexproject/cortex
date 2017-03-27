@@ -21,13 +21,12 @@ import (
 
 // newTestStore creates a new Store for testing.
 func newTestChunkStore(t *testing.T, cfg StoreConfig) *Store {
-	tableName := ""
 	storage := NewMockStorage()
-	tableManager, err := NewDynamoTableManager(TableManagerConfig{}, storage, tableName)
+	tableManager, err := NewDynamoTableManager(TableManagerConfig{}, storage)
 	require.NoError(t, err)
 	err = tableManager.syncTables(context.Background())
 	require.NoError(t, err)
-	store, err := NewStore(cfg, storage, tableName)
+	store, err := NewStore(cfg, storage)
 	require.NoError(t, err)
 	return store
 }

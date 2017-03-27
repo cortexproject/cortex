@@ -48,19 +48,17 @@ func (cfg *StorageClientConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewStorageClient makes a storage client based on the configuration.
-func NewStorageClient(cfg StorageClientConfig) (StorageClient, string, error) {
+func NewStorageClient(cfg StorageClientConfig) (StorageClient, error) {
 	switch cfg.StorageClient {
 	case "inmemory":
-		return NewMockStorage(), "", nil
+		return NewMockStorage(), nil
 	case "aws":
-		// TODO(jml): Remove this once deprecation period expires - 2017-03-21.
-		tableName := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
-		if len(tableName) > 0 {
-			log.Warnf("Specifying fallback table name in DynamoDB URL is deprecated.")
+		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
+		if len(path) > 0 {
+			log.Warnf("Ignoring DynamoDB URL path: %v.", path)
 		}
-		client, err := NewAWSStorageClient(cfg.AWSStorageConfig)
-		return client, tableName, err
+		return NewAWSStorageClient(cfg.AWSStorageConfig)
 	default:
-		return nil, "", fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.StorageClient)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.StorageClient)
 	}
 }

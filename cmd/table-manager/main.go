@@ -26,12 +26,12 @@ func main() {
 	util.RegisterFlags(&serverConfig, &dynamoTableClientConfig, &tableManagerConfig)
 	flag.Parse()
 
-	dynamoClient, tableName, err := chunk.NewDynamoTableClient(dynamoTableClientConfig)
+	dynamoClient, err := chunk.NewDynamoTableClient(dynamoTableClientConfig)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB client: %v", err)
 	}
 
-	tableManager, err := chunk.NewDynamoTableManager(tableManagerConfig, dynamoClient, tableName)
+	tableManager, err := chunk.NewDynamoTableManager(tableManagerConfig, dynamoClient)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB table manager: %v", err)
 	}

@@ -3,7 +3,9 @@ package chunk
 import (
 	"flag"
 	"fmt"
+	"strings"
 
+	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
 )
 
@@ -51,6 +53,10 @@ func NewStorageClient(cfg StorageClientConfig) (StorageClient, error) {
 	case "inmemory":
 		return NewMockStorage(), nil
 	case "aws":
+		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
+		if len(path) > 0 {
+			log.Warnf("Ignoring DynamoDB URL path: %v.", path)
+		}
 		return NewAWSStorageClient(cfg.AWSStorageConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.StorageClient)

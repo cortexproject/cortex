@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,6 +68,10 @@ func NewDynamoTableClient(cfg DynamoTableClientConfig) (DynamoTableClient, error
 	case "inmemory":
 		return NewMockStorage(), nil
 	case "aws":
+		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
+		if len(path) > 0 {
+			log.Warnf("Ignoring DynamoDB URL path: %v.", path)
+		}
 		return newDynamoTableClient(cfg.DynamoDBConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.DynamoClient)

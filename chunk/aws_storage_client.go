@@ -353,7 +353,7 @@ func newDynamoTableClient(cfg DynamoDBConfig) (DynamoTableClient, error) {
 	}, nil
 }
 
-func (d dynamoTableClient) ListTables() ([]string, error) {
+func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
 	table := []string{}
 	if err := d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
 		for _, s := range resp.TableNames {
@@ -366,7 +366,7 @@ func (d dynamoTableClient) ListTables() ([]string, error) {
 	return table, nil
 }
 
-func (d dynamoTableClient) CreateTable(name string, readCapacity, writeCapacity int64) error {
+func (d dynamoTableClient) CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
 	input := &dynamodb.CreateTableInput{
 		TableName: aws.String(name),
 		AttributeDefinitions: []*dynamodb.AttributeDefinition{
@@ -398,7 +398,7 @@ func (d dynamoTableClient) CreateTable(name string, readCapacity, writeCapacity 
 	return err
 }
 
-func (d dynamoTableClient) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
+func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
 	out, err := d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
 		TableName: aws.String(name),
 	})
@@ -409,7 +409,7 @@ func (d dynamoTableClient) DescribeTable(name string) (readCapacity, writeCapaci
 	return *out.Table.ProvisionedThroughput.ReadCapacityUnits, *out.Table.ProvisionedThroughput.WriteCapacityUnits, *out.Table.TableStatus, nil
 }
 
-func (d dynamoTableClient) UpdateTable(name string, readCapacity, writeCapacity int64) error {
+func (d dynamoTableClient) UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
 	_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
 		TableName: aws.String(name),
 		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{

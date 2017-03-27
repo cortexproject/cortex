@@ -37,7 +37,7 @@ func NewMockStorage() *MockStorage {
 }
 
 // ListTables implements StorageClient.
-func (m *MockStorage) ListTables() ([]string, error) {
+func (m *MockStorage) ListTables(ctx context.Context) ([]string, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -51,7 +51,7 @@ func (m *MockStorage) ListTables() ([]string, error) {
 }
 
 // CreateTable implements StorageClient.
-func (m *MockStorage) CreateTable(name string, read, write int64) error {
+func (m *MockStorage) CreateTable(ctx context.Context, name string, read, write int64) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -69,7 +69,7 @@ func (m *MockStorage) CreateTable(name string, read, write int64) error {
 }
 
 // DescribeTable implements StorageClient.
-func (m *MockStorage) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
+func (m *MockStorage) DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -82,7 +82,7 @@ func (m *MockStorage) DescribeTable(name string) (readCapacity, writeCapacity in
 }
 
 // UpdateTable implements StorageClient.
-func (m *MockStorage) UpdateTable(name string, readCapacity, writeCapacity int64) error {
+func (m *MockStorage) UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

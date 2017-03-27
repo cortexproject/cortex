@@ -44,10 +44,10 @@ func init() {
 
 // DynamoTableClient is a client for telling Dynamo what to do with tables.
 type DynamoTableClient interface {
-	ListTables() ([]string, error)
-	CreateTable(name string, readCapacity, writeCapacity int64) error
-	DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error)
-	UpdateTable(name string, readCapacity, writeCapacity int64) error
+	ListTables(ctx context.Context) ([]string, error)
+	CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
+	DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error)
+	UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
 }
 
 // DynamoTableClientConfig configures the DynamoDB table client.
@@ -285,7 +285,7 @@ func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions [
 	var existingTables []string
 	if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
 		var err error
-		existingTables, err = m.dynamoDB.ListTables()
+		existingTables, err = m.dynamoDB.ListTables(ctx)
 		return err
 	}); err != nil {
 		return nil, nil, err
@@ -320,7 +320,7 @@ func (m *DynamoTableManager) createTables(ctx context.Context, descriptions []ta
 	for _, desc := range descriptions {
 		log.Infof("Creating table %s", desc.name)
 		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(_ context.Context) error {
-			return m.dynamoDB.CreateTable(desc.name, desc.provisionedRead, desc.provisionedWrite)
+			return m.dynamoDB.CreateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
 		}); err != nil {
 			return err
 		}
@@ -335,7 +335,7 @@ func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []ta
 		var status string
 		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
 			var err error
-			readCapacity, writeCapacity, status, err = m.dynamoDB.DescribeTable(desc.name)
+			readCapacity, writeCapacity, status, err = m.dynamoDB.DescribeTable(ctx, desc.name)
 			return err
 		}); err != nil {
 			return err
@@ -356,7 +356,7 @@ func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []ta
 
 		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.name, desc.provisionedRead, desc.provisionedWrite)
 		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
-			return m.dynamoDB.UpdateTable(desc.name, desc.provisionedRead, desc.provisionedWrite)
+			return m.dynamoDB.UpdateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
 		}); err != nil {
 			return err
 		}

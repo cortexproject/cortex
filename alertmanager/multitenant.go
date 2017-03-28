@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
@@ -241,22 +242,10 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Corte
 
 	// If no Alertmanager instance exists for this user yet, start one.
 	if _, ok := am.alertmanagers[userID]; !ok {
-		newAM, err := New(&Config{
-			UserID:      userID,
-			DataDir:     am.cfg.DataDir,
-			Logger:      log.NewLogger(os.Stderr),
-			MeshRouter:  am.meshRouter,
-			Retention:   am.cfg.Retention,
-			ExternalURL: am.cfg.ExternalURL.URL,
-		})
+		newAM, err := am.newAlertmanager(userID, amConfig)
 		if err != nil {
-			return fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
+			return err
 		}
-
-		if err := newAM.ApplyConfig(amConfig); err != nil {
-			return fmt.Errorf("unable to apply initial config for user %v: %v", userID, err)
-		}
-
 		am.alertmanagersMtx.Lock()
 		am.alertmanagers[userID] = newAM
 		am.alertmanagersMtx.Unlock()
@@ -269,6 +258,25 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Corte
 	}
 	am.cfgs[userID] = config
 	return nil
+}
+
+func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {
+	newAM, err := New(&Config{
+		UserID:      userID,
+		DataDir:     am.cfg.DataDir,
+		Logger:      log.NewLogger(os.Stderr),
+		MeshRouter:  am.meshRouter,
+		Retention:   am.cfg.Retention,
+		ExternalURL: am.cfg.ExternalURL.URL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
+	}
+
+	if err := newAM.ApplyConfig(amConfig); err != nil {
+		return nil, fmt.Errorf("unable to apply initial config for user %v: %v", userID, err)
+	}
+	return newAM, nil
 }
 
 // ServeHTTP serves the Alertmanager's web UI and API.

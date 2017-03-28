@@ -34,7 +34,7 @@ type Config struct {
 	// Used to persist notification logs and silences on disk.
 	DataDir     string
 	Logger      log.Logger
-	MeshRouter  *mesh.Router
+	MeshRouter  Router
 	Retention   time.Duration
 	ExternalURL *url.URL
 }

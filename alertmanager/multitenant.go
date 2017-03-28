@@ -98,7 +98,7 @@ type MultitenantAlertmanager struct {
 	latestConfig configs.ConfigID
 	latestMutex  sync.RWMutex
 
-	meshRouter *mesh.Router
+	meshRouter *gossipFactory
 
 	stop chan struct{}
 	done chan struct{}
@@ -123,12 +123,13 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 		Timeout: cfg.ClientTimeout,
 	}
 
+	gf := newGossipFactory(mrouter)
 	return &MultitenantAlertmanager{
 		cfg:           cfg,
 		configsAPI:    configsAPI,
 		cfgs:          map[string]configs.CortexConfig{},
 		alertmanagers: map[string]*Alertmanager{},
-		meshRouter:    mrouter,
+		meshRouter:    &gf,
 		stop:          make(chan struct{}),
 		done:          make(chan struct{}),
 	}, nil

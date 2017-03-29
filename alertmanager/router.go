@@ -6,8 +6,8 @@ import (
 	"github.com/weaveworks/mesh"
 )
 
-// Router is the interface we use for a mesh router.
-type Router interface {
+// GossipRouter is the interface we use for a mesh router.
+type GossipRouter interface {
 	NewGossip(string, mesh.Gossiper) mesh.Gossip
 	GetPeers() *mesh.Peers
 }

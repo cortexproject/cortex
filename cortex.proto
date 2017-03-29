@@ -24,6 +24,14 @@ message WriteRequest {
 
 message WriteResponse {}
 
+message ReadRequest {
+  repeated QueryRequest queries = 1;
+}
+
+message ReadResponse {
+  repeated TimeSeries timeseries = 1;
+}
+
 message QueryRequest {
   int64 start_timestamp_ms = 1;
   int64 end_timestamp_ms = 2;

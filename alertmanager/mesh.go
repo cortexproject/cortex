@@ -116,10 +116,10 @@ func (s peerDescSlice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // meshWait returns a function that inspects the current peer state and returns
 // a duration of one base timeout for each peer with a higher ID than ourselves.
-func meshWait(r GossipRouter, timeout time.Duration) func() time.Duration {
+func meshWait(r gossipRouter, timeout time.Duration) func() time.Duration {
 	return func() time.Duration {
 		var peers peerDescSlice
-		for _, desc := range r.GetPeers().Descriptions() {
+		for _, desc := range r.getPeers().Descriptions() {
 			peers = append(peers, desc)
 		}
 		sort.Sort(peers)

@@ -6,10 +6,10 @@ import (
 	"github.com/weaveworks/mesh"
 )
 
-// GossipRouter is the interface we use for a mesh router.
-type GossipRouter interface {
-	NewGossip(string, mesh.Gossiper) mesh.Gossip
-	GetPeers() *mesh.Peers
+// gossipRouter is the interface we use for a mesh router.
+type gossipRouter interface {
+	newGossip(string, mesh.Gossiper) mesh.Gossip
+	getPeers() *mesh.Peers
 }
 
 // gossipFactory allows safe creation of mesh.Gossips on a mesh.Router.
@@ -27,9 +27,9 @@ func newGossipFactory(router *mesh.Router) gossipFactory {
 	}
 }
 
-// NewGossip makes a new Gossip with the given `id`. If a gossip with that ID
+// newGossip makes a new Gossip with the given `id`. If a gossip with that ID
 // already exists, that will be returned instead.
-func (gf *gossipFactory) NewGossip(id string, g mesh.Gossiper) mesh.Gossip {
+func (gf *gossipFactory) newGossip(id string, g mesh.Gossiper) mesh.Gossip {
 	gf.lock.Lock()
 	defer gf.lock.Unlock()
 	gossip, ok := gf.gossips[id]
@@ -41,7 +41,7 @@ func (gf *gossipFactory) NewGossip(id string, g mesh.Gossiper) mesh.Gossip {
 	return gossip
 }
 
-// GetPeers returns the peers of a router.
-func (gf *gossipFactory) GetPeers() *mesh.Peers {
+// getPeers returns the peers of a router.
+func (gf *gossipFactory) getPeers() *mesh.Peers {
 	return gf.Router.Peers
 }

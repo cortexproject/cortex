@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/weaveworks/mesh"
@@ -116,10 +117,10 @@ func (s peerDescSlice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // meshWait returns a function that inspects the current peer state and returns
 // a duration of one base timeout for each peer with a higher ID than ourselves.
-func meshWait(r *mesh.Router, timeout time.Duration) func() time.Duration {
+func meshWait(r gossipRouter, timeout time.Duration) func() time.Duration {
 	return func() time.Duration {
 		var peers peerDescSlice
-		for _, desc := range r.Peers.Descriptions() {
+		for _, desc := range r.getPeers().Descriptions() {
 			peers = append(peers, desc)
 		}
 		sort.Sort(peers)
@@ -134,4 +135,44 @@ func meshWait(r *mesh.Router, timeout time.Duration) func() time.Duration {
 		// TODO(fabxc): add metric exposing the "position" from AM's own view.
 		return time.Duration(k) * timeout
 	}
+}
+
+// gossipRouter is the interface we use for a mesh router.
+type gossipRouter interface {
+	newGossip(string, mesh.Gossiper) mesh.Gossip
+	getPeers() *mesh.Peers
+}
+
+// gossipFactory allows safe creation of mesh.Gossips on a mesh.Router.
+type gossipFactory struct {
+	*mesh.Router
+	gossips map[string]mesh.Gossip
+	lock    sync.Mutex
+}
+
+// newGossipFactory makes a new router factory.
+func newGossipFactory(router *mesh.Router) gossipFactory {
+	return gossipFactory{
+		Router:  router,
+		gossips: map[string]mesh.Gossip{},
+	}
+}
+
+// newGossip makes a new Gossip with the given `id`. If a gossip with that ID
+// already exists, that will be returned instead.
+func (gf *gossipFactory) newGossip(id string, g mesh.Gossiper) mesh.Gossip {
+	gf.lock.Lock()
+	defer gf.lock.Unlock()
+	gossip, ok := gf.gossips[id]
+	if ok {
+		return gossip
+	}
+	gossip = gf.Router.NewGossip(id, g)
+	gf.gossips[id] = gossip
+	return gossip
+}
+
+// getPeers returns the peers of a router.
+func (gf *gossipFactory) getPeers() *mesh.Peers {
+	return gf.Router.Peers
 }

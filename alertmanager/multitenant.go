@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 
@@ -97,7 +98,7 @@ type MultitenantAlertmanager struct {
 	latestConfig configs.ConfigID
 	latestMutex  sync.RWMutex
 
-	meshRouter *mesh.Router
+	meshRouter *gossipFactory
 
 	stop chan struct{}
 	done chan struct{}
@@ -122,12 +123,13 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 		Timeout: cfg.ClientTimeout,
 	}
 
+	gf := newGossipFactory(mrouter)
 	return &MultitenantAlertmanager{
 		cfg:           cfg,
 		configsAPI:    configsAPI,
 		cfgs:          map[string]configs.CortexConfig{},
 		alertmanagers: map[string]*Alertmanager{},
-		meshRouter:    mrouter,
+		meshRouter:    &gf,
 		stop:          make(chan struct{}),
 		done:          make(chan struct{}),
 	}, nil
@@ -215,50 +217,67 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.CortexC
 	// TODO: instrument how many configs we have, both valid & invalid.
 	log.Debugf("Adding %d configurations", len(cfgs))
 	for userID, config := range cfgs {
-		amConfig, err := config.Config.GetAlertmanagerConfig()
+
+		err := am.setConfig(userID, config.Config)
 		if err != nil {
-			// XXX: This means that if a user has a working configuration and
-			// they submit a broken one, we'll keep processing the last known
-			// working configuration, and they'll never know.
-			// TODO: Provide a way of communicating this to the user and for removing
-			// Alertmanager instances.
-			log.Warnf("MultitenantAlertmanager: invalid Cortex configuration for %v: %v", userID, err)
+			log.Warnf("MultitenantAlertmanager: %v", err)
 			continue
 		}
 
-		// If no Alertmanager instance exists for this user yet, start one.
-		if _, ok := am.alertmanagers[userID]; !ok {
-			newAM, err := New(&Config{
-				UserID:      userID,
-				DataDir:     am.cfg.DataDir,
-				Logger:      log.NewLogger(os.Stderr),
-				MeshRouter:  am.meshRouter,
-				Retention:   am.cfg.Retention,
-				ExternalURL: am.cfg.ExternalURL.URL,
-			})
-			if err != nil {
-				log.Warnf("MultitenantAlertmanager: unable to start Alertmanager for user %v: %v", userID, err)
-				continue
-			}
-
-			if err := newAM.ApplyConfig(amConfig); err != nil {
-				log.Warnf("MultitenantAlertmanager: unable to apply initial config for user %v: %v", userID, err)
-				continue
-			}
-
-			am.alertmanagersMtx.Lock()
-			am.alertmanagers[userID] = newAM
-			am.alertmanagersMtx.Unlock()
-		} else if am.cfgs[userID].AlertmanagerConfig != config.Config.AlertmanagerConfig {
-			// If the config changed, apply the new one.
-			err := am.alertmanagers[userID].ApplyConfig(amConfig)
-			if err != nil {
-				log.Warnf("MultitenantAlertmanager: unable to apply Alertmanager config for user %v: %v", userID, err)
-			}
-		}
-		am.cfgs[userID] = config.Config
 	}
 	totalConfigs.Set(float64(len(am.cfgs)))
+}
+
+// setConfig applies the given configuration to the alertmanager for `userID`,
+// creating an alertmanager if it doesn't already exist.
+func (am *MultitenantAlertmanager) setConfig(userID string, config configs.CortexConfig) error {
+	amConfig, err := config.GetAlertmanagerConfig()
+	if err != nil {
+		// XXX: This means that if a user has a working configuration and
+		// they submit a broken one, we'll keep processing the last known
+		// working configuration, and they'll never know.
+		// TODO: Provide a way of communicating this to the user and for removing
+		// Alertmanager instances.
+		return fmt.Errorf("invalid Cortex configuration for %v: %v", userID, err)
+	}
+
+	// If no Alertmanager instance exists for this user yet, start one.
+	if _, ok := am.alertmanagers[userID]; !ok {
+		newAM, err := am.newAlertmanager(userID, amConfig)
+		if err != nil {
+			return err
+		}
+		am.alertmanagersMtx.Lock()
+		am.alertmanagers[userID] = newAM
+		am.alertmanagersMtx.Unlock()
+	} else if am.cfgs[userID].AlertmanagerConfig != config.AlertmanagerConfig {
+		// If the config changed, apply the new one.
+		err := am.alertmanagers[userID].ApplyConfig(amConfig)
+		if err != nil {
+			return fmt.Errorf("unable to apply Alertmanager config for user %v: %v", userID, err)
+		}
+	}
+	am.cfgs[userID] = config
+	return nil
+}
+
+func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {
+	newAM, err := New(&Config{
+		UserID:      userID,
+		DataDir:     am.cfg.DataDir,
+		Logger:      log.NewLogger(os.Stderr),
+		MeshRouter:  am.meshRouter,
+		Retention:   am.cfg.Retention,
+		ExternalURL: am.cfg.ExternalURL.URL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
+	}
+
+	if err := newAM.ApplyConfig(amConfig); err != nil {
+		return nil, fmt.Errorf("unable to apply initial config for user %v: %v", userID, err)
+	}
+	return newAM, nil
 }
 
 // ServeHTTP serves the Alertmanager's web UI and API.

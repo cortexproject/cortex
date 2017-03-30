@@ -34,7 +34,7 @@ type Config struct {
 	// Used to persist notification logs and silences on disk.
 	DataDir     string
 	Logger      log.Logger
-	MeshRouter  *mesh.Router
+	MeshRouter  gossipRouter
 	Retention   time.Duration
 	ExternalURL *url.URL
 }
@@ -68,7 +68,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 	var err error
 	am.nflog, err = nflog.New(
 		nflog.WithMesh(func(g mesh.Gossiper) mesh.Gossip {
-			return cfg.MeshRouter.NewGossip(nflogID, g)
+			return cfg.MeshRouter.newGossip(nflogID, g)
 		}),
 		nflog.WithRetention(cfg.Retention),
 		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
@@ -95,7 +95,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 		// metric twice with a single registry.
 		Metrics: prometheus.NewRegistry(),
 		Gossip: func(g mesh.Gossiper) mesh.Gossip {
-			return cfg.MeshRouter.NewGossip(silencesID, g)
+			return cfg.MeshRouter.newGossip(silencesID, g)
 		},
 	})
 	if err != nil {

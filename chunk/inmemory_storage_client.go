@@ -37,7 +37,7 @@ func NewMockStorage() *MockStorage {
 }
 
 // ListTables implements StorageClient.
-func (m *MockStorage) ListTables(ctx context.Context) ([]string, error) {
+func (m *MockStorage) ListTables(_ context.Context) ([]string, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

@@ -44,10 +44,10 @@ func init() {
 
 // DynamoTableClient is a client for telling Dynamo what to do with tables.
 type DynamoTableClient interface {
-	ListTables() ([]string, error)
-	CreateTable(name string, readCapacity, writeCapacity int64) error
-	DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error)
-	UpdateTable(name string, readCapacity, writeCapacity int64) error
+	ListTables(ctx context.Context) ([]string, error)
+	CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
+	DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error)
+	UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
 }
 
 // DynamoTableClientConfig configures the DynamoDB table client.
@@ -270,12 +270,8 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 
 // partitionTables works out tables that need to be created vs tables that need to be updated
 func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions []tableDescription) ([]tableDescription, []tableDescription, error) {
-	var existingTables []string
-	if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
-		var err error
-		existingTables, err = m.dynamoDB.ListTables()
-		return err
-	}); err != nil {
+	existingTables, err := m.dynamoDB.ListTables(ctx)
+	if err != nil {
 		return nil, nil, err
 	}
 	sort.Strings(existingTables)
@@ -307,9 +303,8 @@ func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions [
 func (m *DynamoTableManager) createTables(ctx context.Context, descriptions []tableDescription) error {
 	for _, desc := range descriptions {
 		log.Infof("Creating table %s", desc.name)
-		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(_ context.Context) error {
-			return m.dynamoDB.CreateTable(desc.name, desc.provisionedRead, desc.provisionedWrite)
-		}); err != nil {
+		err := m.dynamoDB.CreateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
+		if err != nil {
 			return err
 		}
 	}
@@ -319,13 +314,8 @@ func (m *DynamoTableManager) createTables(ctx context.Context, descriptions []ta
 func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []tableDescription) error {
 	for _, desc := range descriptions {
 		log.Infof("Checking provisioned throughput on table %s", desc.name)
-		var readCapacity, writeCapacity int64
-		var status string
-		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
-			var err error
-			readCapacity, writeCapacity, status, err = m.dynamoDB.DescribeTable(desc.name)
-			return err
-		}); err != nil {
+		readCapacity, writeCapacity, status, err := m.dynamoDB.DescribeTable(ctx, desc.name)
+		if err != nil {
 			return err
 		}
 
@@ -343,9 +333,8 @@ func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []ta
 		}
 
 		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.name, desc.provisionedRead, desc.provisionedWrite)
-		if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
-			return m.dynamoDB.UpdateTable(desc.name, desc.provisionedRead, desc.provisionedWrite)
-		}); err != nil {
+		err = m.dynamoDB.UpdateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
+		if err != nil {
 			return err
 		}
 	}

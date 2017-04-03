@@ -353,71 +353,78 @@ func newDynamoTableClient(cfg DynamoDBConfig) (DynamoTableClient, error) {
 	}, nil
 }
 
-func (d dynamoTableClient) ListTables() ([]string, error) {
+func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
 	table := []string{}
-	if err := d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
-		for _, s := range resp.TableNames {
-			table = append(table, *s)
+	err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
+		return d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
+			for _, s := range resp.TableNames {
+				table = append(table, *s)
+			}
+			return true
+		})
+	})
+	return table, err
+}
+
+func (d dynamoTableClient) CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
+	return instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(_ context.Context) error {
+		input := &dynamodb.CreateTableInput{
+			TableName: aws.String(name),
+			AttributeDefinitions: []*dynamodb.AttributeDefinition{
+				{
+					AttributeName: aws.String(hashKey),
+					AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
+				},
+				{
+					AttributeName: aws.String(rangeKey),
+					AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
+				},
+			},
+			KeySchema: []*dynamodb.KeySchemaElement{
+				{
+					AttributeName: aws.String(hashKey),
+					KeyType:       aws.String(dynamodb.KeyTypeHash),
+				},
+				{
+					AttributeName: aws.String(rangeKey),
+					KeyType:       aws.String(dynamodb.KeyTypeRange),
+				},
+			},
+			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(readCapacity),
+				WriteCapacityUnits: aws.Int64(writeCapacity),
+			},
 		}
-		return true
-	}); err != nil {
-		return nil, err
-	}
-	return table, nil
-}
-
-func (d dynamoTableClient) CreateTable(name string, readCapacity, writeCapacity int64) error {
-	input := &dynamodb.CreateTableInput{
-		TableName: aws.String(name),
-		AttributeDefinitions: []*dynamodb.AttributeDefinition{
-			{
-				AttributeName: aws.String(hashKey),
-				AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
-			},
-			{
-				AttributeName: aws.String(rangeKey),
-				AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
-			},
-		},
-		KeySchema: []*dynamodb.KeySchemaElement{
-			{
-				AttributeName: aws.String(hashKey),
-				KeyType:       aws.String(dynamodb.KeyTypeHash),
-			},
-			{
-				AttributeName: aws.String(rangeKey),
-				KeyType:       aws.String(dynamodb.KeyTypeRange),
-			},
-		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(readCapacity),
-			WriteCapacityUnits: aws.Int64(writeCapacity),
-		},
-	}
-	_, err := d.DynamoDB.CreateTable(input)
-	return err
-}
-
-func (d dynamoTableClient) DescribeTable(name string) (readCapacity, writeCapacity int64, status string, err error) {
-	out, err := d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
-		TableName: aws.String(name),
+		_, err := d.DynamoDB.CreateTable(input)
+		return err
 	})
-	if err != nil {
-		return 0, 0, "", err
-	}
-
-	return *out.Table.ProvisionedThroughput.ReadCapacityUnits, *out.Table.ProvisionedThroughput.WriteCapacityUnits, *out.Table.TableStatus, nil
 }
 
-func (d dynamoTableClient) UpdateTable(name string, readCapacity, writeCapacity int64) error {
-	_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
-		TableName: aws.String(name),
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(readCapacity),
-			WriteCapacityUnits: aws.Int64(writeCapacity),
-		},
+func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
+	var out *dynamodb.DescribeTableOutput
+	instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
+		out, err = d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
+			TableName: aws.String(name),
+		})
+		readCapacity = *out.Table.ProvisionedThroughput.ReadCapacityUnits
+		writeCapacity = *out.Table.ProvisionedThroughput.WriteCapacityUnits
+		status = *out.Table.TableStatus
+		return err
 	})
-	return err
+	return
+}
+
+func (d dynamoTableClient) UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
+	return instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(_ context.Context) error {
+		_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
+			TableName: aws.String(name),
+			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(readCapacity),
+				WriteCapacityUnits: aws.Int64(writeCapacity),
+			},
+		})
+		return err
+	})
 }
 
 func nextBackoff(lastBackoff time.Duration) time.Duration {

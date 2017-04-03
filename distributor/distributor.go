@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
 
+	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex"
@@ -47,6 +48,8 @@ type Distributor struct {
 	quit       chan struct{}
 	done       chan struct{}
 
+	billingClient *billing.Client
+
 	// Per-user rate limiters.
 	ingestLimitersMtx sync.Mutex
 	ingestLimiters    map[string]*rate.Limiter
@@ -72,6 +75,9 @@ type ReadRing interface {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
+	EnableBilling bool
+	BillingConfig billing.Config
+
 	ReplicationFactor   int
 	HeartbeatTimeout    time.Duration
 	RemoteTimeout       time.Duration
@@ -85,6 +91,9 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	flag.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
+	cfg.BillingConfig.RegisterFlags(f)
+
 	flag.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	flag.DurationVar(&cfg.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
@@ -102,12 +111,22 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 		cfg.ingesterClientFactory = ingester_client.MakeIngesterClient
 	}
 
+	var billingClient *billing.Client
+	if cfg.EnableBilling {
+		var err error
+		billingClient, err = billing.NewClient(cfg.BillingConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
 		clients:        map[string]cortex.IngesterClient{},
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
+		billingClient:  billingClient,
 		ingestLimiters: map[string]*rate.Limiter{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",

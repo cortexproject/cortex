@@ -28,7 +28,7 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 }
 
 // ParseProtoRequest parses a proto from the body of an HTTP request.
-func ParseProtoRequest(ctx context.Context, r *http.Request, req proto.Message, compressed bool) error {
+func ParseProtoRequest(ctx context.Context, r *http.Request, req proto.Message, compressed bool) ([]byte, error) {
 	var reader io.Reader = r.Body
 	if compressed {
 		reader = snappy.NewReader(r.Body)
@@ -39,16 +39,16 @@ func ParseProtoRequest(ctx context.Context, r *http.Request, req proto.Message, 
 		_, err := buf.ReadFrom(reader)
 		return err
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := instrument.TimeRequestHistogram(ctx, "util.ParseProtoRequest[unmarshal]", nil, func(_ context.Context) error {
 		return proto.Unmarshal(buf.Bytes(), req)
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return buf.Bytes(), nil
 }
 
 // SerializeProtoResponse serializes a protobuf response into an HTTP response.

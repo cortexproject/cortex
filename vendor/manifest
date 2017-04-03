@@ -433,6 +433,15 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/fluent/fluent-logger-golang/fluent",
+			"repository": "https://github.com/fluent/fluent-logger-golang",
+			"vcs": "git",
+			"revision": "aa9a204a50b28091f0a749a023d36f2990c22086",
+			"branch": "master",
+			"path": "/fluent",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/go-logfmt/logfmt",
 			"repository": "https://github.com/go-logfmt/logfmt",
 			"vcs": "git",
@@ -966,6 +975,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/philhofer/fwd",
+			"repository": "https://github.com/philhofer/fwd",
+			"vcs": "git",
+			"revision": "98c11a7a6ec829d672b03833c3d69a7fae1ca972",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/pierrec/lz4",
 			"repository": "https://github.com/pierrec/lz4",
 			"vcs": "git",
@@ -1485,12 +1502,29 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/tinylib/msgp/msgp",
+			"repository": "https://github.com/tinylib/msgp",
+			"vcs": "git",
+			"revision": "362bfb3384d53ae4d5dd745983a4d70b6d23628c",
+			"branch": "master",
+			"path": "/msgp",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/weaveworks-experiments/loki/pkg/client",
 			"repository": "https://github.com/weaveworks-experiments/loki",
 			"vcs": "git",
 			"revision": "d6c699d0268de38cf6d00a192e79057c8be1e2f4",
 			"branch": "master",
 			"path": "/pkg/client",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/weaveworks/billing-client",
+			"repository": "https://github.com/weaveworks/billing-client",
+			"vcs": "git",
+			"revision": "ac1a1ead23444698d57069944577620f97169586",
+			"branch": "master",
 			"notests": true
 		},
 		{

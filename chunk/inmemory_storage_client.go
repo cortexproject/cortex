@@ -51,7 +51,7 @@ func (m *MockStorage) ListTables(_ context.Context) ([]string, error) {
 }
 
 // CreateTable implements StorageClient.
-func (m *MockStorage) CreateTable(ctx context.Context, name string, read, write int64) error {
+func (m *MockStorage) CreateTable(_ context.Context, name string, read, write int64) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -69,7 +69,7 @@ func (m *MockStorage) CreateTable(ctx context.Context, name string, read, write 
 }
 
 // DescribeTable implements StorageClient.
-func (m *MockStorage) DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
+func (m *MockStorage) DescribeTable(_ context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -82,7 +82,7 @@ func (m *MockStorage) DescribeTable(ctx context.Context, name string) (readCapac
 }
 
 // UpdateTable implements StorageClient.
-func (m *MockStorage) UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
+func (m *MockStorage) UpdateTable(_ context.Context, name string, readCapacity, writeCapacity int64) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -103,7 +103,7 @@ func (m *MockStorage) NewWriteBatch() WriteBatch {
 }
 
 // BatchWrite implements StorageClient.
-func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
+func (m *MockStorage) BatchWrite(_ context.Context, batch WriteBatch) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -138,7 +138,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 }
 
 // QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(ctx context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (m *MockStorage) QueryPages(_ context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

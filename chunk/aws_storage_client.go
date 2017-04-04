@@ -255,12 +255,15 @@ func (a awsStorageClient) QueryPages(ctx context.Context, entry IndexEntry, call
 				continue
 			}
 
-			return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error)
+			return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, err)
 		}
 
 		queryOutput := page.Data.(*dynamodb.QueryOutput)
 		if getNextPage := callback(dynamoDBReadBatch(queryOutput.Items), !page.HasNextPage()); !getNextPage {
-			return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error)
+			if err != nil {
+				return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error())
+			}
+			return nil
 		}
 
 		backoff = minBackoff

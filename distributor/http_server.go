@@ -17,7 +17,8 @@ import (
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	var req cortex.WriteRequest
-	if err := util.ParseProtoRequest(r.Context(), r, &req, true); err != nil {
+	buf, err := util.ParseProtoRequest(r.Context(), r, &req, true)
+	if err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -42,6 +43,17 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, err.Error(), code)
 		log.Errorf("append err: %v", err)
+		return
+	}
+
+	if d.cfg.EnableBilling {
+		var samples int64
+		for _, ts := range req.Timeseries {
+			samples += int64(len(ts.Samples))
+		}
+		if err := d.emitBillingRecord(r.Context(), buf, samples); err != nil {
+			log.Errorf("Error emitting billing record: %v", err)
+		}
 	}
 }
 

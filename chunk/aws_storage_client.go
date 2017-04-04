@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
@@ -110,6 +111,10 @@ type awsStorageClient struct {
 	DynamoDB   dynamodbiface.DynamoDBAPI
 	S3         s3iface.S3API
 	bucketName string
+
+	// queryRequestFn exists for mocking, so we don't have to write a whole load
+	// of boilerplate.
+	queryRequestFn func(input *dynamodb.QueryInput) dynamoDBRequest
 }
 
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
@@ -134,6 +139,7 @@ func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
 		S3:         s3Client,
 		bucketName: bucketName,
 	}
+	storageClient.queryRequestFn = storageClient.queryRequest
 	return storageClient, nil
 }
 
@@ -234,14 +240,14 @@ func (a awsStorageClient) QueryPages(ctx context.Context, entry IndexEntry, call
 		}
 	}
 
-	request, _ := a.DynamoDB.QueryRequest(input)
+	request := a.queryRequestFn(input)
 	backoff := minBackoff
 	for page := request; page != nil; page = page.NextPage() {
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
 
-		if cc := page.Data.(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
+		if cc := page.Data().(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
 			dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages").
 				Add(float64(*cc.CapacityUnits))
 		}
@@ -258,7 +264,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, entry IndexEntry, call
 			return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, err)
 		}
 
-		queryOutput := page.Data.(*dynamodb.QueryOutput)
+		queryOutput := page.Data().(*dynamodb.QueryOutput)
 		if getNextPage := callback(dynamoDBReadBatch(queryOutput.Items), !page.HasNextPage()); !getNextPage {
 			if err != nil {
 				return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error())
@@ -270,6 +276,47 @@ func (a awsStorageClient) QueryPages(ctx context.Context, entry IndexEntry, call
 	}
 
 	return nil
+}
+
+type dynamoDBRequest interface {
+	NextPage() dynamoDBRequest
+	Send() error
+	Data() interface{}
+	Error() error
+	HasNextPage() bool
+}
+
+func (a awsStorageClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRequest {
+	req, _ := a.DynamoDB.QueryRequest(input)
+	return dynamoDBRequestAdapter{req}
+}
+
+type dynamoDBRequestAdapter struct {
+	request *request.Request
+}
+
+func (a dynamoDBRequestAdapter) NextPage() dynamoDBRequest {
+	next := a.request.NextPage()
+	if next == nil {
+		return nil
+	}
+	return dynamoDBRequestAdapter{next}
+}
+
+func (a dynamoDBRequestAdapter) Data() interface{} {
+	return a.request.Data
+}
+
+func (a dynamoDBRequestAdapter) Send() error {
+	return a.request.Send()
+}
+
+func (a dynamoDBRequestAdapter) Error() error {
+	return a.request.Error
+}
+
+func (a dynamoDBRequestAdapter) HasNextPage() bool {
+	return a.request.HasNextPage()
 }
 
 func (a awsStorageClient) GetChunk(ctx context.Context, key string) ([]byte, error) {

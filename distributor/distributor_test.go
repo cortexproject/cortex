@@ -196,6 +196,21 @@ func TestDistributorPush(t *testing.T) {
 func TestDistributorQuery(t *testing.T) {
 	ctx := user.Inject(context.Background(), "user")
 
+	nameMatcher, err := metric.NewLabelMatcher(metric.Equal, model.LabelName("__name__"), model.LabelValue("foo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jobMatcher, err := metric.NewLabelMatcher(metric.Equal, model.LabelName("job"), model.LabelValue("foo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	matchers := []*metric.LabelMatcher{
+		nameMatcher,
+		jobMatcher,
+	}
+
 	expectedResponse := func(start, end int) model.Matrix {
 		result := model.Matrix{
 			&model.SampleStream{
@@ -294,13 +309,11 @@ func TestDistributorQuery(t *testing.T) {
 			}
 			defer d.Stop()
 
-			matcher, err := metric.NewLabelMatcher(metric.Equal, model.LabelName("__name__"), model.LabelValue("foo"))
-			if err != nil {
-				t.Fatal(err)
+			for _, matcher := range matchers {
+				response, err := d.Query(ctx, 0, 10, matcher)
+				assert.Equal(t, tc.expectedResponse, response, "Wrong response")
+				assert.Equal(t, tc.expectedError, err, "Wrong error")
 			}
-			response, err := d.Query(ctx, 0, 10, matcher)
-			assert.Equal(t, tc.expectedResponse, response, "Wrong response")
-			assert.Equal(t, tc.expectedError, err, "Wrong error")
 		})
 	}
 }

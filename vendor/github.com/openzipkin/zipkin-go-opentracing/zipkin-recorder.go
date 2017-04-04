@@ -53,6 +53,21 @@ func WithStrictMaterializer() RecorderOption {
 }
 
 // NewRecorder creates a new Zipkin Recorder backed by the provided Collector.
+//
+// hostPort and serviceName allow you to set the default Zipkin endpoint
+// information which will be added to the application's standard core
+// annotations. hostPort will be resolved into an IPv4 and/or IPv6 address and
+// Port number, serviceName will be used as the application's service
+// identifier.
+//
+// If application does not listen for incoming requests or an endpoint Context
+// does not involve network address and/or port these cases can be solved like
+// this:
+//  # port is not applicable:
+//  NewRecorder(c, debug, "192.168.1.12:0", "ServiceA")
+//
+//  # network address and port are not applicable:
+//  NewRecorder(c, debug, "0.0.0.0:0", "ServiceB")
 func NewRecorder(c Collector, debug bool, hostPort, serviceName string, options ...RecorderOption) SpanRecorder {
 	r := &Recorder{
 		collector:    c,

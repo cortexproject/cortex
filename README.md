@@ -9,7 +9,7 @@
 
 Cortex is an API compatible [Prometheus](https://prometheus.io) implementation, that natively supports multitenancy and horizontal scale-out clustering.
 
-Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works). 
+Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works).
 
 
 ## Getting Started with Weave Cloud & Kubernetes
@@ -81,6 +81,19 @@ Cortex will sit behind an nginx instance exposed on port 30080.  A job is deploy
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
 
+### Vendoring
+
+We use `dep` to vendor dependencies.  We use a custom branch with support for
+pruneing the vendor tree, from github.com/tomwilkie/dep.
+
+To fetch a new dependency, run:
+
+    dep ensure && dep prune
+
+To update dependencies, run
+
+    dep ensure --update && dep prine
+
 ## <a name="help"></a>Getting Help
 
 If you have any questions regarding Cortex our hosted Prometheus as a service:
@@ -91,4 +104,4 @@ If you have any questions regarding Cortex our hosted Prometheus as a service:
 - Send an email to <a href="mailto:weave-users@weave.works">weave-users@weave.works</a>
 - <a href="https://github.com/weaveworks/cortex/issues/new">File an issue.</a>
 
-Your feedback is always welcome!
+Your feedback is always welcomeu

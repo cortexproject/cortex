@@ -113,8 +113,10 @@ type options struct {
 	unaryInt             UnaryServerInterceptor
 	streamInt            StreamServerInterceptor
 	inTapHandle          tap.ServerInHandle
+	statsHandler         stats.Handler
 	maxConcurrentStreams uint32
 	useHandlerImpl       bool // use http.Handler-based server
+	unknownStreamDesc    *StreamDesc
 }
 
 var defaultMaxMsgSize = 1024 * 1024 * 4 // use 4MB as the default message size limit
@@ -197,6 +199,31 @@ func InTapHandle(h tap.ServerInHandle) ServerOption {
 			panic("The tap handle has been set.")
 		}
 		o.inTapHandle = h
+	}
+}
+
+// StatsHandler returns a ServerOption that sets the stats handler for the server.
+func StatsHandler(h stats.Handler) ServerOption {
+	return func(o *options) {
+		o.statsHandler = h
+	}
+}
+
+// UnknownServiceHandler returns a ServerOption that allows for adding a custom
+// unknown service handler. The provided method is a bidi-streaming RPC service
+// handler that will be invoked instead of returning the the "unimplemented" gRPC
+// error whenever a request is received for an unregistered service or method.
+// The handling function has full access to the Context of the request and the
+// stream, and the invocation passes through interceptors.
+func UnknownServiceHandler(streamHandler StreamHandler) ServerOption {
+	return func(o *options) {
+		o.unknownStreamDesc = &StreamDesc{
+			StreamName: "unknown_service_handler",
+			Handler:    streamHandler,
+			// We need to assume that the users of the streamHandler will want to use both.
+			ClientStreams: true,
+			ServerStreams: true,
+		}
 	}
 }
 
@@ -343,6 +370,7 @@ func (s *Server) useTransportAuthenticator(rawConn net.Conn) (net.Conn, credenti
 // read gRPC requests and then call the registered handlers to reply to them.
 // Serve returns when lis.Accept fails with fatal errors.  lis will be closed when
 // this method returns.
+// Serve always returns non-nil error.
 func (s *Server) Serve(lis net.Listener) error {
 	s.mu.Lock()
 	s.printf("serving")
@@ -437,9 +465,10 @@ func (s *Server) handleRawConn(rawConn net.Conn) {
 // transport.NewServerTransport).
 func (s *Server) serveHTTP2Transport(c net.Conn, authInfo credentials.AuthInfo) {
 	config := &transport.ServerConfig{
-		MaxStreams:  s.opts.maxConcurrentStreams,
-		AuthInfo:    authInfo,
-		InTapHandle: s.opts.inTapHandle,
+		MaxStreams:   s.opts.maxConcurrentStreams,
+		AuthInfo:     authInfo,
+		InTapHandle:  s.opts.inTapHandle,
+		StatsHandler: s.opts.statsHandler,
 	}
 	st, err := transport.NewServerTransport("http2", c, config)
 	if err != nil {
@@ -566,7 +595,7 @@ func (s *Server) sendResponse(t transport.ServerTransport, stream *transport.Str
 	if cp != nil {
 		cbuf = new(bytes.Buffer)
 	}
-	if stats.On() {
+	if s.opts.statsHandler != nil {
 		outPayload = &stats.OutPayload{}
 	}
 	p, err := encode(s.opts.codec, msg, cp, cbuf, outPayload)
@@ -583,27 +612,28 @@ func (s *Server) sendResponse(t transport.ServerTransport, stream *transport.Str
 	err = t.Write(stream, p, opts)
 	if err == nil && outPayload != nil {
 		outPayload.SentTime = time.Now()
-		stats.Handle(stream.Context(), outPayload)
+		s.opts.statsHandler.HandleRPC(stream.Context(), outPayload)
 	}
 	return err
 }
 
 func (s *Server) processUnaryRPC(t transport.ServerTransport, stream *transport.Stream, srv *service, md *MethodDesc, trInfo *traceInfo) (err error) {
-	if stats.On() {
+	sh := s.opts.statsHandler
+	if sh != nil {
 		begin := &stats.Begin{
 			BeginTime: time.Now(),
 		}
-		stats.Handle(stream.Context(), begin)
+		sh.HandleRPC(stream.Context(), begin)
 	}
 	defer func() {
-		if stats.On() {
+		if sh != nil {
 			end := &stats.End{
 				EndTime: time.Now(),
 			}
 			if err != nil && err != io.EOF {
 				end.Error = toRPCErr(err)
 			}
-			stats.Handle(stream.Context(), end)
+			sh.HandleRPC(stream.Context(), end)
 		}
 	}()
 	if trInfo != nil {
@@ -664,7 +694,7 @@ func (s *Server) processUnaryRPC(t transport.ServerTransport, stream *transport.
 			}
 		}
 		var inPayload *stats.InPayload
-		if stats.On() {
+		if sh != nil {
 			inPayload = &stats.InPayload{
 				RecvTime: time.Now(),
 			}
@@ -698,7 +728,7 @@ func (s *Server) processUnaryRPC(t transport.ServerTransport, stream *transport.
 				inPayload.Payload = v
 				inPayload.Data = req
 				inPayload.Length = len(req)
-				stats.Handle(stream.Context(), inPayload)
+				sh.HandleRPC(stream.Context(), inPayload)
 			}
 			if trInfo != nil {
 				trInfo.tr.LazyLog(&payload{sent: false, msg: v}, true)
@@ -755,35 +785,37 @@ func (s *Server) processUnaryRPC(t transport.ServerTransport, stream *transport.
 }
 
 func (s *Server) processStreamingRPC(t transport.ServerTransport, stream *transport.Stream, srv *service, sd *StreamDesc, trInfo *traceInfo) (err error) {
-	if stats.On() {
+	sh := s.opts.statsHandler
+	if sh != nil {
 		begin := &stats.Begin{
 			BeginTime: time.Now(),
 		}
-		stats.Handle(stream.Context(), begin)
+		sh.HandleRPC(stream.Context(), begin)
 	}
 	defer func() {
-		if stats.On() {
+		if sh != nil {
 			end := &stats.End{
 				EndTime: time.Now(),
 			}
 			if err != nil && err != io.EOF {
 				end.Error = toRPCErr(err)
 			}
-			stats.Handle(stream.Context(), end)
+			sh.HandleRPC(stream.Context(), end)
 		}
 	}()
 	if s.opts.cp != nil {
 		stream.SetSendCompress(s.opts.cp.Type())
 	}
 	ss := &serverStream{
-		t:          t,
-		s:          stream,
-		p:          &parser{r: stream},
-		codec:      s.opts.codec,
-		cp:         s.opts.cp,
-		dc:         s.opts.dc,
-		maxMsgSize: s.opts.maxMsgSize,
-		trInfo:     trInfo,
+		t:            t,
+		s:            stream,
+		p:            &parser{r: stream},
+		codec:        s.opts.codec,
+		cp:           s.opts.cp,
+		dc:           s.opts.dc,
+		maxMsgSize:   s.opts.maxMsgSize,
+		trInfo:       trInfo,
+		statsHandler: sh,
 	}
 	if ss.cp != nil {
 		ss.cbuf = new(bytes.Buffer)
@@ -802,15 +834,19 @@ func (s *Server) processStreamingRPC(t transport.ServerTransport, stream *transp
 		}()
 	}
 	var appErr error
+	var server interface{}
+	if srv != nil {
+		server = srv.server
+	}
 	if s.opts.streamInt == nil {
-		appErr = sd.Handler(srv.server, ss)
+		appErr = sd.Handler(server, ss)
 	} else {
 		info := &StreamServerInfo{
 			FullMethod:     stream.Method(),
 			IsClientStream: sd.ClientStreams,
 			IsServerStream: sd.ServerStreams,
 		}
-		appErr = s.opts.streamInt(srv.server, ss, info, sd.Handler)
+		appErr = s.opts.streamInt(server, ss, info, sd.Handler)
 	}
 	if appErr != nil {
 		if err, ok := appErr.(*rpcError); ok {
@@ -870,6 +906,10 @@ func (s *Server) handleStream(t transport.ServerTransport, stream *transport.Str
 	method := sm[pos+1:]
 	srv, ok := s.m[service]
 	if !ok {
+		if unknownDesc := s.opts.unknownStreamDesc; unknownDesc != nil {
+			s.processStreamingRPC(t, stream, nil, unknownDesc, trInfo)
+			return
+		}
 		if trInfo != nil {
 			trInfo.tr.LazyLog(&fmtStringer{"Unknown service %v", []interface{}{service}}, true)
 			trInfo.tr.SetError()
@@ -899,6 +939,10 @@ func (s *Server) handleStream(t transport.ServerTransport, stream *transport.Str
 	if trInfo != nil {
 		trInfo.tr.LazyLog(&fmtStringer{"Unknown method %v", []interface{}{method}}, true)
 		trInfo.tr.SetError()
+	}
+	if unknownDesc := s.opts.unknownStreamDesc; unknownDesc != nil {
+		s.processStreamingRPC(t, stream, nil, unknownDesc, trInfo)
+		return
 	}
 	errDesc := fmt.Sprintf("unknown method %v", method)
 	if err := t.WriteStatus(stream, codes.Unimplemented, errDesc); err != nil {

@@ -43,15 +43,7 @@ func (driver *Driver) Close() error {
 }
 
 func (driver *Driver) ensureVersionTableExists() error {
-	r := driver.db.QueryRow("SELECT count(*) FROM information_schema.tables WHERE table_name = $1 AND table_schema = (SELECT current_schema());", tableName)
-	c := 0
-	if err := r.Scan(&c); err != nil {
-		return err
-	}
-	if c > 0 {
-		return nil
-	}
-	if _, err := driver.db.Exec("CREATE TABLE IF NOT EXISTS " + tableName + " (version bigint not null primary key);"); err != nil {
+	if _, err := driver.db.Exec("CREATE TABLE IF NOT EXISTS " + tableName + " (version int not null primary key);"); err != nil {
 		return err
 	}
 	return nil
@@ -95,28 +87,20 @@ func (driver *Driver) Migrate(f file.File, pipe chan interface{}) {
 	}
 
 	if _, err := tx.Exec(string(f.Content)); err != nil {
-		switch pqErr := err.(type) {
-		case *pq.Error:
-			offset, err := strconv.Atoi(pqErr.Position)
-			if err == nil && offset >= 0 {
-				lineNo, columnNo := file.LineColumnFromOffset(f.Content, offset-1)
-				errorPart := file.LinesBeforeAndAfter(f.Content, lineNo, 5, 5, true)
-				pipe <- errors.New(fmt.Sprintf("%s %v: %s in line %v, column %v:\n\n%s", pqErr.Severity, pqErr.Code, pqErr.Message, lineNo, columnNo, string(errorPart)))
-			} else {
-				pipe <- errors.New(fmt.Sprintf("%s %v: %s", pqErr.Severity, pqErr.Code, pqErr.Message))
-			}
-
-			if err := tx.Rollback(); err != nil {
-				pipe <- err
-			}
-			return
-		default:
-			pipe <- err
-			if err := tx.Rollback(); err != nil {
-				pipe <- err
-			}
-			return
+		pqErr := err.(*pq.Error)
+		offset, err := strconv.Atoi(pqErr.Position)
+		if err == nil && offset >= 0 {
+			lineNo, columnNo := file.LineColumnFromOffset(f.Content, offset-1)
+			errorPart := file.LinesBeforeAndAfter(f.Content, lineNo, 5, 5, true)
+			pipe <- errors.New(fmt.Sprintf("%s %v: %s in line %v, column %v:\n\n%s", pqErr.Severity, pqErr.Code, pqErr.Message, lineNo, columnNo, string(errorPart)))
+		} else {
+			pipe <- errors.New(fmt.Sprintf("%s %v: %s", pqErr.Severity, pqErr.Code, pqErr.Message))
 		}
+
+		if err := tx.Rollback(); err != nil {
+			pipe <- err
+		}
+		return
 	}
 
 	if err := tx.Commit(); err != nil {

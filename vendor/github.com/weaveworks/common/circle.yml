@@ -1,0 +1,24 @@
+machine:
+  services:
+    - docker
+  environment:
+    GOPATH: /home/ubuntu
+    PATH: $PATH:$HOME/.local/bin
+
+dependencies:
+  cache_directories:
+    - "~/docker"
+  post:
+    # Cache the build image
+    - |
+        rm -rf common-build/.src && \
+        mkdir common-build/.src && \
+        cp -r $(ls | grep -v ^common-build$) common-build/.src/ && \
+        cd common-build && \
+        ../tools/rebuild-image weaveworks/common-build . build.sh Dockerfile && \
+        touch .uptodate
+
+test:
+  override:
+    - make RM= lint
+    - make RM= test

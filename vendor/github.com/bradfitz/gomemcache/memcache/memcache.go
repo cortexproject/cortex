@@ -56,7 +56,7 @@ var (
 	ErrNoStats = errors.New("memcache: no statistics available")
 
 	// ErrMalformedKey is returned when an invalid key is used.
-	// Keys must be at maximum 250 bytes long, ASCII, and not
+	// Keys must be at maximum 250 bytes long and not
 	// contain whitespace or control characters.
 	ErrMalformedKey = errors.New("malformed: key is too long or contains invalid characters")
 
@@ -64,13 +64,16 @@ var (
 	ErrNoServers = errors.New("memcache: no servers configured or available")
 )
 
-// DefaultTimeout is the default socket read/write timeout.
-const DefaultTimeout = 100 * time.Millisecond
-
 const (
-	buffered            = 8 // arbitrary buffered channel size, for readability
-	maxIdleConnsPerAddr = 2 // TODO(bradfitz): make this configurable?
+	// DefaultTimeout is the default socket read/write timeout.
+	DefaultTimeout = 100 * time.Millisecond
+
+	// DefaultMaxIdleConns is the default maximum number of idle connections
+	// kept for any single address.
+	DefaultMaxIdleConns = 2
 )
+
+const buffered = 8 // arbitrary buffered channel size, for readability
 
 // resumableError returns true if err is only a protocol-level cache error.
 // This is used to determine whether or not a server connection should
@@ -89,7 +92,7 @@ func legalKey(key string) bool {
 		return false
 	}
 	for i := 0; i < len(key); i++ {
-		if key[i] <= ' ' || key[i] > 0x7e {
+		if key[i] <= ' ' || key[i] == 0x7f {
 			return false
 		}
 	}
@@ -132,6 +135,14 @@ type Client struct {
 	// Timeout specifies the socket read/write timeout.
 	// If zero, DefaultTimeout is used.
 	Timeout time.Duration
+
+	// MaxIdleConns specifies the maximum number of idle connections that will
+	// be maintained per address. If less than one, DefaultMaxIdleConns will be
+	// used.
+	//
+	// Consider your expected traffic rates and latency carefully. This should
+	// be set to a number higher than your peak parallel requests.
+	MaxIdleConns int
 
 	selector ServerSelector
 
@@ -196,7 +207,7 @@ func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
 		c.freeconn = make(map[string][]*conn)
 	}
 	freelist := c.freeconn[addr.String()]
-	if len(freelist) >= maxIdleConnsPerAddr {
+	if len(freelist) >= c.maxIdleConns() {
 		cn.nc.Close()
 		return
 	}
@@ -223,6 +234,13 @@ func (c *Client) netTimeout() time.Duration {
 		return c.Timeout
 	}
 	return DefaultTimeout
+}
+
+func (c *Client) maxIdleConns() int {
+	if c.MaxIdleConns > 0 {
+		return c.MaxIdleConns
+	}
+	return DefaultMaxIdleConns
 }
 
 // ConnectTimeoutError is the error type used when it takes

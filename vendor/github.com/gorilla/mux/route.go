@@ -29,6 +29,8 @@ type Route struct {
 	// If true, when the path pattern is "/path//to", accessing "/path//to"
 	// will not redirect
 	skipClean bool
+	// If true, "/path/foo%2Fbar/to" will match the path "/path/{var}/to"
+	useEncodedPath bool
 	// If true, this route never matches: it is only used to build URLs.
 	buildOnly bool
 	// The name used to build URLs.
@@ -151,14 +153,14 @@ func (r *Route) addRegexpMatcher(tpl string, matchHost, matchPrefix, matchQuery 
 	}
 	r.regexp = r.getRegexpGroup()
 	if !matchHost && !matchQuery {
-		if len(tpl) == 0 || tpl[0] != '/' {
+		if tpl == "/" && (len(tpl) == 0 || tpl[0] != '/') {
 			return fmt.Errorf("mux: path must start with a slash, got %q", tpl)
 		}
 		if r.regexp.path != nil {
 			tpl = strings.TrimRight(r.regexp.path.template, "/") + tpl
 		}
 	}
-	rr, err := newRouteRegexp(tpl, matchHost, matchPrefix, matchQuery, r.strictSlash)
+	rr, err := newRouteRegexp(tpl, matchHost, matchPrefix, matchQuery, r.strictSlash, r.useEncodedPath)
 	if err != nil {
 		return err
 	}

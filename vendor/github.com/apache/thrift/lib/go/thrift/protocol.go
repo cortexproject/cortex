@@ -21,7 +21,6 @@ package thrift
 
 import (
 	"errors"
-	"fmt"
 )
 
 const (
@@ -171,8 +170,6 @@ func Skip(self TProtocol, fieldType TType, maxDepth int) (err error) {
 			}
 		}
 		return self.ReadListEnd()
-	default:
-		return NewTProtocolExceptionWithType(INVALID_DATA, errors.New(fmt.Sprintf("Unknown data type %d", fieldType)))
 	}
 	return nil
 }

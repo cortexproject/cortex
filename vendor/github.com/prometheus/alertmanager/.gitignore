@@ -1,0 +1,12 @@
+/data/
+/alertmanager
+*.yml
+*.yaml
+/.build
+/.release
+/.tarballs
+
+!/doc/examples/simple.yml
+!/circle.yml
+!/.travis.yml
+!/.promu.yml

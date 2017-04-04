@@ -194,7 +194,11 @@ func (lf Field) Marshal(visitor Encoder) {
 	case float64Type:
 		visitor.EmitFloat64(lf.key, math.Float64frombits(uint64(lf.numericVal)))
 	case errorType:
-		visitor.EmitString(lf.key, lf.interfaceVal.(error).Error())
+		if err, ok := lf.interfaceVal.(error); ok {
+			visitor.EmitString(lf.key, err.Error())
+		} else {
+			visitor.EmitString(lf.key, "<nil>")
+		}
 	case objectType:
 		visitor.EmitObject(lf.key, lf.interfaceVal)
 	case lazyLoggerType:

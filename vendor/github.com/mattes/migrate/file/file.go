@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/mattes/migrate/migrate/direction"
 	"go/token"
 	"io/ioutil"
 	"path"
@@ -12,8 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/mattes/migrate/migrate/direction"
 )
 
 var filenameRegex = `^([0-9]+)_(.*)\.(up|down)\.%s$`
@@ -138,10 +137,10 @@ func (mf *MigrationFiles) From(version uint64, relativeN int) (Files, error) {
 
 			if d == direction.Up && migrationFile.Version > version && migrationFile.UpFile != nil {
 				files = append(files, *migrationFile.UpFile)
-				counter--
+				counter -= 1
 			} else if d == direction.Down && migrationFile.Version <= version && migrationFile.DownFile != nil {
 				files = append(files, *migrationFile.DownFile)
-				counter--
+				counter -= 1
 			}
 		} else {
 			break
@@ -259,7 +258,7 @@ func parseFilenameSchema(filename string, filenameRegex *regexp.Regexp) (version
 
 	version, err = strconv.ParseUint(matches[1], 10, 0)
 	if err != nil {
-		return 0, "", 0, fmt.Errorf("Unable to parse version '%v' in filename schema", matches[0])
+		return 0, "", 0, errors.New(fmt.Sprintf("Unable to parse version '%v' in filename schema", matches[0]))
 	}
 
 	if matches[3] == "up" {
@@ -267,7 +266,7 @@ func parseFilenameSchema(filename string, filenameRegex *regexp.Regexp) (version
 	} else if matches[3] == "down" {
 		d = direction.Down
 	} else {
-		return 0, "", 0, fmt.Errorf("Unable to parse up|down '%v' in filename schema", matches[3])
+		return 0, "", 0, errors.New(fmt.Sprintf("Unable to parse up|down '%v' in filename schema", matches[3]))
 	}
 
 	return version, matches[2], d, nil
@@ -334,7 +333,7 @@ func LinesBeforeAndAfter(data []byte, line, before, after int, lineNumbers bool)
 			lNew = append([]byte(lineCounterStr+": "), lNew...)
 		}
 		newLines = append(newLines, lNew)
-		lineCounter++
+		lineCounter += 1
 	}
 
 	return bytes.Join(newLines, []byte("\n"))

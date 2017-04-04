@@ -25,10 +25,6 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 )
 
-const (
-	headChunkTimeout = time.Hour // Close head chunk if not touched for that long.
-)
-
 // fingerprintSeriesPair pairs a fingerprint with a memorySeries pointer.
 type fingerprintSeriesPair struct {
 	fp     model.Fingerprint
@@ -110,26 +106,18 @@ func (sm *seriesMap) iter() <-chan fingerprintSeriesPair {
 	return ch
 }
 
-// fpIter returns a channel that produces all fingerprints in the seriesMap. The
-// channel will be closed once all fingerprints have been received. Not
-// consuming all fingerprints from the channel will leak a goroutine. The
-// semantics of concurrent modification of seriesMap is the similar as the one
-// for iterating over a map with a 'range' clause. However, if the next element
-// in iteration order is removed after the current element has been received
-// from the channel, it will still be produced by the channel.
-func (sm *seriesMap) fpIter() <-chan model.Fingerprint {
-	ch := make(chan model.Fingerprint)
-	go func() {
-		sm.mtx.RLock()
-		for fp := range sm.m {
-			sm.mtx.RUnlock()
-			ch <- fp
-			sm.mtx.RLock()
-		}
-		sm.mtx.RUnlock()
-		close(ch)
-	}()
-	return ch
+// sortedFPs returns a sorted slice of all the fingerprints in the seriesMap.
+func (sm *seriesMap) sortedFPs() model.Fingerprints {
+	sm.mtx.RLock()
+	fps := make(model.Fingerprints, 0, len(sm.m))
+	for fp := range sm.m {
+		fps = append(fps, fp)
+	}
+	sm.mtx.RUnlock()
+
+	// Sorting could take some time, so do it outside of the lock.
+	sort.Sort(fps)
+	return fps
 }
 
 type memorySeries struct {
@@ -259,15 +247,15 @@ func (s *memorySeries) add(v model.SamplePair) (int, error) {
 }
 
 // maybeCloseHeadChunk closes the head chunk if it has not been touched for the
-// duration of headChunkTimeout. It returns whether the head chunk was closed.
-// If the head chunk is already closed, the method is a no-op and returns false.
+// provided duration. It returns whether the head chunk was closed.  If the head
+// chunk is already closed, the method is a no-op and returns false.
 //
 // The caller must have locked the fingerprint of the series.
-func (s *memorySeries) maybeCloseHeadChunk() (bool, error) {
+func (s *memorySeries) maybeCloseHeadChunk(timeout time.Duration) (bool, error) {
 	if s.headChunkClosed {
 		return false, nil
 	}
-	if time.Now().Sub(s.lastTime.Time()) > headChunkTimeout {
+	if time.Now().Sub(s.lastTime.Time()) > timeout {
 		s.headChunkClosed = true
 		// Since we cannot modify the head chunk from now on, we
 		// don't need to bother with cloning anymore.
@@ -421,7 +409,7 @@ func (s *memorySeries) preloadChunksForInstant(
 	from model.Time, through model.Time,
 	mss *MemorySeriesStorage,
 ) (SeriesIterator, error) {
-	// If we have a lastSamplePair in the series, and thas last samplePair
+	// If we have a lastSamplePair in the series, and this last samplePair
 	// is in the interval, just take it in a singleSampleSeriesIterator. No
 	// need to pin or load anything.
 	lastSample := s.lastSamplePair()

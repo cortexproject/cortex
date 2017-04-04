@@ -45,9 +45,12 @@ import (
 	"sync"
 
 	"golang.org/x/net/context"
+	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/tap"
 )
 
@@ -212,6 +215,11 @@ type Stream struct {
 	// the status received from the server.
 	statusCode codes.Code
 	statusDesc string
+	// rstStream indicates whether a RST_STREAM frame needs to be sent
+	// to the server to signify that this stream is closing.
+	rstStream bool
+	// rstError is the error that needs to be sent along with the RST_STREAM frame.
+	rstError http2.ErrCode
 }
 
 // RecvCompress returns the compression algorithm applied to the inbound
@@ -357,9 +365,10 @@ const (
 
 // ServerConfig consists of all the configurations to establish a server transport.
 type ServerConfig struct {
-	MaxStreams  uint32
-	AuthInfo    credentials.AuthInfo
-	InTapHandle tap.ServerInHandle
+	MaxStreams   uint32
+	AuthInfo     credentials.AuthInfo
+	InTapHandle  tap.ServerInHandle
+	StatsHandler stats.Handler
 }
 
 // NewServerTransport creates a ServerTransport with conn or non-nil error
@@ -372,6 +381,9 @@ func NewServerTransport(protocol string, conn net.Conn, config *ServerConfig) (S
 type ConnectOptions struct {
 	// UserAgent is the application user agent.
 	UserAgent string
+	// Authority is the :authority pseudo-header to use. This field has no effect if
+	// TransportCredentials is set.
+	Authority string
 	// Dialer specifies how to dial a network address.
 	Dialer func(context.Context, string) (net.Conn, error)
 	// FailOnNonTempDialError specifies if gRPC fails on non-temporary dial errors.
@@ -380,6 +392,10 @@ type ConnectOptions struct {
 	PerRPCCredentials []credentials.PerRPCCredentials
 	// TransportCredentials stores the Authenticator required to setup a client connection.
 	TransportCredentials credentials.TransportCredentials
+	// KeepaliveParams stores the keepalive parameters.
+	KeepaliveParams keepalive.ClientParameters
+	// StatsHandler stores the handler for stats.
+	StatsHandler stats.Handler
 }
 
 // TargetInfo contains the information of the target such as network address and metadata.
@@ -561,7 +577,7 @@ type StreamError struct {
 }
 
 func (e StreamError) Error() string {
-	return fmt.Sprintf("stream error: code = %d desc = %q", e.Code, e.Desc)
+	return fmt.Sprintf("stream error: code = %s desc = %q", e.Code, e.Desc)
 }
 
 // ContextErr converts the error from context package into a StreamError.

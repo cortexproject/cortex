@@ -45,6 +45,27 @@ func (m *TracerState) String() string            { return proto.CompactTextStrin
 func (*TracerState) ProtoMessage()               {}
 func (*TracerState) Descriptor() ([]byte, []int) { return fileDescriptorWire, []int{0} }
 
+func (m *TracerState) GetTraceId() uint64 {
+	if m != nil {
+		return m.TraceId
+	}
+	return 0
+}
+
+func (m *TracerState) GetSpanId() uint64 {
+	if m != nil {
+		return m.SpanId
+	}
+	return 0
+}
+
+func (m *TracerState) GetSampled() bool {
+	if m != nil {
+		return m.Sampled
+	}
+	return false
+}
+
 func (m *TracerState) GetBaggageItems() map[string]string {
 	if m != nil {
 		return m.BaggageItems
@@ -52,110 +73,131 @@ func (m *TracerState) GetBaggageItems() map[string]string {
 	return nil
 }
 
+func (m *TracerState) GetTraceIdHigh() uint64 {
+	if m != nil {
+		return m.TraceIdHigh
+	}
+	return 0
+}
+
+func (m *TracerState) GetParentSpanId() uint64 {
+	if m != nil {
+		return m.ParentSpanId
+	}
+	return 0
+}
+
+func (m *TracerState) GetFlags() uint64 {
+	if m != nil {
+		return m.Flags
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*TracerState)(nil), "zipkintracer_go.wire.TracerState")
 }
-func (m *TracerState) Marshal() (data []byte, err error) {
+func (m *TracerState) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *TracerState) MarshalTo(data []byte) (int, error) {
+func (m *TracerState) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
 	if m.TraceId != 0 {
-		data[i] = 0x9
+		dAtA[i] = 0x9
 		i++
-		i = encodeFixed64Wire(data, i, uint64(m.TraceId))
+		i = encodeFixed64Wire(dAtA, i, uint64(m.TraceId))
 	}
 	if m.SpanId != 0 {
-		data[i] = 0x11
+		dAtA[i] = 0x11
 		i++
-		i = encodeFixed64Wire(data, i, uint64(m.SpanId))
+		i = encodeFixed64Wire(dAtA, i, uint64(m.SpanId))
 	}
 	if m.Sampled {
-		data[i] = 0x18
+		dAtA[i] = 0x18
 		i++
 		if m.Sampled {
-			data[i] = 1
+			dAtA[i] = 1
 		} else {
-			data[i] = 0
+			dAtA[i] = 0
 		}
 		i++
 	}
 	if len(m.BaggageItems) > 0 {
 		for k, _ := range m.BaggageItems {
-			data[i] = 0x22
+			dAtA[i] = 0x22
 			i++
 			v := m.BaggageItems[k]
 			mapSize := 1 + len(k) + sovWire(uint64(len(k))) + 1 + len(v) + sovWire(uint64(len(v)))
-			i = encodeVarintWire(data, i, uint64(mapSize))
-			data[i] = 0xa
+			i = encodeVarintWire(dAtA, i, uint64(mapSize))
+			dAtA[i] = 0xa
 			i++
-			i = encodeVarintWire(data, i, uint64(len(k)))
-			i += copy(data[i:], k)
-			data[i] = 0x12
+			i = encodeVarintWire(dAtA, i, uint64(len(k)))
+			i += copy(dAtA[i:], k)
+			dAtA[i] = 0x12
 			i++
-			i = encodeVarintWire(data, i, uint64(len(v)))
-			i += copy(data[i:], v)
+			i = encodeVarintWire(dAtA, i, uint64(len(v)))
+			i += copy(dAtA[i:], v)
 		}
 	}
 	if m.TraceIdHigh != 0 {
-		data[i] = 0xa1
+		dAtA[i] = 0xa1
 		i++
-		data[i] = 0x1
+		dAtA[i] = 0x1
 		i++
-		i = encodeFixed64Wire(data, i, uint64(m.TraceIdHigh))
+		i = encodeFixed64Wire(dAtA, i, uint64(m.TraceIdHigh))
 	}
 	if m.ParentSpanId != 0 {
-		data[i] = 0xa9
+		dAtA[i] = 0xa9
 		i++
-		data[i] = 0x1
+		dAtA[i] = 0x1
 		i++
-		i = encodeFixed64Wire(data, i, uint64(m.ParentSpanId))
+		i = encodeFixed64Wire(dAtA, i, uint64(m.ParentSpanId))
 	}
 	if m.Flags != 0 {
-		data[i] = 0xb1
+		dAtA[i] = 0xb1
 		i++
-		data[i] = 0x1
+		dAtA[i] = 0x1
 		i++
-		i = encodeFixed64Wire(data, i, uint64(m.Flags))
+		i = encodeFixed64Wire(dAtA, i, uint64(m.Flags))
 	}
 	return i, nil
 }
 
-func encodeFixed64Wire(data []byte, offset int, v uint64) int {
-	data[offset] = uint8(v)
-	data[offset+1] = uint8(v >> 8)
-	data[offset+2] = uint8(v >> 16)
-	data[offset+3] = uint8(v >> 24)
-	data[offset+4] = uint8(v >> 32)
-	data[offset+5] = uint8(v >> 40)
-	data[offset+6] = uint8(v >> 48)
-	data[offset+7] = uint8(v >> 56)
+func encodeFixed64Wire(dAtA []byte, offset int, v uint64) int {
+	dAtA[offset] = uint8(v)
+	dAtA[offset+1] = uint8(v >> 8)
+	dAtA[offset+2] = uint8(v >> 16)
+	dAtA[offset+3] = uint8(v >> 24)
+	dAtA[offset+4] = uint8(v >> 32)
+	dAtA[offset+5] = uint8(v >> 40)
+	dAtA[offset+6] = uint8(v >> 48)
+	dAtA[offset+7] = uint8(v >> 56)
 	return offset + 8
 }
-func encodeFixed32Wire(data []byte, offset int, v uint32) int {
-	data[offset] = uint8(v)
-	data[offset+1] = uint8(v >> 8)
-	data[offset+2] = uint8(v >> 16)
-	data[offset+3] = uint8(v >> 24)
+func encodeFixed32Wire(dAtA []byte, offset int, v uint32) int {
+	dAtA[offset] = uint8(v)
+	dAtA[offset+1] = uint8(v >> 8)
+	dAtA[offset+2] = uint8(v >> 16)
+	dAtA[offset+3] = uint8(v >> 24)
 	return offset + 4
 }
-func encodeVarintWire(data []byte, offset int, v uint64) int {
+func encodeVarintWire(dAtA []byte, offset int, v uint64) int {
 	for v >= 1<<7 {
-		data[offset] = uint8(v&0x7f | 0x80)
+		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
-	data[offset] = uint8(v)
+	dAtA[offset] = uint8(v)
 	return offset + 1
 }
 func (m *TracerState) Size() (n int) {
@@ -203,8 +245,8 @@ func sovWire(x uint64) (n int) {
 func sozWire(x uint64) (n int) {
 	return sovWire(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (m *TracerState) Unmarshal(data []byte) error {
-	l := len(data)
+func (m *TracerState) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -216,7 +258,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -241,14 +283,14 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			iNdEx += 8
-			m.TraceId = uint64(data[iNdEx-8])
-			m.TraceId |= uint64(data[iNdEx-7]) << 8
-			m.TraceId |= uint64(data[iNdEx-6]) << 16
-			m.TraceId |= uint64(data[iNdEx-5]) << 24
-			m.TraceId |= uint64(data[iNdEx-4]) << 32
-			m.TraceId |= uint64(data[iNdEx-3]) << 40
-			m.TraceId |= uint64(data[iNdEx-2]) << 48
-			m.TraceId |= uint64(data[iNdEx-1]) << 56
+			m.TraceId = uint64(dAtA[iNdEx-8])
+			m.TraceId |= uint64(dAtA[iNdEx-7]) << 8
+			m.TraceId |= uint64(dAtA[iNdEx-6]) << 16
+			m.TraceId |= uint64(dAtA[iNdEx-5]) << 24
+			m.TraceId |= uint64(dAtA[iNdEx-4]) << 32
+			m.TraceId |= uint64(dAtA[iNdEx-3]) << 40
+			m.TraceId |= uint64(dAtA[iNdEx-2]) << 48
+			m.TraceId |= uint64(dAtA[iNdEx-1]) << 56
 		case 2:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SpanId", wireType)
@@ -258,14 +300,14 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			iNdEx += 8
-			m.SpanId = uint64(data[iNdEx-8])
-			m.SpanId |= uint64(data[iNdEx-7]) << 8
-			m.SpanId |= uint64(data[iNdEx-6]) << 16
-			m.SpanId |= uint64(data[iNdEx-5]) << 24
-			m.SpanId |= uint64(data[iNdEx-4]) << 32
-			m.SpanId |= uint64(data[iNdEx-3]) << 40
-			m.SpanId |= uint64(data[iNdEx-2]) << 48
-			m.SpanId |= uint64(data[iNdEx-1]) << 56
+			m.SpanId = uint64(dAtA[iNdEx-8])
+			m.SpanId |= uint64(dAtA[iNdEx-7]) << 8
+			m.SpanId |= uint64(dAtA[iNdEx-6]) << 16
+			m.SpanId |= uint64(dAtA[iNdEx-5]) << 24
+			m.SpanId |= uint64(dAtA[iNdEx-4]) << 32
+			m.SpanId |= uint64(dAtA[iNdEx-3]) << 40
+			m.SpanId |= uint64(dAtA[iNdEx-2]) << 48
+			m.SpanId |= uint64(dAtA[iNdEx-1]) << 56
 		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Sampled", wireType)
@@ -278,7 +320,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				v |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -298,7 +340,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -320,7 +362,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				keykey |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -335,7 +377,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				stringLenmapkey |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -350,7 +392,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 			if postStringIndexmapkey > l {
 				return io.ErrUnexpectedEOF
 			}
-			mapkey := string(data[iNdEx:postStringIndexmapkey])
+			mapkey := string(dAtA[iNdEx:postStringIndexmapkey])
 			iNdEx = postStringIndexmapkey
 			if m.BaggageItems == nil {
 				m.BaggageItems = make(map[string]string)
@@ -364,7 +406,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 					if iNdEx >= l {
 						return io.ErrUnexpectedEOF
 					}
-					b := data[iNdEx]
+					b := dAtA[iNdEx]
 					iNdEx++
 					valuekey |= (uint64(b) & 0x7F) << shift
 					if b < 0x80 {
@@ -379,7 +421,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 					if iNdEx >= l {
 						return io.ErrUnexpectedEOF
 					}
-					b := data[iNdEx]
+					b := dAtA[iNdEx]
 					iNdEx++
 					stringLenmapvalue |= (uint64(b) & 0x7F) << shift
 					if b < 0x80 {
@@ -394,7 +436,7 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				if postStringIndexmapvalue > l {
 					return io.ErrUnexpectedEOF
 				}
-				mapvalue := string(data[iNdEx:postStringIndexmapvalue])
+				mapvalue := string(dAtA[iNdEx:postStringIndexmapvalue])
 				iNdEx = postStringIndexmapvalue
 				m.BaggageItems[mapkey] = mapvalue
 			} else {
@@ -411,14 +453,14 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			iNdEx += 8
-			m.TraceIdHigh = uint64(data[iNdEx-8])
-			m.TraceIdHigh |= uint64(data[iNdEx-7]) << 8
-			m.TraceIdHigh |= uint64(data[iNdEx-6]) << 16
-			m.TraceIdHigh |= uint64(data[iNdEx-5]) << 24
-			m.TraceIdHigh |= uint64(data[iNdEx-4]) << 32
-			m.TraceIdHigh |= uint64(data[iNdEx-3]) << 40
-			m.TraceIdHigh |= uint64(data[iNdEx-2]) << 48
-			m.TraceIdHigh |= uint64(data[iNdEx-1]) << 56
+			m.TraceIdHigh = uint64(dAtA[iNdEx-8])
+			m.TraceIdHigh |= uint64(dAtA[iNdEx-7]) << 8
+			m.TraceIdHigh |= uint64(dAtA[iNdEx-6]) << 16
+			m.TraceIdHigh |= uint64(dAtA[iNdEx-5]) << 24
+			m.TraceIdHigh |= uint64(dAtA[iNdEx-4]) << 32
+			m.TraceIdHigh |= uint64(dAtA[iNdEx-3]) << 40
+			m.TraceIdHigh |= uint64(dAtA[iNdEx-2]) << 48
+			m.TraceIdHigh |= uint64(dAtA[iNdEx-1]) << 56
 		case 21:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ParentSpanId", wireType)
@@ -428,14 +470,14 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			iNdEx += 8
-			m.ParentSpanId = uint64(data[iNdEx-8])
-			m.ParentSpanId |= uint64(data[iNdEx-7]) << 8
-			m.ParentSpanId |= uint64(data[iNdEx-6]) << 16
-			m.ParentSpanId |= uint64(data[iNdEx-5]) << 24
-			m.ParentSpanId |= uint64(data[iNdEx-4]) << 32
-			m.ParentSpanId |= uint64(data[iNdEx-3]) << 40
-			m.ParentSpanId |= uint64(data[iNdEx-2]) << 48
-			m.ParentSpanId |= uint64(data[iNdEx-1]) << 56
+			m.ParentSpanId = uint64(dAtA[iNdEx-8])
+			m.ParentSpanId |= uint64(dAtA[iNdEx-7]) << 8
+			m.ParentSpanId |= uint64(dAtA[iNdEx-6]) << 16
+			m.ParentSpanId |= uint64(dAtA[iNdEx-5]) << 24
+			m.ParentSpanId |= uint64(dAtA[iNdEx-4]) << 32
+			m.ParentSpanId |= uint64(dAtA[iNdEx-3]) << 40
+			m.ParentSpanId |= uint64(dAtA[iNdEx-2]) << 48
+			m.ParentSpanId |= uint64(dAtA[iNdEx-1]) << 56
 		case 22:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Flags", wireType)
@@ -445,17 +487,17 @@ func (m *TracerState) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			iNdEx += 8
-			m.Flags = uint64(data[iNdEx-8])
-			m.Flags |= uint64(data[iNdEx-7]) << 8
-			m.Flags |= uint64(data[iNdEx-6]) << 16
-			m.Flags |= uint64(data[iNdEx-5]) << 24
-			m.Flags |= uint64(data[iNdEx-4]) << 32
-			m.Flags |= uint64(data[iNdEx-3]) << 40
-			m.Flags |= uint64(data[iNdEx-2]) << 48
-			m.Flags |= uint64(data[iNdEx-1]) << 56
+			m.Flags = uint64(dAtA[iNdEx-8])
+			m.Flags |= uint64(dAtA[iNdEx-7]) << 8
+			m.Flags |= uint64(dAtA[iNdEx-6]) << 16
+			m.Flags |= uint64(dAtA[iNdEx-5]) << 24
+			m.Flags |= uint64(dAtA[iNdEx-4]) << 32
+			m.Flags |= uint64(dAtA[iNdEx-3]) << 40
+			m.Flags |= uint64(dAtA[iNdEx-2]) << 48
+			m.Flags |= uint64(dAtA[iNdEx-1]) << 56
 		default:
 			iNdEx = preIndex
-			skippy, err := skipWire(data[iNdEx:])
+			skippy, err := skipWire(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -474,8 +516,8 @@ func (m *TracerState) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func skipWire(data []byte) (n int, err error) {
-	l := len(data)
+func skipWire(dAtA []byte) (n int, err error) {
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		var wire uint64
@@ -486,7 +528,7 @@ func skipWire(data []byte) (n int, err error) {
 			if iNdEx >= l {
 				return 0, io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -504,7 +546,7 @@ func skipWire(data []byte) (n int, err error) {
 					return 0, io.ErrUnexpectedEOF
 				}
 				iNdEx++
-				if data[iNdEx-1] < 0x80 {
+				if dAtA[iNdEx-1] < 0x80 {
 					break
 				}
 			}
@@ -521,7 +563,7 @@ func skipWire(data []byte) (n int, err error) {
 				if iNdEx >= l {
 					return 0, io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				length |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -544,7 +586,7 @@ func skipWire(data []byte) (n int, err error) {
 					if iNdEx >= l {
 						return 0, io.ErrUnexpectedEOF
 					}
-					b := data[iNdEx]
+					b := dAtA[iNdEx]
 					iNdEx++
 					innerWire |= (uint64(b) & 0x7F) << shift
 					if b < 0x80 {
@@ -555,7 +597,7 @@ func skipWire(data []byte) (n int, err error) {
 				if innerWireType == 4 {
 					break
 				}
-				next, err := skipWire(data[start:])
+				next, err := skipWire(dAtA[start:])
 				if err != nil {
 					return 0, err
 				}

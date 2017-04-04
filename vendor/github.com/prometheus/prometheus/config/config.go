@@ -167,6 +167,11 @@ var (
 	DefaultRemoteWriteConfig = RemoteWriteConfig{
 		RemoteTimeout: model.Duration(30 * time.Second),
 	}
+
+	// DefaultRemoteReadConfig is the default remote read configuration.
+	DefaultRemoteReadConfig = RemoteReadConfig{
+		RemoteTimeout: model.Duration(1 * time.Minute),
+	}
 )
 
 // URL is a custom URL type that allows validation at configuration load time.
@@ -205,6 +210,7 @@ type Config struct {
 	ScrapeConfigs  []*ScrapeConfig `yaml:"scrape_configs,omitempty"`
 
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
+	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
 
 	// Catches all undefined fields and must be empty after parsing.
 	XXX map[string]interface{} `yaml:",inline"`
@@ -241,9 +247,15 @@ func resolveFilepaths(baseDir string, cfg *Config) {
 			kcfg.TLSConfig.KeyFile = join(kcfg.TLSConfig.KeyFile)
 		}
 		for _, mcfg := range cfg.MarathonSDConfigs {
+			mcfg.BearerTokenFile = join(mcfg.BearerTokenFile)
 			mcfg.TLSConfig.CAFile = join(mcfg.TLSConfig.CAFile)
 			mcfg.TLSConfig.CertFile = join(mcfg.TLSConfig.CertFile)
 			mcfg.TLSConfig.KeyFile = join(mcfg.TLSConfig.KeyFile)
+		}
+		for _, consulcfg := range cfg.ConsulSDConfigs {
+			consulcfg.TLSConfig.CAFile = join(consulcfg.TLSConfig.CAFile)
+			consulcfg.TLSConfig.CertFile = join(consulcfg.TLSConfig.CertFile)
+			consulcfg.TLSConfig.KeyFile = join(consulcfg.TLSConfig.KeyFile)
 		}
 	}
 
@@ -583,7 +595,7 @@ func (c *AlertingConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
-// AlertmanagersConfig configures how Alertmanagers can be discovered and communicated with.
+// AlertmanagerConfig configures how Alertmanagers can be discovered and communicated with.
 type AlertmanagerConfig struct {
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -823,6 +835,7 @@ type ConsulSDConfig struct {
 	// Defaults to all services if empty.
 	Services []string `yaml:"services"`
 
+	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
 	// Catches all undefined fields and must be empty after parsing.
 	XXX map[string]interface{} `yaml:",inline"`
 }
@@ -920,6 +933,8 @@ type MarathonSDConfig struct {
 	Timeout         model.Duration `yaml:"timeout,omitempty"`
 	RefreshInterval model.Duration `yaml:"refresh_interval,omitempty"`
 	TLSConfig       TLSConfig      `yaml:"tls_config,omitempty"`
+	BearerToken     string         `yaml:"bearer_token,omitempty"`
+	BearerTokenFile string         `yaml:"bearer_token_file,omitempty"`
 
 	// Catches all undefined fields and must be empty after parsing.
 	XXX map[string]interface{} `yaml:",inline"`
@@ -939,12 +954,17 @@ func (c *MarathonSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	if len(c.Servers) == 0 {
 		return fmt.Errorf("Marathon SD config must contain at least one Marathon server")
 	}
+	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
+		return fmt.Errorf("at most one of bearer_token & bearer_token_file must be configured")
+	}
 
 	return nil
 }
 
+// KubernetesRole is role of the service in Kubernetes.
 type KubernetesRole string
 
+// The valid options for KubernetesRole.
 const (
 	KubernetesRoleNode     = "node"
 	KubernetesRolePod      = "pod"
@@ -952,6 +972,7 @@ const (
 	KubernetesRoleEndpoint = "endpoints"
 )
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *KubernetesRole) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal((*string)(c)); err != nil {
 		return err
@@ -1220,6 +1241,17 @@ func (c *RelabelConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if c.Action == RelabelHashMod && !model.LabelName(c.TargetLabel).IsValid() {
 		return fmt.Errorf("%q is invalid 'target_label' for %s action", c.TargetLabel, c.Action)
 	}
+
+	if c.Action == RelabelLabelDrop || c.Action == RelabelLabelKeep {
+		if c.SourceLabels != nil ||
+			c.TargetLabel != DefaultRelabelConfig.TargetLabel ||
+			c.Modulus != DefaultRelabelConfig.Modulus ||
+			c.Separator != DefaultRelabelConfig.Separator ||
+			c.Replacement != DefaultRelabelConfig.Replacement {
+			return fmt.Errorf("%s action requires only 'regex', and no other fields", c.Action)
+		}
+	}
+
 	return nil
 }
 
@@ -1270,14 +1302,15 @@ func (re Regexp) MarshalYAML() (interface{}, error) {
 	return nil, nil
 }
 
-// RemoteWriteConfig is the configuration for remote storage.
+// RemoteWriteConfig is the configuration for writing to remote storage.
 type RemoteWriteConfig struct {
 	URL                 *URL             `yaml:"url,omitempty"`
 	RemoteTimeout       model.Duration   `yaml:"remote_timeout,omitempty"`
-	BasicAuth           *BasicAuth       `yaml:"basic_auth,omitempty"`
-	TLSConfig           TLSConfig        `yaml:"tls_config,omitempty"`
-	ProxyURL            URL              `yaml:"proxy_url,omitempty"`
 	WriteRelabelConfigs []*RelabelConfig `yaml:"write_relabel_configs,omitempty"`
+
+	// We cannot do proper Go type embedding below as the parser will then parse
+	// values arbitrarily into the overflow maps of further-down types.
+	HTTPClientConfig HTTPClientConfig `yaml:",inline"`
 
 	// Catches all undefined fields and must be empty after parsing.
 	XXX map[string]interface{} `yaml:",inline"`
@@ -1291,6 +1324,32 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 		return err
 	}
 	if err := checkOverflow(c.XXX, "remote_write"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// RemoteReadConfig is the configuration for reading from remote storage.
+type RemoteReadConfig struct {
+	URL           *URL           `yaml:"url,omitempty"`
+	RemoteTimeout model.Duration `yaml:"remote_timeout,omitempty"`
+
+	// We cannot do proper Go type embedding below as the parser will then parse
+	// values arbitrarily into the overflow maps of further-down types.
+	HTTPClientConfig HTTPClientConfig `yaml:",inline"`
+
+	// Catches all undefined fields and must be empty after parsing.
+	XXX map[string]interface{} `yaml:",inline"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *RemoteReadConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultRemoteReadConfig
+	type plain RemoteReadConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	if err := checkOverflow(c.XXX, "remote_read"); err != nil {
 		return err
 	}
 	return nil

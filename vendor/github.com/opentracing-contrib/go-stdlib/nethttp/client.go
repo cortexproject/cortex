@@ -27,6 +27,30 @@ type Transport struct {
 	http.RoundTripper
 }
 
+type clientOptions struct {
+	opName             string
+	disableClientTrace bool
+}
+
+// ClientOption contols the behavior of TraceRequest.
+type ClientOption func(*clientOptions)
+
+// OperationName returns a ClientOption that sets the operation
+// name for the client-side span.
+func OperationName(opName string) ClientOption {
+	return func(options *clientOptions) {
+		options.opName = opName
+	}
+}
+
+// ClientTrace returns a ClientOption that turns on or off
+// extra instrumentation via httptrace.WithClientTrace.
+func ClientTrace(enabled bool) ClientOption {
+	return func(options *clientOptions) {
+		options.disableClientTrace = !enabled
+	}
+}
+
 // TraceRequest adds a ClientTracer to req, tracing the request and
 // all requests caused due to redirects. When tracing requests this
 // way you must also use Transport.
@@ -51,9 +75,16 @@ type Transport struct {
 // 		res.Body.Close()
 // 		return nil
 // 	}
-func TraceRequest(tr opentracing.Tracer, req *http.Request) (*http.Request, *Tracer) {
-	ht := &Tracer{tr: tr}
-	ctx := httptrace.WithClientTrace(req.Context(), ht.clientTrace())
+func TraceRequest(tr opentracing.Tracer, req *http.Request, options ...ClientOption) (*http.Request, *Tracer) {
+	opts := &clientOptions{}
+	for _, opt := range options {
+		opt(opts)
+	}
+	ht := &Tracer{tr: tr, opts: opts}
+	ctx := req.Context()
+	if !opts.disableClientTrace {
+		ctx = httptrace.WithClientTrace(ctx, ht.clientTrace())
+	}
 	req = req.WithContext(context.WithValue(ctx, keyTracer, ht))
 	return req, ht
 }
@@ -103,10 +134,12 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
+// Tracer holds tracing details for one HTTP request.
 type Tracer struct {
 	tr   opentracing.Tracer
 	root opentracing.Span
 	sp   opentracing.Span
+	opts *clientOptions
 }
 
 func (h *Tracer) start(req *http.Request) opentracing.Span {
@@ -116,7 +149,11 @@ func (h *Tracer) start(req *http.Request) opentracing.Span {
 		if parent != nil {
 			spanctx = parent.Context()
 		}
-		root := h.tr.StartSpan("HTTP Client", opentracing.ChildOf(spanctx))
+		opName := h.opts.opName
+		if opName == "" {
+			opName = "HTTP Client"
+		}
+		root := h.tr.StartSpan(opName, opentracing.ChildOf(spanctx))
 		h.root = root
 	}
 

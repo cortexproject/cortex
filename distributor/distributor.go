@@ -448,7 +448,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		metricName, _, err := util.ExtractMetricNameFromMatchers(matchers)
+		metricName, _, ok, err := util.ExtractMetricNameFromMatchers(matchers)
 		if err != nil {
 			return err
 		}
@@ -458,21 +458,27 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		ingesters, err := d.ring.Get(tokenFor(userID, []byte(metricName)), d.cfg.ReplicationFactor, ring.Read)
-		if err != nil {
-			return promql.ErrStorage(err)
+		// Get ingesters by metricName if one exists, otherwise get all ingesters
+		var ingesters []*ring.IngesterDesc
+		if ok {
+			ingesters, err = d.ring.Get(tokenFor(userID, []byte(metricName)), d.cfg.ReplicationFactor, ring.Read)
+			if err != nil {
+				return promql.ErrStorage(err)
+			}
+		} else {
+			ingesters = d.ring.GetAll()
 		}
 
-		result, err = d.queryIngesters(ctx, ingesters, req)
+		result, err = d.queryIngesters(ctx, ingesters, d.cfg.ReplicationFactor, req)
 		return promql.ErrStorage(err)
 	})
 	return result, err
 }
 
 // Query implements Querier.
-func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.IngesterDesc, req *cortex.QueryRequest) (model.Matrix, error) {
-	// We need a response from a quorum of ingesters, which is n/2 + 1.
-	minSuccess := (len(ingesters) / 2) + 1
+func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.IngesterDesc, replicationFactor int, req *cortex.QueryRequest) (model.Matrix, error) {
+	// We need a response from a quorum of ingesters, which is n/2 + 1, where n is the replication factor
+	minSuccess := (replicationFactor / 2) + 1
 	maxErrs := len(ingesters) - minSuccess
 	if len(ingesters) < minSuccess {
 		return nil, fmt.Errorf("could only find %d ingesters for query. Need at least %d", len(ingesters), minSuccess)

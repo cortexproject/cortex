@@ -33,7 +33,7 @@ func TestExtractMetricNameFromMatchers(t *testing.T) {
 		matchersCopy := make([]*metric.LabelMatcher, len(matchers))
 		copy(matchersCopy, matchers)
 
-		name, outMatchers, err := ExtractMetricNameFromMatchers(matchers)
+		name, outMatchers, ok, err := ExtractMetricNameFromMatchers(matchers)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,5 +48,25 @@ func TestExtractMetricNameFromMatchers(t *testing.T) {
 
 		expOutMatchers := []*metric.LabelMatcher{labelMatcher1, labelMatcher2}
 		assert.Equal(t, expOutMatchers, outMatchers, "unexpected outMatchers for test case %d", i)
+
+		// Metric extracted
+		assert.True(t, ok)
 	}
+}
+
+func TestExtractMetricNameFromMatchersNoMetricLabel(t *testing.T) {
+	// Create matcher with no metric label
+	matcher, err := metric.NewLabelMatcher(metric.Equal, model.JobLabel, "testjob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	matchers := []*metric.LabelMatcher{matcher}
+
+	_, _, ok, err := ExtractMetricNameFromMatchers(matchers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No metric extracted
+	assert.False(t, ok)
 }

@@ -95,7 +95,7 @@ func TestEndpoints(t *testing.T) {
 		params   map[string]string
 		query    url.Values
 		response interface{}
-		errType  ErrorType
+		errType  errorType
 	}{
 		{
 			endpoint: api.query,
@@ -182,7 +182,7 @@ func TestEndpoints(t *testing.T) {
 				"end":   []string{"2"},
 				"step":  []string{"1"},
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		{
 			endpoint: api.queryRange,
@@ -191,7 +191,7 @@ func TestEndpoints(t *testing.T) {
 				"start": []string{"0"},
 				"step":  []string{"1"},
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		{
 			endpoint: api.queryRange,
@@ -200,7 +200,7 @@ func TestEndpoints(t *testing.T) {
 				"start": []string{"0"},
 				"end":   []string{"2"},
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		// Bad query expression.
 		{
@@ -209,7 +209,7 @@ func TestEndpoints(t *testing.T) {
 				"query": []string{"invalid][query"},
 				"time":  []string{"1970-01-01T01:02:03+01:00"},
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		{
 			endpoint: api.queryRange,
@@ -219,7 +219,7 @@ func TestEndpoints(t *testing.T) {
 				"end":   []string{"100"},
 				"step":  []string{"1"},
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		// Invalid step.
 		{
@@ -230,7 +230,7 @@ func TestEndpoints(t *testing.T) {
 				"end":   []string{"2"},
 				"step":  []string{"0"},
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		// Start after end.
 		{
@@ -241,7 +241,7 @@ func TestEndpoints(t *testing.T) {
 				"end":   []string{"1"},
 				"step":  []string{"1"},
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		// Start overflows int64 internally.
 		{
@@ -252,7 +252,7 @@ func TestEndpoints(t *testing.T) {
 				"end":   []string{"1489667272.372"},
 				"step":  []string{"1"},
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		{
 			endpoint: api.labelValues,
@@ -280,7 +280,7 @@ func TestEndpoints(t *testing.T) {
 			params: map[string]string{
 				"name": "not!!!allowed",
 			},
-			errType: ErrorBadData,
+			errType: errorBadData,
 		},
 		{
 			endpoint: api.series,
@@ -413,11 +413,11 @@ func TestEndpoints(t *testing.T) {
 		// Missing match[] query params in series requests.
 		{
 			endpoint: api.series,
-			errType:  ErrorBadData,
+			errType:  errorBadData,
 		},
 		{
 			endpoint: api.dropSeries,
-			errType:  ErrorBadData,
+			errType:  errorBadData,
 		},
 		// The following tests delete time series from the test storage. They
 		// must remain at the end and are fixed in their order.
@@ -489,7 +489,7 @@ func TestEndpoints(t *testing.T) {
 		}
 		resp, apiErr := test.endpoint(req)
 		if apiErr != nil {
-			if test.errType == ErrorNone {
+			if test.errType == errorNone {
 				t.Fatalf("Unexpected error: %s", apiErr)
 			}
 			if test.errType != apiErr.typ {
@@ -497,7 +497,7 @@ func TestEndpoints(t *testing.T) {
 			}
 			continue
 		}
-		if apiErr == nil && test.errType != ErrorNone {
+		if apiErr == nil && test.errType != errorNone {
 			t.Fatalf("Expected error of type %q but got none", test.errType)
 		}
 		if !reflect.DeepEqual(resp, test.response) {
@@ -547,7 +547,7 @@ func TestRespondSuccess(t *testing.T) {
 
 func TestRespondError(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		respondError(w, &APIError{ErrorTimeout, errors.New("message")}, "test")
+		respondError(w, &apiError{errorTimeout, errors.New("message")}, "test")
 	}))
 	defer s.Close()
 
@@ -576,7 +576,7 @@ func TestRespondError(t *testing.T) {
 	exp := &response{
 		Status:    statusError,
 		Data:      "test",
-		ErrorType: ErrorTimeout,
+		ErrorType: errorTimeout,
 		Error:     "message",
 	}
 	if !reflect.DeepEqual(&res, exp) {

@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/metric"
 
 	billing "github.com/weaveworks/billing-client"
@@ -465,7 +466,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 		result, err = d.queryIngesters(ctx, ingesters, req)
 		return err
 	})
-	return result, err
+	return result, storage.InternalError(err)
 }
 
 // Query implements Querier.

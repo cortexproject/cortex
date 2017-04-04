@@ -30,6 +30,7 @@ import (
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/retrieval"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/util/httputil"
@@ -42,16 +43,15 @@ const (
 	statusError          = "error"
 )
 
-// ErrorType describes the type of an APIError
-type ErrorType string
+type errorType string
 
-// Errors that can be returned by the API
 const (
-	ErrorNone     ErrorType = ""
-	ErrorTimeout            = "timeout"
-	ErrorCanceled           = "canceled"
-	ErrorExec               = "execution"
-	ErrorBadData            = "bad_data"
+	errorNone     errorType = ""
+	errorTimeout            = "timeout"
+	errorCanceled           = "canceled"
+	errorExec               = "execution"
+	errorBadData            = "bad_data"
+	errorInternal           = "internal"
 )
 
 var corsHeaders = map[string]string{
@@ -61,18 +61,12 @@ var corsHeaders = map[string]string{
 	"Access-Control-Expose-Headers": "Date",
 }
 
-// APIError is a wrapped error that specifies the HTTP code to be returned from
-// the API.
-type APIError struct {
-	typ ErrorType
+type apiError struct {
+	typ errorType
 	err error
 }
 
-func NewAPIError(typ ErrorType, err error) *APIError {
-	return &APIError{typ, err}
-}
-
-func (e *APIError) Error() string {
+func (e *apiError) Error() string {
 	return fmt.Sprintf("%s: %s", e.typ, e.err)
 }
 
@@ -87,7 +81,7 @@ type alertmanagerRetriever interface {
 type response struct {
 	Status    status      `json:"status"`
 	Data      interface{} `json:"data,omitempty"`
-	ErrorType ErrorType   `json:"errorType,omitempty"`
+	ErrorType errorType   `json:"errorType,omitempty"`
 	Error     string      `json:"error,omitempty"`
 }
 
@@ -98,7 +92,7 @@ func setCORS(w http.ResponseWriter) {
 	}
 }
 
-type apiFunc func(r *http.Request) (interface{}, *APIError)
+type apiFunc func(r *http.Request) (interface{}, *apiError)
 
 // API can register a set of endpoints in a router and handle
 // them using the provided storage and query engine.
@@ -162,17 +156,17 @@ type queryData struct {
 	Result     model.Value     `json:"result"`
 }
 
-func (api *API) options(r *http.Request) (interface{}, *APIError) {
+func (api *API) options(r *http.Request) (interface{}, *apiError) {
 	return nil, nil
 }
 
-func (api *API) query(r *http.Request) (interface{}, *APIError) {
+func (api *API) query(r *http.Request) (interface{}, *apiError) {
 	var ts model.Time
 	if t := r.FormValue("time"); t != "" {
 		var err error
 		ts, err = parseTime(t)
 		if err != nil {
-			return nil, &APIError{ErrorBadData, err}
+			return nil, &apiError{errorBadData, err}
 		}
 	} else {
 		ts = api.now()
@@ -183,7 +177,7 @@ func (api *API) query(r *http.Request) (interface{}, *APIError) {
 		var cancel context.CancelFunc
 		timeout, err := parseDuration(to)
 		if err != nil {
-			return nil, &APIError{ErrorBadData, err}
+			return nil, &apiError{errorBadData, err}
 		}
 
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -192,20 +186,20 @@ func (api *API) query(r *http.Request) (interface{}, *APIError) {
 
 	qry, err := api.QueryEngine.NewInstantQuery(r.FormValue("query"), ts)
 	if err != nil {
-		return nil, &APIError{ErrorBadData, err}
+		return nil, &apiError{errorBadData, err}
 	}
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
-		switch err := res.Err.(type) {
+		switch res.Err.(type) {
 		case promql.ErrQueryCanceled:
-			return nil, &APIError{ErrorCanceled, res.Err}
+			return nil, &apiError{errorCanceled, res.Err}
 		case promql.ErrQueryTimeout:
-			return nil, &APIError{ErrorTimeout, res.Err}
-		case *APIError:
-			return nil, err
+			return nil, &apiError{errorTimeout, res.Err}
+		case storage.InternalError:
+			return nil, &apiError{errorInternal, res.Err}
 		}
-		return nil, &APIError{ErrorExec, res.Err}
+		return nil, &apiError{errorExec, res.Err}
 	}
 	return &queryData{
 		ResultType: res.Value.Type(),
@@ -213,35 +207,35 @@ func (api *API) query(r *http.Request) (interface{}, *APIError) {
 	}, nil
 }
 
-func (api *API) queryRange(r *http.Request) (interface{}, *APIError) {
+func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 	start, err := parseTime(r.FormValue("start"))
 	if err != nil {
-		return nil, &APIError{ErrorBadData, err}
+		return nil, &apiError{errorBadData, err}
 	}
 	end, err := parseTime(r.FormValue("end"))
 	if err != nil {
-		return nil, &APIError{ErrorBadData, err}
+		return nil, &apiError{errorBadData, err}
 	}
 	if end.Before(start) {
 		err := errors.New("end timestamp must not be before start time")
-		return nil, &APIError{ErrorBadData, err}
+		return nil, &apiError{errorBadData, err}
 	}
 
 	step, err := parseDuration(r.FormValue("step"))
 	if err != nil {
-		return nil, &APIError{ErrorBadData, err}
+		return nil, &apiError{errorBadData, err}
 	}
 
 	if step <= 0 {
 		err := errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
-		return nil, &APIError{ErrorBadData, err}
+		return nil, &apiError{errorBadData, err}
 	}
 
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 	if end.Sub(start)/step > 11000 {
 		err := errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
-		return nil, &APIError{ErrorBadData, err}
+		return nil, &apiError{errorBadData, err}
 	}
 
 	ctx := api.context(r)
@@ -249,7 +243,7 @@ func (api *API) queryRange(r *http.Request) (interface{}, *APIError) {
 		var cancel context.CancelFunc
 		timeout, err := parseDuration(to)
 		if err != nil {
-			return nil, &APIError{ErrorBadData, err}
+			return nil, &apiError{errorBadData, err}
 		}
 
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -258,18 +252,18 @@ func (api *API) queryRange(r *http.Request) (interface{}, *APIError) {
 
 	qry, err := api.QueryEngine.NewRangeQuery(r.FormValue("query"), start, end, step)
 	if err != nil {
-		return nil, &APIError{ErrorBadData, err}
+		return nil, &apiError{errorBadData, err}
 	}
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
 		switch res.Err.(type) {
 		case promql.ErrQueryCanceled:
-			return nil, &APIError{ErrorCanceled, res.Err}
+			return nil, &apiError{errorCanceled, res.Err}
 		case promql.ErrQueryTimeout:
-			return nil, &APIError{ErrorTimeout, res.Err}
+			return nil, &apiError{errorTimeout, res.Err}
 		}
-		return nil, &APIError{ErrorExec, res.Err}
+		return nil, &apiError{errorExec, res.Err}
 	}
 	return &queryData{
 		ResultType: res.Value.Type(),
@@ -277,31 +271,31 @@ func (api *API) queryRange(r *http.Request) (interface{}, *APIError) {
 	}, nil
 }
 
-func (api *API) labelValues(r *http.Request) (interface{}, *APIError) {
+func (api *API) labelValues(r *http.Request) (interface{}, *apiError) {
 	name := route.Param(api.context(r), "name")
 
 	if !model.LabelNameRE.MatchString(name) {
-		return nil, &APIError{ErrorBadData, fmt.Errorf("invalid label name: %q", name)}
+		return nil, &apiError{errorBadData, fmt.Errorf("invalid label name: %q", name)}
 	}
 	q, err := api.Storage.Querier()
 	if err != nil {
-		return nil, &APIError{ErrorExec, err}
+		return nil, &apiError{errorExec, err}
 	}
 	defer q.Close()
 
 	vals, err := q.LabelValuesForLabelName(api.context(r), model.LabelName(name))
 	if err != nil {
-		return nil, &APIError{ErrorExec, err}
+		return nil, &apiError{errorExec, err}
 	}
 	sort.Sort(vals)
 
 	return vals, nil
 }
 
-func (api *API) series(r *http.Request) (interface{}, *APIError) {
+func (api *API) series(r *http.Request) (interface{}, *apiError) {
 	r.ParseForm()
 	if len(r.Form["match[]"]) == 0 {
-		return nil, &APIError{ErrorBadData, fmt.Errorf("no match[] parameter provided")}
+		return nil, &apiError{errorBadData, fmt.Errorf("no match[] parameter provided")}
 	}
 
 	var start model.Time
@@ -309,7 +303,7 @@ func (api *API) series(r *http.Request) (interface{}, *APIError) {
 		var err error
 		start, err = parseTime(t)
 		if err != nil {
-			return nil, &APIError{ErrorBadData, err}
+			return nil, &apiError{errorBadData, err}
 		}
 	} else {
 		start = model.Earliest
@@ -320,7 +314,7 @@ func (api *API) series(r *http.Request) (interface{}, *APIError) {
 		var err error
 		end, err = parseTime(t)
 		if err != nil {
-			return nil, &APIError{ErrorBadData, err}
+			return nil, &apiError{errorBadData, err}
 		}
 	} else {
 		end = model.Latest
@@ -330,20 +324,20 @@ func (api *API) series(r *http.Request) (interface{}, *APIError) {
 	for _, s := range r.Form["match[]"] {
 		matchers, err := promql.ParseMetricSelector(s)
 		if err != nil {
-			return nil, &APIError{ErrorBadData, err}
+			return nil, &apiError{errorBadData, err}
 		}
 		matcherSets = append(matcherSets, matchers)
 	}
 
 	q, err := api.Storage.Querier()
 	if err != nil {
-		return nil, &APIError{ErrorExec, err}
+		return nil, &apiError{errorExec, err}
 	}
 	defer q.Close()
 
 	res, err := q.MetricsForLabelMatchers(api.context(r), start, end, matcherSets...)
 	if err != nil {
-		return nil, &APIError{ErrorExec, err}
+		return nil, &apiError{errorExec, err}
 	}
 
 	metrics := make([]model.Metric, 0, len(res))
@@ -353,21 +347,21 @@ func (api *API) series(r *http.Request) (interface{}, *APIError) {
 	return metrics, nil
 }
 
-func (api *API) dropSeries(r *http.Request) (interface{}, *APIError) {
+func (api *API) dropSeries(r *http.Request) (interface{}, *apiError) {
 	r.ParseForm()
 	if len(r.Form["match[]"]) == 0 {
-		return nil, &APIError{ErrorBadData, fmt.Errorf("no match[] parameter provided")}
+		return nil, &apiError{errorBadData, fmt.Errorf("no match[] parameter provided")}
 	}
 
 	numDeleted := 0
 	for _, s := range r.Form["match[]"] {
 		matchers, err := promql.ParseMetricSelector(s)
 		if err != nil {
-			return nil, &APIError{ErrorBadData, err}
+			return nil, &apiError{errorBadData, err}
 		}
 		n, err := api.Storage.DropMetricsForLabelMatchers(context.TODO(), matchers...)
 		if err != nil {
-			return nil, &APIError{ErrorExec, err}
+			return nil, &apiError{errorExec, err}
 		}
 		numDeleted += n
 	}
@@ -399,7 +393,7 @@ type TargetDiscovery struct {
 	ActiveTargets []*Target `json:"activeTargets"`
 }
 
-func (api *API) targets(r *http.Request) (interface{}, *APIError) {
+func (api *API) targets(r *http.Request) (interface{}, *apiError) {
 	targets := api.targetRetriever.Targets()
 	res := &TargetDiscovery{ActiveTargets: make([]*Target, len(targets))}
 
@@ -433,7 +427,7 @@ type AlertmanagerTarget struct {
 	URL string `json:"url"`
 }
 
-func (api *API) alertmanagers(r *http.Request) (interface{}, *APIError) {
+func (api *API) alertmanagers(r *http.Request) (interface{}, *apiError) {
 	urls := api.alertmanagerRetriever.Alertmanagers()
 	ams := &AlertmanagerDiscovery{ActiveAlertmanagers: make([]*AlertmanagerTarget, len(urls))}
 
@@ -458,17 +452,19 @@ func respond(w http.ResponseWriter, data interface{}) {
 	w.Write(b)
 }
 
-func respondError(w http.ResponseWriter, apiErr *APIError, data interface{}) {
+func respondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var code int
 	switch apiErr.typ {
-	case ErrorBadData:
+	case errorBadData:
 		code = http.StatusBadRequest
-	case ErrorExec:
+	case errorExec:
 		code = 422
-	case ErrorCanceled, ErrorTimeout:
+	case errorCanceled, errorTimeout:
 		code = http.StatusServiceUnavailable
+	case errorInternal:
+		code = http.StatusInternalServerError
 	default:
 		code = http.StatusInternalServerError
 	}

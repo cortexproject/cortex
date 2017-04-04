@@ -6,9 +6,6 @@
         "github.com/prometheus/prometheus": {
             "source": "github.com/weaveworks/prometheus",
             "branch": "2571-propagate-api-error"
-        },
-        "github.com/weaveworks/billing-client": {
-            "branch": "dep"
         }
     },
     "overrides": {

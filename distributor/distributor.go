@@ -477,9 +477,9 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 
 // Query implements Querier.
 func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.IngesterDesc, replicationFactor int, req *cortex.QueryRequest) (model.Matrix, error) {
-	// We need a response from a quorum of ingesters, which is n/2 + 1, where n is the replication factor
-	minSuccess := (replicationFactor / 2) + 1
-	maxErrs := len(ingesters) - minSuccess
+	// We need a response from a quorum of ingesters, where maxErrs is n/2, where n is the replicationFactor
+	maxErrs := replicationFactor / 2
+	minSuccess := len(ingesters) - maxErrs
 	if len(ingesters) < minSuccess {
 		return nil, fmt.Errorf("could only find %d ingesters for query. Need at least %d", len(ingesters), minSuccess)
 	}

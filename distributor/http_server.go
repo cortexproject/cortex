@@ -51,8 +51,8 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		for _, ts := range req.Timeseries {
 			samples += int64(len(ts.Samples))
 		}
-		if err := d.Emit(r.Context(), buf, samples); err != nil {
-			log.Errorf("Error emiting billing record: %v", err)
+		if err := d.emitBillingRecord(r.Context(), buf, samples); err != nil {
+			log.Errorf("Error emitting billing record: %v", err)
 		}
 	}
 }

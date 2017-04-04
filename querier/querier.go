@@ -201,7 +201,7 @@ func (qm MergeQuerier) Close() error {
 func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req cortex.ReadRequest
-	if err := util.ParseProtoRequest(ctx, r, &req, true); err != nil {
+	if _, err := util.ParseProtoRequest(ctx, r, &req, true); err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

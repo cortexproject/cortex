@@ -10,7 +10,7 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-func (d Distributor) Emit(ctx context.Context, buf []byte, samples int64) error {
+func (d *Distributor) emitBillingRecord(ctx context.Context, buf []byte, samples int64) error {
 	userID, err := user.Extract(ctx)
 	if err != nil {
 		return err

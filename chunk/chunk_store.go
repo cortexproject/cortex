@@ -242,10 +242,7 @@ outer:
 }
 
 func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
-	metricName, matchers, _, err := util.ExtractMetricNameFromMatchers(matchers)
-	if err != nil {
-		return nil, err
-	}
+	metricName, matchers, _ := util.ExtractMetricNameFromMatchers(matchers)
 
 	userID, err := user.Extract(ctx)
 	if err != nil {

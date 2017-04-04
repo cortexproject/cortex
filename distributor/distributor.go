@@ -448,10 +448,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		metricName, _, ok, err := util.ExtractMetricNameFromMatchers(matchers)
-		if err != nil {
-			return err
-		}
+		metricName, _, ok := util.ExtractMetricNameFromMatchers(matchers)
 
 		req, err := util.ToQueryRequest(from, to, matchers)
 		if err != nil {

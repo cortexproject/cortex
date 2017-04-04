@@ -96,10 +96,49 @@ func (m *mockDynamoDBClient) BatchWriteItem(input *dynamodb.BatchWriteItemInput)
 	return resp, nil
 }
 
+func (m *mockDynamoDBClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRequest {
+	result := &dynamodb.QueryOutput{
+		Items: []map[string]*dynamodb.AttributeValue{},
+	}
+
+	hashValue := *input.KeyConditions[hashKey].AttributeValueList[0].S
+	items := m.tables[*input.TableName].items[hashValue]
+
+	// TODO we should also filter by range value
+	for _, item := range items {
+		result.Items = append(result.Items, item)
+	}
+
+	return &dynamoDBMockRequest{
+		result: result,
+	}
+}
+
+type dynamoDBMockRequest struct {
+	result *dynamodb.QueryOutput
+}
+
+func (m *dynamoDBMockRequest) NextPage() dynamoDBRequest {
+	return m
+}
+func (m *dynamoDBMockRequest) Send() error {
+	return nil
+}
+func (m *dynamoDBMockRequest) Data() interface{} {
+	return m.result
+}
+func (m *dynamoDBMockRequest) Error() error {
+	return nil
+}
+func (m *dynamoDBMockRequest) HasNextPage() bool {
+	return false
+}
+
 func TestDynamoDBClient(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	client := awsStorageClient{
-		DynamoDB: dynamoDB,
+		DynamoDB:       dynamoDB,
+		queryRequestFn: dynamoDB.queryRequest,
 	}
 	batch := client.NewWriteBatch()
 	for i := 0; i < 30; i++ {
@@ -107,8 +146,27 @@ func TestDynamoDBClient(t *testing.T) {
 	}
 	dynamoDB.createTable("table")
 
-	if err := client.BatchWrite(context.Background(), batch); err != nil {
-		t.Fatal(err)
+	err := client.BatchWrite(context.Background(), batch)
+	require.NoError(t, err)
+
+	for i := 0; i < 30; i++ {
+		entry := IndexEntry{
+			TableName: "table",
+			HashValue: fmt.Sprintf("hash%d", i),
+		}
+		var have []IndexEntry
+		err := client.QueryPages(context.Background(), entry, func(read ReadBatch, lastPage bool) bool {
+			for i := 0; i < read.Len(); i++ {
+				have = append(have, IndexEntry{
+					RangeValue: read.RangeValue(i),
+				})
+			}
+			return !lastPage
+		})
+		require.NoError(t, err)
+		require.Equal(t, []IndexEntry{
+			{RangeValue: []byte(fmt.Sprintf("range%d", i))},
+		}, have)
 	}
 }
 

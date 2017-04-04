@@ -1,0 +1,27 @@
+machine:
+  services:
+    - docker
+  environment:
+    PATH: /usr/local/go/bin:$HOME/bin:$PATH
+
+dependencies:
+  cache_directories:
+    - "~/docker"
+  override:
+    - |
+        cd loki-build && \
+        ../tools/rebuild-image weaveworks/loki-build . build.sh Dockerfile && \
+        touch .uptodate
+
+test:
+  override:
+    - make RM= test
+    - make RM= lint
+    - make RM=
+
+deployment:
+  push:
+    branch: master
+    commands:
+      - docker login -e "$DOCKER_REGISTRY_EMAIL" -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
+      - docker push weaveworks/loki:$(./tools/image-tag)

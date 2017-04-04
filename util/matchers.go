@@ -30,19 +30,19 @@ func ExtractMetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
 }
 
 // ExtractMetricNameFromMatchers extracts the metric name from a set of matchers
-func ExtractMetricNameFromMatchers(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, bool, error) {
+func ExtractMetricNameFromMatchers(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, bool) {
 	outMatchers := make([]*metric.LabelMatcher, len(matchers)-1)
 	for i, matcher := range matchers {
 		if matcher.Name != model.MetricNameLabel {
 			continue
 		}
 		if matcher.Type != metric.Equal {
-			return "", nil, false, fmt.Errorf("must have equality matcher for MetricNameLabel")
+			return "", nil, false
 		}
 		metricName := matcher.Value
 		copy(outMatchers, matchers[:i])
 		copy(outMatchers[i:], matchers[i+1:])
-		return metricName, outMatchers, true, nil
+		return metricName, outMatchers, true
 	}
-	return "", nil, false, nil
+	return "", nil, false
 }

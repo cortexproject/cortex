@@ -22,51 +22,63 @@ func TestExtractMetricNameFromMatchers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	tests := [][]*metric.LabelMatcher{
-		{metricMatcher, labelMatcher1, labelMatcher2},
-		{labelMatcher1, metricMatcher, labelMatcher2},
-		{labelMatcher1, labelMatcher2, metricMatcher},
-	}
-
-	for i, matchers := range tests {
-		matchersCopy := make([]*metric.LabelMatcher, len(matchers))
-		copy(matchersCopy, matchers)
-
-		name, outMatchers, ok, err := ExtractMetricNameFromMatchers(matchers)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !reflect.DeepEqual(matchers, matchersCopy) {
-			t.Fatalf("%d. Matchers got mutated; want %v, got %v", i, matchersCopy, matchers)
-		}
-
-		if name != "testmetric" {
-			t.Fatalf("%d. Wrong metric name; want 'testmetric', got %q", i, name)
-		}
-
-		expOutMatchers := []*metric.LabelMatcher{labelMatcher1, labelMatcher2}
-		assert.Equal(t, expOutMatchers, outMatchers, "unexpected outMatchers for test case %d", i)
-
-		// Metric extracted
-		assert.True(t, ok)
-	}
-}
-
-func TestExtractMetricNameFromMatchersNoMetricLabel(t *testing.T) {
-	// Create matcher with no metric label
-	matcher, err := metric.NewLabelMatcher(metric.Equal, model.JobLabel, "testjob")
+	nonEqualityMetricMatcher, err := metric.NewLabelMatcher(metric.NotEqual, model.MetricNameLabel, "testmetric")
 	if err != nil {
 		t.Fatal(err)
 	}
-	matchers := []*metric.LabelMatcher{matcher}
-
-	_, _, ok, err := ExtractMetricNameFromMatchers(matchers)
+	jobMatcher, err := metric.NewLabelMatcher(metric.Equal, model.JobLabel, "testjob")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// No metric extracted
-	assert.False(t, ok)
+	for i, tc := range []struct {
+		matchers       []*metric.LabelMatcher
+		expName        string
+		expOutMatchers []*metric.LabelMatcher
+		expOk          bool
+	}{
+		{
+			matchers:       []*metric.LabelMatcher{metricMatcher, labelMatcher1, labelMatcher2},
+			expName:        "testmetric",
+			expOutMatchers: []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOk:          true,
+		}, {
+			matchers:       []*metric.LabelMatcher{labelMatcher1, metricMatcher, labelMatcher2},
+			expName:        "testmetric",
+			expOutMatchers: []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOk:          true,
+		}, {
+			matchers:       []*metric.LabelMatcher{labelMatcher1, labelMatcher2, metricMatcher},
+			expName:        "testmetric",
+			expOutMatchers: []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOk:          true,
+		}, {
+			matchers:       []*metric.LabelMatcher{nonEqualityMetricMatcher},
+			expName:        "",
+			expOutMatchers: nil,
+			expOk:          false,
+		}, {
+			matchers:       []*metric.LabelMatcher{jobMatcher},
+			expName:        "",
+			expOutMatchers: nil,
+			expOk:          false,
+		},
+	} {
+		matchersCopy := make([]*metric.LabelMatcher, len(tc.matchers))
+		copy(matchersCopy, tc.matchers)
+
+		name, outMatchers, ok := ExtractMetricNameFromMatchers(tc.matchers)
+
+		if !reflect.DeepEqual(tc.matchers, matchersCopy) {
+			t.Fatalf("%d. Matchers got mutated; want %v, got %v", i, matchersCopy, tc.matchers)
+		}
+
+		if string(name) != tc.expName {
+			t.Fatalf("%d. Wrong metric name; want '%q', got %q", i, tc.expName, name)
+		}
+
+		assert.Equal(t, tc.expOutMatchers, outMatchers, "unexpected outMatchers for test case %d", i)
+
+		assert.Equal(t, tc.expOk, ok, "unexpected ok for test case %d", i)
+	}
 }

@@ -3,11 +3,13 @@ package ring
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	consul "github.com/hashicorp/consul/api"
+	cleanhttp "github.com/hashicorp/go-cleanhttp"
 	"github.com/prometheus/common/log"
 )
 
@@ -17,8 +19,9 @@ const (
 
 // ConsulConfig to create a ConsulClient
 type ConsulConfig struct {
-	Host   string
-	Prefix string
+	Host              string
+	Prefix            string
+	HTTPClientTimeout time.Duration
 
 	Mock ConsulClient
 }
@@ -27,6 +30,7 @@ type ConsulConfig struct {
 func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Host, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
 	f.StringVar(&cfg.Prefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
+	f.DurationVar(&cfg.HTTPClientTimeout, "consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
 }
 
 // ConsulClient is a high-level client for Consul, that exposes operations
@@ -70,6 +74,11 @@ func NewConsulClient(cfg ConsulConfig, codec Codec) (ConsulClient, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
 		Scheme:  "http",
+		HttpClient: &http.Client{
+			Transport: cleanhttp.DefaultPooledTransport(),
+			// See https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
+			Timeout: cfg.HTTPClientTimeout,
+		},
 	})
 	if err != nil {
 		return nil, err

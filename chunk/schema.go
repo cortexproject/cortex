@@ -473,3 +473,12 @@ func (v7Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 
 	return entries, nil
 }
+
+func (v7Entries) GetReadEntries(from, _ uint32, tableName, bucketHashKey string) ([]IndexEntry, error) {
+	return []IndexEntry{
+		{
+			TableName: tableName,
+			HashValue: bucketHashKey,
+		},
+	}, nil
+}

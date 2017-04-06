@@ -34,6 +34,7 @@ type Schema interface {
 	GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error)
 
 	// When doing a read, use these methods to return the list of entries you should query
+	GetReadEntries(from, through model.Time, userID string) ([]IndexEntry, error)
 	GetReadEntriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexEntry, error)
 	GetReadEntriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexEntry, error)
 	GetReadEntriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error)
@@ -137,6 +138,12 @@ func (s schema) GetWriteEntries(from, through model.Time, userID string, metricN
 	})
 }
 
+func (s schema) GetReadEntries(from, through model.Time, userID string) ([]IndexEntry, error) {
+	return s.buckets(from, through, userID, "", func(bucketFrom, bucketThrough uint32, tableName, bucketHashKey string) ([]IndexEntry, error) {
+		return s.entries.GetReadEntries(bucketFrom, bucketThrough, tableName, bucketHashKey)
+	})
+}
+
 func (s schema) GetReadEntriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexEntry, error) {
 	return s.buckets(from, through, userID, metricName, func(bucketFrom, bucketThrough uint32, tableName, bucketHashKey string) ([]IndexEntry, error) {
 		return s.entries.GetReadMetricEntries(bucketFrom, bucketThrough, tableName, bucketHashKey, metricName)
@@ -157,6 +164,7 @@ func (s schema) GetReadEntriesForMetricLabelValue(from, through model.Time, user
 
 type entries interface {
 	GetWriteEntries(from, through uint32, tableName, hashKey string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error)
+	GetReadEntries(from, through uint32, tableName, hashKey string) ([]IndexEntry, error)
 	GetReadMetricEntries(from, through uint32, tableName, hashKey string, metricName model.LabelValue) ([]IndexEntry, error)
 	GetReadMetricLabelEntries(from, through uint32, tableName, hashKey string, metricName model.LabelValue, labelName model.LabelName) ([]IndexEntry, error)
 	GetReadMetricLabelValueEntries(from, through uint32, tableName, hashKey string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error)
@@ -181,6 +189,10 @@ func (originalEntries) GetWriteEntries(_, _ uint32, tableName, bucketHashKey str
 		})
 	}
 	return result, nil
+}
+
+func (originalEntries) GetReadEntries(_, _ uint32, _, _ string) ([]IndexEntry, error) {
+	return nil, fmt.Errorf("originalEntries does not support GetReadEntries")
 }
 
 func (originalEntries) GetReadMetricEntries(_, _ uint32, tableName, bucketHashKey string, metricName model.LabelValue) ([]IndexEntry, error) {
@@ -238,6 +250,10 @@ func (base64Entries) GetWriteEntries(_, _ uint32, tableName, bucketHashKey strin
 	return result, nil
 }
 
+func (base64Entries) GetReadEntries(_, _ uint32, _, _ string) ([]IndexEntry, error) {
+	return nil, fmt.Errorf("base64Entries does not support GetReadEntries")
+}
+
 func (base64Entries) GetReadMetricLabelValueEntries(_, _ uint32, tableName, bucketHashKey string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
 	encodedBytes := encodeBase64Value(labelValue)
 	return []IndexEntry{
@@ -274,6 +290,10 @@ func (labelNameInHashKeyEntries) GetWriteEntries(_, _ uint32, tableName, bucketH
 	}
 
 	return entries, nil
+}
+
+func (labelNameInHashKeyEntries) GetReadEntries(_, _ uint32, _, _ string) ([]IndexEntry, error) {
+	return nil, fmt.Errorf("labelNameInHashKeyEntries does not support GetReadEntries")
 }
 
 func (labelNameInHashKeyEntries) GetReadMetricEntries(_, _ uint32, tableName, bucketHashKey string, metricName model.LabelValue) ([]IndexEntry, error) {
@@ -335,6 +355,10 @@ func (v5Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 	return entries, nil
 }
 
+func (v5Entries) GetReadEntries(_, _ uint32, _, _ string) ([]IndexEntry, error) {
+	return nil, fmt.Errorf("v5Entries does not support GetReadEntries")
+}
+
 func (v5Entries) GetReadMetricEntries(_, _ uint32, tableName, bucketHashKey string, metricName model.LabelValue) ([]IndexEntry, error) {
 	return []IndexEntry{
 		{
@@ -391,6 +415,10 @@ func (v6Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 	}
 
 	return entries, nil
+}
+
+func (v6Entries) GetReadEntries(_, _ uint32, _, _ string) ([]IndexEntry, error) {
+	return nil, fmt.Errorf("v6Entries does not support GetReadEntries")
 }
 
 func (v6Entries) GetReadMetricEntries(from, _ uint32, tableName, bucketHashKey string, metricName model.LabelValue) ([]IndexEntry, error) {

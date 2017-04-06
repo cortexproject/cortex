@@ -32,6 +32,9 @@ type SchemaConfig struct {
 
 	// After this time, we will read and write v6 schemas.
 	V6SchemaFrom util.DayValue
+
+	// After this time, we will read and write v7 schemas.
+	V7SchemaFrom util.DayValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -44,6 +47,7 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.V4SchemaFrom, "dynamodb.v4-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v4 schema.")
 	f.Var(&cfg.V5SchemaFrom, "dynamodb.v5-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v5 schema.")
 	f.Var(&cfg.V6SchemaFrom, "dynamodb.v6-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v6 schema.")
+	f.Var(&cfg.V7SchemaFrom, "dynamodb.v7-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v7 schema.")
 }
 
 func (cfg *SchemaConfig) tableForBucket(bucketStart int64) string {
@@ -146,6 +150,10 @@ func newCompositeSchema(cfg SchemaConfig) (Schema, error) {
 		schemas = append(schemas, compositeSchemaEntry{cfg.V6SchemaFrom.Time, v6Schema(cfg)})
 	}
 
+	if cfg.V7SchemaFrom.IsSet() {
+		schemas = append(schemas, compositeSchemaEntry{cfg.V7SchemaFrom.Time, v7Schema(cfg)})
+	}
+
 	if !sort.IsSorted(byStart(schemas)) {
 		return nil, fmt.Errorf("schemas not in time-sorted order")
 	}
@@ -212,6 +220,12 @@ func (c compositeSchema) forSchemas(from, through model.Time, callback func(from
 func (c compositeSchema) GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	return c.forSchemas(from, through, func(from, through model.Time, schema Schema) ([]IndexEntry, error) {
 		return schema.GetWriteEntries(from, through, userID, metricName, labels, chunkID)
+	})
+}
+
+func (c compositeSchema) GetReadEntries(from, through model.Time, userID string) ([]IndexEntry, error) {
+	return c.forSchemas(from, through, func(from, through model.Time, schema Schema) ([]IndexEntry, error) {
+		return schema.GetReadEntries(from, through, userID)
 	})
 }
 

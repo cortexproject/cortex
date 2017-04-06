@@ -1,5 +1,5 @@
 {
-    "memo": "4625ab214471adf7ec938dc3ca5180bc896e73e816861875116f51370e2fec93",
+    "memo": "76d431d1c4519f327d8bd76fc2f6e25f602a87d2bd35e7152d29119b5ec9ab21",
     "projects": [
         {
             "name": "cloud.google.com/go",
@@ -680,9 +680,9 @@
         },
         {
             "name": "github.com/prometheus/prometheus",
-            "branch": "2571-propagate-api-error",
-            "revision": "86a16b40bc59aa4d6c4b7746aa95f7506df7f893",
-            "repo": "github.com/weaveworks/prometheus",
+            "branch": "master",
+            "revision": "516a96d9a355dd25444e002ff1b2a86f541b43a9",
+            "source": "github.com/prometheus/prometheus",
             "packages": [
                 "config",
                 "discovery",

@@ -74,7 +74,3 @@ func (f Fanout) NeedsThrottling() bool {
 	}
 	return false
 }
-
-// InternalError can be returned by Query and will be returned as a 500 Internal
-// Server Error by the API
-type InternalError error

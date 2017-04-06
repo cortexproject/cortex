@@ -30,7 +30,6 @@ import (
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/retrieval"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
 	"github.com/prometheus/prometheus/util/httputil"
@@ -196,7 +195,7 @@ func (api *API) query(r *http.Request) (interface{}, *apiError) {
 			return nil, &apiError{errorCanceled, res.Err}
 		case promql.ErrQueryTimeout:
 			return nil, &apiError{errorTimeout, res.Err}
-		case storage.InternalError:
+		case promql.ErrStorage:
 			return nil, &apiError{errorInternal, res.Err}
 		}
 		return nil, &apiError{errorExec, res.Err}

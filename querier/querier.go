@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
@@ -62,7 +61,7 @@ func (q *ChunkQuerier) Query(ctx context.Context, from, to model.Time, matchers 
 	// Get chunks for all matching series from ChunkStore.
 	chunks, err := q.Store.Get(ctx, from, to, matchers...)
 	if err != nil {
-		return nil, storage.InternalError(err)
+		return nil, promql.ErrStorage(err)
 	}
 
 	return chunk.ChunksToMatrix(chunks)

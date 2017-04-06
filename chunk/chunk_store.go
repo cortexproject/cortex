@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
@@ -192,15 +193,12 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	// Fetch chunk descriptors (just ID really) from storage
 	chunks, err := c.lookupMatchers(ctx, from, through, matchers)
 	if err != nil {
-		return nil, err
+		return nil, promql.ErrStorage(err)
 	}
 
 	// Filter out chunks that are not in the selected time range.
 	filtered := make([]Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
-		if err != nil {
-			return nil, err
-		}
 		if chunk.Through < from || through < chunk.From {
 			continue
 		}
@@ -215,7 +213,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 
 	fromS3, err := c.fetchChunkData(ctx, missing)
 	if err != nil {
-		return nil, err
+		return nil, promql.ErrStorage(err)
 	}
 
 	if err = c.writeBackCache(ctx, fromS3); err != nil {

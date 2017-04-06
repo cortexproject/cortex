@@ -204,9 +204,6 @@ heartbeatLoop:
 				log.Errorf("Failed to write to consul, sleeping: %v", err)
 			}
 
-		case f := <-i.actorChan:
-			f()
-
 		case <-done:
 			break heartbeatLoop
 		}

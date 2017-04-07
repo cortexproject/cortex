@@ -247,10 +247,7 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 		return nil, err
 	}
 
-	// Get metric name from matchers
 	metricName, matchers, ok := util.ExtractMetricNameFromMatchers(matchers)
-
-	// If there is a metric name, return chunks using metric name
 	if ok {
 		return c.lookupChunksByMetricName(ctx, from, through, matchers, userID, metricName)
 	}

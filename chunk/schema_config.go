@@ -12,6 +12,13 @@ import (
 	"github.com/weaveworks/cortex/util"
 )
 
+const (
+	secondsInHour      = int64(time.Hour / time.Second)
+	secondsInDay       = int64(24 * time.Hour / time.Second)
+	millisecondsInHour = int64(time.Hour / time.Millisecond)
+	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
+)
+
 // SchemaConfig contains the config for our chunk index schemas
 type SchemaConfig struct {
 	PeriodicTableConfig

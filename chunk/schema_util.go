@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+
 	"fmt"
 
 	"github.com/prometheus/common/model"

@@ -61,7 +61,7 @@ func (q *ChunkQuerier) Query(ctx context.Context, from, to model.Time, matchers 
 	// Get chunks for all matching series from ChunkStore.
 	chunks, err := q.Store.Get(ctx, from, to, matchers...)
 	if err != nil {
-		return nil, err
+		return nil, promql.ErrStorage(err)
 	}
 
 	return chunk.ChunksToMatrix(chunks)
@@ -114,7 +114,6 @@ func (qm MergeQuerier) Query(ctx context.Context, from, to model.Time, matchers 
 	matrix, err := mergeMatrices(matrices, errors, len(qm.Queriers))
 	if err != nil {
 		log.Errorf("Error in MergeQuerier.Query: %v", err)
-
 	}
 	return matrix, err
 }

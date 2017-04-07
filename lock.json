@@ -1,5 +1,5 @@
 {
-    "memo": "6df59b41c76e20298414cbd96ff6579d5c05fd05d6bf7eeec2e4f7e19974f50f",
+    "memo": "76d431d1c4519f327d8bd76fc2f6e25f602a87d2bd35e7152d29119b5ec9ab21",
     "projects": [
         {
             "name": "cloud.google.com/go",
@@ -680,9 +680,9 @@
         },
         {
             "name": "github.com/prometheus/prometheus",
-            "branch": "2571-propagate-api-error",
-            "revision": "709352f367efe106883d59c13b33b1a704c380d9",
-            "repo": "github.com/weaveworks/prometheus",
+            "branch": "master",
+            "revision": "516a96d9a355dd25444e002ff1b2a86f541b43a9",
+            "source": "github.com/prometheus/prometheus",
             "packages": [
                 "config",
                 "discovery",
@@ -811,8 +811,8 @@
         },
         {
             "name": "github.com/weaveworks/billing-client",
-            "branch": "dep",
-            "revision": "12fb525d52318e5c6ab87b22cc92eabdeaece5d5",
+            "branch": "master",
+            "revision": "88bfaf9272c1fb3bb4fafa967304ee6d6ac96e9e",
             "packages": [
                 "."
             ]
@@ -847,7 +847,7 @@
         {
             "name": "golang.org/x/crypto",
             "branch": "master",
-            "revision": "573951cbe80bb6352881271bb276f48749eab6f4",
+            "revision": "c78caca803c95773f48a844d3dcab04b9bc4d6dd",
             "packages": [
                 "curve25519",
                 "nacl/box",

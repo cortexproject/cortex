@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/metric"
 
 	billing "github.com/weaveworks/billing-client"
@@ -459,11 +460,11 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 
 		ingesters, err := d.ring.Get(tokenFor(userID, []byte(metricName)), d.cfg.ReplicationFactor, ring.Read)
 		if err != nil {
-			return err
+			return promql.ErrStorage(err)
 		}
 
 		result, err = d.queryIngesters(ctx, ingesters, req)
-		return err
+		return promql.ErrStorage(err)
 	})
 	return result, err
 }

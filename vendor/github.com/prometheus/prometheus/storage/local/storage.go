@@ -231,7 +231,7 @@ func NewMemorySeriesStorage(o *MemorySeriesStorageOptions) *MemorySeriesStorage 
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "persist_errors_total",
-			Help:      "The total number of errors while persisting chunks.",
+			Help:      "The total number of errors while writing to the persistence layer.",
 		}),
 		queuedChunksToPersist: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
@@ -1209,7 +1209,7 @@ func (s *MemorySeriesStorage) maybeEvict() {
 //   to 1 to signal that we want to evict chunk but have no evictable chunks
 //   available.
 //
-// - Otherwise, calulate the number of chunks to evict and return it:
+// - Otherwise, calculate the number of chunks to evict and return it:
 //
 //                                   MAX( h(nextGC), h(current) ) - h(target)
 //   n(toEvict) = MIN( n(evictable), ---------------------------------------- )
@@ -1449,6 +1449,7 @@ func (s *MemorySeriesStorage) loop() {
 				s.dirtySeries.Set(0)
 				err := s.persistence.checkpointSeriesMapAndHeads(s.fpToSeries, s.fpLocker)
 				if err != nil {
+					s.persistErrors.Inc()
 					log.Errorln("Error while checkpointing:", err)
 				}
 				// If a checkpoint takes longer than checkpointInterval, unluckily timed
@@ -1713,14 +1714,20 @@ func (s *MemorySeriesStorage) maintainArchivedSeries(fp model.Fingerprint, befor
 
 	newFirstTime, _, _, allDropped, err := s.persistence.dropAndPersistChunks(fp, beforeTime, nil)
 	if err != nil {
+		// TODO(beorn7): Should quarantine the series.
+		s.persistErrors.Inc()
 		log.Error("Error dropping persisted chunks: ", err)
 	}
 	if allDropped {
-		s.persistence.purgeArchivedMetric(fp) // Ignoring error. Nothing we can do.
+		if err := s.persistence.purgeArchivedMetric(fp); err != nil {
+			s.persistErrors.Inc()
+			// purgeArchivedMetric logs the error already.
+		}
 		s.seriesOps.WithLabelValues(archivePurge).Inc()
 		return
 	}
 	if err := s.persistence.updateArchivedTimeRange(fp, newFirstTime, lastTime); err != nil {
+		s.persistErrors.Inc()
 		log.Errorf("Error updating archived time range for fingerprint %v: %s", fp, err)
 	}
 }

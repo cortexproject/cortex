@@ -187,21 +187,26 @@ loop:
 	// Mark ourselved as Leaving so no more samples are send to us.
 	i.changeState(ring.LEAVING)
 
-	flushRequired := true
-	if i.cfg.ClaimOnRollout {
-		if err := i.transferChunks(); err != nil {
-			log.Errorf("Failed to transfer chunks to another ingester: %v", err)
-		} else {
-			flushRequired = false
-		}
-	}
-	if flushRequired {
-		i.flushAllChunks()
-	}
+	// Do the transferring / flushing on a background goroutine so we can continue
+	// to heartbeat to consul.
+	done := make(chan struct{})
+	go func() {
+		i.processShutdown()
+		close(done)
+	}()
 
-	// Close the flush queues, will wait for chunks to be flushed.
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
+heartbeatLoop:
+	for {
+		select {
+		case <-heartbeatTicker.C:
+			consulHeartbeats.Inc()
+			if err := i.updateConsul(); err != nil {
+				log.Errorf("Failed to write to consul, sleeping: %v", err)
+			}
+
+		case <-done:
+			break heartbeatLoop
+		}
 	}
 
 	if !i.cfg.skipUnregister {
@@ -310,6 +315,25 @@ func (i *Ingester) changeState(state ring.IngesterState) error {
 	log.Infof("Changing ingester state from %v -> %v", i.state, state)
 	i.state = state
 	return i.updateConsul()
+}
+
+func (i *Ingester) processShutdown() {
+	flushRequired := true
+	if i.cfg.ClaimOnRollout {
+		if err := i.transferChunks(); err != nil {
+			log.Errorf("Failed to transfer chunks to another ingester: %v", err)
+		} else {
+			flushRequired = false
+		}
+	}
+	if flushRequired {
+		i.flushAllChunks()
+	}
+
+	// Close the flush queues, will wait for chunks to be flushed.
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
+	}
 }
 
 // transferChunks finds an ingester in PENDING state and transfers our chunks

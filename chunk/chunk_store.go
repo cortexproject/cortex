@@ -242,14 +242,14 @@ outer:
 }
 
 func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
+	metricName, matchers, ok := util.ExtractMetricNameFromMatchers(matchers)
+	if ok {
+		return c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
+	}
+
 	userID, err := user.Extract(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	metricName, matchers, ok := util.ExtractMetricNameFromMatchers(matchers)
-	if ok {
-		return c.lookupChunksByMetricName(ctx, from, through, matchers, userID, metricName)
 	}
 
 	// If there is no metric name, we want return chunks for all metric names
@@ -260,7 +260,7 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 	incomingErrors := make(chan error)
 	for _, metricNameEntry := range metricNameEntries {
 		go func(metricName model.LabelValue) {
-			chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, userID, metricName)
+			chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
 			if err != nil {
 				incomingErrors <- err
 			} else {
@@ -284,7 +284,12 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 	return nWayIntersect(chunkSets), lastErr
 }
 
-func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher, userID string, metricName model.LabelValue) ([]Chunk, error) {
+func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {
+	userID, err := user.Extract(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Just get chunks for metric if there are no matchers
 	if len(matchers) == 0 {
 		queries, err := c.schema.GetReadQueriesForMetric(from, through, userID, metricName)

@@ -207,10 +207,12 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Fetch samples for all queries in parallel.
-	matrices := make(chan model.Matrix)
-	errors := make(chan error)
-	for _, q := range req.Queries {
-		go func(q *cortex.QueryRequest) {
+	resp := cortex.ReadResponse{
+		Results: make([]*cortex.QueryResponse, len(req.Queries)),
+	}
+	errors := make(chan error, len(req.Queries))
+	for i, q := range req.Queries {
+		go func(i int, q *cortex.QueryRequest) {
 			from, to, matchers, err := util.FromQueryRequest(q)
 			if err != nil {
 				errors <- err
@@ -220,22 +222,23 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 			matrix, err := qm.Query(ctx, from, to, matchers...)
 			if err != nil {
 				errors <- err
-			} else {
-				matrices <- matrix
+				return
 			}
-		}(q)
+
+			resp.Results[i] = util.ToQueryResponse(matrix)
+			errors <- nil
+		}(i, q)
 	}
 
-	matrix, err := mergeMatrices(matrices, errors, len(req.Queries))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Errorf("error executing remote read request: %v", err)
-		return
+	for err := range errors {
+		if err != nil {
+			log.Errorf("Query error: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
-	resp := util.ToQueryResponse(matrix)
-
-	if err := util.SerializeProtoResponse(w, resp); err != nil {
+	if err := util.SerializeProtoResponse(w, &resp); err != nil {
 		log.Errorf("error sending remote read response: %v", err)
 	}
 }

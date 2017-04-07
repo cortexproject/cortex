@@ -250,29 +250,29 @@ func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, ma
 	}
 
 	if len(matchers) == 0 {
-		entries, err := c.schema.GetReadEntriesForMetric(from, through, userID, metricName)
+		queries, err := c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
 		if err != nil {
 			return nil, err
 		}
-		return c.lookupEntries(ctx, entries, nil)
+		return c.lookupEntries(ctx, queries, nil)
 	}
 
 	incomingChunkSets := make(chan ByKey)
 	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
 		go func(matcher *metric.LabelMatcher) {
-			var entries []IndexEntry
+			var queries []IndexQuery
 			var err error
 			if matcher.Type != metric.Equal {
-				entries, err = c.schema.GetReadEntriesForMetricLabel(from, through, userID, metricName, matcher.Name)
+				queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
 			} else {
-				entries, err = c.schema.GetReadEntriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
+				queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
 			}
 			if err != nil {
 				incomingErrors <- err
 				return
 			}
-			incoming, err := c.lookupEntries(ctx, entries, matcher)
+			incoming, err := c.lookupEntries(ctx, queries, matcher)
 			if err != nil {
 				incomingErrors <- err
 			} else {
@@ -295,23 +295,23 @@ func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, ma
 	return nWayIntersect(chunkSets), lastErr
 }
 
-func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher *metric.LabelMatcher) (ByKey, error) {
+func (c *Store) lookupEntries(ctx context.Context, queries []IndexQuery, matcher *metric.LabelMatcher) (ByKey, error) {
 	incomingChunkSets := make(chan ByKey)
 	incomingErrors := make(chan error)
-	for _, entry := range entries {
-		go func(entry IndexEntry) {
-			incoming, err := c.lookupEntry(ctx, entry, matcher)
+	for _, query := range queries {
+		go func(query IndexQuery) {
+			incoming, err := c.lookupEntry(ctx, query, matcher)
 			if err != nil {
 				incomingErrors <- err
 			} else {
 				incomingChunkSets <- incoming
 			}
-		}(entry)
+		}(query)
 	}
 
 	var chunks ByKey
 	var lastErr error
-	for i := 0; i < len(entries); i++ {
+	for i := 0; i < len(queries); i++ {
 		select {
 		case incoming := <-incomingChunkSets:
 			chunks = merge(chunks, incoming)
@@ -323,10 +323,10 @@ func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher
 	return chunks, lastErr
 }
 
-func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metric.LabelMatcher) (ByKey, error) {
+func (c *Store) lookupEntry(ctx context.Context, query IndexQuery, matcher *metric.LabelMatcher) (ByKey, error) {
 	var chunkSet ByKey
 	var processingError error
-	if err := c.storage.QueryPages(ctx, entry, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
+	if err := c.storage.QueryPages(ctx, query, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
 		processingError = processResponse(ctx, resp, &chunkSet, matcher)
 		return processingError == nil && !lastPage
 	}); err != nil {

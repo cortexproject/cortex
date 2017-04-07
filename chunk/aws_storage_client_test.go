@@ -150,7 +150,7 @@ func TestDynamoDBClient(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := 0; i < 30; i++ {
-		entry := IndexEntry{
+		entry := IndexQuery{
 			TableName: "table",
 			HashValue: fmt.Sprintf("hash%d", i),
 		}

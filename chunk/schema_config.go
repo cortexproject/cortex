@@ -110,7 +110,7 @@ func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string) []
 			from:      uint32(relativeFrom),
 			through:   uint32(relativeThrough),
 			tableName: cfg.tableForBucket(i * secondsInDay),
-			hashKey:   fmt.Sprintf("%s:%d", userID, i),
+			hashKey:   fmt.Sprintf("%s:d%d", userID, i),
 		})
 	}
 	return result

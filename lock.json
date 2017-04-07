@@ -1,5 +1,5 @@
 {
-    "memo": "76d431d1c4519f327d8bd76fc2f6e25f602a87d2bd35e7152d29119b5ec9ab21",
+    "memo": "94f7dcc6f7b9baae72063c6eb794ecf3592470df14d1e43c549f70db621d5314",
     "projects": [
         {
             "name": "cloud.google.com/go",
@@ -20,8 +20,8 @@
         },
         {
             "name": "github.com/Azure/go-autorest",
-            "version": "v7.3.0",
-            "revision": "ec5f4903f77ed9927ac95b19ab8e44ada64c1356",
+            "version": "v7.3.1",
+            "revision": "a2fdd780c9a50455cecd249b00bdc3eb73a78e31",
             "packages": [
                 "autorest",
                 "autorest/azure",
@@ -88,8 +88,8 @@
         },
         {
             "name": "github.com/aws/aws-sdk-go",
-            "version": "v1.8.7",
-            "revision": "06d3a0c37ae95ae040548a13952501261cb5fd2b",
+            "version": "v1.8.10",
+            "revision": "d643bdf04f2cc6f95424f9f4e69037a563fc0736",
             "packages": [
                 "aws",
                 "aws/awserr",
@@ -196,8 +196,8 @@
         },
         {
             "name": "github.com/docker/distribution",
-            "version": "v2.6.0",
-            "revision": "325b0804fef3a66309d962357aac3c2ce3f4d329",
+            "version": "v2.6.1",
+            "revision": "a25b9ef0c9fe242ac04bb20d3a028442b7d266b6",
             "packages": [
                 "digest",
                 "reference"
@@ -382,8 +382,8 @@
         },
         {
             "name": "github.com/hashicorp/consul",
-            "version": "v0.7.5",
-            "revision": "21f2d5ad0c02af6c4b32d8fd04f7c81e9b002d41",
+            "version": "v0.8.0",
+            "revision": "402636ff2db998edef392ac6d59210d2170b3ebf",
             "packages": [
                 "api"
             ]
@@ -542,8 +542,9 @@
         },
         {
             "name": "github.com/mwitkow/go-grpc-middleware",
-            "branch": "master",
-            "revision": "6b9617e1d763f5376b975206df8911cc45774978",
+            "branch": "case-sensitive-fs",
+            "revision": "9b04d2fbf568675edbe2e2ef5b1df7e5d134ba6a",
+            "source": "github.com/tomwilkie/go-grpc-middleware",
             "packages": [
                 "."
             ]
@@ -681,7 +682,7 @@
         {
             "name": "github.com/prometheus/prometheus",
             "branch": "master",
-            "revision": "516a96d9a355dd25444e002ff1b2a86f541b43a9",
+            "revision": "0f48d07f953c71abc8503b187ddba1c0508e8bad",
             "source": "github.com/prometheus/prometheus",
             "packages": [
                 "config",
@@ -752,7 +753,7 @@
         {
             "name": "github.com/spf13/pflag",
             "branch": "master",
-            "revision": "d16db1e50e33dff1b6cdf37596cef36742128670",
+            "revision": "9a906f17374922ed0f74e1b2f593d3723f2ffb00",
             "packages": [
                 "."
             ]
@@ -847,7 +848,7 @@
         {
             "name": "golang.org/x/crypto",
             "branch": "master",
-            "revision": "c78caca803c95773f48a844d3dcab04b9bc4d6dd",
+            "revision": "420870623a70591d5e0b187c77c95455a1224ca6",
             "packages": [
                 "curve25519",
                 "nacl/box",
@@ -859,7 +860,7 @@
         {
             "name": "golang.org/x/net",
             "branch": "master",
-            "revision": "ffcf1bedda3b04ebb15a168a59800a73d6dc0f4d",
+            "revision": "d1e1b351919c6738fdeb9893d5c998b161464f0c",
             "packages": [
                 "context",
                 "context/ctxhttp",
@@ -886,7 +887,7 @@
         {
             "name": "golang.org/x/sys",
             "branch": "master",
-            "revision": "493114f68206f85e7e333beccfabc11e98cba8dd",
+            "revision": "f3918c30c5c2cb527c0b071a27c35120a6c0719a",
             "packages": [
                 "unix",
                 "windows",
@@ -922,7 +923,7 @@
         {
             "name": "golang.org/x/tools",
             "branch": "master",
-            "revision": "37a1062ad0bb70f026cd45d6b92cb37eacd927bb",
+            "revision": "24acc66eabead631b4e856255a9ad925549cee80",
             "packages": [
                 "cover"
             ]

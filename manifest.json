@@ -1,19 +1,23 @@
 {
-    "dependencies": {
-        "github.com/prometheus/alertmanager": {
-            "revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3"
-        },
-        "github.com/prometheus/prometheus": {
-            "source": "github.com/prometheus/prometheus",
-            "branch": "master"
-        }
-    },
-    "overrides": {
-        "github.com/Azure/azure-sdk-for-go": {
-            "revision": "bd73d950fa4440dae889bd9917bff7cef539f86e"
-        },
-        "github.com/weaveworks/mesh": {
-            "branch": "master"
-        }
-    }
+   "dependencies": {
+      "github.com/prometheus/alertmanager": {
+         "revision": "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3"
+      },
+      "github.com/prometheus/prometheus": {
+         "branch": "master",
+         "source": "github.com/prometheus/prometheus"
+      }
+   },
+   "overrides": {
+      "github.com/Azure/azure-sdk-for-go": {
+         "revision": "bd73d950fa4440dae889bd9917bff7cef539f86e"
+      },
+      "github.com/mwitkow/go-grpc-middleware": {
+         "branch": "case-sensitive-fs",
+         "source": "github.com/tomwilkie/go-grpc-middleware"
+      },
+      "github.com/weaveworks/mesh": {
+         "branch": "master"
+      }
+   }
 }

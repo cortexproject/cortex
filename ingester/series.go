@@ -98,6 +98,10 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		}
 	}
 
+	s.lastTime = v.Timestamp
+	s.lastSampleValue = v.Value
+	s.lastSampleValueSet = true
+
 	return nil
 }
 
@@ -164,7 +168,6 @@ func (s *memorySeries) setChunks(descs []*desc) error {
 	}
 
 	s.chunkDescs = descs
-	s.lastSampleValueSet = true
 	s.lastTime = descs[len(descs)-1].LastTime
 	return nil
 }

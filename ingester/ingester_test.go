@@ -129,6 +129,33 @@ func TestIngesterAppend(t *testing.T) {
 	}
 }
 
+func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	store := newTestStore()
+	ing, err := New(cfg, store)
+	require.NoError(t, err)
+	defer ing.Shutdown()
+
+	m := model.Metric{
+		model.MetricNameLabel: "testmetric",
+	}
+	ctx := user.Inject(context.Background(), userID)
+	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0})
+	require.NoError(t, err)
+
+	// Two times exactly the same sample (noop).
+	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0})
+	require.NoError(t, err)
+
+	// Earlier sample than previous one.
+	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 0, Value: 0})
+	require.EqualError(t, err, ErrOutOfOrderSample.Error())
+
+	// Same timestamp as previous sample, but different value.
+	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 1})
+	require.EqualError(t, err, ErrDuplicateSampleForTimestamp.Error())
+}
+
 func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.userStatesConfig = UserStatesConfig{
@@ -138,6 +165,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	store := newTestStore()
 	ing, err := New(cfg, store)
 	require.NoError(t, err)
+	defer ing.Shutdown()
 
 	userID := "1"
 	sample1 := model.Sample{
@@ -208,6 +236,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	store := newTestStore()
 	ing, err := New(cfg, store)
 	require.NoError(t, err)
+	defer ing.Shutdown()
 
 	userID := "1"
 	sample1 := model.Sample{

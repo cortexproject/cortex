@@ -56,12 +56,12 @@ func TestNWayMerge(t *testing.T) {
 		want ByKey
 	}{
 		{nil, ByKey{}},
-		{[]ByKey{ByKey{c("a")}}, ByKey{c("a")}},
-		{[]ByKey{ByKey{c("a")}, ByKey{}}, ByKey{c("a")}},
-		{[]ByKey{ByKey{}, ByKey{c("b")}}, ByKey{c("b")}},
-		{[]ByKey{ByKey{c("a")}, ByKey{c("b")}}, ByKey{c("a"), c("b")}},
+		{[]ByKey{{c("a")}}, ByKey{c("a")}},
+		{[]ByKey{{c("a")}, {}}, ByKey{c("a")}},
+		{[]ByKey{{}, {c("b")}}, ByKey{c("b")}},
+		{[]ByKey{{c("a")}, {c("b")}}, ByKey{c("a"), c("b")}},
 		{
-			[]ByKey{ByKey{c("a"), c("c"), c("e")}, ByKey{c("c"), c("d")}, ByKey{c("b")}},
+			[]ByKey{{c("a"), c("c"), c("e")}, {c("c"), c("d")}, {c("b")}},
 			ByKey{c("a"), c("b"), c("c"), c("d"), c("e")},
 		},
 	} {

@@ -40,7 +40,7 @@ func TestHourlyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(1800),
 			},
-			[]Bucket{Bucket{
+			[]Bucket{{
 				from:      0,
 				through:   1800 * 1000, // ms
 				tableName: "table",
@@ -53,7 +53,7 @@ func TestHourlyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(3600),
 			},
-			[]Bucket{Bucket{
+			[]Bucket{{
 				from:      0,
 				through:   3600 * 1000, // ms
 				tableName: "table",
@@ -66,17 +66,17 @@ func TestHourlyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(900),
 				through: model.TimeFromUnix((2 * 3600) + 1800),
 			},
-			[]Bucket{Bucket{
+			[]Bucket{{
 				from:      900 * 1000,  // ms
 				through:   3600 * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:0",
-			}, Bucket{
+			}, {
 				from:      0,
 				through:   3600 * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:1",
-			}, Bucket{
+			}, {
 				from:      0,
 				through:   1800 * 1000, // ms
 				tableName: "table",
@@ -124,7 +124,7 @@ func TestDailyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(6 * 3600),
 			},
-			[]Bucket{Bucket{
+			[]Bucket{{
 				from:      0,
 				through:   (6 * 3600) * 1000, // ms
 				tableName: "table",
@@ -137,7 +137,7 @@ func TestDailyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(24 * 3600),
 			},
-			[]Bucket{Bucket{
+			[]Bucket{{
 				from:      0,
 				through:   (24 * 3600) * 1000, // ms
 				tableName: "table",
@@ -150,17 +150,17 @@ func TestDailyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(6 * 3600),
 				through: model.TimeFromUnix((2 * 24 * 3600) + (12 * 3600)),
 			},
-			[]Bucket{Bucket{
+			[]Bucket{{
 				from:      (6 * 3600) * 1000,  // ms
 				through:   (24 * 3600) * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:d0",
-			}, Bucket{
+			}, {
 				from:      0,
 				through:   (24 * 3600) * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:d1",
-			}, Bucket{
+			}, {
 				from:      0,
 				through:   (12 * 3600) * 1000, // ms
 				tableName: "table",

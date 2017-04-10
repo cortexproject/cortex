@@ -363,7 +363,7 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 		}(matcher)
 	}
 
-	// Recieve chunkSets from all matchers
+	// Receive chunkSets from all matchers
 	var chunkSets []ByKey
 	var lastErr error
 	for i := 0; i < len(matchers); i++ {

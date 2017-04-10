@@ -31,7 +31,7 @@ func TestSchemaTimeEncoding(t *testing.T) {
 	}
 }
 
-func TestParseRangeValue(t *testing.T) {
+func TestParseChunkTimeRangeValue(t *testing.T) {
 	// Test we can decode legacy range values
 	for _, c := range []struct {
 		encoded        []byte
@@ -64,5 +64,21 @@ func TestParseRangeValue(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, model.LabelValue(c.value), labelValue)
 		assert.Equal(t, c.chunkID, chunkID)
+	}
+}
+
+func TestParseMetricNameRangeValue(t *testing.T) {
+	for _, c := range []struct {
+		encoded       []byte
+		value         string
+		expMetricName string
+	}{
+		// version 1 (id 6) metric name range keys (used in v7 Schema) have
+		// metric name hash in first 'dimension', however just returns the value
+		{[]byte("a1b2c3d4\x00\x00\x006\x00"), "foo", "foo"},
+	} {
+		metricName, err := parseMetricNameRangeValue(c.encoded, []byte(c.value))
+		require.NoError(t, err)
+		assert.Equal(t, model.LabelValue(c.expMetricName), metricName)
 	}
 }

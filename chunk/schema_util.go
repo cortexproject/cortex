@@ -71,12 +71,6 @@ func decodeTime(bs []byte) uint32 {
 	return binary.BigEndian.Uint32(buf)
 }
 
-// range value types
-const (
-	MetricNameRangeValue = iota
-	ChunkTimeRangeValue
-)
-
 // parseMetricNameRangeValue returns the metric name stored in metric name
 // range values. Currently checks range value key and returns the value as the
 // metric name.

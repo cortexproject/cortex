@@ -80,9 +80,14 @@ func (cfg SchemaConfig) hourlyBuckets(from, through model.Time, userID string) [
 		result      = []Bucket{}
 	)
 
+	// If through ends on the hour, don't include the upcoming hour
+	if through.Unix()%secondsInHour == 0 {
+		throughHour--
+	}
+
 	for i := fromHour; i <= throughHour; i++ {
 		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInHour))
-		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInDay))
+		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
 		result = append(result, Bucket{
 			from:      uint32(relativeFrom),
 			through:   uint32(relativeThrough),
@@ -99,6 +104,11 @@ func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string) []
 		throughDay = through.Unix() / secondsInDay
 		result     = []Bucket{}
 	)
+
+	// If through ends on 00:00 of the day, don't include the upcoming day
+	if through.Unix()%secondsInDay == 0 {
+		throughDay--
+	}
 
 	for i := fromDay; i <= throughDay; i++ {
 		// The idea here is that the hash key contains the bucket start time (rounded to

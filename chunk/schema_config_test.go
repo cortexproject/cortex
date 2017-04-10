@@ -9,6 +9,90 @@ import (
 	"github.com/weaveworks/common/test"
 )
 
+func TestHourlyBuckets(t *testing.T) {
+	const (
+		userID     = "0"
+		metricName = model.LabelValue("name")
+		tableName  = "table"
+	)
+	var cfg = SchemaConfig{OriginalTableName: tableName}
+
+	type args struct {
+		from    model.Time
+		through model.Time
+	}
+	tests := []struct {
+		name string
+		args args
+		want []Bucket
+	}{
+		{
+			"0 hour window",
+			args{
+				from:    model.TimeFromUnix(0),
+				through: model.TimeFromUnix(0),
+			},
+			[]Bucket{},
+		},
+		{
+			"30 minute window",
+			args{
+				from:    model.TimeFromUnix(0),
+				through: model.TimeFromUnix(1800),
+			},
+			[]Bucket{Bucket{
+				from:      0,
+				through:   1800 * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:0",
+			}},
+		},
+		{
+			"1 hour window",
+			args{
+				from:    model.TimeFromUnix(0),
+				through: model.TimeFromUnix(3600),
+			},
+			[]Bucket{Bucket{
+				from:      0,
+				through:   3600 * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:0",
+			}},
+		},
+		{
+			"window spanning 3 hours with non-zero start",
+			args{
+				from:    model.TimeFromUnix(900),
+				through: model.TimeFromUnix((2 * 3600) + 1800),
+			},
+			[]Bucket{Bucket{
+				from:      900 * 1000,  // ms
+				through:   3600 * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:0",
+			}, Bucket{
+				from:      0,
+				through:   3600 * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:1",
+			}, Bucket{
+				from:      0,
+				through:   1800 * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:2",
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cfg.hourlyBuckets(tt.args.from, tt.args.through, userID); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("SchemaConfig.dailyBuckets() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDailyBuckets(t *testing.T) {
 	const (
 		userID     = "0"
@@ -27,33 +111,28 @@ func TestDailyBuckets(t *testing.T) {
 		want []Bucket
 	}{
 		{
-			"0 time window",
+			"0 day window",
 			args{
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(0),
 			},
+			[]Bucket{},
+		},
+		{
+			"6 hour window",
+			args{
+				from:    model.TimeFromUnix(0),
+				through: model.TimeFromUnix(6 * 3600),
+			},
 			[]Bucket{Bucket{
 				from:      0,
-				through:   0,
+				through:   (6 * 3600) * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:d0",
 			}},
 		},
 		{
 			"1 day window",
-			args{
-				from:    model.TimeFromUnix(0),
-				through: model.TimeFromUnix((24 * 3600) - 1),
-			},
-			[]Bucket{Bucket{
-				from:      0,
-				through:   ((24 * 3600) - 1) * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:d0",
-			}},
-		},
-		{
-			"2 day window",
 			args{
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(24 * 3600),
@@ -63,15 +142,10 @@ func TestDailyBuckets(t *testing.T) {
 				through:   (24 * 3600) * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:d0",
-			}, Bucket{
-				from:      0,
-				through:   0,
-				tableName: "table",
-				hashKey:   "0:d1",
 			}},
 		},
 		{
-			"3 day window",
+			"window spanning 3 days with non-zero start",
 			args{
 				from:    model.TimeFromUnix(6 * 3600),
 				through: model.TimeFromUnix((2 * 24 * 3600) + (12 * 3600)),

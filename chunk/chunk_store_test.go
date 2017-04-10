@@ -139,6 +139,139 @@ func TestChunkStore(t *testing.T) {
 	}
 }
 
+// TestChunkStoreMetricNames tests no metric name queries supported from v7Schema
+func TestChunkStoreMetricNames(t *testing.T) {
+	ctx := user.Inject(context.Background(), userID)
+	now := model.Now()
+
+	foo1Chunk1 := dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo1",
+		"bar":  "baz",
+		"toms": "code",
+		"flip": "flop",
+	})
+	foo1Chunk2 := dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo1",
+		"bar":  "beep",
+		"toms": "code",
+	})
+	foo2Chunk := dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo2",
+		"bar":  "beep",
+		"toms": "code",
+	})
+	foo3Chunk := dummyChunkFor(model.Metric{
+		model.MetricNameLabel: "foo3",
+		"bar":  "beep",
+		"toms": "code",
+	})
+
+	schemas := []struct {
+		name string
+		fn   func(cfg SchemaConfig) Schema
+	}{
+		{"v7 schema", v7Schema},
+	}
+
+	for _, tc := range []struct {
+		query    string
+		expect   []Chunk
+		matchers []*metric.LabelMatcher
+	}{
+		{
+			`foo1`,
+			[]Chunk{foo1Chunk1, foo1Chunk2},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo1")},
+		},
+		{
+			`foo2`,
+			[]Chunk{foo2Chunk},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo2")},
+		},
+		{
+			`foo3`,
+			[]Chunk{foo3Chunk},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo3")},
+		},
+
+		// When name matcher is used without Equal, start matching all metric names
+		// however still filter out metric names which do not match query
+		{
+			`{__name__!="foo1"}`,
+			[]Chunk{foo3Chunk, foo2Chunk},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, model.MetricNameLabel, "foo1")},
+		},
+		{
+			`{__name__=~"foo1|foo2"}`,
+			[]Chunk{foo1Chunk1, foo2Chunk, foo1Chunk2},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.RegexMatch, model.MetricNameLabel, "foo1|foo2")},
+		},
+
+		// No metric names
+		{
+			`{bar="baz"}`,
+			[]Chunk{foo1Chunk1},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "baz")},
+		},
+		{
+			`{bar="beep"}`,
+			[]Chunk{foo3Chunk, foo2Chunk, foo1Chunk2}, // doesn't match foo1 chunk1
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "beep")},
+		},
+		{
+			`{flip=""}`,
+			[]Chunk{foo3Chunk, foo2Chunk, foo1Chunk2}, // doesn't match foo1 chunk1 as it has a flip value
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "flip", "")},
+		},
+		{
+			`{bar!="beep"}`,
+			[]Chunk{foo1Chunk1},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, "bar", "beep")},
+		},
+		{
+			`{bar=~"beep|baz"}`,
+			[]Chunk{foo3Chunk, foo1Chunk1, foo2Chunk, foo1Chunk2},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
+		},
+		{
+			`{toms="code", bar=~"beep|baz"}`,
+			[]Chunk{foo3Chunk, foo1Chunk1, foo2Chunk, foo1Chunk2},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
+		},
+		{
+			`{toms="code", bar="baz"}`,
+			[]Chunk{foo1Chunk1},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
+		},
+	} {
+		for _, schema := range schemas {
+			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
+				log.Infoln("========= Running query", tc.query, "with schema", schema.name)
+				store := newTestChunkStore(t, StoreConfig{
+					schemaFactory: schema.fn,
+				})
+
+				if err := store.Put(ctx, []Chunk{foo1Chunk1, foo1Chunk2, foo2Chunk, foo3Chunk}); err != nil {
+					t.Fatal(err)
+				}
+
+				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
+				require.NoError(t, err)
+
+				// Zero out the checksums, as the inputs above didn't have the checksums calculated
+				for i := range chunks {
+					chunks[i].Checksum = 0
+					chunks[i].ChecksumSet = false
+				}
+
+				if !reflect.DeepEqual(tc.expect, chunks) {
+					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks))
+				}
+			})
+		}
+	}
+}
+
 func mustNewLabelMatcher(matchType metric.MatchType, name model.LabelName, value model.LabelValue) *metric.LabelMatcher {
 	matcher, err := metric.NewLabelMatcher(matchType, name, value)
 	if err != nil {

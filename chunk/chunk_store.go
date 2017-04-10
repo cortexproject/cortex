@@ -257,7 +257,6 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 
 	// If there is no metric name, we want return chunks for all metric names
 	metricNameQueries, err := c.schema.GetReadQueries(from, through, userID)
-	fmt.Printf("here, %x", metricNameQueries)
 	if err != nil {
 		return nil, err
 	}

@@ -11,7 +11,7 @@ func (cs ByKey) Less(i, j int) bool { return cs[i].externalKey() < cs[j].externa
 // list must be sorted.
 func unique(cs ByKey) ByKey {
 	if len(cs) == 0 {
-		return nil
+		return ByKey{}
 	}
 
 	result := make(ByKey, 1, len(cs))

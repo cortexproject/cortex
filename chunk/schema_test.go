@@ -454,8 +454,6 @@ func TestSchemaRangeKey(t *testing.T) {
 				rangeValueType, err := parseRangeValueType(entry.RangeValue)
 				require.NoError(t, err)
 
-				fmt.Printf("range value type: %x", rangeValueType)
-
 				switch rangeValueType {
 				case MetricNameRangeValue:
 					_, err := parseMetricNameRangeValue(entry.RangeValue, entry.Value)

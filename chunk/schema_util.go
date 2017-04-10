@@ -82,7 +82,6 @@ const (
 // metric name.
 func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValue, error) {
 	components := deconstructRangeKey(rangeValue)
-	fmt.Printf("components: %x", components)
 	switch {
 	case len(components) < 4:
 		return "", fmt.Errorf("invalid metric name range value: %x", rangeValue)

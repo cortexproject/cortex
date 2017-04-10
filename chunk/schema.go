@@ -10,12 +10,12 @@ import (
 )
 
 var (
-	rangeKeyV1 = []byte{'1'}
-	rangeKeyV2 = []byte{'2'}
-	rangeKeyV3 = []byte{'3'}
-	rangeKeyV4 = []byte{'4'}
-	rangeKeyV5 = []byte{'5'}
-	rangeKeyV6 = []byte{'6'}
+	chunkTimeRangeKeyV1  = []byte{'1'}
+	chunkTimeRangeKeyV2  = []byte{'2'}
+	chunkTimeRangeKeyV3  = []byte{'3'}
+	chunkTimeRangeKeyV4  = []byte{'4'}
+	chunkTimeRangeKeyV5  = []byte{'5'}
+	metricNameRangeKeyV1 = []byte{'6'}
 )
 
 // Schema interface defines methods to calculate the hash and range keys needed
@@ -281,7 +281,7 @@ func (base64Entries) GetWriteEntries(_, _ uint32, tableName, bucketHashKey strin
 		result = append(result, IndexEntry{
 			TableName:  tableName,
 			HashValue:  bucketHashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey([]byte(key), encodedBytes, chunkIDBytes, rangeKeyV1),
+			RangeValue: buildRangeKey([]byte(key), encodedBytes, chunkIDBytes, chunkTimeRangeKeyV1),
 		})
 	}
 	return result, nil
@@ -310,7 +310,7 @@ func (labelNameInHashKeyEntries) GetWriteEntries(_, _ uint32, tableName, bucketH
 		{
 			TableName:  tableName,
 			HashValue:  bucketHashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey(nil, nil, chunkIDBytes, rangeKeyV2),
+			RangeValue: buildRangeKey(nil, nil, chunkIDBytes, chunkTimeRangeKeyV2),
 		},
 	}
 
@@ -322,7 +322,7 @@ func (labelNameInHashKeyEntries) GetWriteEntries(_, _ uint32, tableName, bucketH
 		entries = append(entries, IndexEntry{
 			TableName:  tableName,
 			HashValue:  bucketHashKey + ":" + string(metricName) + ":" + string(key),
-			RangeValue: buildRangeKey(nil, encodedBytes, chunkIDBytes, rangeKeyV1),
+			RangeValue: buildRangeKey(nil, encodedBytes, chunkIDBytes, chunkTimeRangeKeyV1),
 		})
 	}
 
@@ -373,7 +373,7 @@ func (v5Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 		{
 			TableName:  tableName,
 			HashValue:  bucketHashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV3),
+			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV3),
 		},
 	}
 
@@ -385,7 +385,7 @@ func (v5Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 		entries = append(entries, IndexEntry{
 			TableName:  tableName,
 			HashValue:  bucketHashKey + ":" + string(metricName) + ":" + string(key),
-			RangeValue: buildRangeKey(encodedThroughBytes, encodedValueBytes, chunkIDBytes, rangeKeyV4),
+			RangeValue: buildRangeKey(encodedThroughBytes, encodedValueBytes, chunkIDBytes, chunkTimeRangeKeyV4),
 		})
 	}
 
@@ -435,7 +435,7 @@ func (v6Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 		{
 			TableName:  tableName,
 			HashValue:  bucketHashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV3),
+			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV3),
 		},
 	}
 
@@ -446,7 +446,7 @@ func (v6Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 		entries = append(entries, IndexEntry{
 			TableName:  tableName,
 			HashValue:  bucketHashKey + ":" + string(metricName) + ":" + string(key),
-			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV5),
+			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV5),
 			Value:      []byte(value),
 		})
 	}
@@ -511,7 +511,7 @@ func (v7Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 		{
 			TableName:  tableName,
 			HashValue:  bucketHashKey,
-			RangeValue: buildRangeKey(nil, nil, metricNameHashBytes[:], rangeKeyV6),
+			RangeValue: buildRangeKey(metricNameHashBytes[:], nil, nil, metricNameRangeKeyV1),
 			Value:      []byte(metricName),
 		},
 	}
@@ -520,7 +520,7 @@ func (v7Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 	entries = append(entries, IndexEntry{
 		TableName:  tableName,
 		HashValue:  bucketHashKey + ":" + string(metricName),
-		RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV3),
+		RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV3),
 	})
 
 	// Add IndexEntries with userID:bigBucket:metricName:labelName HashValue
@@ -531,7 +531,7 @@ func (v7Entries) GetWriteEntries(_, through uint32, tableName, bucketHashKey str
 		entries = append(entries, IndexEntry{
 			TableName:  tableName,
 			HashValue:  bucketHashKey + ":" + string(metricName) + ":" + string(key),
-			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, rangeKeyV5),
+			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV5),
 			Value:      []byte(value),
 		})
 	}

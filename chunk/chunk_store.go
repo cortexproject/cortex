@@ -270,7 +270,10 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 	skippedMetricNames := 0
 
 	for _, metricNameEntry := range metricNameEntries {
-		metricName := model.LabelValue(metricNameEntry.Value)
+		metricName, err := parseMetricNameRangeValue(metricNameEntry.RangeValue, metricNameEntry.Value)
+		if err != nil {
+			return nil, err
+		}
 
 		// If there is a metric name matcher, however we are fetching all metric name
 		// chunks, skip metric names which don't match the metric name matcher.
@@ -434,7 +437,7 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 	var chunkSet ByKey
 
 	for _, entry := range entries {
-		chunkKey, labelValue, metadataInIndex, err := parseRangeValue(entry.RangeValue, entry.Value)
+		chunkKey, labelValue, metadataInIndex, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}

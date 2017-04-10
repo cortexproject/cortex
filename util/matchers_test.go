@@ -32,36 +32,41 @@ func TestExtractMetricNameMatcherFromMatchers(t *testing.T) {
 	}
 
 	for i, tc := range []struct {
-		matchers       []*metric.LabelMatcher
-		expName        string
-		expOutMatchers []*metric.LabelMatcher
-		expOk          bool
+		matchers         []*metric.LabelMatcher
+		expMetricMatcher *metric.LabelMatcher
+		expOutMatchers   []*metric.LabelMatcher
+		expOk            bool
 	}{
 		{
-			matchers:       []*metric.LabelMatcher{metricMatcher, labelMatcher1, labelMatcher2},
-			expName:        "testmetric",
-			expOutMatchers: []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
-			expOk:          true,
+			matchers:         []*metric.LabelMatcher{metricMatcher},
+			expMetricMatcher: metricMatcher,
+			expOutMatchers:   []*metric.LabelMatcher{},
+			expOk:            true,
 		}, {
-			matchers:       []*metric.LabelMatcher{labelMatcher1, metricMatcher, labelMatcher2},
-			expName:        "testmetric",
-			expOutMatchers: []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
-			expOk:          true,
+			matchers:         []*metric.LabelMatcher{metricMatcher, labelMatcher1, labelMatcher2},
+			expMetricMatcher: metricMatcher,
+			expOutMatchers:   []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOk:            true,
 		}, {
-			matchers:       []*metric.LabelMatcher{labelMatcher1, labelMatcher2, metricMatcher},
-			expName:        "testmetric",
-			expOutMatchers: []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
-			expOk:          true,
+			matchers:         []*metric.LabelMatcher{labelMatcher1, metricMatcher, labelMatcher2},
+			expMetricMatcher: metricMatcher,
+			expOutMatchers:   []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOk:            true,
 		}, {
-			matchers:       []*metric.LabelMatcher{nonEqualityMetricMatcher},
-			expName:        "",
-			expOutMatchers: nil,
-			expOk:          false,
+			matchers:         []*metric.LabelMatcher{labelMatcher1, labelMatcher2, metricMatcher},
+			expMetricMatcher: metricMatcher,
+			expOutMatchers:   []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOk:            true,
 		}, {
-			matchers:       []*metric.LabelMatcher{jobMatcher},
-			expName:        "",
-			expOutMatchers: nil,
-			expOk:          false,
+			matchers:         []*metric.LabelMatcher{nonEqualityMetricMatcher},
+			expMetricMatcher: nonEqualityMetricMatcher,
+			expOutMatchers:   []*metric.LabelMatcher{},
+			expOk:            true,
+		}, {
+			matchers:         []*metric.LabelMatcher{jobMatcher},
+			expMetricMatcher: nil,
+			expOutMatchers:   nil,
+			expOk:            false,
 		},
 	} {
 		matchersCopy := make([]*metric.LabelMatcher, len(tc.matchers))
@@ -73,8 +78,8 @@ func TestExtractMetricNameMatcherFromMatchers(t *testing.T) {
 			t.Fatalf("%d. Matchers got mutated; want %v, got %v", i, matchersCopy, tc.matchers)
 		}
 
-		if string(nameMatcher) != tc.expName {
-			t.Fatalf("%d. Wrong metric name; want '%q', got %q", i, tc.expName, name)
+		if !reflect.DeepEqual(tc.expMetricMatcher, nameMatcher) {
+			t.Fatalf("%d. Wrong metric matcher; want '%v', got %v", i, tc.expMetricMatcher, nameMatcher)
 		}
 
 		assert.Equal(t, tc.expOutMatchers, outMatchers, "unexpected outMatchers for test case %d", i)

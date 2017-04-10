@@ -36,6 +36,8 @@ func ExtractMetricNameMatcherFromMatchers(matchers []*metric.LabelMatcher) (*met
 		if matcher.Name != model.MetricNameLabel {
 			continue
 		}
+
+		// Copy other matchers, excluding the found metric name matcher
 		copy(outMatchers, matchers[:i])
 		copy(outMatchers[i:], matchers[i+1:])
 		return matcher, outMatchers, true

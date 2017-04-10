@@ -56,6 +56,7 @@ func TestChunkStore(t *testing.T) {
 		{"v4 schema", v4Schema},
 		{"v5 schema", v5Schema},
 		{"v6 schema", v6Schema},
+		{"v7 schema", v7Schema},
 	}
 
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
@@ -159,6 +160,7 @@ func TestChunkStoreRandom(t *testing.T) {
 		{name: "v4 schema", fn: v4Schema},
 		{name: "v5 schema", fn: v5Schema},
 		{name: "v6 schema", fn: v6Schema},
+		{name: "v7 schema", fn: v7Schema},
 	}
 
 	for i := range schemas {

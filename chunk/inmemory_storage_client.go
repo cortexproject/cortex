@@ -125,7 +125,8 @@ func (m *MockStorage) BatchWrite(_ context.Context, batch WriteBatch) error {
 			items = append(items, mockItem{})
 			copy(items[i+1:], items[i:])
 		} else {
-			return fmt.Errorf("Dupe write")
+			// Ignore duplicate write
+			continue
 		}
 		items[i] = mockItem{
 			rangeValue: req.rangeValue,

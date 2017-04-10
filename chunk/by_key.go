@@ -7,7 +7,8 @@ func (cs ByKey) Len() int           { return len(cs) }
 func (cs ByKey) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
 func (cs ByKey) Less(i, j int) bool { return cs[i].externalKey() < cs[j].externalKey() }
 
-// unique will remove duplicates from the input
+// unique will remove duplicates from the input.
+// list must be sorted.
 func unique(cs ByKey) ByKey {
 	if len(cs) == 0 {
 		return nil

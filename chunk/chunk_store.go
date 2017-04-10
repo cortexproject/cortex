@@ -277,7 +277,7 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 
 		// If there is a metric name matcher, however we are fetching all metric name
 		// chunks, skip metric names which don't match the metric name matcher.
-		if ok && metricNameMatcher.Match(metricName) {
+		if ok && !metricNameMatcher.Match(metricName) {
 			skippedMetricNames++
 			continue
 		}

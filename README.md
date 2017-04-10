@@ -104,4 +104,4 @@ If you have any questions regarding Cortex our hosted Prometheus as a service:
 - Send an email to <a href="mailto:weave-users@weave.works">weave-users@weave.works</a>
 - <a href="https://github.com/weaveworks/cortex/issues/new">File an issue.</a>
 
-Your feedback is always welcomeu
+Your feedback is always welcome.

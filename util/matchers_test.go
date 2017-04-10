@@ -65,7 +65,12 @@ func TestExtractMetricNameMatcherFromMatchers(t *testing.T) {
 		}, {
 			matchers:         []*metric.LabelMatcher{jobMatcher},
 			expMetricMatcher: nil,
-			expOutMatchers:   nil,
+			expOutMatchers:   []*metric.LabelMatcher{jobMatcher},
+			expOk:            false,
+		}, {
+			matchers:         []*metric.LabelMatcher{},
+			expMetricMatcher: nil,
+			expOutMatchers:   []*metric.LabelMatcher{},
 			expOk:            false,
 		},
 	} {

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestExtractMetricNameFromMatchers(t *testing.T) {
+func TestExtractMetricNameMatcherFromMatchers(t *testing.T) {
 	metricMatcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "testmetric")
 	if err != nil {
 		t.Fatal(err)
@@ -67,13 +67,13 @@ func TestExtractMetricNameFromMatchers(t *testing.T) {
 		matchersCopy := make([]*metric.LabelMatcher, len(tc.matchers))
 		copy(matchersCopy, tc.matchers)
 
-		name, outMatchers, ok := ExtractMetricNameFromMatchers(tc.matchers)
+		nameMatcher, outMatchers, ok := ExtractMetricNameMatcherFromMatchers(tc.matchers)
 
 		if !reflect.DeepEqual(tc.matchers, matchersCopy) {
 			t.Fatalf("%d. Matchers got mutated; want %v, got %v", i, matchersCopy, tc.matchers)
 		}
 
-		if string(name) != tc.expName {
+		if string(nameMatcher) != tc.expName {
 			t.Fatalf("%d. Wrong metric name; want '%q', got %q", i, tc.expName, name)
 		}
 

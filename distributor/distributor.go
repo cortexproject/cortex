@@ -448,7 +448,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		metricName, _, ok := util.ExtractMetricNameFromMatchers(matchers)
+		metricNameMatcher, _, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
 
 		req, err := util.ToQueryRequest(from, to, matchers)
 		if err != nil {
@@ -457,8 +457,8 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 
 		// Get ingesters by metricName if one exists, otherwise get all ingesters
 		var ingesters []*ring.IngesterDesc
-		if ok {
-			ingesters, err = d.ring.Get(tokenFor(userID, []byte(metricName)), d.cfg.ReplicationFactor, ring.Read)
+		if ok && metricNameMatcher.Type == metric.Equal {
+			ingesters, err = d.ring.Get(tokenFor(userID, []byte(metricNameMatcher.Value)), d.cfg.ReplicationFactor, ring.Read)
 			if err != nil {
 				return promql.ErrStorage(err)
 			}

@@ -242,9 +242,12 @@ outer:
 }
 
 func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
-	metricName, matchers, ok := util.ExtractMetricNameFromMatchers(matchers)
-	if ok {
-		return c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
+	metricNameMatcher, matchers, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
+
+	// Only lookup by metric name if the matcher is of type equal, otherwise we
+	// have to fetch chunks for all metric names as other metric names could match.
+	if ok && metricNameMatcher.Type == metric.Equal {
+		return c.lookupChunksByMetricName(ctx, from, through, matchers, metricNameMatcher.Value)
 	}
 
 	userID, err := user.Extract(ctx)
@@ -264,7 +267,18 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 
 	incomingChunkSets := make(chan ByKey)
 	incomingErrors := make(chan error)
+	skippedMetricNames := 0
+
 	for _, metricNameEntry := range metricNameEntries {
+		metricName := model.LabelValue(metricNameEntry.Value)
+
+		// If there is a metric name matcher, however we are fetching all metric name
+		// chunks, skip metric names which don't match the metric name matcher.
+		if ok && metricNameMatcher.Match(metricName) {
+			skippedMetricNames++
+			continue
+		}
+
 		go func(metricName model.LabelValue) {
 			chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
 			if err != nil {
@@ -272,12 +286,12 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 			} else {
 				incomingChunkSets <- chunks
 			}
-		}(model.LabelValue(metricNameEntry.Value))
+		}(metricName)
 	}
 
 	var chunkSets []ByKey
 	var lastErr error
-	for i := 0; i < len(metricNameEntries); i++ {
+	for i := 0; i < (len(metricNameEntries) - skippedMetricNames); i++ {
 		select {
 		case incoming := <-incomingChunkSets:
 			chunkSets = append(chunkSets, incoming)

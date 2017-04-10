@@ -29,20 +29,16 @@ func ExtractMetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
 	return "", fmt.Errorf("no MetricNameLabel for chunk")
 }
 
-// ExtractMetricNameFromMatchers extracts the metric name from a set of matchers
-func ExtractMetricNameFromMatchers(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, bool) {
+// ExtractMetricNameMatcherFromMatchers extracts the metric name from a set of matchers
+func ExtractMetricNameMatcherFromMatchers(matchers []*metric.LabelMatcher) (*metric.LabelMatcher, []*metric.LabelMatcher, bool) {
 	outMatchers := make([]*metric.LabelMatcher, len(matchers)-1)
 	for i, matcher := range matchers {
 		if matcher.Name != model.MetricNameLabel {
 			continue
 		}
-		if matcher.Type != metric.Equal {
-			return "", nil, false
-		}
-		metricName := matcher.Value
 		copy(outMatchers, matchers[:i])
 		copy(outMatchers[i:], matchers[i+1:])
-		return metricName, outMatchers, true
+		return matcher, outMatchers, true
 	}
-	return "", nil, false
+	return nil, nil, false
 }

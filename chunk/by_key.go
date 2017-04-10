@@ -55,6 +55,27 @@ func merge(a, b ByKey) ByKey {
 	return result
 }
 
+// nWayMerge will merge and dedupe n lists of chunks.
+// lists must be sorted and not contain dupes.
+func nWayMerge(sets []ByKey) ByKey {
+	l := len(sets)
+	switch l {
+	case 0:
+		return ByKey{}
+	case 1:
+		return sets[0]
+	case 2:
+		return merge(sets[0], sets[1])
+	default:
+		var (
+			split = l / 2
+			left  = nWayMerge(sets[:split])
+			right = nWayMerge(sets[split:])
+		)
+		return nWayIntersect([]ByKey{left, right})
+	}
+}
+
 // nWayIntersect will interesct n sorted lists of chunks.
 func nWayIntersect(sets []ByKey) ByKey {
 	l := len(sets)

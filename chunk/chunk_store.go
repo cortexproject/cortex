@@ -300,8 +300,7 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 		}
 	}
 
-	// Merge chunkSets in order
-	return nWayIntersect(chunkSets), lastErr
+	return nWayMerge(chunkSets), lastErr
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {

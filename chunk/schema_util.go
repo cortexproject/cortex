@@ -77,50 +77,15 @@ const (
 	ChunkTimeRangeValue
 )
 
-// parseRangeValueType returns the type of rangeValue
-func parseRangeValueType(rangeValue []byte) (int, error) {
-	components := deconstructRangeKey(rangeValue)
-	switch {
-	case len(components) < 3:
-		return 0, fmt.Errorf("invalid range value: %x", rangeValue)
-
-	// v1 & v2 chunk time range values
-	case len(components) == 3:
-		return MetricNameRangeValue, nil
-
-	// chunk time range values
-	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
-		return ChunkTimeRangeValue, nil
-
-	case bytes.Equal(components[3], chunkTimeRangeKeyV2):
-		return ChunkTimeRangeValue, nil
-
-	case bytes.Equal(components[3], chunkTimeRangeKeyV3):
-		return ChunkTimeRangeValue, nil
-
-	case bytes.Equal(components[3], chunkTimeRangeKeyV4):
-		return ChunkTimeRangeValue, nil
-
-	case bytes.Equal(components[3], chunkTimeRangeKeyV5):
-		return ChunkTimeRangeValue, nil
-
-	// metric name range values
-	case bytes.Equal(components[3], metricNameRangeKeyV1):
-		return MetricNameRangeValue, nil
-
-	default:
-		return 0, fmt.Errorf("unrecognised range value type. version: '%v'", string(components[3]))
-	}
-}
-
 // parseMetricNameRangeValue returns the metric name stored in metric name
 // range values. Currently checks range value key and returns the value as the
 // metric name.
 func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValue, error) {
 	components := deconstructRangeKey(rangeValue)
+	fmt.Printf("components: %x", components)
 	switch {
 	case len(components) < 4:
-		return "", fmt.Errorf("invalid range value: %x", rangeValue)
+		return "", fmt.Errorf("invalid metric name range value: %x", rangeValue)
 
 	// v1 has the metric name as the value (with the hash as the first component)
 	case bytes.Equal(components[3], metricNameRangeKeyV1):
@@ -138,7 +103,7 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (string, model.La
 
 	switch {
 	case len(components) < 3:
-		return "", "", false, fmt.Errorf("invalid range value: %x", rangeValue)
+		return "", "", false, fmt.Errorf("invalid chunk time range value: %x", rangeValue)
 
 	// v1 & v2 schema had three components - label name, label value and chunk ID.
 	// No version number.

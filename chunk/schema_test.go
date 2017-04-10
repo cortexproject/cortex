@@ -233,6 +233,48 @@ func TestSchemaHashKeys(t *testing.T) {
 	}
 }
 
+// range value types
+const (
+	MetricNameRangeValue = iota + 1
+	ChunkTimeRangeValue
+)
+
+// parseRangeValueType returns the type of rangeValue
+func parseRangeValueType(rangeValue []byte) (int, error) {
+	components := deconstructRangeKey(rangeValue)
+	switch {
+	case len(components) < 3:
+		return 0, fmt.Errorf("invalid range value: %x", rangeValue)
+
+	// v1 & v2 chunk time range values
+	case len(components) == 3:
+		return ChunkTimeRangeValue, nil
+
+	// chunk time range values
+	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
+		return ChunkTimeRangeValue, nil
+
+	case bytes.Equal(components[3], chunkTimeRangeKeyV2):
+		return ChunkTimeRangeValue, nil
+
+	case bytes.Equal(components[3], chunkTimeRangeKeyV3):
+		return ChunkTimeRangeValue, nil
+
+	case bytes.Equal(components[3], chunkTimeRangeKeyV4):
+		return ChunkTimeRangeValue, nil
+
+	case bytes.Equal(components[3], chunkTimeRangeKeyV5):
+		return ChunkTimeRangeValue, nil
+
+	// metric name range values
+	case bytes.Equal(components[3], metricNameRangeKeyV1):
+		return MetricNameRangeValue, nil
+
+	default:
+		return 0, fmt.Errorf("unrecognised range value type. version: '%v'", string(components[3]))
+	}
+}
+
 func TestSchemaRangeKey(t *testing.T) {
 	const (
 		userID     = "userid"
@@ -369,7 +411,7 @@ func TestSchemaRangeKey(t *testing.T) {
 				{
 					TableName:  table,
 					HashValue:  "userid:d0",
-					RangeValue: []byte("\x00\x00" + string(fooSha1Hash[:]) + "\x006\x00"),
+					RangeValue: []byte(string(fooSha1Hash[:]) + "\x00\x00\x006\x00"),
 					Value:      []byte("foo"),
 				},
 				{
@@ -409,8 +451,19 @@ func TestSchemaRangeKey(t *testing.T) {
 
 			// Test we can parse the resulting range keys
 			for _, entry := range have {
-				_, _, _, err := parseRangeValue(entry.RangeValue, entry.Value)
+				rangeValueType, err := parseRangeValueType(entry.RangeValue)
 				require.NoError(t, err)
+
+				fmt.Printf("range value type: %x", rangeValueType)
+
+				switch rangeValueType {
+				case MetricNameRangeValue:
+					_, err := parseMetricNameRangeValue(entry.RangeValue, entry.Value)
+					require.NoError(t, err)
+				case ChunkTimeRangeValue:
+					_, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+					require.NoError(t, err)
+				}
 			}
 		})
 	}

@@ -9,7 +9,101 @@ import (
 	"github.com/weaveworks/common/test"
 )
 
-func TestSchemaComposite(t *testing.T) {
+func TestDailyBuckets(t *testing.T) {
+	const (
+		userID     = "0"
+		metricName = model.LabelValue("name")
+		tableName  = "table"
+	)
+	var cfg = SchemaConfig{OriginalTableName: tableName}
+
+	type args struct {
+		from    model.Time
+		through model.Time
+	}
+	tests := []struct {
+		name string
+		args args
+		want []Bucket
+	}{
+		{
+			"0 time window",
+			args{
+				from:    model.TimeFromUnix(0),
+				through: model.TimeFromUnix(0),
+			},
+			[]Bucket{Bucket{
+				from:      0,
+				through:   0,
+				tableName: "table",
+				hashKey:   "0:d0",
+			}},
+		},
+		{
+			"1 day window",
+			args{
+				from:    model.TimeFromUnix(0),
+				through: model.TimeFromUnix((24 * 3600) - 1),
+			},
+			[]Bucket{Bucket{
+				from:      0,
+				through:   ((24 * 3600) - 1) * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:d0",
+			}},
+		},
+		{
+			"2 day window",
+			args{
+				from:    model.TimeFromUnix(0),
+				through: model.TimeFromUnix(24 * 3600),
+			},
+			[]Bucket{Bucket{
+				from:      0,
+				through:   (24 * 3600) * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:d0",
+			}, Bucket{
+				from:      0,
+				through:   0,
+				tableName: "table",
+				hashKey:   "0:d1",
+			}},
+		},
+		{
+			"3 day window",
+			args{
+				from:    model.TimeFromUnix(6 * 3600),
+				through: model.TimeFromUnix((2 * 24 * 3600) + (12 * 3600)),
+			},
+			[]Bucket{Bucket{
+				from:      (6 * 3600) * 1000,  // ms
+				through:   (24 * 3600) * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:d0",
+			}, Bucket{
+				from:      0,
+				through:   (24 * 3600) * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:d1",
+			}, Bucket{
+				from:      0,
+				through:   (12 * 3600) * 1000, // ms
+				tableName: "table",
+				hashKey:   "0:d2",
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cfg.dailyBuckets(tt.args.from, tt.args.through, userID); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("SchemaConfig.dailyBuckets() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCompositeSchema(t *testing.T) {
 	type result struct {
 		from, through model.Time
 		schema        Schema

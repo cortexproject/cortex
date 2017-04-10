@@ -73,7 +73,7 @@ func nWayMerge(sets []ByKey) ByKey {
 			left  = nWayMerge(sets[:split])
 			right = nWayMerge(sets[split:])
 		)
-		return nWayIntersect([]ByKey{left, right})
+		return nWayMerge([]ByKey{left, right})
 	}
 }
 

@@ -50,6 +50,28 @@ func TestMerge(t *testing.T) {
 	}
 }
 
+func TestNWayMerge(t *testing.T) {
+	for _, tc := range []struct {
+		in   []ByKey
+		want ByKey
+	}{
+		{nil, ByKey{}},
+		{[]ByKey{ByKey{c("a")}}, ByKey{c("a")}},
+		{[]ByKey{ByKey{c("a")}, ByKey{}}, ByKey{c("a")}},
+		{[]ByKey{ByKey{}, ByKey{c("b")}}, ByKey{c("b")}},
+		{[]ByKey{ByKey{c("a")}, ByKey{c("b")}}, ByKey{c("a"), c("b")}},
+		{
+			[]ByKey{ByKey{c("a"), c("c"), c("e")}, ByKey{c("c"), c("d")}, ByKey{c("b")}},
+			ByKey{c("a"), c("b"), c("c"), c("d"), c("e")},
+		},
+	} {
+		have := nWayMerge(tc.in)
+		if !reflect.DeepEqual(have, tc.want) {
+			t.Errorf("%v != %v", have, tc.want)
+		}
+	}
+}
+
 func TestNWayIntersect(t *testing.T) {
 	for _, tc := range []struct {
 		in   []ByKey

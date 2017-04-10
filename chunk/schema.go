@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"crypto/sha1"
-
 	"fmt"
 	"strings"
 

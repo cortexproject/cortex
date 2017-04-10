@@ -10,7 +10,8 @@ import (
 // SplitFiltersAndMatchers splits empty matchers off, which are treated as filters, see #220
 func SplitFiltersAndMatchers(allMatchers []*metric.LabelMatcher) (filters, matchers []*metric.LabelMatcher) {
 	for _, matcher := range allMatchers {
-		if matcher.Match("") {
+		// Test for empty filters. Other metrics such as NotEqual are not filters.
+		if matcher.Match("") && (matcher.Type == metric.Equal || matcher.Type == metric.RegexMatch) {
 			filters = append(filters, matcher)
 		} else {
 			matchers = append(matchers, matcher)
@@ -42,5 +43,6 @@ func ExtractMetricNameMatcherFromMatchers(matchers []*metric.LabelMatcher) (*met
 		copy(outMatchers[i:], matchers[i+1:])
 		return matcher, outMatchers, true
 	}
-	return nil, nil, false
+	// Return all matchers if none are metric name matchers
+	return nil, matchers, false
 }

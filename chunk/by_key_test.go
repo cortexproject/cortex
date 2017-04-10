@@ -26,6 +26,30 @@ func TestUnique(t *testing.T) {
 	}
 }
 
+func TestMerge(t *testing.T) {
+	type args struct {
+		a ByKey
+		b ByKey
+	}
+	for _, tc := range []struct {
+		args args
+		want ByKey
+	}{
+		{args{ByKey{}, ByKey{}}, ByKey{}},
+		{args{ByKey{c("a")}, ByKey{}}, ByKey{c("a")}},
+		{args{ByKey{}, ByKey{c("b")}}, ByKey{c("b")}},
+		{args{ByKey{c("a")}, ByKey{c("b")}}, ByKey{c("a"), c("b")}},
+		{
+			args{ByKey{c("a"), c("c")}, ByKey{c("a"), c("b"), c("d")}},
+			ByKey{c("a"), c("b"), c("c"), c("d")}},
+	} {
+		have := merge(tc.args.a, tc.args.b)
+		if !reflect.DeepEqual(have, tc.want) {
+			t.Errorf("%v != %v", have, tc.want)
+		}
+	}
+}
+
 func TestNWayIntersect(t *testing.T) {
 	for _, tc := range []struct {
 		in   []ByKey

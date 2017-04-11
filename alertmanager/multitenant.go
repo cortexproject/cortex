@@ -90,6 +90,11 @@ var (
 		Help:      "Time spent requesting configs.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
+	totalPeers = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "peers",
+		Help:      "Number of peers the multitenant alertmanager knows about",
+	})
 	statusTemplate      *template.Template
 	allConnectionStates = []string{"established", "pending", "retrying", "failed", "connecting"}
 )
@@ -97,6 +102,7 @@ var (
 func init() {
 	prometheus.MustRegister(configsRequestDuration)
 	prometheus.MustRegister(totalConfigs)
+	prometheus.MustRegister(totalPeers)
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
 		"state": func(enabled bool) string {
 			if enabled {
@@ -268,6 +274,7 @@ func (am *MultitenantAlertmanager) Run() {
 			sort.Strings(peers)
 			log.Infof("Updating alertmanager peers from %v to %v", am.meshRouter.getPeers(), peers)
 			am.meshRouter.ConnectionMaker.InitiateConnections(peers, true)
+			totalPeers.Set(float64(len(peers)))
 		case now := <-ticker.C:
 			err := am.updateConfigs(now)
 			if err != nil {

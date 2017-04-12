@@ -132,8 +132,7 @@ type schema struct {
 func (s schema) GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	var result []IndexEntry
 
-	buckets := s.buckets(from, through, userID)
-	for _, bucket := range buckets {
+	for _, bucket := range s.buckets(from, through, userID) {
 		entries, err := s.entries.GetWriteEntries(bucket.from, bucket.through, bucket.tableName, bucket.hashKey, metricName, labels, chunkID)
 		if err != nil {
 			return nil, err

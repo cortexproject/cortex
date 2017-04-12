@@ -24,7 +24,7 @@ func buildRangeKey(ss ...[]byte) []byte {
 	return output
 }
 
-func deconstructRangeKey(value []byte) [][]byte {
+func unbuildRangeKey(value []byte) [][]byte {
 	components := make([][]byte, 0, 5)
 	i, j := 0, 0
 	for j < len(value) {
@@ -75,7 +75,7 @@ func decodeTime(bs []byte) uint32 {
 // range values. Currently checks range value key and returns the value as the
 // metric name.
 func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValue, error) {
-	components := deconstructRangeKey(rangeValue)
+	components := unbuildRangeKey(rangeValue)
 	switch {
 	case len(components) < 4:
 		return "", fmt.Errorf("invalid metric name range value: %x", rangeValue)
@@ -92,7 +92,7 @@ func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValu
 // parseChunkTimeRangeValue returns the chunkKey, labelValue and metadataInIndex
 // for chunk time range values.
 func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (string, model.LabelValue, bool, error) {
-	components := deconstructRangeKey(rangeValue)
+	components := unbuildRangeKey(rangeValue)
 
 	switch {
 	case len(components) < 3:

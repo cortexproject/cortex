@@ -64,11 +64,11 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	}
 	if v.Timestamp == s.lastTime {
 		discardedSamples.WithLabelValues(duplicateSample).Inc()
-		return ErrDuplicateSampleForTimestamp // Caused by the caller.
+		return fmt.Errorf("sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value) // Caused by the caller.
 	}
 	if v.Timestamp < s.lastTime {
 		discardedSamples.WithLabelValues(outOfOrderTimestamp).Inc()
-		return ErrOutOfOrderSample // Caused by the caller.
+		return fmt.Errorf("sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp) // Caused by the caller.
 	}
 
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {

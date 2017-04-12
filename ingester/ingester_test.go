@@ -149,11 +149,11 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 
 	// Earlier sample than previous one.
 	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 0, Value: 0})
-	require.EqualError(t, err, ErrOutOfOrderSample.Error())
+	require.Contains(t, err.Error(), "sample timestamp out of order")
 
 	// Same timestamp as previous sample, but different value.
 	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 1})
-	require.EqualError(t, err, ErrDuplicateSampleForTimestamp.Error())
+	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 }
 
 func TestIngesterUserSeriesLimitExceeded(t *testing.T) {

@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,6 +17,11 @@ var (
 	chunkTimeRangeKeyV4  = []byte{'4'}
 	chunkTimeRangeKeyV5  = []byte{'5'}
 	metricNameRangeKeyV1 = []byte{'6'}
+)
+
+// Errors
+var (
+	ErrNoMetricNameNotSupported = errors.New("metric name required for pre-v7 schemas")
 )
 
 // Schema interface defines methods to calculate the hash and range keys needed
@@ -228,7 +234,7 @@ func (originalEntries) GetWriteEntries(bucket Bucket, metricName model.LabelValu
 }
 
 func (originalEntries) GetReadQueries(_ Bucket) ([]IndexQuery, error) {
-	return nil, fmt.Errorf("originalEntries does not support GetReadQueries")
+	return nil, ErrNoMetricNameNotSupported
 }
 
 func (originalEntries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
@@ -287,7 +293,7 @@ func (base64Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue,
 }
 
 func (base64Entries) GetReadQueries(_ Bucket) ([]IndexQuery, error) {
-	return nil, fmt.Errorf("base64Entries does not support GetReadQueries")
+	return nil, ErrNoMetricNameNotSupported
 }
 
 func (base64Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
@@ -329,7 +335,7 @@ func (labelNameInHashKeyEntries) GetWriteEntries(bucket Bucket, metricName model
 }
 
 func (labelNameInHashKeyEntries) GetReadQueries(_ Bucket) ([]IndexQuery, error) {
-	return nil, fmt.Errorf("labelNameInHashKeyEntries does not support GetReadQueries")
+	return nil, ErrNoMetricNameNotSupported
 }
 
 func (labelNameInHashKeyEntries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
@@ -392,7 +398,7 @@ func (v5Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 }
 
 func (v5Entries) GetReadQueries(_ Bucket) ([]IndexQuery, error) {
-	return nil, fmt.Errorf("v5Entries does not support GetReadQueries")
+	return nil, ErrNoMetricNameNotSupported
 }
 
 func (v5Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
@@ -454,7 +460,7 @@ func (v6Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 }
 
 func (v6Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
-	return nil, fmt.Errorf("v6Entries does not support GetReadQueries")
+	return nil, ErrNoMetricNameNotSupported
 }
 
 func (v6Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {

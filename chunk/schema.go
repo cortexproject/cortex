@@ -501,47 +501,27 @@ type v7Entries struct {
 	v6Entries
 }
 
-func (v7Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
-	metricName, err := util.ExtractMetricNameFromMetric(labels)
+func (entries v7Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	indexEntries, err := entries.v6Entries.GetWriteEntries(bucket, metricName, labels, chunkID)
 	if err != nil {
 		return nil, err
 	}
 
-	chunkIDBytes := []byte(chunkID)
-	encodedThroughBytes := encodeTime(bucket.through)
+	metricName, err = util.ExtractMetricNameFromMetric(labels)
+	if err != nil {
+		return nil, err
+	}
 	metricNameHashBytes := sha1.Sum([]byte(metricName))
 
-	// Add IndexEntry with userID:bigBucket HashValue
-	entries := []IndexEntry{
-		{
-			TableName:  bucket.tableName,
-			HashValue:  bucket.hashKey,
-			RangeValue: buildRangeKey(metricNameHashBytes[:], nil, nil, metricNameRangeKeyV1),
-			Value:      []byte(metricName),
-		},
-	}
-
-	// Add IndexEntry with userID:bigBucket:metricName HashValue
-	entries = append(entries, IndexEntry{
+	// Add IndexEntry for metric name with userID:bigBucket HashValue
+	indexEntries = append(indexEntries, IndexEntry{
 		TableName:  bucket.tableName,
-		HashValue:  bucket.hashKey + ":" + string(metricName),
-		RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV3),
+		HashValue:  bucket.hashKey,
+		RangeValue: buildRangeKey(metricNameHashBytes[:], nil, nil, metricNameRangeKeyV1),
+		Value:      []byte(metricName),
 	})
 
-	// Add IndexEntries with userID:bigBucket:metricName:labelName HashValue
-	for key, value := range labels {
-		if key == model.MetricNameLabel {
-			continue
-		}
-		entries = append(entries, IndexEntry{
-			TableName:  bucket.tableName,
-			HashValue:  fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, key),
-			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV5),
-			Value:      []byte(value),
-		})
-	}
-
-	return entries, nil
+	return indexEntries, nil
 }
 
 func (v7Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {

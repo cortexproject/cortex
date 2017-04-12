@@ -57,15 +57,6 @@ var (
 		"The total number of series pending in the flush queue.",
 		nil, nil,
 	)
-
-	// ErrOutOfOrderSample is returned if a sample has a timestamp before the latest
-	// timestamp in the series it is appended to.
-	ErrOutOfOrderSample = fmt.Errorf("sample timestamp out of order")
-	// ErrDuplicateSampleForTimestamp is returned if a sample has the same
-	// timestamp as the latest sample in the series it is appended to but a
-	// different value. (Appending an identical sample is a no-op and does
-	// not cause an error.)
-	ErrDuplicateSampleForTimestamp = fmt.Errorf("sample with repeated timestamp but different value")
 )
 
 // Config for an Ingester.

@@ -3,6 +3,8 @@ package chunk
 import (
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func c(id string) Chunk {
@@ -20,8 +22,8 @@ func TestUnique(t *testing.T) {
 		{ByKey{c("a"), c("b"), c("c")}, ByKey{c("a"), c("b"), c("c")}},
 	} {
 		have := unique(tc.in)
-		if !reflect.DeepEqual(have, tc.want) {
-			t.Errorf("%v != %v", have, tc.want)
+		if !reflect.DeepEqual(tc.want, have) {
+			assert.Equal(t, tc.want, have)
 		}
 	}
 }
@@ -44,8 +46,8 @@ func TestMerge(t *testing.T) {
 			ByKey{c("a"), c("b"), c("c"), c("d")}},
 	} {
 		have := merge(tc.args.a, tc.args.b)
-		if !reflect.DeepEqual(have, tc.want) {
-			t.Errorf("%v != %v", have, tc.want)
+		if !reflect.DeepEqual(tc.want, have) {
+			assert.Equal(t, tc.want, have)
 		}
 	}
 }
@@ -66,8 +68,8 @@ func TestNWayUnion(t *testing.T) {
 		},
 	} {
 		have := nWayUnion(tc.in)
-		if !reflect.DeepEqual(have, tc.want) {
-			t.Errorf("%v != %v", have, tc.want)
+		if !reflect.DeepEqual(tc.want, have) {
+			assert.Equal(t, tc.want, have)
 		}
 	}
 }
@@ -84,8 +86,8 @@ func TestNWayIntersect(t *testing.T) {
 		{[]ByKey{{c("a"), c("b"), c("c")}, {c("a"), c("c")}, {c("a")}}, ByKey{c("a")}},
 	} {
 		have := nWayIntersect(tc.in)
-		if !reflect.DeepEqual(have, tc.want) {
-			t.Errorf("%v != %v", have, tc.want)
+		if !reflect.DeepEqual(tc.want, have) {
+			assert.Equal(t, tc.want, have)
 		}
 	}
 }

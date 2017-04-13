@@ -36,38 +36,41 @@ const (
 	<head><title>Cortex Alertmanager Status</title></head>
 	<body>
 		<h1>Cortex Alertmanager Status</h1>
-        <h2>Mesh router</h2>
-        <dl>
-          <dt>Protocol</dt>
-          <dd>{{.Protocol}}
-{{if eq .ProtocolMinVersion .ProtocolMaxVersion}}
-{{.ProtocolMaxVersion}}
-{{else}}
-{{.ProtocolMinVersion}}..{{.ProtocolMaxVersion}}
-{{end}}
-          </dd>
-          <dt>Name</dt><dd>{{.Name}} ({{.NickName}})</dd>
-          <dt>Encryption</dt><dd>{{printState .Encryption}}</dd>
-          <dt>PeerDiscovery</dt><dd>{{printState .PeerDiscovery}}</dd>
-          <dt>Targets</dt><dd>{{ with .Targets }}
-            <ul>{{ range . }}<li>{{ . }}</li>{{ end }}</ul>
-            {{ else }}No targets{{ end }}
-          </dd>
-          <dt>Connections</dt><dd>{{len .Connections}}{{with printConnectionCounts .Connections}} ({{.}}){{end}}</dd>
-          <dt>Peers</dt><dd>{{len .Peers}}{{with printPeerConnectionCounts .Peers}} (with {{.}} connections){{end}}</dd>
-          <dt>TrustedSubnets</dt><dd>{{.TrustedSubnets}}</dd>
-        </dl>
-        <h3>Peers</h3>
-        {{ with .Peers }}
-        <table>
-        <tr><th>Name</th><th>NickName</th><th>UID</th><th>ShortID</th><th>Version</th><th>Established connections</th><th>Pending connections</th></tr>
-        {{ range . }}
-        <tr><td>{{ .Name }}</td><td>{{ .NickName }}</td><td>{{ .ShortID }}</td><td>{{ .Version }}</td><td>{{ . | printEstablishedCount }}</td><td>{{ . | printPendingCount }}</td></tr>
-        {{ end }}
-        </table>
-        {{ else }}
-        <p>No peers</p>
-        {{ end }}
+		<h2>Mesh router</h2>
+		<dl>
+			<dt>Protocol</dt>
+			<dd>{{.Protocol}}
+			{{if eq .ProtocolMinVersion .ProtocolMaxVersion}}
+			{{.ProtocolMaxVersion}}
+			{{else}}
+			{{.ProtocolMinVersion}}..{{.ProtocolMaxVersion}}
+			{{end}}
+			</dd>
+
+			<dt>Name</dt><dd>{{.Name}} ({{.NickName}})</dd>
+			<dt>Encryption</dt><dd>{{state .Encryption}}</dd>
+			<dt>PeerDiscovery</dt><dd>{{state .PeerDiscovery}}</dd>
+
+			<dt>Targets</dt><dd>{{ with .Targets }}
+			<ul>{{ range . }}<li>{{ . }}</li>{{ end }}</ul>
+			{{ else }}No targets{{ end }}
+			</dd>
+
+			<dt>Connections</dt><dd>{{len .Connections}}{{with connectionCounts .Connections}} ({{.}}){{end}}</dd>
+			<dt>Peers</dt><dd>{{len .Peers}}{{with peerConnectionCounts .Peers}} (with {{.}} connections){{end}}</dd>
+			<dt>TrustedSubnets</dt><dd>{{.TrustedSubnets}}</dd>
+		</dl>
+		<h3>Peers</h3>
+		{{ with .Peers }}
+		<table>
+		<tr><th>Name</th><th>NickName</th><th>UID</th><th>ShortID</th><th>Version</th><th>Established connections</th><th>Pending connections</th></tr>
+		{{ range . }}
+		<tr><td>{{ .Name }}</td><td>{{ .NickName }}</td><td>{{ .ShortID }}</td><td>{{ .Version }}</td><td>{{ . | establishedCount }}</td><td>{{ . | pendingCount }}</td></tr>
+		{{ end }}
+		</table>
+		{{ else }}
+		<p>No peers</p>
+		{{ end }}
 	</body>
 </html>
 `
@@ -93,33 +96,33 @@ func init() {
 	prometheus.MustRegister(configsRequestDuration)
 	prometheus.MustRegister(totalConfigs)
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
-		"printState": func(enabled bool) string {
+		"state": func(enabled bool) string {
 			if enabled {
 				return "enabled"
 			}
 			return "disabled"
 		},
-		"printConnectionCounts": func(conns []mesh.LocalConnectionStatus) string {
-			counts := make(map[string]int)
+		"connectionCounts": func(conns []mesh.LocalConnectionStatus) string {
+			cs := map[string]int{}
 			for _, conn := range conns {
-				counts[conn.State]++
+				cs[conn.State]++
 			}
-			return printCounts(counts, allConnectionStates)
+			return counts(cs, allConnectionStates)
 		},
-		"printPeerConnectionCounts": func(peers []mesh.PeerStatus) string {
-			counts := make(map[string]int)
+		"peerConnectionCounts": func(peers []mesh.PeerStatus) string {
+			cs := map[string]int{}
 			for _, peer := range peers {
 				for _, conn := range peer.Connections {
 					if conn.Established {
-						counts["established"]++
+						cs["established"]++
 					} else {
-						counts["pending"]++
+						cs["pending"]++
 					}
 				}
 			}
-			return printCounts(counts, []string{"established", "pending"})
+			return counts(cs, []string{"established", "pending"})
 		},
-		"printEstablishedCount": func(peer mesh.PeerStatus) string {
+		"establishedCount": func(peer mesh.PeerStatus) string {
 			count := 0
 			for _, conn := range peer.Connections {
 				if conn.Established {
@@ -128,7 +131,7 @@ func init() {
 			}
 			return fmt.Sprintf("%d", count)
 		},
-		"printPendingCount": func(peer mesh.PeerStatus) string {
+		"pendingCount": func(peer mesh.PeerStatus) string {
 			count := 0
 			for _, conn := range peer.Connections {
 				if !conn.Established {
@@ -141,7 +144,7 @@ func init() {
 }
 
 // Print counts in a specified order
-func printCounts(counts map[string]int, keys []string) string {
+func counts(counts map[string]int, keys []string) string {
 	var stringCounts []string
 	for _, key := range keys {
 		if count, ok := counts[key]; ok {
@@ -420,11 +423,4 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-}
-
-func printState(enabled bool) string {
-	if enabled {
-		return "enabled"
-	}
-	return "disabled"
 }

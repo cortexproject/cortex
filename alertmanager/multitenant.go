@@ -3,6 +3,7 @@ package alertmanager
 import (
 	"flag"
 	"fmt"
+	"html/template"
 	"net"
 	"net/http"
 	"os"
@@ -21,12 +22,58 @@ import (
 	configs "github.com/weaveworks/cortex/configs/client"
 	"github.com/weaveworks/cortex/util"
 	"github.com/weaveworks/mesh"
+	"strings"
 )
 
 const (
 	// Backoff for loading initial configuration set.
 	minBackoff = 100 * time.Millisecond
 	maxBackoff = 2 * time.Second
+
+	statusPage = `
+<!doctype html>
+<html>
+	<head><title>Cortex Alertmanager Status</title></head>
+	<body>
+		<h1>Cortex Alertmanager Status</h1>
+		<h2>Mesh router</h2>
+		<dl>
+			<dt>Protocol</dt>
+			<dd>{{.Protocol}}
+			{{if eq .ProtocolMinVersion .ProtocolMaxVersion}}
+			{{.ProtocolMaxVersion}}
+			{{else}}
+			{{.ProtocolMinVersion}}..{{.ProtocolMaxVersion}}
+			{{end}}
+			</dd>
+
+			<dt>Name</dt><dd>{{.Name}} ({{.NickName}})</dd>
+			<dt>Encryption</dt><dd>{{state .Encryption}}</dd>
+			<dt>PeerDiscovery</dt><dd>{{state .PeerDiscovery}}</dd>
+
+			<dt>Targets</dt><dd>{{ with .Targets }}
+			<ul>{{ range . }}<li>{{ . }}</li>{{ end }}</ul>
+			{{ else }}No targets{{ end }}
+			</dd>
+
+			<dt>Connections</dt><dd>{{len .Connections}}{{with connectionCounts .Connections}} ({{.}}){{end}}</dd>
+			<dt>Peers</dt><dd>{{len .Peers}}{{with peerConnectionCounts .Peers}} (with {{.}} connections){{end}}</dd>
+			<dt>TrustedSubnets</dt><dd>{{.TrustedSubnets}}</dd>
+		</dl>
+		<h3>Peers</h3>
+		{{ with .Peers }}
+		<table>
+		<tr><th>Name</th><th>NickName</th><th>UID</th><th>ShortID</th><th>Version</th><th>Established connections</th><th>Pending connections</th></tr>
+		{{ range . }}
+		<tr><td>{{ .Name }}</td><td>{{ .NickName }}</td><td>{{ .ShortID }}</td><td>{{ .Version }}</td><td>{{ . | establishedCount }}</td><td>{{ . | pendingCount }}</td></tr>
+		{{ end }}
+		</table>
+		{{ else }}
+		<p>No peers</p>
+		{{ end }}
+	</body>
+</html>
+`
 )
 
 var (
@@ -41,11 +88,70 @@ var (
 		Help:      "Time spent requesting configs.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
+	statusTemplate      *template.Template
+	allConnectionStates = []string{"established", "pending", "retrying", "failed", "connecting"}
 )
 
 func init() {
 	prometheus.MustRegister(configsRequestDuration)
 	prometheus.MustRegister(totalConfigs)
+	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
+		"state": func(enabled bool) string {
+			if enabled {
+				return "enabled"
+			}
+			return "disabled"
+		},
+		"connectionCounts": func(conns []mesh.LocalConnectionStatus) string {
+			cs := map[string]int{}
+			for _, conn := range conns {
+				cs[conn.State]++
+			}
+			return counts(cs, allConnectionStates)
+		},
+		"peerConnectionCounts": func(peers []mesh.PeerStatus) string {
+			cs := map[string]int{}
+			for _, peer := range peers {
+				for _, conn := range peer.Connections {
+					if conn.Established {
+						cs["established"]++
+					} else {
+						cs["pending"]++
+					}
+				}
+			}
+			return counts(cs, []string{"established", "pending"})
+		},
+		"establishedCount": func(peer mesh.PeerStatus) string {
+			count := 0
+			for _, conn := range peer.Connections {
+				if conn.Established {
+					count++
+				}
+			}
+			return fmt.Sprintf("%d", count)
+		},
+		"pendingCount": func(peer mesh.PeerStatus) string {
+			count := 0
+			for _, conn := range peer.Connections {
+				if !conn.Established {
+					count++
+				}
+			}
+			return fmt.Sprintf("%d", count)
+		},
+	}).Parse(statusPage))
+}
+
+// Print counts in a specified order
+func counts(counts map[string]int, keys []string) string {
+	var stringCounts []string
+	for _, key := range keys {
+		if count, ok := counts[key]; ok {
+			stringCounts = append(stringCounts, fmt.Sprintf("%d %s", count, key))
+		}
+	}
+	return strings.Join(stringCounts, ", ")
 }
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
@@ -295,4 +401,26 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 		return
 	}
 	userAM.router.ServeHTTP(w, req)
+}
+
+// GetStatusHandler returns the status handler for this multi-tenant
+// alertmanager.
+func (am *MultitenantAlertmanager) GetStatusHandler() StatusHandler {
+	return StatusHandler{
+		am: am,
+	}
+}
+
+// StatusHandler shows the status of the alertmanager.
+type StatusHandler struct {
+	am *MultitenantAlertmanager
+}
+
+// ServeHTTP serves the status of the alertmanager.
+func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	meshStatus := mesh.NewStatus(s.am.meshRouter.Router)
+	err := statusTemplate.Execute(w, meshStatus)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }

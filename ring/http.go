@@ -58,11 +58,7 @@ const tpl = `
 var tmpl *template.Template
 
 func init() {
-	var err error
-	tmpl, err = template.New("webpage").Parse(tpl)
-	if err != nil {
-		panic(err)
-	}
+	tmpl = template.Must(template.New("webpage").Parse(tpl))
 }
 
 func (r *Ring) forget(id string) error {

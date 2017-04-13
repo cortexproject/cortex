@@ -273,7 +273,10 @@ func (am *MultitenantAlertmanager) Run() {
 			// like a nice property to jml
 			sort.Strings(peers)
 			log.Infof("Updating alertmanager peers from %v to %v", am.meshRouter.getPeers(), peers)
-			am.meshRouter.ConnectionMaker.InitiateConnections(peers, true)
+			errs := am.meshRouter.ConnectionMaker.InitiateConnections(peers, true)
+			for _, err := range errs {
+				log.Error(err)
+			}
 			totalPeers.Set(float64(len(peers)))
 		case now := <-ticker.C:
 			err := am.updateConfigs(now)

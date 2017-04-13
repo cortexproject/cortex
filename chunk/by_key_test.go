@@ -43,7 +43,8 @@ func TestMerge(t *testing.T) {
 		{args{ByKey{c("a")}, ByKey{c("b")}}, ByKey{c("a"), c("b")}},
 		{
 			args{ByKey{c("a"), c("c")}, ByKey{c("a"), c("b"), c("d")}},
-			ByKey{c("a"), c("b"), c("c"), c("d")}},
+			ByKey{c("a"), c("b"), c("c"), c("d")},
+		},
 	} {
 		have := merge(tc.args.a, tc.args.b)
 		if !reflect.DeepEqual(tc.want, have) {
@@ -59,11 +60,16 @@ func TestNWayUnion(t *testing.T) {
 	}{
 		{nil, ByKey{}},
 		{[]ByKey{{c("a")}}, ByKey{c("a")}},
+		{[]ByKey{{c("a")}, {c("a")}}, ByKey{c("a")}},
 		{[]ByKey{{c("a")}, {}}, ByKey{c("a")}},
 		{[]ByKey{{}, {c("b")}}, ByKey{c("b")}},
 		{[]ByKey{{c("a")}, {c("b")}}, ByKey{c("a"), c("b")}},
 		{
 			[]ByKey{{c("a"), c("c"), c("e")}, {c("c"), c("d")}, {c("b")}},
+			ByKey{c("a"), c("b"), c("c"), c("d"), c("e")},
+		},
+		{
+			[]ByKey{{c("c"), c("d")}, {c("b")}, {c("a"), c("c"), c("e")}},
 			ByKey{c("a"), c("b"), c("c"), c("d"), c("e")},
 		},
 	} {

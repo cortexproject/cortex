@@ -19,8 +19,6 @@
 package alertmanager
 
 import (
-	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"sort"
@@ -29,8 +27,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/common/log"
+
 	"github.com/weaveworks/mesh"
 )
+
+type promLog struct{}
+
+// Printf implements the mesh.Logger interface.
+func (p promLog) Printf(format string, args ...interface{}) {
+	log.Infof(format, args...)
+}
 
 func initMesh(addr, hwaddr, nickname, pw string) *mesh.Router {
 	host, portStr, err := net.SplitHostPort(addr)
@@ -63,7 +70,7 @@ func initMesh(addr, hwaddr, nickname, pw string) *mesh.Router {
 		ConnLimit:          64,
 		PeerDiscovery:      true,
 		TrustedSubnets:     []*net.IPNet{},
-	}, name, nickname, mesh.NullOverlay{}, log.New(ioutil.Discard, "", 0))
+	}, name, nickname, mesh.NullOverlay{}, promLog{})
 
 }
 

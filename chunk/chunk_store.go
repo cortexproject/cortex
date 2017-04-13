@@ -275,8 +275,8 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 			return nil, err
 		}
 
-		// If there is a metric name matcher, however we are fetching all metric name
-		// chunks, skip metric names which don't match the metric name matcher.
+		// We are fetching all metric name chunks, however if there is a metricNameMatcher,
+		// we only want metric names that match
 		if ok && !metricNameMatcher.Match(metricName) {
 			skippedMetricNames++
 			continue
@@ -374,7 +374,7 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 		}
 	}
 
-	// Merge chunkSets in order
+	// Merge chunkSets in order because we wish to keep label series together consecutively
 	return nWayIntersect(chunkSets), lastErr
 }
 

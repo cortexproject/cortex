@@ -200,13 +200,12 @@ func sortFlags(flags map[NormalizedName]*Flag) []*Flag {
 // "--getUrl" which may also be translated to "geturl" and everything will work.
 func (f *FlagSet) SetNormalizeFunc(n func(f *FlagSet, name string) NormalizedName) {
 	f.normalizeNameFunc = n
-	f.orderedFormal = f.orderedFormal[:0]
-	for k, v := range f.formal {
-		delete(f.formal, k)
-		nname := f.normalizeFlagName(string(k))
-		f.formal[nname] = v
-		f.orderedFormal = append(f.orderedFormal, v)
+	for k, v := range f.orderedFormal {
+		delete(f.formal, NormalizedName(v.Name))
+		nname := f.normalizeFlagName(v.Name)
 		v.Name = string(nname)
+		f.formal[nname] = v
+		f.orderedFormal[k] = v
 	}
 }
 

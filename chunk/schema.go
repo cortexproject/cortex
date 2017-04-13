@@ -227,7 +227,7 @@ func (originalEntries) GetWriteEntries(bucket Bucket, metricName model.LabelValu
 		result = append(result, IndexEntry{
 			TableName:  bucket.tableName,
 			HashValue:  bucket.hashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey([]byte(key), []byte(value), chunkIDBytes),
+			RangeValue: encodeRangeKey([]byte(key), []byte(value), chunkIDBytes),
 		})
 	}
 	return result, nil
@@ -252,7 +252,7 @@ func (originalEntries) GetReadMetricLabelQueries(bucket Bucket, metricName model
 		{
 			TableName:        bucket.tableName,
 			HashValue:        bucket.hashKey + ":" + string(metricName),
-			RangeValuePrefix: buildRangeKey([]byte(labelName)),
+			RangeValuePrefix: encodeRangeKey([]byte(labelName)),
 		},
 	}, nil
 }
@@ -265,7 +265,7 @@ func (originalEntries) GetReadMetricLabelValueQueries(bucket Bucket, metricName 
 		{
 			TableName:        bucket.tableName,
 			HashValue:        bucket.hashKey + ":" + string(metricName),
-			RangeValuePrefix: buildRangeKey([]byte(labelName), []byte(labelValue)),
+			RangeValuePrefix: encodeRangeKey([]byte(labelName), []byte(labelValue)),
 		},
 	}, nil
 }
@@ -286,7 +286,7 @@ func (base64Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue,
 		result = append(result, IndexEntry{
 			TableName:  bucket.tableName,
 			HashValue:  bucket.hashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey([]byte(key), encodedBytes, chunkIDBytes, chunkTimeRangeKeyV1),
+			RangeValue: encodeRangeKey([]byte(key), encodedBytes, chunkIDBytes, chunkTimeRangeKeyV1),
 		})
 	}
 	return result, nil
@@ -302,7 +302,7 @@ func (base64Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName mo
 		{
 			TableName:        bucket.tableName,
 			HashValue:        bucket.hashKey + ":" + string(metricName),
-			RangeValuePrefix: buildRangeKey([]byte(labelName), encodedBytes),
+			RangeValuePrefix: encodeRangeKey([]byte(labelName), encodedBytes),
 		},
 	}, nil
 }
@@ -315,7 +315,7 @@ func (labelNameInHashKeyEntries) GetWriteEntries(bucket Bucket, metricName model
 		{
 			TableName:  bucket.tableName,
 			HashValue:  bucket.hashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey(nil, nil, chunkIDBytes, chunkTimeRangeKeyV2),
+			RangeValue: encodeRangeKey(nil, nil, chunkIDBytes, chunkTimeRangeKeyV2),
 		},
 	}
 
@@ -327,7 +327,7 @@ func (labelNameInHashKeyEntries) GetWriteEntries(bucket Bucket, metricName model
 		entries = append(entries, IndexEntry{
 			TableName:  bucket.tableName,
 			HashValue:  fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, key),
-			RangeValue: buildRangeKey(nil, encodedBytes, chunkIDBytes, chunkTimeRangeKeyV1),
+			RangeValue: encodeRangeKey(nil, encodedBytes, chunkIDBytes, chunkTimeRangeKeyV1),
 		})
 	}
 
@@ -362,7 +362,7 @@ func (labelNameInHashKeyEntries) GetReadMetricLabelValueQueries(bucket Bucket, m
 		{
 			TableName:        bucket.tableName,
 			HashValue:        fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
-			RangeValuePrefix: buildRangeKey(nil, encodedBytes),
+			RangeValuePrefix: encodeRangeKey(nil, encodedBytes),
 		},
 	}, nil
 }
@@ -378,7 +378,7 @@ func (v5Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 		{
 			TableName:  bucket.tableName,
 			HashValue:  bucket.hashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV3),
+			RangeValue: encodeRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV3),
 		},
 	}
 
@@ -390,7 +390,7 @@ func (v5Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 		entries = append(entries, IndexEntry{
 			TableName:  bucket.tableName,
 			HashValue:  fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, key),
-			RangeValue: buildRangeKey(encodedThroughBytes, encodedValueBytes, chunkIDBytes, chunkTimeRangeKeyV4),
+			RangeValue: encodeRangeKey(encodedThroughBytes, encodedValueBytes, chunkIDBytes, chunkTimeRangeKeyV4),
 		})
 	}
 
@@ -440,7 +440,7 @@ func (v6Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 		{
 			TableName:  bucket.tableName,
 			HashValue:  bucket.hashKey + ":" + string(metricName),
-			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV3),
+			RangeValue: encodeRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV3),
 		},
 	}
 
@@ -451,7 +451,7 @@ func (v6Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 		entries = append(entries, IndexEntry{
 			TableName:  bucket.tableName,
 			HashValue:  fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, key),
-			RangeValue: buildRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV5),
+			RangeValue: encodeRangeKey(encodedThroughBytes, nil, chunkIDBytes, chunkTimeRangeKeyV5),
 			Value:      []byte(value),
 		})
 	}
@@ -469,7 +469,7 @@ func (v6Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue
 		{
 			TableName:       bucket.tableName,
 			HashValue:       bucket.hashKey + ":" + string(metricName),
-			RangeValueStart: buildRangeKey(encodedFromBytes),
+			RangeValueStart: encodeRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
@@ -480,7 +480,7 @@ func (v6Entries) GetReadMetricLabelQueries(bucket Bucket, metricName model.Label
 		{
 			TableName:       bucket.tableName,
 			HashValue:       fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
-			RangeValueStart: buildRangeKey(encodedFromBytes),
+			RangeValueStart: encodeRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
@@ -491,7 +491,7 @@ func (v6Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.
 		{
 			TableName:       bucket.tableName,
 			HashValue:       fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
-			RangeValueStart: buildRangeKey(encodedFromBytes),
+			RangeValueStart: encodeRangeKey(encodedFromBytes),
 		},
 	}, nil
 }
@@ -517,7 +517,7 @@ func (entries v7Entries) GetWriteEntries(bucket Bucket, metricName model.LabelVa
 	indexEntries = append(indexEntries, IndexEntry{
 		TableName:  bucket.tableName,
 		HashValue:  bucket.hashKey,
-		RangeValue: buildRangeKey(metricNameHashBytes[:], nil, nil, metricNameRangeKeyV1),
+		RangeValue: encodeRangeKey(metricNameHashBytes[:], nil, nil, metricNameRangeKeyV1),
 		Value:      []byte(metricName),
 	})
 

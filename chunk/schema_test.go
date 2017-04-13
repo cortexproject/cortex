@@ -241,7 +241,7 @@ const (
 
 // parseRangeValueType returns the type of rangeValue
 func parseRangeValueType(rangeValue []byte) (int, error) {
-	components := unbuildRangeKey(rangeValue)
+	components := decodeRangeKey(rangeValue)
 	switch {
 	case len(components) < 3:
 		return 0, fmt.Errorf("invalid range value: %x", rangeValue)

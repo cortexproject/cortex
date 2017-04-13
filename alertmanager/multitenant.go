@@ -197,7 +197,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.MeshNickname, "alertmanager.mesh.nickname", mustHostname(), "Mesh peer nickname")
 	flag.StringVar(&cfg.MeshPassword, "alertmanager.mesh.password", "", "Password to join the Mesh peer network (empty password disables encryption)")
 
-	flag.StringVar(&cfg.MeshPeerService, "alertmanager.mesh.peer.service", "alertmanager", "SRV service used to discover peers.")
+	flag.StringVar(&cfg.MeshPeerService, "alertmanager.mesh.peer.service", "mesh", "SRV service used to discover peers.")
 	flag.StringVar(&cfg.MeshPeerHost, "alertmanager.mesh.peer.host", "", "Hostname for mesh peers.")
 	flag.DurationVar(&cfg.MeshPeerPollInterval, "alertmanager.mesh.peer.poll-interval", 1*time.Minute, "Period with which to poll DNS for mesh peers.")
 }

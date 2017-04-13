@@ -69,29 +69,27 @@ func makeUserID() string {
 
 // makeConfig makes some arbitrary configuration.
 func makeConfig() configs.Config {
-	arbitraryKey := makeString("key%d")
-	arbitraryValue := makeString("value%d")
-	return configs.Config{arbitraryKey: arbitraryValue}
+	return configs.Config{
+		AlertmanagerConfig: makeString(`
+		    # Config no. %d.
+		    route:
+		      receiver: noop
+
+		    receivers:
+		    - name: noop`),
+		RulesFiles: nil,
+	}
 }
 
-type jsonObject map[string]interface{}
-
-func (j jsonObject) Reader(t *testing.T) io.Reader {
-	b, err := json.Marshal(j)
+func readerFromConfig(t *testing.T, config configs.Config) io.Reader {
+	b, err := json.Marshal(config)
 	require.NoError(t, err)
 	return bytes.NewReader(b)
 }
 
-func parseJSON(t *testing.T, b []byte) jsonObject {
-	var f jsonObject
-	err := json.Unmarshal(b, &f)
-	require.NoError(t, err, "Could not unmarshal JSON: %v", string(b))
-	return f
-}
-
-// parseConfigView parses a ConfigView from JSON.
-func parseConfigView(t *testing.T, b []byte) configs.ConfigView {
-	var x configs.ConfigView
+// parseView parses a configs.View from JSON.
+func parseView(t *testing.T, b []byte) configs.View {
+	var x configs.View
 	err := json.Unmarshal(b, &x)
 	require.NoError(t, err, "Could not unmarshal JSON: %v", string(b))
 	return x

@@ -61,7 +61,7 @@ func New(uri, migrationsDir string) (DB, error) {
 
 var statementBuilder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith
 
-func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.ConfigView, error) {
+func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error) {
 	rows, err := d.Select("id", "owner_id", "config").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
@@ -72,9 +72,9 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.ConfigView,
 		return nil, err
 	}
 	defer rows.Close()
-	cfgs := map[string]configs.ConfigView{}
+	cfgs := map[string]configs.View{}
 	for rows.Next() {
-		var cfg configs.ConfigView
+		var cfg configs.View
 		var cfgBytes []byte
 		var userID string
 		err = rows.Scan(&cfg.ID, &userID, &cfgBytes)
@@ -91,8 +91,8 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.ConfigView,
 }
 
 // GetConfig gets a configuration.
-func (d DB) GetConfig(userID string) (configs.ConfigView, error) {
-	var cfgView configs.ConfigView
+func (d DB) GetConfig(userID string) (configs.View, error) {
+	var cfgView configs.View
 	var cfgBytes []byte
 	err := d.Select("id", "config").
 		From("configs").
@@ -121,12 +121,12 @@ func (d DB) SetConfig(userID string, cfg configs.Config) error {
 }
 
 // GetAllConfigs gets all of the configs.
-func (d DB) GetAllConfigs() (map[string]configs.ConfigView, error) {
+func (d DB) GetAllConfigs() (map[string]configs.View, error) {
 	return d.findConfigs(activeConfig)
 }
 
 // GetConfigs gets all of the configs that have changed recently.
-func (d DB) GetConfigs(since configs.ID) (map[string]configs.ConfigView, error) {
+func (d DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
 	return d.findConfigs(squirrel.And{
 		activeConfig,
 		squirrel.Gt{"id": since},

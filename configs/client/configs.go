@@ -12,39 +12,19 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/weaveworks/cortex/configs"
 )
 
 // TODO: Extract configs client logic into go client library (ala users)
 
-// A ConfigID is the ID of a single users's Cortex configuration.
-type ConfigID int
-
-// A CortexConfig is a Cortex configuration for a single user.
-type CortexConfig struct {
-	// RulesFiles maps from a rules filename to file contents.
-	RulesFiles         map[string]string `json:"rules_files"`
-	AlertmanagerConfig string            `json:"alertmanager_config"`
+// ConfigsResponse is a response from server for GetConfigs.
+type ConfigsResponse struct {
+	// Configs maps user ID to their latest configs.View.
+	Configs map[string]configs.View `json:"configs"`
 }
 
-// CortexConfigView is what's returned from the Weave Cloud configs service
-// when we ask for all Cortex configurations.
-//
-// The configs service is essentially a JSON blob store that gives each
-// _version_ of a configuration a unique ID and guarantees that later versions
-// have greater IDs.
-type CortexConfigView struct {
-	ConfigID ConfigID     `json:"id"`
-	Config   CortexConfig `json:"config"`
-}
-
-// CortexConfigsResponse is a response from server for GetConfigs.
-type CortexConfigsResponse struct {
-	// Configs maps user ID to their latest CortexConfigView.
-	Configs map[string]CortexConfigView `json:"configs"`
-}
-
-func configsFromJSON(body io.Reader) (*CortexConfigsResponse, error) {
-	var configs CortexConfigsResponse
+func configsFromJSON(body io.Reader) (*ConfigsResponse, error) {
+	var configs ConfigsResponse
 	if err := json.NewDecoder(body).Decode(&configs); err != nil {
 		log.Errorf("configs: couldn't decode JSON body: %v", err)
 		return nil, err
@@ -54,20 +34,20 @@ func configsFromJSON(body io.Reader) (*CortexConfigsResponse, error) {
 }
 
 // GetLatestConfigID returns the last config ID from a set of configs.
-func (c CortexConfigsResponse) GetLatestConfigID() ConfigID {
-	latest := ConfigID(0)
+func (c ConfigsResponse) GetLatestConfigID() configs.ID {
+	latest := configs.ID(0)
 	for _, config := range c.Configs {
-		if config.ConfigID > latest {
-			latest = config.ConfigID
+		if config.ID > latest {
+			latest = config.ID
 		}
 	}
 	return latest
 }
 
-// GetRules gets the rules from the Cortex configuration.
+// RulesFromConfig gets the rules from the Cortex configuration.
 //
 // Strongly inspired by `loadGroups` in Prometheus.
-func (c CortexConfig) GetRules() ([]rules.Rule, error) {
+func RulesFromConfig(c configs.Config) ([]rules.Rule, error) {
 	result := []rules.Rule{}
 	for fn, content := range c.RulesFiles {
 		stmts, err := promql.ParseStmts(content)
@@ -94,8 +74,8 @@ func (c CortexConfig) GetRules() ([]rules.Rule, error) {
 	return result, nil
 }
 
-// GetAlertmanagerConfig returns the Alertmanager config from the Cortex configuration.
-func (c CortexConfig) GetAlertmanagerConfig() (*config.Config, error) {
+// AlertmanagerConfigFromConfig returns the Alertmanager config from the Cortex configuration.
+func AlertmanagerConfigFromConfig(c configs.Config) (*config.Config, error) {
 	cfg, err := config.Load(c.AlertmanagerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing Alertmanager config: %s", err)
@@ -103,7 +83,7 @@ func (c CortexConfig) GetAlertmanagerConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-func getConfigs(endpoint string, timeout time.Duration, since ConfigID) (*CortexConfigsResponse, error) {
+func getConfigs(endpoint string, timeout time.Duration, since configs.ID) (*ConfigsResponse, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -127,8 +107,8 @@ type AlertManagerConfigsAPI struct {
 }
 
 // GetConfigs returns all Cortex configurations from a configs API server
-// that have been updated after the given ConfigID was last updated.
-func (c *AlertManagerConfigsAPI) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
+// that have been updated after the given configs.ID was last updated.
+func (c *AlertManagerConfigsAPI) GetConfigs(since configs.ID) (*ConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -144,8 +124,8 @@ type RulesAPI struct {
 }
 
 // GetConfigs returns all Cortex configurations from a configs API server
-// that have been updated after the given ConfigID was last updated.
-func (c *RulesAPI) GetConfigs(since ConfigID) (*CortexConfigsResponse, error) {
+// that have been updated after the given configs.ID was last updated.
+func (c *RulesAPI) GetConfigs(since configs.ID) (*ConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)

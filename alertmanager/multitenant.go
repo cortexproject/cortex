@@ -18,7 +18,8 @@ import (
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	configs "github.com/weaveworks/cortex/configs/client"
+	"github.com/weaveworks/cortex/configs"
+	configs_client "github.com/weaveworks/cortex/configs/client"
 	"github.com/weaveworks/cortex/util"
 	"github.com/weaveworks/mesh"
 )
@@ -87,15 +88,15 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
-	configsAPI configs.AlertManagerConfigsAPI
+	configsAPI configs_client.AlertManagerConfigsAPI
 
 	// All the organization configurations that we have. Only used for instrumentation.
-	cfgs map[string]configs.CortexConfig
+	cfgs map[string]configs.Config
 
 	alertmanagersMtx sync.Mutex
 	alertmanagers    map[string]*Alertmanager
 
-	latestConfig configs.ConfigID
+	latestConfig configs.ID
 	latestMutex  sync.RWMutex
 
 	meshRouter *gossipFactory
@@ -118,7 +119,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 
 	mrouter.ConnectionMaker.InitiateConnections(cfg.MeshPeers.slice(), true)
 
-	configsAPI := configs.AlertManagerConfigsAPI{
+	configsAPI := configs_client.AlertManagerConfigsAPI{
 		URL:     cfg.ConfigsAPIURL.URL,
 		Timeout: cfg.ClientTimeout,
 	}
@@ -127,7 +128,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 	return &MultitenantAlertmanager{
 		cfg:           cfg,
 		configsAPI:    configsAPI,
-		cfgs:          map[string]configs.CortexConfig{},
+		cfgs:          map[string]configs.Config{},
 		alertmanagers: map[string]*Alertmanager{},
 		meshRouter:    &gf,
 		stop:          make(chan struct{}),
@@ -168,7 +169,7 @@ func (am *MultitenantAlertmanager) Stop() {
 
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
-func (am *MultitenantAlertmanager) loadAllConfigs() map[string]configs.CortexConfigView {
+func (am *MultitenantAlertmanager) loadAllConfigs() map[string]configs.View {
 	backoff := minBackoff
 	for {
 		cfgs, err := am.poll()
@@ -195,9 +196,9 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 }
 
 // poll the configuration server. Not re-entrant.
-func (am *MultitenantAlertmanager) poll() (map[string]configs.CortexConfigView, error) {
+func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
 	configID := am.latestConfig
-	var cfgs *configs.CortexConfigsResponse
+	var cfgs *configs_client.ConfigsResponse
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
 		cfgs, err = am.configsAPI.GetConfigs(configID)
@@ -213,7 +214,7 @@ func (am *MultitenantAlertmanager) poll() (map[string]configs.CortexConfigView, 
 	return cfgs.Configs, nil
 }
 
-func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.CortexConfigView) {
+func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.View) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	log.Debugf("Adding %d configurations", len(cfgs))
 	for userID, config := range cfgs {
@@ -230,8 +231,8 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.CortexC
 
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
-func (am *MultitenantAlertmanager) setConfig(userID string, config configs.CortexConfig) error {
-	amConfig, err := config.GetAlertmanagerConfig()
+func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Config) error {
+	amConfig, err := configs_client.AlertmanagerConfigFromConfig(config)
 	if err != nil {
 		// XXX: This means that if a user has a working configuration and
 		// they submit a broken one, we'll keep processing the last known

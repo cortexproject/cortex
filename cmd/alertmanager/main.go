@@ -51,6 +51,7 @@ func main() {
 	}
 	defer server.Shutdown()
 
+	server.HTTP.PathPrefix("/alertmanager/status").Handler(multiAM.GetStatusHandler())
 	server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(multiAM))
 	server.Run()
 }

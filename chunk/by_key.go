@@ -56,9 +56,9 @@ func merge(a, b ByKey) ByKey {
 	return result
 }
 
-// nWayMerge will merge and dedupe n lists of chunks.
+// nWayUnion will merge and dedupe n lists of chunks.
 // lists must be sorted and not contain dupes.
-func nWayMerge(sets []ByKey) ByKey {
+func nWayUnion(sets []ByKey) ByKey {
 	l := len(sets)
 	switch l {
 	case 0:
@@ -70,10 +70,10 @@ func nWayMerge(sets []ByKey) ByKey {
 	default:
 		var (
 			split = l / 2
-			left  = nWayMerge(sets[:split])
-			right = nWayMerge(sets[split:])
+			left  = nWayUnion(sets[:split])
+			right = nWayUnion(sets[split:])
 		)
-		return nWayMerge([]ByKey{left, right})
+		return nWayUnion([]ByKey{left, right})
 	}
 }
 

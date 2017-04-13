@@ -303,7 +303,7 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 		}
 	}
 
-	return nWayMerge(chunkSets), lastErr
+	return nWayUnion(chunkSets), lastErr
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {

@@ -50,7 +50,7 @@ func TestMerge(t *testing.T) {
 	}
 }
 
-func TestNWayMerge(t *testing.T) {
+func TestNWayUnion(t *testing.T) {
 	for _, tc := range []struct {
 		in   []ByKey
 		want ByKey
@@ -65,7 +65,7 @@ func TestNWayMerge(t *testing.T) {
 			ByKey{c("a"), c("b"), c("c"), c("d"), c("e")},
 		},
 	} {
-		have := nWayMerge(tc.in)
+		have := nWayUnion(tc.in)
 		if !reflect.DeepEqual(have, tc.want) {
 			t.Errorf("%v != %v", have, tc.want)
 		}

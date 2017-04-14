@@ -11,8 +11,8 @@ type config struct {
 	id  configs.ID
 }
 
-func (c config) toView() configs.ConfigView {
-	return configs.ConfigView{
+func (c config) toView() configs.View {
+	return configs.View{
 		ID:     c.id,
 		Config: c.cfg,
 	}
@@ -33,10 +33,10 @@ func New(_, _ string) (*DB, error) {
 }
 
 // GetConfig gets the user's configuration.
-func (d *DB) GetConfig(userID string) (configs.ConfigView, error) {
+func (d *DB) GetConfig(userID string) (configs.View, error) {
 	c, ok := d.cfgs[userID]
 	if !ok {
-		return configs.ConfigView{}, sql.ErrNoRows
+		return configs.View{}, sql.ErrNoRows
 	}
 	return c.toView(), nil
 }
@@ -49,8 +49,8 @@ func (d *DB) SetConfig(userID string, cfg configs.Config) error {
 }
 
 // GetAllConfigs gets all of the configs.
-func (d *DB) GetAllConfigs() (map[string]configs.ConfigView, error) {
-	cfgs := map[string]configs.ConfigView{}
+func (d *DB) GetAllConfigs() (map[string]configs.View, error) {
+	cfgs := map[string]configs.View{}
 	for user, c := range d.cfgs {
 		cfgs[user] = c.toView()
 	}
@@ -58,8 +58,8 @@ func (d *DB) GetAllConfigs() (map[string]configs.ConfigView, error) {
 }
 
 // GetConfigs gets all of the configs that have changed recently.
-func (d *DB) GetConfigs(since configs.ID) (map[string]configs.ConfigView, error) {
-	cfgs := map[string]configs.ConfigView{}
+func (d *DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
+	cfgs := map[string]configs.View{}
 	for user, c := range d.cfgs {
 		if c.id > since {
 			cfgs[user] = c.toView()

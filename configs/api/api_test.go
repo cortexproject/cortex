@@ -44,16 +44,16 @@ type configurable struct {
 }
 
 // post a config
-func (c configurable) post(t *testing.T, userID string, config configs.Config) configs.ConfigView {
-	w := requestAsUser(t, userID, "POST", c.Endpoint, jsonObject(config).Reader(t))
+func (c configurable) post(t *testing.T, userID string, config configs.Config) configs.View {
+	w := requestAsUser(t, userID, "POST", c.Endpoint, readerFromConfig(t, config))
 	require.Equal(t, http.StatusNoContent, w.Code)
 	return c.get(t, userID)
 }
 
 // get a config
-func (c configurable) get(t *testing.T, userID string) configs.ConfigView {
+func (c configurable) get(t *testing.T, userID string) configs.View {
 	w := requestAsUser(t, userID, "GET", c.Endpoint, nil)
-	return parseConfigView(t, w.Body.Bytes())
+	return parseView(t, w.Body.Bytes())
 }
 
 // configs returns 401 to requests without authentication.
@@ -97,15 +97,14 @@ func Test_PostConfig_CreatesConfig(t *testing.T) {
 
 	userID := makeUserID()
 	config := makeConfig()
-	content := jsonObject(config)
 	for _, c := range allClients {
 		{
-			w := requestAsUser(t, userID, "POST", c.Endpoint, content.Reader(t))
+			w := requestAsUser(t, userID, "POST", c.Endpoint, readerFromConfig(t, config))
 			assert.Equal(t, http.StatusNoContent, w.Code)
 		}
 		{
 			w := requestAsUser(t, userID, "GET", c.Endpoint, nil)
-			assert.Equal(t, config, parseConfigView(t, w.Body.Bytes()).Config)
+			assert.Equal(t, config, parseView(t, w.Body.Bytes()).Config)
 		}
 	}
 }
@@ -154,7 +153,7 @@ func Test_GetAllConfigs_Empty(t *testing.T) {
 		var found api.ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{}}, found)
+		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{}}, found)
 	}
 }
 
@@ -173,7 +172,7 @@ func Test_GetAllConfigs(t *testing.T) {
 		var found api.ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{
+		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
 			userID: view,
 		}}, found)
 	}
@@ -196,7 +195,7 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 		var found api.ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{
+		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
 			userID: lastCreated,
 		}}, found)
 	}
@@ -217,7 +216,7 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 		var found api.ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)
 		assert.NoError(t, err, "Could not unmarshal JSON")
-		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.ConfigView{
+		assert.Equal(t, api.ConfigsView{Configs: map[string]configs.View{
 			userID3: config3,
 		}}, found)
 	}

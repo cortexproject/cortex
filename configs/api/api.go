@@ -160,14 +160,14 @@ func validateAlertmanagerConfig(cfg string) error {
 	return nil
 }
 
-// ConfigsView renders multiple configurations, mapping userID to ConfigView.
+// ConfigsView renders multiple configurations, mapping userID to configs.View.
 // Exposed only for tests.
 type ConfigsView struct {
-	Configs map[string]configs.ConfigView `json:"configs"`
+	Configs map[string]configs.View `json:"configs"`
 }
 
 func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
-	var cfgs map[string]configs.ConfigView
+	var cfgs map[string]configs.View
 	var err error
 	rawSince := r.FormValue("since")
 	if rawSince == "" {

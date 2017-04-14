@@ -24,11 +24,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // DB is the interface for the database.
 type DB interface {
-	GetConfig(userID string) (configs.ConfigView, error)
+	GetConfig(userID string) (configs.View, error)
 	SetConfig(userID string, cfg configs.Config) error
 
-	GetAllConfigs() (map[string]configs.ConfigView, error)
-	GetConfigs(since configs.ID) (map[string]configs.ConfigView, error)
+	GetAllConfigs() (map[string]configs.View, error)
+	GetConfigs(since configs.ID) (map[string]configs.View, error)
 
 	Close() error
 }

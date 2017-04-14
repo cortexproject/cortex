@@ -12,7 +12,8 @@ import (
 	"github.com/prometheus/prometheus/rules"
 
 	"github.com/weaveworks/common/instrument"
-	configs "github.com/weaveworks/cortex/configs/client"
+	"github.com/weaveworks/cortex/configs"
+	configs_client "github.com/weaveworks/cortex/configs/client"
 )
 
 const (
@@ -62,16 +63,16 @@ func (w workItem) Defer(interval time.Duration) workItem {
 }
 
 type scheduler struct {
-	configsAPI         configs.RulesAPI
+	configsAPI         configs_client.RulesAPI
 	evaluationInterval time.Duration
 	q                  *SchedulingQueue
 
 	// All the configurations that we have. Only used for instrumentation.
-	cfgs map[string]configs.CortexConfig
+	cfgs map[string]configs.Config
 
 	pollInterval time.Duration
 
-	latestConfig configs.ConfigID
+	latestConfig configs.ID
 	latestMutex  sync.RWMutex
 
 	stop chan struct{}
@@ -79,13 +80,13 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(configsAPI configs.RulesAPI, evaluationInterval, pollInterval time.Duration) scheduler {
+func newScheduler(configsAPI configs_client.RulesAPI, evaluationInterval, pollInterval time.Duration) scheduler {
 	return scheduler{
 		configsAPI:         configsAPI,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
-		cfgs:               map[string]configs.CortexConfig{},
+		cfgs:               map[string]configs.Config{},
 
 		stop: make(chan struct{}),
 		done: make(chan struct{}),
@@ -122,7 +123,7 @@ func (s *scheduler) Stop() {
 
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
-func (s *scheduler) loadAllConfigs() map[string]configs.CortexConfigView {
+func (s *scheduler) loadAllConfigs() map[string]configs.View {
 	backoff := minBackoff
 	for {
 		cfgs, err := s.poll()
@@ -149,9 +150,9 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 }
 
 // poll the configuration server. Not re-entrant.
-func (s *scheduler) poll() (map[string]configs.CortexConfigView, error) {
+func (s *scheduler) poll() (map[string]configs.View, error) {
 	configID := s.latestConfig
-	var cfgs *configs.CortexConfigsResponse
+	var cfgs *configs_client.ConfigsResponse
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
 		cfgs, err = s.configsAPI.GetConfigs(configID)
@@ -167,11 +168,11 @@ func (s *scheduler) poll() (map[string]configs.CortexConfigView, error) {
 	return cfgs.Configs, nil
 }
 
-func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.CortexConfigView) {
+func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.View) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	log.Debugf("Adding %d configurations", len(cfgs))
 	for userID, config := range cfgs {
-		rules, err := config.Config.GetRules()
+		rules, err := configs_client.RulesFromConfig(config.Config)
 		if err != nil {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known

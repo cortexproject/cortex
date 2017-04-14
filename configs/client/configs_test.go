@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/weaveworks/cortex/configs"
 )
 
 func TestJSONDecoding(t *testing.T) {
@@ -23,10 +24,10 @@ func TestJSONDecoding(t *testing.T) {
 }
 `))
 	assert.Nil(t, err)
-	expected := CortexConfigsResponse{Configs: map[string]CortexConfigView{
+	expected := ConfigsResponse{Configs: map[string]configs.View{
 		"2": {
-			ConfigID: 1,
-			Config: CortexConfig{
+			ID: 1,
+			Config: configs.Config{
 				RulesFiles: map[string]string{
 					"recording.rules": ":scope_authfe_request_duration_seconds:99quantile = histogram_quantile(0.99, sum(rate(scope_request_duration_seconds_bucket{ws=\"false\",job=\"authfe\",route!~\"(admin|metrics).*\"}[5m])) by (le))\n",
 				},

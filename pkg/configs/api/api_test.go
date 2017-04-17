@@ -222,18 +222,17 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 	}
 }
 
-func Test_ValidateAlertmanagerConfig(t *testing.T) {
-	tests := []struct {
-		config      string
-		shouldFail  bool
-		errContains string
-	}{
-		{
-			config:      "invalid config",
-			shouldFail:  true,
-			errContains: "error parsing YAML",
-		}, {
-			config: `
+var amCfgValidationTests = []struct {
+	config      string
+	shouldFail  bool
+	errContains string
+}{
+	{
+		config:      "invalid config",
+		shouldFail:  true,
+		errContains: "error parsing YAML",
+	}, {
+		config: `
         route:
           receiver: noop
         templates:
@@ -241,10 +240,10 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
 
         receivers:
         - name: noop`,
-			shouldFail:  true,
-			errContains: "template files are not supported in Cortex yet",
-		}, {
-			config: `
+		shouldFail:  true,
+		errContains: "template files are not supported in Cortex yet",
+	}, {
+		config: `
         global:
           smtp_smarthost: localhost:25
           smtp_from: alertmanager@example.org
@@ -255,13 +254,14 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
         - name: noop
           email_configs:
           - to: myteam@foobar.org`,
-			shouldFail:  true,
-			errContains: "email notifications are not supported in Cortex yet",
-		},
-	}
+		shouldFail:  true,
+		errContains: "email notifications are not supported in Cortex yet",
+	},
+}
 
+func Test_ValidateAlertmanagerConfig(t *testing.T) {
 	userID := makeUserID()
-	for i, test := range tests {
+	for i, test := range amCfgValidationTests {
 		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager/validate", strings.NewReader(test.config))
 		data := map[string]string{}
 		err := json.Unmarshal(resp.Body.Bytes(), &data)
@@ -278,5 +278,21 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
 
 		assert.Equal(t, "error", data["status"], "test case %d", i)
 		assert.Contains(t, data["error"], test.errContains, "test case %d", i)
+	}
+}
+
+func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
+	userID := makeUserID()
+	for i, test := range amCfgValidationTests {
+		cfg := configs.Config{AlertmanagerConfig: test.config}
+		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", readerFromConfig(t, cfg))
+
+		if !test.shouldFail {
+			assert.Equal(t, http.StatusNoContent, resp.Code, "test case %d", i)
+			continue
+		}
+
+		assert.Equal(t, http.StatusBadRequest, resp.Code, "test case %d", i)
+		assert.Contains(t, resp.Body.String(), test.errContains, "test case %d", i)
 	}
 }

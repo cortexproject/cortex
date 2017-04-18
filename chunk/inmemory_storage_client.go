@@ -107,11 +107,21 @@ func (m *MockStorage) BatchWrite(_ context.Context, batch WriteBatch) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	for _, req := range *batch.(*mockWriteBatch) {
+	mockBatch := *batch.(*mockWriteBatch)
+	seenWrites := map[string]bool{}
+
+	for _, req := range mockBatch {
 		table, ok := m.tables[req.tableName]
 		if !ok {
 			return fmt.Errorf("table not found")
 		}
+
+		// Check for duplicate writes by RangeKey in same batch
+		key := fmt.Sprintf("%s:%s:%x", req.tableName, req.hashValue, req.rangeValue)
+		if _, ok := seenWrites[key]; ok {
+			return fmt.Errorf("Dupe write in batch")
+		}
+		seenWrites[key] = true
 
 		log.Debugf("Write %s/%x", req.hashValue, req.rangeValue)
 
@@ -125,8 +135,11 @@ func (m *MockStorage) BatchWrite(_ context.Context, batch WriteBatch) error {
 			items = append(items, mockItem{})
 			copy(items[i+1:], items[i:])
 		} else {
-			// Ignore duplicate write
-			continue
+			// Return error if duplicate write and not metric name entry
+			itemComponents := decodeRangeKey(items[i].rangeValue)
+			if !bytes.Equal(itemComponents[3], metricNameRangeKeyV1) {
+				return fmt.Errorf("Dupe write")
+			}
 		}
 		items[i] = mockItem{
 			rangeValue: req.rangeValue,

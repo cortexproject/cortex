@@ -48,6 +48,9 @@ type IndexQuery struct {
 	// - If neither is set, must read all keys for that row.
 	RangeValuePrefix []byte
 	RangeValueStart  []byte
+
+	// Filters for querying
+	ValueEq []byte
 }
 
 // IndexEntry describes an entry in the chunk index
@@ -492,6 +495,7 @@ func (v6Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.
 			TableName:       bucket.tableName,
 			HashValue:       fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
 			RangeValueStart: encodeRangeKey(encodedFromBytes),
+			ValueEq:         []byte(labelValue),
 		},
 	}, nil
 }

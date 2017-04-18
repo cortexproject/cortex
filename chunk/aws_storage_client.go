@@ -240,6 +240,16 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		}
 	}
 
+	// Filters
+	if entry.ValueEq != nil {
+		input.KeyConditions[valueKey] = &dynamodb.Condition{
+			AttributeValueList: []*dynamodb.AttributeValue{
+				{B: entry.ValueEq},
+			},
+			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorEq),
+		}
+	}
+
 	request := a.queryRequestFn(input)
 	backoff := minBackoff
 	for page := request; page != nil; page = page.NextPage() {

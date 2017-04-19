@@ -54,7 +54,7 @@ type IndexEntry struct {
 	RangeValueStart  []byte
 
 	// Filters for querying
-	ValueEq []byte
+	ValueEqual []byte
 }
 
 // v1Schema was:
@@ -413,7 +413,7 @@ func (v6Entries) GetReadMetricLabelValueEntries(from, _ uint32, tableName, hashK
 			TableName:       tableName,
 			HashValue:       hashKey + ":" + string(labelName),
 			RangeValueStart: buildRangeKey(encodedFromBytes),
-			ValueEq:         []byte(labelValue),
+			ValueEqual:      []byte(labelValue),
 		},
 	}, nil
 }

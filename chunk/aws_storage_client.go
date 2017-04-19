@@ -241,10 +241,10 @@ func (a awsStorageClient) QueryPages(ctx context.Context, entry IndexEntry, call
 	}
 
 	// Filters
-	if entry.ValueEq != nil {
+	if entry.ValueEqual != nil {
 		input.KeyConditions[valueKey] = &dynamodb.Condition{
 			AttributeValueList: []*dynamodb.AttributeValue{
-				{B: entry.ValueEq},
+				{B: entry.ValueEqual},
 			},
 			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorEq),
 		}

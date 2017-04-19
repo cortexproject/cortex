@@ -194,12 +194,12 @@ func (m *MockStorage) QueryPages(_ context.Context, entry IndexEntry, callback f
 	}
 
 	// Filters
-	if entry.ValueEq != nil {
-		log.Debugf("Filter Value EQ = %s", entry.ValueEq)
+	if entry.ValueEqual != nil {
+		log.Debugf("Filter Value EQ = %s", entry.ValueEqual)
 
 		filtered := make([]mockItem, 0)
 		for _, v := range items {
-			if bytes.Equal(v.value, entry.ValueEq) {
+			if bytes.Equal(v.value, entry.ValueEqual) {
 				filtered = append(filtered, v)
 			}
 		}

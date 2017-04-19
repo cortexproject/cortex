@@ -111,13 +111,13 @@ func (m *mockDynamoDBClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRe
 		valueFilter          []byte
 		valueFilterType      *string
 	)
-	if input.KeyConditions[rangeKey] != nil {
-		rangeValueFilter = input.KeyConditions[rangeKey].AttributeValueList[0].B
-		rangeValueFilterType = *input.KeyConditions[rangeKey].ComparisonOperator
+	if c, ok := input.KeyConditions[rangeKey]; ok {
+		rangeValueFilter = c.AttributeValueList[0].B
+		rangeValueFilterType = *c.ComparisonOperator
 	}
-	if input.KeyConditions[valueKey] != nil {
-		valueFilter = input.KeyConditions[valueKey].AttributeValueList[0].B
-		valueFilterType = input.KeyConditions[valueKey].ComparisonOperator
+	if c, ok := input.KeyConditions[valueKey]; ok {
+		valueFilter = c.AttributeValueList[0].B
+		valueFilterType = c.ComparisonOperator
 	}
 
 	// Filter by HashValue, RangeValue and Value if it exists

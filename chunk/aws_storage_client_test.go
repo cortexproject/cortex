@@ -124,16 +124,16 @@ func (m *mockDynamoDBClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRe
 	items := m.tables[*input.TableName].items[hashValue]
 	for _, item := range items {
 		rangeValue := item[rangeKey].B
-		if rangeValueFilterType == "GE" && bytes.Compare(rangeValue, rangeValueFilter) < 0 {
+		if rangeValueFilterType == dynamodb.ComparisonOperatorGe && bytes.Compare(rangeValue, rangeValueFilter) < 0 {
 			continue
 		}
-		if rangeValueFilterType == "BEGINS_WITH" && !bytes.HasPrefix(rangeValue, rangeValueFilter) {
+		if rangeValueFilterType == dynamodb.ComparisonOperatorBeginsWith && !bytes.HasPrefix(rangeValue, rangeValueFilter) {
 			continue
 		}
 
 		if item[valueKey] != nil {
 			value := item[valueKey].B
-			if valueFilter != nil && *valueFilterType == "EQ" && !bytes.Equal(value, valueFilter) {
+			if valueFilter != nil && *valueFilterType == dynamodb.ComparisonOperatorEq && !bytes.Equal(value, valueFilter) {
 				continue
 			}
 		}

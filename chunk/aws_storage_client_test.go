@@ -292,12 +292,12 @@ func TestDynamoDBClientQueryPages(t *testing.T) {
 			[]IndexEntry{entries[3], entries[4]},
 		},
 		{
-			"check ValueEq",
+			"check ValueEqual",
 			IndexEntry{
 				TableName:        "table",
 				HashValue:        "foo",
 				RangeValuePrefix: []byte("bar"),
-				ValueEq:          []byte("20"),
+				ValueEqual:       []byte("20"),
 			},
 			[]IndexEntry{entries[1]},
 		},

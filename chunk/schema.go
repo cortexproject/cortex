@@ -517,7 +517,7 @@ func (entries v7Entries) GetWriteEntries(bucket Bucket, metricName model.LabelVa
 	indexEntries = append(indexEntries, IndexEntry{
 		TableName:  bucket.tableName,
 		HashValue:  bucket.hashKey,
-		RangeValue: encodeRangeKey(metricNameHashBytes[:], nil, nil, metricNameRangeKeyV1),
+		RangeValue: encodeRangeKey(encodeBase64Bytes(metricNameHashBytes[:]), nil, nil, metricNameRangeKeyV1),
 		Value:      []byte(metricName),
 	})
 

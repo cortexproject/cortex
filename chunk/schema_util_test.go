@@ -76,6 +76,7 @@ func TestParseMetricNameRangeValue(t *testing.T) {
 		// version 1 (id 6) metric name range keys (used in v7 Schema) have
 		// metric name hash in first 'dimension', however just returns the value
 		{[]byte("a1b2c3d4\x00\x00\x006\x00"), "foo", "foo"},
+		{encodeRangeKey([]byte("bar"), nil, nil, metricNameRangeKeyV1), "bar", "bar"},
 	} {
 		metricName, err := parseMetricNameRangeValue(c.encoded, []byte(c.value))
 		require.NoError(t, err)

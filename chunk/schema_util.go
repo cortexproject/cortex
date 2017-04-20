@@ -39,6 +39,13 @@ func decodeRangeKey(value []byte) [][]byte {
 	return components
 }
 
+func encodeBase64Bytes(bytes []byte) []byte {
+	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
+	encoded := make([]byte, encodedLen, encodedLen)
+	base64.RawStdEncoding.Encode(encoded, bytes)
+	return encoded
+}
+
 func encodeBase64Value(value model.LabelValue) []byte {
 	encodedLen := base64.RawStdEncoding.EncodedLen(len(value))
 	encoded := make([]byte, encodedLen, encodedLen)

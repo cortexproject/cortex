@@ -411,7 +411,7 @@ func TestSchemaRangeKey(t *testing.T) {
 				{
 					TableName:  table,
 					HashValue:  "userid:d0",
-					RangeValue: []byte(string(fooSha1Hash[:]) + "\x00\x00\x006\x00"),
+					RangeValue: append(encodeBase64Bytes(fooSha1Hash[:]), []byte("\x00\x00\x006\x00")...),
 					Value:      []byte("foo"),
 				},
 				{

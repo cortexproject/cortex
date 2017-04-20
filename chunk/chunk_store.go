@@ -161,7 +161,7 @@ func (c *Store) updateIndex(ctx context.Context, userID string, chunks []Chunk) 
 // calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all
 // the chunks it is given.
 func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch, error) {
-	seenIndexEntries := map[string]bool{}
+	seenIndexEntries := map[string]struct{}{}
 
 	writeReqs := c.storage.NewWriteBatch()
 	for _, chunk := range chunks {
@@ -177,16 +177,16 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 		indexEntriesPerChunk.Observe(float64(len(entries)))
 
 		// Remove duplicate entries based on tableName:hashValue:rangeValue
-		filteredEntries := []IndexEntry{}
+		unseenEntries := []IndexEntry{}
 		for _, entry := range entries {
 			key := fmt.Sprintf("%s:%s:%x", entry.TableName, entry.HashValue, entry.RangeValue)
 			if _, ok := seenIndexEntries[key]; !ok {
-				seenIndexEntries[key] = true
-				filteredEntries = append(filteredEntries, entry)
+				seenIndexEntries[key] = struct{}{}
+				unseenEntries = append(unseenEntries, entry)
 			}
 		}
 
-		for _, entry := range filteredEntries {
+		for _, entry := range unseenEntries {
 			rowWrites.Observe(entry.HashValue, 1)
 			writeReqs.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
 		}

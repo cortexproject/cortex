@@ -56,24 +56,29 @@ func (s *SRVDiscovery) Stop() {
 	<-s.done
 }
 
+func (s *SRVDiscovery) updatePeers() {
+	var addrs []*net.SRV
+	statusCode := "200"
+	startTime := time.Now()
+	_, addrs, err := net.LookupSRV(s.Service, s.Proto, s.Hostname)
+	endTime := time.Now()
+	if err != nil {
+		statusCode = "500"
+		log.Warnf("Error discovering services for %s %s %s: %v", s.Service, s.Proto, s.Hostname, err)
+	} else {
+		s.Addresses <- addrs
+	}
+	srvRequestDuration.WithLabelValues(s.Service, s.Proto, s.Hostname, statusCode).Observe(endTime.Sub(startTime).Seconds())
+}
+
 func (s *SRVDiscovery) loop() {
 	defer close(s.done)
 	ticker := time.NewTicker(s.PollInterval)
+	s.updatePeers()
 	for {
 		select {
 		case <-ticker.C:
-			var addrs []*net.SRV
-			statusCode := "200"
-			startTime := time.Now()
-			_, addrs, err := net.LookupSRV(s.Service, s.Proto, s.Hostname)
-			endTime := time.Now()
-			if err != nil {
-				statusCode = "500"
-				log.Warnf("Error discovering services for %s %s %s: %v", s.Service, s.Proto, s.Hostname, err)
-			} else {
-				s.Addresses <- addrs
-			}
-			srvRequestDuration.WithLabelValues(s.Service, s.Proto, s.Hostname, statusCode).Observe(endTime.Sub(startTime).Seconds())
+			s.updatePeers()
 		case <-s.stop:
 			ticker.Stop()
 			return

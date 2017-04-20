@@ -7,10 +7,11 @@ func (cs ByKey) Len() int           { return len(cs) }
 func (cs ByKey) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
 func (cs ByKey) Less(i, j int) bool { return cs[i].externalKey() < cs[j].externalKey() }
 
-// unique will remove duplicates from the input
+// unique will remove duplicates from the input.
+// list must be sorted.
 func unique(cs ByKey) ByKey {
 	if len(cs) == 0 {
-		return nil
+		return ByKey{}
 	}
 
 	result := make(ByKey, 1, len(cs))
@@ -53,6 +54,27 @@ func merge(a, b ByKey) ByKey {
 		result = append(result, b[j])
 	}
 	return result
+}
+
+// nWayUnion will merge and dedupe n lists of chunks.
+// lists must be sorted and not contain dupes.
+func nWayUnion(sets []ByKey) ByKey {
+	l := len(sets)
+	switch l {
+	case 0:
+		return ByKey{}
+	case 1:
+		return sets[0]
+	case 2:
+		return merge(sets[0], sets[1])
+	default:
+		var (
+			split = l / 2
+			left  = nWayUnion(sets[:split])
+			right = nWayUnion(sets[split:])
+		)
+		return nWayUnion([]ByKey{left, right})
+	}
 }
 
 // nWayIntersect will interesct n sorted lists of chunks.

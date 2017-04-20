@@ -12,6 +12,13 @@ import (
 	"github.com/weaveworks/cortex/util"
 )
 
+const (
+	secondsInHour      = int64(time.Hour / time.Second)
+	secondsInDay       = int64(24 * time.Hour / time.Second)
+	millisecondsInHour = int64(time.Hour / time.Millisecond)
+	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
+)
+
 // SchemaConfig contains the config for our chunk index schemas
 type SchemaConfig struct {
 	PeriodicTableConfig
@@ -32,6 +39,9 @@ type SchemaConfig struct {
 
 	// After this time, we will read and write v6 schemas.
 	V6SchemaFrom util.DayValue
+
+	// After this time, we will read and write v7 schemas.
+	V7SchemaFrom util.DayValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -44,6 +54,7 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.V4SchemaFrom, "dynamodb.v4-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v4 schema.")
 	f.Var(&cfg.V5SchemaFrom, "dynamodb.v5-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v5 schema.")
 	f.Var(&cfg.V6SchemaFrom, "dynamodb.v6-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v6 schema.")
+	f.Var(&cfg.V7SchemaFrom, "dynamodb.v7-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v7 schema.")
 }
 
 func (cfg *SchemaConfig) tableForBucket(bucketStart int64) string {
@@ -54,33 +65,50 @@ func (cfg *SchemaConfig) tableForBucket(bucketStart int64) string {
 	return cfg.TablePrefix + strconv.Itoa(int(bucketStart/int64(cfg.TablePeriod/time.Second)))
 }
 
-type bucketCallback func(from, through uint32, tableName, hashKey string) ([]IndexEntry, error)
+// Bucket describes a range of time with a tableName and hashKey
+type Bucket struct {
+	from      uint32
+	through   uint32
+	tableName string
+	hashKey   string
+}
 
-func (cfg SchemaConfig) hourlyBuckets(from, through model.Time, userID string, metricName model.LabelValue, callback bucketCallback) ([]IndexEntry, error) {
+func (cfg SchemaConfig) hourlyBuckets(from, through model.Time, userID string) []Bucket {
 	var (
 		fromHour    = from.Unix() / secondsInHour
 		throughHour = through.Unix() / secondsInHour
-		result      = []IndexEntry{}
+		result      = []Bucket{}
 	)
+
+	// If through ends on the hour, don't include the upcoming hour
+	if through.Unix()%secondsInHour == 0 {
+		throughHour--
+	}
 
 	for i := fromHour; i <= throughHour; i++ {
 		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInHour))
-		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInDay))
-		entries, err := callback(uint32(relativeFrom), uint32(relativeThrough), cfg.tableForBucket(i*secondsInHour), fmt.Sprintf("%s:%d:%s", userID, i, metricName))
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, entries...)
+		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
+		result = append(result, Bucket{
+			from:      uint32(relativeFrom),
+			through:   uint32(relativeThrough),
+			tableName: cfg.tableForBucket(i * secondsInHour),
+			hashKey:   fmt.Sprintf("%s:%d", userID, i),
+		})
 	}
-	return result, nil
+	return result
 }
 
-func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string, metricName model.LabelValue, callback bucketCallback) ([]IndexEntry, error) {
+func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string) []Bucket {
 	var (
 		fromDay    = from.Unix() / secondsInDay
 		throughDay = through.Unix() / secondsInDay
-		result     = []IndexEntry{}
+		result     = []Bucket{}
 	)
+
+	// If through ends on 00:00 of the day, don't include the upcoming day
+	if through.Unix()%secondsInDay == 0 {
+		throughDay--
+	}
 
 	for i := fromDay; i <= throughDay; i++ {
 		// The idea here is that the hash key contains the bucket start time (rounded to
@@ -95,13 +123,14 @@ func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string, me
 
 		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInDay))
 		relativeThrough := util.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
-		entries, err := callback(uint32(relativeFrom), uint32(relativeThrough), cfg.tableForBucket(i*secondsInDay), fmt.Sprintf("%s:d%d:%s", userID, i, metricName))
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, entries...)
+		result = append(result, Bucket{
+			from:      uint32(relativeFrom),
+			through:   uint32(relativeThrough),
+			tableName: cfg.tableForBucket(i * secondsInDay),
+			hashKey:   fmt.Sprintf("%s:d%d", userID, i),
+		})
 	}
-	return result, nil
+	return result
 }
 
 // compositeSchema is a Schema which delegates to various schemas depending
@@ -146,6 +175,10 @@ func newCompositeSchema(cfg SchemaConfig) (Schema, error) {
 		schemas = append(schemas, compositeSchemaEntry{cfg.V6SchemaFrom.Time, v6Schema(cfg)})
 	}
 
+	if cfg.V7SchemaFrom.IsSet() {
+		schemas = append(schemas, compositeSchemaEntry{cfg.V7SchemaFrom.Time, v7Schema(cfg)})
+	}
+
 	if !sort.IsSorted(byStart(schemas)) {
 		return nil, fmt.Errorf("schemas not in time-sorted order")
 	}
@@ -153,7 +186,63 @@ func newCompositeSchema(cfg SchemaConfig) (Schema, error) {
 	return compositeSchema{schemas}, nil
 }
 
-func (c compositeSchema) forSchemas(from, through model.Time, callback func(from, through model.Time, schema Schema) ([]IndexEntry, error)) ([]IndexEntry, error) {
+func (c compositeSchema) forSchemasIndexQuery(from, through model.Time, callback func(from, through model.Time, schema Schema) ([]IndexQuery, error)) ([]IndexQuery, error) {
+	if len(c.schemas) == 0 {
+		return nil, nil
+	}
+
+	// first, find the schema with the highest start _before or at_ from
+	i := sort.Search(len(c.schemas), func(i int) bool {
+		return c.schemas[i].start > from
+	})
+	if i > 0 {
+		i--
+	} else {
+		// This could happen if we get passed a sample from before 1970.
+		i = 0
+		from = c.schemas[0].start
+	}
+
+	// next, find the schema with the lowest start _after_ through
+	j := sort.Search(len(c.schemas), func(j int) bool {
+		return c.schemas[j].start > through
+	})
+
+	min := func(a, b model.Time) model.Time {
+		if a < b {
+			return a
+		}
+		return b
+	}
+
+	start := from
+	result := []IndexQuery{}
+	for ; i < j; i++ {
+		nextSchemaStarts := model.Latest
+		if i+1 < len(c.schemas) {
+			nextSchemaStarts = c.schemas[i+1].start
+		}
+
+		// If the next schema starts at the same time as this one,
+		// skip this one.
+		if nextSchemaStarts == c.schemas[i].start {
+			continue
+		}
+
+		end := min(through, nextSchemaStarts-1)
+		entries, err := callback(start, end, c.schemas[i].Schema)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, entries...)
+		start = nextSchemaStarts
+	}
+
+	return result, nil
+}
+
+func (c compositeSchema) forSchemasIndexEntry(from, through model.Time, callback func(from, through model.Time, schema Schema) ([]IndexEntry, error)) ([]IndexEntry, error) {
 	if len(c.schemas) == 0 {
 		return nil, nil
 	}
@@ -210,25 +299,31 @@ func (c compositeSchema) forSchemas(from, through model.Time, callback func(from
 }
 
 func (c compositeSchema) GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
-	return c.forSchemas(from, through, func(from, through model.Time, schema Schema) ([]IndexEntry, error) {
+	return c.forSchemasIndexEntry(from, through, func(from, through model.Time, schema Schema) ([]IndexEntry, error) {
 		return schema.GetWriteEntries(from, through, userID, metricName, labels, chunkID)
 	})
 }
 
-func (c compositeSchema) GetReadEntriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexEntry, error) {
-	return c.forSchemas(from, through, func(from, through model.Time, schema Schema) ([]IndexEntry, error) {
-		return schema.GetReadEntriesForMetric(from, through, userID, metricName)
+func (c compositeSchema) GetReadQueries(from, through model.Time, userID string) ([]IndexQuery, error) {
+	return c.forSchemasIndexQuery(from, through, func(from, through model.Time, schema Schema) ([]IndexQuery, error) {
+		return schema.GetReadQueries(from, through, userID)
 	})
 }
 
-func (c compositeSchema) GetReadEntriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexEntry, error) {
-	return c.forSchemas(from, through, func(from, through model.Time, schema Schema) ([]IndexEntry, error) {
-		return schema.GetReadEntriesForMetricLabel(from, through, userID, metricName, labelName)
+func (c compositeSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexQuery, error) {
+	return c.forSchemasIndexQuery(from, through, func(from, through model.Time, schema Schema) ([]IndexQuery, error) {
+		return schema.GetReadQueriesForMetric(from, through, userID, metricName)
 	})
 }
 
-func (c compositeSchema) GetReadEntriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
-	return c.forSchemas(from, through, func(from, through model.Time, schema Schema) ([]IndexEntry, error) {
-		return schema.GetReadEntriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
+func (c compositeSchema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
+	return c.forSchemasIndexQuery(from, through, func(from, through model.Time, schema Schema) ([]IndexQuery, error) {
+		return schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
+	})
+}
+
+func (c compositeSchema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
+	return c.forSchemasIndexQuery(from, through, func(from, through model.Time, schema Schema) ([]IndexQuery, error) {
+		return schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
 	})
 }

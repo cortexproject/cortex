@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
 	"reflect"
@@ -20,13 +21,16 @@ type mockSchema int
 func (mockSchema) GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	return nil, nil
 }
-func (mockSchema) GetReadEntriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexEntry, error) {
+func (mockSchema) GetReadQueries(from, through model.Time, userID string) ([]IndexQuery, error) {
 	return nil, nil
 }
-func (mockSchema) GetReadEntriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexEntry, error) {
+func (mockSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexQuery, error) {
 	return nil, nil
 }
-func (mockSchema) GetReadEntriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexEntry, error) {
+func (mockSchema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
+	return nil, nil
+}
+func (mockSchema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
 	return nil, nil
 }
 
@@ -229,6 +233,48 @@ func TestSchemaHashKeys(t *testing.T) {
 	}
 }
 
+// range value types
+const (
+	MetricNameRangeValue = iota + 1
+	ChunkTimeRangeValue
+)
+
+// parseRangeValueType returns the type of rangeValue
+func parseRangeValueType(rangeValue []byte) (int, error) {
+	components := decodeRangeKey(rangeValue)
+	switch {
+	case len(components) < 3:
+		return 0, fmt.Errorf("invalid range value: %x", rangeValue)
+
+	// v1 & v2 chunk time range values
+	case len(components) == 3:
+		return ChunkTimeRangeValue, nil
+
+	// chunk time range values
+	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
+		return ChunkTimeRangeValue, nil
+
+	case bytes.Equal(components[3], chunkTimeRangeKeyV2):
+		return ChunkTimeRangeValue, nil
+
+	case bytes.Equal(components[3], chunkTimeRangeKeyV3):
+		return ChunkTimeRangeValue, nil
+
+	case bytes.Equal(components[3], chunkTimeRangeKeyV4):
+		return ChunkTimeRangeValue, nil
+
+	case bytes.Equal(components[3], chunkTimeRangeKeyV5):
+		return ChunkTimeRangeValue, nil
+
+	// metric name range values
+	case bytes.Equal(components[3], metricNameRangeKeyV1):
+		return MetricNameRangeValue, nil
+
+	default:
+		return 0, fmt.Errorf("unrecognised range value type. version: '%v'", string(components[3]))
+	}
+}
+
 func TestSchemaRangeKey(t *testing.T) {
 	const (
 		userID     = "userid"
@@ -247,11 +293,13 @@ func TestSchemaRangeKey(t *testing.T) {
 		labelBuckets  = v4Schema(cfg)
 		tsRangeKeys   = v5Schema(cfg)
 		v6RangeKeys   = v6Schema(cfg)
+		v7RangeKeys   = v7Schema(cfg)
 		metric        = model.Metric{
 			model.MetricNameLabel: metricName,
 			"bar": "bary",
 			"baz": "bazy",
 		}
+		fooSha1Hash = sha1.Sum([]byte("foo"))
 	)
 
 	mkEntries := func(hashKey string, callback func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte)) []IndexEntry {
@@ -357,6 +405,34 @@ func TestSchemaRangeKey(t *testing.T) {
 				},
 			},
 		},
+		{
+			v7RangeKeys,
+			[]IndexEntry{
+				{
+					TableName:  table,
+					HashValue:  "userid:d0",
+					RangeValue: append(encodeBase64Bytes(fooSha1Hash[:]), []byte("\x00\x00\x006\x00")...),
+					Value:      []byte("foo"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x003\x00"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:bar",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
+					Value:      []byte("bary"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:baz",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
+					Value:      []byte("bazy"),
+				},
+			},
+		},
 	} {
 		t.Run(fmt.Sprintf("TestSchameRangeKey[%d]", i), func(t *testing.T) {
 			have, err := tc.Schema.GetWriteEntries(
@@ -375,8 +451,17 @@ func TestSchemaRangeKey(t *testing.T) {
 
 			// Test we can parse the resulting range keys
 			for _, entry := range have {
-				_, _, _, err := parseRangeValue(entry.RangeValue, entry.Value)
+				rangeValueType, err := parseRangeValueType(entry.RangeValue)
 				require.NoError(t, err)
+
+				switch rangeValueType {
+				case MetricNameRangeValue:
+					_, err := parseMetricNameRangeValue(entry.RangeValue, entry.Value)
+					require.NoError(t, err)
+				case ChunkTimeRangeValue:
+					_, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+					require.NoError(t, err)
+				}
 			}
 		})
 	}

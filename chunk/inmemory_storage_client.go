@@ -107,11 +107,21 @@ func (m *MockStorage) BatchWrite(_ context.Context, batch WriteBatch) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	for _, req := range *batch.(*mockWriteBatch) {
+	mockBatch := *batch.(*mockWriteBatch)
+	seenWrites := map[string]bool{}
+
+	for _, req := range mockBatch {
 		table, ok := m.tables[req.tableName]
 		if !ok {
 			return fmt.Errorf("table not found")
 		}
+
+		// Check for duplicate writes by RangeKey in same batch
+		key := fmt.Sprintf("%s:%s:%x", req.tableName, req.hashValue, req.rangeValue)
+		if _, ok := seenWrites[key]; ok {
+			return fmt.Errorf("Dupe write in batch")
+		}
+		seenWrites[key] = true
 
 		log.Debugf("Write %s/%x", req.hashValue, req.rangeValue)
 
@@ -125,7 +135,11 @@ func (m *MockStorage) BatchWrite(_ context.Context, batch WriteBatch) error {
 			items = append(items, mockItem{})
 			copy(items[i+1:], items[i:])
 		} else {
-			return fmt.Errorf("Dupe write")
+			// Return error if duplicate write and not metric name entry
+			itemComponents := decodeRangeKey(items[i].rangeValue)
+			if !bytes.Equal(itemComponents[3], metricNameRangeKeyV1) {
+				return fmt.Errorf("Dupe write")
+			}
 		}
 		items[i] = mockItem{
 			rangeValue: req.rangeValue,
@@ -138,35 +152,35 @@ func (m *MockStorage) BatchWrite(_ context.Context, batch WriteBatch) error {
 }
 
 // QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(_ context.Context, entry IndexEntry, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (m *MockStorage) QueryPages(_ context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	table, ok := m.tables[entry.TableName]
+	table, ok := m.tables[query.TableName]
 	if !ok {
 		return fmt.Errorf("table not found")
 	}
 
-	items, ok := table.items[entry.HashValue]
+	items, ok := table.items[query.HashValue]
 	if !ok {
 		return nil
 	}
 
-	if entry.RangeValuePrefix != nil {
-		log.Debugf("Lookup prefix %s/%x (%d)", entry.HashValue, entry.RangeValuePrefix, len(items))
+	if query.RangeValuePrefix != nil {
+		log.Debugf("Lookup prefix %s/%x (%d)", query.HashValue, query.RangeValuePrefix, len(items))
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
-			if bytes.Compare(items[i].rangeValue, entry.RangeValuePrefix) > 0 {
+			if bytes.Compare(items[i].rangeValue, query.RangeValuePrefix) > 0 {
 				return true
 			}
-			return bytes.HasPrefix(items[i].rangeValue, entry.RangeValuePrefix)
+			return bytes.HasPrefix(items[i].rangeValue, query.RangeValuePrefix)
 		})
 		j := sort.Search(len(items)-i, func(j int) bool {
-			if bytes.Compare(items[i+j].rangeValue, entry.RangeValuePrefix) < 0 {
+			if bytes.Compare(items[i+j].rangeValue, query.RangeValuePrefix) < 0 {
 				return false
 			}
-			return !bytes.HasPrefix(items[i+j].rangeValue, entry.RangeValuePrefix)
+			return !bytes.HasPrefix(items[i+j].rangeValue, query.RangeValuePrefix)
 		})
 
 		log.Debugf("  found range [%d:%d)", i, i+j)
@@ -175,12 +189,12 @@ func (m *MockStorage) QueryPages(_ context.Context, entry IndexEntry, callback f
 		}
 		items = items[i : i+j]
 
-	} else if entry.RangeValueStart != nil {
-		log.Debugf("Lookup range %s/%x -> ... (%d)", entry.HashValue, entry.RangeValueStart, len(items))
+	} else if query.RangeValueStart != nil {
+		log.Debugf("Lookup range %s/%x -> ... (%d)", query.HashValue, query.RangeValueStart, len(items))
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
-			return bytes.Compare(items[i].rangeValue, entry.RangeValueStart) >= 0
+			return bytes.Compare(items[i].rangeValue, query.RangeValueStart) >= 0
 		})
 
 		log.Debugf("  found range [%d)", i)
@@ -190,7 +204,7 @@ func (m *MockStorage) QueryPages(_ context.Context, entry IndexEntry, callback f
 		items = items[i:]
 
 	} else {
-		log.Debugf("Lookup %s/* (%d)", entry.HashValue, len(items))
+		log.Debugf("Lookup %s/* (%d)", query.HashValue, len(items))
 	}
 
 	result := mockReadBatch{}

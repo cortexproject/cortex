@@ -161,6 +161,8 @@ func (c *Store) updateIndex(ctx context.Context, userID string, chunks []Chunk) 
 // calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all
 // the chunks it is given.
 func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch, error) {
+	seenIndexEntries := map[string]struct{}{}
+
 	writeReqs := c.storage.NewWriteBatch()
 	for _, chunk := range chunks {
 		metricName, err := util.ExtractMetricNameFromMetric(chunk.Metric)
@@ -174,7 +176,17 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 		}
 		indexEntriesPerChunk.Observe(float64(len(entries)))
 
+		// Remove duplicate entries based on tableName:hashValue:rangeValue
+		unseenEntries := []IndexEntry{}
 		for _, entry := range entries {
+			key := fmt.Sprintf("%s:%s:%x", entry.TableName, entry.HashValue, entry.RangeValue)
+			if _, ok := seenIndexEntries[key]; !ok {
+				seenIndexEntries[key] = struct{}{}
+				unseenEntries = append(unseenEntries, entry)
+			}
+		}
+
+		for _, entry := range unseenEntries {
 			rowWrites.Observe(entry.HashValue, 1)
 			writeReqs.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
 		}
@@ -191,7 +203,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 
 	// Fetch chunk descriptors (just ID really) from storage
-	chunks, err := c.lookupMatchers(ctx, from, through, matchers)
+	chunks, err := c.lookupChunksByMatchers(ctx, from, through, matchers)
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}
@@ -241,10 +253,13 @@ outer:
 	return filteredChunks, nil
 }
 
-func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
-	metricName, matchers, err := util.ExtractMetricNameFromMatchers(matchers)
-	if err != nil {
-		return nil, err
+func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
+	metricNameMatcher, matchers, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
+
+	// Only lookup by metric name if the matcher is of type equal, otherwise we
+	// have to fetch chunks for all metric names as other metric names could match.
+	if ok && metricNameMatcher.Type == metric.Equal {
+		return c.lookupChunksByMetricName(ctx, from, through, matchers, metricNameMatcher.Value)
 	}
 
 	userID, err := user.Extract(ctx)
@@ -252,38 +267,114 @@ func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, ma
 		return nil, err
 	}
 
-	if len(matchers) == 0 {
-		entries, err := c.schema.GetReadEntriesForMetric(from, through, userID, metricName)
-		if err != nil {
-			return nil, err
-		}
-		return c.lookupEntries(ctx, entries, nil)
+	// If there is no metric name, we want return chunks for all metric names
+	metricNameQueries, err := c.schema.GetReadQueries(from, through, userID)
+	if err != nil {
+		return nil, err
+	}
+	metricNameEntries, err := c.lookupEntriesByQueries(ctx, metricNameQueries)
+	if err != nil {
+		return nil, err
 	}
 
 	incomingChunkSets := make(chan ByKey)
 	incomingErrors := make(chan error)
+	skippedMetricNames := 0
+
+	for _, metricNameEntry := range metricNameEntries {
+		metricName, err := parseMetricNameRangeValue(metricNameEntry.RangeValue, metricNameEntry.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		// We are fetching all metric name chunks, however if there is a metricNameMatcher,
+		// we only want metric names that match
+		if ok && !metricNameMatcher.Match(metricName) {
+			skippedMetricNames++
+			continue
+		}
+
+		go func(metricName model.LabelValue) {
+			chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
+			if err != nil {
+				incomingErrors <- err
+			} else {
+				incomingChunkSets <- chunks
+			}
+		}(metricName)
+	}
+
+	var chunkSets []ByKey
+	var lastErr error
+	for i := 0; i < (len(metricNameEntries) - skippedMetricNames); i++ {
+		select {
+		case incoming := <-incomingChunkSets:
+			chunkSets = append(chunkSets, incoming)
+		case err := <-incomingErrors:
+			lastErr = err
+		}
+	}
+
+	return nWayUnion(chunkSets), lastErr
+}
+
+func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {
+	userID, err := user.Extract(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Just get chunks for metric if there are no matchers
+	if len(matchers) == 0 {
+		queries, err := c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
+		if err != nil {
+			return nil, err
+		}
+
+		entries, err := c.lookupEntriesByQueries(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		return c.convertIndexEntriesToChunks(ctx, entries, nil)
+	}
+
+	// Otherwise get chunks which include other matchers
+	incomingChunkSets := make(chan ByKey)
+	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
 		go func(matcher *metric.LabelMatcher) {
-			var entries []IndexEntry
+			// Lookup IndexQuery's
+			var queries []IndexQuery
 			var err error
 			if matcher.Type != metric.Equal {
-				entries, err = c.schema.GetReadEntriesForMetricLabel(from, through, userID, metricName, matcher.Name)
+				queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
 			} else {
-				entries, err = c.schema.GetReadEntriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
+				queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
 			}
 			if err != nil {
 				incomingErrors <- err
 				return
 			}
-			incoming, err := c.lookupEntries(ctx, entries, matcher)
+
+			// Lookup IndexEntry's
+			entries, err := c.lookupEntriesByQueries(ctx, queries)
+			if err != nil {
+				incomingErrors <- err
+				return
+			}
+
+			// Convert IndexEntry's into chunks
+			chunks, err := c.convertIndexEntriesToChunks(ctx, entries, matcher)
 			if err != nil {
 				incomingErrors <- err
 			} else {
-				incomingChunkSets <- incoming
+				incomingChunkSets <- chunks
 			}
 		}(matcher)
 	}
 
+	// Receive chunkSets from all matchers
 	var chunkSets []ByKey
 	var lastErr error
 	for i := 0; i < len(matchers); i++ {
@@ -295,77 +386,84 @@ func (c *Store) lookupMatchers(ctx context.Context, from, through model.Time, ma
 		}
 	}
 
+	// Merge chunkSets in order because we wish to keep label series together consecutively
 	return nWayIntersect(chunkSets), lastErr
 }
 
-func (c *Store) lookupEntries(ctx context.Context, entries []IndexEntry, matcher *metric.LabelMatcher) (ByKey, error) {
-	incomingChunkSets := make(chan ByKey)
+func (c *Store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+	incomingEntries := make(chan []IndexEntry)
 	incomingErrors := make(chan error)
-	for _, entry := range entries {
-		go func(entry IndexEntry) {
-			incoming, err := c.lookupEntry(ctx, entry, matcher)
+	for _, query := range queries {
+		go func(query IndexQuery) {
+			entries, err := c.lookupEntriesByQuery(ctx, query)
 			if err != nil {
 				incomingErrors <- err
 			} else {
-				incomingChunkSets <- incoming
+				incomingEntries <- entries
 			}
-		}(entry)
+		}(query)
 	}
 
-	var chunks ByKey
+	// Combine the results into one slice
+	var entries []IndexEntry
 	var lastErr error
-	for i := 0; i < len(entries); i++ {
+	for i := 0; i < len(queries); i++ {
 		select {
-		case incoming := <-incomingChunkSets:
-			chunks = merge(chunks, incoming)
+		case incoming := <-incomingEntries:
+			entries = append(entries, incoming...)
 		case err := <-incomingErrors:
 			lastErr = err
 		}
 	}
 
-	return chunks, lastErr
+	return entries, lastErr
 }
 
-func (c *Store) lookupEntry(ctx context.Context, entry IndexEntry, matcher *metric.LabelMatcher) (ByKey, error) {
-	var chunkSet ByKey
-	var processingError error
-	if err := c.storage.QueryPages(ctx, entry, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
-		processingError = processResponse(ctx, resp, &chunkSet, matcher)
-		return processingError == nil && !lastPage
+func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]IndexEntry, error) {
+	var entries []IndexEntry
+
+	if err := c.storage.QueryPages(ctx, query, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
+		for i := 0; i < resp.Len(); i++ {
+			entries = append(entries, IndexEntry{
+				TableName:  query.TableName,
+				HashValue:  query.HashValue,
+				RangeValue: resp.RangeValue(i),
+				Value:      resp.Value(i),
+			})
+		}
+		return !lastPage
 	}); err != nil {
 		log.Errorf("Error querying storage: %v", err)
 		return nil, err
-	} else if processingError != nil {
-		log.Errorf("Error processing storage response: %v", processingError)
-		return nil, processingError
 	}
-	sort.Sort(ByKey(chunkSet))
-	chunkSet = unique(chunkSet)
-	return chunkSet, nil
+
+	return entries, nil
 }
 
-func processResponse(ctx context.Context, resp ReadBatch, chunkSet *ByKey, matcher *metric.LabelMatcher) error {
+func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []IndexEntry, matcher *metric.LabelMatcher) (ByKey, error) {
 	userID, err := user.Extract(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for i := 0; i < resp.Len(); i++ {
-		chunkKey, labelValue, metadataInIndex, err := parseRangeValue(resp.RangeValue(i), resp.Value(i))
+	var chunkSet ByKey
+
+	for _, entry := range entries {
+		chunkKey, labelValue, metadataInIndex, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		chunk, err := parseExternalKey(userID, chunkKey)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// This can be removed in Dev 2017, 13 months after the last chunks
 		// was written with metadata in the index.
-		if metadataInIndex && resp.Value(i) != nil {
-			if err := json.Unmarshal(resp.Value(i), &chunk); err != nil {
-				return err
+		if metadataInIndex && entry.Value != nil {
+			if err := json.Unmarshal(entry.Value, &chunk); err != nil {
+				return nil, err
 			}
 			chunk.metadataInIndex = true
 		}
@@ -374,9 +472,12 @@ func processResponse(ctx context.Context, resp ReadBatch, chunkSet *ByKey, match
 			log.Debug("Dropping chunk for non-matching metric ", chunk.Metric)
 			continue
 		}
-		*chunkSet = append(*chunkSet, chunk)
+		chunkSet = append(chunkSet, chunk)
 	}
-	return nil
+
+	// Return chunks sorted and deduped because they will be merged with other sets
+	sort.Sort(chunkSet)
+	return unique(chunkSet), nil
 }
 
 func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, error) {

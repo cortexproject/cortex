@@ -5,12 +5,13 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+
 	"fmt"
 
 	"github.com/prometheus/common/model"
 )
 
-func buildRangeKey(ss ...[]byte) []byte {
+func encodeRangeKey(ss ...[]byte) []byte {
 	length := 0
 	for _, s := range ss {
 		length += len(s) + 1
@@ -21,6 +22,28 @@ func buildRangeKey(ss ...[]byte) []byte {
 		i += len(s) + 1
 	}
 	return output
+}
+
+func decodeRangeKey(value []byte) [][]byte {
+	components := make([][]byte, 0, 5)
+	i, j := 0, 0
+	for j < len(value) {
+		if value[j] != 0 {
+			j++
+			continue
+		}
+		components = append(components, value[i:j])
+		j++
+		i = j
+	}
+	return components
+}
+
+func encodeBase64Bytes(bytes []byte) []byte {
+	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
+	encoded := make([]byte, encodedLen, encodedLen)
+	base64.RawStdEncoding.Encode(encoded, bytes)
+	return encoded
 }
 
 func encodeBase64Value(value model.LabelValue) []byte {
@@ -55,23 +78,32 @@ func decodeTime(bs []byte) uint32 {
 	return binary.BigEndian.Uint32(buf)
 }
 
-func parseRangeValue(rangeValue []byte, value []byte) (string, model.LabelValue, bool, error) {
-	components := make([][]byte, 0, 5)
-	i, j := 0, 0
-	for j < len(rangeValue) {
-		if rangeValue[j] != 0 {
-			j++
-			continue
-		}
+// parseMetricNameRangeValue returns the metric name stored in metric name
+// range values. Currently checks range value key and returns the value as the
+// metric name.
+func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValue, error) {
+	components := decodeRangeKey(rangeValue)
+	switch {
+	case len(components) < 4:
+		return "", fmt.Errorf("invalid metric name range value: %x", rangeValue)
 
-		components = append(components, rangeValue[i:j])
-		j++
-		i = j
+	// v1 has the metric name as the value (with the hash as the first component)
+	case bytes.Equal(components[3], metricNameRangeKeyV1):
+		return model.LabelValue(value), nil
+
+	default:
+		return "", fmt.Errorf("unrecognised metricNameRangeKey version: '%v'", string(components[3]))
 	}
+}
+
+// parseChunkTimeRangeValue returns the chunkKey, labelValue and metadataInIndex
+// for chunk time range values.
+func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (string, model.LabelValue, bool, error) {
+	components := decodeRangeKey(rangeValue)
 
 	switch {
 	case len(components) < 3:
-		return "", "", false, fmt.Errorf("invalid range value: %x", rangeValue)
+		return "", "", false, fmt.Errorf("invalid chunk time range value: %x", rangeValue)
 
 	// v1 & v2 schema had three components - label name, label value and chunk ID.
 	// No version number.
@@ -80,32 +112,31 @@ func parseRangeValue(rangeValue []byte, value []byte) (string, model.LabelValue,
 
 	// v3 schema had four components - label name, label value, chunk ID and version.
 	// "version" is 1 and label value is base64 encoded.
-	case bytes.Equal(components[3], rangeKeyV1):
+	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
 		labelValue, err := decodeBase64Value(components[1])
 		return string(components[2]), labelValue, false, err
 
 	// v4 schema wrote v3 range keys and a new range key - version 2,
 	// with four components - <empty>, <empty>, chunk ID and version.
-	case bytes.Equal(components[3], rangeKeyV2):
+	case bytes.Equal(components[3], chunkTimeRangeKeyV2):
 		return string(components[2]), model.LabelValue(""), false, nil
 
 	// v5 schema version 3 range key is chunk end time, <empty>, chunk ID, version
-	case bytes.Equal(components[3], rangeKeyV3):
+	case bytes.Equal(components[3], chunkTimeRangeKeyV3):
 		return string(components[2]), model.LabelValue(""), false, nil
 
 	// v5 schema version 4 range key is chunk end time, label value, chunk ID, version
-	case bytes.Equal(components[3], rangeKeyV4):
+	case bytes.Equal(components[3], chunkTimeRangeKeyV4):
 		labelValue, err := decodeBase64Value(components[1])
 		return string(components[2]), labelValue, false, err
 
 	// v6 schema added version 5 range keys, which have the label value written in
 	// to the value, not the range key. So they are [chunk end time, <empty>, chunk ID, version].
-	case bytes.Equal(components[3], rangeKeyV5):
+	case bytes.Equal(components[3], chunkTimeRangeKeyV5):
 		labelValue := model.LabelValue(value)
 		return string(components[2]), labelValue, false, nil
 
 	default:
-		return "", model.LabelValue(""), false, fmt.Errorf("unrecognised version: '%v'", string(components[3]))
+		return "", model.LabelValue(""), false, fmt.Errorf("unrecognised chunkTimeRangeKey version: '%v'", string(components[3]))
 	}
-
 }

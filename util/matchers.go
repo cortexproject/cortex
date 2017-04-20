@@ -10,6 +10,12 @@ import (
 // SplitFiltersAndMatchers splits empty matchers off, which are treated as filters, see #220
 func SplitFiltersAndMatchers(allMatchers []*metric.LabelMatcher) (filters, matchers []*metric.LabelMatcher) {
 	for _, matcher := range allMatchers {
+		// If a matcher matches "", we need to fetch possible chunks where
+		// there is no value and will therefore not be in our label index.
+		// e.g. {foo=""} and {foo!="bar"} both match "", so we need to return
+		// chunks which do not have a foo label set. When looking entries in
+		// the index, we should ignore this matcher to fetch all possible chunks
+		// and then filter on the matcher after the chunks have been fetched.
 		if matcher.Match("") {
 			filters = append(filters, matcher)
 		} else {
@@ -29,20 +35,25 @@ func ExtractMetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
 	return "", fmt.Errorf("no MetricNameLabel for chunk")
 }
 
-// ExtractMetricNameFromMatchers extracts the metric name from a set of matchers
-func ExtractMetricNameFromMatchers(matchers []*metric.LabelMatcher) (model.LabelValue, []*metric.LabelMatcher, error) {
+// ExtractMetricNameMatcherFromMatchers extracts the metric name from a set of matchers
+func ExtractMetricNameMatcherFromMatchers(matchers []*metric.LabelMatcher) (*metric.LabelMatcher, []*metric.LabelMatcher, bool) {
+	// Handle the case where there is no metric name and all matchers have been
+	// filtered out e.g. {foo=""}.
+	if len(matchers) == 0 {
+		return nil, matchers, false
+	}
+
 	outMatchers := make([]*metric.LabelMatcher, len(matchers)-1)
 	for i, matcher := range matchers {
 		if matcher.Name != model.MetricNameLabel {
 			continue
 		}
-		if matcher.Type != metric.Equal {
-			return "", nil, fmt.Errorf("must have equality matcher for MetricNameLabel")
-		}
-		metricName := matcher.Value
+
+		// Copy other matchers, excluding the found metric name matcher
 		copy(outMatchers, matchers[:i])
 		copy(outMatchers[i:], matchers[i+1:])
-		return metricName, outMatchers, nil
+		return matcher, outMatchers, true
 	}
-	return "", nil, fmt.Errorf("no matcher for MetricNameLabel")
+	// Return all matchers if none are metric name matchers
+	return nil, matchers, false
 }

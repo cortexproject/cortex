@@ -17,7 +17,8 @@ func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
 	fs := flag.NewFlagSet("test", flag.PanicOnError)
 	cfg.RegisterFlags(fs)
 	fs.Parse(nil)
-	cfg.AlertmanagerURL = alertmanagerURL
+	cfg.AlertmanagerURL.Set(alertmanagerURL)
+	cfg.AlertmanagerDiscovery = false
 
 	// TODO: Populate distributor and chunk store arguments to enable
 	// other kinds of tests.

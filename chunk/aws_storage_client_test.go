@@ -108,16 +108,10 @@ func (m *mockDynamoDBClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRe
 	var (
 		rangeValueFilter     []byte
 		rangeValueFilterType string
-		valueFilter          []byte
-		valueFilterType      *string
 	)
 	if c, ok := input.KeyConditions[rangeKey]; ok {
 		rangeValueFilter = c.AttributeValueList[0].B
 		rangeValueFilterType = *c.ComparisonOperator
-	}
-	if c, ok := input.KeyConditions[valueKey]; ok {
-		valueFilter = c.AttributeValueList[0].B
-		valueFilterType = c.ComparisonOperator
 	}
 
 	// Filter by HashValue, RangeValue and Value if it exists
@@ -133,8 +127,13 @@ func (m *mockDynamoDBClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRe
 
 		if item[valueKey] != nil {
 			value := item[valueKey].B
-			if valueFilter != nil && *valueFilterType == dynamodb.ComparisonOperatorEq && !bytes.Equal(value, valueFilter) {
-				continue
+
+			// Apply filterExpression if it exists (supporting only v = :v)
+			if input.FilterExpression != nil && *input.FilterExpression == fmt.Sprintf("%s = :v", valueKey) {
+				filterValue := input.ExpressionAttributeValues[":v"].B
+				if !bytes.Equal(value, filterValue) {
+					continue
+				}
 			}
 		}
 

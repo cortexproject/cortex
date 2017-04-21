@@ -176,9 +176,9 @@ type MultitenantAlertmanagerConfig struct {
 	MeshNickname   string
 	MeshPassword   string
 
-	MeshPeerHost         string
-	MeshPeerService      string
-	MeshPeerPollInterval time.Duration
+	MeshPeerHost            string
+	MeshPeerService         string
+	MeshPeerRefreshInterval time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -199,7 +199,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	flag.StringVar(&cfg.MeshPeerService, "alertmanager.mesh.peer.service", "mesh", "SRV service used to discover peers.")
 	flag.StringVar(&cfg.MeshPeerHost, "alertmanager.mesh.peer.host", "", "Hostname for mesh peers.")
-	flag.DurationVar(&cfg.MeshPeerPollInterval, "alertmanager.mesh.peer.poll-interval", 1*time.Minute, "Period with which to poll DNS for mesh peers.")
+	flag.DurationVar(&cfg.MeshPeerRefreshInterval, "alertmanager.mesh.peer.refresh-interval", 1*time.Minute, "Period with which to poll DNS for mesh peers.")
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -248,7 +248,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 		cfgs:          map[string]configs.Config{},
 		alertmanagers: map[string]*Alertmanager{},
 		meshRouter:    &gf,
-		srvDiscovery:  NewSRVDiscovery(cfg.MeshPeerService, cfg.MeshPeerHost, cfg.MeshPeerPollInterval),
+		srvDiscovery:  NewSRVDiscovery(cfg.MeshPeerService, cfg.MeshPeerHost, cfg.MeshPeerRefreshInterval),
 		stop:          make(chan struct{}),
 		done:          make(chan struct{}),
 	}

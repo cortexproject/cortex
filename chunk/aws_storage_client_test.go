@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/prometheus/common/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
@@ -101,11 +102,46 @@ func (m *mockDynamoDBClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRe
 		Items: []map[string]*dynamodb.AttributeValue{},
 	}
 
+	// Required filters
 	hashValue := *input.KeyConditions[hashKey].AttributeValueList[0].S
-	items := m.tables[*input.TableName].items[hashValue]
 
-	// TODO we should also filter by range value
+	// Optional filters
+	var (
+		rangeValueFilter     []byte
+		rangeValueFilterType string
+	)
+	if c, ok := input.KeyConditions[rangeKey]; ok {
+		rangeValueFilter = c.AttributeValueList[0].B
+		rangeValueFilterType = *c.ComparisonOperator
+	}
+
+	// Filter by HashValue, RangeValue and Value if it exists
+	items := m.tables[*input.TableName].items[hashValue]
 	for _, item := range items {
+		rangeValue := item[rangeKey].B
+		if rangeValueFilterType == dynamodb.ComparisonOperatorGe && bytes.Compare(rangeValue, rangeValueFilter) < 0 {
+			continue
+		}
+		if rangeValueFilterType == dynamodb.ComparisonOperatorBeginsWith && !bytes.HasPrefix(rangeValue, rangeValueFilter) {
+			continue
+		}
+
+		if item[valueKey] != nil {
+			value := item[valueKey].B
+
+			// Apply filterExpression if it exists (supporting only v = :v)
+			if input.FilterExpression != nil {
+				if *input.FilterExpression == fmt.Sprintf("%s = :v", valueKey) {
+					filterValue := input.ExpressionAttributeValues[":v"].B
+					if !bytes.Equal(value, filterValue) {
+						continue
+					}
+				} else {
+					log.Warnf("Unsupported FilterExpression: %s", *input.FilterExpression)
+				}
+			}
+		}
+
 		result.Items = append(result.Items, item)
 	}
 
@@ -167,6 +203,136 @@ func TestDynamoDBClient(t *testing.T) {
 		require.Equal(t, []IndexEntry{
 			{RangeValue: []byte(fmt.Sprintf("range%d", i))},
 		}, have)
+	}
+}
+
+func TestDynamoDBClientQueryPages(t *testing.T) {
+	dynamoDB := newMockDynamoDB(0, 0)
+	client := awsStorageClient{
+		DynamoDB:       dynamoDB,
+		queryRequestFn: dynamoDB.queryRequest,
+	}
+
+	entries := []IndexEntry{
+		{
+			TableName:  "table",
+			HashValue:  "foo",
+			RangeValue: []byte("bar:1"),
+			Value:      []byte("10"),
+		},
+		{
+			TableName:  "table",
+			HashValue:  "foo",
+			RangeValue: []byte("bar:2"),
+			Value:      []byte("20"),
+		},
+		{
+			TableName:  "table",
+			HashValue:  "foo",
+			RangeValue: []byte("bar:3"),
+			Value:      []byte("30"),
+		},
+		{
+			TableName:  "table",
+			HashValue:  "foo",
+			RangeValue: []byte("baz:1"),
+			Value:      []byte("10"),
+		},
+		{
+			TableName:  "table",
+			HashValue:  "foo",
+			RangeValue: []byte("baz:2"),
+			Value:      []byte("20"),
+		},
+		{
+			TableName:  "table",
+			HashValue:  "flip",
+			RangeValue: []byte("bar:1"),
+			Value:      []byte("abc"),
+		},
+		{
+			TableName:  "table",
+			HashValue:  "flip",
+			RangeValue: []byte("bar:2"),
+			Value:      []byte("abc"),
+		},
+		{
+			TableName:  "table",
+			HashValue:  "flip",
+			RangeValue: []byte("bar:3"),
+			Value:      []byte("abc"),
+		},
+	}
+
+	tests := []struct {
+		name  string
+		query IndexQuery
+		want  []IndexEntry
+	}{
+		{
+			"check HashValue only",
+			IndexQuery{
+				TableName: "table",
+				HashValue: "flip",
+			},
+			[]IndexEntry{entries[5], entries[6], entries[7]},
+		},
+		{
+			"check RangeValueStart",
+			IndexQuery{
+				TableName:       "table",
+				HashValue:       "foo",
+				RangeValueStart: []byte("bar:2"),
+			},
+			[]IndexEntry{entries[1], entries[2], entries[3], entries[4]},
+		},
+		{
+			"check RangeValuePrefix",
+			IndexQuery{
+				TableName:        "table",
+				HashValue:        "foo",
+				RangeValuePrefix: []byte("baz:"),
+			},
+			[]IndexEntry{entries[3], entries[4]},
+		},
+		{
+			"check ValueEqual",
+			IndexQuery{
+				TableName:        "table",
+				HashValue:        "foo",
+				RangeValuePrefix: []byte("bar"),
+				ValueEqual:       []byte("20"),
+			},
+			[]IndexEntry{entries[1]},
+		},
+	}
+
+	batch := client.NewWriteBatch()
+	for _, entry := range entries {
+		batch.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
+	}
+	dynamoDB.createTable("table")
+
+	err := client.BatchWrite(context.Background(), batch)
+	require.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var have []IndexEntry
+			err := client.QueryPages(context.Background(), tt.query, func(read ReadBatch, lastPage bool) bool {
+				for i := 0; i < read.Len(); i++ {
+					have = append(have, IndexEntry{
+						TableName:  tt.query.TableName,
+						HashValue:  tt.query.HashValue,
+						RangeValue: read.RangeValue(i),
+						Value:      read.Value(i),
+					})
+				}
+				return !lastPage
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.want, have)
+		})
 	}
 }
 

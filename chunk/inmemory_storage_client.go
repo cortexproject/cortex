@@ -207,6 +207,19 @@ func (m *MockStorage) QueryPages(_ context.Context, query IndexQuery, callback f
 		log.Debugf("Lookup %s/* (%d)", query.HashValue, len(items))
 	}
 
+	// Filters
+	if query.ValueEqual != nil {
+		log.Debugf("Filter Value EQ = %s", query.ValueEqual)
+
+		filtered := make([]mockItem, 0)
+		for _, v := range items {
+			if bytes.Equal(v.value, query.ValueEqual) {
+				filtered = append(filtered, v)
+			}
+		}
+		items = filtered
+	}
+
 	result := mockReadBatch{}
 	for _, item := range items {
 		result = append(result, item)

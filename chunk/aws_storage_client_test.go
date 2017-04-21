@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/prometheus/common/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
@@ -129,10 +130,14 @@ func (m *mockDynamoDBClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRe
 			value := item[valueKey].B
 
 			// Apply filterExpression if it exists (supporting only v = :v)
-			if input.FilterExpression != nil && *input.FilterExpression == fmt.Sprintf("%s = :v", valueKey) {
-				filterValue := input.ExpressionAttributeValues[":v"].B
-				if !bytes.Equal(value, filterValue) {
-					continue
+			if input.FilterExpression != nil {
+				if *input.FilterExpression == fmt.Sprintf("%s = :v", valueKey) {
+					filterValue := input.ExpressionAttributeValues[":v"].B
+					if !bytes.Equal(value, filterValue) {
+						continue
+					}
+				} else {
+					log.Warnf("Unsupported FilterExpression: %s", *input.FilterExpression)
 				}
 			}
 		}

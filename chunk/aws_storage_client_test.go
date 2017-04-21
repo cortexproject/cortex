@@ -266,12 +266,12 @@ func TestDynamoDBClientQueryPages(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		entry IndexEntry
+		query IndexQuery
 		want  []IndexEntry
 	}{
 		{
 			"check HashValue only",
-			IndexEntry{
+			IndexQuery{
 				TableName: "table",
 				HashValue: "flip",
 			},
@@ -279,7 +279,7 @@ func TestDynamoDBClientQueryPages(t *testing.T) {
 		},
 		{
 			"check RangeValueStart",
-			IndexEntry{
+			IndexQuery{
 				TableName:       "table",
 				HashValue:       "foo",
 				RangeValueStart: []byte("bar:2"),
@@ -288,7 +288,7 @@ func TestDynamoDBClientQueryPages(t *testing.T) {
 		},
 		{
 			"check RangeValuePrefix",
-			IndexEntry{
+			IndexQuery{
 				TableName:        "table",
 				HashValue:        "foo",
 				RangeValuePrefix: []byte("baz:"),
@@ -297,7 +297,7 @@ func TestDynamoDBClientQueryPages(t *testing.T) {
 		},
 		{
 			"check ValueEqual",
-			IndexEntry{
+			IndexQuery{
 				TableName:        "table",
 				HashValue:        "foo",
 				RangeValuePrefix: []byte("bar"),
@@ -319,11 +319,11 @@ func TestDynamoDBClientQueryPages(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var have []IndexEntry
-			err := client.QueryPages(context.Background(), tt.entry, func(read ReadBatch, lastPage bool) bool {
+			err := client.QueryPages(context.Background(), tt.query, func(read ReadBatch, lastPage bool) bool {
 				for i := 0; i < read.Len(); i++ {
 					have = append(have, IndexEntry{
-						TableName:  tt.entry.TableName,
-						HashValue:  tt.entry.HashValue,
+						TableName:  tt.query.TableName,
+						HashValue:  tt.query.HashValue,
 						RangeValue: read.RangeValue(i),
 						Value:      read.Value(i),
 					})

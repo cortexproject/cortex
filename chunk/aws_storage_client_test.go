@@ -8,7 +8,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/common/log"
@@ -48,7 +50,7 @@ func (m *mockDynamoDBClient) createTable(name string) {
 	}
 }
 
-func (m *mockDynamoDBClient) BatchWriteItem(input *dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error) {
+func (m *mockDynamoDBClient) BatchWriteItemWithContext(_ aws.Context, input *dynamodb.BatchWriteItemInput, _ ...request.Option) (*dynamodb.BatchWriteItemOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -97,7 +99,7 @@ func (m *mockDynamoDBClient) BatchWriteItem(input *dynamodb.BatchWriteItemInput)
 	return resp, nil
 }
 
-func (m *mockDynamoDBClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRequest {
+func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
 	result := &dynamodb.QueryOutput{
 		Items: []map[string]*dynamodb.AttributeValue{},
 	}

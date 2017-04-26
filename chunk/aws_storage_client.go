@@ -114,7 +114,7 @@ type awsStorageClient struct {
 
 	// queryRequestFn exists for mocking, so we don't have to write a whole load
 	// of boilerplate.
-	queryRequestFn func(input *dynamodb.QueryInput) dynamoDBRequest
+	queryRequestFn func(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest
 }
 
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
@@ -158,9 +158,9 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		takeReqs(outstanding, reqs, dynamoMaxBatchSize)
 		var resp *dynamodb.BatchWriteItemOutput
 
-		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(_ context.Context) error {
+		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(ctx context.Context) error {
 			var err error
-			resp, err = a.DynamoDB.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			resp, err = a.DynamoDB.BatchWriteItemWithContext(ctx, &dynamodb.BatchWriteItemInput{
 				RequestItems:           reqs,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
@@ -250,7 +250,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		}
 	}
 
-	request := a.queryRequestFn(input)
+	request := a.queryRequestFn(ctx, input)
 	backoff := minBackoff
 	for page := request; page != nil; page = page.NextPage() {
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
@@ -296,8 +296,9 @@ type dynamoDBRequest interface {
 	HasNextPage() bool
 }
 
-func (a awsStorageClient) queryRequest(input *dynamodb.QueryInput) dynamoDBRequest {
+func (a awsStorageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
 	req, _ := a.DynamoDB.QueryRequest(input)
+	req.SetContext(ctx)
 	return dynamoDBRequestAdapter{req}
 }
 
@@ -331,9 +332,9 @@ func (a dynamoDBRequestAdapter) HasNextPage() bool {
 
 func (a awsStorageClient) GetChunk(ctx context.Context, key string) ([]byte, error) {
 	var resp *s3.GetObjectOutput
-	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(_ context.Context) error {
+	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(ctx context.Context) error {
 		var err error
-		resp, err = a.S3.GetObject(&s3.GetObjectInput{
+		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(a.bucketName),
 			Key:    aws.String(key),
 		})
@@ -351,8 +352,8 @@ func (a awsStorageClient) GetChunk(ctx context.Context, key string) ([]byte, err
 }
 
 func (a awsStorageClient) PutChunk(ctx context.Context, key string, buf []byte) error {
-	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(_ context.Context) error {
-		_, err := a.S3.PutObject(&s3.PutObjectInput{
+	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(ctx context.Context) error {
+		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
 			Body:   bytes.NewReader(buf),
 			Bucket: aws.String(a.bucketName),
 			Key:    aws.String(key),

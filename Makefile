@@ -47,7 +47,7 @@ all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 
 # And now what goes into each image
-build/$(UPTODATE): build/*
+build-image/$(UPTODATE): build-image/*
 
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
@@ -65,14 +65,14 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) lint test shell: build/$(UPTODATE)
+$(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) time docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
-		$(IMAGE_PREFIX)build $@
+		$(IMAGE_PREFIX)build-image $@
 
-configs-integration-test: build/$(UPTODATE)
+configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
 	$(SUDO) docker run $(RM) -ti \
@@ -81,27 +81,27 @@ configs-integration-test: build/$(UPTODATE)
 		-v $(shell pwd)/cmd/configs/migrations:/migrations \
 		--workdir /go/src/github.com/weaveworks/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
-		$(IMAGE_PREFIX)build $@; \
+		$(IMAGE_PREFIX)build-image $@; \
 	status=$$?; \
 	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
 	exit $$status
 
 else
 
-$(EXES): build/$(UPTODATE)
+$(EXES): build-image/$(UPTODATE)
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-%.pb.go: build/$(UPTODATE)
+%.pb.go: build-image/$(UPTODATE)
 	protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
-lint: build/$(UPTODATE)
+lint: build-image/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
-test: build/$(UPTODATE)
+test: build-image/$(UPTODATE)
 	./tools/test -netgo
 
-shell: build/$(UPTODATE)
+shell: build-image/$(UPTODATE)
 	bash
 
 configs-integration-test:

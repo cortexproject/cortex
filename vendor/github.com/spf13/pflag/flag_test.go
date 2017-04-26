@@ -335,7 +335,7 @@ func testParse(f *FlagSet, t *testing.T) {
 
 func testParseAll(f *FlagSet, t *testing.T) {
 	if f.Parsed() {
-		fmt.Errorf("f.Parse() = true before Parse")
+		t.Error("f.Parse() = true before Parse")
 	}
 	f.BoolP("boola", "a", false, "bool value")
 	f.BoolP("boolb", "b", false, "bool2 value")
@@ -374,7 +374,7 @@ func testParseAll(f *FlagSet, t *testing.T) {
 		return nil
 	}
 	if err := f.ParseAll(args, store); err != nil {
-		t.Errorf("expected no error, got ", err)
+		t.Errorf("expected no error, got %s", err)
 	}
 	if !f.Parsed() {
 		t.Errorf("f.Parse() = false after Parse")

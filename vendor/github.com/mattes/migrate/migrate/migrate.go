@@ -10,6 +10,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mattes/migrate/driver"
 	"github.com/mattes/migrate/file"
@@ -34,11 +35,14 @@ func Up(pipe chan interface{}, url, migrationsPath string) {
 		return
 	}
 
+	signals := handleInterrupts()
+	defer signal.Stop(signals)
+
 	if len(applyMigrationFiles) > 0 {
 		for _, f := range applyMigrationFiles {
 			pipe1 := pipep.New()
 			go d.Migrate(f, pipe1)
-			if ok := pipep.WaitAndRedirect(pipe1, pipe, handleInterrupts()); !ok {
+			if ok := pipep.WaitAndRedirect(pipe1, pipe, signals); !ok {
 				break
 			}
 		}
@@ -47,13 +51,12 @@ func Up(pipe chan interface{}, url, migrationsPath string) {
 		}
 		go pipep.Close(pipe, nil)
 		return
-	} else {
-		if err := d.Close(); err != nil {
-			pipe <- err
-		}
-		go pipep.Close(pipe, nil)
-		return
 	}
+	if err := d.Close(); err != nil {
+		pipe <- err
+	}
+	go pipep.Close(pipe, nil)
+	return
 }
 
 // UpSync is synchronous version of Up
@@ -81,11 +84,14 @@ func Down(pipe chan interface{}, url, migrationsPath string) {
 		return
 	}
 
+	signals := handleInterrupts()
+	defer signal.Stop(signals)
+
 	if len(applyMigrationFiles) > 0 {
 		for _, f := range applyMigrationFiles {
 			pipe1 := pipep.New()
 			go d.Migrate(f, pipe1)
-			if ok := pipep.WaitAndRedirect(pipe1, pipe, handleInterrupts()); !ok {
+			if ok := pipep.WaitAndRedirect(pipe1, pipe, signals); !ok {
 				break
 			}
 		}
@@ -94,13 +100,12 @@ func Down(pipe chan interface{}, url, migrationsPath string) {
 		}
 		go pipep.Close(pipe, nil)
 		return
-	} else {
-		if err2 := d.Close(); err2 != nil {
-			pipe <- err2
-		}
-		go pipep.Close(pipe, nil)
-		return
 	}
+	if err2 := d.Close(); err2 != nil {
+		pipe <- err2
+	}
+	go pipep.Close(pipe, nil)
+	return
 }
 
 // DownSync is synchronous version of Down
@@ -115,12 +120,15 @@ func DownSync(url, migrationsPath string) (err []error, ok bool) {
 func Redo(pipe chan interface{}, url, migrationsPath string) {
 	pipe1 := pipep.New()
 	go Migrate(pipe1, url, migrationsPath, -1)
-	if ok := pipep.WaitAndRedirect(pipe1, pipe, handleInterrupts()); !ok {
+
+	signals := handleInterrupts()
+	defer signal.Stop(signals)
+
+	if ok := pipep.WaitAndRedirect(pipe1, pipe, signals); !ok {
 		go pipep.Close(pipe, nil)
 		return
-	} else {
-		go Migrate(pipe, url, migrationsPath, +1)
 	}
+	go Migrate(pipe, url, migrationsPath, +1)
 }
 
 // RedoSync is synchronous version of Redo
@@ -135,12 +143,15 @@ func RedoSync(url, migrationsPath string) (err []error, ok bool) {
 func Reset(pipe chan interface{}, url, migrationsPath string) {
 	pipe1 := pipep.New()
 	go Down(pipe1, url, migrationsPath)
-	if ok := pipep.WaitAndRedirect(pipe1, pipe, handleInterrupts()); !ok {
+
+	signals := handleInterrupts()
+	defer signal.Stop(signals)
+
+	if ok := pipep.WaitAndRedirect(pipe1, pipe, signals); !ok {
 		go pipep.Close(pipe, nil)
 		return
-	} else {
-		go Up(pipe, url, migrationsPath)
 	}
+	go Up(pipe, url, migrationsPath)
 }
 
 // ResetSync is synchronous version of Reset
@@ -168,11 +179,14 @@ func Migrate(pipe chan interface{}, url, migrationsPath string, relativeN int) {
 		return
 	}
 
+	signals := handleInterrupts()
+	defer signal.Stop(signals)
+
 	if len(applyMigrationFiles) > 0 && relativeN != 0 {
 		for _, f := range applyMigrationFiles {
 			pipe1 := pipep.New()
 			go d.Migrate(f, pipe1)
-			if ok := pipep.WaitAndRedirect(pipe1, pipe, handleInterrupts()); !ok {
+			if ok := pipep.WaitAndRedirect(pipe1, pipe, signals); !ok {
 				break
 			}
 		}
@@ -203,29 +217,35 @@ func Version(url, migrationsPath string) (version uint64, err error) {
 	if err != nil {
 		return 0, err
 	}
+	defer func() {
+		err = d.Close()
+	}()
 	return d.Version()
 }
 
 // Create creates new migration files on disk
 func Create(url, migrationsPath, name string) (*file.MigrationFile, error) {
-	d, err := driver.New(url)
-	if err != nil {
-		return nil, err
-	}
-	files, err := file.ReadMigrationFiles(migrationsPath, file.FilenameRegex(d.FilenameExtension()))
+	ext, err := driver.FilenameExtensionFromURL(url)
 	if err != nil {
 		return nil, err
 	}
 
-	version := uint64(0)
-	if len(files) > 0 {
-		lastFile := files[len(files)-1]
-		version = lastFile.Version
+	files, err := file.ReadMigrationFiles(migrationsPath, file.FilenameRegex(ext))
+	if err != nil {
+		return nil, err
 	}
-	version += 1
+
+	version := uint64(time.Now().Unix())
+
+	for _, f := range files {
+		if f.Version == version {
+			version++
+		}
+	}
+
 	versionStr := strconv.FormatUint(version, 10)
 
-	length := 4 // TODO(mattes) check existing files and try to guess length
+	length := 10
 	if len(versionStr)%length != 0 {
 		versionStr = strings.Repeat("0", length-len(versionStr)%length) + versionStr
 	}
@@ -237,14 +257,14 @@ func Create(url, migrationsPath, name string) (*file.MigrationFile, error) {
 		Version: version,
 		UpFile: &file.File{
 			Path:      migrationsPath,
-			FileName:  fmt.Sprintf(filenamef, versionStr, name, "up", d.FilenameExtension()),
+			FileName:  fmt.Sprintf(filenamef, versionStr, name, "up", ext),
 			Name:      name,
 			Content:   []byte(""),
 			Direction: direction.Up,
 		},
 		DownFile: &file.File{
 			Path:      migrationsPath,
-			FileName:  fmt.Sprintf(filenamef, versionStr, name, "down", d.FilenameExtension()),
+			FileName:  fmt.Sprintf(filenamef, versionStr, name, "down", ext),
 			Name:      name,
 			Content:   []byte(""),
 			Direction: direction.Down,

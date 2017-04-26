@@ -340,6 +340,81 @@
   },
   {
    "kind": "discovery#directoryItem",
+   "id": "appengine:v1alpha",
+   "name": "appengine",
+   "version": "v1alpha",
+   "title": "Google App Engine Admin API",
+   "description": "The App Engine Admin API enables developers to provision and manage their App Engine applications.",
+   "discoveryRestUrl": "https://appengine.googleapis.com/$discovery/rest?version=v1alpha",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
+   "preferred": false
+  },
+  {
+   "kind": "discovery#directoryItem",
+   "id": "appengine:v1beta",
+   "name": "appengine",
+   "version": "v1beta",
+   "title": "Google App Engine Admin API",
+   "description": "The App Engine Admin API enables developers to provision and manage their App Engine applications.",
+   "discoveryRestUrl": "https://appengine.googleapis.com/$discovery/rest?version=v1beta",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
+   "preferred": false
+  },
+  {
+   "kind": "discovery#directoryItem",
+   "id": "appengine:v1",
+   "name": "appengine",
+   "version": "v1",
+   "title": "Google App Engine Admin API",
+   "description": "The App Engine Admin API enables developers to provision and manage their App Engine applications.",
+   "discoveryRestUrl": "https://appengine.googleapis.com/$discovery/rest?version=v1",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
+   "preferred": true
+  },
+  {
+   "kind": "discovery#directoryItem",
+   "id": "appengine:v1beta4",
+   "name": "appengine",
+   "version": "v1beta4",
+   "title": "Google App Engine Admin API",
+   "description": "The App Engine Admin API enables developers to provision and manage their App Engine applications.",
+   "discoveryRestUrl": "https://appengine.googleapis.com/$discovery/rest?version=v1beta4",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
+   "preferred": false
+  },
+  {
+   "kind": "discovery#directoryItem",
+   "id": "appengine:v1beta5",
+   "name": "appengine",
+   "version": "v1beta5",
+   "title": "Google App Engine Admin API",
+   "description": "The App Engine Admin API enables developers to provision and manage their App Engine applications.",
+   "discoveryRestUrl": "https://appengine.googleapis.com/$discovery/rest?version=v1beta5",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
+   "preferred": false
+  },
+  {
+   "kind": "discovery#directoryItem",
    "id": "appsactivity:v1",
    "name": "appsactivity",
    "version": "v1",
@@ -782,6 +857,36 @@
   },
   {
    "kind": "discovery#directoryItem",
+   "id": "container:v1alpha1",
+   "name": "container",
+   "version": "v1alpha1",
+   "title": "Google Container Engine API",
+   "description": "The Google Container Engine API is used for building and managing container based applications, powered by the open source Kubernetes technology.",
+   "discoveryRestUrl": "https://container.googleapis.com/$discovery/rest?version=v1alpha1",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/container-engine/",
+   "preferred": false
+  },
+  {
+   "kind": "discovery#directoryItem",
+   "id": "container:v1",
+   "name": "container",
+   "version": "v1",
+   "title": "Google Container Engine API",
+   "description": "The Google Container Engine API is used for building and managing container based applications, powered by the open source Kubernetes technology.",
+   "discoveryRestUrl": "https://container.googleapis.com/$discovery/rest?version=v1",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/container-engine/",
+   "preferred": true
+  },
+  {
+   "kind": "discovery#directoryItem",
    "id": "content:v2sandbox",
    "name": "content",
    "version": "v2sandbox",
@@ -902,38 +1007,6 @@
    },
    "documentationLink": "https://cloud.google.com/datastore/",
    "preferred": true
-  },
-  {
-   "kind": "discovery#directoryItem",
-   "id": "datastore:v1beta1",
-   "name": "datastore",
-   "version": "v1beta1",
-   "title": "Google Cloud Datastore API",
-   "description": "Stores and queries data in Google Cloud Datastore.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/datastore/v1beta1/rest",
-   "discoveryLink": "./apis/datastore/v1beta1/rest",
-   "icons": {
-    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
-    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
-   },
-   "documentationLink": "https://developers.google.com/datastore/",
-   "preferred": false
-  },
-  {
-   "kind": "discovery#directoryItem",
-   "id": "datastore:v1beta2",
-   "name": "datastore",
-   "version": "v1beta2",
-   "title": "Google Cloud Datastore API",
-   "description": "Stores and queries data in Google Cloud Datastore.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/datastore/v1beta2/rest",
-   "discoveryLink": "./apis/datastore/v1beta2/rest",
-   "icons": {
-    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
-    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
-   },
-   "documentationLink": "https://developers.google.com/datastore/",
-   "preferred": false
   },
   {
    "kind": "discovery#directoryItem",
@@ -1366,111 +1439,6 @@
   },
   {
    "kind": "discovery#directoryItem",
-   "id": "appengine:v1alpha",
-   "name": "appengine",
-   "version": "v1alpha",
-   "title": "Google App Engine Admin API",
-   "description": "Provisions and manages App Engine applications.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/appengine/v1alpha/rest",
-   "icons": {
-    "x16": "http://www.google.com/images/icons/product/search-16.gif",
-    "x32": "http://www.google.com/images/icons/product/search-32.gif"
-   },
-   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
-   "preferred": false
-  },
-  {
-   "kind": "discovery#directoryItem",
-   "id": "appengine:v1beta",
-   "name": "appengine",
-   "version": "v1beta",
-   "title": "Google App Engine Admin API",
-   "description": "Provisions and manages App Engine applications.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/appengine/v1beta/rest",
-   "icons": {
-    "x16": "http://www.google.com/images/icons/product/search-16.gif",
-    "x32": "http://www.google.com/images/icons/product/search-32.gif"
-   },
-   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
-   "preferred": false
-  },
-  {
-   "kind": "discovery#directoryItem",
-   "id": "appengine:v1",
-   "name": "appengine",
-   "version": "v1",
-   "title": "Google App Engine Admin API",
-   "description": "Provisions and manages App Engine applications.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/appengine/v1/rest",
-   "icons": {
-    "x16": "http://www.google.com/images/icons/product/search-16.gif",
-    "x32": "http://www.google.com/images/icons/product/search-32.gif"
-   },
-   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
-   "preferred": true
-  },
-  {
-   "kind": "discovery#directoryItem",
-   "id": "appengine:v1beta4",
-   "name": "appengine",
-   "version": "v1beta4",
-   "title": "Google App Engine Admin API",
-   "description": "Provisions and manages App Engine applications.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/appengine/v1beta4/rest",
-   "icons": {
-    "x16": "http://www.google.com/images/icons/product/search-16.gif",
-    "x32": "http://www.google.com/images/icons/product/search-32.gif"
-   },
-   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
-   "preferred": false
-  },
-  {
-   "kind": "discovery#directoryItem",
-   "id": "appengine:v1beta5",
-   "name": "appengine",
-   "version": "v1beta5",
-   "title": "Google App Engine Admin API",
-   "description": "Provisions and manages App Engine applications.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/appengine/v1beta5/rest",
-   "icons": {
-    "x16": "http://www.google.com/images/icons/product/search-16.gif",
-    "x32": "http://www.google.com/images/icons/product/search-32.gif"
-   },
-   "documentationLink": "https://cloud.google.com/appengine/docs/admin-api/",
-   "preferred": false
-  },
-  {
-   "kind": "discovery#directoryItem",
-   "id": "container:v1",
-   "name": "container",
-   "version": "v1",
-   "title": "Google Container Engine API",
-   "description": "Builds and manages clusters that run container-based applications, powered by open source Kubernetes technology.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/container/v1/rest",
-   "icons": {
-    "x16": "http://www.google.com/images/icons/product/search-16.gif",
-    "x32": "http://www.google.com/images/icons/product/search-32.gif"
-   },
-   "documentationLink": "https://cloud.google.com/container-engine/",
-   "preferred": true
-  },
-  {
-   "kind": "discovery#directoryItem",
-   "id": "storagetransfer:v1",
-   "name": "storagetransfer",
-   "version": "v1",
-   "title": "Google Storage Transfer API",
-   "description": "Transfers data from external data sources to a Google Cloud Storage bucket or between Google Cloud Storage buckets.",
-   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/storagetransfer/v1/rest",
-   "icons": {
-    "x16": "http://www.google.com/images/icons/product/search-16.gif",
-    "x32": "http://www.google.com/images/icons/product/search-32.gif"
-   },
-   "documentationLink": "https://cloud.google.com/storage/transfer",
-   "preferred": true
-  },
-  {
-   "kind": "discovery#directoryItem",
    "id": "iam:v1",
    "name": "iam",
    "version": "v1",
@@ -1538,6 +1506,21 @@
    "title": "Google Cloud Natural Language API",
    "description": "Google Cloud Natural Language API provides natural language understanding technologies to developers. Examples include sentiment analysis, entity recognition, and text annotations.",
    "discoveryRestUrl": "https://language.googleapis.com/$discovery/rest?version=v1beta1",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/natural-language/",
+   "preferred": false
+  },
+  {
+   "kind": "discovery#directoryItem",
+   "id": "language:v1beta2",
+   "name": "language",
+   "version": "v1beta2",
+   "title": "Google Cloud Natural Language API",
+   "description": "Google Cloud Natural Language API provides natural language understanding technologies to developers. Examples include sentiment analysis, entity recognition, and text annotations.",
+   "discoveryRestUrl": "https://language.googleapis.com/$discovery/rest?version=v1beta2",
    "icons": {
     "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
     "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
@@ -2399,6 +2382,37 @@
   },
   {
    "kind": "discovery#directoryItem",
+   "id": "storagetransfer:v1",
+   "name": "storagetransfer",
+   "version": "v1",
+   "title": "Google Storage Transfer API",
+   "description": "Transfers data from external data sources to a Google Cloud Storage bucket or between Google Cloud Storage buckets.",
+   "discoveryRestUrl": "https://storagetransfer.googleapis.com/$discovery/rest?version=v1",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://cloud.google.com/storage/transfer",
+   "preferred": true
+  },
+  {
+   "kind": "discovery#directoryItem",
+   "id": "supportcases:v2",
+   "name": "supportcases",
+   "version": "v2",
+   "title": "Google Support Cases Private API",
+   "description": "Support Cases API",
+   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/supportcases/v2/rest",
+   "discoveryLink": "./apis/supportcases/v2/rest",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://sites.google.com/a/google.com/cases/",
+   "preferred": true
+  },
+  {
+   "kind": "discovery#directoryItem",
    "id": "surveys:v2",
    "name": "surveys",
    "version": "v2",
@@ -2426,6 +2440,22 @@
     "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
    },
    "documentationLink": "https://developers.google.com/tag-manager/api/v1/",
+   "preferred": false
+  },
+  {
+   "kind": "discovery#directoryItem",
+   "id": "tagmanager:v2",
+   "name": "tagmanager",
+   "version": "v2",
+   "title": "Tag Manager API",
+   "description": "Accesses Tag Manager accounts and containers.",
+   "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/tagmanager/v2/rest",
+   "discoveryLink": "./apis/tagmanager/v2/rest",
+   "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+   },
+   "documentationLink": "https://developers.google.com/tag-manager/api/v2/",
    "preferred": true
   },
   {
@@ -2510,12 +2540,12 @@
   },
   {
    "kind": "discovery#directoryItem",
-   "id": "tracing:v1",
+   "id": "tracing:v2",
    "name": "tracing",
-   "version": "v1",
+   "version": "v2",
    "title": "Google Tracing API",
    "description": "Send and retrieve trace data from Google Stackdriver Trace.",
-   "discoveryRestUrl": "https://tracing.googleapis.com/$discovery/rest?version=v1",
+   "discoveryRestUrl": "https://tracing.googleapis.com/$discovery/rest?version=v2",
    "icons": {
     "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
     "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"

@@ -1,7 +1,7 @@
 # PostgreSQL Driver
 
-* Runs migrations in transcations.
-  That means that if a migration failes, it will be safely rolled back.
+* Runs migrations in transactions.
+  That means that if a migration fails, it will be safely rolled back.
 * Tries to return helpful error messages.
 * Stores migration version details in table ``schema_migrations``.
   This table will be auto-generated.
@@ -15,7 +15,9 @@ migrate -url postgres://user@host:port/database -path ./db/migrations up
 migrate help # for more info
 
 # TODO(mattes): thinking about adding some custom flag to allow migration within schemas:
--url="postgres://user@host:port/database?schema=name" 
+-url="postgres://user@host:port/database?schema=name"
+
+# see more docs: https://godoc.org/github.com/lib/pq#hdr-Connection_String_Parameters
 ```
 
 ## Authors

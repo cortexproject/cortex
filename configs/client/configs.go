@@ -29,7 +29,6 @@ func configsFromJSON(body io.Reader) (*ConfigsResponse, error) {
 		log.Errorf("configs: couldn't decode JSON body: %v", err)
 		return nil, err
 	}
-	log.Debugf("configs: got response: %v", configs)
 	return &configs, nil
 }
 

@@ -68,7 +68,13 @@ type Config struct {
 	NumWorkers         int
 
 	// URL of the Alertmanager to send notifications to.
-	AlertmanagerURL string
+	AlertmanagerURL util.URLValue
+	// Whether to use DNS SRV records to discover alertmanagers.
+	AlertmanagerDiscovery bool
+	// How long to wait between refreshing the list of alertmanagers based on
+	// DNS service discovery.
+	AlertmanagerRefreshInterval time.Duration
+
 	// Capacity of the queue for notifications to be sent to the Alertmanager.
 	NotificationQueueCapacity int
 	// HTTP timeout duration when sending notifications to the Alertmanager.
@@ -83,7 +89,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
 	f.DurationVar(&cfg.ClientTimeout, "ruler.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 	f.IntVar(&cfg.NumWorkers, "ruler.num-workers", 1, "Number of rule evaluator worker routines in this process")
-	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "URL of the Alertmanager to send notifications to.")
+	f.Var(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "URL of the Alertmanager to send notifications to.")
+	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover alertmanager hosts.")
+	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing alertmanager hosts.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
 }
@@ -120,19 +128,24 @@ func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) (*Ruler, e
 // Builds a Prometheus config.Config from a ruler.Config with just the required
 // options to configure notifications to Alertmanager.
 func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
-	if rulerConfig.AlertmanagerURL == "" {
+	if rulerConfig.AlertmanagerURL.URL == nil {
 		return &config.Config{}, nil
 	}
 
-	u, err := url.Parse(rulerConfig.AlertmanagerURL)
-	if err != nil {
-		return nil, err
-	}
-	amConfig := &config.AlertmanagerConfig{
-		Scheme:     u.Scheme,
-		PathPrefix: u.Path,
-		Timeout:    rulerConfig.NotificationTimeout,
-		ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
+	u := rulerConfig.AlertmanagerURL
+	var sdConfig config.ServiceDiscoveryConfig
+	if rulerConfig.AlertmanagerDiscovery {
+		dnsSDConfig := config.DNSSDConfig{
+			Names:           []string{u.Host},
+			RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
+			Type:            "SRV",
+			Port:            0, // Ignored, because of SRV.
+		}
+		sdConfig = config.ServiceDiscoveryConfig{
+			DNSSDConfigs: []*config.DNSSDConfig{&dnsSDConfig},
+		}
+	} else {
+		sdConfig = config.ServiceDiscoveryConfig{
 			StaticConfigs: []*config.TargetGroup{
 				{
 					Targets: []model.LabelSet{
@@ -142,7 +155,13 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 					},
 				},
 			},
-		},
+		}
+	}
+	amConfig := &config.AlertmanagerConfig{
+		Scheme:                 u.Scheme,
+		PathPrefix:             u.Path,
+		Timeout:                rulerConfig.NotificationTimeout,
+		ServiceDiscoveryConfig: sdConfig,
 	}
 
 	promConfig := &config.Config{

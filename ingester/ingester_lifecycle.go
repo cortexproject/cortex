@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/common/log"
 
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex"
+	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
 )
@@ -345,14 +345,14 @@ func (i *Ingester) transferChunks() error {
 	}
 
 	log.Infof("Sending chunks to %v", targetIngester.Addr)
-	client, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.cfg.SearchPendingFor)
+	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.cfg.SearchPendingFor)
 	if err != nil {
 		return err
 	}
-	defer client.(io.Closer).Close()
+	defer c.(io.Closer).Close()
 
 	ctx := user.Inject(context.Background(), "-1")
-	stream, err := client.TransferChunks(ctx)
+	stream, err := c.TransferChunks(ctx)
 	if err != nil {
 		return err
 	}
@@ -367,7 +367,7 @@ func (i *Ingester) transferChunks() error {
 				return err
 			}
 
-			err = stream.Send(&cortex.TimeSeriesChunk{
+			err = stream.Send(&client.TimeSeriesChunk{
 				FromIngesterId: i.id,
 				UserId:         userID,
 				Labels:         util.ToLabelPairs(pair.series.metric),

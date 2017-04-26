@@ -22,7 +22,7 @@ import (
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex"
+	"github.com/weaveworks/cortex/ingester/client"
 	ingester_client "github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
@@ -39,13 +39,13 @@ var (
 	labelNameBytes = []byte(model.MetricNameLabel)
 )
 
-// Distributor is a storage.SampleAppender and a cortex.Querier which
+// Distributor is a storage.SampleAppender and a client.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
 	cfg        Config
 	ring       ReadRing
 	clientsMtx sync.RWMutex
-	clients    map[string]cortex.IngesterClient
+	clients    map[string]client.IngesterClient
 	quit       chan struct{}
 	done       chan struct{}
 
@@ -87,7 +87,7 @@ type Config struct {
 	IngestionBurstSize  int
 
 	// for testing
-	ingesterClientFactory func(addr string, timeout time.Duration) (cortex.IngesterClient, error)
+	ingesterClientFactory func(addr string, timeout time.Duration) (client.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -124,7 +124,7 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
-		clients:        map[string]cortex.IngesterClient{},
+		clients:        map[string]client.IngesterClient{},
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		billingClient:  billingClient,
@@ -217,7 +217,7 @@ func (d *Distributor) removeStaleIngesterClients() {
 	}
 }
 
-func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.IngesterClient, error) {
+func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.IngesterClient, error) {
 	d.clientsMtx.RLock()
 	client, ok := d.clients[ingester.Addr]
 	d.clientsMtx.RUnlock()
@@ -240,7 +240,7 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (cortex.Ingester
 	return client, nil
 }
 
-func tokenForLabels(userID string, labels []cortex.LabelPair) (uint32, error) {
+func tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
 	for _, label := range labels {
 		if label.Name.Equal(labelNameBytes) {
 			return tokenFor(userID, label.Value), nil
@@ -257,8 +257,8 @@ func tokenFor(userID string, name []byte) uint32 {
 }
 
 type sampleTracker struct {
-	labels      []cortex.LabelPair
-	sample      cortex.Sample
+	labels      []client.LabelPair
+	sample      client.Sample
 	minSuccess  int
 	maxFailures int
 	succeeded   int32
@@ -272,8 +272,8 @@ type pushTracker struct {
 	err            chan error
 }
 
-// Push implements cortex.IngesterServer
-func (d *Distributor) Push(ctx context.Context, req *cortex.WriteRequest) (*cortex.WriteResponse, error) {
+// Push implements client.IngesterServer
+func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	userID, err := user.Extract(ctx)
 	if err != nil {
 		return nil, err
@@ -300,7 +300,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortex.WriteRequest) (*cort
 	d.receivedSamples.Add(float64(len(samples)))
 
 	if len(samples) == 0 {
-		return &cortex.WriteResponse{}, nil
+		return &client.WriteResponse{}, nil
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
@@ -364,7 +364,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortex.WriteRequest) (*cort
 	case err := <-pushTracker.err:
 		return nil, err
 	case <-pushTracker.done:
-		return &cortex.WriteResponse{}, nil
+		return &client.WriteResponse{}, nil
 	}
 }
 
@@ -413,23 +413,23 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 }
 
 func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, samples []*sampleTracker) error {
-	client, err := d.getClientFor(ingester)
+	c, err := d.getClientFor(ingester)
 	if err != nil {
 		return err
 	}
 
-	req := &cortex.WriteRequest{
-		Timeseries: make([]cortex.TimeSeries, 0, len(samples)),
+	req := &client.WriteRequest{
+		Timeseries: make([]client.TimeSeries, 0, len(samples)),
 	}
 	for _, s := range samples {
-		req.Timeseries = append(req.Timeseries, cortex.TimeSeries{
+		req.Timeseries = append(req.Timeseries, client.TimeSeries{
 			Labels:  s.labels,
-			Samples: []cortex.Sample{s.sample},
+			Samples: []client.Sample{s.sample},
 		})
 	}
 
 	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", d.sendDuration, func(ctx context.Context) error {
-		_, err := client.Push(ctx, req)
+		_, err := c.Push(ctx, req)
 		return err
 	})
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
@@ -473,7 +473,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 }
 
 // Query implements Querier.
-func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.IngesterDesc, replicationFactor int, req *cortex.QueryRequest) (model.Matrix, error) {
+func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.IngesterDesc, replicationFactor int, req *client.QueryRequest) (model.Matrix, error) {
 	// We need a response from a quorum of ingesters, where maxErrs is n/2, where n is the replicationFactor
 	maxErrs := replicationFactor / 2
 	minSuccess := len(ingesters) - maxErrs
@@ -529,7 +529,7 @@ func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.Inge
 	return result, nil
 }
 
-func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc, req *cortex.QueryRequest) (model.Matrix, error) {
+func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc, req *client.QueryRequest) (model.Matrix, error) {
 	client, err := d.getClientFor(ing)
 	if err != nil {
 		return nil, err
@@ -546,7 +546,7 @@ func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc,
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
-func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
 	resps, errs := make(chan interface{}), make(chan error)
 	ingesters := d.ring.GetAll()
 	for _, ingester := range ingesters {
@@ -584,10 +584,10 @@ func (d *Distributor) forAllIngesters(f func(cortex.IngesterClient) (interface{}
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
-	req := &cortex.LabelValuesRequest{
+	req := &client.LabelValuesRequest{
 		LabelName: string(labelName),
 	}
-	resps, err := d.forAllIngesters(func(client cortex.IngesterClient) (interface{}, error) {
+	resps, err := d.forAllIngesters(func(client client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
 	})
 	if err != nil {
@@ -596,7 +596,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 
 	valueSet := map[model.LabelValue]struct{}{}
 	for _, resp := range resps {
-		for _, v := range resp.(*cortex.LabelValuesResponse).LabelValues {
+		for _, v := range resp.(*client.LabelValuesResponse).LabelValues {
 			valueSet[model.LabelValue(v)] = struct{}{}
 		}
 	}
@@ -615,7 +615,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 		return nil, err
 	}
 
-	resps, err := d.forAllIngesters(func(client cortex.IngesterClient) (interface{}, error) {
+	resps, err := d.forAllIngesters(func(client client.IngesterClient) (interface{}, error) {
 		return client.MetricsForLabelMatchers(ctx, req)
 	})
 	if err != nil {
@@ -624,7 +624,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 
 	metrics := map[model.Fingerprint]model.Metric{}
 	for _, resp := range resps {
-		ms := util.FromMetricsForLabelMatchersResponse(resp.(*cortex.MetricsForLabelMatchersResponse))
+		ms := util.FromMetricsForLabelMatchersResponse(resp.(*client.MetricsForLabelMatchersResponse))
 		for _, m := range ms {
 			metrics[m.Fingerprint()] = m
 		}
@@ -641,8 +641,8 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
-	req := &cortex.UserStatsRequest{}
-	resps, err := d.forAllIngesters(func(client cortex.IngesterClient) (interface{}, error) {
+	req := &client.UserStatsRequest{}
+	resps, err := d.forAllIngesters(func(client client.IngesterClient) (interface{}, error) {
 		return client.UserStats(ctx, req)
 	})
 	if err != nil {
@@ -651,8 +651,8 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 
 	totalStats := &UserStats{}
 	for _, resp := range resps {
-		totalStats.IngestionRate += resp.(*cortex.UserStatsResponse).IngestionRate
-		totalStats.NumSeries += resp.(*cortex.UserStatsResponse).NumSeries
+		totalStats.IngestionRate += resp.(*client.UserStatsResponse).IngestionRate
+		totalStats.NumSeries += resp.(*client.UserStatsResponse).NumSeries
 	}
 
 	totalStats.IngestionRate /= float64(d.cfg.ReplicationFactor)

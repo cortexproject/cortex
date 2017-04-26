@@ -41,7 +41,7 @@ endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
 # Manually declared dependancies And what goes into each exe
-cortex.pb.go: cortex.proto
+ingester/client/cortex.pb.go: ingester/client/cortex.proto
 ring/ring.pb.go: ring/ring.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
@@ -113,5 +113,3 @@ clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS)
 	go clean ./...
-
-

@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/cortex"
 	"github.com/weaveworks/cortex/chunk"
+	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/util"
 )
 
@@ -199,7 +199,7 @@ func (qm MergeQuerier) Close() error {
 // RemoteReadHandler handles Prometheus remote read requests.
 func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	var req cortex.ReadRequest
+	var req client.ReadRequest
 	if _, err := util.ParseProtoRequest(ctx, r, &req, true); err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -207,12 +207,12 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Fetch samples for all queries in parallel.
-	resp := cortex.ReadResponse{
-		Results: make([]*cortex.QueryResponse, len(req.Queries)),
+	resp := client.ReadResponse{
+		Results: make([]*client.QueryResponse, len(req.Queries)),
 	}
 	errors := make(chan error, len(req.Queries))
 	for i, q := range req.Queries {
-		go func(i int, q *cortex.QueryRequest) {
+		go func(i int, q *client.QueryRequest) {
 			from, to, matchers, err := util.FromQueryRequest(q)
 			if err != nil {
 				errors <- err

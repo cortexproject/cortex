@@ -4,13 +4,13 @@ import (
 	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/cortex"
+	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/util"
 )
 
 // Pusher is an ingester server that accepts pushes.
 type Pusher interface {
-	Push(context.Context, *cortex.WriteRequest) (*cortex.WriteResponse, error)
+	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
 
 // appenderAdapter adapts a distributor.Distributor to prometheus.SampleAppender

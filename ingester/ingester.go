@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex"
 	cortex_chunk "github.com/weaveworks/cortex/chunk"
 	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
@@ -83,7 +82,7 @@ type Config struct {
 	addr                  string
 	id                    string
 	skipUnregister        bool
-	ingesterClientFactory func(addr string, timeout time.Duration) (cortex.IngesterClient, error)
+	ingesterClientFactory func(addr string, timeout time.Duration) (client.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -264,8 +263,8 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	return i, nil
 }
 
-// Push implements cortex.IngesterServer
-func (i *Ingester) Push(ctx context.Context, req *cortex.WriteRequest) (*cortex.WriteResponse, error) {
+// Push implements client.IngesterServer
+func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	var lastPartialErr error
 	samples := util.FromWriteRequest(req)
 	for j := range samples {
@@ -278,7 +277,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortex.WriteRequest) (*cortex.
 		}
 	}
 
-	return &cortex.WriteResponse{}, lastPartialErr
+	return &client.WriteResponse{}, lastPartialErr
 }
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
@@ -326,7 +325,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 }
 
 // Query implements service.IngesterServer
-func (i *Ingester) Query(ctx context.Context, req *cortex.QueryRequest) (*cortex.QueryResponse, error) {
+func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
 	start, end, matchers, err := util.FromQueryRequest(req)
 	if err != nil {
 		return nil, err
@@ -370,7 +369,7 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 }
 
 // LabelValues returns all label values that are associated with a given label name.
-func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesRequest) (*cortex.LabelValuesResponse, error) {
+func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
@@ -378,7 +377,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesReque
 		return nil, err
 	}
 
-	resp := &cortex.LabelValuesResponse{}
+	resp := &client.LabelValuesResponse{}
 	for _, v := range state.index.lookupLabelValues(model.LabelName(req.LabelName)) {
 		resp.LabelValues = append(resp.LabelValues, string(v))
 	}
@@ -387,7 +386,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *cortex.LabelValuesReque
 }
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
-func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *cortex.MetricsForLabelMatchersRequest) (*cortex.MetricsForLabelMatchersResponse, error) {
+func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
@@ -422,7 +421,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *cortex.Metr
 }
 
 // UserStats returns ingestion statistics for the current user.
-func (i *Ingester) UserStats(ctx context.Context, req *cortex.UserStatsRequest) (*cortex.UserStatsResponse, error) {
+func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
@@ -430,7 +429,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *cortex.UserStatsRequest) 
 		return nil, err
 	}
 
-	return &cortex.UserStatsResponse{
+	return &client.UserStatsResponse{
 		IngestionRate: state.ingestedSamples.rate(),
 		NumSeries:     uint64(state.fpToSeries.length()),
 	}, nil

@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex"
+	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
 )
@@ -122,7 +122,7 @@ func TestIngesterTransfer(t *testing.T) {
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
-	ing1.cfg.ingesterClientFactory = func(addr string, timeout time.Duration) (cortex.IngesterClient, error) {
+	ing1.cfg.ingesterClientFactory = func(addr string, timeout time.Duration) (client.IngesterClient, error) {
 		return ingesterClientAdapater{
 			ingester: ing2,
 		}, nil
@@ -140,11 +140,11 @@ func TestIngesterTransfer(t *testing.T) {
 
 	response, err := ing2.Query(ctx, request)
 	require.NoError(t, err)
-	assert.Equal(t, &cortex.QueryResponse{
-		Timeseries: []cortex.TimeSeries{
+	assert.Equal(t, &client.QueryResponse{
+		Timeseries: []client.TimeSeries{
 			{
 				Labels: util.ToLabelPairs(m),
-				Samples: []cortex.Sample{
+				Samples: []client.Sample{
 					{
 						Value:       456.,
 						TimestampMs: 123000,
@@ -192,20 +192,20 @@ func poll(t *testing.T, d time.Duration, want interface{}, have func() interface
 
 type ingesterTransferChunkStreamMock struct {
 	ctx  context.Context
-	reqs chan *cortex.TimeSeriesChunk
-	resp chan *cortex.TransferChunksResponse
+	reqs chan *client.TimeSeriesChunk
+	resp chan *client.TransferChunksResponse
 	err  chan error
 
 	grpc.ServerStream
 	grpc.ClientStream
 }
 
-func (s *ingesterTransferChunkStreamMock) Send(tsc *cortex.TimeSeriesChunk) error {
+func (s *ingesterTransferChunkStreamMock) Send(tsc *client.TimeSeriesChunk) error {
 	s.reqs <- tsc
 	return nil
 }
 
-func (s *ingesterTransferChunkStreamMock) CloseAndRecv() (*cortex.TransferChunksResponse, error) {
+func (s *ingesterTransferChunkStreamMock) CloseAndRecv() (*client.TransferChunksResponse, error) {
 	close(s.reqs)
 	select {
 	case resp := <-s.resp:
@@ -215,7 +215,7 @@ func (s *ingesterTransferChunkStreamMock) CloseAndRecv() (*cortex.TransferChunks
 	}
 }
 
-func (s *ingesterTransferChunkStreamMock) SendAndClose(resp *cortex.TransferChunksResponse) error {
+func (s *ingesterTransferChunkStreamMock) SendAndClose(resp *client.TransferChunksResponse) error {
 	s.resp <- resp
 	return nil
 }
@@ -224,7 +224,7 @@ func (s *ingesterTransferChunkStreamMock) ErrorAndClose(err error) {
 	s.err <- err
 }
 
-func (s *ingesterTransferChunkStreamMock) Recv() (*cortex.TimeSeriesChunk, error) {
+func (s *ingesterTransferChunkStreamMock) Recv() (*client.TimeSeriesChunk, error) {
 	req, ok := <-s.reqs
 	if !ok {
 		return nil, io.EOF
@@ -245,15 +245,15 @@ func (*ingesterTransferChunkStreamMock) RecvMsg(m interface{}) error {
 }
 
 type ingesterClientAdapater struct {
-	cortex.IngesterClient
-	ingester cortex.IngesterServer
+	client.IngesterClient
+	ingester client.IngesterServer
 }
 
-func (i ingesterClientAdapater) TransferChunks(ctx context.Context, _ ...grpc.CallOption) (cortex.Ingester_TransferChunksClient, error) {
+func (i ingesterClientAdapater) TransferChunks(ctx context.Context, _ ...grpc.CallOption) (client.Ingester_TransferChunksClient, error) {
 	stream := &ingesterTransferChunkStreamMock{
 		ctx:  ctx,
-		reqs: make(chan *cortex.TimeSeriesChunk),
-		resp: make(chan *cortex.TransferChunksResponse),
+		reqs: make(chan *client.TimeSeriesChunk),
+		resp: make(chan *client.TransferChunksResponse),
 		err:  make(chan error),
 	}
 	go func() {

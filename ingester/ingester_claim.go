@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/prometheus/storage/local/chunk"
 
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex"
 
+	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
 	"github.com/weaveworks/cortex/util"
 )
@@ -31,7 +31,7 @@ func init() {
 }
 
 // TransferChunks receives all the chunks from another ingester.
-func (i *Ingester) TransferChunks(stream cortex.Ingester_TransferChunksServer) error {
+func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) error {
 	// Enter JOINING state (only valid from PENDING)
 	if err := i.ChangeState(ring.JOINING); err != nil {
 		return err
@@ -76,7 +76,7 @@ func (i *Ingester) TransferChunks(stream cortex.Ingester_TransferChunksServer) e
 		sentChunks.Add(float64(len(descs)))
 	}
 
-	if err := stream.SendAndClose(&cortex.TransferChunksResponse{}); err != nil {
+	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
 		return err
 	}
 
@@ -95,10 +95,10 @@ func (i *Ingester) TransferChunks(stream cortex.Ingester_TransferChunksServer) e
 	return nil
 }
 
-func toWireChunks(descs []*desc) ([]cortex.Chunk, error) {
-	wireChunks := make([]cortex.Chunk, 0, len(descs))
+func toWireChunks(descs []*desc) ([]client.Chunk, error) {
+	wireChunks := make([]client.Chunk, 0, len(descs))
 	for _, d := range descs {
-		wireChunk := cortex.Chunk{
+		wireChunk := client.Chunk{
 			StartTimestampMs: int64(d.FirstTime),
 			EndTimestampMs:   int64(d.LastTime),
 			Encoding:         int32(d.C.Encoding()),
@@ -114,7 +114,7 @@ func toWireChunks(descs []*desc) ([]cortex.Chunk, error) {
 	return wireChunks, nil
 }
 
-func fromWireChunks(wireChunks []cortex.Chunk) ([]*desc, error) {
+func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 	descs := make([]*desc, 0, len(wireChunks))
 	for _, c := range wireChunks {
 		desc := &desc{

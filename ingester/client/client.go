@@ -9,16 +9,15 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/cortex"
 )
 
-type ingesterClient struct {
-	cortex.IngesterClient
+type closableIngesterClient struct {
+	IngesterClient
 	conn *grpc.ClientConn
 }
 
-// MakeIngesterClient makes a new cortex.IngesterClient
-func MakeIngesterClient(addr string, timeout time.Duration) (cortex.IngesterClient, error) {
+// MakeIngesterClient makes a new IngesterClient
+func MakeIngesterClient(addr string, timeout time.Duration) (IngesterClient, error) {
 	conn, err := grpc.Dial(
 		addr,
 		grpc.WithTimeout(timeout),
@@ -31,12 +30,12 @@ func MakeIngesterClient(addr string, timeout time.Duration) (cortex.IngesterClie
 	if err != nil {
 		return nil, err
 	}
-	return &ingesterClient{
-		IngesterClient: cortex.NewIngesterClient(conn),
+	return &closableIngesterClient{
+		IngesterClient: NewIngesterClient(conn),
 		conn:           conn,
 	}, nil
 }
 
-func (c *ingesterClient) Close() error {
+func (c *closableIngesterClient) Close() error {
 	return c.conn.Close()
 }

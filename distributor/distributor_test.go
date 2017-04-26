@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex"
+	"github.com/weaveworks/cortex/ingester/client"
 	"github.com/weaveworks/cortex/ring"
 )
 
@@ -40,31 +40,31 @@ func (r mockRing) GetAll() []*ring.IngesterDesc {
 }
 
 type mockIngester struct {
-	cortex.IngesterClient
+	client.IngesterClient
 	happy bool
 }
 
-func (i mockIngester) Push(ctx context.Context, in *cortex.WriteRequest, opts ...grpc.CallOption) (*cortex.WriteResponse, error) {
+func (i mockIngester) Push(ctx context.Context, in *client.WriteRequest, opts ...grpc.CallOption) (*client.WriteResponse, error) {
 	if !i.happy {
 		return nil, fmt.Errorf("Fail")
 	}
-	return &cortex.WriteResponse{}, nil
+	return &client.WriteResponse{}, nil
 }
 
-func (i mockIngester) Query(ctx context.Context, in *cortex.QueryRequest, opts ...grpc.CallOption) (*cortex.QueryResponse, error) {
+func (i mockIngester) Query(ctx context.Context, in *client.QueryRequest, opts ...grpc.CallOption) (*client.QueryResponse, error) {
 	if !i.happy {
 		return nil, fmt.Errorf("Fail")
 	}
-	return &cortex.QueryResponse{
-		Timeseries: []cortex.TimeSeries{
+	return &client.QueryResponse{
+		Timeseries: []client.TimeSeries{
 			{
-				Labels: []cortex.LabelPair{
+				Labels: []client.LabelPair{
 					{
 						Name:  []byte("__name__"),
 						Value: []byte("foo"),
 					},
 				},
-				Samples: []cortex.Sample{
+				Samples: []client.Sample{
 					{
 						Value:       0,
 						TimestampMs: 0,
@@ -84,13 +84,13 @@ func TestDistributorPush(t *testing.T) {
 	for i, tc := range []struct {
 		ingesters        []mockIngester
 		samples          int
-		expectedResponse *cortex.WriteResponse
+		expectedResponse *client.WriteResponse
 		expectedError    error
 	}{
 		// A push of no samples shouldn't block or return error, even if ingesters are sad
 		{
 			ingesters:        []mockIngester{{}, {}, {}},
-			expectedResponse: &cortex.WriteResponse{},
+			expectedResponse: &client.WriteResponse{},
 		},
 
 		// A push to 3 happy ingesters should succeed
@@ -101,7 +101,7 @@ func TestDistributorPush(t *testing.T) {
 				{happy: true},
 				{happy: true},
 			},
-			expectedResponse: &cortex.WriteResponse{},
+			expectedResponse: &client.WriteResponse{},
 		},
 
 		// A push to 2 happy ingesters should succeed
@@ -112,7 +112,7 @@ func TestDistributorPush(t *testing.T) {
 				{happy: true},
 				{happy: true},
 			},
-			expectedResponse: &cortex.WriteResponse{},
+			expectedResponse: &client.WriteResponse{},
 		},
 
 		// A push to 1 happy ingesters should fail
@@ -160,7 +160,7 @@ func TestDistributorPush(t *testing.T) {
 				IngestionRateLimit:  10000,
 				IngestionBurstSize:  10000,
 
-				ingesterClientFactory: func(addr string, _ time.Duration) (cortex.IngesterClient, error) {
+				ingesterClientFactory: func(addr string, _ time.Duration) (client.IngesterClient, error) {
 					return ingesters[addr], nil
 				},
 			}, ring)
@@ -169,16 +169,16 @@ func TestDistributorPush(t *testing.T) {
 			}
 			defer d.Stop()
 
-			request := &cortex.WriteRequest{}
+			request := &client.WriteRequest{}
 			for i := 0; i < tc.samples; i++ {
-				ts := cortex.TimeSeries{
-					Labels: []cortex.LabelPair{
+				ts := client.TimeSeries{
+					Labels: []client.LabelPair{
 						{[]byte("__name__"), []byte("foo")},
 						{[]byte("bar"), []byte("baz")},
 						{[]byte("sample"), []byte(fmt.Sprintf("%d", i))},
 					},
 				}
-				ts.Samples = []cortex.Sample{
+				ts.Samples = []client.Sample{
 					{
 						Value:       float64(i),
 						TimestampMs: int64(i),
@@ -300,7 +300,7 @@ func TestDistributorQuery(t *testing.T) {
 				IngestionRateLimit:  10000,
 				IngestionBurstSize:  10000,
 
-				ingesterClientFactory: func(addr string, _ time.Duration) (cortex.IngesterClient, error) {
+				ingesterClientFactory: func(addr string, _ time.Duration) (client.IngesterClient, error) {
 					return ingesters[addr], nil
 				},
 			}, ring)

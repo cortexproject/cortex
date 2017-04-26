@@ -92,7 +92,7 @@ var (
 	}, []string{"operation", "status_code"})
 	totalPeers = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "peers",
+		Name:      "mesh_peers",
 		Help:      "Number of peers the multitenant alertmanager knows about",
 	})
 	statusTemplate      *template.Template
@@ -219,7 +219,7 @@ type MultitenantAlertmanager struct {
 	latestMutex  sync.RWMutex
 
 	meshRouter   *gossipFactory
-	srvDiscovery *SRVDiscovery
+	srvDiscovery *srvDiscovery
 
 	stop chan struct{}
 	done chan struct{}
@@ -248,7 +248,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 		cfgs:          map[string]configs.Config{},
 		alertmanagers: map[string]*Alertmanager{},
 		meshRouter:    &gf,
-		srvDiscovery:  NewSRVDiscovery(cfg.MeshPeerService, cfg.MeshPeerHost, cfg.MeshPeerRefreshInterval),
+		srvDiscovery:  newSRVDiscovery(cfg.MeshPeerService, cfg.MeshPeerHost, cfg.MeshPeerRefreshInterval),
 		stop:          make(chan struct{}),
 		done:          make(chan struct{}),
 	}
@@ -264,13 +264,11 @@ func (am *MultitenantAlertmanager) Run() {
 	ticker := time.NewTicker(am.cfg.PollInterval)
 	for {
 		select {
-		case addrs := <-am.srvDiscovery.Addresses:
+		case addrs := <-am.srvDiscovery.addresses:
 			var peers []string
 			for _, srv := range addrs {
-				peers = append(peers, fmt.Sprintf("%s:%d", srv.Target, srv.Port))
+				peers = append(peers, net.JoinHostPort(srv.Target, strconv.FormatUint(uint64(srv.Port), 10)))
 			}
-			// XXX: Not 100% sure this is necessary. Stable ordering seems
-			// like a nice property to jml
 			sort.Strings(peers)
 			log.Infof("Updating alertmanager peers from %v to %v", am.meshRouter.getPeers(), peers)
 			errs := am.meshRouter.ConnectionMaker.InitiateConnections(peers, true)

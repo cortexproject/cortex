@@ -9,40 +9,43 @@ import (
 )
 
 var (
-	srvRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	srvRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
-		Name:      "srv_lookup_request_duration_seconds",
-		Help:      "Time spent looking up SRV records.",
-		Buckets:   prometheus.DefBuckets,
-	}, []string{"service", "proto", "hostname", "status_code"})
+		Name:      "srv_lookup_requests_total",
+		Help:      "Total number of SRV requests.",
+	})
+	srvRequestFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "srv_lookup_request_failures_total",
+		Help:      "Total number of failed SRV requests.",
+	})
 )
 
 func init() {
-	prometheus.MustRegister(srvRequestDuration)
+	prometheus.MustRegister(srvRequests)
+	prometheus.MustRegister(srvRequestFailures)
 }
 
 // TODO: change memcache_client to use this.
 
-// SRVDiscovery discovers SRV services.
-type SRVDiscovery struct {
-	Service      string
-	Proto        string
-	Hostname     string
-	PollInterval time.Duration
-	Addresses    chan []*net.SRV
+// srvDiscovery discovers SRV services.
+type srvDiscovery struct {
+	service      string
+	hostname     string
+	pollInterval time.Duration
+	addresses    chan []*net.SRV
 
 	stop chan struct{}
 	done chan struct{}
 }
 
-// NewSRVDiscovery makes a new SRVDiscovery.
-func NewSRVDiscovery(service, hostname string, pollInterval time.Duration) *SRVDiscovery {
-	disco := &SRVDiscovery{
-		Service:      service,
-		Proto:        "tcp",
-		Hostname:     hostname,
-		PollInterval: pollInterval,
-		Addresses:    make(chan []*net.SRV),
+// newSRVDiscovery makes a new srvDiscovery.
+func newSRVDiscovery(service, hostname string, pollInterval time.Duration) *srvDiscovery {
+	disco := &srvDiscovery{
+		service:      service,
+		hostname:     hostname,
+		pollInterval: pollInterval,
+		addresses:    make(chan []*net.SRV),
 		stop:         make(chan struct{}),
 		done:         make(chan struct{}),
 	}
@@ -50,30 +53,27 @@ func NewSRVDiscovery(service, hostname string, pollInterval time.Duration) *SRVD
 	return disco
 }
 
-// Stop the SRVDiscovery
-func (s *SRVDiscovery) Stop() {
+// Stop the srvDiscovery
+func (s *srvDiscovery) Stop() {
 	close(s.stop)
 	<-s.done
 }
 
-func (s *SRVDiscovery) updatePeers() {
+func (s *srvDiscovery) updatePeers() {
 	var addrs []*net.SRV
-	statusCode := "200"
-	startTime := time.Now()
-	_, addrs, err := net.LookupSRV(s.Service, s.Proto, s.Hostname)
-	endTime := time.Now()
+	_, addrs, err := net.LookupSRV(s.service, "tcp", s.hostname)
+	srvRequests.Inc()
 	if err != nil {
-		statusCode = "500"
-		log.Warnf("Error discovering services for %s %s %s: %v", s.Service, s.Proto, s.Hostname, err)
+		srvRequestFailures.Inc()
+		log.Warnf("Error discovering services for %s %s: %v", s.service, s.hostname, err)
 	} else {
-		s.Addresses <- addrs
+		s.addresses <- addrs
 	}
-	srvRequestDuration.WithLabelValues(s.Service, s.Proto, s.Hostname, statusCode).Observe(endTime.Sub(startTime).Seconds())
 }
 
-func (s *SRVDiscovery) loop() {
+func (s *srvDiscovery) loop() {
 	defer close(s.done)
-	ticker := time.NewTicker(s.PollInterval)
+	ticker := time.NewTicker(s.pollInterval)
 	s.updatePeers()
 	for {
 		select {

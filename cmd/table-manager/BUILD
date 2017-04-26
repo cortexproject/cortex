@@ -5,8 +5,8 @@ go_library(
     srcs = ["main.go"],
     visibility = ["//visibility:private"],
     deps = [
-        "//chunk:go_default_library",
-        "//util:go_default_library",
+        "//pkg/chunk:go_default_library",
+        "//pkg/util:go_default_library",
         "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/weaveworks/common/middleware:go_default_library",
         "//vendor/github.com/weaveworks/common/server:go_default_library",

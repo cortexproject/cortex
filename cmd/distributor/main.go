@@ -10,9 +10,9 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/distributor"
-	"github.com/weaveworks/cortex/ring"
-	"github.com/weaveworks/cortex/util"
+	"github.com/weaveworks/cortex/pkg/distributor"
+	"github.com/weaveworks/cortex/pkg/ring"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {

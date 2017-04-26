@@ -5,9 +5,9 @@ go_library(
     srcs = ["main.go"],
     visibility = ["//visibility:private"],
     deps = [
-        "//distributor:go_default_library",
-        "//ring:go_default_library",
-        "//util:go_default_library",
+        "//pkg/distributor:go_default_library",
+        "//pkg/ring:go_default_library",
+        "//pkg/util:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
         "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/weaveworks/common/middleware:go_default_library",

@@ -10,10 +10,10 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/chunk"
-	"github.com/weaveworks/cortex/ingester"
-	"github.com/weaveworks/cortex/ingester/client"
-	"github.com/weaveworks/cortex/util"
+	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/ingester"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {

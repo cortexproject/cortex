@@ -1,0 +1,61 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "index.go",
+        "ingester.go",
+        "ingester_claim.go",
+        "ingester_flush.go",
+        "ingester_lifecycle.go",
+        "locker.go",
+        "mapper.go",
+        "rate.go",
+        "series.go",
+        "series_map.go",
+        "user_state.go",
+        "util.go",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/chunk:go_default_library",
+        "//pkg/ingester/client:go_default_library",
+        "//pkg/ring:go_default_library",
+        "//pkg/util:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
+        "//vendor/github.com/prometheus/common/log:go_default_library",
+        "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/storage/local/chunk:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/storage/metric:go_default_library",
+        "//vendor/github.com/weaveworks/common/user:go_default_library",
+        "//vendor/golang.org/x/net/context:go_default_library",
+        "//vendor/google.golang.org/grpc:go_default_library",
+        "//vendor/google.golang.org/grpc/codes:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "ingester_lifecycle_test.go",
+        "ingester_test.go",
+        "locker_test.go",
+        "mapper_test.go",
+        "rate_test.go",
+    ],
+    library = ":go_default_library",
+    deps = [
+        "//pkg/chunk:go_default_library",
+        "//pkg/ingester/client:go_default_library",
+        "//pkg/ring:go_default_library",
+        "//pkg/util:go_default_library",
+        "//vendor/github.com/prometheus/common/log:go_default_library",
+        "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/storage/metric:go_default_library",
+        "//vendor/github.com/stretchr/testify/assert:go_default_library",
+        "//vendor/github.com/stretchr/testify/require:go_default_library",
+        "//vendor/github.com/weaveworks/common/user:go_default_library",
+        "//vendor/golang.org/x/net/context:go_default_library",
+        "//vendor/google.golang.org/grpc:go_default_library",
+    ],
+)

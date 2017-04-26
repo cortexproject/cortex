@@ -8,9 +8,9 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/configs/api"
-	"github.com/weaveworks/cortex/configs/db"
-	"github.com/weaveworks/cortex/util"
+	"github.com/weaveworks/cortex/pkg/configs/api"
+	"github.com/weaveworks/cortex/pkg/configs/db"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {

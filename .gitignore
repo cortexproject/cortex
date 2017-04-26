@@ -7,7 +7,6 @@ cmd/ruler/ruler
 cmd/table-manager/table-manager
 .uptodate
 .pkg
-cortex.pb.go
-ring/ring.pb.go
-ui/bindata.go
+pkg/ingester/client/cortex.pb.go
+pkg/ring/ring.pb.go
 bazel-*

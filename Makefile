@@ -41,8 +41,8 @@ endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
 # Manually declared dependancies And what goes into each exe
-ingester/client/cortex.pb.go: ingester/client/cortex.proto
-ring/ring.pb.go: ring/ring.proto
+pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
+pkg/ring/ring.pb.go: pkg/ring/ring.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 
@@ -117,5 +117,8 @@ clean:
 update-gazelle:
 	gazelle -go_prefix github.com/weaveworks/cortex -external vendored
 
-blaze:
+bazel:
 	bazel build //cmd/...
+
+bazel-test:
+	bazel test //pkg/...

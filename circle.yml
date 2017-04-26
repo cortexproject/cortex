@@ -9,8 +9,8 @@ dependencies:
     - "~/docker"
   override:
     - |
-        cd build && \
-        ../tools/rebuild-image quay.io/weaveworks/cortex-build . build.sh Dockerfile && \
+        cd build-image && \
+        ../tools/rebuild-image quay.io/weaveworks/cortex-build-image . build.sh Dockerfile && \
         touch .uptodate
 
 test:

@@ -3,6 +3,7 @@ package pipe
 
 import (
 	"os"
+	"os/signal"
 )
 
 // New creates a new pipe. A pipe is basically a channel.
@@ -25,12 +26,13 @@ func Close(pipe chan interface{}, err error) {
 func WaitAndRedirect(pipe, redirectPipe chan interface{}, interrupt chan os.Signal) (ok bool) {
 	errorReceived := false
 	interruptsReceived := 0
+	defer stopNotifyInterruptChannel(interrupt)
 	if pipe != nil && redirectPipe != nil {
 		for {
 			select {
 
 			case <-interrupt:
-				interruptsReceived += 1
+				interruptsReceived++
 				if interruptsReceived > 1 {
 					os.Exit(5)
 				} else {
@@ -41,12 +43,11 @@ func WaitAndRedirect(pipe, redirectPipe chan interface{}, interrupt chan os.Sign
 			case item, ok := <-pipe:
 				if !ok {
 					return !errorReceived && interruptsReceived == 0
-				} else {
-					redirectPipe <- item
-					switch item.(type) {
-					case error:
-						errorReceived = true
-					}
+				}
+				redirectPipe <- item
+				switch item.(type) {
+				case error:
+					errorReceived = true
 				}
 			}
 		}
@@ -64,14 +65,19 @@ func ReadErrors(pipe chan interface{}) []error {
 			case item, ok := <-pipe:
 				if !ok {
 					return err
-				} else {
-					switch item.(type) {
-					case error:
-						err = append(err, item.(error))
-					}
+				}
+				switch item.(type) {
+				case error:
+					err = append(err, item.(error))
 				}
 			}
 		}
 	}
 	return err
+}
+
+func stopNotifyInterruptChannel(interruptChannel chan os.Signal) {
+	if interruptChannel != nil {
+		signal.Stop(interruptChannel)
+	}
 }

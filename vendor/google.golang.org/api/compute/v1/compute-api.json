@@ -1,11 +1,11 @@
 {
  "kind": "discovery#restDescription",
- "etag": "\"tbys6C40o18GZwyMen5GMkdK-3s/R8FJPq0Sws2Shrn5hY65OEXEr5A\"",
+ "etag": "\"YWOzh2SDasdU84ArJnpYek-OMdg/Jd_rZl9yiuNZcWvcgDDlnKBhwlY\"",
  "discoveryVersion": "v1",
  "id": "compute:v1",
  "name": "compute",
  "version": "v1",
- "revision": "20170224",
+ "revision": "20170329",
  "title": "Compute Engine API",
  "description": "Creates and runs virtual machines on Google Cloud Platform.",
  "ownerDomain": "google.com",
@@ -103,7 +103,7 @@
     },
     "name": {
      "type": "string",
-     "description": "Name of this access configuration."
+     "description": "The name of this access configuration. The default and recommended name is External NAT but you can use any arbitrary string you would like. For example, My external IP or Network Access."
     },
     "natIP": {
      "type": "string",
@@ -129,7 +129,7 @@
    "properties": {
     "address": {
      "type": "string",
-     "description": "The static external IP address represented by this resource. Only IPv4 is supported."
+     "description": "The static external IP address represented by this resource."
     },
     "creationTimestamp": {
      "type": "string",
@@ -412,12 +412,7 @@
      "enumDescriptions": [
       "",
       ""
-     ],
-     "annotations": {
-      "required": [
-       "compute.instances.insert"
-      ]
-     }
+     ]
     }
    }
   },
@@ -888,6 +883,10 @@
       "$ref": "Backend"
      }
     },
+    "cdnPolicy": {
+     "$ref": "BackendServiceCdnPolicy",
+     "description": "Cloud CDN configuration for this BackendService."
+    },
     "connectionDraining": {
      "$ref": "ConnectionDraining"
     },
@@ -1035,6 +1034,17 @@
     }
    }
   },
+  "BackendServiceCdnPolicy": {
+   "id": "BackendServiceCdnPolicy",
+   "type": "object",
+   "description": "Message containing Cloud CDN configuration for a backend service.",
+   "properties": {
+    "cacheKeyPolicy": {
+     "$ref": "CacheKeyPolicy",
+     "description": "The CacheKeyPolicy for this CdnPolicy."
+    }
+   }
+  },
   "BackendServiceGroupHealth": {
    "id": "BackendServiceGroupHealth",
    "type": "object",
@@ -1175,6 +1185,39 @@
     },
     "path": {
      "type": "string"
+    }
+   }
+  },
+  "CacheKeyPolicy": {
+   "id": "CacheKeyPolicy",
+   "type": "object",
+   "description": "Message containing what to include in the cache key for a request for Cloud CDN.",
+   "properties": {
+    "includeHost": {
+     "type": "boolean",
+     "description": "If true, requests to different hosts will be cached separately."
+    },
+    "includeProtocol": {
+     "type": "boolean",
+     "description": "If true, http and https requests will be cached separately."
+    },
+    "includeQueryString": {
+     "type": "boolean",
+     "description": "If true, include query string parameters in the cache key according to query_string_whitelist and query_string_blacklist. If neither is set, the entire query string will be included. If false, the query string will be excluded from the cache key entirely."
+    },
+    "queryStringBlacklist": {
+     "type": "array",
+     "description": "Names of query string parameters to exclude in cache keys. All other parameters will be included. Either specify query_string_whitelist or query_string_blacklist, not both. '&' and '=' will be percent encoded and not treated as delimiters.",
+     "items": {
+      "type": "string"
+     }
+    },
+    "queryStringWhitelist": {
+     "type": "array",
+     "description": "Names of query string parameters to include in cache keys. All other parameters will be excluded. Either specify query_string_whitelist or query_string_blacklist, not both. '&' and '=' will be percent encoded and not treated as delimiters.",
+     "items": {
+      "type": "string"
+     }
     }
    }
   },
@@ -1938,7 +1981,7 @@
     },
     "ports": {
      "type": "array",
-     "description": "This field is not used for external load balancing.\n\nWhen the load balancing scheme is INTERNAL, a single port or a comma separated list of ports can be configured. Only packets addressed to these ports will be forwarded to the backends configured with this forwarding rule. If the port list is not provided then all ports are allowed to pass through.\n\nYou may specify a maximum of up to 5 ports.",
+     "description": "This field is not used for external load balancing.\n\nWhen the load balancing scheme is INTERNAL, a single port or a comma separated list of ports can be configured. Only packets addressed to these ports will be forwarded to the backends configured with this forwarding rule.\n\nYou may specify a maximum of up to 5 ports.",
      "items": {
       "type": "string"
      }
@@ -1957,7 +2000,7 @@
     },
     "target": {
      "type": "string",
-     "description": "The URL of the target resource to receive the matched traffic. For regional forwarding rules, this target must live in the same region as the forwarding rule. For global forwarding rules, this target must be a global load balancing resource. The forwarded traffic must be of a type appropriate to the target object. For example, TargetHttpProxy requires HTTP traffic, and TargetHttpsProxy requires HTTPS traffic.\n\nThis field is not used for internal load balancing."
+     "description": "The URL of the target resource to receive the matched traffic. For regional forwarding rules, this target must live in the same region as the forwarding rule. For global forwarding rules, this target must be a global load balancing resource. The forwarded traffic must be of a type appropriate to the target object.\n\nThis field is not used for internal load balancing."
     }
    }
   },
@@ -2813,7 +2856,7 @@
     },
     "scheduling": {
      "$ref": "Scheduling",
-     "description": "Scheduling options for this instance."
+     "description": "Sets the scheduling options for this instance."
     },
     "selfLink": {
      "type": "string",
@@ -5176,7 +5219,7 @@
    "properties": {
     "instances": {
      "type": "array",
-     "description": "The names of one or more instances to abandon.",
+     "description": "The URLs of one or more instances to abandon. This can be a full URL or a partial URL, such as zones/[ZONE]/instances/[INSTANCE_NAME].",
      "items": {
       "type": "string"
      }
@@ -5189,7 +5232,7 @@
    "properties": {
     "instances": {
      "type": "array",
-     "description": "The names of one or more instances to delete.",
+     "description": "The URLs of one or more instances to delete. This can be a full URL or a partial URL, such as zones/[ZONE]/instances/[INSTANCE_NAME].",
      "items": {
       "type": "string"
      }
@@ -5720,7 +5763,7 @@
     },
     "linkedVpnTunnel": {
      "type": "string",
-     "description": "URI of linked VPN tunnel. It must be in the same region as the router. Each interface can have at most one linked resource."
+     "description": "URI of the linked VPN tunnel. It must be in the same region as the router. Each interface can have at most one linked resource and it could either be a VPN Tunnel or an interconnect attachment."
     },
     "name": {
      "type": "string",
@@ -5991,7 +6034,7 @@
    "properties": {
     "automaticRestart": {
      "type": "boolean",
-     "description": "Specifies whether the instance should be automatically restarted if it is terminated by Compute Engine (not terminated by a user). You can only set the automatic restart option for standard instances. Preemptible instances cannot be automatically restarted."
+     "description": "Specifies whether the instance should be automatically restarted if it is terminated by Compute Engine (not terminated by a user). You can only set the automatic restart option for standard instances. Preemptible instances cannot be automatically restarted.\n\nBy default, this is set to true so an instance is automatically restarted if it is terminated by Compute Engine."
     },
     "onHostMaintenance": {
      "type": "string",
@@ -6007,7 +6050,7 @@
     },
     "preemptible": {
      "type": "boolean",
-     "description": "Whether the instance is preemptible."
+     "description": "Defines whether the instance is preemptible. This can only be set during instance creation, it cannot be set or changed after the instance has been created."
     }
    }
   },
@@ -6300,6 +6343,10 @@
      "type": "string",
      "description": "The URL of the network to which this subnetwork belongs, provided by the client when initially creating the subnetwork. Only networks that are in the distributed mode can have subnetworks."
     },
+    "privateIpGoogleAccess": {
+     "type": "boolean",
+     "description": "Whether the VMs in this subnet can access Google services without assigned external IP addresses."
+    },
     "region": {
      "type": "string",
      "description": "URL of the region where the Subnetwork resides."
@@ -6461,6 +6508,15 @@
        "description": "[Output Only] A human-readable description of the warning code."
       }
      }
+    }
+   }
+  },
+  "SubnetworksSetPrivateIpGoogleAccessRequest": {
+   "id": "SubnetworksSetPrivateIpGoogleAccessRequest",
+   "type": "object",
+   "properties": {
+    "privateIpGoogleAccess": {
+     "type": "boolean"
     }
    }
   },
@@ -8550,8 +8606,7 @@
      "parameters": {
       "autoscaler": {
        "type": "string",
-       "description": "Name of the autoscaler to update.",
-       "required": true,
+       "description": "Name of the autoscaler to patch.",
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "query"
       },
@@ -8572,8 +8627,7 @@
      },
      "parameterOrder": [
       "project",
-      "zone",
-      "autoscaler"
+      "zone"
      ],
      "request": {
       "$ref": "Autoscaler"
@@ -8583,7 +8637,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {
@@ -8784,7 +8839,7 @@
      "parameters": {
       "backendBucket": {
        "type": "string",
-       "description": "Name of the BackendBucket resource to update.",
+       "description": "Name of the BackendBucket resource to patch.",
        "required": true,
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "path"
@@ -8809,7 +8864,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {
@@ -9085,11 +9141,11 @@
      "id": "compute.backendServices.patch",
      "path": "{project}/global/backendServices/{backendService}",
      "httpMethod": "PATCH",
-     "description": "Updates the specified BackendService resource with the data included in the request. There are several restrictions and guidelines to keep in mind when updating a backend service. Read  Restrictions and Guidelines for more information. This method supports patch semantics.",
+     "description": "Patches the specified BackendService resource with the data included in the request. There are several restrictions and guidelines to keep in mind when updating a backend service. Read  Restrictions and Guidelines for more information. This method supports patch semantics.",
      "parameters": {
       "backendService": {
        "type": "string",
-       "description": "Name of the BackendService resource to update.",
+       "description": "Name of the BackendService resource to patch.",
        "required": true,
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "path"
@@ -9114,7 +9170,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {
@@ -9782,7 +9839,7 @@
      "id": "compute.firewalls.patch",
      "path": "{project}/global/firewalls/{firewall}",
      "httpMethod": "PATCH",
-     "description": "Updates the specified firewall rule with the data included in the request. This method supports patch semantics.",
+     "description": "Updates the specified firewall rule with the data included in the request. Using PUT method, can only update following fields of firewall rule: allowed, description, sourceRanges, sourceTags, targetTags. This method supports patch semantics.",
      "parameters": {
       "firewall": {
        "type": "string",
@@ -9818,7 +9875,7 @@
      "id": "compute.firewalls.update",
      "path": "{project}/global/firewalls/{firewall}",
      "httpMethod": "PUT",
-     "description": "Updates the specified firewall rule with the data included in the request.",
+     "description": "Updates the specified firewall rule with the data included in the request. Using PUT method, can only update following fields of firewall rule: allowed, description, sourceRanges, sourceTags, targetTags.",
      "parameters": {
       "firewall": {
        "type": "string",
@@ -10777,7 +10834,7 @@
      "parameters": {
       "healthCheck": {
        "type": "string",
-       "description": "Name of the HealthCheck resource to update.",
+       "description": "Name of the HealthCheck resource to patch.",
        "required": true,
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "path"
@@ -10802,7 +10859,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {
@@ -10997,7 +11055,7 @@
      "parameters": {
       "httpHealthCheck": {
        "type": "string",
-       "description": "Name of the HttpHealthCheck resource to update.",
+       "description": "Name of the HttpHealthCheck resource to patch.",
        "required": true,
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "path"
@@ -11022,7 +11080,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {
@@ -11217,7 +11276,7 @@
      "parameters": {
       "httpsHealthCheck": {
        "type": "string",
-       "description": "Name of the HttpsHealthCheck resource to update.",
+       "description": "Name of the HttpsHealthCheck resource to patch.",
        "required": true,
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "path"
@@ -11242,7 +11301,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {
@@ -11510,7 +11570,7 @@
      "id": "compute.instanceGroupManagers.abandonInstances",
      "path": "{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/abandonInstances",
      "httpMethod": "POST",
-     "description": "Schedules a group action to remove the specified instances from the managed instance group. Abandoning an instance does not delete the instance, but it does remove the instance from any target pools that are applied by the managed instance group. This method reduces the targetSize of the managed instance group by the number of instances that you abandon. This operation is marked as DONE when the action is scheduled even if the instances have not yet been removed from the group. You must separately verify the status of the abandoning action with the listmanagedinstances method.",
+     "description": "Schedules a group action to remove the specified instances from the managed instance group. Abandoning an instance does not delete the instance, but it does remove the instance from any target pools that are applied by the managed instance group. This method reduces the targetSize of the managed instance group by the number of instances that you abandon. This operation is marked as DONE when the action is scheduled even if the instances have not yet been removed from the group. You must separately verify the status of the abandoning action with the listmanagedinstances method.\n\nYou can specify a maximum of 1000 instances with this method per request.",
      "parameters": {
       "instanceGroupManager": {
        "type": "string",
@@ -11640,7 +11700,7 @@
      "id": "compute.instanceGroupManagers.deleteInstances",
      "path": "{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/deleteInstances",
      "httpMethod": "POST",
-     "description": "Schedules a group action to delete the specified instances in the managed instance group. The instances are also removed from any target pools of which they were a member. This method reduces the targetSize of the managed instance group by the number of instances that you delete. This operation is marked as DONE when the action is scheduled even if the instances are still being deleted. You must separately verify the status of the deleting action with the listmanagedinstances method.",
+     "description": "Schedules a group action to delete the specified instances in the managed instance group. The instances are also removed from any target pools of which they were a member. This method reduces the targetSize of the managed instance group by the number of instances that you delete. This operation is marked as DONE when the action is scheduled even if the instances are still being deleted. You must separately verify the status of the deleting action with the listmanagedinstances method.\n\nYou can specify a maximum of 1000 instances with this method per request.",
      "parameters": {
       "instanceGroupManager": {
        "type": "string",
@@ -11722,7 +11782,7 @@
      "id": "compute.instanceGroupManagers.insert",
      "path": "{project}/zones/{zone}/instanceGroupManagers",
      "httpMethod": "POST",
-     "description": "Creates a managed instance group using the information that you specify in the request. After the group is created, it schedules an action to create instances in the group using the specified instance template. This operation is marked as DONE when the group is created even if the instances in the group have not yet been created. You must separately verify the status of the individual instances with the listmanagedinstances method.",
+     "description": "Creates a managed instance group using the information that you specify in the request. After the group is created, it schedules an action to create instances in the group using the specified instance template. This operation is marked as DONE when the group is created even if the instances in the group have not yet been created. You must separately verify the status of the individual instances with the listmanagedinstances method.\n\nA managed instance group can have up to 1000 VM instances per group.",
      "parameters": {
       "project": {
        "type": "string",
@@ -11872,7 +11932,7 @@
      "id": "compute.instanceGroupManagers.recreateInstances",
      "path": "{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/recreateInstances",
      "httpMethod": "POST",
-     "description": "Schedules a group action to recreate the specified instances in the managed instance group. The instances are deleted and recreated using the current instance template for the managed instance group. This operation is marked as DONE when the action is scheduled even if the instances have not yet been recreated. You must separately verify the status of the recreating action with the listmanagedinstances method.",
+     "description": "Schedules a group action to recreate the specified instances in the managed instance group. The instances are deleted and recreated using the current instance template for the managed instance group. This operation is marked as DONE when the action is scheduled even if the instances have not yet been recreated. You must separately verify the status of the recreating action with the listmanagedinstances method.\n\nYou can specify a maximum of 1000 instances with this method per request.",
      "parameters": {
       "instanceGroupManager": {
        "type": "string",
@@ -13092,7 +13152,7 @@
      "id": "compute.instances.reset",
      "path": "{project}/zones/{zone}/instances/{instance}/reset",
      "httpMethod": "POST",
-     "description": "Performs a hard reset on the instance.",
+     "description": "Performs a reset on the instance. For more information, see Resetting an instance.",
      "parameters": {
       "instance": {
        "type": "string",
@@ -14235,8 +14295,7 @@
      "parameters": {
       "autoscaler": {
        "type": "string",
-       "description": "Name of the autoscaler to update.",
-       "required": true,
+       "description": "Name of the autoscaler to patch.",
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "query"
       },
@@ -14257,8 +14316,7 @@
      },
      "parameterOrder": [
       "project",
-      "region",
-      "autoscaler"
+      "region"
      ],
      "request": {
       "$ref": "Autoscaler"
@@ -14268,7 +14326,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {
@@ -14545,7 +14604,7 @@
      "parameters": {
       "backendService": {
        "type": "string",
-       "description": "Name of the BackendService resource to update.",
+       "description": "Name of the BackendService resource to patch.",
        "required": true,
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "path"
@@ -14578,7 +14637,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {
@@ -14633,7 +14693,7 @@
      "id": "compute.regionInstanceGroupManagers.abandonInstances",
      "path": "{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/abandonInstances",
      "httpMethod": "POST",
-     "description": "Schedules a group action to remove the specified instances from the managed instance group. Abandoning an instance does not delete the instance, but it does remove the instance from any target pools that are applied by the managed instance group. This method reduces the targetSize of the managed instance group by the number of instances that you abandon. This operation is marked as DONE when the action is scheduled even if the instances have not yet been removed from the group. You must separately verify the status of the abandoning action with the listmanagedinstances method.",
+     "description": "Schedules a group action to remove the specified instances from the managed instance group. Abandoning an instance does not delete the instance, but it does remove the instance from any target pools that are applied by the managed instance group. This method reduces the targetSize of the managed instance group by the number of instances that you abandon. This operation is marked as DONE when the action is scheduled even if the instances have not yet been removed from the group. You must separately verify the status of the abandoning action with the listmanagedinstances method.\n\nYou can specify a maximum of 1000 instances with this method per request.",
      "parameters": {
       "instanceGroupManager": {
        "type": "string",
@@ -14714,7 +14774,7 @@
      "id": "compute.regionInstanceGroupManagers.deleteInstances",
      "path": "{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/deleteInstances",
      "httpMethod": "POST",
-     "description": "Schedules a group action to delete the specified instances in the managed instance group. The instances are also removed from any target pools of which they were a member. This method reduces the targetSize of the managed instance group by the number of instances that you delete. This operation is marked as DONE when the action is scheduled even if the instances are still being deleted. You must separately verify the status of the deleting action with the listmanagedinstances method.",
+     "description": "Schedules a group action to delete the specified instances in the managed instance group. The instances are also removed from any target pools of which they were a member. This method reduces the targetSize of the managed instance group by the number of instances that you delete. This operation is marked as DONE when the action is scheduled even if the instances are still being deleted. You must separately verify the status of the deleting action with the listmanagedinstances method.\n\nYou can specify a maximum of 1000 instances with this method per request.",
      "parameters": {
       "instanceGroupManager": {
        "type": "string",
@@ -14796,7 +14856,7 @@
      "id": "compute.regionInstanceGroupManagers.insert",
      "path": "{project}/regions/{region}/instanceGroupManagers",
      "httpMethod": "POST",
-     "description": "Creates a managed instance group using the information that you specify in the request. After the group is created, it schedules an action to create instances in the group using the specified instance template. This operation is marked as DONE when the group is created even if the instances in the group have not yet been created. You must separately verify the status of the individual instances with the listmanagedinstances method.",
+     "description": "Creates a managed instance group using the information that you specify in the request. After the group is created, it schedules an action to create instances in the group using the specified instance template. This operation is marked as DONE when the group is created even if the instances in the group have not yet been created. You must separately verify the status of the individual instances with the listmanagedinstances method.\n\nA regional managed instance group can contain up to 2000 instances.",
      "parameters": {
       "project": {
        "type": "string",
@@ -14946,7 +15006,7 @@
      "id": "compute.regionInstanceGroupManagers.recreateInstances",
      "path": "{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/recreateInstances",
      "httpMethod": "POST",
-     "description": "Schedules a group action to recreate the specified instances in the managed instance group. The instances are deleted and recreated using the current instance template for the managed instance group. This operation is marked as DONE when the action is scheduled even if the instances have not yet been recreated. You must separately verify the status of the recreating action with the listmanagedinstances method.",
+     "description": "Schedules a group action to recreate the specified instances in the managed instance group. The instances are deleted and recreated using the current instance template for the managed instance group. This operation is marked as DONE when the action is scheduled even if the instances have not yet been recreated. You must separately verify the status of the recreating action with the listmanagedinstances method.\n\nYou can specify a maximum of 1000 instances with this method per request.",
      "parameters": {
       "instanceGroupManager": {
        "type": "string",
@@ -15827,7 +15887,7 @@
      "id": "compute.routers.patch",
      "path": "{project}/regions/{region}/routers/{router}",
      "httpMethod": "PATCH",
-     "description": "Updates the specified Router resource with the data included in the request. This method supports patch semantics.",
+     "description": "Patches the specified Router resource with the data included in the request. This method supports patch semantics.",
      "parameters": {
       "project": {
        "type": "string",
@@ -15845,7 +15905,7 @@
       },
       "router": {
        "type": "string",
-       "description": "Name of the Router resource to update.",
+       "description": "Name of the Router resource to patch.",
        "required": true,
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "path"
@@ -15864,7 +15924,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "preview": {
@@ -16643,6 +16704,50 @@
       "https://www.googleapis.com/auth/cloud-platform",
       "https://www.googleapis.com/auth/compute",
       "https://www.googleapis.com/auth/compute.readonly"
+     ]
+    },
+    "setPrivateIpGoogleAccess": {
+     "id": "compute.subnetworks.setPrivateIpGoogleAccess",
+     "path": "{project}/regions/{region}/subnetworks/{subnetwork}/setPrivateIpGoogleAccess",
+     "httpMethod": "POST",
+     "description": "Set whether VMs in this subnet can access Google services without assigning external IP addresses through Cloudpath.",
+     "parameters": {
+      "project": {
+       "type": "string",
+       "description": "Project ID for this request.",
+       "required": true,
+       "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+       "location": "path"
+      },
+      "region": {
+       "type": "string",
+       "description": "Name of the region scoping this request.",
+       "required": true,
+       "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+       "location": "path"
+      },
+      "subnetwork": {
+       "type": "string",
+       "description": "Name of the Subnetwork resource.",
+       "required": true,
+       "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+       "location": "path"
+      }
+     },
+     "parameterOrder": [
+      "project",
+      "region",
+      "subnetwork"
+     ],
+     "request": {
+      "$ref": "SubnetworksSetPrivateIpGoogleAccessRequest"
+     },
+     "response": {
+      "$ref": "Operation"
+     },
+     "scopes": [
+      "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/compute"
      ]
     }
    }
@@ -18451,7 +18556,7 @@
      "id": "compute.urlMaps.patch",
      "path": "{project}/global/urlMaps/{urlMap}",
      "httpMethod": "PATCH",
-     "description": "Updates the specified UrlMap resource with the data included in the request. This method supports patch semantics.",
+     "description": "Patches the specified UrlMap resource with the data included in the request. This method supports patch semantics.",
      "parameters": {
       "project": {
        "type": "string",
@@ -18462,7 +18567,7 @@
       },
       "urlMap": {
        "type": "string",
-       "description": "Name of the UrlMap resource to update.",
+       "description": "Name of the UrlMap resource to patch.",
        "required": true,
        "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
        "location": "path"
@@ -18480,7 +18585,8 @@
      },
      "scopes": [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/compute"
+      "https://www.googleapis.com/auth/compute",
+      "https://www.googleapis.com/auth/compute.readonly"
      ]
     },
     "update": {

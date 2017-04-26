@@ -1,3 +1,4 @@
 package main
 
-const Version string = "1.2.0"
+// Version - version of tool
+const Version string = "1.3.1"

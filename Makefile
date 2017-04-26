@@ -113,3 +113,9 @@ clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS)
 	go clean ./...
+
+update-gazelle:
+	gazelle -go_prefix github.com/weaveworks/cortex -external vendored
+
+blaze:
+	bazel build //cmd/...

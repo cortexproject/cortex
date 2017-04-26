@@ -10,3 +10,4 @@ cmd/table-manager/table-manager
 cortex.pb.go
 ring/ring.pb.go
 ui/bindata.go
+bazel-*

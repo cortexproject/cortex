@@ -1,0 +1,35 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "alertmanager.go",
+        "mesh.go",
+        "multitenant.go",
+        "peers.go",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//configs:go_default_library",
+        "//configs/client:go_default_library",
+        "//util:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/api:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/config:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/dispatch:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/inhibit:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/nflog:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/notify:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/provider/mem:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/silence:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/template:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/types:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/ui:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
+        "//vendor/github.com/prometheus/common/log:go_default_library",
+        "//vendor/github.com/prometheus/common/route:go_default_library",
+        "//vendor/github.com/weaveworks/common/instrument:go_default_library",
+        "//vendor/github.com/weaveworks/common/user:go_default_library",
+        "//vendor/github.com/weaveworks/mesh:go_default_library",
+        "//vendor/golang.org/x/net/context:go_default_library",
+    ],
+)

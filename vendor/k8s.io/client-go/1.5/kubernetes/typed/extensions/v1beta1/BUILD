@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "daemonset.go",
+        "deployment.go",
+        "deployment_expansion.go",
+        "doc.go",
+        "extensions_client.go",
+        "generated_expansion.go",
+        "ingress.go",
+        "job.go",
+        "podsecuritypolicy.go",
+        "replicaset.go",
+        "scale.go",
+        "scale_expansion.go",
+        "thirdpartyresource.go",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/k8s.io/client-go/1.5/pkg/api:go_default_library",
+        "//vendor/k8s.io/client-go/1.5/pkg/api/meta:go_default_library",
+        "//vendor/k8s.io/client-go/1.5/pkg/api/unversioned:go_default_library",
+        "//vendor/k8s.io/client-go/1.5/pkg/apimachinery/registered:go_default_library",
+        "//vendor/k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1:go_default_library",
+        "//vendor/k8s.io/client-go/1.5/pkg/runtime/serializer:go_default_library",
+        "//vendor/k8s.io/client-go/1.5/pkg/watch:go_default_library",
+        "//vendor/k8s.io/client-go/1.5/rest:go_default_library",
+    ],
+)

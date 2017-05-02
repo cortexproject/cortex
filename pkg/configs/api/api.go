@@ -110,6 +110,10 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := validateAlertmanagerConfig(cfg.AlertmanagerConfig); err != nil && cfg.AlertmanagerConfig != "" {
+		http.Error(w, fmt.Sprintf("Invalid Alertmanager config: %v", err), http.StatusBadRequest)
+		return
+	}
 	if err := a.db.SetConfig(userID, cfg); err != nil {
 		// XXX: Untested
 		log.Errorf("Error storing config: %v", err)

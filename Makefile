@@ -114,6 +114,10 @@ clean:
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS)
 	go clean ./...
 
+# We currently commit the BUILD files because of a couple of corner cases with
+# gazelle - https://github.com/bazelbuild/rules_go/issues/422
+# and https://github.com/bazelbuild/rules_go/issues/423.  If you ever regenerate
+# the BUILD files, watch out for the rules in vendor/golang.org/x/crypto/curve25519
 update-gazelle:
 	gazelle -go_prefix github.com/weaveworks/cortex -external vendored
 

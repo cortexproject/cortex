@@ -81,12 +81,21 @@ Cortex will sit behind an nginx instance exposed on port 30080.  A job is deploy
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
 
+### Experimental Bazel builds
+
+We also have early support for Bazel builds.  Once you have [installed
+bazel](https://bazel.build/versions/master/docs/install.html), try these commands:
+
+    make bazel-test
+    make bazel
+
+Bazel can be useful for running fast, local, incremental builds and tests.
+Currently [bazel does not support cross-compiling](https://github.com/bazelbuild/rules_go/issues/70)
+so it is not used to produce the final binaries and docker container images.
+
 ### Vendoring
 
-We use `dep` to vendor dependencies.  We use a custom branch with support for
-pruneing the vendor tree, from github.com/tomwilkie/dep.
-
-To fetch a new dependency, run:
+We use `dep` to vendor dependencies.  To fetch a new dependency, run:
 
     dep ensure && dep prune
 

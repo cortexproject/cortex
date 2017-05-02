@@ -10,10 +10,10 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex"
-	"github.com/weaveworks/cortex/chunk"
-	"github.com/weaveworks/cortex/ingester"
-	"github.com/weaveworks/cortex/util"
+	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/ingester"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {
@@ -57,7 +57,7 @@ func main() {
 	prometheus.MustRegister(ingester)
 	defer ingester.Shutdown()
 
-	cortex.RegisterIngesterServer(server.GRPC, ingester)
+	client.RegisterIngesterServer(server.GRPC, ingester)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	server.Run()
 }

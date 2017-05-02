@@ -21,8 +21,8 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/alertmanager"
-	"github.com/weaveworks/cortex/util"
+	"github.com/weaveworks/cortex/pkg/alertmanager"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {

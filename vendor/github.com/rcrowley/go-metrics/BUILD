@@ -1,0 +1,52 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "counter.go",
+        "debug.go",
+        "ewma.go",
+        "gauge.go",
+        "gauge_float64.go",
+        "graphite.go",
+        "healthcheck.go",
+        "histogram.go",
+        "json.go",
+        "log.go",
+        "meter.go",
+        "metrics.go",
+        "opentsdb.go",
+        "registry.go",
+        "runtime.go",
+        "runtime_cgo.go",
+        "runtime_gccpufraction.go",
+        "sample.go",
+        "syslog.go",
+        "timer.go",
+        "writer.go",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "counter_test.go",
+        "debug_test.go",
+        "ewma_test.go",
+        "gauge_float64_test.go",
+        "gauge_test.go",
+        "graphite_test.go",
+        "histogram_test.go",
+        "json_test.go",
+        "meter_test.go",
+        "metrics_test.go",
+        "opentsdb_test.go",
+        "registry_test.go",
+        "runtime_test.go",
+        "sample_test.go",
+        "timer_test.go",
+        "writer_test.go",
+    ],
+    library = ":go_default_library",
+)

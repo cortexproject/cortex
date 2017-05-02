@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "db.go",
+        "timed.go",
+        "traced.go",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/configs:go_default_library",
+        "//pkg/configs/db/memory:go_default_library",
+        "//pkg/configs/db/postgres:go_default_library",
+        "//vendor/github.com/Sirupsen/logrus:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
+        "//vendor/github.com/weaveworks/common/instrument:go_default_library",
+        "//vendor/golang.org/x/net/context:go_default_library",
+    ],
+)

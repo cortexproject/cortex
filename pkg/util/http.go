@@ -28,8 +28,10 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 }
 
+// CompressionType for encoding and decoding requests and responses.
 type CompressionType int
 
+// Values for CompressionType
 const (
 	NoCompression CompressionType = iota
 	FramedSnappy

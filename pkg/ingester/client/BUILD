@@ -19,3 +19,9 @@ go_library(
         "//vendor/google.golang.org/grpc:go_default_library",
     ],
 )
+
+filegroup(
+    name = "go_default_library_protos",
+    srcs = ["cortex.proto"],
+    visibility = ["//visibility:public"],
+)

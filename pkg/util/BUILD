@@ -18,6 +18,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/ingester/client:go_default_library",
+        "//vendor/github.com/blang/semver:go_default_library",
         "//vendor/github.com/gogo/protobuf/proto:go_default_library",
         "//vendor/github.com/golang/snappy:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",

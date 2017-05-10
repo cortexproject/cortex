@@ -1,4 +1,4 @@
-package cortex
+package client
 
 import (
 	// This import exists to trick dep into vendoring the required protos

@@ -20,18 +20,18 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		dynamoTableClientConfig = chunk.DynamoTableClientConfig{}
-		tableManagerConfig      = chunk.TableManagerConfig{}
+		dynamoDBConfig     = chunk.DynamoDBConfig{}
+		tableManagerConfig = chunk.TableManagerConfig{}
 	)
-	util.RegisterFlags(&serverConfig, &dynamoTableClientConfig, &tableManagerConfig)
+	util.RegisterFlags(&serverConfig, &dynamoDBConfig, &tableManagerConfig)
 	flag.Parse()
 
-	dynamoClient, err := chunk.NewDynamoTableClient(dynamoTableClientConfig)
+	tableClient, err := chunk.NewDynamoDBTableClient(dynamoDBConfig)
 	if err != nil {
-		log.Fatalf("Error initializing DynamoDB client: %v", err)
+		log.Fatalf("Error initializing DynamoDB table client: %v", err)
 	}
 
-	tableManager, err := chunk.NewDynamoTableManager(tableManagerConfig, dynamoClient)
+	tableManager, err := chunk.NewTableManager(tableManagerConfig, tableClient)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB table manager: %v", err)
 	}

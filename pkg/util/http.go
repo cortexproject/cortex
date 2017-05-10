@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 
+	"github.com/blang/semver"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/weaveworks/common/instrument"
@@ -27,45 +28,81 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 }
 
-// ParseProtoRequest parses a proto from the body of an HTTP request.
-func ParseProtoRequest(ctx context.Context, r *http.Request, req proto.Message, compressed bool) ([]byte, error) {
-	var reader io.Reader = r.Body
-	if compressed {
-		reader = snappy.NewReader(r.Body)
+// CompressionType for encoding and decoding requests and responses.
+type CompressionType int
+
+// Values for CompressionType
+const (
+	NoCompression CompressionType = iota
+	FramedSnappy
+	RawSnappy
+)
+
+var rawSnappyFromVersion = semver.MustParse("0.1.0")
+
+// CompressionTypeFor a given version of the Prometheus remote storage protocol.
+// See https://github.com/prometheus/prometheus/issues/2692.
+func CompressionTypeFor(version string) CompressionType {
+	ver, err := semver.Make(version)
+	if err != nil {
+		return FramedSnappy
 	}
 
-	buf := bytes.Buffer{}
-	if err := instrument.TimeRequestHistogram(ctx, "util.ParseProtoRequest[decompress]", nil, func(_ context.Context) error {
-		_, err := buf.ReadFrom(reader)
-		return err
-	}); err != nil {
+	if ver.GTE(rawSnappyFromVersion) {
+		return RawSnappy
+	}
+	return FramedSnappy
+}
+
+// ParseProtoRequest parses a proto from the body of an HTTP request.
+func ParseProtoRequest(ctx context.Context, r *http.Request, req proto.Message, compression CompressionType) ([]byte, error) {
+	var body []byte
+	var err error
+	switch compression {
+	case NoCompression:
+		body, err = ioutil.ReadAll(r.Body)
+	case FramedSnappy:
+		body, err = ioutil.ReadAll(snappy.NewReader(r.Body))
+	case RawSnappy:
+		body, err = ioutil.ReadAll(r.Body)
+		if err != nil {
+			body, err = snappy.Decode(nil, body)
+		}
+	}
+	if err != nil {
 		return nil, err
 	}
 
 	if err := instrument.TimeRequestHistogram(ctx, "util.ParseProtoRequest[unmarshal]", nil, func(_ context.Context) error {
-		return proto.Unmarshal(buf.Bytes(), req)
+		return proto.Unmarshal(body, req)
 	}); err != nil {
 		return nil, err
 	}
 
-	return buf.Bytes(), nil
+	return body, nil
 }
 
 // SerializeProtoResponse serializes a protobuf response into an HTTP response.
-func SerializeProtoResponse(w http.ResponseWriter, resp proto.Message) error {
+func SerializeProtoResponse(w http.ResponseWriter, resp proto.Message, compression CompressionType) error {
 	data, err := proto.Marshal(resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return fmt.Errorf("error marshaling proto response: %v", err)
 	}
 
-	buf := bytes.Buffer{}
-	if _, err := snappy.NewWriter(&buf).Write(data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return fmt.Errorf("error compressing proto response: %v", err)
+	switch compression {
+	case NoCompression:
+	case FramedSnappy:
+		buf := bytes.Buffer{}
+		if _, err := snappy.NewWriter(&buf).Write(data); err != nil {
+			return err
+		}
+		data = buf.Bytes()
+	case RawSnappy:
+		data = snappy.Encode(nil, data)
 	}
 
-	if _, err := w.Write(buf.Bytes()); err != nil {
+	if _, err := w.Write(data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return fmt.Errorf("error sending proto response: %v", err)
 	}

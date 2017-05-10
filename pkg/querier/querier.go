@@ -198,9 +198,11 @@ func (qm MergeQuerier) Close() error {
 
 // RemoteReadHandler handles Prometheus remote read requests.
 func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request) {
+	compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Read-Version"))
+
 	ctx := r.Context()
 	var req client.ReadRequest
-	if _, err := util.ParseProtoRequest(ctx, r, &req, true); err != nil {
+	if _, err := util.ParseProtoRequest(ctx, r, &req, compressionType); err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -238,7 +240,7 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if err := util.SerializeProtoResponse(w, &resp); err != nil {
+	if err := util.SerializeProtoResponse(w, &resp, compressionType); err != nil {
 		log.Errorf("error sending remote read response: %v", err)
 	}
 }

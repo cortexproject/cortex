@@ -16,8 +16,9 @@ import (
 
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
+	compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 	var req client.WriteRequest
-	buf, err := util.ParseProtoRequest(r.Context(), r, &req, true)
+	buf, err := util.ParseProtoRequest(r.Context(), r, &req, compressionType)
 	if err != nil {
 		log.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)

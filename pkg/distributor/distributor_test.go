@@ -173,9 +173,9 @@ func TestDistributorPush(t *testing.T) {
 			for i := 0; i < tc.samples; i++ {
 				ts := client.TimeSeries{
 					Labels: []client.LabelPair{
-						{[]byte("__name__"), []byte("foo")},
-						{[]byte("bar"), []byte("baz")},
-						{[]byte("sample"), []byte(fmt.Sprintf("%d", i))},
+						{Name: []byte("__name__"), Value: []byte("foo")},
+						{Name: []byte("bar"), Value: []byte("baz")},
+						{Name: []byte("sample"), Value: []byte(fmt.Sprintf("%d", i))},
 					},
 				}
 				ts.Samples = []client.Sample{

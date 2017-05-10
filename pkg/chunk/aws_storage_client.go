@@ -331,7 +331,41 @@ func (a dynamoDBRequestAdapter) HasNextPage() bool {
 	return a.request.HasNextPage()
 }
 
-func (a awsStorageClient) GetChunk(ctx context.Context, key string) ([]byte, error) {
+func (a awsStorageClient) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk, error) {
+	incomingChunks := make(chan Chunk)
+	incomingErrors := make(chan error)
+	for _, chunk := range chunkSet {
+		go func(chunk Chunk) {
+			buf, err := a.getChunk(ctx, chunk.externalKey())
+			if err != nil {
+				incomingErrors <- err
+				return
+			}
+			if err := chunk.decode(buf); err != nil {
+				incomingErrors <- err
+				return
+			}
+			incomingChunks <- chunk
+		}(chunk)
+	}
+
+	chunks := []Chunk{}
+	errors := []error{}
+	for i := 0; i < len(chunkSet); i++ {
+		select {
+		case chunk := <-incomingChunks:
+			chunks = append(chunks, chunk)
+		case err := <-incomingErrors:
+			errors = append(errors, err)
+		}
+	}
+	if len(errors) > 0 {
+		return nil, errors[0]
+	}
+	return chunks, nil
+}
+
+func (a awsStorageClient) getChunk(ctx context.Context, key string) ([]byte, error) {
 	var resp *s3.GetObjectOutput
 	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(ctx context.Context) error {
 		var err error
@@ -352,7 +386,26 @@ func (a awsStorageClient) GetChunk(ctx context.Context, key string) ([]byte, err
 	return buf, nil
 }
 
-func (a awsStorageClient) PutChunk(ctx context.Context, key string, buf []byte) error {
+func (a awsStorageClient) PutChunks(ctx context.Context, _ []Chunk, keys []string, bufs [][]byte) error {
+	incomingErrors := make(chan error)
+	for i := range bufs {
+		go func(i int) {
+			incomingErrors <- a.putChunk(ctx, keys[i], bufs[i])
+		}(i)
+	}
+
+	var lastErr error
+	for range keys {
+		err := <-incomingErrors
+		if err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// putChunk puts a chunk into S3.
+func (a awsStorageClient) putChunk(ctx context.Context, key string, buf []byte) error {
 	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(ctx context.Context) error {
 		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
 			Body:   bytes.NewReader(buf),

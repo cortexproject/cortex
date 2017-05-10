@@ -42,7 +42,7 @@ func init() {
 	prometheus.MustRegister(tableCapacity)
 }
 
-// TableManagerConfig is the config for a DynamoTableManager
+// TableManagerConfig is the config for a TableManager
 type TableManagerConfig struct {
 	DynamoDBPollInterval time.Duration
 
@@ -92,28 +92,28 @@ func (cfg *PeriodicTableConfig) RegisterFlags(f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	dynamoDB TableClient
-	cfg      TableManagerConfig
-	done     chan struct{}
-	wait     sync.WaitGroup
+	client TableClient
+	cfg    TableManagerConfig
+	done   chan struct{}
+	wait   sync.WaitGroup
 }
 
-// NewTableManager makes a new DynamoTableManager
+// NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, tableClient TableClient) (*TableManager, error) {
 	return &TableManager{
-		cfg:      cfg,
-		dynamoDB: tableClient,
-		done:     make(chan struct{}),
+		cfg:    cfg,
+		client: tableClient,
+		done:   make(chan struct{}),
 	}, nil
 }
 
-// Start the DynamoTableManager
+// Start the TableManager
 func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
 }
 
-// Stop the DynamoTableManager
+// Stop the TableManager
 func (m *TableManager) Stop() {
 	close(m.done)
 	m.wait.Wait()
@@ -125,7 +125,7 @@ func (m *TableManager) loop() {
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
-	if err := instrument.TimeRequestHistogram(context.Background(), "DynamoTableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
+	if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
 		return m.syncTables(ctx)
 	}); err != nil {
 		log.Errorf("Error syncing tables: %v", err)
@@ -134,7 +134,7 @@ func (m *TableManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := instrument.TimeRequestHistogram(context.Background(), "DynamoTableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
+			if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
 				return m.syncTables(ctx)
 			}); err != nil {
 				log.Errorf("Error syncing tables: %v", err)
@@ -233,7 +233,7 @@ func (m *TableManager) calculateExpectedTables() []tableDescription {
 
 // partitionTables works out tables that need to be created vs tables that need to be updated
 func (m *TableManager) partitionTables(ctx context.Context, descriptions []tableDescription) ([]tableDescription, []tableDescription, error) {
-	existingTables, err := m.dynamoDB.ListTables(ctx)
+	existingTables, err := m.client.ListTables(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -266,7 +266,7 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []table
 func (m *TableManager) createTables(ctx context.Context, descriptions []tableDescription) error {
 	for _, desc := range descriptions {
 		log.Infof("Creating table %s", desc.name)
-		err := m.dynamoDB.CreateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
+		err := m.client.CreateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
 		if err != nil {
 			return err
 		}
@@ -277,7 +277,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []tableDes
 func (m *TableManager) updateTables(ctx context.Context, descriptions []tableDescription) error {
 	for _, desc := range descriptions {
 		log.Infof("Checking provisioned throughput on table %s", desc.name)
-		readCapacity, writeCapacity, status, err := m.dynamoDB.DescribeTable(ctx, desc.name)
+		readCapacity, writeCapacity, status, err := m.client.DescribeTable(ctx, desc.name)
 		if err != nil {
 			return err
 		}
@@ -296,7 +296,7 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []tableDes
 		}
 
 		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.name, desc.provisionedRead, desc.provisionedWrite)
-		err = m.dynamoDB.UpdateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
+		err = m.client.UpdateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
 		if err != nil {
 			return err
 		}

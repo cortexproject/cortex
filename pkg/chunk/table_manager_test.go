@@ -23,7 +23,7 @@ const (
 	read          = 100
 )
 
-func TestDynamoTableManager(t *testing.T) {
+func TestTableManager(t *testing.T) {
 	dynamoDB := NewMockStorage()
 
 	cfg := TableManagerConfig{

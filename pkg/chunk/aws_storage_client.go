@@ -98,17 +98,22 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 // AWSStorageConfig specifies config for storing data on AWS.
 type AWSStorageConfig struct {
 	DynamoDBConfig
+	ChunkTableConfig
+
 	S3 util.URLValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *AWSStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.DynamoDBConfig.RegisterFlags(f)
+	cfg.ChunkTableConfig.RegisterFlags(f)
+
 	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
 
 type awsStorageClient struct {
+	cfg        AWSStorageConfig
 	DynamoDB   dynamodbiface.DynamoDBAPI
 	S3         s3iface.S3API
 	bucketName string
@@ -136,6 +141,7 @@ func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
 	bucketName := strings.TrimPrefix(cfg.S3.URL.Path, "/")
 
 	storageClient := awsStorageClient{
+		cfg:        cfg,
 		DynamoDB:   dynamoDB,
 		S3:         s3Client,
 		bucketName: bucketName,
@@ -386,11 +392,28 @@ func (a awsStorageClient) getChunk(ctx context.Context, key string) ([]byte, err
 	return buf, nil
 }
 
-func (a awsStorageClient) PutChunks(ctx context.Context, _ []Chunk, keys []string, bufs [][]byte) error {
+func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk, keys []string, bufs [][]byte) error {
+	var (
+		s3ChunkKeys    []string
+		s3ChunkBufs    [][]byte
+		dynamoDBWrites map[string][]*dynamodb.WriteRequest
+	)
+
+	for i, chunk := range chunks {
+		if chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
+			s3ChunkKeys = append(s3ChunkKeys, keys[i])
+			s3ChunkBufs = append(s3ChunkBufs, bufs[i])
+		}
+	}
+
+	return a.putS3Chunks(ctx, s3ChunkKeys, s3ChunkBufs)
+}
+
+func (a awsStorageClient) putS3Chunks(ctx context.Context, keys []string, bufs [][]byte) error {
 	incomingErrors := make(chan error)
 	for i := range bufs {
 		go func(i int) {
-			incomingErrors <- a.putChunk(ctx, keys[i], bufs[i])
+			incomingErrors <- a.putS3Chunk(ctx, keys[i], bufs[i])
 		}(i)
 	}
 
@@ -404,8 +427,7 @@ func (a awsStorageClient) PutChunks(ctx context.Context, _ []Chunk, keys []strin
 	return lastErr
 }
 
-// putChunk puts a chunk into S3.
-func (a awsStorageClient) putChunk(ctx context.Context, key string, buf []byte) error {
+func (a awsStorageClient) putS3Chunk(ctx context.Context, key string, buf []byte) error {
 	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(ctx context.Context) error {
 		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
 			Body:   bytes.NewReader(buf),

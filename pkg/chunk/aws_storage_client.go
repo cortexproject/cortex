@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/instrument"
@@ -337,12 +339,39 @@ func (a dynamoDBRequestAdapter) HasNextPage() bool {
 	return a.request.HasNextPage()
 }
 
-func (a awsStorageClient) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk, error) {
+func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
+	var (
+		s3Chunks      []Chunk
+		dynamoDBDeads = []IndexQuery{}
+	)
+
+	for _, chunk := range chunks {
+		if chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
+			s3Chunks = append(s3Chunks, chunk)
+		} else {
+			table := a.chunkTableFor(chunk.From)
+			dynamoDBDeads = append(dynamoDBDeads, IndexQuery{
+				TableName:  table,
+				HashValue:  chunk.externalKey(),
+				RangeValue: nil,
+			})
+		}
+	}
+
+	chunks, err := a.getS3Chunks(ctx, s3Chunks)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
 	incomingChunks := make(chan Chunk)
 	incomingErrors := make(chan error)
-	for _, chunk := range chunkSet {
+	for _, chunk := range chunks {
 		go func(chunk Chunk) {
-			buf, err := a.getChunk(ctx, chunk.externalKey())
+			buf, err := a.getS3Chunk(ctx, chunk.externalKey())
 			if err != nil {
 				incomingErrors <- err
 				return
@@ -355,12 +384,12 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Ch
 		}(chunk)
 	}
 
-	chunks := []Chunk{}
+	result := []Chunk{}
 	errors := []error{}
-	for i := 0; i < len(chunkSet); i++ {
+	for i := 0; i < len(chunks); i++ {
 		select {
 		case chunk := <-incomingChunks:
-			chunks = append(chunks, chunk)
+			result = append(result, chunk)
 		case err := <-incomingErrors:
 			errors = append(errors, err)
 		}
@@ -368,10 +397,10 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Ch
 	if len(errors) > 0 {
 		return nil, errors[0]
 	}
-	return chunks, nil
+	return result, nil
 }
 
-func (a awsStorageClient) getChunk(ctx context.Context, key string) ([]byte, error) {
+func (a awsStorageClient) getS3Chunk(ctx context.Context, key string) ([]byte, error) {
 	var resp *s3.GetObjectOutput
 	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(ctx context.Context) error {
 		var err error
@@ -396,17 +425,32 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk, keys []
 	var (
 		s3ChunkKeys    []string
 		s3ChunkBufs    [][]byte
-		dynamoDBWrites map[string][]*dynamodb.WriteRequest
+		dynamoDBWrites = dynamoDBWriteBatch{}
 	)
 
 	for i, chunk := range chunks {
 		if chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
 			s3ChunkKeys = append(s3ChunkKeys, keys[i])
 			s3ChunkBufs = append(s3ChunkBufs, bufs[i])
+		} else {
+			table := a.chunkTableFor(chunk.From)
+			dynamoDBWrites.Add(table, keys[i], nil, bufs[i])
 		}
 	}
 
-	return a.putS3Chunks(ctx, s3ChunkKeys, s3ChunkBufs)
+	if err := a.putS3Chunks(ctx, s3ChunkKeys, s3ChunkBufs); err != nil {
+		return err
+	}
+
+	return a.BatchWrite(ctx, dynamoDBWrites)
+}
+
+func (a awsStorageClient) chunkTableFor(t model.Time) string {
+	var (
+		periodSecs = int64(a.cfg.ChunkTablePeriod / time.Second)
+		table      = t.Unix() / periodSecs
+	)
+	return a.cfg.ChunkTablePrefix + strconv.Itoa(int(table))
 }
 
 func (a awsStorageClient) putS3Chunks(ctx context.Context, keys []string, bufs [][]byte) error {

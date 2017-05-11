@@ -49,6 +49,9 @@ type IndexQuery struct {
 	RangeValuePrefix []byte
 	RangeValueStart  []byte
 
+	// Used when fetching chunks
+	RangeValue []byte
+
 	// Filters for querying
 	ValueEqual []byte
 }

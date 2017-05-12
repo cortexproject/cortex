@@ -48,7 +48,8 @@ const (
 	maxRetries = 20
 
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
-	dynamoMaxBatchSize = 25
+	dynamoDBMaxWriteBatchSize = 25
+	dynamoDBMaxReadBatchSize  = 100
 )
 
 var (
@@ -159,12 +160,12 @@ func (a awsStorageClient) NewWriteBatch() WriteBatch {
 // batchWrite writes requests to the underlying storage, handling retires and backoff.
 func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) error {
 	outstanding := input.(dynamoDBWriteBatch)
-	unprocessed := map[string][]*dynamodb.WriteRequest{}
+	unprocessed := dynamoDBWriteBatch{}
 	backoff, numRetries := minBackoff, 0
-	for dictLen(outstanding)+dictLen(unprocessed) > 0 && numRetries < maxRetries {
-		reqs := map[string][]*dynamodb.WriteRequest{}
-		takeReqs(unprocessed, reqs, dynamoMaxBatchSize)
-		takeReqs(outstanding, reqs, dynamoMaxBatchSize)
+	for outstanding.Len()+unprocessed.Len() > 0 && numRetries < maxRetries {
+		reqs := dynamoDBWriteBatch{}
+		reqs.takeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
+		reqs.takeReqs(outstanding, dynamoDBMaxWriteBatchSize)
 		var resp *dynamodb.BatchWriteItemOutput
 
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(ctx context.Context) error {
@@ -187,8 +188,8 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		}
 
 		// If there are unprocessed items, backoff and retry those items.
-		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dictLen(unprocessedItems) > 0 {
-			takeReqs(unprocessedItems, unprocessed, -1)
+		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
+			unprocessed.takeReqs(unprocessedItems, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue
@@ -197,7 +198,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-			takeReqs(reqs, unprocessed, -1)
+			unprocessed.takeReqs(reqs, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			numRetries++
@@ -213,7 +214,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		numRetries = 0
 	}
 
-	if valuesLeft := dictLen(outstanding) + dictLen(unprocessed); valuesLeft > 0 {
+	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
 		return fmt.Errorf("failed to write chunk after %d retries, %d values remaining", numRetries, valuesLeft)
 	}
 	return nil
@@ -284,7 +285,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		}
 
 		queryOutput := page.Data().(*dynamodb.QueryOutput)
-		if getNextPage := callback(dynamoDBReadBatch(queryOutput.Items), !page.HasNextPage()); !getNextPage {
+		if getNextPage := callback(dynamoDBReadResponse(queryOutput.Items), !page.HasNextPage()); !getNextPage {
 			if err != nil {
 				return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error())
 			}
@@ -341,29 +342,25 @@ func (a dynamoDBRequestAdapter) HasNextPage() bool {
 
 func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
 	var (
-		s3Chunks      []Chunk
-		dynamoDBReads = []IndexQuery{}
+		s3Chunks       []Chunk
+		dynamoDBChunks []Chunk
 	)
 
 	for _, chunk := range chunks {
 		if chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
 			s3Chunks = append(s3Chunks, chunk)
 		} else {
-			table := a.chunkTableFor(chunk.From)
-			dynamoDBReads = append(dynamoDBReads, IndexQuery{
-				TableName:  table,
-				HashValue:  chunk.externalKey(),
-				RangeValue: nil,
-			})
+			dynamoDBChunks = append(dynamoDBChunks, chunk)
 		}
 	}
 
-	s3chunks, err := a.getS3Chunks(ctx, s3Chunks)
+	var err error
+	s3Chunks, err = a.getS3Chunks(ctx, s3Chunks)
 	if err != nil {
 		return nil, err
 	}
 
-	dynamoDBChunks, err := a.getDynamoDBChunks(ctx, dynamoDBReads)
+	dynamoDBChunks, err = a.getDynamoDBChunks(ctx, dynamoDBChunks)
 	if err != nil {
 		return nil, err
 	}
@@ -376,12 +373,8 @@ func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Ch
 	incomingErrors := make(chan error)
 	for _, chunk := range chunks {
 		go func(chunk Chunk) {
-			buf, err := a.getS3Chunk(ctx, chunk)
+			chunk, err := a.getS3Chunk(ctx, chunk)
 			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			if err := chunk.decode(buf); err != nil {
 				incomingErrors <- err
 				return
 			}
@@ -405,7 +398,7 @@ func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Ch
 	return result, nil
 }
 
-func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) ([]byte, error) {
+func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, error) {
 	var resp *s3.GetObjectOutput
 	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(ctx context.Context) error {
 		var err error
@@ -416,81 +409,110 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) ([]byte, 
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return Chunk{}, err
 	}
 	defer resp.Body.Close()
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return Chunk{}, err
 	}
-	return buf, nil
+	if err := chunk.decode(buf); err != nil {
+		return Chunk{}, err
+	}
+	return chunk, nil
 }
 
 func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
-	request := &dynamodb.BatchGetItemInput{
-		RequestItems:           map[string]*dynamodb.KeysAndAttributes{},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-	}
+	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]Chunk{}
 	for _, chunk := range chunks {
 		key := chunk.externalKey()
 		chunksByKey[key] = chunk
-
 		tableName := a.chunkTableFor(chunk.From)
-		kaa, ok := request.RequestItems[tableName]
-		if !ok {
-			kaa = &dynamodb.KeysAndAttributes{
-				AttributesToGet: []*string{aws.String(valueKey)},
-				ConsistentRead:  aws.Bool(true),
-			}
-			request.RequestItems[tableName] = kaa
-		}
-		kaa.Keys = append(kaa.Keys, map[string]*dynamodb.AttributeValue{
-			hashKey: &dynamodb.AttributeValue{S: aws.String(key)},
-		})
+		outstanding.Add(tableName, key, nil)
 	}
 
-	var result []Chunk
-	var processingErr error
-	err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
-		return a.DynamoDB.BatchGetItemPagesWithContext(ctx, request, func(response *dynamodb.BatchGetItemOutput, lastPage bool) bool {
-			for _, items := range response.Responses {
-				for _, item := range items {
-					key, ok := item[hashKey]
-					if !ok || key == nil || key.S == nil {
-						processingErr = fmt.Errorf("Got response from DynamoDB with no hash key: %+v", item)
-						return false
-					}
+	result := []Chunk{}
+	unprocessed := dynamoDBReadRequest{}
+	backoff, numRetries := minBackoff, 0
+	for outstanding.Len()+unprocessed.Len() > 0 {
+		requests := dynamoDBReadRequest{}
+		requests.takeReqs(unprocessed, dynamoDBMaxReadBatchSize)
+		requests.takeReqs(outstanding, dynamoDBMaxReadBatchSize)
 
-					chunk, ok := chunksByKey[*key.S]
-					if !ok {
-						processingErr = fmt.Errorf("Got response from DynamoDB with for chunk I didn't ask for: %s", *key.S)
-						return false
-					}
+		var response *dynamodb.BatchGetItemOutput
+		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
+			var err error
+			response, err = a.DynamoDB.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{
+				RequestItems:           outstanding,
+				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+			})
+			return err
+		})
 
-					buf, ok := item[valueKey]
-					if !ok || buf == nil || buf.B == nil {
-						processingErr = fmt.Errorf("Got response from DynamoDB with no value: %+v", item)
-						return false
-					}
+		for _, cc := range response.ConsumedCapacity {
+			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages").
+				Add(float64(*cc.CapacityUnits))
+		}
 
-					if processingErr = chunk.decode(buf.B); processingErr != nil {
-						return false
-					}
+		if err != nil {
+			for tableName := range outstanding {
+				recordDynamoError(tableName, err)
+			}
+		}
 
-					result = append(result, chunk)
+		for _, items := range response.Responses {
+			for _, item := range items {
+				key, ok := item[hashKey]
+				if !ok || key == nil || key.S == nil {
+					return result, fmt.Errorf("Got response from DynamoDB with no hash key: %+v", item)
 				}
-			}
 
-			return !lastPage
-		})
-	})
-	if err != nil {
-		for tableName := range request.RequestItems {
-			recordDynamoError(tableName, err)
+				chunk, ok := chunksByKey[*key.S]
+				if !ok {
+					return result, fmt.Errorf("Got response from DynamoDB with for chunk I didn't ask for: %s", *key.S)
+				}
+
+				buf, ok := item[valueKey]
+				if !ok || buf == nil || buf.B == nil {
+					return result, fmt.Errorf("Got response from DynamoDB with no value: %+v", item)
+				}
+
+				if err := chunk.decode(buf.B); err != nil {
+					return result, err
+				}
+
+				result = append(result, chunk)
+			}
 		}
+
+		// If there are unprocessed items, backoff and retry those items.
+		if unprocessedKeys := response.UnprocessedKeys; unprocessedKeys != nil && dynamoDBReadRequest(unprocessedKeys).Len() > 0 {
+			unprocessed.takeReqs(unprocessedKeys, -1)
+			time.Sleep(backoff)
+			backoff = nextBackoff(backoff)
+			continue
+		}
+
+		// If we get provisionedThroughputExceededException, then no items were processed,
+		// so back off and retry all.
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+			unprocessed.takeReqs(requests, -1)
+			time.Sleep(backoff)
+			backoff = nextBackoff(backoff)
+			numRetries++
+			continue
+		}
+
+		// All other errors are fatal.
+		if err != nil {
+			return result, err
+		}
+
+		backoff = minBackoff
+		numRetries = 0
 	}
-	return result, err
+	return result, nil
 }
 
 func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk, keys []string, bufs [][]byte) error {
@@ -554,7 +576,33 @@ func (a awsStorageClient) putS3Chunk(ctx context.Context, key string, buf []byte
 	})
 }
 
+type dynamoDBReadResponse []map[string]*dynamodb.AttributeValue
+
+func (b dynamoDBReadResponse) Len() int {
+	return len(b)
+}
+
+func (b dynamoDBReadResponse) RangeValue(i int) []byte {
+	return b[i][rangeKey].B
+}
+
+func (b dynamoDBReadResponse) Value(i int) []byte {
+	chunkValue, ok := b[i][valueKey]
+	if !ok {
+		return nil
+	}
+	return chunkValue.B
+}
+
 type dynamoDBWriteBatch map[string][]*dynamodb.WriteRequest
+
+func (b dynamoDBWriteBatch) Len() int {
+	result := 0
+	for _, reqs := range b {
+		result += len(reqs)
+	}
+	return result
+}
 
 func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
 	item := map[string]*dynamodb.AttributeValue{
@@ -573,22 +621,67 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 	})
 }
 
-type dynamoDBReadBatch []map[string]*dynamodb.AttributeValue
-
-func (b dynamoDBReadBatch) Len() int {
-	return len(b)
-}
-
-func (b dynamoDBReadBatch) RangeValue(i int) []byte {
-	return b[i][rangeKey].B
-}
-
-func (b dynamoDBReadBatch) Value(i int) []byte {
-	chunkValue, ok := b[i][valueKey]
-	if !ok {
-		return nil
+// Fill 'to' with WriteRequests from 'from' until 'to' has at most max requests. Remove those requests from 'from'.
+func (b dynamoDBWriteBatch) takeReqs(from dynamoDBWriteBatch, max int) {
+	outLen, inLen := b.Len(), from.Len()
+	toFill := inLen
+	if max > 0 {
+		toFill = util.Min(inLen, max-outLen)
 	}
-	return chunkValue.B
+	for toFill > 0 {
+		for tableName, fromReqs := range from {
+			taken := util.Min(len(fromReqs), toFill)
+			if taken > 0 {
+				b[tableName] = append(b[tableName], fromReqs[:taken]...)
+				from[tableName] = fromReqs[taken:]
+				toFill -= taken
+			}
+		}
+	}
+}
+
+type dynamoDBReadRequest map[string]*dynamodb.KeysAndAttributes
+
+func (b dynamoDBReadRequest) Len() int {
+	result := 0
+	for _, reqs := range b {
+		result += len(reqs.Keys)
+	}
+	return result
+}
+
+func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte) {
+	requests, ok := b[tableName]
+	if !ok {
+		requests = &dynamodb.KeysAndAttributes{
+			AttributesToGet: []*string{aws.String(valueKey)},
+			ConsistentRead:  aws.Bool(true),
+		}
+		b[tableName] = requests
+	}
+	requests.Keys = append(requests.Keys, map[string]*dynamodb.AttributeValue{
+		hashKey:  &dynamodb.AttributeValue{S: aws.String(hashValue)},
+		rangeKey: &dynamodb.AttributeValue{B: rangeValue},
+	})
+}
+
+// Fill 'to' with WriteRequests from 'from' until 'to' has at most max requests. Remove those requests from 'from'.
+func (b dynamoDBReadRequest) takeReqs(from dynamoDBReadRequest, max int) {
+	outLen, inLen := b.Len(), from.Len()
+	toFill := inLen
+	if max > 0 {
+		toFill = util.Min(inLen, max-outLen)
+	}
+	for toFill > 0 {
+		for tableName, fromReqs := range from {
+			taken := util.Min(len(fromReqs.Keys), toFill)
+			if taken > 0 {
+				b[tableName].Keys = append(b[tableName].Keys, fromReqs.Keys[:taken]...)
+				from[tableName].Keys = fromReqs.Keys[taken:]
+				toFill -= taken
+			}
+		}
+	}
 }
 
 func nextBackoff(lastBackoff time.Duration) time.Duration {
@@ -606,33 +699,6 @@ func recordDynamoError(tableName string, err error) {
 		dynamoFailures.WithLabelValues(tableName, awsErr.Code()).Add(float64(1))
 	} else {
 		dynamoFailures.WithLabelValues(tableName, otherError).Add(float64(1))
-	}
-}
-
-func dictLen(b map[string][]*dynamodb.WriteRequest) int {
-	result := 0
-	for _, reqs := range b {
-		result += len(reqs)
-	}
-	return result
-}
-
-// Fill 'to' with WriteRequests from 'from' until 'to' has at most max requests. Remove those requests from 'from'.
-func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
-	outLen, inLen := dictLen(to), dictLen(from)
-	toFill := inLen
-	if max > 0 {
-		toFill = util.Min(inLen, max-outLen)
-	}
-	for toFill > 0 {
-		for tableName, fromReqs := range from {
-			taken := util.Min(len(fromReqs), toFill)
-			if taken > 0 {
-				to[tableName] = append(to[tableName], fromReqs[:taken]...)
-				from[tableName] = fromReqs[taken:]
-				toFill -= taken
-			}
-		}
 	}
 }
 

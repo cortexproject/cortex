@@ -48,7 +48,7 @@ type TableManagerConfig struct {
 	DynamoDBPollInterval time.Duration
 
 	PeriodicTableConfig
-	ChunkTableConfig
+	PeriodicChunkTableConfig
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod        time.Duration
@@ -79,7 +79,7 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.ChunkTableInactiveReadThroughput, "dynamodb.chunk-table.inactive-read-throughput", 300, "DynamoDB chunk tables read throughput for inactive tables")
 
 	cfg.PeriodicTableConfig.RegisterFlags(f)
-	cfg.ChunkTableConfig.RegisterFlags(f)
+	cfg.PeriodicChunkTableConfig.RegisterFlags(f)
 }
 
 // PeriodicTableConfig for the use of periodic tables (ie, weekly tables).  Can
@@ -102,14 +102,15 @@ func (cfg *PeriodicTableConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.PeriodicTableStartAt, "dynamodb.periodic-table.start", "DynamoDB periodic tables start time.")
 }
 
-type ChunkTableConfig struct {
+// PeriodicChunkTableConfig contains the various parameters for the chunk table.
+type PeriodicChunkTableConfig struct {
 	ChunkTableFrom   util.DayValue
 	ChunkTablePrefix string
 	ChunkTablePeriod time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *ChunkTableConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *PeriodicChunkTableConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.ChunkTableFrom, "dynamodb.chunk-table.from", "Date after which to write chunks to DynamoDB.")
 	f.StringVar(&cfg.ChunkTablePrefix, "dynamodb.chunk-table.prefix", "cortex_chunks_", "DynamoDB table prefix for period chunk tables.")
 	f.DurationVar(&cfg.ChunkTablePeriod, "dynamodb.chunk-table.period", 7*24*time.Hour, "DynamoDB chunk tables period.")

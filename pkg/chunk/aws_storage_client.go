@@ -101,7 +101,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 // AWSStorageConfig specifies config for storing data on AWS.
 type AWSStorageConfig struct {
 	DynamoDBConfig
-	ChunkTableConfig
+	PeriodicChunkTableConfig
 
 	S3 util.URLValue
 }
@@ -109,7 +109,7 @@ type AWSStorageConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *AWSStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.DynamoDBConfig.RegisterFlags(f)
-	cfg.ChunkTableConfig.RegisterFlags(f)
+	cfg.PeriodicChunkTableConfig.RegisterFlags(f)
 
 	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
@@ -660,8 +660,8 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 		b[tableName] = requests
 	}
 	requests.Keys = append(requests.Keys, map[string]*dynamodb.AttributeValue{
-		hashKey:  &dynamodb.AttributeValue{S: aws.String(hashValue)},
-		rangeKey: &dynamodb.AttributeValue{B: rangeValue},
+		hashKey:  {S: aws.String(hashValue)},
+		rangeKey: {B: rangeValue},
 	})
 }
 

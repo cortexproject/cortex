@@ -342,7 +342,7 @@ func (a dynamoDBRequestAdapter) HasNextPage() bool {
 func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
 	var (
 		s3Chunks      []Chunk
-		dynamoDBDeads = []IndexQuery{}
+		dynamoDBReads = []IndexQuery{}
 	)
 
 	for _, chunk := range chunks {
@@ -350,7 +350,7 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 			s3Chunks = append(s3Chunks, chunk)
 		} else {
 			table := a.chunkTableFor(chunk.From)
-			dynamoDBDeads = append(dynamoDBDeads, IndexQuery{
+			dynamoDBReads = append(dynamoDBReads, IndexQuery{
 				TableName:  table,
 				HashValue:  chunk.externalKey(),
 				RangeValue: nil,
@@ -358,12 +358,17 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 		}
 	}
 
-	chunks, err := a.getS3Chunks(ctx, s3Chunks)
+	s3chunks, err := a.getS3Chunks(ctx, s3Chunks)
 	if err != nil {
 		return nil, err
 	}
 
-	return nil, nil
+	dynamoDBChunks, err := a.getDynamoDBChunks(ctx, dynamoDBReads)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(dynamoDBChunks, s3Chunks...), nil
 }
 
 func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
@@ -371,7 +376,7 @@ func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Ch
 	incomingErrors := make(chan error)
 	for _, chunk := range chunks {
 		go func(chunk Chunk) {
-			buf, err := a.getS3Chunk(ctx, chunk.externalKey())
+			buf, err := a.getS3Chunk(ctx, chunk)
 			if err != nil {
 				incomingErrors <- err
 				return
@@ -400,13 +405,13 @@ func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Ch
 	return result, nil
 }
 
-func (a awsStorageClient) getS3Chunk(ctx context.Context, key string) ([]byte, error) {
+func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) ([]byte, error) {
 	var resp *s3.GetObjectOutput
 	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(ctx context.Context) error {
 		var err error
 		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(a.bucketName),
-			Key:    aws.String(key),
+			Key:    aws.String(chunk.externalKey()),
 		})
 		return err
 	})
@@ -419,6 +424,73 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, key string) ([]byte, e
 		return nil, err
 	}
 	return buf, nil
+}
+
+func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
+	request := &dynamodb.BatchGetItemInput{
+		RequestItems:           map[string]*dynamodb.KeysAndAttributes{},
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+	}
+	chunksByKey := map[string]Chunk{}
+	for _, chunk := range chunks {
+		key := chunk.externalKey()
+		chunksByKey[key] = chunk
+
+		tableName := a.chunkTableFor(chunk.From)
+		kaa, ok := request.RequestItems[tableName]
+		if !ok {
+			kaa = &dynamodb.KeysAndAttributes{
+				AttributesToGet: []*string{aws.String(valueKey)},
+				ConsistentRead:  aws.Bool(true),
+			}
+			request.RequestItems[tableName] = kaa
+		}
+		kaa.Keys = append(kaa.Keys, map[string]*dynamodb.AttributeValue{
+			hashKey: &dynamodb.AttributeValue{S: aws.String(key)},
+		})
+	}
+
+	var result []Chunk
+	var processingErr error
+	err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
+		return a.DynamoDB.BatchGetItemPagesWithContext(ctx, request, func(response *dynamodb.BatchGetItemOutput, lastPage bool) bool {
+			for _, items := range response.Responses {
+				for _, item := range items {
+					key, ok := item[hashKey]
+					if !ok || key == nil || key.S == nil {
+						processingErr = fmt.Errorf("Got response from DynamoDB with no hash key: %+v", item)
+						return false
+					}
+
+					chunk, ok := chunksByKey[*key.S]
+					if !ok {
+						processingErr = fmt.Errorf("Got response from DynamoDB with for chunk I didn't ask for: %s", *key.S)
+						return false
+					}
+
+					buf, ok := item[valueKey]
+					if !ok || buf == nil || buf.B == nil {
+						processingErr = fmt.Errorf("Got response from DynamoDB with no value: %+v", item)
+						return false
+					}
+
+					if processingErr = chunk.decode(buf.B); processingErr != nil {
+						return false
+					}
+
+					result = append(result, chunk)
+				}
+			}
+
+			return !lastPage
+		})
+	})
+	if err != nil {
+		for tableName := range request.RequestItems {
+			recordDynamoError(tableName, err)
+		}
+	}
+	return result, err
 }
 
 func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk, keys []string, bufs [][]byte) error {

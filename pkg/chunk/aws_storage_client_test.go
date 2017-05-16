@@ -3,20 +3,29 @@ package chunk
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
 	"net/url"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 type mockDynamoDBClient struct {
@@ -99,6 +108,57 @@ func (m *mockDynamoDBClient) BatchWriteItemWithContext(_ aws.Context, input *dyn
 	return resp, nil
 }
 
+func (m *mockDynamoDBClient) BatchGetItemWithContext(_ aws.Context, input *dynamodb.BatchGetItemInput, _ ...request.Option) (*dynamodb.BatchGetItemOutput, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	resp := &dynamodb.BatchGetItemOutput{
+		Responses:       map[string][]map[string]*dynamodb.AttributeValue{},
+		UnprocessedKeys: map[string]*dynamodb.KeysAndAttributes{},
+	}
+
+	if m.provisionedErr > 0 {
+		m.provisionedErr--
+		return resp, awserr.New(provisionedThroughputExceededException, "", nil)
+	}
+
+	for tableName, readRequests := range input.RequestItems {
+		table, ok := m.tables[tableName]
+		if !ok {
+			return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("table not found")
+		}
+
+		unprocessed := &dynamodb.KeysAndAttributes{
+			AttributesToGet:          readRequests.AttributesToGet,
+			ConsistentRead:           readRequests.ConsistentRead,
+			ExpressionAttributeNames: readRequests.ExpressionAttributeNames,
+		}
+		for _, readRequest := range readRequests.Keys {
+			if m.unprocessed > 0 {
+				m.unprocessed--
+				unprocessed.Keys = append(unprocessed.Keys, readRequest)
+				resp.UnprocessedKeys[tableName] = unprocessed
+				continue
+			}
+
+			hashValue := *readRequest[hashKey].S
+			rangeValue := readRequest[rangeKey].B
+			items := table.items[hashValue]
+
+			// insert in order
+			i := sort.Search(len(items), func(i int) bool {
+				return bytes.Compare(items[i][rangeKey].B, rangeValue) >= 0
+			})
+			if i >= len(items) || !bytes.Equal(items[i][rangeKey].B, rangeValue) {
+				return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("Couldn't find ite,")
+			}
+
+			resp.Responses[tableName] = append(resp.Responses[tableName], items[i])
+		}
+	}
+	return resp, nil
+}
+
 func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
 	result := &dynamodb.QueryOutput{
 		Items: []map[string]*dynamodb.AttributeValue{},
@@ -172,7 +232,46 @@ func (m *dynamoDBMockRequest) HasNextPage() bool {
 	return false
 }
 
-func TestDynamoDBClient(t *testing.T) {
+type mockS3 struct {
+	s3iface.S3API
+	sync.RWMutex
+	objects map[string][]byte
+}
+
+func newMockS3() *mockS3 {
+	return &mockS3{
+		objects: map[string][]byte{},
+	}
+}
+
+func (m *mockS3) PutObjectWithContext(_ aws.Context, req *s3.PutObjectInput, _ ...request.Option) (*s3.PutObjectOutput, error) {
+	m.Lock()
+	defer m.Unlock()
+
+	buf, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	m.objects[*req.Key] = buf
+	return &s3.PutObjectOutput{}, nil
+}
+
+func (m *mockS3) GetObjectWithContext(_ aws.Context, req *s3.GetObjectInput, _ ...request.Option) (*s3.GetObjectOutput, error) {
+	m.RLock()
+	defer m.RUnlock()
+
+	buf, ok := m.objects[*req.Key]
+	if !ok {
+		return nil, fmt.Errorf("Not found")
+	}
+
+	return &s3.GetObjectOutput{
+		Body: ioutil.NopCloser(bytes.NewReader(buf)),
+	}, nil
+}
+
+func TestAWSStorageClient(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	client := awsStorageClient{
 		DynamoDB:       dynamoDB,
@@ -194,9 +293,9 @@ func TestDynamoDBClient(t *testing.T) {
 		}
 		var have []IndexEntry
 		err := client.QueryPages(context.Background(), entry, func(read ReadBatch, lastPage bool) bool {
-			for i := 0; i < read.Len(); i++ {
+			for j := 0; j < read.Len(); j++ {
 				have = append(have, IndexEntry{
-					RangeValue: read.RangeValue(i),
+					RangeValue: read.RangeValue(j),
 				})
 			}
 			return !lastPage
@@ -208,13 +307,84 @@ func TestDynamoDBClient(t *testing.T) {
 	}
 }
 
-func TestDynamoDBClientQueryPages(t *testing.T) {
-	dynamoDB := newMockDynamoDB(0, 0)
-	client := awsStorageClient{
-		DynamoDB:       dynamoDB,
-		queryRequestFn: dynamoDB.queryRequest,
+func TestAWSStorageClientChunks(t *testing.T) {
+	t.Run("S3 chunks", func(t *testing.T) {
+		dynamoDB := newMockDynamoDB(0, 0)
+		client := awsStorageClient{
+			DynamoDB:       dynamoDB,
+			S3:             newMockS3(),
+			queryRequestFn: dynamoDB.queryRequest,
+		}
+
+		testStorageClientChunks(t, client)
+	})
+
+	t.Run("DynamoDB chunks", func(t *testing.T) {
+		dynamoDB := newMockDynamoDB(0, 0)
+		client := awsStorageClient{
+			DynamoDB:       dynamoDB,
+			queryRequestFn: dynamoDB.queryRequest,
+			cfg: AWSStorageConfig{
+				PeriodicChunkTableConfig: PeriodicChunkTableConfig{
+					ChunkTableFrom:   util.NewDayValue(model.TimeFromUnix(0)),
+					ChunkTablePeriod: 1 * time.Minute,
+				},
+			},
+		}
+
+		testStorageClientChunks(t, client)
+	})
+}
+
+func testStorageClientChunks(t *testing.T, client StorageClient) {
+	const batchSize = 50
+
+	// Write a few batches of chunks.
+	written := []string{}
+	for i := 0; i < 50; i++ {
+		chunks := []Chunk{}
+		keys := []string{}
+		bufs := [][]byte{}
+		for j := 0; j < batchSize; j++ {
+			chunk := dummyChunkFor(model.Metric{
+				model.MetricNameLabel: "foo",
+				"index":               model.LabelValue(strconv.Itoa(i*batchSize + j)),
+			})
+			chunks = append(chunks, chunk)
+			buf, err := chunk.encode()
+			assert.NoError(t, err)
+			bufs = append(bufs, buf)
+			keys = append(keys, chunk.externalKey())
+		}
+		err := client.PutChunks(context.Background(), chunks, keys, bufs)
+		assert.NoError(t, err)
+
+		written = append(written, keys...)
 	}
 
+	// Get a few batches of chunks.
+	for i := 0; i < 50; i++ {
+		chunksToGet := []Chunk{}
+		for j := 0; j < batchSize; j++ {
+			key := written[rand.Intn(len(written))]
+			chunk, err := parseNewExternalKey(key)
+			assert.NoError(t, err)
+			chunksToGet = append(chunksToGet, chunk)
+		}
+
+		chunksWeGot, err := client.GetChunks(context.Background(), chunksToGet)
+		assert.NoError(t, err)
+
+		sort.Sort(ByKey(chunksToGet))
+		sort.Sort(ByKey(chunksWeGot))
+		require.Equal(t, len(chunksToGet), len(chunksWeGot))
+		for j := 0; j < len(chunksWeGot); j++ {
+			require.Equal(t, chunksToGet[i].externalKey(), chunksWeGot[i].externalKey())
+		}
+	}
+}
+
+func TestAWSStorageClientQueryPages(t *testing.T) {
 	entries := []IndexEntry{
 		{
 			TableName:  "table",
@@ -309,19 +479,25 @@ func TestDynamoDBClientQueryPages(t *testing.T) {
 		},
 	}
 
-	batch := client.NewWriteBatch()
-	for _, entry := range entries {
-		batch.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
-	}
-	dynamoDB.createTable("table")
-
-	err := client.BatchWrite(context.Background(), batch)
-	require.NoError(t, err)
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			dynamoDB := newMockDynamoDB(0, 0)
+			client := awsStorageClient{
+				DynamoDB:       dynamoDB,
+				queryRequestFn: dynamoDB.queryRequest,
+			}
+
+			batch := client.NewWriteBatch()
+			for _, entry := range entries {
+				batch.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
+			}
+			dynamoDB.createTable("table")
+
+			err := client.BatchWrite(context.Background(), batch)
+			require.NoError(t, err)
+
 			var have []IndexEntry
-			err := client.QueryPages(context.Background(), tt.query, func(read ReadBatch, lastPage bool) bool {
+			err = client.QueryPages(context.Background(), tt.query, func(read ReadBatch, lastPage bool) bool {
 				for i := 0; i < read.Len(); i++ {
 					have = append(have, IndexEntry{
 						TableName:  tt.query.TableName,

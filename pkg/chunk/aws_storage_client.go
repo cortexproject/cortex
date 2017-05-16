@@ -347,7 +347,7 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 	)
 
 	for _, chunk := range chunks {
-		if chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
+		if !a.cfg.ChunkTableFrom.IsSet() || chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
 			s3Chunks = append(s3Chunks, chunk)
 		} else {
 			dynamoDBChunks = append(dynamoDBChunks, chunk)
@@ -523,7 +523,7 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk, keys []
 	)
 
 	for i, chunk := range chunks {
-		if chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
+		if !a.cfg.ChunkTableFrom.IsSet() || chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
 			s3ChunkKeys = append(s3ChunkKeys, keys[i])
 			s3ChunkBufs = append(s3ChunkBufs, bufs[i])
 		} else {

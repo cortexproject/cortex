@@ -38,7 +38,8 @@ type mockDynamoDBClient struct {
 }
 
 type mockDynamoDBTable struct {
-	items map[string][]mockDynamoDBItem
+	items       map[string][]mockDynamoDBItem
+	read, write int64
 }
 
 type mockDynamoDBItem map[string]*dynamodb.AttributeValue
@@ -75,7 +76,7 @@ func (m *mockDynamoDBClient) BatchWriteItemWithContext(_ aws.Context, input *dyn
 	for tableName, writeRequests := range input.RequestItems {
 		table, ok := m.tables[tableName]
 		if !ok {
-			return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("table not found")
+			return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("table not found: %s", tableName)
 		}
 
 		for _, writeRequest := range writeRequests {
@@ -232,6 +233,70 @@ func (m *dynamoDBMockRequest) HasNextPage() bool {
 	return false
 }
 
+type mockDynamoDBTableClient struct {
+	*mockDynamoDBClient
+}
+
+func (m *mockDynamoDBTableClient) ListTables(_ context.Context) ([]string, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	var tableNames []string
+	for tableName := range m.tables {
+		func(tableName string) {
+			tableNames = append(tableNames, tableName)
+		}(tableName)
+	}
+	return tableNames, nil
+}
+
+// CreateTable implements StorageClient.
+func (m *mockDynamoDBTableClient) CreateTable(_ context.Context, name string, read, write int64) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if _, ok := m.tables[name]; ok {
+		return fmt.Errorf("table already exists")
+	}
+
+	m.tables[name] = &mockDynamoDBTable{
+		items: map[string][]mockDynamoDBItem{},
+		write: write,
+		read:  read,
+	}
+
+	return nil
+}
+
+// DescribeTable implements StorageClient.
+func (m *mockDynamoDBTableClient) DescribeTable(_ context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	table, ok := m.tables[name]
+	if !ok {
+		return 0, 0, "", fmt.Errorf("not found")
+	}
+
+	return table.read, table.write, dynamodb.TableStatusActive, nil
+}
+
+// UpdateTable implements StorageClient.
+func (m *mockDynamoDBTableClient) UpdateTable(_ context.Context, name string, readCapacity, writeCapacity int64) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	table, ok := m.tables[name]
+	if !ok {
+		return fmt.Errorf("not found")
+	}
+
+	table.read = readCapacity
+	table.write = writeCapacity
+
+	return nil
+}
+
 type mockS3 struct {
 	s3iface.S3API
 	sync.RWMutex
@@ -321,14 +386,23 @@ func TestAWSStorageClientChunks(t *testing.T) {
 
 	t.Run("DynamoDB chunks", func(t *testing.T) {
 		dynamoDB := newMockDynamoDB(0, 0)
+		periodicChunkTableConfig := PeriodicChunkTableConfig{
+			ChunkTableFrom:   util.NewDayValue(model.Now()),
+			ChunkTablePeriod: 1 * time.Minute,
+			ChunkTablePrefix: "chunks",
+		}
+		tableManager, err := NewTableManager(TableManagerConfig{
+			PeriodicChunkTableConfig: periodicChunkTableConfig,
+		}, &mockDynamoDBTableClient{dynamoDB})
+		require.NoError(t, err)
+		err = tableManager.syncTables(context.Background())
+		require.NoError(t, err)
+
 		client := awsStorageClient{
 			DynamoDB:       dynamoDB,
 			queryRequestFn: dynamoDB.queryRequest,
 			cfg: AWSStorageConfig{
-				PeriodicChunkTableConfig: PeriodicChunkTableConfig{
-					ChunkTableFrom:   util.NewDayValue(model.TimeFromUnix(0)),
-					ChunkTablePeriod: 1 * time.Minute,
-				},
+				PeriodicChunkTableConfig: periodicChunkTableConfig,
 			},
 		}
 
@@ -357,7 +431,7 @@ func testStorageClientChunks(t *testing.T, client StorageClient) {
 			keys = append(keys, chunk.externalKey())
 		}
 		err := client.PutChunks(context.Background(), chunks, keys, bufs)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		written = append(written, keys...)
 	}

@@ -444,7 +444,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
 			var err error
 			response, err = a.DynamoDB.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{
-				RequestItems:           outstanding,
+				RequestItems:           requests,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
 			return err
@@ -676,6 +676,13 @@ func (b dynamoDBReadRequest) takeReqs(from dynamoDBReadRequest, max int) {
 		for tableName, fromReqs := range from {
 			taken := util.Min(len(fromReqs.Keys), toFill)
 			if taken > 0 {
+				if _, ok := b[tableName]; !ok {
+					b[tableName] = &dynamodb.KeysAndAttributes{
+						AttributesToGet: []*string{aws.String(valueKey)},
+						ConsistentRead:  aws.Bool(true),
+					}
+				}
+
 				b[tableName].Keys = append(b[tableName].Keys, fromReqs.Keys[:taken]...)
 				from[tableName].Keys = fromReqs.Keys[taken:]
 				toFill -= taken

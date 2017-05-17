@@ -173,7 +173,7 @@ func (m *TableManager) loop() {
 
 func (m *TableManager) syncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
-	log.Infof("Expecting %d tables", len(expected))
+	log.Infof("Expecting %d tables: %+v", len(expected), expected)
 
 	toCreate, toCheckThroughput, err := m.partitionTables(ctx, expected)
 	if err != nil {
@@ -200,48 +200,40 @@ func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byName) Less(i, j int) bool { return a[i].name < a[j].name }
 
 func (m *TableManager) calculateExpectedTables() []tableDescription {
-	if !m.cfg.UsePeriodicTables {
-		return []tableDescription{
-			{
-				name:             m.cfg.OriginalTableName,
-				provisionedRead:  m.cfg.ProvisionedReadThroughput,
-				provisionedWrite: m.cfg.ProvisionedWriteThroughput,
-			},
-		}
-	}
-
 	result := []tableDescription{}
 
-	var (
-		tablePeriodSecs = int64(m.cfg.TablePeriod / time.Second)
-		gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
-		maxChunkAgeSecs = int64(m.cfg.MaxChunkAge / time.Second)
-		firstTable      = m.cfg.PeriodicTableStartAt.Unix() / tablePeriodSecs
-		now             = mtime.Now().Unix()
-	)
-
 	// Add the legacy table
-	{
-		legacyTable := tableDescription{
-			name:             m.cfg.OriginalTableName,
-			provisionedRead:  m.cfg.InactiveReadThroughput,
-			provisionedWrite: m.cfg.InactiveWriteThroughput,
-		}
+	legacyTable := tableDescription{
+		name:             m.cfg.OriginalTableName,
+		provisionedRead:  m.cfg.InactiveReadThroughput,
+		provisionedWrite: m.cfg.InactiveWriteThroughput,
+	}
 
+	if m.cfg.UsePeriodicTables {
 		// if we are before the switch to periodic table, we need to give this table write throughput
+		var (
+			tablePeriodSecs = int64(m.cfg.TablePeriod / time.Second)
+			gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
+			maxChunkAgeSecs = int64(m.cfg.MaxChunkAge / time.Second)
+			firstTable      = m.cfg.PeriodicTableStartAt.Unix() / tablePeriodSecs
+			now             = mtime.Now().Unix()
+		)
+
 		if now < (firstTable*tablePeriodSecs)+gracePeriodSecs+maxChunkAgeSecs {
 			legacyTable.provisionedRead = m.cfg.ProvisionedReadThroughput
 			legacyTable.provisionedWrite = m.cfg.ProvisionedWriteThroughput
 		}
-		result = append(result, legacyTable)
 	}
+	result = append(result, legacyTable)
 
-	result = append(result, periodicTables(
-		m.cfg.TablePrefix, m.cfg.PeriodicTableStartAt.Time, m.cfg.TablePeriod,
-		m.cfg.CreationGracePeriod, m.cfg.MaxChunkAge,
-		m.cfg.ProvisionedReadThroughput, m.cfg.ProvisionedWriteThroughput,
-		m.cfg.InactiveReadThroughput, m.cfg.InactiveWriteThroughput,
-	)...)
+	if m.cfg.UsePeriodicTables {
+		result = append(result, periodicTables(
+			m.cfg.TablePrefix, m.cfg.PeriodicTableStartAt.Time, m.cfg.TablePeriod,
+			m.cfg.CreationGracePeriod, m.cfg.MaxChunkAge,
+			m.cfg.ProvisionedReadThroughput, m.cfg.ProvisionedWriteThroughput,
+			m.cfg.InactiveReadThroughput, m.cfg.InactiveWriteThroughput,
+		)...)
+	}
 
 	if m.cfg.ChunkTableFrom.IsSet() {
 		result = append(result, periodicTables(
@@ -284,6 +276,7 @@ func periodicTables(
 		}
 		result = append(result, table)
 	}
+	log.Infof("periodicTables: %+v", result)
 	return result
 }
 

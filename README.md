@@ -64,7 +64,7 @@ To use the Prometheus Service with Grafana, configure your Grafana instance to h
 
 - Type: Prometheus
 - Url: https://cloud.weave.works/api/prom
-- Access: Direct
+- Access: Proxy
 - Http Auth: Basic Auth
 - User: `user` (this is ignored, but must be non-empty)
 - Password: <Service Token> (the same one your retrieval agent uses)

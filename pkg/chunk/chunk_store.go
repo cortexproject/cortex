@@ -97,19 +97,7 @@ func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 		return err
 	}
 
-	// Encode the chunk first - checksum is calculated as a side effect.
-	bufs := [][]byte{}
-	keys := []string{}
-	for i := range chunks {
-		encoded, err := chunks[i].encode()
-		if err != nil {
-			return err
-		}
-		bufs = append(bufs, encoded)
-		keys = append(keys, chunks[i].externalKey())
-	}
-
-	err = c.storage.PutChunks(ctx, chunks, keys, bufs)
+	err = c.storage.PutChunks(ctx, chunks)
 	if err != nil {
 		return err
 	}

@@ -230,12 +230,16 @@ func (m *MockStorage) QueryPages(_ context.Context, query IndexQuery, callback f
 }
 
 // PutChunks implements StorageClient.
-func (m *MockStorage) PutChunks(_ context.Context, _ []Chunk, keys []string, bufs [][]byte) error {
+func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	for i := range keys {
-		m.objects[keys[i]] = bufs[i]
+	for i := range chunks {
+		buf, err := chunks[i].encode()
+		if err != nil {
+			return err
+		}
+		m.objects[chunks[i].externalKey()] = buf
 	}
 	return nil
 }

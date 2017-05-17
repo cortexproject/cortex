@@ -528,20 +528,27 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 	return result, nil
 }
 
-func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk, keys []string, bufs [][]byte) error {
+func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk) error {
 	var (
 		s3ChunkKeys    []string
 		s3ChunkBufs    [][]byte
 		dynamoDBWrites = dynamoDBWriteBatch{}
 	)
 
-	for i, chunk := range chunks {
-		if !a.cfg.ChunkTableFrom.IsSet() || chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
-			s3ChunkKeys = append(s3ChunkKeys, keys[i])
-			s3ChunkBufs = append(s3ChunkBufs, bufs[i])
+	for i := range chunks {
+		// Encode the chunk first - checksum is calculated as a side effect.
+		buf, err := chunks[i].encode()
+		if err != nil {
+			return err
+		}
+		key := chunks[i].externalKey()
+
+		if !a.cfg.ChunkTableFrom.IsSet() || chunks[i].From.Before(a.cfg.ChunkTableFrom.Time) {
+			s3ChunkKeys = append(s3ChunkKeys, key)
+			s3ChunkBufs = append(s3ChunkBufs, buf)
 		} else {
-			table := a.chunkTableFor(chunk.From)
-			dynamoDBWrites.Add(table, keys[i], nil, bufs[i])
+			table := a.chunkTableFor(chunks[i].From)
+			dynamoDBWrites.Add(table, key, nil, buf)
 		}
 	}
 

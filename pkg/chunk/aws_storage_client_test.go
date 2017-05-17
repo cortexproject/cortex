@@ -417,23 +417,18 @@ func testStorageClientChunks(t *testing.T, client StorageClient) {
 	written := []string{}
 	for i := 0; i < 50; i++ {
 		chunks := []Chunk{}
-		keys := []string{}
-		bufs := [][]byte{}
 		for j := 0; j < batchSize; j++ {
 			chunk := dummyChunkFor(model.Metric{
 				model.MetricNameLabel: "foo",
 				"index":               model.LabelValue(strconv.Itoa(i*batchSize + j)),
 			})
 			chunks = append(chunks, chunk)
-			buf, err := chunk.encode()
-			assert.NoError(t, err)
-			bufs = append(bufs, buf)
-			keys = append(keys, chunk.externalKey())
+			_, err := chunk.encode() // Need to encode it, side effect calculates crc
+			require.NoError(t, err)
+			written = append(written, chunk.externalKey())
 		}
-		err := client.PutChunks(context.Background(), chunks, keys, bufs)
+		err := client.PutChunks(context.Background(), chunks)
 		require.NoError(t, err)
-
-		written = append(written, keys...)
 	}
 
 	// Get a few batches of chunks.
@@ -442,12 +437,12 @@ func testStorageClientChunks(t *testing.T, client StorageClient) {
 		for j := 0; j < batchSize; j++ {
 			key := written[rand.Intn(len(written))]
 			chunk, err := parseNewExternalKey(key)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			chunksToGet = append(chunksToGet, chunk)
 		}
 
 		chunksWeGot, err := client.GetChunks(context.Background(), chunksToGet)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		sort.Sort(ByKey(chunksToGet))
 		sort.Sort(ByKey(chunksWeGot))

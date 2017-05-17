@@ -164,8 +164,8 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 	backoff, numRetries := minBackoff, 0
 	for outstanding.Len()+unprocessed.Len() > 0 && numRetries < maxRetries {
 		reqs := dynamoDBWriteBatch{}
-		reqs.takeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
-		reqs.takeReqs(outstanding, dynamoDBMaxWriteBatchSize)
+		reqs.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
+		reqs.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
 		var resp *dynamodb.BatchWriteItemOutput
 
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(ctx context.Context) error {
@@ -189,7 +189,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 
 		// If there are unprocessed items, backoff and retry those items.
 		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
-			unprocessed.takeReqs(unprocessedItems, -1)
+			unprocessed.TakeReqs(unprocessedItems, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue
@@ -198,7 +198,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-			unprocessed.takeReqs(reqs, -1)
+			unprocessed.TakeReqs(reqs, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			numRetries++
@@ -354,6 +354,11 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 		}
 	}
 
+	// Get chunks from S3, then get chunks from DynamoDB.  I don't expect us to be
+	// doing both simultaneously except for when we migrate, when it will only
+	// occur for a couple or hours. So I didn't think it is worth the extra code
+	// to parallelise.
+
 	var err error
 	s3Chunks, err = a.getS3Chunks(ctx, s3Chunks)
 	if err != nil {
@@ -437,8 +442,8 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 	backoff, numRetries := minBackoff, 0
 	for outstanding.Len()+unprocessed.Len() > 0 {
 		requests := dynamoDBReadRequest{}
-		requests.takeReqs(unprocessed, dynamoDBMaxReadBatchSize)
-		requests.takeReqs(outstanding, dynamoDBMaxReadBatchSize)
+		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
+		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
 
 		var response *dynamodb.BatchGetItemOutput
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
@@ -459,36 +464,20 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 			for tableName := range outstanding {
 				recordDynamoError(tableName, err)
 			}
-		}
-
-		for _, items := range response.Responses {
-			for _, item := range items {
-				key, ok := item[hashKey]
-				if !ok || key == nil || key.S == nil {
-					return result, fmt.Errorf("Got response from DynamoDB with no hash key: %+v", item)
-				}
-
-				chunk, ok := chunksByKey[*key.S]
-				if !ok {
-					return result, fmt.Errorf("Got response from DynamoDB with for chunk I didn't ask for: %s", *key.S)
-				}
-
-				buf, ok := item[valueKey]
-				if !ok || buf == nil || buf.B == nil {
-					return result, fmt.Errorf("Got response from DynamoDB with no value: %+v", item)
-				}
-
-				if err := chunk.decode(buf.B); err != nil {
-					return result, err
-				}
-
-				result = append(result, chunk)
+			if awsErr, ok := err.(awserr.Error); !ok || awsErr.Code() != provisionedThroughputExceededException {
+				return nil, err
 			}
 		}
 
+		processedChunks, err := processChunkResponse(response, chunksByKey)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, processedChunks...)
+
 		// If there are unprocessed items, backoff and retry those items.
 		if unprocessedKeys := response.UnprocessedKeys; unprocessedKeys != nil && dynamoDBReadRequest(unprocessedKeys).Len() > 0 {
-			unprocessed.takeReqs(unprocessedKeys, -1)
+			unprocessed.TakeReqs(unprocessedKeys, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue
@@ -497,20 +486,44 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-			unprocessed.takeReqs(requests, -1)
+			unprocessed.TakeReqs(requests, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			numRetries++
 			continue
 		}
 
-		// All other errors are fatal.
-		if err != nil {
-			return result, err
-		}
-
 		backoff = minBackoff
 		numRetries = 0
+	}
+	return result, nil
+}
+
+func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]Chunk) ([]Chunk, error) {
+	result := []Chunk{}
+	for _, items := range response.Responses {
+		for _, item := range items {
+			key, ok := item[hashKey]
+			if !ok || key == nil || key.S == nil {
+				return nil, fmt.Errorf("Got response from DynamoDB with no hash key: %+v", item)
+			}
+
+			chunk, ok := chunksByKey[*key.S]
+			if !ok {
+				return nil, fmt.Errorf("Got response from DynamoDB with chunk I didn't ask for: %s", *key.S)
+			}
+
+			buf, ok := item[valueKey]
+			if !ok || buf == nil || buf.B == nil {
+				return nil, fmt.Errorf("Got response from DynamoDB with no value: %+v", item)
+			}
+
+			if err := chunk.decode(buf.B); err != nil {
+				return nil, err
+			}
+
+			result = append(result, chunk)
+		}
 	}
 	return result, nil
 }
@@ -531,6 +544,11 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk, keys []
 			dynamoDBWrites.Add(table, keys[i], nil, bufs[i])
 		}
 	}
+
+	// Put chunks to S3, then put chunks to DynamoDB.  I don't expect us to be
+	// doing both simultaneously except for when we migrate, when it will only
+	// occur for a couple or hours. So I didn't think it is worth the extra code
+	// to parallelise.
 
 	if err := a.putS3Chunks(ctx, s3ChunkKeys, s3ChunkBufs); err != nil {
 		return err
@@ -621,8 +639,8 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 	})
 }
 
-// Fill 'to' with WriteRequests from 'from' until 'to' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBWriteBatch) takeReqs(from dynamoDBWriteBatch, max int) {
+// Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
+func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, max int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
 	if max > 0 {
@@ -665,8 +683,8 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 	})
 }
 
-// Fill 'to' with WriteRequests from 'from' until 'to' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBReadRequest) takeReqs(from dynamoDBReadRequest, max int) {
+// Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
+func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
 	if max > 0 {

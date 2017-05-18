@@ -427,6 +427,10 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, e
 	return chunk, nil
 }
 
+// As we're resuing the DynamoDB schema from the index for the chunk tables,
+// we need to provide a non-null, non-empty value for the range value.
+var placeholder = []byte{'c'}
+
 func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]Chunk{}
@@ -434,7 +438,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		key := chunk.externalKey()
 		chunksByKey[key] = chunk
 		tableName := a.chunkTableFor(chunk.From)
-		outstanding.Add(tableName, key, nil)
+		outstanding.Add(tableName, key, placeholder)
 	}
 
 	result := []Chunk{}
@@ -548,7 +552,7 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk) error {
 			s3ChunkBufs = append(s3ChunkBufs, buf)
 		} else {
 			table := a.chunkTableFor(chunks[i].From)
-			dynamoDBWrites.Add(table, key, nil, buf)
+			dynamoDBWrites.Add(table, key, placeholder, buf)
 		}
 	}
 

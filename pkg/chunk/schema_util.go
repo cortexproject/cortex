@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 
 	"fmt"
 
@@ -93,6 +94,27 @@ func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValu
 
 	default:
 		return "", fmt.Errorf("unrecognised metricNameRangeKey version: '%v'", string(components[3]))
+	}
+}
+
+// parseSeriesRangeValue returns the model.Metric stored in metric fingerprint
+// range values.
+func parseSeriesRangeValue(rangeValue []byte, value []byte) (model.Metric, error) {
+	components := decodeRangeKey(rangeValue)
+	switch {
+	case len(components) < 4:
+		return nil, fmt.Errorf("invalid metric range value: %x", rangeValue)
+
+	// v1 has the metric name as the value (with the hash as the first component)
+	case bytes.Equal(components[3], seriesRangeKeyV1):
+		var series model.Metric
+		if err := json.Unmarshal(value, &series); err != nil {
+			return nil, err
+		}
+		return series, nil
+
+	default:
+		return nil, fmt.Errorf("unrecognised seriesRangeKey version: '%v'", string(components[3]))
 	}
 }
 

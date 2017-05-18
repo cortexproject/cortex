@@ -2,6 +2,8 @@ package chunk
 
 import (
 	"crypto/sha1"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,6 +19,7 @@ var (
 	chunkTimeRangeKeyV4  = []byte{'4'}
 	chunkTimeRangeKeyV5  = []byte{'5'}
 	metricNameRangeKeyV1 = []byte{'6'}
+	seriesRangeKeyV1     = []byte{'7'}
 )
 
 // Errors
@@ -129,6 +132,14 @@ func v7Schema(cfg SchemaConfig) Schema {
 	return schema{
 		cfg.dailyBuckets,
 		v7Entries{},
+	}
+}
+
+// v8 schema is an extension of v6, with support for a labelset/series index
+func v8Schema(cfg SchemaConfig) Schema {
+	return schema{
+		cfg.dailyBuckets,
+		v8Entries{},
 	}
 }
 
@@ -535,4 +546,34 @@ func (v7Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
 			HashValue: bucket.hashKey,
 		},
 	}, nil
+}
+
+// v8Entries is the same as v7Entries however with a series index instead of a metric name index
+type v8Entries struct {
+	v6Entries
+}
+
+func (entries v8Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	indexEntries, err := entries.v6Entries.GetWriteEntries(bucket, metricName, labels, chunkID)
+	if err != nil {
+		return nil, err
+	}
+
+	fingerprintBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(fingerprintBytes, uint64(labels.Fingerprint()))
+
+	seriesBytes, err := json.Marshal(labels)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add IndexEntry for series with userID:bigBucket HashValue
+	indexEntries = append(indexEntries, IndexEntry{
+		TableName:  bucket.tableName,
+		HashValue:  bucket.hashKey,
+		RangeValue: encodeRangeKey(encodeBase64Bytes(fingerprintBytes), nil, nil, seriesRangeKeyV1),
+		Value:      seriesBytes,
+	})
+
+	return indexEntries, nil
 }

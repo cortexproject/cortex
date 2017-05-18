@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "client.go",
         "cortex.pb.go",
+        "dep.go",
     ],
     visibility = ["//visibility:public"],
     deps = [

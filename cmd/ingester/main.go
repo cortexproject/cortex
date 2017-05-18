@@ -59,5 +59,6 @@ func main() {
 
 	client.RegisterIngesterServer(server.GRPC, ingester)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
+	server.HTTP.Path("/flush").Handler(http.HandlerFunc(ingester.FlushHandler))
 	server.Run()
 }

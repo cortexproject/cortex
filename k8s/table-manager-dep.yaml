@@ -20,5 +20,6 @@ spec:
         - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000
         - -dynamodb.periodic-table.prefix=cortex_weekly_
         - -dynamodb.periodic-table.start=2017-01-06
+        - -dynamodb.chunk-table.from=2017-04-17
         ports:
         - containerPort: 80

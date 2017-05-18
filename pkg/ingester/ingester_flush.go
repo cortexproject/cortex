@@ -106,7 +106,7 @@ func (i *Ingester) shouldFlushChunk(c *desc) bool {
 func (i *Ingester) flushLoop(j int) {
 	defer func() {
 		log.Debug("Ingester.flushLoop() exited")
-		i.done.Done()
+		i.flushQueuesDone.Done()
 	}()
 
 	for {

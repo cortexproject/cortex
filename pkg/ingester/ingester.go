@@ -150,7 +150,9 @@ type Ingester struct {
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
-	flushQueues []*util.PriorityQueue
+	flushQueues     []*util.PriorityQueue
+	flushQueuesDone sync.WaitGroup
+
 	// Virtual lookup for this function to allow the tests to get in there.
 	flushUserSeries func(userID string, fp model.Fingerprint, immediate bool) error
 
@@ -255,8 +257,8 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	}
 
 	i.flushUserSeries = i.flushUserSeriesImpl
+	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 
-	i.done.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue()
 		go i.flushLoop(j)

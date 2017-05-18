@@ -329,10 +329,13 @@ func (i *Ingester) processShutdown() {
 		i.flushAllChunks()
 	}
 
-	// Close the flush queues, will wait for chunks to be flushed.
+	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
 		flushQueue.Close()
 	}
+
+	// Wait for chunks to be flushed.
+	i.flushQueuesDone.Wait()
 }
 
 // transferChunks finds an ingester in PENDING state and transfers our chunks

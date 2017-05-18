@@ -105,7 +105,7 @@ func parseSeriesRangeValue(rangeValue []byte, value []byte) (model.Metric, error
 	case len(components) < 4:
 		return nil, fmt.Errorf("invalid metric range value: %x", rangeValue)
 
-	// v1 has the metric name as the value (with the hash as the first component)
+	// v1 has the encoded json metric as the value (with the fingerprint as the first component)
 	case bytes.Equal(components[3], seriesRangeKeyV1):
 		var series model.Metric
 		if err := json.Unmarshal(value, &series); err != nil {

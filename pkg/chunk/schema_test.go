@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -236,6 +238,7 @@ func TestSchemaHashKeys(t *testing.T) {
 const (
 	MetricNameRangeValue = iota + 1
 	ChunkTimeRangeValue
+	SeriesRangeValue
 )
 
 // parseRangeValueType returns the type of rangeValue
@@ -269,6 +272,10 @@ func parseRangeValueType(rangeValue []byte) (int, error) {
 	case bytes.Equal(components[3], metricNameRangeKeyV1):
 		return MetricNameRangeValue, nil
 
+	// series range values
+	case bytes.Equal(components[3], seriesRangeKeyV1):
+		return SeriesRangeValue, nil
+
 	default:
 		return 0, fmt.Errorf("unrecognised range value type. version: '%v'", string(components[3]))
 	}
@@ -295,6 +302,7 @@ func TestSchemaRangeKey(t *testing.T) {
 		tsRangeKeys   = v5Schema(cfg)
 		v6RangeKeys   = v6Schema(cfg)
 		v7RangeKeys   = v7Schema(cfg)
+		v8RangeKeys   = v8Schema(cfg)
 		metric        = model.Metric{
 			model.MetricNameLabel: metricName,
 			"bar": "bary",
@@ -302,6 +310,11 @@ func TestSchemaRangeKey(t *testing.T) {
 		}
 		fooSha1Hash = sha1.Sum([]byte("foo"))
 	)
+
+	metricFingerprintBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(metricFingerprintBytes, uint64(metric.Fingerprint()))
+	metricBytes, err := json.Marshal(metric)
+	require.NoError(t, err)
 
 	mkEntries := func(hashKey string, callback func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte)) []IndexEntry {
 		result := []IndexEntry{}
@@ -434,6 +447,34 @@ func TestSchemaRangeKey(t *testing.T) {
 				},
 			},
 		},
+		{
+			v8RangeKeys,
+			[]IndexEntry{
+				{
+					TableName:  table,
+					HashValue:  "userid:d0",
+					RangeValue: append(encodeBase64Bytes(metricFingerprintBytes), []byte("\x00\x00\x007\x00")...),
+					Value:      metricBytes,
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x003\x00"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:bar",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
+					Value:      []byte("bary"),
+				},
+				{
+					TableName:  table,
+					HashValue:  "userid:d0:foo:baz",
+					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
+					Value:      []byte("bazy"),
+				},
+			},
+		},
 	} {
 		t.Run(fmt.Sprintf("TestSchameRangeKey[%d]", i), func(t *testing.T) {
 			have, err := tc.Schema.GetWriteEntries(
@@ -461,6 +502,9 @@ func TestSchemaRangeKey(t *testing.T) {
 					require.NoError(t, err)
 				case ChunkTimeRangeValue:
 					_, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+					require.NoError(t, err)
+				case SeriesRangeValue:
+					_, err := parseSeriesRangeValue(entry.RangeValue, entry.Value)
 					require.NoError(t, err)
 				}
 			}

@@ -22,7 +22,7 @@ Once you have created your instance, note down the 'Service Token' listed undern
 
 Install the Cortex agent (an unmodified OSS Prometheus) on your Kubernetes cluster using the following command:
 
-    $ kubectl -n kube-system apply -f 'https://cloud.weave.works/k8s/cortex.yaml?t=<token>'
+    $ kubectl apply -n kube-system -f "https://cloud.weave.works/k8s/cortex.yaml?service-token=<token>&k8s-version=$(kubectl version | base64 | tr -d '\n')"
 
 Click Monitor to access the Cortex service in the Weave Cloud UI:
 

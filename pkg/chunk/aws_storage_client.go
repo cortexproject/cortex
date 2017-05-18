@@ -427,7 +427,7 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, e
 	return chunk, nil
 }
 
-// As we're resuing the DynamoDB schema from the index for the chunk tables,
+// As we're re-using the DynamoDB schema from the index for the chunk tables,
 // we need to provide a non-null, non-empty value for the range value.
 var placeholder = []byte{'c'}
 

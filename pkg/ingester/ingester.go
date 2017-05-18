@@ -151,6 +151,8 @@ type Ingester struct {
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
 	flushQueues []*util.PriorityQueue
+	// Virtual lookup for this function to allow the tests to get in there.
+	flushUserSeries func(userID string, fp model.Fingerprint, immediate bool) error
 
 	ingestedSamples  prometheus.Counter
 	chunkUtilization prometheus.Histogram
@@ -251,6 +253,8 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 			Help: "The total number of samples returned from queries.",
 		}),
 	}
+
+	i.flushUserSeries = i.flushUserSeriesImpl
 
 	i.done.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {

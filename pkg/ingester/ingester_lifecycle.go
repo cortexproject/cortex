@@ -123,7 +123,6 @@ func (i *Ingester) Shutdown() {
 	// closing i.quit triggers loop() to exit, which in turn will trigger
 	// the removal of our tokens etc
 	close(i.quit)
-
 	i.done.Wait()
 }
 

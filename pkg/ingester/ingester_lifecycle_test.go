@@ -4,6 +4,7 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"sort"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -267,4 +269,69 @@ func (i ingesterClientAdapater) TransferChunks(ctx context.Context, _ ...grpc.Ca
 
 func (i ingesterClientAdapater) Close() error {
 	return nil
+}
+
+func TestIngesterFlush(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	store := newTestStore()
+
+	// Start the ingester, and get it into ACTIVE state.
+	ing, err := New(cfg, store)
+	require.NoError(t, err)
+
+	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return ing.state
+	})
+
+	// Now write a sample to this ingester
+	var (
+		ts  = model.TimeFromUnix(123)
+		val = model.SampleValue(456)
+		m   = model.Metric{
+			model.MetricNameLabel: "foo",
+		}
+	)
+	ctx := user.Inject(context.Background(), userID)
+	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{
+		{
+			Metric:    m,
+			Timestamp: ts,
+			Value:     val,
+		},
+	}))
+	require.NoError(t, err)
+
+	// We add a 100ms sleep into the flush loop, such that we can reliably detect
+	// if the ingester is removing its token from Consul before flushing chunks.
+	ing.flushUserSeries = func(userID string, fp model.Fingerprint, immediate bool) error {
+		time.Sleep(100 * time.Millisecond)
+		return ing.flushUserSeriesImpl(userID, fp, immediate)
+	}
+
+	// Now stop the ingester.  Don't call shutdown, as it waits for all goroutines
+	// to exit.  We just want to check that by the time the token is removed from
+	// the ring, the data is in the chunk store.
+	close(ing.quit)
+	poll(t, 200*time.Millisecond, 0, func() interface{} {
+		r, err := ing.consul.Get(ring.ConsulKey)
+		if err != nil {
+			return -1
+		}
+		return len(r.(*ring.Desc).Ingesters)
+	})
+
+	// And check the store has the chunk
+	res, err := chunk.ChunksToMatrix(store.chunks[userID])
+	require.NoError(t, err)
+	sort.Sort(res)
+	assert.Equal(t, model.Matrix{
+		&model.SampleStream{
+			Metric: model.Metric{
+				model.MetricNameLabel: "foo",
+			},
+			Values: []model.SamplePair{
+				{Timestamp: model.TimeFromUnix(123), Value: model.SampleValue(456)},
+			},
+		},
+	}, res)
 }

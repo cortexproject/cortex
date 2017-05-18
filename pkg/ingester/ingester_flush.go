@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"golang.org/x/net/context"
@@ -18,6 +19,13 @@ const (
 	// position, not wallclock time.
 	flushBackoff = 1 * time.Second
 )
+
+// FlushHandler triggers a flush of all in memory chunks.  Mainly used for
+// local testing.
+func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
+	i.sweepUsers(true)
+	w.WriteHeader(http.StatusNoContent)
+}
 
 type flushOp struct {
 	from      model.Time

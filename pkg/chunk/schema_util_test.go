@@ -2,6 +2,8 @@ package chunk
 
 import (
 	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"math"
 	"math/rand"
 	"testing"
@@ -81,5 +83,30 @@ func TestParseMetricNameRangeValue(t *testing.T) {
 		metricName, err := parseMetricNameRangeValue(c.encoded, []byte(c.value))
 		require.NoError(t, err)
 		assert.Equal(t, model.LabelValue(c.expMetricName), metricName)
+	}
+}
+
+func TestParseSeriesRangeValue(t *testing.T) {
+	metric := model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar": "bary",
+		"baz": "bazy",
+	}
+
+	fingerprintBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(fingerprintBytes, uint64(metric.Fingerprint()))
+	metricBytes, err := json.Marshal(metric)
+	require.NoError(t, err)
+
+	for _, c := range []struct {
+		encoded   []byte
+		value     []byte
+		expMetric model.Metric
+	}{
+		{encodeRangeKey(fingerprintBytes, nil, nil, seriesRangeKeyV1), metricBytes, metric},
+	} {
+		metric, err := parseSeriesRangeValue(c.encoded, c.value)
+		require.NoError(t, err)
+		assert.Equal(t, c.expMetric, metric)
 	}
 }

@@ -461,12 +461,22 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		}
 
 		if err != nil {
-			for tableName := range outstanding {
+			for tableName := range requests {
 				recordDynamoError(tableName, err)
 			}
-			if awsErr, ok := err.(awserr.Error); !ok || awsErr.Code() != provisionedThroughputExceededException {
-				return nil, err
+
+			// If we get provisionedThroughputExceededException, then no items were processed,
+			// so back off and retry all.
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+				unprocessed.TakeReqs(requests, -1)
+				time.Sleep(backoff)
+				backoff = nextBackoff(backoff)
+				numRetries++
+				continue
 			}
+
+			// All other errors are critical.
+			return nil, err
 		}
 
 		processedChunks, err := processChunkResponse(response, chunksByKey)
@@ -480,16 +490,6 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 			unprocessed.TakeReqs(unprocessedKeys, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
-			continue
-		}
-
-		// If we get provisionedThroughputExceededException, then no items were processed,
-		// so back off and retry all.
-		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
-			unprocessed.TakeReqs(requests, -1)
-			time.Sleep(backoff)
-			backoff = nextBackoff(backoff)
-			numRetries++
 			continue
 		}
 

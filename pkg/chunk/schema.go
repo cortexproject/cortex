@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"crypto/sha1"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -559,9 +558,7 @@ func (entries v8Entries) GetWriteEntries(bucket Bucket, metricName model.LabelVa
 		return nil, err
 	}
 
-	fingerprintBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(fingerprintBytes, uint64(labels.Fingerprint()))
-
+	seriesID := metricSeriesID(labels)
 	seriesBytes, err := json.Marshal(labels)
 	if err != nil {
 		return nil, err
@@ -571,7 +568,7 @@ func (entries v8Entries) GetWriteEntries(bucket Bucket, metricName model.LabelVa
 	indexEntries = append(indexEntries, IndexEntry{
 		TableName:  bucket.tableName,
 		HashValue:  bucket.hashKey,
-		RangeValue: encodeRangeKey(encodeBase64Bytes(fingerprintBytes), nil, nil, seriesRangeKeyV1),
+		RangeValue: encodeRangeKey([]byte(seriesID), nil, nil, seriesRangeKeyV1),
 		Value:      seriesBytes,
 	})
 

@@ -13,6 +13,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMetricSeriesID(t *testing.T) {
+	for _, c := range []struct {
+		metric   model.Metric
+		expected string
+	}{
+		{
+			model.Metric{model.MetricNameLabel: "foo"},
+			"LCa0a2j/xo/5m0U8HTBBNBNCLXBkg7+g+YpeiGJm564",
+		},
+		{
+			model.Metric{
+				model.MetricNameLabel: "foo",
+				"bar":  "baz",
+				"toms": "code",
+				"flip": "flop",
+			},
+			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
+		},
+		{
+			model.Metric{},
+			"RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o",
+		},
+	} {
+		seriesID := metricSeriesID(c.metric)
+		assert.Equal(t, c.expected, seriesID)
+	}
+}
+
 func TestSchemaTimeEncoding(t *testing.T) {
 	assert.Equal(t, uint32(0), decodeTime(encodeTime(0)), "0")
 	assert.Equal(t, uint32(math.MaxUint32), decodeTime(encodeTime(math.MaxUint32)), "MaxUint32")

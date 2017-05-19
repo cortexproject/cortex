@@ -153,8 +153,8 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
-	// Virtual lookup for this function to allow the tests to get in there.
-	flushUserSeries func(userID string, fp model.Fingerprint, immediate bool) error
+	// Hook for injecting behaviour from tests.
+	preFlushUserSeries func()
 
 	ingestedSamples  prometheus.Counter
 	chunkUtilization prometheus.Histogram
@@ -256,7 +256,6 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		}),
 	}
 
-	i.flushUserSeries = i.flushUserSeriesImpl
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {

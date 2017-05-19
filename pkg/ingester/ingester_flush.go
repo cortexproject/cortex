@@ -130,7 +130,11 @@ func (i *Ingester) flushLoop(j int) {
 	}
 }
 
-func (i *Ingester) flushUserSeriesImpl(userID string, fp model.Fingerprint, immediate bool) error {
+func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
+	if i.preFlushUserSeries != nil {
+		i.preFlushUserSeries()
+	}
+
 	userState, ok := i.userStates.get(userID)
 	if !ok {
 		return nil

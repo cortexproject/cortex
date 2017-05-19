@@ -4,7 +4,6 @@ import (
 	"io"
 	"reflect"
 	"runtime"
-	"sort"
 	"testing"
 	"time"
 
@@ -303,9 +302,8 @@ func TestIngesterFlush(t *testing.T) {
 
 	// We add a 100ms sleep into the flush loop, such that we can reliably detect
 	// if the ingester is removing its token from Consul before flushing chunks.
-	ing.flushUserSeries = func(userID string, fp model.Fingerprint, immediate bool) error {
+	ing.preFlushUserSeries = func() {
 		time.Sleep(100 * time.Millisecond)
-		return ing.flushUserSeriesImpl(userID, fp, immediate)
 	}
 
 	// Now stop the ingester.  Don't call shutdown, as it waits for all goroutines
@@ -323,7 +321,6 @@ func TestIngesterFlush(t *testing.T) {
 	// And check the store has the chunk
 	res, err := chunk.ChunksToMatrix(store.chunks[userID])
 	require.NoError(t, err)
-	sort.Sort(res)
 	assert.Equal(t, model.Matrix{
 		&model.SampleStream{
 			Metric: model.Metric{

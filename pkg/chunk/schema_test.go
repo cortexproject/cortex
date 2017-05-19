@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -311,8 +310,7 @@ func TestSchemaRangeKey(t *testing.T) {
 		fooSha1Hash = sha1.Sum([]byte("foo"))
 	)
 
-	metricFingerprintBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(metricFingerprintBytes, uint64(metric.Fingerprint()))
+	seriesID := metricSeriesID(metric)
 	metricBytes, err := json.Marshal(metric)
 	require.NoError(t, err)
 
@@ -453,7 +451,7 @@ func TestSchemaRangeKey(t *testing.T) {
 				{
 					TableName:  table,
 					HashValue:  "userid:d0",
-					RangeValue: append(encodeBase64Bytes(metricFingerprintBytes), []byte("\x00\x00\x007\x00")...),
+					RangeValue: append([]byte(seriesID), []byte("\x00\x00\x007\x00")...),
 					Value:      metricBytes,
 				},
 				{

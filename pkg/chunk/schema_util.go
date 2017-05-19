@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -11,6 +12,11 @@ import (
 
 	"github.com/prometheus/common/model"
 )
+
+func metricSeriesID(m model.Metric) string {
+	h := sha256.Sum256([]byte(m.String()))
+	return string(encodeBase64Bytes(h[:]))
+}
 
 func encodeRangeKey(ss ...[]byte) []byte {
 	length := 0

@@ -106,7 +106,7 @@ func (i *Ingester) shouldFlushChunk(c *desc) bool {
 func (i *Ingester) flushLoop(j int) {
 	defer func() {
 		log.Debug("Ingester.flushLoop() exited")
-		i.done.Done()
+		i.flushQueuesDone.Done()
 	}()
 
 	for {
@@ -131,6 +131,10 @@ func (i *Ingester) flushLoop(j int) {
 }
 
 func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
+	if i.preFlushUserSeries != nil {
+		i.preFlushUserSeries()
+	}
+
 	userState, ok := i.userStates.get(userID)
 	if !ok {
 		return nil

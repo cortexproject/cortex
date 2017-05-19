@@ -150,7 +150,11 @@ type Ingester struct {
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
-	flushQueues []*util.PriorityQueue
+	flushQueues     []*util.PriorityQueue
+	flushQueuesDone sync.WaitGroup
+
+	// Hook for injecting behaviour from tests.
+	preFlushUserSeries func()
 
 	ingestedSamples  prometheus.Counter
 	chunkUtilization prometheus.Histogram
@@ -252,7 +256,8 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		}),
 	}
 
-	i.done.Add(cfg.ConcurrentFlushes)
+	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
+
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue()
 		go i.flushLoop(j)

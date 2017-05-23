@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
@@ -149,8 +150,16 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 }
 
 // Get implements ChunkStore
-func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]Chunk, error) {
+func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
 	logger := util.WithContext(ctx)
+	chunks, err := c.getChunks(ctx, from, through, allMatchers...)
+	if err != nil {
+		return nil, err
+	}
+	return chunksToIterators(chunks)
+}
+
+func (c *Store) getChunks(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]Chunk, error) {
 	if through < from {
 		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
 	}

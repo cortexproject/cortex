@@ -123,7 +123,7 @@ func TestChunkStore(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
+				chunks, err := store.getChunks(ctx, now.Add(-time.Hour), now, tc.matchers...)
 				require.NoError(t, err)
 
 				if !reflect.DeepEqual(tc.expect, chunks) {
@@ -250,7 +250,7 @@ func TestChunkStoreMetricNames(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
+				chunks, err := store.getChunks(ctx, now.Add(-time.Hour), now, tc.matchers...)
 				require.NoError(t, err)
 
 				if !reflect.DeepEqual(tc.expect, chunks) {
@@ -327,7 +327,7 @@ func TestChunkStoreRandom(t *testing.T) {
 		endTime := model.TimeFromUnix(end)
 
 		for _, s := range schemas {
-			chunks, err := s.store.Get(ctx, startTime, endTime,
+			chunks, err := s.store.getChunks(ctx, startTime, endTime,
 				mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"),
 				mustNewLabelMatcher(metric.Equal, "bar", "baz"),
 			)
@@ -390,7 +390,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		startTime := model.TimeFromUnix(start)
 		endTime := model.TimeFromUnix(end)
 
-		chunks, err := store.Get(ctx, startTime, endTime,
+		chunks, err := store.getChunks(ctx, startTime, endTime,
 			mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"),
 			mustNewLabelMatcher(metric.Equal, "bar", "baz"),
 		)

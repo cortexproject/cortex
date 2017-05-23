@@ -310,7 +310,7 @@ func TestDistributorQuery(t *testing.T) {
 			defer d.Stop()
 
 			for _, matcher := range matchers {
-				response, err := d.Query(ctx, 0, 10, matcher)
+				response, err := d.matrixQuery(ctx, 0, 10, matcher)
 				assert.Equal(t, tc.expectedResponse, response, "Wrong response")
 				assert.Equal(t, tc.expectedError, err, "Wrong error")
 			}

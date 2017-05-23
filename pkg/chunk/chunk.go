@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/storage/local"
 	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
 
 	"github.com/weaveworks/common/errors"
@@ -276,6 +277,35 @@ func (c *Chunk) decode(input []byte) error {
 		N: int64(dataLen),
 		R: r,
 	})
+}
+
+func chunksToIterators(chunks []Chunk) ([]local.SeriesIterator, error) {
+	// Group chunks by series, sort and dedupe samples.
+	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
+	for _, c := range chunks {
+		fp := c.Metric.Fingerprint()
+		ss, ok := sampleStreams[fp]
+		if !ok {
+			ss = &model.SampleStream{
+				Metric: c.Metric,
+			}
+			sampleStreams[fp] = ss
+		}
+
+		samples, err := c.samples()
+		if err != nil {
+			return nil, err
+		}
+
+		ss.Values = util.MergeSamples(ss.Values, samples)
+	}
+
+	iterators := make([]local.SeriesIterator, 0, len(sampleStreams))
+	for _, ss := range sampleStreams {
+		iterators = append(iterators, util.NewSampleStreamIterator(ss))
+	}
+
+	return iterators, nil
 }
 
 // ChunksToMatrix converts a slice of chunks into a model.Matrix.

@@ -168,6 +168,63 @@ func TestTableManager(t *testing.T) {
 	)
 }
 
+func TestTableManagerTags(t *testing.T) {
+	dynamoDB := newMockDynamoDB(0, 0)
+	client := dynamoTableClient{
+		DynamoDB: dynamoDB,
+	}
+
+	test := func(tableManager *TableManager, name string, tm time.Time, expected []TableDesc) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			mtime.NowForce(tm)
+			if err := tableManager.syncTables(ctx); err != nil {
+				t.Fatal(err)
+			}
+			expectTables(ctx, t, client, expected)
+		})
+	}
+
+	// Check at time zero, we have the base table with no tags.
+	{
+		tableManager, err := NewTableManager(TableManagerConfig{}, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		test(
+			tableManager,
+			"Initial test",
+			time.Unix(0, 0),
+			[]TableDesc{
+				{Name: ""},
+			},
+		)
+	}
+
+	// Check after restarting table manager we get some tags.
+	{
+		cfg := TableManagerConfig{
+			TableTags: Tags{
+				"foo": "bar",
+			},
+		}
+		tableManager, err := NewTableManager(cfg, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		test(
+			tableManager,
+			"Tagged test",
+			time.Unix(0, 0),
+			[]TableDesc{
+				{Name: "", Tags: Tags{"foo": "bar"}},
+			},
+		)
+	}
+}
+
 func expectTables(ctx context.Context, t *testing.T, dynamo TableClient, expected []TableDesc) {
 	tables, err := dynamo.ListTables(ctx)
 	if err != nil {

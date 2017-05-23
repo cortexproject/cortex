@@ -2,6 +2,29 @@ package util
 
 import "github.com/prometheus/common/model"
 
+// MergeNSamples merges and dedupes n sets of already sorted sample pairs.
+func MergeNSamples(sampleSets ...[]model.SamplePair) []model.SamplePair {
+	l := len(sampleSets)
+	switch l {
+	case 0:
+		return []model.SamplePair{}
+	case 1:
+		return sampleSets[0]
+	}
+
+	c := make(chan []model.SamplePair, l)
+	for _, ss := range sampleSets {
+		c <- ss
+	}
+	for ; l > 1; l-- {
+		left, right := <-c, <-c
+		go func() {
+			c <- MergeSamples(left, right)
+		}()
+	}
+	return <-c
+}
+
 // MergeSamples merges and dedupes two sets of already sorted sample pairs.
 func MergeSamples(a, b []model.SamplePair) []model.SamplePair {
 	result := make([]model.SamplePair, 0, len(a)+len(b))

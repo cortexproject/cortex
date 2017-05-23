@@ -11,7 +11,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
@@ -68,6 +67,7 @@ type TableManagerConfig struct {
 	TableTags Tags
 }
 
+// Tags is a string-string map that implements flag.Value.
 type Tags map[string]string
 
 // String implements flag.Value
@@ -76,7 +76,7 @@ func (ts Tags) String() string {
 		return ""
 	}
 
-	return fmt.Sprintf("%v", ts)
+	return fmt.Sprintf("%v", map[string]string(ts))
 }
 
 // Set implements flag.Value
@@ -93,6 +93,7 @@ func (ts *Tags) Set(s string) error {
 	return nil
 }
 
+// Equals returns true is other matches ts.
 func (ts Tags) Equals(other Tags) bool {
 	if len(ts) != len(other) {
 		return false
@@ -108,6 +109,7 @@ func (ts Tags) Equals(other Tags) bool {
 	return true
 }
 
+// AWSTags converts ts into a []*dynamodb.Tag.
 func (ts Tags) AWSTags() []*dynamodb.Tag {
 	if ts == nil {
 		return nil
@@ -246,35 +248,6 @@ func (m *TableManager) syncTables(ctx context.Context) error {
 
 	return m.updateTables(ctx, toCheckThroughput)
 }
-
-type TableDesc struct {
-	Name             string
-	ProvisionedRead  int64
-	ProvisionedWrite int64
-	Tags             Tags
-}
-
-func (desc TableDesc) Equals(other TableDesc) bool {
-	if desc.ProvisionedRead != other.ProvisionedRead {
-		return false
-	}
-
-	if desc.ProvisionedWrite != other.ProvisionedWrite {
-		return false
-	}
-
-	if !desc.Tags.Equals(other.Tags) {
-		return false
-	}
-
-	return true
-}
-
-type byName []TableDesc
-
-func (a byName) Len() int           { return len(a) }
-func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byName) Less(i, j int) bool { return a[i].Name < a[j].Name }
 
 func (m *TableManager) calculateExpectedTables() []TableDesc {
 	result := []TableDesc{}
@@ -430,147 +403,4 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 		}
 	}
 	return nil
-}
-
-// TableClient is a client for telling Dynamo what to do with tables.
-type TableClient interface {
-	ListTables(ctx context.Context) ([]string, error)
-	CreateTable(ctx context.Context, desc TableDesc) error
-	DescribeTable(ctx context.Context, name string) (desc TableDesc, status string, err error)
-	UpdateTable(ctx context.Context, desc TableDesc) error
-}
-
-type dynamoTableClient struct {
-	DynamoDB dynamodbiface.DynamoDBAPI
-}
-
-// NewDynamoDBTableClient makes a new DynamoTableClient.
-func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
-	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
-	if err != nil {
-		return nil, err
-	}
-	return dynamoTableClient{
-		DynamoDB: dynamoDB,
-	}, nil
-}
-
-func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
-	table := []string{}
-	err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(ctx context.Context) error {
-		return d.DynamoDB.ListTablesPagesWithContext(ctx, &dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
-			for _, s := range resp.TableNames {
-				table = append(table, *s)
-			}
-			return true
-		})
-	})
-	return table, err
-}
-
-func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) error {
-	var tableARN *string
-	if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(ctx context.Context) error {
-		input := &dynamodb.CreateTableInput{
-			TableName: aws.String(desc.Name),
-			AttributeDefinitions: []*dynamodb.AttributeDefinition{
-				{
-					AttributeName: aws.String(hashKey),
-					AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
-				},
-				{
-					AttributeName: aws.String(rangeKey),
-					AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
-				},
-			},
-			KeySchema: []*dynamodb.KeySchemaElement{
-				{
-					AttributeName: aws.String(hashKey),
-					KeyType:       aws.String(dynamodb.KeyTypeHash),
-				},
-				{
-					AttributeName: aws.String(rangeKey),
-					KeyType:       aws.String(dynamodb.KeyTypeRange),
-				},
-			},
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-				ReadCapacityUnits:  aws.Int64(desc.ProvisionedRead),
-				WriteCapacityUnits: aws.Int64(desc.ProvisionedWrite),
-			},
-		}
-		output, err := d.DynamoDB.CreateTableWithContext(ctx, input)
-		if err != nil {
-			return err
-		}
-		tableARN = output.TableDescription.TableArn
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
-		_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
-			ResourceArn: tableARN,
-			Tags:        desc.Tags.AWSTags(),
-		})
-		return err
-	})
-}
-
-func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc TableDesc, status string, err error) {
-	var tableARN *string
-	err = instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(ctx context.Context) error {
-		out, err := d.DynamoDB.DescribeTableWithContext(ctx, &dynamodb.DescribeTableInput{
-			TableName: aws.String(name),
-		})
-		desc.Name = name
-		desc.ProvisionedRead = *out.Table.ProvisionedThroughput.ReadCapacityUnits
-		desc.ProvisionedWrite = *out.Table.ProvisionedThroughput.WriteCapacityUnits
-		status = *out.Table.TableStatus
-		tableARN = out.Table.TableArn
-		return err
-	})
-	if err != nil {
-		return
-	}
-
-	err = instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTagsOfResource", dynamoRequestDuration, func(ctx context.Context) error {
-		out, err := d.DynamoDB.ListTagsOfResourceWithContext(ctx, &dynamodb.ListTagsOfResourceInput{
-			ResourceArn: tableARN,
-		})
-		desc.Tags = make(map[string]string, len(out.Tags))
-		for _, tag := range out.Tags {
-			desc.Tags[*tag.Key] = *tag.Value
-		}
-		return err
-	})
-	return
-}
-
-func (d dynamoTableClient) UpdateTable(ctx context.Context, desc TableDesc) error {
-	var tableARN *string
-	if err := instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(ctx context.Context) error {
-		out, err := d.DynamoDB.UpdateTableWithContext(ctx, &dynamodb.UpdateTableInput{
-			TableName: aws.String(desc.Name),
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-				ReadCapacityUnits:  aws.Int64(desc.ProvisionedRead),
-				WriteCapacityUnits: aws.Int64(desc.ProvisionedWrite),
-			},
-		})
-		if err != nil {
-			return err
-		}
-		tableARN = out.TableDescription.TableArn
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
-		_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
-			ResourceArn: tableARN,
-			Tags:        desc.Tags.AWSTags(),
-		})
-		return err
-	})
 }

@@ -10,7 +10,6 @@ import (
 
 func TestMergeSamples(t *testing.T) {
 	now := model.Now()
-
 	sample1 := model.SamplePair{Timestamp: now, Value: 1}
 	sample2 := model.SamplePair{Timestamp: now.Add(1 * time.Second), Value: 2}
 	sample3 := model.SamplePair{Timestamp: now.Add(4 * time.Second), Value: 3}
@@ -54,7 +53,6 @@ func TestMergeSamples(t *testing.T) {
 
 func TestMergeNSamples(t *testing.T) {
 	now := model.Now()
-
 	sample1 := model.SamplePair{Timestamp: now, Value: 1}
 	sample2 := model.SamplePair{Timestamp: now.Add(1 * time.Second), Value: 2}
 	sample3 := model.SamplePair{Timestamp: now.Add(4 * time.Second), Value: 3}

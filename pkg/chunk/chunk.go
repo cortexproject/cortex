@@ -297,7 +297,7 @@ func chunksToIterators(chunks []Chunk) ([]local.SeriesIterator, error) {
 			return nil, err
 		}
 
-		ss.Values = util.MergeSamples(ss.Values, samples)
+		ss.Values = util.MergeSampleSets(ss.Values, samples)
 	}
 
 	iterators := make([]local.SeriesIterator, 0, len(sampleStreams))
@@ -327,7 +327,7 @@ func ChunksToMatrix(chunks []Chunk) (model.Matrix, error) {
 			return nil, err
 		}
 
-		ss.Values = util.MergeSamples(ss.Values, samples)
+		ss.Values = util.MergeSampleSets(ss.Values, samples)
 	}
 
 	matrix := make(model.Matrix, 0, len(sampleStreams))

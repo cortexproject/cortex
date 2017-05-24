@@ -52,7 +52,7 @@ func (msit MergeSeriesIterator) RangeValues(in metric.Interval) []model.SamplePa
 		sampleSets = append(sampleSets, it.RangeValues(in))
 	}
 
-	samples := MergeNSamples(sampleSets...)
+	samples := MergeNSampleSets(sampleSets...)
 	if len(samples) == 0 {
 		return nil
 	}

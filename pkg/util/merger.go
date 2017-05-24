@@ -44,9 +44,7 @@ func MergeNSampleSets(sampleSets ...[]model.SamplePair) []model.SamplePair {
 	}
 	for ; l > 1; l-- {
 		left, right := <-c, <-c
-		go func() {
-			c <- MergeSampleSets(left, right)
-		}()
+		c <- MergeSampleSets(left, right)
 	}
 	return <-c
 }

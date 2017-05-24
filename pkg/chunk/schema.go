@@ -574,3 +574,12 @@ func (entries v8Entries) GetWriteEntries(bucket Bucket, metricName model.LabelVa
 
 	return indexEntries, nil
 }
+
+func (v8Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
+	return []IndexQuery{
+		{
+			TableName: bucket.tableName,
+			HashValue: bucket.hashKey,
+		},
+	}, nil
+}

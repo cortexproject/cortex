@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMergeSamples(t *testing.T) {
+func TestMergeSampleSets(t *testing.T) {
 	now := model.Now()
 	sample1 := model.SamplePair{Timestamp: now, Value: 1}
 	sample2 := model.SamplePair{Timestamp: now.Add(1 * time.Second), Value: 2}
@@ -46,12 +46,12 @@ func TestMergeSamples(t *testing.T) {
 			expected: []model.SamplePair{sample1, sample2, sample3, sample4},
 		},
 	} {
-		samples := MergeSamples(c.samplesA, c.samplesB)
+		samples := MergeSampleSets(c.samplesA, c.samplesB)
 		require.Equal(t, c.expected, samples)
 	}
 }
 
-func TestMergeNSamples(t *testing.T) {
+func TestMergeNSampleSets(t *testing.T) {
 	now := model.Now()
 	sample1 := model.SamplePair{Timestamp: now, Value: 1}
 	sample2 := model.SamplePair{Timestamp: now.Add(1 * time.Second), Value: 2}
@@ -59,15 +59,15 @@ func TestMergeNSamples(t *testing.T) {
 	sample4 := model.SamplePair{Timestamp: now.Add(8 * time.Second), Value: 7}
 
 	for _, c := range []struct {
-		samplesSet [][]model.SamplePair
+		sampleSets [][]model.SamplePair
 		expected   []model.SamplePair
 	}{
 		{
-			samplesSet: [][]model.SamplePair{{}, {}, {}},
+			sampleSets: [][]model.SamplePair{{}, {}, {}},
 			expected:   []model.SamplePair{},
 		},
 		{
-			samplesSet: [][]model.SamplePair{
+			sampleSets: [][]model.SamplePair{
 				{sample1, sample2},
 				{sample2},
 				{sample1, sample3, sample4},
@@ -75,7 +75,7 @@ func TestMergeNSamples(t *testing.T) {
 			expected: []model.SamplePair{sample1, sample2, sample3, sample4},
 		},
 	} {
-		samples := MergeNSamples(c.samplesSet...)
+		samples := MergeNSampleSets(c.sampleSets...)
 		require.Equal(t, c.expected, samples)
 	}
 }

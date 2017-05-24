@@ -145,7 +145,7 @@ func TestChunksToIterators(t *testing.T) {
 
 	iterator1 := util.NewSampleStreamIterator(&model.SampleStream{
 		Metric: chunk1.Metric,
-		Values: util.MergeSamples(chunk1Samples, chunk2Samples),
+		Values: util.MergeSampleSets(chunk1Samples, chunk2Samples),
 	})
 
 	// Create another chunk with a different metric

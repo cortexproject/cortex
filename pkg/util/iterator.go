@@ -28,14 +28,6 @@ func (msit MergeSeriesIterator) Metric() metric.Metric {
 	return metric.Metric{Metric: msit.metric}
 }
 
-func absTimeDifference(a, b model.Time) time.Duration {
-	difference := a.Sub(b)
-	if difference < 0 {
-		return -difference
-	}
-	return difference
-}
-
 // ValueAtOrBeforeTime implements the SeriesIterator interface.
 func (msit MergeSeriesIterator) ValueAtOrBeforeTime(ts model.Time) model.SamplePair {
 	var closestSamplePair *model.SamplePair
@@ -43,7 +35,7 @@ func (msit MergeSeriesIterator) ValueAtOrBeforeTime(ts model.Time) model.SampleP
 
 	for _, it := range msit.iterators {
 		samplePair := it.ValueAtOrBeforeTime(ts)
-		timeDifference := absTimeDifference(ts, samplePair.Timestamp)
+		timeDifference := ts.Sub(samplePair.Timestamp)
 		if closestSamplePair == nil || timeDifference.Nanoseconds() < closestTimeDifference.Nanoseconds() {
 			closestSamplePair = &samplePair
 			closestTimeDifference = timeDifference

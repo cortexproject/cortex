@@ -532,7 +532,7 @@ func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.Inge
 					}
 					fpToSampleStream[fp] = mss
 				}
-				mss.Values = util.MergeSamples(mss.Values, ss.Values)
+				mss.Values = util.MergeSampleSets(mss.Values, ss.Values)
 			}
 		}
 	}

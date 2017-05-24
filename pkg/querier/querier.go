@@ -289,7 +289,7 @@ func mergeMatrices(matrices chan model.Matrix, errors chan error, n int) (model.
 				if fpSS, ok := fpToSS[fp]; !ok {
 					fpToSS[fp] = ss
 				} else {
-					fpSS.Values = util.MergeSamples(fpSS.Values, ss.Values)
+					fpSS.Values = util.MergeSampleSets(fpSS.Values, ss.Values)
 				}
 			}
 		}

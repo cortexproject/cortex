@@ -539,12 +539,8 @@ func (entries v7Entries) GetWriteEntries(bucket Bucket, metricName model.LabelVa
 }
 
 func (v7Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
-	return []IndexQuery{
-		{
-			TableName: bucket.tableName,
-			HashValue: bucket.hashKey,
-		},
-	}, nil
+	// Replaced with v8Schema series index
+	return nil, ErrNoMetricNameNotSupported
 }
 
 // v8Entries is the same as v7Entries however with a series index instead of a metric name index

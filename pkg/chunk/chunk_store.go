@@ -152,25 +152,64 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 
 // Get implements ChunkStore
 func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
-	logger := util.WithContext(ctx)
-	chunks, err := c.getChunks(ctx, from, through, allMatchers...)
-	if err != nil {
-		return nil, err
-	}
-	return chunksToIterators(chunks)
-}
-
-func (c *Store) getChunks(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]Chunk, error) {
 	if through < from {
 		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
 	}
 
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 
-	// Fetch chunk descriptors (just ID really) from storage
-	chunks, err := c.lookupChunksByMatchers(ctx, from, through, matchers)
+	// Fetch metric name chunks if the matcher is of type equal, otherwise we
+	// will create lazy iterators for all metric's in our index
+	metricNameMatcher, matchers, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
+	if ok && metricNameMatcher.Type == metric.Equal {
+		chunks, err := c.getMetricNameChunks(ctx, from, through, filters, matchers, metricNameMatcher.Value)
+		if err != nil {
+			return nil, err
+		}
+		return chunksToIterators(chunks)
+	}
+
+	// Get all Series from the index
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, promql.ErrStorage(err)
+		return nil, err
+	}
+	seriesQueries, err := c.schema.GetReadQueries(from, through, userID)
+	if err != nil {
+		return nil, err
+	}
+	seriesEntries, err := c.lookupEntriesByQueries(ctx, seriesQueries)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create lazy series iterators
+	lazyIterators := make([]local.SeriesIterator, 0, len(seriesEntries))
+outer:
+	for _, seriesEntry := range seriesEntries {
+		metric, err := parseSeriesRangeValue(seriesEntry.RangeValue, seriesEntry.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		// Filter series
+		for _, filter := range filters {
+			if !filter.Match(metric[filter.Name]) {
+				continue outer
+			}
+		}
+
+		lazyIterators = append(lazyIterators, util.NewLazySeriesIterator(metric))
+	}
+
+	return lazyIterators, nil
+}
+
+func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {
+	logger := util.WithContext(ctx)
+	chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
+	if err != nil {
+		return nil, err
 	}
 
 	// Filter out chunks that are not in the selected time range.
@@ -216,71 +255,6 @@ outer:
 	}
 
 	return filteredChunks, nil
-}
-
-func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) ([]Chunk, error) {
-	metricNameMatcher, matchers, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
-
-	// Only lookup by metric name if the matcher is of type equal, otherwise we
-	// have to fetch chunks for all metric names as other metric names could match.
-	if ok && metricNameMatcher.Type == metric.Equal {
-		return c.lookupChunksByMetricName(ctx, from, through, matchers, metricNameMatcher.Value)
-	}
-
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// If there is no metric name, we want return chunks for all metric names
-	metricNameQueries, err := c.schema.GetReadQueries(from, through, userID)
-	if err != nil {
-		return nil, err
-	}
-	metricNameEntries, err := c.lookupEntriesByQueries(ctx, metricNameQueries)
-	if err != nil {
-		return nil, err
-	}
-
-	incomingChunkSets := make(chan ByKey)
-	incomingErrors := make(chan error)
-	skippedMetricNames := 0
-
-	for _, metricNameEntry := range metricNameEntries {
-		metricName, err := parseMetricNameRangeValue(metricNameEntry.RangeValue, metricNameEntry.Value)
-		if err != nil {
-			return nil, err
-		}
-
-		// We are fetching all metric name chunks, however if there is a metricNameMatcher,
-		// we only want metric names that match
-		if ok && !metricNameMatcher.Match(metricName) {
-			skippedMetricNames++
-			continue
-		}
-
-		go func(metricName model.LabelValue) {
-			chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
-			if err != nil {
-				incomingErrors <- err
-			} else {
-				incomingChunkSets <- chunks
-			}
-		}(metricName)
-	}
-
-	var chunkSets []ByKey
-	var lastErr error
-	for i := 0; i < (len(metricNameEntries) - skippedMetricNames); i++ {
-		select {
-		case incoming := <-incomingChunkSets:
-			chunkSets = append(chunkSets, incoming)
-		case err := <-incomingErrors:
-			lastErr = err
-		}
-	}
-
-	return nWayUnion(chunkSets), lastErr
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {

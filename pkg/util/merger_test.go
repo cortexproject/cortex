@@ -63,18 +63,14 @@ func TestMergeNSamples(t *testing.T) {
 		expected   []model.SamplePair
 	}{
 		{
-			samplesSet: [][]model.SamplePair{
-				[]model.SamplePair{},
-				[]model.SamplePair{},
-				[]model.SamplePair{},
-			},
-			expected: []model.SamplePair{},
+			samplesSet: [][]model.SamplePair{{}, {}, {}},
+			expected:   []model.SamplePair{},
 		},
 		{
 			samplesSet: [][]model.SamplePair{
-				[]model.SamplePair{sample1, sample2},
-				[]model.SamplePair{sample2},
-				[]model.SamplePair{sample1, sample3, sample4},
+				{sample1, sample2},
+				{sample2},
+				{sample1, sample3, sample4},
 			},
 			expected: []model.SamplePair{sample1, sample2, sample3, sample4},
 		},

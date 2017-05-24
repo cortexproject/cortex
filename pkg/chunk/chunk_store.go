@@ -158,54 +158,17 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 
-	// Fetch metric name chunks if the matcher is of type equal, otherwise we
-	// will create lazy iterators for all metric's in our index
+	// Fetch metric name chunks if the matcher is of type equal,
 	metricNameMatcher, matchers, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
 	if ok && metricNameMatcher.Type == metric.Equal {
-		chunks, err := c.getMetricNameChunks(ctx, from, through, filters, matchers, metricNameMatcher.Value)
-		if err != nil {
-			return nil, err
-		}
-		return chunksToIterators(chunks)
+		return c.getMetricNameIterators(ctx, from, through, filters, matchers, metricNameMatcher.Value)
 	}
 
-	// Get all Series from the index
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	seriesQueries, err := c.schema.GetReadQueries(from, through, userID)
-	if err != nil {
-		return nil, err
-	}
-	seriesEntries, err := c.lookupEntriesByQueries(ctx, seriesQueries)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create lazy series iterators
-	lazyIterators := make([]local.SeriesIterator, 0, len(seriesEntries))
-outer:
-	for _, seriesEntry := range seriesEntries {
-		metric, err := parseSeriesRangeValue(seriesEntry.RangeValue, seriesEntry.Value)
-		if err != nil {
-			return nil, err
-		}
-
-		// Filter series
-		for _, filter := range filters {
-			if !filter.Match(metric[filter.Name]) {
-				continue outer
-			}
-		}
-
-		lazyIterators = append(lazyIterators, util.NewLazySeriesIterator(metric))
-	}
-
-	return lazyIterators, nil
+	// Otherwise we will create lazy iterators for all series in our index
+	return c.getLazySeriesIterators(ctx, from, through, filters)
 }
 
-func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {
+func (c *Store) getMetricNameIterators(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]local.SeriesIterator, error) {
 	logger := util.WithContext(ctx)
 	chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
 	if err != nil {
@@ -254,7 +217,43 @@ outer:
 		filteredChunks = append(filteredChunks, chunk)
 	}
 
-	return filteredChunks, nil
+	return chunksToIterators(chunks)
+}
+
+func (c *Store) getLazySeriesIterators(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher) ([]local.SeriesIterator, error) {
+	// Get all series from the index
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seriesQueries, err := c.schema.GetReadQueries(from, through, userID)
+	if err != nil {
+		return nil, err
+	}
+	seriesEntries, err := c.lookupEntriesByQueries(ctx, seriesQueries)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a LazySeriesIterator for each series
+	lazyIterators := make([]local.SeriesIterator, 0, len(seriesEntries))
+outer:
+	for _, seriesEntry := range seriesEntries {
+		metric, err := parseSeriesRangeValue(seriesEntry.RangeValue, seriesEntry.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		// Apply filters to metric
+		for _, filter := range filters {
+			if !filter.Match(metric[filter.Name]) {
+				continue outer
+			}
+		}
+
+		lazyIterators = append(lazyIterators, util.NewLazySeriesIterator(metric))
+	}
+	return lazyIterators, nil
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {

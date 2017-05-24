@@ -59,7 +59,12 @@ func (msit MergeSeriesIterator) RangeValues(in metric.Interval) []model.SamplePa
 	for _, it := range msit.iterators {
 		sampleSets = append(sampleSets, it.RangeValues(in))
 	}
-	return MergeNSamples(sampleSets...)
+
+	samples := MergeNSamples(sampleSets...)
+	if len(samples) == 0 {
+		return nil
+	}
+	return samples
 }
 
 // Close implements the SeriesIterator interface.

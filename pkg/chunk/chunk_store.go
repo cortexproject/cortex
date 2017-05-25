@@ -166,7 +166,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	}
 
 	// Otherwise we will create lazy iterators for all series in our index
-	return c.getLazySeriesIterators(ctx, from, through, filters)
+	return c.getFuzzyMetricLazySeriesIterators(ctx, from, through, filters)
 }
 
 func (c *Store) getMetricNameIterators(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]local.SeriesIterator, error) {
@@ -220,7 +220,7 @@ outer:
 	return chunksToIterators(chunks)
 }
 
-func (c *Store) getLazySeriesIterators(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher) ([]local.SeriesIterator, error) {
+func (c *Store) getFuzzyMetricLazySeriesIterators(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher) ([]local.SeriesIterator, error) {
 	// Get all series from the index
 	userID, err := user.Extract(ctx)
 	if err != nil {

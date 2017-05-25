@@ -170,6 +170,14 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 }
 
 func (c *Store) getMetricNameIterators(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]local.SeriesIterator, error) {
+	chunks, err := c.getMetricNameChunks(ctx, from, through, filters, matchers, metricName)
+	if err != nil {
+		return nil, err
+	}
+	return chunksToIterators(chunks)
+}
+
+func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {
 	chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
 	if err != nil {
 		return nil, err
@@ -217,7 +225,7 @@ outer:
 		filteredChunks = append(filteredChunks, chunk)
 	}
 
-	return chunksToIterators(chunks)
+	return filteredChunks, nil
 }
 
 func (c *Store) getFuzzyMetricLazySeriesIterators(ctx context.Context, from, through model.Time, filters []*metric.LabelMatcher) ([]local.SeriesIterator, error) {

@@ -209,10 +209,10 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 	foo2Chunk := dummyChunkFor(foo2Metric)
 	foo3Chunk := dummyChunkFor(foo3Metric)
 
-	foo1LazyIterator1 := util.NewLazySeriesIterator(foo1Metric1)
-	foo1LazyIterator2 := util.NewLazySeriesIterator(foo1Metric2)
-	foo2LazyIterator := util.NewLazySeriesIterator(foo2Metric)
-	foo3LazyIterator := util.NewLazySeriesIterator(foo3Metric)
+	foo1LazyIterator1 := NewLazySeriesIterator(foo1Metric1)
+	foo1LazyIterator2 := NewLazySeriesIterator(foo1Metric2)
+	foo2LazyIterator := NewLazySeriesIterator(foo2Metric)
+	foo3LazyIterator := NewLazySeriesIterator(foo3Metric)
 
 	schemas := []struct {
 		name string

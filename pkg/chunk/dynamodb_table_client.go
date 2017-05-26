@@ -196,18 +196,15 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected Ta
 			return err
 		}
 
-		tags := expected.Tags.AWSTags()
-		if len(tags) > 0 {
-			return d.backoffAndRetry(ctx, func(ctx context.Context) error {
-				return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
-					_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
-						ResourceArn: tableARN,
-						Tags:        tags,
-					})
-					return err
+		return d.backoffAndRetry(ctx, func(ctx context.Context) error {
+			return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
+				_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
+					ResourceArn: tableARN,
+					Tags:        expected.Tags.AWSTags(),
 				})
+				return err
 			})
-		}
+		})
 	}
 	return nil
 }

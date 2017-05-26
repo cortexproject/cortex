@@ -270,7 +270,7 @@ outer:
 			}
 		}
 
-		lazyIterators = append(lazyIterators, util.NewLazySeriesIterator(metric))
+		lazyIterators = append(lazyIterators, NewLazySeriesIterator(metric))
 	}
 	return lazyIterators, nil
 }

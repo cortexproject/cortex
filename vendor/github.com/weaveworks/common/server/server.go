@@ -165,7 +165,7 @@ func (s *Server) Stop() {
 // Shutdown the server, gracefully.  Should be defered after New().
 func (s *Server) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.ServerGracefulShutdownTimeout)
-	defer cancel() // releases resources if httpServer.Churdown completes before timeout elapses
+	defer cancel() // releases resources if httpServer.Shutdown completes before timeout elapses
 
 	s.httpServer.Shutdown(ctx)
 	s.GRPC.Stop()

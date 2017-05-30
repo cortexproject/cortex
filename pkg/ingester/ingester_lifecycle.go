@@ -325,13 +325,20 @@ func (i *Ingester) processShutdown() {
 			flushRequired = false
 		}
 	}
+
 	if flushRequired {
 		i.flushAllChunks()
-	}
 
-	// Close the flush queues, to unblock waiting workers.
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
+		// Close the flush queues, to unblock waiting workers.
+		for _, flushQueue := range i.flushQueues {
+			flushQueue.Close()
+		}
+	} else {
+
+		// Close & empty all the flush queues, to unblock waiting workers.
+		for _, flushQueue := range i.flushQueues {
+			flushQueue.DrainAndClose()
+		}
 	}
 
 	// Wait for chunks to be flushed.
@@ -389,6 +396,7 @@ func (i *Ingester) transferChunks() error {
 		return err
 	}
 
+	log.Infof("Successfully sent chunks to '%s'", targetIngester.Addr)
 	return nil
 }
 

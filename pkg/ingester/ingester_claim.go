@@ -54,7 +54,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		// round this loop.
 		fromIngesterID = wireSeries.FromIngesterId
 		metric := util.FromLabelPairs(wireSeries.Labels)
-		userCtx := user.Inject(stream.Context(), wireSeries.UserId)
+		userCtx := user.InjectUserID(stream.Context(), wireSeries.UserId)
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {
 			return err

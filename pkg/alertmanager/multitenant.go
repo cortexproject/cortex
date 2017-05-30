@@ -9,22 +9,21 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/net/context"
 
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
-
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/mesh"
+	"golang.org/x/net/context"
+
 	"github.com/weaveworks/cortex/pkg/configs"
 	configs_client "github.com/weaveworks/cortex/pkg/configs/client"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/mesh"
-	"strings"
 )
 
 const (
@@ -416,7 +415,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 
 // ServeHTTP serves the Alertmanager's web UI and API.
 func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	userID, _, err := user.ExtractFromHTTPRequest(req)
+	userID, _, err := user.ExtractUserIDFromHTTPRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

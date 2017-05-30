@@ -11,7 +11,7 @@ import (
 )
 
 func (d *Distributor) emitBillingRecord(ctx context.Context, buf []byte, samples int64) error {
-	userID, err := user.Extract(ctx)
+	userID, err := user.ExtractUserID(ctx)
 	if err != nil {
 		return err
 	}

@@ -35,7 +35,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	userID, err := user.Extract(ctx)
+	userID, err := user.ExtractUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -97,14 +97,14 @@ func TestIngesterAppend(t *testing.T) {
 
 	// Append samples.
 	for _, userID := range userIDs {
-		ctx := user.Inject(context.Background(), userID)
+		ctx := user.InjectUserID(context.Background(), userID)
 		_, err = ing.Push(ctx, util.ToWriteRequest(matrixToSamples(testData[userID])))
 		require.NoError(t, err)
 	}
 
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
-		ctx := user.Inject(context.Background(), userID)
+		ctx := user.InjectUserID(context.Background(), userID)
 		matcher, err := metric.NewLabelMatcher(metric.RegexMatch, model.JobLabel, ".+")
 		require.NoError(t, err)
 
@@ -139,7 +139,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	m := model.Metric{
 		model.MetricNameLabel: "testmetric",
 	}
-	ctx := user.Inject(context.Background(), userID)
+	ctx := user.InjectUserID(context.Background(), userID)
 	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0})
 	require.NoError(t, err)
 
@@ -185,7 +185,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Append only one series first, expect no error.
-	ctx := user.Inject(context.Background(), userID)
+	ctx := user.InjectUserID(context.Background(), userID)
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 
@@ -256,7 +256,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Append only one series first, expect no error.
-	ctx := user.Inject(context.Background(), userID)
+	ctx := user.InjectUserID(context.Background(), userID)
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 

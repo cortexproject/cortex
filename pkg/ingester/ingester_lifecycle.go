@@ -360,7 +360,7 @@ func (i *Ingester) transferChunks() error {
 	}
 	defer c.(io.Closer).Close()
 
-	ctx := user.Inject(context.Background(), "-1")
+	ctx := user.InjectUserID(context.Background(), "-1")
 	stream, err := c.TransferChunks(ctx)
 	if err != nil {
 		return err

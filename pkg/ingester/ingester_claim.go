@@ -33,8 +33,6 @@ func init() {
 
 // TransferChunks receives all the chunks from another ingester.
 func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) error {
-	log.Infof("Got TransferChunks request from ingester '%s'.")
-
 	// Enter JOINING state (only valid from PENDING)
 	if err := i.ChangeState(ring.JOINING); err != nil {
 		return err

@@ -33,7 +33,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1) // We want one request to our test HTTP server.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, _, err := user.ExtractUserIDFromHTTPRequest(r)
+		userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, "1")
 		wg.Done()

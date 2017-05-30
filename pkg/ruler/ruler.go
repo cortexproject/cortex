@@ -187,7 +187,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 
 func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, error) {
 	appender := appenderAdapter{pusher: r.pusher, ctx: ctx}
-	userID, err := user.ExtractUserID(ctx)
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -221,8 +221,8 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 			// Note: The passed-in context comes from the Prometheus rule group code
 			// and does *not* contain the userID. So it needs to be added to the context
 			// here before using the context to inject the userID into the HTTP request.
-			ctx = user.InjectUserID(ctx, userID)
-			if err := user.InjectUserIDIntoHTTPRequest(ctx, req); err != nil {
+			ctx = user.InjectOrgID(ctx, userID)
+			if err := user.InjectOrgIDIntoHTTPRequest(ctx, req); err != nil {
 				return nil, err
 			}
 			return ctxhttp.Do(ctx, client, req)
@@ -354,7 +354,7 @@ func (w *worker) Run() {
 			return
 		}
 		log.Debugf("Processing %v", item)
-		ctx := user.InjectUserID(context.Background(), item.userID)
+		ctx := user.InjectOrgID(context.Background(), item.userID)
 		w.ruler.Evaluate(ctx, item.rules)
 		w.scheduler.workItemDone(*item)
 		log.Debugf("%v handed back to queue", item)

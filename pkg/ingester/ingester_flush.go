@@ -165,7 +165,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	}
 
 	// flush the chunks without locking the series, as we don't want to hold the series lock for the duration of the dynamo/s3 rpcs.
-	ctx := user.InjectUserID(context.Background(), userID)
+	ctx := user.InjectOrgID(context.Background(), userID)
 	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
 		return err
@@ -183,7 +183,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*desc) error {
-	userID, err := user.ExtractUserID(ctx)
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
 	}

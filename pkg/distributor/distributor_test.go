@@ -80,7 +80,7 @@ func (i mockIngester) Query(ctx context.Context, in *client.QueryRequest, opts .
 }
 
 func TestDistributorPush(t *testing.T) {
-	ctx := user.InjectUserID(context.Background(), "user")
+	ctx := user.InjectOrgID(context.Background(), "user")
 	for i, tc := range []struct {
 		ingesters        []mockIngester
 		samples          int
@@ -194,7 +194,7 @@ func TestDistributorPush(t *testing.T) {
 }
 
 func TestDistributorQuery(t *testing.T) {
-	ctx := user.InjectUserID(context.Background(), "user")
+	ctx := user.InjectOrgID(context.Background(), "user")
 
 	nameMatcher, err := metric.NewLabelMatcher(metric.Equal, model.LabelName("__name__"), model.LabelValue("foo"))
 	if err != nil {

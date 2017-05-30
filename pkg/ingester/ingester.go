@@ -288,7 +288,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 	if err := util.ValidateSample(sample); err != nil {
-		userID, _ := user.ExtractUserID(ctx) // ignore err, userID will be empty string if err
+		userID, _ := user.ExtractOrgID(ctx) // ignore err, userID will be empty string if err
 		log.Errorf("Error validating sample from user '%s': %v", userID, err)
 		return nil
 	}

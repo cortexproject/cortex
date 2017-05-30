@@ -2,7 +2,6 @@ package util
 
 import (
 	"sort"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local"
@@ -11,38 +10,31 @@ import (
 
 // MergeSeriesIterator combines SampleStreamIterator
 type MergeSeriesIterator struct {
-	metric    model.Metric
 	iterators []local.SeriesIterator
 }
 
 // NewMergeSeriesIterator creates a mergeSeriesIterator
-func NewMergeSeriesIterator(metric model.Metric, iterators []local.SeriesIterator) MergeSeriesIterator {
+func NewMergeSeriesIterator(iterators []local.SeriesIterator) MergeSeriesIterator {
 	return MergeSeriesIterator{
-		metric:    metric,
 		iterators: iterators,
 	}
 }
 
 // Metric implements the SeriesIterator interface.
 func (msit MergeSeriesIterator) Metric() metric.Metric {
-	return metric.Metric{Metric: msit.metric}
+	return metric.Metric{Metric: msit.iterators[0].Metric().Metric}
 }
 
 // ValueAtOrBeforeTime implements the SeriesIterator interface.
 func (msit MergeSeriesIterator) ValueAtOrBeforeTime(ts model.Time) model.SamplePair {
-	var closestSamplePair *model.SamplePair
-	var closestTimeDifference time.Duration
-
+	latest := model.ZeroSamplePair
 	for _, it := range msit.iterators {
-		samplePair := it.ValueAtOrBeforeTime(ts)
-		timeDifference := ts.Sub(samplePair.Timestamp)
-		if closestSamplePair == nil || timeDifference.Nanoseconds() < closestTimeDifference.Nanoseconds() {
-			closestSamplePair = &samplePair
-			closestTimeDifference = timeDifference
+		v := it.ValueAtOrBeforeTime(ts)
+		if v.Timestamp.After(latest.Timestamp) {
+			latest = v
 		}
 	}
-
-	return *closestSamplePair
+	return latest
 }
 
 // RangeValues implements the SeriesIterator interface.
@@ -60,7 +52,11 @@ func (msit MergeSeriesIterator) RangeValues(in metric.Interval) []model.SamplePa
 }
 
 // Close implements the SeriesIterator interface.
-func (msit MergeSeriesIterator) Close() {}
+func (msit MergeSeriesIterator) Close() {
+	for _, it := range msit.iterators {
+		it.Close()
+	}
+}
 
 // SampleStreamIterator is a struct and not just a renamed type because otherwise the Metric
 // field and Metric() methods would clash.

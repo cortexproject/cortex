@@ -104,7 +104,7 @@ func TestIngesterTransfer(t *testing.T) {
 			model.MetricNameLabel: "foo",
 		}
 	)
-	ctx := user.InjectUserID(context.Background(), userID)
+	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = ing1.Push(ctx, util.ToWriteRequest([]model.Sample{
 		{
 			Metric:    m,
@@ -290,7 +290,7 @@ func TestIngesterFlush(t *testing.T) {
 			model.MetricNameLabel: "foo",
 		}
 	)
-	ctx := user.InjectUserID(context.Background(), userID)
+	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{
 		{
 			Metric:    m,

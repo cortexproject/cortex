@@ -58,7 +58,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			log.Infof("Processing TransferChunks request from ingester '%s'.")
 		}
 		metric := util.FromLabelPairs(wireSeries.Labels)
-		userCtx := user.InjectUserID(stream.Context(), wireSeries.UserId)
+		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {
 			return err

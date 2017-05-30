@@ -50,8 +50,8 @@ func requestAsUser(t *testing.T, userID string, method, urlStr string, body io.R
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
-	r = r.WithContext(user.InjectUserID(r.Context(), userID))
-	user.InjectUserIDIntoHTTPRequest(r.Context(), r)
+	r = r.WithContext(user.InjectOrgID(r.Context(), userID))
+	user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
 	app.ServeHTTP(w, r)
 	return w
 }

@@ -70,7 +70,7 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 
 // getConfig returns the request configuration.
 func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := user.ExtractUserIDFromHTTPRequest(r)
+	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -97,7 +97,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := user.ExtractUserIDFromHTTPRequest(r)
+	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

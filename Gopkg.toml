@@ -3,6 +3,10 @@
   name = "github.com/prometheus/alertmanager"
   revision = "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3"
 
+[[dependencies]]
+  name = "github.com/weaveworks/common"
+  branch = "master"
+
 [[overrides]]
   name = "github.com/Azure/azure-sdk-for-go"
   revision = "bd73d950fa4440dae889bd9917bff7cef539f86e"

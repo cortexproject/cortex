@@ -1,4 +1,4 @@
-package httpgrpc
+package server
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 )
@@ -34,7 +35,7 @@ func newTestServer(handler http.Handler) (*testServer, error) {
 		URL:        "direct://" + lis.Addr().String(),
 	}
 
-	RegisterHTTPServer(server.grpcServer, server.Server)
+	httpgrpc.RegisterHTTPServer(server.grpcServer, server.Server)
 	go server.grpcServer.Serve(lis)
 
 	return server, nil

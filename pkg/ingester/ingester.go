@@ -3,13 +3,12 @@ package ingester
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -18,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
 
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	cortex_chunk "github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
@@ -273,11 +273,16 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	var lastPartialErr error
 	samples := util.FromWriteRequest(req)
+
+samples:
 	for j := range samples {
 		if err := i.append(ctx, &samples[j]); err != nil {
-			if err == util.ErrUserSeriesLimitExceeded || err == util.ErrMetricSeriesLimitExceeded {
-				lastPartialErr = grpc.Errorf(codes.ResourceExhausted, err.Error())
-				continue
+			if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
+				switch httpResp.Code {
+				case http.StatusBadRequest, http.StatusTooManyRequests:
+					lastPartialErr = err
+					continue samples
+				}
 			}
 			return nil, err
 		}

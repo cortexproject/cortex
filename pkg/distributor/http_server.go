@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -25,28 +23,6 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := d.Push(r.Context(), &req); err != nil {
-		if grpc.Code(err) == codes.ResourceExhausted {
-			switch grpc.ErrorDesc(err) {
-			case util.ErrUserSeriesLimitExceeded.Error():
-				err = util.ErrUserSeriesLimitExceeded
-			case util.ErrMetricSeriesLimitExceeded.Error():
-				err = util.ErrMetricSeriesLimitExceeded
-			}
-		}
-
-		var code int
-		switch err {
-		case errIngestionRateLimitExceeded, util.ErrUserSeriesLimitExceeded, util.ErrMetricSeriesLimitExceeded:
-			code = http.StatusTooManyRequests
-		default:
-			code = http.StatusInternalServerError
-		}
-		http.Error(w, err.Error(), code)
-		log.Errorf("append err: %v", err)
-		return
-	}
-
 	if d.cfg.EnableBilling {
 		var samples int64
 		for _, ts := range req.Timeseries {
@@ -55,6 +31,16 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		if err := d.emitBillingRecord(r.Context(), buf, samples); err != nil {
 			log.Errorf("Error emitting billing record: %v", err)
 		}
+	}
+
+	if _, err := d.Push(r.Context(), &req); err != nil {
+		log.Errorf("Push error: %v", err)
+		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
+			http.Error(w, string(httpResp.Body), int(httpResp.Code))
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
 	}
 }
 

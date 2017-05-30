@@ -21,7 +21,7 @@ func TestMergeSeriesIterator_Metric(t *testing.T) {
 		Values: []model.SamplePair{},
 	})
 
-	mergeIterator := NewMergeSeriesIterator(sampleMetric, []local.SeriesIterator{iterator1, iterator2})
+	mergeIterator := NewMergeSeriesIterator([]local.SeriesIterator{iterator1, iterator2})
 
 	for _, c := range []struct {
 		mergeIterator  MergeSeriesIterator
@@ -54,7 +54,7 @@ func TestMergeSeriesIterator_ValueAtOrBeforeTime(t *testing.T) {
 		Values: []model.SamplePair{sample2, sample4},
 	})
 
-	mergeIterator := NewMergeSeriesIterator(sampleMetric, []local.SeriesIterator{iterator1, iterator2})
+	mergeIterator := NewMergeSeriesIterator([]local.SeriesIterator{iterator1, iterator2})
 
 	for _, c := range []struct {
 		mergeIterator  MergeSeriesIterator
@@ -104,7 +104,7 @@ func TestMergeSeriesIterator_RangeValues(t *testing.T) {
 		Values: []model.SamplePair{sample2, sample4},
 	})
 
-	mergeIterator := NewMergeSeriesIterator(sampleMetric, []local.SeriesIterator{iterator1, iterator2})
+	mergeIterator := NewMergeSeriesIterator([]local.SeriesIterator{iterator1, iterator2})
 
 	for _, c := range []struct {
 		mergeIterator   MergeSeriesIterator

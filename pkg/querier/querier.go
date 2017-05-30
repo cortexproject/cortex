@@ -269,7 +269,7 @@ func createMergeIterators(incomingIterators chan []local.SeriesIterator, incomin
 
 	var mergeIterators []local.SeriesIterator
 	for _, its := range fpToIts {
-		mergeIterators = append(mergeIterators, util.NewMergeSeriesIterator(its[0].Metric().Metric, its))
+		mergeIterators = append(mergeIterators, util.NewMergeSeriesIterator(its))
 	}
 	return mergeIterators, nil
 }

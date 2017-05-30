@@ -66,6 +66,16 @@ func (pq *PriorityQueue) Close() {
 	pq.cond.Broadcast()
 }
 
+// DrainAndClose closed the queue and removes all the items from it.
+func (pq *PriorityQueue) DrainAndClose() {
+	pq.lock.Lock()
+	defer pq.lock.Unlock()
+	pq.closed = true
+	pq.queue = nil
+	pq.hit = map[string]struct{}{}
+	pq.cond.Broadcast()
+}
+
 // Enqueue adds an operation to the queue in priority order. If the operation
 // is already on the queue, it will be ignored.
 func (pq *PriorityQueue) Enqueue(op Op) {

@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/chunk"
 
@@ -32,6 +33,8 @@ func init() {
 
 // TransferChunks receives all the chunks from another ingester.
 func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) error {
+	log.Infof("Got TransferChunks request from ingester '%s'.")
+
 	// Enter JOINING state (only valid from PENDING)
 	if err := i.ChangeState(ring.JOINING); err != nil {
 		return err
@@ -52,7 +55,10 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		// We can't send "extra" fields with a streaming call, so we repeat
 		// wireSeries.FromIngesterId and assume it is the same every time
 		// round this loop.
-		fromIngesterID = wireSeries.FromIngesterId
+		if fromIngesterID == "" {
+			fromIngesterID = wireSeries.FromIngesterId
+			log.Infof("Processing TransferChunks request from ingester '%s'.")
+		}
 		metric := util.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.Inject(stream.Context(), wireSeries.UserId)
 		descs, err := fromWireChunks(wireSeries.Chunks)

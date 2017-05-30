@@ -396,6 +396,7 @@ func (i *Ingester) transferChunks() error {
 		return err
 	}
 
+	log.Infof("Successfully sent chunks to '%s'", targetIngester.Addr)
 	return nil
 }
 

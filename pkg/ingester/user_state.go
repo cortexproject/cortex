@@ -3,6 +3,7 @@ package ingester
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -198,7 +200,7 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 	// serially), and the overshoot in allowed series would be minimal.
 	if u.fpToSeries.length() >= cfg.MaxSeriesPerUser {
 		u.fpLocker.Unlock(fp)
-		return fp, nil, util.ErrUserSeriesLimitExceeded
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit exceeded")
 	}
 
 	metricName, err := util.ExtractMetricNameFromMetric(metric)
@@ -209,7 +211,7 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 
 	if !u.canAddSeriesFor(metricName, cfg) {
 		u.fpLocker.Unlock(fp)
-		return fp, nil, util.ErrMetricSeriesLimitExceeded
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit exceeded")
 	}
 
 	series = newMemorySeries(metric)

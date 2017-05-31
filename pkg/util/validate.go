@@ -1,9 +1,11 @@
 package util
 
 import (
+	"net/http"
 	"regexp"
 
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/httpgrpc"
 )
 
 var (
@@ -13,26 +15,34 @@ var (
 	maxLabelValueLength = 4096
 )
 
+const (
+	errMissingMetricName = "sample missing metric name"
+	errInvalidMetricName = "sample invalid metric name: '%s'"
+	errInvalidLabel      = "sample invalid label: '%s'"
+	errLabelNameTooLong  = "label name too long: '%s'"
+	errLabelValueTooLong = "label value too long: '%s'"
+)
+
 // ValidateSample returns an err if the sample is invalid
 func ValidateSample(s *model.Sample) error {
 	metricName, ok := s.Metric[model.MetricNameLabel]
 	if !ok {
-		return ErrMissingMetricName
+		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
 	}
 
 	if !validMetricNameRE.MatchString(string(metricName)) {
-		return ErrInvalidMetricName
+		return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
 	}
 
 	for k, v := range s.Metric {
 		if !validLabelRE.MatchString(string(k)) {
-			return ErrInvalidLabel
+			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, k)
 		}
 		if len(k) > maxLabelNameLength {
-			return ErrLabelNameTooLong
+			return httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, k)
 		}
 		if len(v) > maxLabelValueLength {
-			return ErrLabelValueTooLong
+			return httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, v)
 		}
 	}
 	return nil

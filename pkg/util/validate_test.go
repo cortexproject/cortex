@@ -1,10 +1,12 @@
 package util
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/weaveworks/common/httpgrpc"
 )
 
 func TestValidate(t *testing.T) {
@@ -12,10 +14,22 @@ func TestValidate(t *testing.T) {
 		metric model.Metric
 		err    error
 	}{
-		{map[model.LabelName]model.LabelValue{}, ErrMissingMetricName},
-		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: " "}, ErrInvalidMetricName},
-		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid", "foo ": "bar"}, ErrInvalidLabel},
-		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid"}, nil},
+		{
+			map[model.LabelName]model.LabelValue{},
+			httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName),
+		},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: " "},
+			httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, " "),
+		},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid", "foo ": "bar"},
+			httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, "foo "),
+		},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid"},
+			nil,
+		},
 	} {
 		err := ValidateSample(&model.Sample{
 			Metric: c.metric,

@@ -2,12 +2,14 @@ package ingester
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/weaveworks/common/httpgrpc"
 )
 
 var discardedSamples = prometheus.NewCounterVec(
@@ -64,11 +66,11 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	}
 	if v.Timestamp == s.lastTime {
 		discardedSamples.WithLabelValues(duplicateSample).Inc()
-		return fmt.Errorf("sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value) // Caused by the caller.
+		return httpgrpc.Errorf(http.StatusBadRequest, "sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value)
 	}
 	if v.Timestamp < s.lastTime {
 		discardedSamples.WithLabelValues(outOfOrderTimestamp).Inc()
-		return fmt.Errorf("sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp) // Caused by the caller.
+		return httpgrpc.Errorf(http.StatusBadRequest, "sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp) // Caused by the caller.
 	}
 
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {

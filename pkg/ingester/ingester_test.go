@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
 	"sync"
 	"testing"
@@ -9,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
 
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -191,7 +192,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 	// Append to two series, expect series-exceeded error.
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
-	if grpc.ErrorDesc(err) != util.ErrUserSeriesLimitExceeded.Error() {
+	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
 
@@ -262,7 +263,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 	// Append to two series, expect series-exceeded error.
 	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
-	if grpc.ErrorDesc(err) != util.ErrMetricSeriesLimitExceeded.Error() {
+	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding series per metric, got %v", err)
 	}
 

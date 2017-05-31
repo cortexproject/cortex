@@ -12,14 +12,13 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 	"golang.org/x/net/context"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // ChunkStore is the interface we need to get chunks
 type ChunkStore interface {
-	Get(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]chunk.Chunk, error)
+	Get(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error)
 }
 
 // NewEngine creates a new promql.Engine for cortex.
@@ -45,7 +44,7 @@ func NewQueryable(distributor Querier, chunkStore ChunkStore) Queryable {
 // A Querier allows querying all samples in a given time range that match a set
 // of label matchers.
 type Querier interface {
-	Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error)
+	Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error)
 	LabelValuesForLabelName(context.Context, model.LabelName) (model.LabelValues, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matcherSets ...metric.LabelMatchers) ([]metric.Metric, error)
 }
@@ -57,14 +56,14 @@ type ChunkQuerier struct {
 
 // Query implements Querier and transforms a list of chunks into sample
 // matrices.
-func (q *ChunkQuerier) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
-	// Get chunks for all matching series from ChunkStore.
-	chunks, err := q.Store.Get(ctx, from, to, matchers...)
+func (q *ChunkQuerier) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
+	// Get iterators for all matching series from ChunkStore.
+	iterators, err := q.Store.Get(ctx, from, to, matchers...)
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}
 
-	return chunk.ChunksToMatrix(chunks)
+	return iterators, nil
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
@@ -94,44 +93,28 @@ type MergeQuerier struct {
 	Queriers []Querier
 }
 
-// Query fetches series for a given time range and label matchers from multiple
-// promql.Queriers and returns the merged results as a model.Matrix.
-func (qm MergeQuerier) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
-	// Fetch samples from all queriers in parallel.
-	matrices := make(chan model.Matrix)
-	errors := make(chan error)
+// QueryRange fetches series for a given time range and label matchers from multiple
+// promql.Queriers and returns the merged results as a map of series iterators.
+func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
+	incomingIterators := make(chan []local.SeriesIterator)
+	incomingErrors := make(chan error)
+
 	for _, q := range qm.Queriers {
 		go func(q Querier) {
-			matrix, err := q.Query(ctx, from, to, matchers...)
+			iterators, err := q.Query(ctx, from, to, matchers...)
 			if err != nil {
-				errors <- err
+				incomingErrors <- err
 			} else {
-				matrices <- matrix
+				incomingIterators <- iterators
 			}
 		}(q)
 	}
 
-	matrix, err := mergeMatrices(matrices, errors, len(qm.Queriers))
+	mergeIterators, err := createMergeIterators(incomingIterators, incomingErrors, len(qm.Queriers))
 	if err != nil {
 		log.Errorf("Error in MergeQuerier.Query: %v", err)
 	}
-	return matrix, err
-}
-
-// QueryRange fetches series for a given time range and label matchers from multiple
-// promql.Queriers and returns the merged results as a map of series iterators.
-func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
-	matrix, err := qm.Query(ctx, from, to, matchers...)
-	if err != nil {
-		return nil, err
-	}
-
-	iterators := make([]local.SeriesIterator, 0, len(matrix))
-	for _, ss := range matrix {
-		iterators = append(iterators, sampleStreamIterator{ss: ss})
-	}
-
-	return iterators, nil
+	return mergeIterators, err
 }
 
 // QueryInstant fetches series for a given instant and label matchers from multiple
@@ -221,10 +204,25 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 				return
 			}
 
-			matrix, err := qm.Query(ctx, from, to, matchers...)
+			iterators, err := qm.QueryRange(ctx, from, to, matchers...)
 			if err != nil {
 				errors <- err
 				return
+			}
+
+			in := metric.Interval{
+				OldestInclusive: from,
+				NewestInclusive: to,
+			}
+
+			// Convert iterators to matrix
+			matrix := make(model.Matrix, 0, len(iterators))
+			for _, it := range iterators {
+				ss := &model.SampleStream{
+					Metric: it.Metric().Metric,
+					Values: it.RangeValues(in),
+				}
+				matrix = append(matrix, ss)
 			}
 
 			resp.Results[i] = util.ToQueryResponse(matrix)
@@ -245,6 +243,37 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+func createMergeIterators(incomingIterators chan []local.SeriesIterator, incomingErrors chan error, n int) ([]local.SeriesIterator, error) {
+	// Group iterators by fingerprint.
+	fpToIts := map[model.Fingerprint][]local.SeriesIterator{}
+	var lastErr error
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-incomingErrors:
+			lastErr = err
+
+		case iterators := <-incomingIterators:
+			for _, it := range iterators {
+				fp := it.Metric().Metric.Fingerprint()
+				if _, ok := fpToIts[fp]; !ok {
+					fpToIts[fp] = []local.SeriesIterator{it}
+				} else {
+					fpToIts[fp] = append(fpToIts[fp], it)
+				}
+			}
+		}
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+
+	var mergeIterators []local.SeriesIterator
+	for _, its := range fpToIts {
+		mergeIterators = append(mergeIterators, util.NewMergeSeriesIterator(its))
+	}
+	return mergeIterators, nil
+}
+
 func mergeMatrices(matrices chan model.Matrix, errors chan error, n int) (model.Matrix, error) {
 	// Group samples from all matrices by fingerprint.
 	fpToSS := map[model.Fingerprint]*model.SampleStream{}
@@ -260,7 +289,7 @@ func mergeMatrices(matrices chan model.Matrix, errors chan error, n int) (model.
 				if fpSS, ok := fpToSS[fp]; !ok {
 					fpToSS[fp] = ss
 				} else {
-					fpSS.Values = util.MergeSamples(fpSS.Values, ss.Values)
+					fpSS.Values = util.MergeSampleSets(fpSS.Values, ss.Values)
 				}
 			}
 		}

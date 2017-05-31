@@ -57,6 +57,7 @@ func TestChunkStore(t *testing.T) {
 		{"v5 schema", v5Schema},
 		{"v6 schema", v6Schema},
 		{"v7 schema", v7Schema},
+		{"v8 schema", v8Schema},
 	}
 
 	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
@@ -122,7 +123,7 @@ func TestChunkStore(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
+				chunks, err := store.getChunks(ctx, now.Add(-time.Hour), now, tc.matchers...)
 				require.NoError(t, err)
 
 				if !reflect.DeepEqual(tc.expect, chunks) {
@@ -249,7 +250,7 @@ func TestChunkStoreMetricNames(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
+				chunks, err := store.getChunks(ctx, now.Add(-time.Hour), now, tc.matchers...)
 				require.NoError(t, err)
 
 				if !reflect.DeepEqual(tc.expect, chunks) {
@@ -282,6 +283,7 @@ func TestChunkStoreRandom(t *testing.T) {
 		{name: "v5 schema", fn: v5Schema},
 		{name: "v6 schema", fn: v6Schema},
 		{name: "v7 schema", fn: v7Schema},
+		{name: "v8 schema", fn: v8Schema},
 	}
 
 	for i := range schemas {
@@ -325,7 +327,7 @@ func TestChunkStoreRandom(t *testing.T) {
 		endTime := model.TimeFromUnix(end)
 
 		for _, s := range schemas {
-			chunks, err := s.store.Get(ctx, startTime, endTime,
+			chunks, err := s.store.getChunks(ctx, startTime, endTime,
 				mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"),
 				mustNewLabelMatcher(metric.Equal, "bar", "baz"),
 			)
@@ -388,7 +390,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		startTime := model.TimeFromUnix(start)
 		endTime := model.TimeFromUnix(end)
 
-		chunks, err := store.Get(ctx, startTime, endTime,
+		chunks, err := store.getChunks(ctx, startTime, endTime,
 			mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"),
 			mustNewLabelMatcher(metric.Equal, "bar", "baz"),
 		)

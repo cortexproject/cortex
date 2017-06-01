@@ -8,9 +8,9 @@ go_library(
         "//pkg/configs:go_default_library",
         "//pkg/configs/db:go_default_library",
         "//pkg/util:go_default_library",
-        "//vendor/github.com/Sirupsen/logrus:go_default_library",
         "//vendor/github.com/gorilla/mux:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/config:go_default_library",
+        "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/weaveworks/common/user:go_default_library",
     ],
 )

@@ -7,9 +7,9 @@ go_library(
     deps = [
         "//pkg/configs:go_default_library",
         "//vendor/github.com/Masterminds/squirrel:go_default_library",
-        "//vendor/github.com/Sirupsen/logrus:go_default_library",
         "//vendor/github.com/lib/pq:go_default_library",
         "//vendor/github.com/mattes/migrate/driver/postgres:go_default_library",
         "//vendor/github.com/mattes/migrate/migrate:go_default_library",
+        "//vendor/github.com/prometheus/common/log:go_default_library",
     ],
 )

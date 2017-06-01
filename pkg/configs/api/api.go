@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strconv"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
 
@@ -75,6 +74,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+	logger := util.WithContext(r.Context())
 
 	cfg, err := a.db.GetConfig(userID)
 	if err == sql.ErrNoRows {
@@ -82,7 +82,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if err != nil {
 		// XXX: Untested
-		log.Errorf("Error getting config: %v", err)
+		logger.Errorf("Error getting config: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -90,7 +90,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(cfg); err != nil {
 		// XXX: Untested
-		log.Errorf("Error encoding config: %v", err)
+		logger.Errorf("Error encoding config: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -102,11 +102,12 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+	logger := util.WithContext(r.Context())
 
 	var cfg configs.Config
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		// XXX: Untested
-		log.Errorf("Error decoding json body: %v", err)
+		logger.Errorf("Error decoding json body: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -116,7 +117,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.db.SetConfig(userID, cfg); err != nil {
 		// XXX: Untested
-		log.Errorf("Error storing config: %v", err)
+		logger.Errorf("Error storing config: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -124,9 +125,10 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request) {
+	logger := util.WithContext(r.Context())
 	cfg, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Errorf("Error reading request body: %v", err)
+		logger.Errorf("Error reading request body: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -173,13 +175,14 @@ type ConfigsView struct {
 func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 	var cfgs map[string]configs.View
 	var err error
+	logger := util.WithContext(r.Context())
 	rawSince := r.FormValue("since")
 	if rawSince == "" {
 		cfgs, err = a.db.GetAllConfigs()
 	} else {
 		since, err := strconv.ParseUint(rawSince, 10, 0)
 		if err != nil {
-			log.Infof("Invalid config ID: %v", err)
+			logger.Infof("Invalid config ID: %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -188,7 +191,7 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		// XXX: Untested
-		log.Errorf("Error getting configs: %v", err)
+		logger.Errorf("Error getting configs: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -1,17 +1,17 @@
 package db
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/prometheus/common/log"
 	"github.com/weaveworks/cortex/pkg/configs"
 )
 
-// traced adds logrus trace lines on each db call
+// traced adds log trace lines on each db call
 type traced struct {
 	d DB
 }
 
 func (t traced) trace(name string, args ...interface{}) {
-	logrus.Debugf("%s: %#v", name, args)
+	log.Debugf("%s: %#v", name, args)
 }
 
 func (t traced) GetConfig(userID string) (cfg configs.View, err error) {

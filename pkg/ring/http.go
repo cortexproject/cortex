@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/prometheus/common/log"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const tpl = `
@@ -78,7 +78,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodPost {
 		ingesterID := req.FormValue("forget")
 		if err := r.forget(ingesterID); err != nil {
-			log.Errorf("Error forgetting ingester: %v", err)
+			util.WithContext(req.Context()).Errorf("Error forgetting ingester: %v", err)
 		}
 
 		// Implement PRG pattern to prevent double-POST and work with CSRF middleware.

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -17,8 +16,9 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 	var req client.WriteRequest
 	buf, err := util.ParseProtoRequest(r.Context(), r, &req, compressionType)
+	logger := util.WithContext(r.Context())
 	if err != nil {
-		log.Errorf(err.Error())
+		logger.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -29,12 +29,12 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 			samples += int64(len(ts.Samples))
 		}
 		if err := d.emitBillingRecord(r.Context(), buf, samples); err != nil {
-			log.Errorf("Error emitting billing record: %v", err)
+			logger.Errorf("Error emitting billing record: %v", err)
 		}
 	}
 
 	if _, err := d.Push(r.Context(), &req); err != nil {
-		log.Errorf("Push error: %v", err)
+		logger.Errorf("Push error: %v", err)
 		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
 			http.Error(w, string(httpResp.Body), int(httpResp.Code))
 		} else {

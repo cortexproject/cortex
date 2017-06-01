@@ -242,11 +242,12 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 
 // Evaluate a list of rules in the given context.
 func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
-	log.Debugf("Evaluating %d rules...", len(rs))
+	logger := util.WithContext(ctx)
+	logger.Debugf("Evaluating %d rules...", len(rs))
 	start := time.Now()
 	g, err := r.newGroup(ctx, rs)
 	if err != nil {
-		log.Errorf("Failed to create rule group: %v", err)
+		logger.Errorf("Failed to create rule group: %v", err)
 		return
 	}
 	g.Eval()

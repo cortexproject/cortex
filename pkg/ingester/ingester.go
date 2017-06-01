@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	cortex_chunk "github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
@@ -293,8 +292,7 @@ samples:
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 	if err := util.ValidateSample(sample); err != nil {
-		userID, _ := user.ExtractOrgID(ctx) // ignore err, userID will be empty string if err
-		log.Errorf("Error validating sample from user '%s': %v", userID, err)
+		util.WithContext(ctx).Errorf("Error validating sample: %v", err)
 		return nil
 	}
 

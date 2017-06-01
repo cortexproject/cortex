@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/local"
@@ -113,7 +112,7 @@ func (qm MergeQuerier) Query(ctx context.Context, from, to model.Time, matchers 
 
 	matrix, err := mergeMatrices(matrices, errors, len(qm.Queriers))
 	if err != nil {
-		log.Errorf("Error in MergeQuerier.Query: %v", err)
+		util.WithContext(ctx).Errorf("Error in MergeQuerier.Query: %v", err)
 	}
 	return matrix, err
 }
@@ -202,8 +201,9 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 
 	ctx := r.Context()
 	var req client.ReadRequest
+	logger := util.WithContext(r.Context())
 	if _, err := util.ParseProtoRequest(ctx, r, &req, compressionType); err != nil {
-		log.Errorf(err.Error())
+		logger.Errorf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -234,14 +234,14 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 
 	for err := range errors {
 		if err != nil {
-			log.Errorf("Query error: %v", err)
+			logger.Errorf("Query error: %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
 
 	if err := util.SerializeProtoResponse(w, &resp, compressionType); err != nil {
-		log.Errorf("error sending remote read response: %v", err)
+		logger.Errorf("error sending remote read response: %v", err)
 	}
 }
 

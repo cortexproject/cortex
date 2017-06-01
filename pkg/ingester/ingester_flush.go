@@ -12,6 +12,7 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (
@@ -118,7 +119,7 @@ func (i *Ingester) flushLoop(j int) {
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			log.Errorf("Failed to flush user %v: %v", op.userID, err)
+			util.WithUserID(op.userID).Errorf("Failed to flush user: %v", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation

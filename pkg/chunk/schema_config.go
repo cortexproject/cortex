@@ -41,6 +41,9 @@ type SchemaConfig struct {
 
 	// After this time, we will read and write v7 schemas.
 	V7SchemaFrom util.DayValue
+
+	// After this time, we will read and write v8 schemas.
+	V8SchemaFrom util.DayValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -53,6 +56,7 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.V5SchemaFrom, "dynamodb.v5-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v5 schema.")
 	f.Var(&cfg.V6SchemaFrom, "dynamodb.v6-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v6 schema.")
 	f.Var(&cfg.V7SchemaFrom, "dynamodb.v7-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v7 schema.")
+	f.Var(&cfg.V8SchemaFrom, "dynamodb.v8-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v8 schema.")
 }
 
 func (cfg *SchemaConfig) tableForBucket(bucketStart int64) string {
@@ -175,6 +179,10 @@ func newCompositeSchema(cfg SchemaConfig) (Schema, error) {
 
 	if cfg.V7SchemaFrom.IsSet() {
 		schemas = append(schemas, compositeSchemaEntry{cfg.V7SchemaFrom.Time, v7Schema(cfg)})
+	}
+
+	if cfg.V8SchemaFrom.IsSet() {
+		schemas = append(schemas, compositeSchemaEntry{cfg.V8SchemaFrom.Time, v8Schema(cfg)})
 	}
 
 	if !sort.IsSorted(byStart(schemas)) {

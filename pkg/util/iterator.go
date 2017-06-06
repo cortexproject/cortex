@@ -8,7 +8,8 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 )
 
-// MergeSeriesIterator combines SampleStreamIterator
+// MergeSeriesIterator combines SampleStreamIterator. Based off mergeIterator
+// implemented in promtheus/storage/fanin/fanin.go.
 type MergeSeriesIterator struct {
 	iterators []local.SeriesIterator
 }

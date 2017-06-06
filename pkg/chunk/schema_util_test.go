@@ -32,6 +32,15 @@ func TestMetricSeriesID(t *testing.T) {
 			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
 		},
 		{
+			model.Metric{
+				"flip": "flop",
+				"bar":  "baz",
+				model.MetricNameLabel: "foo",
+				"toms":                "code",
+			},
+			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
+		},
+		{
 			model.Metric{},
 			"RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o",
 		},

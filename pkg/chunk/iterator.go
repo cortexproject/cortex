@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // LazySeriesIterator is a struct and not just a renamed type because otherwise the Metric
@@ -30,8 +29,8 @@ type LazySeriesIterator struct {
 }
 
 // NewLazySeriesIterator creates a LazySeriesIterator.
-func NewLazySeriesIterator(chunkStore *Store, metric model.Metric, from model.Time, through model.Time, matchers []*metric.LabelMatcher) LazySeriesIterator {
-	return LazySeriesIterator{
+func NewLazySeriesIterator(chunkStore *Store, metric model.Metric, from model.Time, through model.Time, matchers []*metric.LabelMatcher) *LazySeriesIterator {
+	return &LazySeriesIterator{
 		chunkStore: chunkStore,
 		metric:     metric,
 		from:       from,
@@ -81,8 +80,7 @@ func (it *LazySeriesIterator) createSampleSeriesIterator() error {
 	}
 
 	ctx := context.Background()
-	filters, matchers := util.SplitFiltersAndMatchers(it.matchers)
-	sampleSeriesIterators, err := it.chunkStore.getMetricNameIterators(ctx, it.from, it.through, filters, matchers, metricName)
+	sampleSeriesIterators, err := it.chunkStore.getMetricNameIterators(ctx, it.from, it.through, it.matchers, metricName)
 	if err != nil {
 		return err
 	}

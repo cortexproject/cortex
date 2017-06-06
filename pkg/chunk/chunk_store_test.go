@@ -180,7 +180,7 @@ func TestChunkStore_Get_concrete(t *testing.T) {
 func TestChunkStore_Get_lazy(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
-	store := newTestChunkStore(t, StoreConfig{})
+	from := now.Add(-time.Hour)
 
 	foo1Metric1 := model.Metric{
 		model.MetricNameLabel: "foo1",
@@ -209,11 +209,6 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 	foo2Chunk := dummyChunkFor(foo2Metric)
 	foo3Chunk := dummyChunkFor(foo3Metric)
 
-	foo1LazyIterator1 := NewLazySeriesIterator(store, foo1Metric1, now, now, []*metric.LabelMatcher{})
-	foo1LazyIterator2 := NewLazySeriesIterator(store, foo1Metric2, now, now, []*metric.LabelMatcher{})
-	foo2LazyIterator := NewLazySeriesIterator(store, foo2Metric, now, now, []*metric.LabelMatcher{})
-	foo3LazyIterator := NewLazySeriesIterator(store, foo3Metric, now, now, []*metric.LabelMatcher{})
-
 	schemas := []struct {
 		name string
 		fn   func(cfg SchemaConfig) Schema
@@ -221,68 +216,83 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 		{"v8 schema", v8Schema},
 	}
 
+	regexMatcher := mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")
+
 	for _, tc := range []struct {
-		query    string
-		expect   []local.SeriesIterator
-		matchers []*metric.LabelMatcher
+		query                    string
+		matchers                 []*metric.LabelMatcher
+		expectedIteratorMetrics  []model.Metric
+		expectedIteratorMatchers []*metric.LabelMatcher
 	}{
 		// When name matcher is used without Equal, start matching all metric names
 		// however still filter out metric names which do not match query
 		{
 			`{__name__!="foo1"}`,
-			[]local.SeriesIterator{foo3LazyIterator, foo2LazyIterator},
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, model.MetricNameLabel, "foo1")},
+			[]model.Metric{foo3Metric, foo2Metric},
+			[]*metric.LabelMatcher{},
 		},
 		{
 			`{__name__=~"foo1|foo2"}`,
-			[]local.SeriesIterator{foo1LazyIterator1, foo2LazyIterator, foo1LazyIterator2},
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.RegexMatch, model.MetricNameLabel, "foo1|foo2")},
+			[]model.Metric{foo1Metric1, foo2Metric, foo1Metric2},
+			[]*metric.LabelMatcher{},
 		},
-
 		// No metric names
 		{
 			`{bar="baz"}`,
-			[]local.SeriesIterator{foo1LazyIterator1},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "baz")},
+			[]model.Metric{foo1Metric1},
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 		{
 			`{bar="beep"}`,
-			[]local.SeriesIterator{foo3LazyIterator, foo2LazyIterator, foo1LazyIterator2}, // doesn't match foo1 metric 1
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "beep")},
+			[]model.Metric{foo3Metric, foo2Metric, foo1Metric2}, // doesn't match foo1 metric 1
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "beep")},
 		},
 		{
 			`{flip=""}`,
-			[]local.SeriesIterator{foo3LazyIterator, foo2LazyIterator, foo1LazyIterator2}, // doesn't match foo1 chunk1 as it has a flip value
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "flip", "")},
+			[]model.Metric{foo3Metric, foo2Metric, foo1Metric2}, // doesn't match foo1 chunk1 as it has a flip value
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "flip", "")},
 		},
 		{
 			`{bar!="beep"}`,
-			[]local.SeriesIterator{foo1LazyIterator1},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, "bar", "beep")},
+			[]model.Metric{foo1Metric1},
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, "bar", "beep")},
 		},
 		{
 			`{bar=~"beep|baz"}`,
-			[]local.SeriesIterator{foo3LazyIterator, foo1LazyIterator1, foo2LazyIterator, foo1LazyIterator2},
-			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
+			[]*metric.LabelMatcher{regexMatcher},
+			[]model.Metric{foo3Metric, foo1Metric1, foo2Metric, foo1Metric2},
+			[]*metric.LabelMatcher{regexMatcher},
 		},
 		{
 			`{toms="code", bar=~"beep|baz"}`,
-			[]local.SeriesIterator{foo3LazyIterator, foo1LazyIterator1, foo2LazyIterator, foo1LazyIterator2},
-			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), regexMatcher},
+			[]model.Metric{foo3Metric, foo1Metric1, foo2Metric, foo1Metric2},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), regexMatcher},
 		},
 		{
 			`{toms="code", bar="baz"}`,
-			[]local.SeriesIterator{foo1LazyIterator1},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
+			[]model.Metric{foo1Metric1},
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 	} {
 		for _, schema := range schemas {
+			// Create store for schema
+			store := newTestChunkStore(t, StoreConfig{
+				schemaFactory: schema.fn,
+			})
+
+			// Run test cases for this schema, checking lazy series iterators
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				log.Infoln("========= Running query", tc.query, "with schema", schema.name)
-				store := newTestChunkStore(t, StoreConfig{
-					schemaFactory: schema.fn,
-				})
 
+				// Add chunks to store
 				if err := store.Put(ctx, []Chunk{
 					foo1Chunk1,
 					foo1Chunk2,
@@ -292,12 +302,23 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				iterators, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
+				// Get iterators from store given the matchers
+				iterators, err := store.Get(ctx, from, now, tc.matchers...)
 				require.NoError(t, err)
 
+				// Create expected iterators with current schema store
+				var expectedIterators []local.SeriesIterator
+				for _, expectedMetric := range tc.expectedIteratorMetrics {
+					expectedIterators = append(
+						expectedIterators,
+						NewLazySeriesIterator(store, expectedMetric, from, now, tc.expectedIteratorMatchers),
+					)
+				}
+
+				// Check iterators are correct
 				sort.Sort(ByFingerprint(iterators))
-				if !reflect.DeepEqual(tc.expect, iterators) {
-					t.Fatalf("%s: wrong iterators - %s", tc.query, test.Diff(tc.expect, iterators))
+				if !reflect.DeepEqual(expectedIterators, iterators) {
+					t.Fatalf("%s: wrong iterators - %s", tc.query, test.Diff(expectedIterators, iterators))
 				}
 			})
 		}
@@ -308,6 +329,7 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
+	metricName := model.LabelValue("foo")
 	chunk1 := dummyChunkFor(model.Metric{
 		model.MetricNameLabel: "foo",
 		"bar":  "baz",
@@ -334,8 +356,6 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 		{"v8 schema", v8Schema},
 	}
 
-	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
-
 	for _, tc := range []struct {
 		query    string
 		expect   []Chunk
@@ -344,46 +364,46 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 		{
 			`foo`,
 			[]Chunk{chunk1, chunk2},
-			[]*metric.LabelMatcher{nameMatcher},
+			[]*metric.LabelMatcher{},
 		},
 		{
 			`foo{flip=""}`,
 			[]Chunk{chunk2},
-			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "flip", "")},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "flip", "")},
 		},
 		{
 			`foo{bar="baz"}`,
 			[]Chunk{chunk1},
-			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "baz")},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 		{
 			`foo{bar="beep"}`,
 			[]Chunk{chunk2},
-			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "bar", "beep")},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "beep")},
 		},
 		{
 			`foo{toms="code"}`,
 			[]Chunk{chunk1, chunk2},
-			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code")},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code")},
 		},
 		{
 			`foo{bar!="baz"}`,
 			[]Chunk{chunk2},
-			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.NotEqual, "bar", "baz")},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, "bar", "baz")},
 		},
 		{
 			`foo{bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
-			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
 		},
 		{
 			`foo{toms="code", bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
-			[]*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
+			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")},
 		},
 		{
 			`foo{toms="code", bar="baz"}`,
-			[]Chunk{chunk1}, []*metric.LabelMatcher{nameMatcher, mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
+			[]Chunk{chunk1}, []*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 	} {
 		for _, schema := range schemas {
@@ -397,7 +417,6 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				metricName := nameMatcher.Value
 				chunks, err := store.getMetricNameChunks(ctx, now.Add(-time.Hour), now, tc.matchers, metricName)
 				require.NoError(t, err)
 

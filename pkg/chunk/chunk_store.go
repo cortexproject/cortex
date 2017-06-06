@@ -250,6 +250,11 @@ outer:
 			return nil, err
 		}
 
+		// Apply metric name matcher
+		if metricNameMatcher != nil && !metricNameMatcher.Match(metric[metricNameMatcher.Name]) {
+			continue outer
+		}
+
 		// Apply matchers
 		for _, matcher := range allMatchers {
 			if !matcher.Match(metric[matcher.Name]) {

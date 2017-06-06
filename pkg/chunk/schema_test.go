@@ -235,7 +235,8 @@ func TestSchemaHashKeys(t *testing.T) {
 
 // range value types
 const (
-	MetricNameRangeValue = iota + 1
+	_ = iota
+	MetricNameRangeValue
 	ChunkTimeRangeValue
 	SeriesRangeValue
 )

@@ -181,8 +181,8 @@ func TestChunkStore_Get_concrete(t *testing.T) {
 func TestChunkStore_Get_lazy(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
+	store := newTestChunkStore(t, StoreConfig{})
 
-	// foo chunks (used for fuzzy lazy iterator tests)
 	foo1Metric1 := model.Metric{
 		model.MetricNameLabel: "foo1",
 		"bar":  "baz",
@@ -210,10 +210,10 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 	foo2Chunk := dummyChunkFor(foo2Metric)
 	foo3Chunk := dummyChunkFor(foo3Metric)
 
-	foo1LazyIterator1 := NewLazySeriesIterator(foo1Metric1)
-	foo1LazyIterator2 := NewLazySeriesIterator(foo1Metric2)
-	foo2LazyIterator := NewLazySeriesIterator(foo2Metric)
-	foo3LazyIterator := NewLazySeriesIterator(foo3Metric)
+	foo1LazyIterator1 := NewLazySeriesIterator(store, foo1Metric1, now, now, []*metric.LabelMatcher{})
+	foo1LazyIterator2 := NewLazySeriesIterator(store, foo1Metric2, now, now, []*metric.LabelMatcher{})
+	foo2LazyIterator := NewLazySeriesIterator(store, foo2Metric, now, now, []*metric.LabelMatcher{})
+	foo3LazyIterator := NewLazySeriesIterator(store, foo3Metric, now, now, []*metric.LabelMatcher{})
 
 	schemas := []struct {
 		name string
@@ -398,9 +398,8 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				filters := []*metric.LabelMatcher{}
 				metricName := nameMatcher.Value
-				chunks, err := store.getMetricNameChunks(ctx, now.Add(-time.Hour), now, tc.matchers, filters, metricName)
+				chunks, err := store.getMetricNameChunks(ctx, now.Add(-time.Hour), now, tc.matchers, metricName)
 				require.NoError(t, err)
 
 				if !reflect.DeepEqual(tc.expect, chunks) {
@@ -478,12 +477,10 @@ func TestChunkStoreRandom(t *testing.T) {
 
 		metricNameLabel := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
 		matchers := []*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "baz")}
-		filters := []*metric.LabelMatcher{}
 
 		for _, s := range schemas {
 			chunks, err := s.store.getMetricNameChunks(ctx, startTime, endTime,
 				matchers,
-				filters,
 				metricNameLabel.Value,
 			)
 			require.NoError(t, err)
@@ -547,11 +544,9 @@ func TestChunkStoreLeastRead(t *testing.T) {
 
 		metricNameLabel := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
 		matchers := []*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "baz")}
-		filters := []*metric.LabelMatcher{}
 
 		chunks, err := store.getMetricNameChunks(ctx, startTime, endTime,
 			matchers,
-			filters,
 			metricNameLabel.Value,
 		)
 		if err != nil {

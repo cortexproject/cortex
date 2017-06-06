@@ -228,8 +228,6 @@ outer:
 }
 
 func (c *Store) getSeriesIterators(ctx context.Context, from, through model.Time, allMatchers []*metric.LabelMatcher, metricNameMatcher *metric.LabelMatcher) ([]local.SeriesIterator, error) {
-	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
-
 	// Get all series from the index
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -252,26 +250,14 @@ outer:
 			return nil, err
 		}
 
-		// Apply metricNameMatcher filter
-		if metricNameMatcher != nil && !metricNameMatcher.Match(metric[metricNameMatcher.Name]) {
-			continue
-		}
-
 		// Apply matchers
-		for _, matcher := range matchers {
+		for _, matcher := range allMatchers {
 			if !matcher.Match(metric[matcher.Name]) {
 				continue outer
 			}
 		}
 
-		// Apply filters
-		for _, filter := range filters {
-			if !filter.Match(metric[filter.Name]) {
-				continue outer
-			}
-		}
-
-		lazyIterators = append(lazyIterators, NewLazySeriesIterator(c, metric, from, through, matchers))
+		lazyIterators = append(lazyIterators, NewLazySeriesIterator(c, metric, from, through, allMatchers))
 	}
 	return lazyIterators, nil
 }

@@ -510,7 +510,7 @@ func (v6Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.
 	}, nil
 }
 
-// v7Entries supports queries with no metric name
+// v7Entries is a deprecated scherma initially used to support queries with no metric name. Use v8Entries instead.
 type v7Entries struct {
 	v6Entries
 }
@@ -543,7 +543,7 @@ func (v7Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
 	return nil, ErrNoMetricNameNotSupported
 }
 
-// v8Entries is the same as v7Entries however with a series index instead of a metric name index
+// v8Entries supports queries with no metric name by using a series index.
 type v8Entries struct {
 	v6Entries
 }

@@ -70,7 +70,7 @@ $(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
 	$(SUDO) time docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
-		$(IMAGE_PREFIX)build-image $@
+		$(IMAGE_PREFIX)build-image $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg

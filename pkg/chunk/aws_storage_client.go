@@ -69,7 +69,7 @@ var (
 		Namespace: "cortex",
 		Name:      "dynamo_failures_total",
 		Help:      "The total number of errors while storing chunks to the chunk store.",
-	}, []string{tableNameLabel, errorReasonLabel})
+	}, []string{tableNameLabel, errorReasonLabel, "operation"})
 	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "s3_request_duration_seconds",
@@ -183,7 +183,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 
 		if err != nil {
 			for tableName := range reqs {
-				recordDynamoError(tableName, err)
+				recordDynamoError(tableName, err, "DynamoDB.BatchWriteItem")
 			}
 		}
 
@@ -273,7 +273,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		}
 
 		if err != nil {
-			recordDynamoError(*input.TableName, err)
+			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
 
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
 				time.Sleep(backoff)
@@ -466,7 +466,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 		if err != nil {
 			for tableName := range requests {
-				recordDynamoError(tableName, err)
+				recordDynamoError(tableName, err, "DynamoDB.BatchGetItemPages")
 			}
 
 			// If we get provisionedThroughputExceededException, then no items were processed,
@@ -736,11 +736,11 @@ func nextBackoff(lastBackoff time.Duration) time.Duration {
 	return backoff
 }
 
-func recordDynamoError(tableName string, err error) {
+func recordDynamoError(tableName string, err error, operation string) {
 	if awsErr, ok := err.(awserr.Error); ok {
-		dynamoFailures.WithLabelValues(tableName, awsErr.Code()).Add(float64(1))
+		dynamoFailures.WithLabelValues(tableName, awsErr.Code(), operation).Add(float64(1))
 	} else {
-		dynamoFailures.WithLabelValues(tableName, otherError).Add(float64(1))
+		dynamoFailures.WithLabelValues(tableName, otherError, operation).Add(float64(1))
 	}
 }
 

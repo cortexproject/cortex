@@ -15,8 +15,8 @@ type mockKV struct {
 	current uint64 // the current 'index in the log'
 }
 
-// NewMockConsulClient makes a new mock consul client.
-func NewMockConsulClient() ConsulClient {
+// NewInMemoryKVClient makes a new mock consul client.
+func NewInMemoryKVClient() KVClient {
 	m := mockKV{
 		kvps: map[string]*consul.KVPair{},
 	}

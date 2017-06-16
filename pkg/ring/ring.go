@@ -42,20 +42,22 @@ var ErrEmptyRing = errors.New("empty circle")
 // Config for a Ring
 type Config struct {
 	ConsulConfig
-
+	store            string
 	HeartbeatTimeout time.Duration
+	Mock             KVClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConsulConfig.RegisterFlags(f)
 
+	f.StringVar(&cfg.store, "ring.store", "consul", "Backend storage to use for the ring (consul, inmemory).")
 	f.DurationVar(&cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 }
 
 // Ring holds the information about the members of the consistent hash circle.
 type Ring struct {
-	consul           ConsulClient
+	KVClient         KVClient
 	quit, done       chan struct{}
 	heartbeatTimeout time.Duration
 
@@ -69,13 +71,24 @@ type Ring struct {
 
 // New creates a new Ring
 func New(cfg Config) (*Ring, error) {
-	codec := ProtoCodec{Factory: ProtoDescFactory}
-	consul, err := NewConsulClient(cfg.ConsulConfig, codec)
-	if err != nil {
-		return nil, err
+	store := cfg.Mock
+	if store == nil {
+		var err error
+
+		switch cfg.store {
+		case "consul":
+			codec := ProtoCodec{Factory: ProtoDescFactory}
+			store, err = NewConsulClient(cfg.ConsulConfig, codec)
+		case "inmemory":
+			store = NewInMemoryKVClient()
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	r := &Ring{
-		consul:           consul,
+		KVClient:         store,
 		heartbeatTimeout: cfg.HeartbeatTimeout,
 		quit:             make(chan struct{}),
 		done:             make(chan struct{}),
@@ -108,7 +121,7 @@ func (r *Ring) Stop() {
 
 func (r *Ring) loop() {
 	defer close(r.done)
-	r.consul.WatchKey(ConsulKey, r.quit, func(value interface{}) bool {
+	r.KVClient.WatchKey(ConsulKey, r.quit, func(value interface{}) bool {
 		if value == nil {
 			log.Infof("Ring doesn't exist in consul yet.")
 			return true

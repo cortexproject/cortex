@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	infName                 = "eth0"
 	minReadyDuration        = 1 * time.Minute
 	pendingSearchIterations = 10
 )
@@ -62,13 +61,13 @@ func (i *Ingester) isReady() bool {
 		return false
 	}
 
-	ringDesc, err := i.consul.Get(ring.ConsulKey)
+	ringDesc, err := i.ringKVStore.Get(ring.ConsulKey)
 	if err != nil {
 		log.Errorf("Error talking to consul: %v", err)
 		return false
 	}
 
-	i.ready = i.ready || ringDesc.(*ring.Desc).Ready(i.cfg.ringConfig.HeartbeatTimeout)
+	i.ready = i.ready || ringDesc.(*ring.Desc).Ready(i.cfg.RingConfig.HeartbeatTimeout)
 	return i.ready
 }
 
@@ -98,7 +97,7 @@ func (i *Ingester) ClaimTokensFor(ingesterID string) error {
 			return ringDesc, true, nil
 		}
 
-		if err := i.consul.CAS(ring.ConsulKey, claimTokens); err != nil {
+		if err := i.ringKVStore.CAS(ring.ConsulKey, claimTokens); err != nil {
 			log.Errorf("Failed to write to consul: %v", err)
 		}
 
@@ -220,7 +219,7 @@ heartbeatLoop:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
 func (i *Ingester) initRing() error {
-	return i.consul.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	return i.ringKVStore.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *ring.Desc
 		if in == nil {
 			ringDesc = ring.NewDesc()
@@ -247,7 +246,7 @@ func (i *Ingester) initRing() error {
 
 // autoJoin selects random tokens & moves state to ACTIVE
 func (i *Ingester) autoJoin() error {
-	return i.consul.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	return i.ringKVStore.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *ring.Desc
 		if in == nil {
 			ringDesc = ring.NewDesc()
@@ -276,7 +275,7 @@ func (i *Ingester) autoJoin() error {
 // updateConsul updates our entries in consul, heartbeating and dealing with
 // consul restarts.
 func (i *Ingester) updateConsul() error {
-	return i.consul.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	return i.ringKVStore.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *ring.Desc
 		if in == nil {
 			ringDesc = ring.NewDesc()
@@ -403,7 +402,7 @@ func (i *Ingester) transferChunks() error {
 // findTargetIngester finds an ingester in PENDING state.
 func (i *Ingester) findTargetIngester() (*ring.IngesterDesc, error) {
 	findIngester := func() (*ring.IngesterDesc, error) {
-		ringDesc, err := i.consul.Get(ring.ConsulKey)
+		ringDesc, err := i.ringKVStore.Get(ring.ConsulKey)
 		if err != nil {
 			return nil, err
 		}
@@ -439,7 +438,7 @@ func (i *Ingester) flushAllChunks() {
 
 // unregister removes our entry from consul.
 func (i *Ingester) unregister() error {
-	return i.consul.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	return i.ringKVStore.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}

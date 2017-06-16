@@ -20,7 +20,7 @@ func BenchmarkRing(b *testing.B) {
 		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
 	}
 
-	consul := NewMockConsulClient()
+	consul := NewInMemoryKVClient()
 	ringBytes, err := ProtoCodec{}.Encode(desc)
 	if err != nil {
 		b.Fatal(err)
@@ -28,9 +28,7 @@ func BenchmarkRing(b *testing.B) {
 	consul.PutBytes(ConsulKey, ringBytes)
 
 	r, err := New(Config{
-		ConsulConfig: ConsulConfig{
-			Mock: consul,
-		},
+		Mock: consul,
 	})
 	if err != nil {
 		b.Fatal(err)

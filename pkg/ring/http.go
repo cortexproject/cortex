@@ -71,7 +71,7 @@ func (r *Ring) forget(id string) error {
 		ringDesc.RemoveIngester(id)
 		return ringDesc, true, nil
 	}
-	return r.consul.CAS(ConsulKey, unregister)
+	return r.KVClient.CAS(ConsulKey, unregister)
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {

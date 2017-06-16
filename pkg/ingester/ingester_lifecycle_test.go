@@ -29,13 +29,9 @@ const (
 )
 
 func defaultIngesterTestConfig() Config {
-	consul := ring.NewMockConsulClient()
+	consul := ring.NewInMemoryKVClient()
 	return Config{
-		ringConfig: ring.Config{
-			ConsulConfig: ring.ConsulConfig{
-				Mock: consul,
-			},
-		},
+		KVClient: consul,
 
 		NumTokens:       1,
 		HeartbeatPeriod: 5 * time.Second,
@@ -63,7 +59,7 @@ func TestIngesterRestart(t *testing.T) {
 	}
 
 	poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.ringConfig.ConsulConfig.Mock, "localhost")
+		return numTokens(config.KVClient, "localhost")
 	})
 
 	{
@@ -76,7 +72,7 @@ func TestIngesterRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.ringConfig.ConsulConfig.Mock, "localhost")
+		return numTokens(config.KVClient, "localhost")
 	})
 }
 
@@ -156,7 +152,7 @@ func TestIngesterTransfer(t *testing.T) {
 	}, response)
 }
 
-func numTokens(c ring.ConsulClient, name string) int {
+func numTokens(c ring.KVClient, name string) int {
 	ringDesc, err := c.Get(ring.ConsulKey)
 	if err != nil {
 		log.Errorf("Error reading consul: %v", err)
@@ -311,7 +307,7 @@ func TestIngesterFlush(t *testing.T) {
 	// the ring, the data is in the chunk store.
 	close(ing.quit)
 	poll(t, 200*time.Millisecond, 0, func() interface{} {
-		r, err := ing.consul.Get(ring.ConsulKey)
+		r, err := ing.ringKVStore.Get(ring.ConsulKey)
 		if err != nil {
 			return -1
 		}

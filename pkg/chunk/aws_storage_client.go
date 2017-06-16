@@ -64,7 +64,7 @@ var (
 		Namespace: "cortex",
 		Name:      "dynamo_consumed_capacity_total",
 		Help:      "The capacity units consumed by operation.",
-	}, []string{"operation"})
+	}, []string{"operation", tableNameLabel})
 	dynamoFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_failures_total",
@@ -177,7 +177,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 			return err
 		})
 		for _, cc := range resp.ConsumedCapacity {
-			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem").
+			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
 				Add(float64(*cc.CapacityUnits))
 		}
 
@@ -268,7 +268,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		})
 
 		if cc := page.Data().(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {
-			dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages").
+			dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
 				Add(float64(*cc.CapacityUnits))
 		}
 
@@ -460,7 +460,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		})
 
 		for _, cc := range response.ConsumedCapacity {
-			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages").
+			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages", *cc.TableName).
 				Add(float64(*cc.CapacityUnits))
 		}
 

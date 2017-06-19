@@ -9,6 +9,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -21,13 +22,13 @@ func main() {
 			},
 		}
 
-		dynamoDBConfig = chunk.DynamoDBConfig{}
-		schemaConfig   chunk.SchemaConfig
+		storageConfig storage.Config
+		schemaConfig  chunk.SchemaConfig
 	)
-	util.RegisterFlags(&serverConfig, &dynamoDBConfig, &schemaConfig)
+	util.RegisterFlags(&serverConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
 
-	tableClient, err := chunk.NewDynamoDBTableClient(dynamoDBConfig)
+	tableClient, err := storage.NewTableClient(storageConfig)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB table client: %v", err)
 	}

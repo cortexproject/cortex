@@ -6,6 +6,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//pkg/chunk:go_default_library",
+        "//pkg/chunk/storage:go_default_library",
         "//pkg/util:go_default_library",
         "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/weaveworks/common/middleware:go_default_library",

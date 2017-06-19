@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/ingester"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
@@ -37,13 +38,14 @@ func main() {
 		distributorConfig distributor.Config
 		ingesterConfig    ingester.Config
 		schemaConfig      chunk.SchemaConfig
-		storageConfig     chunk.StorageClientConfig
-		unauthenticated   bool
+		storageConfig     storage.Config
+
+		unauthenticated bool
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
-		&ingesterConfig, &schemaConfig, &storageConfig)
+		&ingesterConfig, &storageConfig, &schemaConfig, &storageConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 
@@ -53,7 +55,7 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	storageClient, err := chunk.NewStorageClient(storageConfig, schemaConfig)
+	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
 		log.Fatalf("Error initializing storage client: %v", err)
 	}
@@ -85,7 +87,7 @@ func main() {
 	prometheus.MustRegister(ingester)
 	defer ingester.Shutdown()
 
-	tableClient, err := chunk.NewDynamoDBTableClient(storageConfig.AWSStorageConfig.DynamoDBConfig)
+	tableClient, err := storage.NewTableClient(storageConfig)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB table client: %v", err)
 	}

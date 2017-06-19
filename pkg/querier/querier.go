@@ -112,7 +112,7 @@ func (qm MergeQuerier) Query(ctx context.Context, from, to model.Time, matchers 
 
 	matrix, err := mergeMatrices(matrices, errors, len(qm.Queriers))
 	if err != nil {
-		util.WithContext(ctx).Errorf("Error in MergeQuerier.Query: %v", err)
+		util.WithContext(ctx).Errorf("Error in MergeQuerier.Query: %+v", err)
 	}
 	return matrix, err
 }

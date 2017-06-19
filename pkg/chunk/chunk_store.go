@@ -123,7 +123,7 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 			return nil, err
 		}
 
-		entries, err := c.schema.GetWriteEntries(chunk.From, chunk.Through, userID, metricName, chunk.Metric, chunk.externalKey())
+		entries, err := c.schema.GetWriteEntries(chunk.From, chunk.Through, userID, metricName, chunk.Metric, chunk.ExternalKey())
 		if err != nil {
 			return nil, err
 		}
@@ -436,11 +436,11 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 
 func (c *Store) writeBackCache(_ context.Context, chunks []Chunk) error {
 	for i := range chunks {
-		encoded, err := chunks[i].encode()
+		encoded, err := chunks[i].Encode()
 		if err != nil {
 			return err
 		}
-		c.cache.BackgroundWrite(chunks[i].externalKey(), encoded)
+		c.cache.BackgroundWrite(chunks[i].ExternalKey(), encoded)
 	}
 	return nil
 }

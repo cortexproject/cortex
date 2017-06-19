@@ -74,7 +74,6 @@ type Config struct {
 	// Config for chunk flushing
 	FlushCheckPeriod  time.Duration
 	MaxChunkIdle      time.Duration
-	MaxChunkAge       time.Duration
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
@@ -100,7 +99,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", promql.StalenessDelta, "Maximum chunk idle time before flushing.")
-	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
 
@@ -118,6 +116,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
 	cfg         Config
+	schemaCfg   cortex_chunk.SchemaConfig
 	chunkStore  ChunkStore
 	ringKVStore ring.KVClient
 
@@ -168,7 +167,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
+func New(cfg Config, schemaCfg cortex_chunk.SchemaConfig, chunkStore ChunkStore) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -219,6 +218,7 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 
 	i := &Ingester{
 		cfg:         cfg,
+		schemaCfg:   schemaCfg,
 		ringKVStore: kvstore,
 		chunkStore:  chunkStore,
 		userStates:  newUserStates(&cfg.userStatesConfig),

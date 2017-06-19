@@ -36,14 +36,14 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		distributorConfig distributor.Config
 		ingesterConfig    ingester.Config
+		schemaConfig      chunk.SchemaConfig
 		storageConfig     chunk.StorageClientConfig
-
-		unauthenticated bool
+		unauthenticated   bool
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
-		&ingesterConfig, &storageConfig)
+		&ingesterConfig, &schemaConfig, &storageConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 
@@ -53,12 +53,12 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	storageClient, err := chunk.NewStorageClient(storageConfig)
+	storageClient, err := chunk.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
 		log.Fatalf("Error initializing storage client: %v", err)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, storageClient)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -78,12 +78,24 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	ingester, err := ingester.New(ingesterConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, schemaConfig, chunkStore)
 	if err != nil {
 		log.Fatal(err)
 	}
 	prometheus.MustRegister(ingester)
 	defer ingester.Shutdown()
+
+	tableClient, err := chunk.NewDynamoDBTableClient(storageConfig.AWSStorageConfig.DynamoDBConfig)
+	if err != nil {
+		log.Fatalf("Error initializing DynamoDB table client: %v", err)
+	}
+
+	tableManager, err := chunk.NewTableManager(schemaConfig, tableClient)
+	if err != nil {
+		log.Fatalf("Error initializing DynamoDB table manager: %v", err)
+	}
+	tableManager.Start()
+	defer tableManager.Stop()
 
 	queryable := querier.NewQueryable(dist, chunkStore)
 	engine := promql.NewEngine(queryable, nil)

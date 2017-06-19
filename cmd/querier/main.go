@@ -34,8 +34,10 @@ func main() {
 		distributorConfig distributor.Config
 		chunkStoreConfig  chunk.StoreConfig
 		storageConfig     chunk.StorageClientConfig
+		schemaConfig      chunk.SchemaConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &chunkStoreConfig, &storageConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
+		&chunkStoreConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
 
 	r, err := ring.New(ringConfig)
@@ -58,12 +60,12 @@ func main() {
 	defer server.Shutdown()
 	server.HTTP.Handle("/ring", r)
 
-	storageClient, err := chunk.NewStorageClient(storageConfig)
+	storageClient, err := chunk.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
 		log.Fatalf("Error initializing storage client: %v", err)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, storageClient)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
 		log.Fatal(err)
 	}

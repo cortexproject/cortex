@@ -18,12 +18,8 @@ go_library(
         "url.go",
         "uuid.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": [
-            "user_posix.go",
-        ],
-        "@io_bazel_rules_go//go/platform:linux_amd64": [
-            "user_posix.go",
-        ],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": ["user_posix.go"],
+        "@io_bazel_rules_go//go/platform:linux_amd64": ["user_posix.go"],
         "@io_bazel_rules_go//go/platform:windows_amd64": [
             "ssl_windows.go",
             "user_windows.go",

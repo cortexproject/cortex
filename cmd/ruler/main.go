@@ -29,16 +29,18 @@ func main() {
 		rulerConfig       ruler.Config
 		chunkStoreConfig  chunk.StoreConfig
 		storageConfig     chunk.StorageClientConfig
+		schemaConfig      chunk.SchemaConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &rulerConfig, &chunkStoreConfig, &storageConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
+		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
 
-	storageClient, err := chunk.NewStorageClient(storageConfig)
+	storageClient, err := chunk.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
 		log.Fatalf("Error initializing storage client: %v", err)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, storageClient)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
 		log.Fatal(err)
 	}

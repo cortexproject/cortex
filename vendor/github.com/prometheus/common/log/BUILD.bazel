@@ -6,18 +6,14 @@ go_library(
         "log.go",
         "syslog_formatter.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:windows_amd64": [
-            "eventlog_formatter.go",
-        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": ["eventlog_formatter.go"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/Sirupsen/logrus:go_default_library",
     ] + select({
-        "@io_bazel_rules_go//go/platform:windows_amd64": [
-            "//vendor/golang.org/x/sys/windows/svc/eventlog:go_default_library",
-        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": ["//vendor/golang.org/x/sys/windows/svc/eventlog:go_default_library"],
         "//conditions:default": [],
     }),
 )

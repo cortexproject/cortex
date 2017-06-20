@@ -65,7 +65,7 @@ func ParseProtoRequest(ctx context.Context, r *http.Request, req proto.Message, 
 		body, err = ioutil.ReadAll(snappy.NewReader(r.Body))
 	case RawSnappy:
 		body, err = ioutil.ReadAll(r.Body)
-		if err != nil {
+		if err == nil {
 			body, err = snappy.Decode(nil, body)
 		}
 	}

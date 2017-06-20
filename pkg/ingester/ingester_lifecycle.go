@@ -304,9 +304,10 @@ func (i *Ingester) updateConsul() error {
 // called from loop()!  Use ChangeState for calls from outside of loop().
 func (i *Ingester) changeState(state ring.IngesterState) error {
 	// Only the following state transitions can be triggered externally
-	if !((i.state == ring.PENDING && state == ring.JOINING) || // triggered by ClaimStart
+	if !((i.state == ring.PENDING && state == ring.JOINING) || // triggered by TransferChunks at the beginning
+		(i.state == ring.JOINING && state == ring.PENDING) || // triggered by TransferChunks on failure
+		(i.state == ring.JOINING && state == ring.ACTIVE) || // triggered by TransferChunks on success
 		(i.state == ring.PENDING && state == ring.ACTIVE) || // triggered by autoJoin
-		(i.state == ring.JOINING && state == ring.ACTIVE) || // triggered by ClaimFinish
 		(i.state == ring.ACTIVE && state == ring.LEAVING)) { // triggered by shutdown
 		return fmt.Errorf("Changing ingester state from %v -> %v is disallowed", i.state, state)
 	}

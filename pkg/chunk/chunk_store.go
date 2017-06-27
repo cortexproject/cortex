@@ -261,7 +261,12 @@ outer:
 			}
 		}
 
-		lazyIterators = append(lazyIterators, NewLazySeriesIterator(c, metric, from, through, allMatchers))
+		newIterator, err := NewLazySeriesIterator(c, metric, from, through, allMatchers)
+		if err != nil {
+			return nil, err
+		}
+
+		lazyIterators = append(lazyIterators, newIterator)
 	}
 	return lazyIterators, nil
 }

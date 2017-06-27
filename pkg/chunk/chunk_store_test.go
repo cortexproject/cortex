@@ -310,10 +310,9 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 				// Create expected iterators with current schema store
 				var expectedIterators []local.SeriesIterator
 				for _, expectedMetric := range tc.expectedIteratorMetrics {
-					expectedIterators = append(
-						expectedIterators,
-						NewLazySeriesIterator(store, expectedMetric, from, now, tc.expectedIteratorMatchers),
-					)
+					newIterator, err := NewLazySeriesIterator(store, expectedMetric, from, now, tc.expectedIteratorMatchers)
+					require.NoError(t, err)
+					expectedIterators = append(expectedIterators, newIterator)
 				}
 
 				// Check iterators are correct

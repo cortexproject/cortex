@@ -12,7 +12,8 @@ func TestLazySeriesIterator_Metric(t *testing.T) {
 	store := newTestChunkStore(t, StoreConfig{})
 	now := model.Now()
 	sampleMetric := model.Metric{model.MetricNameLabel: "foo"}
-	iterator := NewLazySeriesIterator(store, sampleMetric, now, now, []*metric.LabelMatcher{})
+	iterator, err := NewLazySeriesIterator(store, sampleMetric, now, now, []*metric.LabelMatcher{})
+	require.NoError(t, err)
 	for _, c := range []struct {
 		iterator       *LazySeriesIterator
 		expectedMetric metric.Metric
@@ -31,7 +32,8 @@ func TestLazySeriesIterator_ValueAtOrBeforeTime(t *testing.T) {
 	store := newTestChunkStore(t, StoreConfig{})
 	now := model.Now()
 	sampleMetric := model.Metric{model.MetricNameLabel: "foo"}
-	iterator := NewLazySeriesIterator(store, sampleMetric, now, now, []*metric.LabelMatcher{})
+	iterator, err := NewLazySeriesIterator(store, sampleMetric, now, now, []*metric.LabelMatcher{})
+	require.NoError(t, err)
 	for _, c := range []struct {
 		iterator       *LazySeriesIterator
 		timestamp      model.Time
@@ -52,7 +54,8 @@ func TestLazySeriesIterator_RangeValues(t *testing.T) {
 	store := newTestChunkStore(t, StoreConfig{})
 	now := model.Now()
 	sampleMetric := model.Metric{model.MetricNameLabel: "foo"}
-	iterator := NewLazySeriesIterator(store, sampleMetric, now, now, []*metric.LabelMatcher{})
+	iterator, err := NewLazySeriesIterator(store, sampleMetric, now, now, []*metric.LabelMatcher{})
+	require.NoError(t, err)
 	for _, c := range []struct {
 		iterator        *LazySeriesIterator
 		interval        metric.Interval

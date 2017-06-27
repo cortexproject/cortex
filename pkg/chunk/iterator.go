@@ -29,14 +29,18 @@ type LazySeriesIterator struct {
 }
 
 // NewLazySeriesIterator creates a LazySeriesIterator.
-func NewLazySeriesIterator(chunkStore *Store, metric model.Metric, from model.Time, through model.Time, matchers []*metric.LabelMatcher) *LazySeriesIterator {
+func NewLazySeriesIterator(chunkStore *Store, metric model.Metric, from model.Time, through model.Time, matchers []*metric.LabelMatcher) (*LazySeriesIterator, error) {
+	_, ok := metric[model.MetricNameLabel]
+	if !ok {
+		return nil, fmt.Errorf("series does not have a metric name")
+	}
 	return &LazySeriesIterator{
 		chunkStore: chunkStore,
 		metric:     metric,
 		from:       from,
 		through:    through,
 		matchers:   matchers,
-	}
+	}, nil
 }
 
 // Metric implements the SeriesIterator interface.

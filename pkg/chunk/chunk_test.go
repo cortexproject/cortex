@@ -137,10 +137,10 @@ func TestChunksToIterators(t *testing.T) {
 		"toms": "code",
 	}
 	chunk1 := dummyChunkFor(metric)
-	chunk1Samples, err := chunk1.samples()
+	chunk1Samples, err := chunk1.Samples()
 	require.NoError(t, err)
 	chunk2 := dummyChunkFor(metric)
-	chunk2Samples, err := chunk2.samples()
+	chunk2Samples, err := chunk2.Samples()
 	require.NoError(t, err)
 
 	iterator1 := util.NewSampleStreamIterator(&model.SampleStream{
@@ -155,7 +155,7 @@ func TestChunksToIterators(t *testing.T) {
 		"toms": "code",
 	}
 	chunk3 := dummyChunkFor(otherMetric)
-	chunk3Samples, err := chunk3.samples()
+	chunk3Samples, err := chunk3.Samples()
 	require.NoError(t, err)
 
 	iterator2 := util.NewSampleStreamIterator(&model.SampleStream{

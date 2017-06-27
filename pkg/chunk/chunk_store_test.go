@@ -36,7 +36,7 @@ func newTestChunkStore(t *testing.T, cfg StoreConfig) *Store {
 }
 
 func createSampleStreamIteratorFrom(chunk Chunk) (local.SeriesIterator, error) {
-	samples, err := chunk.samples()
+	samples, err := chunk.Samples()
 	if err != nil {
 		return nil, err
 	}
@@ -508,7 +508,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			for _, chunk := range chunks {
 				assert.False(t, chunk.From.After(endTime))
 				assert.False(t, chunk.Through.Before(startTime))
-				samples, err := chunk.samples()
+				samples, err := chunk.Samples()
 				assert.NoError(t, err)
 				assert.Equal(t, 1, len(samples))
 				// TODO verify chunk contents
@@ -576,7 +576,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		for _, chunk := range chunks {
 			assert.False(t, chunk.From.After(endTime))
 			assert.False(t, chunk.Through.Before(startTime))
-			samples, err := chunk.samples()
+			samples, err := chunk.Samples()
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(samples))
 		}

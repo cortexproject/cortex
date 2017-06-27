@@ -82,6 +82,36 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 	return samples
 }
 
+// chunksToMatrix converts a slice of chunks into a model.Matrix.
+func chunksToMatrix(chunks []chunk.Chunk) (model.Matrix, error) {
+	// Group chunks by series, sort and dedupe samples.
+	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
+	for _, c := range chunks {
+		fp := c.Metric.Fingerprint()
+		ss, ok := sampleStreams[fp]
+		if !ok {
+			ss = &model.SampleStream{
+				Metric: c.Metric,
+			}
+			sampleStreams[fp] = ss
+		}
+
+		samples, err := c.Samples()
+		if err != nil {
+			return nil, err
+		}
+
+		ss.Values = util.MergeSampleSets(ss.Values, samples)
+	}
+
+	matrix := make(model.Matrix, 0, len(sampleStreams))
+	for _, ss := range sampleStreams {
+		matrix = append(matrix, ss)
+	}
+
+	return matrix, nil
+}
+
 func TestIngesterAppend(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	store := newTestStore()
@@ -123,7 +153,7 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via chunk store.
 	ing.Shutdown()
 	for _, userID := range userIDs {
-		res, err := chunk.ChunksToMatrix(store.chunks[userID])
+		res, err := chunksToMatrix(store.chunks[userID])
 		require.NoError(t, err)
 		sort.Sort(res)
 		assert.Equal(t, testData[userID], res)

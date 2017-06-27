@@ -292,7 +292,7 @@ func chunksToIterators(chunks []Chunk) ([]local.SeriesIterator, error) {
 			sampleStreams[fp] = ss
 		}
 
-		samples, err := c.samples()
+		samples, err := c.Samples()
 		if err != nil {
 			return nil, err
 		}
@@ -308,37 +308,8 @@ func chunksToIterators(chunks []Chunk) ([]local.SeriesIterator, error) {
 	return iterators, nil
 }
 
-// ChunksToMatrix converts a slice of chunks into a model.Matrix.
-func ChunksToMatrix(chunks []Chunk) (model.Matrix, error) {
-	// Group chunks by series, sort and dedupe samples.
-	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
-	for _, c := range chunks {
-		fp := c.Metric.Fingerprint()
-		ss, ok := sampleStreams[fp]
-		if !ok {
-			ss = &model.SampleStream{
-				Metric: c.Metric,
-			}
-			sampleStreams[fp] = ss
-		}
-
-		samples, err := c.samples()
-		if err != nil {
-			return nil, err
-		}
-
-		ss.Values = util.MergeSampleSets(ss.Values, samples)
-	}
-
-	matrix := make(model.Matrix, 0, len(sampleStreams))
-	for _, ss := range sampleStreams {
-		matrix = append(matrix, ss)
-	}
-
-	return matrix, nil
-}
-
-func (c *Chunk) samples() ([]model.SamplePair, error) {
+// Samples returns all SamplePairs for the chunk.
+func (c *Chunk) Samples() ([]model.SamplePair, error) {
 	it := c.Data.NewIterator()
 	// TODO(juliusv): Pre-allocate this with the right length again once we
 	// add a method upstream to get the number of samples in a chunk.

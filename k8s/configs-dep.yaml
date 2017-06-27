@@ -1,0 +1,22 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: configs
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: configs
+    spec:
+      containers:
+      - name: configs
+        image: quay.io/weaveworks/cortex-configs
+        imagePullPolicy: IfNotPresent
+        args:
+        - -server.http-listen-port=80
+        - -database.uri=postgres://postgres@configs-db.default.svc.cluster.local/configs?sslmode=disable
+        - -database.migrations=/migrations
+        ports:
+        - containerPort: 80

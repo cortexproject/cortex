@@ -3,6 +3,7 @@ package chunk
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/prometheus/common/model"
@@ -28,15 +29,32 @@ type LazySeriesIterator struct {
 	onceCreateIterator   sync.Once
 }
 
+type byMatcherLabel metric.LabelMatchers
+
+func (lms byMatcherLabel) Len() int           { return len(lms) }
+func (lms byMatcherLabel) Swap(i, j int)      { lms[i], lms[j] = lms[j], lms[i] }
+func (lms byMatcherLabel) Less(i, j int) bool { return lms[i].Name < lms[j].Name }
+
 // NewLazySeriesIterator creates a LazySeriesIterator.
-func NewLazySeriesIterator(chunkStore *Store, metric model.Metric, from model.Time, through model.Time, matchers []*metric.LabelMatcher) (*LazySeriesIterator, error) {
-	_, ok := metric[model.MetricNameLabel]
+func NewLazySeriesIterator(chunkStore *Store, seriesMetric model.Metric, from model.Time, through model.Time) (*LazySeriesIterator, error) {
+	_, ok := seriesMetric[model.MetricNameLabel]
 	if !ok {
 		return nil, fmt.Errorf("series does not have a metric name")
 	}
+
+	var matchers metric.LabelMatchers
+	for labelName, labelValue := range seriesMetric {
+		matcher, err := metric.NewLabelMatcher(metric.Equal, labelName, labelValue)
+		if err != nil {
+			return nil, err
+		}
+		matchers = append(matchers, matcher)
+	}
+	sort.Sort(byMatcherLabel(matchers))
+
 	return &LazySeriesIterator{
 		chunkStore: chunkStore,
-		metric:     metric,
+		metric:     seriesMetric,
 		from:       from,
 		through:    through,
 		matchers:   matchers,

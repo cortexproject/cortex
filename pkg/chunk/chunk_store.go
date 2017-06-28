@@ -261,7 +261,7 @@ outer:
 			}
 		}
 
-		newIterator, err := NewLazySeriesIterator(c, metric, from, through, allMatchers)
+		newIterator, err := NewLazySeriesIterator(c, metric, from, through)
 		if err != nil {
 			return nil, err
 		}

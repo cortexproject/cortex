@@ -186,8 +186,8 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 	foo1Metric1 := model.Metric{
 		model.MetricNameLabel: "foo1",
 		"bar":  "baz",
-		"toms": "code",
 		"flip": "flop",
+		"toms": "code",
 	}
 	foo1Metric2 := model.Metric{
 		model.MetricNameLabel: "foo1",
@@ -220,10 +220,9 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 	regexMatcher := mustNewLabelMatcher(metric.RegexMatch, "bar", "beep|baz")
 
 	for _, tc := range []struct {
-		query                    string
-		matchers                 []*metric.LabelMatcher
-		expectedIteratorMetrics  []model.Metric
-		expectedIteratorMatchers []*metric.LabelMatcher
+		query                   string
+		matchers                []*metric.LabelMatcher
+		expectedIteratorMetrics []model.Metric
 	}{
 		// When name matcher is used without Equal, start matching all metric names
 		// however still filter out metric names which do not match query
@@ -231,56 +230,47 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 			`{__name__!="foo1"}`,
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, model.MetricNameLabel, "foo1")},
 			[]model.Metric{foo3Metric, foo2Metric},
-			[]*metric.LabelMatcher{},
 		},
 		{
 			`{__name__=~"foo1|foo2"}`,
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.RegexMatch, model.MetricNameLabel, "foo1|foo2")},
 			[]model.Metric{foo1Metric1, foo2Metric, foo1Metric2},
-			[]*metric.LabelMatcher{},
 		},
 		// No metric names
 		{
 			`{bar="baz"}`,
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 			[]model.Metric{foo1Metric1},
-			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 		{
 			`{bar="beep"}`,
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "beep")},
 			[]model.Metric{foo3Metric, foo2Metric, foo1Metric2}, // doesn't match foo1 metric 1
-			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "bar", "beep")},
 		},
 		{
 			`{flip=""}`,
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "flip", "")},
 			[]model.Metric{foo3Metric, foo2Metric, foo1Metric2}, // doesn't match foo1 chunk1 as it has a flip value
-			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "flip", "")},
 		},
 		{
 			`{bar!="beep"}`,
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, "bar", "beep")},
 			[]model.Metric{foo1Metric1},
-			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.NotEqual, "bar", "beep")},
 		},
 		{
 			`{bar=~"beep|baz"}`,
 			[]*metric.LabelMatcher{regexMatcher},
 			[]model.Metric{foo3Metric, foo1Metric1, foo2Metric, foo1Metric2},
-			[]*metric.LabelMatcher{regexMatcher},
 		},
 		{
 			`{toms="code", bar=~"beep|baz"}`,
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), regexMatcher},
 			[]model.Metric{foo3Metric, foo1Metric1, foo2Metric, foo1Metric2},
-			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), regexMatcher},
 		},
 		{
 			`{toms="code", bar="baz"}`,
 			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 			[]model.Metric{foo1Metric1},
-			[]*metric.LabelMatcher{mustNewLabelMatcher(metric.Equal, "toms", "code"), mustNewLabelMatcher(metric.Equal, "bar", "baz")},
 		},
 	} {
 		for _, schema := range schemas {
@@ -310,7 +300,7 @@ func TestChunkStore_Get_lazy(t *testing.T) {
 				// Create expected iterators with current schema store
 				var expectedIterators []local.SeriesIterator
 				for _, expectedMetric := range tc.expectedIteratorMetrics {
-					newIterator, err := NewLazySeriesIterator(store, expectedMetric, from, now, tc.expectedIteratorMatchers)
+					newIterator, err := NewLazySeriesIterator(store, expectedMetric, from, now)
 					require.NoError(t, err)
 					expectedIterators = append(expectedIterators, newIterator)
 				}

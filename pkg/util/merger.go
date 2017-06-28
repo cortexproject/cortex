@@ -38,13 +38,8 @@ func MergeNSampleSets(sampleSets ...[]model.SamplePair) []model.SamplePair {
 		return sampleSets[0]
 	}
 
-	c := make(chan []model.SamplePair, l)
-	for _, ss := range sampleSets {
-		c <- ss
-	}
-	for ; l > 1; l-- {
-		left, right := <-c, <-c
-		c <- MergeSampleSets(left, right)
-	}
-	return <-c
+	n := l / 2
+	left := MergeNSampleSets(sampleSets[:n]...)
+	right := MergeNSampleSets(sampleSets[n:]...)
+	return MergeSampleSets(left, right)
 }

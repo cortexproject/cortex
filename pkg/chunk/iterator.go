@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/weaveworks/common/user"
 )
 
 // LazySeriesIterator is a struct and not just a renamed type because otherwise the Metric
@@ -27,6 +28,7 @@ type LazySeriesIterator struct {
 	// be fetched. Use sync.Once to ensure the iterator is only created once.
 	sampleSeriesIterator *local.SeriesIterator
 	onceCreateIterator   sync.Once
+	orgID                string
 }
 
 type byMatcherLabel metric.LabelMatchers
@@ -36,7 +38,7 @@ func (lms byMatcherLabel) Swap(i, j int)      { lms[i], lms[j] = lms[j], lms[i] 
 func (lms byMatcherLabel) Less(i, j int) bool { return lms[i].Name < lms[j].Name }
 
 // NewLazySeriesIterator creates a LazySeriesIterator.
-func NewLazySeriesIterator(chunkStore *Store, seriesMetric model.Metric, from model.Time, through model.Time) (*LazySeriesIterator, error) {
+func NewLazySeriesIterator(chunkStore *Store, seriesMetric model.Metric, from model.Time, through model.Time, orgID string) (*LazySeriesIterator, error) {
 	_, ok := seriesMetric[model.MetricNameLabel]
 	if !ok {
 		return nil, fmt.Errorf("series does not have a metric name")
@@ -44,6 +46,10 @@ func NewLazySeriesIterator(chunkStore *Store, seriesMetric model.Metric, from mo
 
 	var matchers metric.LabelMatchers
 	for labelName, labelValue := range seriesMetric {
+		if labelName == "__name__" {
+			continue
+		}
+
 		matcher, err := metric.NewLabelMatcher(metric.Equal, labelName, labelValue)
 		if err != nil {
 			return nil, err
@@ -58,6 +64,7 @@ func NewLazySeriesIterator(chunkStore *Store, seriesMetric model.Metric, from mo
 		from:       from,
 		through:    through,
 		matchers:   matchers,
+		orgID:      orgID,
 	}, nil
 }
 
@@ -87,6 +94,7 @@ func (it *LazySeriesIterator) RangeValues(in metric.Interval) []model.SamplePair
 	})
 	if err != nil {
 		// TODO: Handle error.
+		fmt.Printf("ERROR %+v", err)
 		return nil
 	}
 	return (*it.sampleSeriesIterator).RangeValues(in)
@@ -101,7 +109,7 @@ func (it *LazySeriesIterator) createSampleSeriesIterator() error {
 		return fmt.Errorf("series does not have a metric name")
 	}
 
-	ctx := context.Background()
+	ctx := user.InjectOrgID(context.Background(), it.orgID)
 	sampleSeriesIterators, err := it.chunkStore.getMetricNameIterators(ctx, it.from, it.through, it.matchers, metricName)
 	if err != nil {
 		return err

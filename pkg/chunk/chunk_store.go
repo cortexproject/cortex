@@ -261,7 +261,11 @@ outer:
 			}
 		}
 
-		newIterator, err := NewLazySeriesIterator(c, metric, from, through)
+		orgID, err := user.ExtractOrgID(ctx)
+		if err != nil {
+			return nil, err
+		}
+		newIterator, err := NewLazySeriesIterator(c, metric, from, through, orgID)
 		if err != nil {
 			return nil, err
 		}

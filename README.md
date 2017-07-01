@@ -47,7 +47,7 @@ Cortex can be used to monitor virtually any application on any platform, as the 
 When you've got Prometheus, you will need to [configure it to discover your services](https://prometheus.io/docs/operating/configuration/) and configure it to send its data to Weave Cloud by adding the following top-level stanza to `prometheus.yml`:
 
     remote_write:
-      url: https://cloud.weave.works/api/prom/push
+    - url: https://cloud.weave.works/api/prom/push
       basic_auth:
         password: <token>
 

@@ -38,6 +38,22 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		return err
 	}
 
+	// The ingesters state effectively works as a giant mutex around this whole
+	// method, and as such we have to ensure we unlock the mutex.
+	defer func() {
+		errc := make(chan error)
+		i.actorChan <- func() {
+			if i.state == ring.JOINING {
+				errc <- i.changeState(ring.PENDING)
+			} else {
+				errc <- nil
+			}
+		}
+		if err := <-errc; err != nil {
+			log.Fatalf("Error rolling back failed TransferChunks: %v", err)
+		}
+	}()
+
 	userStates := newUserStates(&i.cfg.userStatesConfig)
 	fromIngesterID := ""
 
@@ -55,7 +71,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		// round this loop.
 		if fromIngesterID == "" {
 			fromIngesterID = wireSeries.FromIngesterId
-			log.Infof("Processing TransferChunks request from ingester '%s'.")
+			log.Infof("Processing TransferChunks request from ingester '%s'.", fromIngesterID)
 		}
 		metric := util.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)

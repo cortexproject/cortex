@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/retrieval"
 	"github.com/prometheus/prometheus/web/api/v1"
 
 	"github.com/weaveworks/common/middleware"
@@ -22,14 +21,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 )
-
-type dummyTargetRetriever struct{}
-
-func (r dummyTargetRetriever) Targets() []*retrieval.Target { return nil }
-
-type dummyAlertmanagerRetriever struct{}
-
-func (r dummyAlertmanagerRetriever) Alertmanagers() []string { return nil }
 
 func main() {
 	var (
@@ -43,8 +34,10 @@ func main() {
 		distributorConfig distributor.Config
 		chunkStoreConfig  chunk.StoreConfig
 		storageConfig     chunk.StorageClientConfig
+		schemaConfig      chunk.SchemaConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &chunkStoreConfig, &storageConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
+		&chunkStoreConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
 
 	r, err := ring.New(ringConfig)
@@ -67,12 +60,12 @@ func main() {
 	defer server.Shutdown()
 	server.HTTP.Handle("/ring", r)
 
-	storageClient, err := chunk.NewStorageClient(storageConfig)
+	storageClient, err := chunk.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
 		log.Fatalf("Error initializing storage client: %v", err)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, storageClient)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -80,7 +73,8 @@ func main() {
 
 	queryable := querier.NewQueryable(dist, chunkStore)
 	engine := promql.NewEngine(queryable, nil)
-	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable}, dummyTargetRetriever{}, dummyAlertmanagerRetriever{})
+	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable},
+		querier.DummyTargetRetriever{}, querier.DummyAlertmanagerRetriever{})
 	promRouter := route.New(func(r *http.Request) (context.Context, error) {
 		return r.Context(), nil
 	}).WithPrefix("/api/prom/api/v1")

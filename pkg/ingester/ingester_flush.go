@@ -92,7 +92,7 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) bool 
 
 func (i *Ingester) shouldFlushChunk(c *desc) bool {
 	// Chunks should be flushed if their oldest entry is older than MaxChunkAge
-	if model.Now().Sub(c.FirstTime) > i.cfg.MaxChunkAge {
+	if model.Now().Sub(c.FirstTime) > i.schemaCfg.MaxChunkAge {
 		return true
 	}
 

@@ -29,13 +29,9 @@ const (
 )
 
 func defaultIngesterTestConfig() Config {
-	consul := ring.NewMockConsulClient()
+	consul := ring.NewInMemoryKVClient()
 	return Config{
-		ringConfig: ring.Config{
-			ConsulConfig: ring.ConsulConfig{
-				Mock: consul,
-			},
-		},
+		KVClient: consul,
 
 		NumTokens:       1,
 		HeartbeatPeriod: 5 * time.Second,
@@ -56,18 +52,18 @@ func TestIngesterRestart(t *testing.T) {
 	config.skipUnregister = true
 
 	{
-		ingester, err := New(config, nil)
+		ingester, err := New(config, chunk.SchemaConfig{}, nil)
 		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
 	}
 
 	poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.ringConfig.ConsulConfig.Mock, "localhost")
+		return numTokens(config.KVClient, "localhost")
 	})
 
 	{
-		ingester, err := New(config, nil)
+		ingester, err := New(config, chunk.SchemaConfig{}, nil)
 		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
@@ -76,7 +72,7 @@ func TestIngesterRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.ringConfig.ConsulConfig.Mock, "localhost")
+		return numTokens(config.KVClient, "localhost")
 	})
 }
 
@@ -89,7 +85,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.addr = "ingester1"
 	cfg1.ClaimOnRollout = true
 	cfg1.SearchPendingFor = aLongTime
-	ing1, err := New(cfg1, nil)
+	ing1, err := New(cfg1, chunk.SchemaConfig{}, nil)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -119,7 +115,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.id = "ingester2"
 	cfg2.addr = "ingester2"
 	cfg2.JoinAfter = aLongTime
-	ing2, err := New(cfg2, nil)
+	ing2, err := New(cfg2, chunk.SchemaConfig{}, nil)
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
@@ -156,7 +152,7 @@ func TestIngesterTransfer(t *testing.T) {
 	}, response)
 }
 
-func numTokens(c ring.ConsulClient, name string) int {
+func numTokens(c ring.KVClient, name string) int {
 	ringDesc, err := c.Get(ring.ConsulKey)
 	if err != nil {
 		log.Errorf("Error reading consul: %v", err)
@@ -275,7 +271,7 @@ func TestIngesterFlush(t *testing.T) {
 	store := newTestStore()
 
 	// Start the ingester, and get it into ACTIVE state.
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, chunk.SchemaConfig{}, store)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -311,7 +307,7 @@ func TestIngesterFlush(t *testing.T) {
 	// the ring, the data is in the chunk store.
 	close(ing.quit)
 	poll(t, 200*time.Millisecond, 0, func() interface{} {
-		r, err := ing.consul.Get(ring.ConsulKey)
+		r, err := ing.ringKVStore.Get(ring.ConsulKey)
 		if err != nil {
 			return -1
 		}

@@ -22,8 +22,6 @@ type ConsulConfig struct {
 	Host              string
 	Prefix            string
 	HTTPClientTimeout time.Duration
-
-	Mock ConsulClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -33,10 +31,10 @@ func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HTTPClientTimeout, "consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
 }
 
-// ConsulClient is a high-level client for Consul, that exposes operations
+// KVClient is a high-level client for Consul, that exposes operations
 // such as CAS and Watch which take callbacks.  It also deals with serialisation
 // by having an instance factory passed in to methods and deserialising into that.
-type ConsulClient interface {
+type KVClient interface {
 	CAS(key string, f CASCallback) error
 	WatchPrefix(path string, done <-chan struct{}, f func(string, interface{}) bool)
 	WatchKey(key string, done <-chan struct{}, f func(interface{}) bool)
@@ -66,11 +64,7 @@ type consulClient struct {
 }
 
 // NewConsulClient returns a new ConsulClient.
-func NewConsulClient(cfg ConsulConfig, codec Codec) (ConsulClient, error) {
-	if cfg.Mock != nil {
-		return cfg.Mock, nil
-	}
-
+func NewConsulClient(cfg ConsulConfig, codec Codec) (KVClient, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
 		Scheme:  "http",
@@ -83,7 +77,7 @@ func NewConsulClient(cfg ConsulConfig, codec Codec) (ConsulClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	var c ConsulClient = &consulClient{
+	var c KVClient = &consulClient{
 		kv:    client.KV(),
 		codec: codec,
 	}
@@ -347,11 +341,11 @@ func (c *consulClient) Get(key string) (interface{}, error) {
 
 type prefixedConsulClient struct {
 	prefix string
-	consul ConsulClient
+	consul KVClient
 }
 
 // PrefixClient takes a ConsulClient and forces a prefix on all its operations.
-func PrefixClient(client ConsulClient, prefix string) ConsulClient {
+func PrefixClient(client KVClient, prefix string) KVClient {
 	return &prefixedConsulClient{prefix, client}
 }
 

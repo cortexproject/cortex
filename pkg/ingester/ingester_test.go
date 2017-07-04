@@ -85,7 +85,7 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 func TestIngesterAppend(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	store := newTestStore()
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, chunk.SchemaConfig{}, store)
 	require.NoError(t, err)
 
 	userIDs := []string{"1", "2", "3"}
@@ -133,7 +133,7 @@ func TestIngesterAppend(t *testing.T) {
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	store := newTestStore()
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, chunk.SchemaConfig{}, store)
 	require.NoError(t, err)
 	defer ing.Shutdown()
 
@@ -164,7 +164,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	}
 
 	store := newTestStore()
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, chunk.SchemaConfig{}, store)
 	require.NoError(t, err)
 	defer ing.Shutdown()
 
@@ -235,7 +235,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	store := newTestStore()
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, chunk.SchemaConfig{}, store)
 	require.NoError(t, err)
 	defer ing.Shutdown()
 

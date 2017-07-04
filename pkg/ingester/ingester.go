@@ -60,7 +60,7 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	ringConfig       ring.Config
+	RingConfig       ring.Config
 	userStatesConfig UserStatesConfig
 
 	// Config for the ingester lifecycle control
@@ -74,20 +74,21 @@ type Config struct {
 	// Config for chunk flushing
 	FlushCheckPeriod  time.Duration
 	MaxChunkIdle      time.Duration
-	MaxChunkAge       time.Duration
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
 	// For testing, you can override the address and ID of this ingester
 	addr                  string
+	infName               string
 	id                    string
 	skipUnregister        bool
 	ingesterClientFactory func(addr string, timeout time.Duration) (client.IngesterClient, error)
+	KVClient              ring.KVClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ringConfig.RegisterFlags(f)
+	cfg.RingConfig.RegisterFlags(f)
 	cfg.userStatesConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
@@ -98,30 +99,26 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", promql.StalenessDelta, "Maximum chunk idle time before flushing.")
-	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
-
-	addr, err := util.GetFirstAddressOf(infName)
-	if err != nil {
-		log.Fatalf("Failed to get address of %s: %v", infName, err)
-	}
 
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalf("Failed to get hostname: %v", err)
 	}
 
-	f.StringVar(&cfg.addr, "ingester.addr", addr, "IP address to register into consul.")
+	f.StringVar(&cfg.infName, "ingester.interface", "eth0", "Name of network interface to read address from.")
+	f.StringVar(&cfg.addr, "ingester.addr", "", "IP address to register into consul.")
 	f.StringVar(&cfg.id, "ingester.id", hostname, "ID to register into consul.")
 }
 
 // Ingester deals with "in flight" chunks.
 // Its like MemorySeriesStorage, but simpler.
 type Ingester struct {
-	cfg        Config
-	chunkStore ChunkStore
-	consul     ring.ConsulClient
+	cfg         Config
+	schemaCfg   cortex_chunk.SchemaConfig
+	chunkStore  ChunkStore
+	ringKVStore ring.KVClient
 
 	userStatesMtx sync.RWMutex
 	userStates    *userStates
@@ -170,7 +167,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
+func New(cfg Config, schemaCfg cortex_chunk.SchemaConfig, chunkStore ChunkStore) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -200,19 +197,33 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		return nil, err
 	}
 
-	codec := ring.ProtoCodec{Factory: ring.ProtoDescFactory}
-	consul, err := ring.NewConsulClient(cfg.ringConfig.ConsulConfig, codec)
-	if err != nil {
-		return nil, err
+	kvstore := cfg.KVClient
+	if kvstore == nil {
+		var err error
+		codec := ring.ProtoCodec{Factory: ring.ProtoDescFactory}
+		kvstore, err = ring.NewConsulClient(cfg.RingConfig.ConsulConfig, codec)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	addr := cfg.addr
+	if addr == "" {
+		var err error
+		addr, err = util.GetFirstAddressOf(cfg.infName)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	i := &Ingester{
-		cfg:        cfg,
-		consul:     consul,
-		chunkStore: chunkStore,
-		userStates: newUserStates(&cfg.userStatesConfig),
+		cfg:         cfg,
+		schemaCfg:   schemaCfg,
+		ringKVStore: kvstore,
+		chunkStore:  chunkStore,
+		userStates:  newUserStates(&cfg.userStatesConfig),
 
-		addr: fmt.Sprintf("%s:%d", cfg.addr, *cfg.ListenPort),
+		addr: fmt.Sprintf("%s:%d", addr, *cfg.ListenPort),
 		id:   cfg.id,
 
 		quit:      make(chan struct{}),

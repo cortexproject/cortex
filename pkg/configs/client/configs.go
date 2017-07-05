@@ -96,7 +96,9 @@ func getConfigs(endpoint string, timeout time.Duration, since configs.ID) (*Conf
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
 	}
-	return configsFromJSON(res.Body)
+	c, err := configsFromJSON(res.Body)
+	log.Debugf("getConfigs: called %s, got %s %v", endpoint, err, c)
+	return c, err
 }
 
 // AlertManagerConfigsAPI allows retrieving alert configs.

@@ -157,6 +157,7 @@ func (r *AlertingRule) Eval(ctx context.Context, ts model.Time, engine *promql.E
 	if err != nil {
 		return nil, err
 	}
+	log.Debugf("AlertingRule.Eval: r=%+v, query=%+v, res=%+v", r, query, res)
 
 	r.mtx.Lock()
 	defer r.mtx.Unlock()

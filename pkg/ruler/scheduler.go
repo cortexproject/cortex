@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -20,6 +21,8 @@ const (
 	// Backoff for loading initial configuration set.
 	minBackoff = 100 * time.Millisecond
 	maxBackoff = 2 * time.Second
+
+	timeFormatShort = "2006-01-02 15:04:05"
 )
 
 var (
@@ -60,6 +63,12 @@ func (w workItem) Scheduled() time.Time {
 // Defer returns a copy of this work item, rescheduled to a later time.
 func (w workItem) Defer(interval time.Duration) workItem {
 	return workItem{w.userID, w.rules, w.scheduled.Add(interval)}
+}
+
+// String implements Stringer
+func (w workItem) String() string {
+	// Might be better to do strings.Join(rule.Name()).
+	return fmt.Sprintf("{orgID=%s scheduled=%s %.20q}", w.userID, w.scheduled.Format(timeFormatShort), w.rules)
 }
 
 type scheduler struct {
@@ -215,6 +224,6 @@ func (s *scheduler) nextWorkItem() *workItem {
 // workItemDone marks the given item as being ready to be rescheduled.
 func (s *scheduler) workItemDone(i workItem) {
 	next := i.Defer(s.evaluationInterval)
-	log.Debugf("Scheduler: work item %v rescheduled for %v", i, next.scheduled.Format("2006-01-02 15:04:05"))
+	log.Debugf("Scheduler: work item %v rescheduled for %v", i, next.scheduled.Format(timeFormatShort))
 	s.addWorkItem(next)
 }

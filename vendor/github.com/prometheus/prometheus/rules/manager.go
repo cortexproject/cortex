@@ -284,6 +284,7 @@ func (g *Group) Eval() {
 				evalFailures.WithLabelValues(rtyp).Inc()
 				return
 			}
+			log.Debugf("Evaluated rule %.32q; got %v", rule, vector)
 
 			if ar, ok := rule.(*AlertingRule); ok {
 				g.sendAlerts(ar, now)

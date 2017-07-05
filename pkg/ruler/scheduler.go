@@ -191,6 +191,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.View) {
 			continue
 		}
 
+		log.Debugf("addNewConfigs: user %s config=%v rules=%v", userID, config, rules)
 		s.addWorkItem(workItem{userID, rules, now})
 		s.cfgs[userID] = config.Config
 	}

@@ -97,7 +97,6 @@ func getConfigs(endpoint string, timeout time.Duration, since configs.ID) (*Conf
 		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
 	}
 	c, err := configsFromJSON(res.Body)
-	log.Debugf("getConfigs: called %s, got %s %v", endpoint, err, c)
 	return c, err
 }
 

@@ -167,14 +167,15 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		reqs.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
 		reqs.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
 		var resp *dynamodb.BatchWriteItemOutput
+		var request *request.Request
 
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(ctx context.Context) error {
-			var err error
-			resp, err = a.DynamoDB.BatchWriteItemWithContext(ctx, &dynamodb.BatchWriteItemInput{
+			request, resp = a.DynamoDB.BatchWriteItemRequest(&dynamodb.BatchWriteItemInput{
 				RequestItems:           reqs,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
-			return err
+			request.SetContext(ctx)
+			return request.Send()
 		})
 		for _, cc := range resp.ConsumedCapacity {
 			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
@@ -195,14 +196,22 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 			continue
 		}
 
+		// TODO: Consider moving retry & backoff logic to an implementation of "github.com/aws/aws-sdk-go/aws/request/retryer.Retryer
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
-		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
-			unprocessed.TakeReqs(reqs, -1)
-			time.Sleep(backoff)
-			backoff = nextBackoff(backoff)
-			numRetries++
-			continue
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+				unprocessed.TakeReqs(reqs, -1)
+				time.Sleep(backoff)
+				backoff = nextBackoff(backoff)
+				numRetries++
+				continue
+			} else if *request.Retryable {
+				// In the case of other retryable errors, retry without backoff
+				unprocessed.TakeReqs(reqs, -1)
+				numRetries++
+				continue
+			}
 		}
 
 		// All other errors are fatal.
@@ -275,10 +284,16 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		if err != nil {
 			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
 
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
-				time.Sleep(backoff)
-				backoff = nextBackoff(backoff)
-				continue
+			// TODO: Consider moving retry & backoff logic to an implementation of "github.com/aws/aws-sdk-go/aws/request/retryer.Retryer
+			if awsErr, ok := err.(awserr.Error); ok {
+				if awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+					time.Sleep(backoff)
+					backoff = nextBackoff(backoff)
+					continue
+				} else if page.Retryable() {
+					// In the case of other retryable errors, retry without backoff
+					continue
+				}
 			}
 
 			return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, err)
@@ -304,6 +319,7 @@ type dynamoDBRequest interface {
 	Data() interface{}
 	Error() error
 	HasNextPage() bool
+	Retryable() bool
 }
 
 func (a awsStorageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
@@ -338,6 +354,10 @@ func (a dynamoDBRequestAdapter) Error() error {
 
 func (a dynamoDBRequestAdapter) HasNextPage() bool {
 	return a.request.HasNextPage()
+}
+
+func (a dynamoDBRequestAdapter) Retryable() bool {
+	return *a.request.Retryable
 }
 
 func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
@@ -449,14 +469,15 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
 		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
 
+		var request *request.Request
 		var response *dynamodb.BatchGetItemOutput
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
-			var err error
-			response, err = a.DynamoDB.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{
+			request, response = a.DynamoDB.BatchGetItemRequest(&dynamodb.BatchGetItemInput{
 				RequestItems:           requests,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
-			return err
+			request.SetContext(ctx)
+			return request.Send()
 		})
 
 		for _, cc := range response.ConsumedCapacity {
@@ -469,14 +490,22 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 				recordDynamoError(tableName, err, "DynamoDB.BatchGetItemPages")
 			}
 
-			// If we get provisionedThroughputExceededException, then no items were processed,
-			// so back off and retry all.
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
-				unprocessed.TakeReqs(requests, -1)
-				time.Sleep(backoff)
-				backoff = nextBackoff(backoff)
-				numRetries++
-				continue
+			// TODO: Consider moving retry & backoff logic to an implementation of "github.com/aws/aws-sdk-go/aws/request/retryer.Retryer
+			if awsErr, ok := err.(awserr.Error); ok {
+				// If we get provisionedThroughputExceededException, then no items were processed,
+				// so back off and retry all.
+				if awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+					unprocessed.TakeReqs(requests, -1)
+					time.Sleep(backoff)
+					backoff = nextBackoff(backoff)
+					numRetries++
+					continue
+				} else if *request.Retryable {
+					// In the case of other retryable errors, retry without backoff
+					unprocessed.TakeReqs(requests, -1)
+					numRetries++
+					continue
+				}
 			}
 
 			// All other errors are critical.

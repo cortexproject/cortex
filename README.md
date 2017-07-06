@@ -101,7 +101,7 @@ We use `dep` to vendor dependencies.  To fetch a new dependency, run:
 
 To update dependencies, run
 
-    dep ensure --update && dep prine
+    dep ensure --update && dep prune
 
 ## <a name="help"></a>Getting Help
 

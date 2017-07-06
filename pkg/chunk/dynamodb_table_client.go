@@ -108,7 +108,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) erro
 			return nil
 		})
 	}); err != nil {
-		return err
+		return fmt.Errorf("DynamoDB.CreateTable name=%v: %s", desc.Name, err)
 	}
 
 	tags := desc.Tags.AWSTags()
@@ -119,7 +119,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) erro
 					ResourceArn: tableARN,
 					Tags:        tags,
 				})
-				return err
+				return fmt.Errorf("DynamoDB.TagResource arn=%v: %s", tableARN, err)
 			})
 		})
 	}
@@ -142,6 +142,7 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 		})
 	})
 	if err != nil {
+		err = fmt.Errorf("DynamoDB.DescribeTable name=%v: %s", name, err)
 		return
 	}
 
@@ -157,6 +158,9 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 			return err
 		})
 	})
+	if err != nil {
+		err = fmt.Errorf("DynamoDB.ListTagsOfResource arn=%v: %s", tableARN, err)
+	}
 	return
 }
 

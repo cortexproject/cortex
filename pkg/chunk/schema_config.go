@@ -186,7 +186,15 @@ func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 		result         = []TableDesc{}
 	)
 	for i := firstTable; i <= lastTable; i++ {
-		tags = append(cfg.Tags, cfg.globalTags...)
+		tags := Tags(map[string]string{})
+		for k, v := range cfg.Tags {
+			tags[k] = v
+		}
+		if cfg.globalTags != nil {
+			for k, v := range *cfg.globalTags {
+				tags[k] = v
+			}
+		}
 		table := TableDesc{
 			// Name construction needs to be consistent with chunk_store.bigBuckets
 			Name:             cfg.Prefix + strconv.Itoa(int(i)),

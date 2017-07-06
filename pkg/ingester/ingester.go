@@ -349,6 +349,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 }
 
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) (model.Matrix, error) {
+	log.Debugf("Ingester.Query from=%v, to=%s, matchers=%v", from, through, matchers)
 	i.queries.Inc()
 
 	i.userStatesMtx.RLock()
@@ -379,6 +380,7 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	log.Debugf("Ingester:LabelValues name=%v", req.LabelName)
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)

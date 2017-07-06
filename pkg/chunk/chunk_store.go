@@ -84,6 +84,10 @@ func NewStore(cfg StoreConfig, storage StorageClient) (*Store, error) {
 	}, nil
 }
 
+func (c *Store) String() string {
+	return fmt.Sprintf("Store:%s", c.storage)
+}
+
 // Stop any background goroutines (ie in the cache.)
 func (c *Store) Stop() {
 	c.cache.Stop()

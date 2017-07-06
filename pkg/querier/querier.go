@@ -54,6 +54,10 @@ type ChunkQuerier struct {
 	Store ChunkStore
 }
 
+func (q *ChunkQuerier) String() string {
+	return fmt.Sprintf("ChunkQuerier %s", q.Store)
+}
+
 // Query implements Querier and transforms a list of chunks into sample
 // matrices.
 func (q *ChunkQuerier) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {

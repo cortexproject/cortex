@@ -171,6 +171,10 @@ func New(cfg Config, ring ReadRing) (*Distributor, error) {
 	return d, nil
 }
 
+func (d *Distributor) String() string {
+	return fmt.Sprintf("Distributor")
+}
+
 // Run starts the distributor's maintenance loop.
 func (d *Distributor) Run() {
 	cleanupClients := time.NewTicker(d.cfg.ClientCleanupPeriod)

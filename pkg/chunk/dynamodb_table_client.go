@@ -20,6 +20,10 @@ type dynamoTableClient struct {
 	limiter  *rate.Limiter
 }
 
+func (d dynamoTableClient) String() string {
+	return "dynamoTableClient"
+}
+
 // NewDynamoDBTableClient makes a new DynamoTableClient.
 func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)

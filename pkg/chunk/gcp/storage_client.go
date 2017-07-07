@@ -107,24 +107,20 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	table := s.client.Open(query.TableName)
 
 	var rowRange bigtable.RowRange
-	if query.RangeValuePrefix != nil {
+	if len(query.RangeValuePrefix) > 0 {
 		rowRange = bigtable.PrefixRange(query.HashValue + separator + string(query.RangeValuePrefix))
-	} else if query.RangeValueStart != nil {
+	} else if len(query.RangeValueStart) > 0 {
 		rowRange = bigtable.InfiniteRange(query.HashValue + separator + string(query.RangeValueStart))
 	} else {
 		rowRange = bigtable.PrefixRange(query.HashValue + separator)
 	}
 
 	return table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
-		// If RangeValueStart is set, BigTable doesn't know when to stop, as we're
-		// reading "until the end of the row" in DynamoDB.  So we need to check
-		// the prefix of the row is still correct.
-		if query.RangeValueStart != nil {
-			if !strings.HasPrefix(r.Key(), query.HashValue+separator) {
-				return false
-			}
+		// BigTable doesn't know when to stop, as we're reading "until the end of the
+		// row" in DynamoDB.  So we need to check the prefix of the row is still correct.
+		if !strings.HasPrefix(r.Key(), query.HashValue+separator) {
+			return false
 		}
-
 		return callback(bigtableReadBatch(r), false)
 	}, bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)))
 }
@@ -207,14 +203,15 @@ func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 			i             = 0
 			processingErr error
 			table         = s.client.Open(tableName)
+			keys          = keys[tableName]
 			chunks        = chunks[tableName]
 		)
 		// rows are returned in order
-		if err := table.ReadRows(ctx, keys[tableName], func(row bigtable.Row) bool {
+		if err := table.ReadRows(ctx, keys, func(row bigtable.Row) bool {
 			chunk := chunks[i]
 			i++
 			processingErr = chunk.Decode(row[columnFamily][0].Value)
-			if processingErr != nil {
+			if processingErr == nil {
 				output = append(output, chunk)
 			}
 			return processingErr == nil

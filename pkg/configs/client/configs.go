@@ -19,6 +19,8 @@ import (
 
 // ConfigsResponse is a response from server for GetConfigs.
 type ConfigsResponse struct {
+	// The version since which these configs were changed
+	since configs.ID
 	// Configs maps user ID to their latest configs.View.
 	Configs map[string]configs.View `json:"configs"`
 }
@@ -34,7 +36,7 @@ func configsFromJSON(body io.Reader) (*ConfigsResponse, error) {
 
 // GetLatestConfigID returns the last config ID from a set of configs.
 func (c ConfigsResponse) GetLatestConfigID() configs.ID {
-	latest := configs.ID(0)
+	latest := c.since
 	for _, config := range c.Configs {
 		if config.ID > latest {
 			latest = config.ID
@@ -96,7 +98,11 @@ func getConfigs(endpoint string, timeout time.Duration, since configs.ID) (*Conf
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Invalid response from configs server: %v", res.StatusCode)
 	}
-	return configsFromJSON(res.Body)
+	resp, err := configsFromJSON(res.Body)
+	if err == nil {
+		resp.since = since
+	}
+	return resp, err
 }
 
 // AlertManagerConfigsAPI allows retrieving alert configs.

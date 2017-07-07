@@ -37,7 +37,7 @@ type storageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
-	client, err := bigtable.NewClient(ctx, cfg.project, cfg.instance, instrumentation())
+	client, err := bigtable.NewClient(ctx, cfg.project, cfg.instance, instrumentation()...)
 	if err != nil {
 		return nil, err
 	}

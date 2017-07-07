@@ -1,6 +1,7 @@
 package gcp
 
 import (
+	"io"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
@@ -18,7 +19,7 @@ var bigtableRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpt
 	Name:      "bigtable_request_duration_seconds",
 	Help:      "Time spent doing BigTable requests.",
 
-	// DynamoDB latency seems to range from a few ms to a few sec and is
+	// BigTable latency seems to range from a few ms to a few sec and is
 	// important.  So use 8 buckets from 128us to 2s.
 	Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
 }, []string{"operation", "status_code"})
@@ -27,23 +28,60 @@ func init() {
 	prometheus.MustRegister(bigtableRequestDuration)
 }
 
-func instrumentation() option.ClientOption {
-	return option.WithGRPCDialOption(
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-			prometheusGRPCClientInstrumentation(bigtableRequestDuration),
-		)),
-	)
+func instrumentation() []option.ClientOption {
+	return []option.ClientOption{
+		option.WithGRPCDialOption(
+			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
+				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+				grpcUnaryInstrumentation,
+			)),
+		),
+		option.WithGRPCDialOption(
+			grpc.WithStreamInterceptor(grpcStreamInstrumentation),
+		),
+	}
 }
 
-func prometheusGRPCClientInstrumentation(metric *prometheus.HistogramVec) grpc.UnaryClientInterceptor {
-	return func(
-		ctx context.Context, method string, req, resp interface{},
-		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
-	) error {
-		start := time.Now()
-		err := invoker(ctx, method, req, resp, cc, opts...)
-		metric.WithLabelValues(method, instrument.ErrorCode(err)).Observe(time.Now().Sub(start).Seconds())
+func grpcUnaryInstrumentation(
+	ctx context.Context, method string, req, resp interface{},
+	cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
+) error {
+	start := time.Now()
+	err := invoker(ctx, method, req, resp, cc, opts...)
+	bigtableRequestDuration.WithLabelValues(method, instrument.ErrorCode(err)).Observe(time.Now().Sub(start).Seconds())
+	return err
+}
+
+func grpcStreamInstrumentation(
+	ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string,
+	streamer grpc.Streamer, opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
+	start := time.Now()
+	stream, err := streamer(ctx, desc, cc, method, opts...)
+	return &instrumentedClientStream{
+		start:        start,
+		method:       method,
+		ClientStream: stream,
+	}, err
+}
+
+type instrumentedClientStream struct {
+	start  time.Time
+	method string
+	grpc.ClientStream
+}
+
+func (s *instrumentedClientStream) RecvMsg(m interface{}) error {
+	err := s.ClientStream.RecvMsg(m)
+	if err == nil {
 		return err
 	}
+
+	if err == io.EOF {
+		bigtableRequestDuration.WithLabelValues(s.method, instrument.ErrorCode(nil)).Observe(time.Now().Sub(s.start).Seconds())
+	} else {
+		bigtableRequestDuration.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Now().Sub(s.start).Seconds())
+	}
+
+	return err
 }

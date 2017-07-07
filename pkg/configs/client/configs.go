@@ -33,8 +33,8 @@ func configsFromJSON(body io.Reader) (*ConfigsResponse, error) {
 }
 
 // GetLatestConfigID returns the last config ID from a set of configs.
-func (c ConfigsResponse) GetLatestConfigID(min configs.ID) configs.ID {
-	latest := min
+func (c ConfigsResponse) GetLatestConfigID() configs.ID {
+	latest := configs.ID(0)
 	for _, config := range c.Configs {
 		if config.ID > latest {
 			latest = config.ID

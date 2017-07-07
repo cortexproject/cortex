@@ -28,6 +28,11 @@ var (
 		Name:      "configs",
 		Help:      "How many configs the scheduler knows about.",
 	})
+	configUpdates = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "scheduler_config_updates_total",
+		Help:      "How many config updates the scheduler has made.",
+	})
 	configsRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "configs_request_duration_seconds",
@@ -39,6 +44,7 @@ var (
 func init() {
 	prometheus.MustRegister(configsRequestDuration)
 	prometheus.MustRegister(totalConfigs)
+	prometheus.MustRegister(configUpdates)
 }
 
 type workItem struct {
@@ -185,6 +191,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.View) {
 		s.addWorkItem(workItem{userID, rules, now})
 		s.cfgs[userID] = config.Config
 	}
+	configUpdates.Add(float64(len(cfgs)))
 	totalConfigs.Set(float64(len(s.cfgs)))
 }
 

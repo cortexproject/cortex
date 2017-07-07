@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"cloud.google.com/go/bigtable"
-	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -66,7 +65,8 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 		b.tables[tableName] = rows
 	}
 
-	// TODO the hashValue should actually be hashed.
+	// TODO the hashValue should actually be hashed - but I have data written in
+	// this format, so we need to do a proper migration.
 	rowKey := hashValue + separator + string(rangeValue)
 	mutation, ok := rows[rowKey]
 	if !ok {
@@ -129,6 +129,9 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	}, bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)))
 }
 
+// bigtableReadBatch represents a batch of rows read from BigTable.  As the
+// bigtable interface gives us rows one-by-one, a batch always only contains
+// a single row.
 type bigtableReadBatch bigtable.Row
 
 func (bigtableReadBatch) Len() int {
@@ -141,7 +144,6 @@ func (b bigtableReadBatch) RangeValue(index int) []byte {
 	}
 	// String before the first separator is the hashkey
 	parts := strings.SplitN(bigtable.Row(b).Key(), separator, 2)
-	log.Infof("Got range key: %x", []byte(parts[1]))
 	return []byte(parts[1])
 }
 

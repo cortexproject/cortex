@@ -340,9 +340,11 @@ func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
 		log.Warnf("MultitenantAlertmanager: configs server poll failed: %v", err)
 		return nil, err
 	}
-	am.latestMutex.Lock()
-	am.latestConfig = cfgs.GetLatestConfigID()
-	am.latestMutex.Unlock()
+	if len(cfgs.Configs) > 0 {
+		am.latestMutex.Lock()
+		am.latestConfig = cfgs.GetLatestConfigID()
+		am.latestMutex.Unlock()
+	}
 	return cfgs.Configs, nil
 }
 

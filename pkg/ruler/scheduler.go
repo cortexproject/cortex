@@ -168,9 +168,11 @@ func (s *scheduler) poll() (map[string]configs.View, error) {
 		log.Warnf("Scheduler: configs server poll failed: %v", err)
 		return nil, err
 	}
-	s.latestMutex.Lock()
-	s.latestConfig = cfgs.GetLatestConfigID()
-	s.latestMutex.Unlock()
+	if len(cfgs.Configs) > 0 {
+		s.latestMutex.Lock()
+		s.latestConfig = cfgs.GetLatestConfigID()
+		s.latestMutex.Unlock()
+	}
 	return cfgs.Configs, nil
 }
 

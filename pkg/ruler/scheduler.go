@@ -169,7 +169,7 @@ func (s *scheduler) poll() (map[string]configs.View, error) {
 		return nil, err
 	}
 	s.latestMutex.Lock()
-	s.latestConfig = cfgs.GetLatestConfigID()
+	s.latestConfig = cfgs.GetLatestConfigID(configID)
 	s.latestMutex.Unlock()
 	return cfgs.Configs, nil
 }

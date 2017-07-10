@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "api.go",
         "customizations.go",
+        "doc.go",
         "errors.go",
         "service.go",
     ],
@@ -28,6 +29,7 @@ go_test(
     ],
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
+        "//vendor/github.com/aws/aws-sdk-go/aws/awserr:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/session:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/awstesting/unit:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/service/sts:go_default_library",

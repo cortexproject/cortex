@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "api.go",
+        "doc.go",
         "errors.go",
         "service.go",
     ],
@@ -24,6 +25,7 @@ go_test(
     srcs = ["examples_test.go"],
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
+        "//vendor/github.com/aws/aws-sdk-go/aws/awserr:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/session:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/service/applicationautoscaling:go_default_library",
     ],

@@ -8,6 +8,7 @@ go_library(
         "context_1_6.go",
         "context_1_7.go",
         "convert_types.go",
+        "doc.go",
         "errors.go",
         "jsonvalue.go",
         "logger.go",

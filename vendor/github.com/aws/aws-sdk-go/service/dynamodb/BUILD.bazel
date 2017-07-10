@@ -5,6 +5,8 @@ go_library(
     srcs = [
         "api.go",
         "customizations.go",
+        "doc.go",
+        "doc_custom.go",
         "errors.go",
         "service.go",
         "waiters.go",

@@ -18,6 +18,7 @@ go_library(
         "ssl_renegotiation.go",
         "url.go",
         "uuid.go",
+        "ssl_renegotiation.go",
     ] + select({
         "@io_bazel_rules_go//go/platform:darwin_amd64": [
             "user_posix.go",

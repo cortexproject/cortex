@@ -10,6 +10,7 @@ go_library(
             "security.go",
             "service.go",
             "sys_amd64.s",
+            "go12.go",
         ],
         "//conditions:default": [],
     }),

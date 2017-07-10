@@ -16,15 +16,28 @@ type TableDesc struct {
 	ProvisionedRead  int64
 	ProvisionedWrite int64
 	Tags             Tags
+
+	WriteScaleEnabled     bool
+	WriteScaleRoleARN     string
+	WriteScaleMinCapacity int64
+	WriteScaleMaxCapacity int64
+	WriteScaleOutCooldown int64
+	WriteScaleInCooldown  int64
+	WriteScaleTargetValue float64
 }
 
 // Equals returns true if other matches desc.
 func (desc TableDesc) Equals(other TableDesc) bool {
+	if !desc.AutoScalingEquals(other) {
+		return false
+	}
+
 	if desc.ProvisionedRead != other.ProvisionedRead {
 		return false
 	}
 
-	if desc.ProvisionedWrite != other.ProvisionedWrite {
+	// Only check provisioned write if auto scaling is disabled
+	if !desc.WriteScaleEnabled && desc.ProvisionedWrite != other.ProvisionedWrite {
 		return false
 	}
 
@@ -32,6 +45,40 @@ func (desc TableDesc) Equals(other TableDesc) bool {
 		return false
 	}
 
+	return true
+}
+
+// AutoScalingEquals returns true if auto scaling is equal
+func (desc TableDesc) AutoScalingEquals(other TableDesc) bool {
+	if desc.WriteScaleEnabled != other.WriteScaleEnabled {
+		return false
+	}
+
+	if desc.WriteScaleEnabled {
+		if desc.WriteScaleRoleARN != other.WriteScaleRoleARN {
+			return false
+		}
+
+		if desc.WriteScaleMinCapacity != other.WriteScaleMinCapacity {
+			return false
+		}
+
+		if desc.WriteScaleMaxCapacity != other.WriteScaleMaxCapacity {
+			return false
+		}
+
+		if desc.WriteScaleOutCooldown != other.WriteScaleOutCooldown {
+			return false
+		}
+
+		if desc.WriteScaleInCooldown != other.WriteScaleInCooldown {
+			return false
+		}
+
+		if desc.WriteScaleTargetValue != other.WriteScaleTargetValue {
+			return false
+		}
+	}
 	return true
 }
 

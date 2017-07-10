@@ -151,14 +151,24 @@ func (cfg SchemaConfig) dailyBuckets(from, through model.Time, userID string) []
 }
 
 type periodicTableConfig struct {
-	From                       util.DayValue
-	Prefix                     string
-	Period                     time.Duration
+	From   util.DayValue
+	Prefix string
+	Period time.Duration
+	Tags   Tags
+
 	ProvisionedWriteThroughput int64
 	ProvisionedReadThroughput  int64
 	InactiveWriteThroughput    int64
 	InactiveReadThroughput     int64
-	Tags                       Tags
+
+	WriteScaleEnabled     bool
+	WriteScaleRoleARN     string
+	WriteScaleMinCapacity int64
+	WriteScaleMaxCapacity int64
+	WriteScaleOutCooldown int64
+	WriteScaleInCooldown  int64
+	WriteScaleTargetValue float64
+
 	// Temporarily in place to support tags set on all tables, as means of
 	// smoothing transition to per-table tags.
 	globalTags *Tags
@@ -166,13 +176,22 @@ type periodicTableConfig struct {
 
 func (cfg *periodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *flag.FlagSet) {
 	f.Var(&cfg.From, argPrefix+".from", "Date after which to write chunks to DynamoDB.")
-	f.StringVar(&cfg.Prefix, argPrefix+".prefix", tablePrefix, "DynamoDB table prefix for period chunk tables.")
-	f.DurationVar(&cfg.Period, argPrefix+".period", 7*24*time.Hour, "DynamoDB chunk tables period.")
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 3000, "DynamoDB chunk tables write throughput.")
-	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB chunk tables read throughput.")
-	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB chunk tables write throughput for inactive tables.")
-	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB chunk tables read throughput for inactive tables.")
+	f.StringVar(&cfg.Prefix, argPrefix+".prefix", tablePrefix, "DynamoDB table prefix for period tables.")
+	f.DurationVar(&cfg.Period, argPrefix+".period", 7*24*time.Hour, "DynamoDB table period.")
 	f.Var(&cfg.Tags, argPrefix+".tag", "Tag (of the form key=value) to be added to all tables under management.")
+
+	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 3000, "DynamoDB table default write throughput.")
+	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
+	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
+	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
+
+	f.BoolVar(&cfg.WriteScaleEnabled, argPrefix+".write-scale.enabled", false, "Should we autoscale table writes.")
+	f.StringVar(&cfg.WriteScaleRoleARN, argPrefix+".write-scale.role-arn", "", "AWS AutoScaling role ARN")
+	f.Int64Var(&cfg.WriteScaleMinCapacity, argPrefix+".write-scale.min-capacity", 3000, "DynamoDB minimum provision capacity.")
+	f.Int64Var(&cfg.WriteScaleMaxCapacity, argPrefix+".write-scale.max-capacity", 6000, "DynamoDB maximum provision capacity.")
+	f.Int64Var(&cfg.WriteScaleOutCooldown, argPrefix+".write-scale.out-cooldown", 3000, "DynamoDB minimum time between each autoscaling event that increases provision capacity.")
+	f.Int64Var(&cfg.WriteScaleInCooldown, argPrefix+".write-scale.in-cooldown", 3000, "DynamoDB minimum time between each autoscaling event that decreases provision capacity.")
+	f.Float64Var(&cfg.WriteScaleTargetValue, argPrefix+".write-scale.target-value", 80, "DynamoDB target ratio of consumed capacity to provisioned capacity.")
 
 	f.Var(&cfg.From, argPrefix+".start", fmt.Sprintf("Deprecated: use '%s.from'.", argPrefix))
 }
@@ -209,6 +228,16 @@ func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
 			table.ProvisionedRead = cfg.ProvisionedReadThroughput
 			table.ProvisionedWrite = cfg.ProvisionedWriteThroughput
+
+			if cfg.WriteScaleEnabled {
+				table.WriteScaleEnabled = true
+				table.WriteScaleRoleARN = cfg.WriteScaleRoleARN
+				table.WriteScaleMinCapacity = cfg.WriteScaleMinCapacity
+				table.WriteScaleMaxCapacity = cfg.WriteScaleMaxCapacity
+				table.WriteScaleOutCooldown = cfg.WriteScaleOutCooldown
+				table.WriteScaleInCooldown = cfg.WriteScaleInCooldown
+				table.WriteScaleTargetValue = cfg.WriteScaleTargetValue
+			}
 		}
 		result = append(result, table)
 	}

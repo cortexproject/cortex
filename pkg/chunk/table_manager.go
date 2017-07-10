@@ -193,6 +193,16 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 		if now < (firstTable*tablePeriodSecs)+gracePeriodSecs+maxChunkAgeSecs {
 			legacyTable.ProvisionedRead = m.cfg.IndexTables.ProvisionedReadThroughput
 			legacyTable.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
+
+			if m.cfg.IndexTables.WriteScaleEnabled {
+				legacyTable.WriteScaleEnabled = true
+				legacyTable.WriteScaleRoleARN = m.cfg.IndexTables.WriteScaleRoleARN
+				legacyTable.WriteScaleMinCapacity = m.cfg.IndexTables.WriteScaleMinCapacity
+				legacyTable.WriteScaleMaxCapacity = m.cfg.IndexTables.WriteScaleMaxCapacity
+				legacyTable.WriteScaleOutCooldown = m.cfg.IndexTables.WriteScaleOutCooldown
+				legacyTable.WriteScaleInCooldown = m.cfg.IndexTables.WriteScaleInCooldown
+				legacyTable.WriteScaleTargetValue = m.cfg.IndexTables.WriteScaleTargetValue
+			}
 		}
 	}
 	result = append(result, legacyTable)

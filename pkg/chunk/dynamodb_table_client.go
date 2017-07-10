@@ -2,12 +2,19 @@ package chunk
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
+	"github.com/aws/aws-sdk-go/service/applicationautoscaling/applicationautoscalingiface"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 
@@ -15,9 +22,24 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
+const (
+	autoScalingPolicyNamePrefix = "DynamoScalingPolicy_cortex_"
+)
+
+var applicationAutoScalingRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Namespace: "cortex",
+	Name:      "application_autoscaling_request_duration_seconds",
+	Help:      "Time spent doing ApplicationAutoScaling requests.",
+
+	// ApplicationAutoScaling latency seems to range from a few ms to a few sec and is
+	// important.  So use 8 buckets from 128us to 2s.
+	Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
+}, []string{"operation", "status_code"})
+
 type dynamoTableClient struct {
-	DynamoDB dynamodbiface.DynamoDBAPI
-	limiter  *rate.Limiter
+	DynamoDB               dynamodbiface.DynamoDBAPI
+	ApplicationAutoScaling applicationautoscalingiface.ApplicationAutoScalingAPI
+	limiter                *rate.Limiter
 }
 
 // NewDynamoDBTableClient makes a new DynamoTableClient.
@@ -26,10 +48,33 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	applicationAutoScaling, err := applicationAutoScalingClientFromURL(cfg.DynamoDB.URL)
+	if err != nil {
+		return nil, err
+	}
+
 	return dynamoTableClient{
-		DynamoDB: dynamoDB,
-		limiter:  rate.NewLimiter(rate.Limit(cfg.APILimit), 1),
+		DynamoDB:               dynamoDB,
+		ApplicationAutoScaling: applicationAutoScaling,
+		limiter:                rate.NewLimiter(rate.Limit(cfg.APILimit), 1),
 	}, nil
+}
+
+// applicationAutoScalingClientFromURL creates a new ApplicationAuthScaling client from a URL.
+func applicationAutoScalingClientFromURL(awsURL *url.URL) (applicationautoscalingiface.ApplicationAutoScalingAPI, error) {
+	if awsURL == nil {
+		return nil, fmt.Errorf("no URL specified for DynamoDB")
+	}
+	path := strings.TrimPrefix(awsURL.Path, "/")
+	if len(path) > 0 {
+		log.Warnf("Ignoring DynamoDB URL path: %v.", path)
+	}
+	config, err := awsConfigFromURL(awsURL)
+	if err != nil {
+		return nil, err
+	}
+	return applicationautoscaling.New(session.New(config)), nil
 }
 
 func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.Context) error) error {
@@ -111,6 +156,13 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) erro
 		return err
 	}
 
+	if desc.WriteScaleEnabled {
+		err := d.enableAutoScaling(ctx, desc)
+		if err != nil {
+			return err
+		}
+	}
+
 	tags := desc.Tags.AWSTags()
 	if len(tags) > 0 {
 		return d.backoffAndRetry(ctx, func(ctx context.Context) error {
@@ -157,10 +209,71 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 			return err
 		})
 	})
+
+	err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
+		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DescribeScalableTargets", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+			out, err := d.ApplicationAutoScaling.DescribeScalableTargetsWithContext(ctx, &applicationautoscaling.DescribeScalableTargetsInput{
+				ResourceIds:       []*string{aws.String("table/" + desc.Name)},
+				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
+				ServiceNamespace:  aws.String("dynamodb"),
+			})
+			switch l := len(out.ScalableTargets); l {
+			case 0:
+				return err
+			case 1:
+				desc.WriteScaleEnabled = true
+				desc.WriteScaleRoleARN = *out.ScalableTargets[0].RoleARN
+				desc.WriteScaleMinCapacity = *out.ScalableTargets[0].MinCapacity
+				desc.WriteScaleMaxCapacity = *out.ScalableTargets[0].MaxCapacity
+				return err
+			default:
+				return fmt.Errorf("more than one scalable target found for DynamoDB table")
+			}
+		})
+	})
+
+	err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
+		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DescribeScalingPoliciesWithContext", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+			out, err := d.ApplicationAutoScaling.DescribeScalingPoliciesWithContext(ctx, &applicationautoscaling.DescribeScalingPoliciesInput{
+				PolicyNames:       []*string{aws.String(autoScalingPolicyNamePrefix + desc.Name)},
+				ResourceId:        aws.String("table/" + desc.Name),
+				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
+				ServiceNamespace:  aws.String("dynamodb"),
+			})
+			switch l := len(out.ScalingPolicies); l {
+			case 0:
+				return err
+			case 1:
+				desc.WriteScaleInCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleInCooldown
+				desc.WriteScaleOutCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleOutCooldown
+				desc.WriteScaleTargetValue = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.TargetValue
+				return err
+			default:
+				return fmt.Errorf("more than one scaling policy found for DynamoDB table")
+			}
+		})
+	})
 	return
 }
 
 func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected TableDesc) error {
+	if current.WriteScaleEnabled && !expected.WriteScaleEnabled {
+		err := d.disableAutoScaling(ctx, current)
+		if err != nil {
+			return err
+		}
+	} else if !current.WriteScaleEnabled && expected.WriteScaleEnabled {
+		err := d.enableAutoScaling(ctx, current)
+		if err != nil {
+			return err
+		}
+	} else if current.WriteScaleEnabled && expected.WriteScaleEnabled && !current.AutoScalingEquals(expected) {
+		// Update auto scaling if the settings have changed.
+		err := d.enableAutoScaling(ctx, current)
+		if err != nil {
+			return err
+		}
+	}
 
 	if current.ProvisionedRead != expected.ProvisionedRead || current.ProvisionedWrite != expected.ProvisionedWrite {
 		if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
@@ -205,6 +318,98 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected Ta
 				return err
 			})
 		})
+	}
+	return nil
+}
+
+func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc) error {
+	// Register scallable target
+	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.RegisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+			input := &applicationautoscaling.RegisterScalableTargetInput{
+				MinCapacity:       aws.Int64(desc.WriteScaleMinCapacity),
+				MaxCapacity:       aws.Int64(desc.WriteScaleMaxCapacity),
+				ResourceId:        aws.String("table/" + desc.Name),
+				RoleARN:           aws.String(desc.WriteScaleRoleARN),
+				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
+				ServiceNamespace:  aws.String("dynamodb"),
+			}
+			_, err := d.ApplicationAutoScaling.RegisterScalableTarget(input)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+	}); err != nil {
+		return err
+	}
+
+	// Put scaling policy
+	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.PutScalingPolicy", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+			input := &applicationautoscaling.PutScalingPolicyInput{
+				PolicyName:        aws.String(autoScalingPolicyNamePrefix + desc.Name),
+				PolicyType:        aws.String("TargetTrackingScaling"),
+				ResourceId:        aws.String("table/" + desc.Name),
+				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
+				ServiceNamespace:  aws.String("dynamodb"),
+				TargetTrackingScalingPolicyConfiguration: &applicationautoscaling.TargetTrackingScalingPolicyConfiguration{
+					PredefinedMetricSpecification: &applicationautoscaling.PredefinedMetricSpecification{
+						PredefinedMetricType: aws.String("DynamoDBWriteCapacityUtilization"),
+					},
+					ScaleInCooldown:  aws.Int64(desc.WriteScaleInCooldown),
+					ScaleOutCooldown: aws.Int64(desc.WriteScaleOutCooldown),
+					TargetValue:      aws.Float64(desc.WriteScaleTargetValue),
+				},
+			}
+			_, err := d.ApplicationAutoScaling.PutScalingPolicy(input)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d dynamoTableClient) disableAutoScaling(ctx context.Context, desc TableDesc) error {
+	// Deregister scallable target
+	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DeregisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+			input := &applicationautoscaling.DeregisterScalableTargetInput{
+				ResourceId:        aws.String("table/" + desc.Name),
+				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
+				ServiceNamespace:  aws.String("dynamodb"),
+			}
+			_, err := d.ApplicationAutoScaling.DeregisterScalableTarget(input)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+	}); err != nil {
+		return err
+	}
+
+	// Delete scaling policy
+	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DeleteScalingPolicy", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+			input := &applicationautoscaling.DeleteScalingPolicyInput{
+				PolicyName:        aws.String(autoScalingPolicyNamePrefix + desc.Name),
+				ResourceId:        aws.String("table/" + desc.Name),
+				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
+				ServiceNamespace:  aws.String("dynamodb"),
+			}
+			_, err := d.ApplicationAutoScaling.DeleteScalingPolicy(input)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+	}); err != nil {
+		return err
 	}
 	return nil
 }

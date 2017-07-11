@@ -26,4 +26,4 @@ deployment:
     commands:
       - docker login -e "$DOCKER_REGISTRY_EMAIL" -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
       - if [ -n "$QUAY_PASSWORD" ]; then docker login -e '.' -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io; fi
-      - ./push-images "$NOQUAY"
+      - ./push-images $NOQUAY

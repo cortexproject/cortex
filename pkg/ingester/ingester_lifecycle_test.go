@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage/metric"
 
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"

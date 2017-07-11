@@ -16,10 +16,11 @@ import (
 // field and Metric() methods would clash.
 type LazySeriesIterator struct {
 	// The metric corresponding to the iterator.
-	metric   model.Metric
-	from     model.Time
-	through  model.Time
-	matchers []*metric.LabelMatcher
+	metric     model.Metric
+	metricName model.LabelValue
+	from       model.Time
+	through    model.Time
+	matchers   []*metric.LabelMatcher
 
 	// The store used to fetch chunks and samples.
 	chunkStore *Store
@@ -39,7 +40,7 @@ func (lms byMatcherLabel) Less(i, j int) bool { return lms[i].Name < lms[j].Name
 
 // NewLazySeriesIterator creates a LazySeriesIterator.
 func NewLazySeriesIterator(chunkStore *Store, seriesMetric model.Metric, from model.Time, through model.Time, orgID string) (*LazySeriesIterator, error) {
-	_, ok := seriesMetric[model.MetricNameLabel]
+	metricName, ok := seriesMetric[model.MetricNameLabel]
 	if !ok {
 		return nil, fmt.Errorf("series does not have a metric name")
 	}
@@ -61,6 +62,7 @@ func NewLazySeriesIterator(chunkStore *Store, seriesMetric model.Metric, from mo
 	return &LazySeriesIterator{
 		chunkStore: chunkStore,
 		metric:     seriesMetric,
+		metricName: metricName,
 		from:       from,
 		through:    through,
 		matchers:   matchers,
@@ -104,13 +106,8 @@ func (it *LazySeriesIterator) RangeValues(in metric.Interval) []model.SamplePair
 func (it *LazySeriesIterator) Close() {}
 
 func (it *LazySeriesIterator) createSampleSeriesIterator() error {
-	metricName, ok := it.metric[model.MetricNameLabel]
-	if !ok {
-		return fmt.Errorf("series does not have a metric name")
-	}
-
 	ctx := user.InjectOrgID(context.Background(), it.orgID)
-	sampleSeriesIterators, err := it.chunkStore.getMetricNameIterators(ctx, it.from, it.through, it.matchers, metricName)
+	sampleSeriesIterators, err := it.chunkStore.getMetricNameIterators(ctx, it.from, it.through, it.matchers, it.metricName)
 	if err != nil {
 		return err
 	}

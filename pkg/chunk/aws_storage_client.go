@@ -273,6 +273,9 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 	request := a.queryRequestFn(ctx, input)
 	backoff := minBackoff
 	pageCount := 0
+	defer func() {
+		dynamoQueryPagesCount.Observe(float64(pageCount))
+	}()
 	for page := request; page != nil; page = page.NextPage() {
 		pageCount++
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
@@ -306,7 +309,6 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 
 		backoff = minBackoff
 	}
-	dynamoQueryPagesCount.Observe(float64(pageCount))
 
 	return nil
 }

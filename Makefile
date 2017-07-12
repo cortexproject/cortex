@@ -3,7 +3,7 @@
 
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
-IMAGE_PREFIX := quay.io/weaveworks/cortex-
+IMAGE_PREFIX ?= quay.io/weaveworks/cortex-
 IMAGE_TAG := $(shell ./tools/image-tag)
 UPTODATE := .uptodate
 

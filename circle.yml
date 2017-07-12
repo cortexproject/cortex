@@ -10,7 +10,7 @@ dependencies:
   override:
     - |
         cd build-image && \
-        ../tools/rebuild-image quay.io/weaveworks/cortex-build-image . build.sh Dockerfile && \
+        ../tools/rebuild-image ${IMAGE_PREFIX}build-image . build.sh Dockerfile && \
         touch .uptodate
 
 test:
@@ -25,5 +25,5 @@ deployment:
     branch: master
     commands:
       - docker login -e "$DOCKER_REGISTRY_EMAIL" -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
-      - docker login -e '.' -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io
-      - ./push-images
+      - if [ -n "$QUAY_PASSWORD" ]; then docker login -e '.' -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io; fi
+      - ./push-images $NOQUAY

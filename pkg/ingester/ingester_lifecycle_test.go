@@ -315,7 +315,7 @@ func TestIngesterFlush(t *testing.T) {
 	})
 
 	// And check the store has the chunk
-	res, err := chunk.ChunksToMatrix(store.chunks[userID])
+	res, err := chunksToMatrix(store.chunks[userID])
 	require.NoError(t, err)
 	assert.Equal(t, model.Matrix{
 		&model.SampleStream{

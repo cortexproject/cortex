@@ -22,6 +22,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/ring"
+	"github.com/weaveworks/cortex/pkg/ruler"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -37,6 +38,7 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		distributorConfig distributor.Config
 		ingesterConfig    ingester.Config
+		rulerConfig       ruler.Config
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 
@@ -45,7 +47,7 @@ func main() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
-		&ingesterConfig, &storageConfig, &schemaConfig)
+		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 
@@ -98,6 +100,20 @@ func main() {
 	}
 	tableManager.Start()
 	defer tableManager.Stop()
+
+	if rulerConfig.ConfigsAPIURL.String() != "" {
+		rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
+		if err != nil {
+			log.Fatalf("Error initializing ruler: %v", err)
+		}
+		defer rlr.Stop()
+
+		rulerServer, err := ruler.NewServer(rulerConfig, rlr)
+		if err != nil {
+			log.Fatalf("Error initializing ruler server: %v", err)
+		}
+		defer rulerServer.Stop()
+	}
 
 	queryable := querier.NewQueryable(dist, chunkStore)
 	engine := promql.NewEngine(queryable, nil)

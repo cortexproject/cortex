@@ -74,6 +74,9 @@ var (
 		Namespace: "cortex",
 		Name:      "dynamo_query_pages_count",
 		Help:      "Number of pages per query.",
+		// Most queries will have one page, however this may increase with fuzzy
+		// metric names.
+		Buckets: prometheus.ExponentialBuckets(1, 4, 6),
 	})
 	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",

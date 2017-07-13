@@ -6,6 +6,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//pkg/chunk:go_default_library",
+        "//pkg/chunk/storage:go_default_library",
         "//pkg/distributor:go_default_library",
         "//pkg/ingester:go_default_library",
         "//pkg/ingester/client:go_default_library",

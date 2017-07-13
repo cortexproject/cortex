@@ -11,6 +11,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/ingester"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -25,8 +26,8 @@ func main() {
 			},
 		}
 		chunkStoreConfig chunk.StoreConfig
-		storageConfig    chunk.StorageClientConfig
 		schemaConfig     chunk.SchemaConfig
+		storageConfig    storage.Config
 		ingesterConfig   ingester.Config
 	)
 	// Ingester needs to know our gRPC listen port.
@@ -41,7 +42,7 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	storageClient, err := chunk.NewStorageClient(storageConfig, schemaConfig)
+	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
 		log.Fatalf("Error initializing storage client: %v", err)
 	}

@@ -122,6 +122,10 @@ update-gazelle:
 	gazelle -go_prefix github.com/weaveworks/cortex -external vendored \
 		-build_file_name BUILD.bazel
 
+update-vendor:
+	dep ensure && dep prune
+	git status | grep BUILD.bazel | cut -d' ' -f 5 | xargs git checkout HEAD
+
 bazel:
 	bazel build //cmd/...
 

@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/ring"
@@ -33,11 +34,11 @@ func main() {
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
 		chunkStoreConfig  chunk.StoreConfig
-		storageConfig     chunk.StorageClientConfig
 		schemaConfig      chunk.SchemaConfig
+		storageConfig     storage.Config
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
-		&chunkStoreConfig, &storageConfig, &schemaConfig)
+		&chunkStoreConfig, &schemaConfig, &storageConfig)
 	flag.Parse()
 
 	r, err := ring.New(ringConfig)
@@ -60,7 +61,7 @@ func main() {
 	defer server.Shutdown()
 	server.HTTP.Handle("/ring", r)
 
-	storageClient, err := chunk.NewStorageClient(storageConfig, schemaConfig)
+	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
 		log.Fatalf("Error initializing storage client: %v", err)
 	}

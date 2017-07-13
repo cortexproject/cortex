@@ -111,7 +111,7 @@ func (qm MergeQuerier) QueryRange(ctx context.Context, from, to model.Time, matc
 
 	mergeIterators, err := createMergeIterators(incomingIterators, incomingErrors, len(qm.Queriers))
 	if err != nil {
-		util.WithContext(ctx).Errorf("Error in MergeQuerier.Query: %v", err)
+		util.WithContext(ctx).Errorf("Error in MergeQuerier.Query: %+v", err)
 	}
 	return mergeIterators, err
 }

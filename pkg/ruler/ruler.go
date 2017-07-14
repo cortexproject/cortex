@@ -58,9 +58,7 @@ type Config struct {
 	// service.
 	ClientTimeout time.Duration
 
-	// This is used for template expansion in alerts. Because we don't support
-	// alerts yet, this value doesn't matter. However, it must be a valid URL
-	// in order to navigate Prometheus's code paths.
+	// This is used for template expansion in alerts; must be a valid URL
 	ExternalURL util.URLValue
 
 	// How frequently to evaluate rules by default.

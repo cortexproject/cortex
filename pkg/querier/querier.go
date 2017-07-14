@@ -195,7 +195,7 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 	resp := client.ReadResponse{
 		Results: make([]*client.QueryResponse, len(req.Queries)),
 	}
-	errors := make(chan error, len(req.Queries))
+	errors := make(chan error)
 	for i, q := range req.Queries {
 		go func(i int, q *client.QueryRequest) {
 			from, to, matchers, err := util.FromQueryRequest(q)
@@ -230,12 +230,16 @@ func (qm MergeQuerier) RemoteReadHandler(w http.ResponseWriter, r *http.Request)
 		}(i, q)
 	}
 
-	for err := range errors {
+	var lastErr error
+	for range req.Queries {
+		err := <-errors
 		if err != nil {
-			logger.Errorf("Query error: %v", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			lastErr = err
 		}
+	}
+	if lastErr != nil {
+		http.Error(w, lastErr.Error(), http.StatusBadRequest)
+		return
 	}
 
 	if err := util.SerializeProtoResponse(w, &resp, compressionType); err != nil {

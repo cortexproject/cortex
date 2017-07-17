@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "config.go",
         "context.go",
+        "context_1_6.go",
         "context_1_7.go",
         "convert_types.go",
         "errors.go",
@@ -12,6 +13,7 @@ go_library(
         "logger.go",
         "types.go",
         "url.go",
+        "url_1_7.go",
         "version.go",
     ],
     visibility = ["//visibility:public"],

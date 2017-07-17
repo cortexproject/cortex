@@ -12,6 +12,7 @@ go_library(
         "//pkg/ingester/client:go_default_library",
         "//pkg/querier:go_default_library",
         "//pkg/ring:go_default_library",
+        "//pkg/ruler:go_default_library",
         "//pkg/util:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
         "//vendor/github.com/prometheus/common/log:go_default_library",

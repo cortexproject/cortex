@@ -20,6 +20,7 @@ go_library(
         "runtime.go",
         "runtime_cgo.go",
         "runtime_gccpufraction.go",
+        "runtime_no_gccpufraction.go",
         "sample.go",
         "syslog.go",
         "timer.go",

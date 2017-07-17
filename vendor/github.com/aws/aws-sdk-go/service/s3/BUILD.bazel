@@ -9,6 +9,7 @@ go_library(
         "customizations.go",
         "errors.go",
         "host_style_bucket.go",
+        "platform_handlers.go",
         "platform_handlers_go1.6.go",
         "service.go",
         "sse.go",

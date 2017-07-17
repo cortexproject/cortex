@@ -34,10 +34,11 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := d.Push(r.Context(), &req); err != nil {
-		logger.Errorf("Push error: %v", err)
 		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
+			logger.Debugf("Push error: %v", err)
 			http.Error(w, string(httpResp.Body), int(httpResp.Code))
 		} else {
+			logger.Errorf("Push error: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return

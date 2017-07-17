@@ -9,6 +9,7 @@ go_library(
         "clientconn.go",
         "codec.go",
         "doc.go",
+        "go16.go",
         "go17.go",
         "grpclb.go",
         "interceptor.go",

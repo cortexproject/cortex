@@ -16,6 +16,7 @@ go_library(
         "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/prometheus/promql:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/storage/local:go_default_library",
         "//vendor/github.com/prometheus/prometheus/storage/metric:go_default_library",
         "//vendor/github.com/weaveworks/billing-client:go_default_library",
         "//vendor/github.com/weaveworks/common/httpgrpc:go_default_library",

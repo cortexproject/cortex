@@ -38,7 +38,6 @@ go_test(
     srcs = [
         "bench_curly_test.go",
         "bench_test.go",
-        "bench_test.sh",
         "compress_test.go",
         "container_test.go",
         "cors_filter_test.go",

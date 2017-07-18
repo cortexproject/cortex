@@ -1,20 +1,20 @@
 
-[[dependencies]]
+[[constraint]]
   name = "github.com/prometheus/alertmanager"
   revision = "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3"
 
-[[dependencies]]
+[[constraint]]
   name = "github.com/weaveworks/common"
   branch = "master"
 
-[[overrides]]
+[[override]]
   name = "github.com/Azure/azure-sdk-for-go"
   revision = "bd73d950fa4440dae889bd9917bff7cef539f86e"
 
-[[overrides]]
+[[override]]
   name = "github.com/prometheus/common"
   revision = "49fee292b27bfff7f354ee0f64e1bc4850462edf"
 
-[[overrides]]
+[[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"

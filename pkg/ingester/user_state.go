@@ -211,7 +211,7 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 
 	if !u.canAddSeriesFor(metricName, cfg) {
 		u.fpLocker.Unlock(fp)
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit exceeded")
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit exceeded for %s: %s", metricName, metric)
 	}
 
 	series = newMemorySeries(metric)

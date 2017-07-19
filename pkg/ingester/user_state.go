@@ -200,7 +200,7 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 	// serially), and the overshoot in allowed series would be minimal.
 	if u.fpToSeries.length() >= cfg.MaxSeriesPerUser {
 		u.fpLocker.Unlock(fp)
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit exceeded")
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", cfg.MaxSeriesPerUser)
 	}
 
 	metricName, err := util.ExtractMetricNameFromMetric(metric)
@@ -211,7 +211,7 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 
 	if !u.canAddSeriesFor(metricName, cfg) {
 		u.fpLocker.Unlock(fp)
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit exceeded")
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", cfg.MaxSeriesPerMetric, metricName, metric)
 	}
 
 	series = newMemorySeries(metric)

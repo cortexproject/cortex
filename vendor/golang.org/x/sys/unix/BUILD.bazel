@@ -6,6 +6,7 @@ go_library(
         "env_unset.go",
     ] + select({
         "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "asm_darwin_amd64.s",
             "constants.go",
             "dirent.go",
             "endian_little.go",
@@ -24,9 +25,9 @@ go_library(
             "zsyscall_darwin_amd64.go",
             "zsysnum_darwin_amd64.go",
             "ztypes_darwin_amd64.go",
-            "asm_darwin_amd64.s",
         ],
         "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "asm_linux_amd64.s",
             "bluetooth_linux.go",
             "constants.go",
             "dirent.go",
@@ -47,9 +48,10 @@ go_library(
             "zsyscall_linux_amd64.go",
             "zsysnum_linux_amd64.go",
             "ztypes_linux_amd64.go",
-            "asm_linux_amd64.s",
         ],
-        "@io_bazel_rules_go//go/platform:windows_amd64": ["endian_little.go"],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "endian_little.go",
+        ],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -58,8 +60,12 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["export_test.go"],
-        "@io_bazel_rules_go//go/platform:linux_amd64": ["export_test.go"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "export_test.go",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "export_test.go",
+        ],
         "//conditions:default": [],
     }),
     library = ":go_default_library",
@@ -84,8 +90,12 @@ go_test(
         "//conditions:default": [],
     }),
     deps = select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["//vendor/golang.org/x/sys/unix:go_default_library"],
-        "@io_bazel_rules_go//go/platform:linux_amd64": ["//vendor/golang.org/x/sys/unix:go_default_library"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
         "//conditions:default": [],
     }),
 )

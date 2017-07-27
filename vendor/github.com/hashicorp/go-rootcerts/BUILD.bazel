@@ -7,12 +7,16 @@ go_library(
         "rootcerts.go",
         "rootcerts_base.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["rootcerts_darwin.go"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "rootcerts_darwin.go",
+        ],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
     deps = select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["//vendor/github.com/mitchellh/go-homedir:go_default_library"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "//vendor/github.com/mitchellh/go-homedir:go_default_library",
+        ],
         "//conditions:default": [],
     }),
 )
@@ -22,7 +26,9 @@ go_test(
     srcs = [
         "rootcerts_test.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["rootcerts_darwin_test.go"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "rootcerts_darwin_test.go",
+        ],
         "//conditions:default": [],
     }),
     library = ":go_default_library",

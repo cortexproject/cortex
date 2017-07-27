@@ -13,13 +13,19 @@ go_library(
             "inotify.go",
             "inotify_poller.go",
         ],
-        "@io_bazel_rules_go//go/platform:windows_amd64": ["windows.go"],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "windows.go",
+        ],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
     deps = select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["//vendor/golang.org/x/sys/unix:go_default_library"],
-        "@io_bazel_rules_go//go/platform:linux_amd64": ["//vendor/golang.org/x/sys/unix:go_default_library"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
         "//conditions:default": [],
     }),
 )
@@ -30,7 +36,9 @@ go_test(
         "fsnotify_test.go",
         "integration_test.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["integration_darwin_test.go"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "integration_darwin_test.go",
+        ],
         "@io_bazel_rules_go//go/platform:linux_amd64": [
             "inotify_poller_test.go",
             "inotify_test.go",
@@ -39,8 +47,12 @@ go_test(
     }),
     library = ":go_default_library",
     deps = select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["//vendor/golang.org/x/sys/unix:go_default_library"],
-        "@io_bazel_rules_go//go/platform:linux_amd64": ["//vendor/golang.org/x/sys/unix:go_default_library"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
         "//conditions:default": [],
     }),
 )

@@ -6,6 +6,7 @@ go_library(
         "mksyscall.go",
     ] + select({
         "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "asm_windows_amd64.s",
             "dll_windows.go",
             "env_unset.go",
             "env_windows.go",
@@ -20,7 +21,6 @@ go_library(
             "zsyscall_windows.go",
             "ztypes_windows.go",
             "ztypes_windows_amd64.go",
-            "asm_windows_amd64.s",
         ],
         "//conditions:default": [],
     }),
@@ -37,7 +37,9 @@ go_test(
         "//conditions:default": [],
     }),
     deps = select({
-        "@io_bazel_rules_go//go/platform:windows_amd64": ["//vendor/golang.org/x/sys/windows:go_default_library"],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "//vendor/golang.org/x/sys/windows:go_default_library",
+        ],
         "//conditions:default": [],
     }),
 )

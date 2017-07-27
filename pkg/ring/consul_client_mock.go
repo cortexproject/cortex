@@ -67,7 +67,7 @@ func (m *mockKV) Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMet
 }
 
 func (m *mockKV) CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error) {
-	log.Debugf("CAS %s (%d) <- %s", p.Key, p.ModifyIndex, p.Value)
+	log.Debugf("CAS %s (%d) <- %.40q...", p.Key, p.ModifyIndex, p.Value)
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -116,7 +116,7 @@ func (m *mockKV) Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consu
 		}
 	}
 
-	log.Debugf("Get %s (%d) = %s", key, value.ModifyIndex, value.Value)
+	log.Debugf("Get %s (%d) = %.40q...", key, value.ModifyIndex, value.Value)
 	return copyKVPair(value), &consul.QueryMeta{LastIndex: value.ModifyIndex}, nil
 }
 

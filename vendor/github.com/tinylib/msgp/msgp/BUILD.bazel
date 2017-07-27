@@ -21,12 +21,16 @@ go_library(
         "write.go",
         "write_bytes.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["file.go"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "file.go",
+        ],
         "@io_bazel_rules_go//go/platform:linux_amd64": [
             "advise_linux.go",
             "file.go",
         ],
-        "@io_bazel_rules_go//go/platform:windows_amd64": ["file_port.go"],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "file_port.go",
+        ],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -56,13 +60,21 @@ go_test(
     srcs = [
         "defs_test.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["file_test.go"],
-        "@io_bazel_rules_go//go/platform:linux_amd64": ["file_test.go"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "file_test.go",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "file_test.go",
+        ],
         "//conditions:default": [],
     }),
     deps = select({
-        "@io_bazel_rules_go//go/platform:darwin_amd64": ["//vendor/github.com/tinylib/msgp/msgp:go_default_library"],
-        "@io_bazel_rules_go//go/platform:linux_amd64": ["//vendor/github.com/tinylib/msgp/msgp:go_default_library"],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "//vendor/github.com/tinylib/msgp/msgp:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//vendor/github.com/tinylib/msgp/msgp:go_default_library",
+        ],
         "//conditions:default": [],
     }),
 )

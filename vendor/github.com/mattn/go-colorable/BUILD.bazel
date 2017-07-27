@@ -6,12 +6,16 @@ go_library(
         "colorable_others.go",
         "noncolorable.go",
     ] + select({
-        "@io_bazel_rules_go//go/platform:windows_amd64": ["colorable_windows.go"],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "colorable_windows.go",
+        ],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
     deps = select({
-        "@io_bazel_rules_go//go/platform:windows_amd64": ["//vendor/github.com/mattn/go-isatty:go_default_library"],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "//vendor/github.com/mattn/go-isatty:go_default_library",
+        ],
         "//conditions:default": [],
     }),
 )

@@ -12,8 +12,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = select({
         "@io_bazel_rules_go//go/platform:windows_amd64": [
-            "//vendor/golang.org/x/sys/windows/registry:go_default_library",
             "//vendor/golang.org/x/sys/windows:go_default_library",
+            "//vendor/golang.org/x/sys/windows/registry:go_default_library",
         ],
         "//conditions:default": [],
     }),
@@ -22,11 +22,15 @@ go_library(
 go_test(
     name = "go_default_xtest",
     srcs = select({
-        "@io_bazel_rules_go//go/platform:windows_amd64": ["log_test.go"],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "log_test.go",
+        ],
         "//conditions:default": [],
     }),
     deps = select({
-        "@io_bazel_rules_go//go/platform:windows_amd64": ["//vendor/golang.org/x/sys/windows/svc/eventlog:go_default_library"],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "//vendor/golang.org/x/sys/windows/svc/eventlog:go_default_library",
+        ],
         "//conditions:default": [],
     }),
 )

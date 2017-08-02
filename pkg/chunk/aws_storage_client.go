@@ -532,6 +532,10 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		backoff = minBackoff
 		numRetries = 0
 	}
+
+	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
+		return nil, fmt.Errorf("failed to query chunks after %d retries, %d values remaining", numRetries, valuesLeft)
+	}
 	return result, nil
 }
 

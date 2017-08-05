@@ -89,6 +89,8 @@ bazel](https://bazel.build/versions/master/docs/install.html), try these command
     make bazel-test
     make bazel
 
+This will require Bazel 0.5.3 or later.
+
 Bazel can be useful for running fast, local, incremental builds and tests.
 Currently [bazel does not support cross-compiling](https://github.com/bazelbuild/rules_go/issues/70)
 so it is not used to produce the final binaries and docker container images.

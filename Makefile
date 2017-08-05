@@ -1,4 +1,4 @@
-.PHONY: all test clean images
+.PHONY: all test clean images protos
 .DEFAULT_GOAL := all
 
 # Boiler plate for bulding Docker containers.
@@ -45,6 +45,7 @@ pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
+protos: $(PROTO_GOS)
 
 # And now what goes into each image
 build-image/$(UPTODATE): build-image/*
@@ -118,7 +119,7 @@ clean:
 # gazelle - https://github.com/bazelbuild/rules_go/issues/422
 # and https://github.com/bazelbuild/rules_go/issues/423.  If you ever regenerate
 # the BUILD files, watch out for the rules in vendor/golang.org/x/crypto/curve25519
-update-gazelle:
+update-gazelle: $(PROTO_GOS)
 	gazelle -go_prefix github.com/weaveworks/cortex -external vendored \
 		-build_file_name BUILD.bazel
 
@@ -126,8 +127,8 @@ update-vendor:
 	dep ensure && dep prune
 	git status | grep BUILD.bazel | cut -d' ' -f 5 | xargs git checkout HEAD
 
-bazel:
+bazel: $(PROTO_GOS)
 	bazel build //cmd/...
 
-bazel-test:
+bazel-test: $(PROTO_GOS)
 	bazel test //pkg/...

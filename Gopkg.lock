@@ -37,22 +37,10 @@
   revision = "bbf7a2afc14f93e1e0a5c06df524fbd75e5031e5"
 
 [[projects]]
-  name = "github.com/Shopify/sarama"
-  packages = ["."]
-  revision = "0fb560e5f7fbcaee2f75e3c34174320709f69944"
-  version = "v1.11.0"
-
-[[projects]]
   name = "github.com/Sirupsen/logrus"
   packages = ["."]
   revision = "ba1b36c82c5e05c4f912a88eab0dcd91a171688f"
   version = "v0.11.5"
-
-[[projects]]
-  name = "github.com/apache/thrift"
-  packages = ["lib/go/thrift"]
-  revision = "b2a4d4ae21c789b689dd162deb819665567f481c"
-  version = "0.10.0"
 
 [[projects]]
   branch = "master"
@@ -121,24 +109,6 @@
   version = "v2.6.1"
 
 [[projects]]
-  name = "github.com/eapache/go-resiliency"
-  packages = ["breaker"]
-  revision = "6800482f2c813e689c88b7ed3282262385011890"
-  version = "v1.0.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/eapache/go-xerial-snappy"
-  packages = ["."]
-  revision = "bb955e01b9346ac19dc29eb16586c90ded99a98c"
-
-[[projects]]
-  name = "github.com/eapache/queue"
-  packages = ["."]
-  revision = "ded5959c0d4e360646dc9e9908cff48666781367"
-  version = "v1.0.2"
-
-[[projects]]
   name = "github.com/emicklei/go-restful"
   packages = [".","log","swagger"]
   revision = "777bb3f19bcafe2575ffb2a3e46af92509ae9594"
@@ -161,12 +131,6 @@
   packages = ["."]
   revision = "e7fea39b01aea8d5671f6858f0532f56e8bff3a5"
   version = "v1.27.0"
-
-[[projects]]
-  name = "github.com/go-logfmt/logfmt"
-  packages = ["."]
-  revision = "390ab7935ee28ec6b286364bba9b4dd6410cb3d5"
-  version = "v0.3.0"
 
 [[projects]]
   branch = "master"
@@ -194,7 +158,7 @@
 
 [[projects]]
   name = "github.com/gogo/protobuf"
-  packages = ["gogoproto","proto","protoc-gen-gogo/descriptor","sortkeys"]
+  packages = ["gogoproto","proto","protoc-gen-gogo/descriptor","sortkeys","types"]
   revision = "100ba4e885062801d56799d78530b73b178a78f3"
   version = "v0.4"
 
@@ -295,18 +259,6 @@
   version = "v1.1"
 
 [[projects]]
-  name = "github.com/klauspost/crc32"
-  packages = ["."]
-  revision = "cb6bfca970f6908083f26f39a79009d608efd5cd"
-  version = "v1.1"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/kr/logfmt"
-  packages = ["."]
-  revision = "b84e30acd515aadc4b783ad4ff83aff3299bdfe0"
-
-[[projects]]
   branch = "master"
   name = "github.com/lann/builder"
   packages = ["."]
@@ -391,12 +343,6 @@
   version = "v1.0.1"
 
 [[projects]]
-  name = "github.com/openzipkin/zipkin-go-opentracing"
-  packages = [".","_thrift/gen-go/scribe","_thrift/gen-go/zipkincore","flag","types","wire"]
-  revision = "6022d4d3ed39632fad842942bda1813a9b4f63c8"
-  version = "v0.2.3"
-
-[[projects]]
   name = "github.com/pborman/uuid"
   packages = ["."]
   revision = "a97ce2ca70fa5a848076093f05e639a89ca34d06"
@@ -407,18 +353,6 @@
   name = "github.com/philhofer/fwd"
   packages = ["."]
   revision = "98c11a7a6ec829d672b03833c3d69a7fae1ca972"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/pierrec/lz4"
-  packages = ["."]
-  revision = "f5b77fd73d83122495309c0f459b810f83cc291f"
-
-[[projects]]
-  name = "github.com/pierrec/xxHash"
-  packages = ["xxHash32"]
-  revision = "f051bb7f1d1aaf1b5a665d74fb6b0217712c69f7"
-  version = "v0.1.1"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -465,12 +399,6 @@
   packages = ["config","discovery","discovery/azure","discovery/consul","discovery/dns","discovery/ec2","discovery/file","discovery/gce","discovery/kubernetes","discovery/marathon","discovery/triton","discovery/zookeeper","notifier","promql","relabel","retrieval","rules","storage","storage/local","storage/local/chunk","storage/local/codable","storage/local/index","storage/metric","template","util/flock","util/httputil","util/stats","util/strutil","util/testutil","util/treecache","web/api/v1"]
   revision = "4666df502c0e239ed4aa1d80abbbfb54f61b23c3"
   version = "v1.6.1"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/rcrowley/go-metrics"
-  packages = ["."]
-  revision = "1f30fe9094a513ce4c700b9a54458bbb0c96996c"
 
 [[projects]]
   branch = "master"
@@ -521,10 +449,10 @@
   revision = "708a42d246822952f38190a8d8c4e6b16a0e600c"
 
 [[projects]]
-  branch = "master"
+  branch = "protos"
   name = "github.com/weaveworks-experiments/loki"
-  packages = ["pkg/client"]
-  revision = "17ff1516db3dffe25452b4cbf6e6412f303cddea"
+  packages = ["pkg/client","pkg/model"]
+  revision = "861dde6feb6381ed4c7d01a272c28316265d64b5"
 
 [[projects]]
   branch = "master"
@@ -636,6 +564,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "bfe3666d0b741b2c7c006675dff4e5474546583100eb9cfd9cc38cf70393f3fc"
+  inputs-digest = "37861e242157d8a6570e06c30763637980731bbb0c1bea9c0fb500d92e8025a2"
   solver-name = "gps-cdcl"
   solver-version = 1

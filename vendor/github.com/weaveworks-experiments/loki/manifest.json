@@ -1,14 +1,14 @@
 {
     "dependencies": {
         "github.com/prometheus/prometheus": {
-            "source": "github.com/tomwilkie/prometheus",
-            "branch": "scrape-callback"
+            "branch": "scrape-callback",
+            "source": "github.com/tomwilkie/prometheus"
         },
         "github.com/weaveworks/common": {
             "branch": "master"
         }
     },
-   "overrides": {
+    "overrides": {
         "github.com/Azure/azure-sdk-for-go": {
             "revision": "bd73d950fa4440dae889bd9917bff7cef539f86e"
         },

@@ -24,6 +24,10 @@ IMAGE_NAMES=$(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)/%,$(
 images:
 	$(info $(IMAGE_NAMES))
 
+# Generating proto code is automated.
+PROTO_DEFS := $(shell find . -name tools -prune -o -name vendor -prune -o -type f -name '*.proto' -print)
+PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
+
 # List of exes please
 LOKI_EXE := cmd/loki/loki
 EXES = $(LOKI_EXE)
@@ -31,8 +35,10 @@ EXES = $(LOKI_EXE)
 all: $(UPTODATE_FILES)
 
 # And what goes into each exe
-$(LOKI_EXE): $(shell find . -name '*.go') pkg/zipkin-ui/bindata.go
+GO_FILES := $(shell find . -name tools -prune -o -name vendor -prune -o -type f -name '*.go' -print)
+$(LOKI_EXE): $(GO_FILES) pkg/zipkin-ui/bindata.go pkg/model/model.pb.go
 pkg/zipkin-ui/bindata.go: $(shell find pkg/zipkin-ui/static)
+pkg/model/model.pb.go: pkg/model/model.proto
 
 # And now what goes into each image
 loki-build/$(UPTODATE): loki-build/*
@@ -54,7 +60,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) pkg/zipkin-ui/bindata.go lint test shell: loki-build/$(UPTODATE)
+$(EXES) $(PROTO_GOS) pkg/zipkin-ui/bindata.go lint test shell: loki-build/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	$(SUDO) docker run $(RM) -ti \
 		-v $(shell pwd)/.pkg:/go/pkg \
@@ -69,6 +75,9 @@ $(EXES): loki-build/$(UPTODATE)
 
 pkg/zipkin-ui/bindata.go: loki-build/$(UPTODATE)
 	go-bindata -pkg ui -o pkg/zipkin-ui/bindata.go pkg/zipkin-ui/static/
+
+%.pb.go: loki-build/$(UPTODATE)
+	protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint: loki-build/$(UPTODATE)
 	./tools/lint -notestpackage -nocomment .
@@ -85,5 +94,3 @@ clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) pkg/zipkin-ui/bindata.go
 	go clean ./...
-
-

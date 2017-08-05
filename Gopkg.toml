@@ -18,3 +18,10 @@
 [[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
+
+# bazel build does not work with earlier versions:
+#
+# ERROR: /Users/jml/go/src/github.com/weaveworks/cortex/vendor/github.com/weaveworks-experiments/loki/pkg/client/BUILD.bazel:3:1: no such package 'vendor/github.com/openzipkin/zipkin-go-opentracing/_thrift/gen-go/zipkincore': BUILD file not found on package path and referenced by '//vendor/github.com/weaveworks-experiments/loki/pkg/client:go_default_library'.
+[[override]]
+  name = "github.com/openzipkin/zipkin-go-opentracing"
+  version = "0.3.0"

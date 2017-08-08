@@ -7,7 +7,7 @@
 
 Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works).
 
-It provides horizontally scalable, long term storage for [Prometheus](https://prometheus.io) metrics when used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination.
+It provides horizontally scalable, long term storage for [Prometheus](https://prometheus.io) metrics when used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination, and a horizontally scalable, Prometheus-compatible query API.
 
 If you would like to use Cortex, we recommend signing up for [Weave Cloud](https://cloud.weave.works) and following the instructions there.
 
@@ -47,7 +47,7 @@ To update dependencies, run
 
 ## Further reading
 
-To learn more about Cortex, consult the follow documents / talks:
+To learn more about Cortex, consult the following documents / talks:
 
 - [Original design document for Project Frankenstein](http://goo.gl/prdUYV)
 - PromCon 2016 Talk: "Project Frankenstein: Multitenant, Scale-Out Prometheus": [video](https://youtu.be/3Tb4Wc0kfCM), [slides](http://www.slideshare.net/weaveworks/project-frankenstein-a-multitenant-horizontally-scalable-prometheus-as-a-service)

@@ -9,7 +9,13 @@ Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring 
 
 It provides horizontally scalable, long term storage for [Prometheus](https://prometheus.io) metrics when used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination, and a horizontally scalable, Prometheus-compatible query API.
 
-If you would like to use Cortex, we recommend signing up for [Weave Cloud](https://cloud.weave.works) and following the instructions there.
+To use Cortex, sign up for [Weave Cloud](https://cloud.weave.works) and follow the instructions there.
+
+Additional help can also be found in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/):
+
+* [Installing the Weave Cloud Agents](https://www.weave.works/docs/cloud/latest/install/installing-agents/#weave-cloud-supported)
+* [Prometheus Monitoring in Weave Cloud](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
+* [Instrumenting Your App: Best Practises](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
 
 ## Developing
 
@@ -57,7 +63,7 @@ To learn more about Cortex, consult the following documents / talks:
 
 If you have any questions regarding Cortex, or on using Prometheus with Weave Cloud:
 
-- Join us on [our Slack channel](https://slack.weave.works) and ask us directly!
+- Ask a question on the <a href="https://weave-community.slack.com/messages/general/"> #weave-community</a> Slack channel
 - Join the <a href="https://www.meetup.com/pro/Weave/"> Weave User Group </a> and get invited to online talks, hands-on training and meetups in your area.
 - Send an email to <a href="mailto:weave-users@weave.works">weave-users@weave.works</a>
 - <a href="https://github.com/weaveworks/cortex/issues/new">File an issue.</a>

@@ -63,7 +63,8 @@ To learn more about Cortex, consult the following documents / talks:
 
 If you have any questions regarding Cortex, or on using Prometheus with Weave Cloud:
 
-- Ask a question on the <a href="https://weave-community.slack.com/messages/general/"> #weave-community</a> Slack channel
+
+- Ask a question on the <a href="https://weave-community.slack.com/messages/general/"> #weave-community</a> Slack channel. To invite yourself to the Weave Community Slack channel, visit https://weaveworks.github.io/community-slack/.
 - Join the <a href="https://www.meetup.com/pro/Weave/"> Weave User Group </a> and get invited to online talks, hands-on training and meetups in your area.
 - Send an email to <a href="mailto:weave-users@weave.works">weave-users@weave.works</a>
 - <a href="https://github.com/weaveworks/cortex/issues/new">File an issue.</a>

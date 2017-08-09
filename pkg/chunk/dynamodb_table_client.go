@@ -210,49 +210,51 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 		})
 	})
 
-	err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DescribeScalableTargets", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
-			out, err := d.ApplicationAutoScaling.DescribeScalableTargetsWithContext(ctx, &applicationautoscaling.DescribeScalableTargetsInput{
-				ResourceIds:       []*string{aws.String("table/" + desc.Name)},
-				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
-				ServiceNamespace:  aws.String("dynamodb"),
+	if d.ApplicationAutoScaling != nil {
+		err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
+			return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DescribeScalableTargetsWithContext", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+				out, err := d.ApplicationAutoScaling.DescribeScalableTargetsWithContext(ctx, &applicationautoscaling.DescribeScalableTargetsInput{
+					ResourceIds:       []*string{aws.String("table/" + desc.Name)},
+					ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
+					ServiceNamespace:  aws.String("dynamodb"),
+				})
+				switch l := len(out.ScalableTargets); l {
+				case 0:
+					return err
+				case 1:
+					desc.WriteScaleEnabled = true
+					desc.WriteScaleRoleARN = *out.ScalableTargets[0].RoleARN
+					desc.WriteScaleMinCapacity = *out.ScalableTargets[0].MinCapacity
+					desc.WriteScaleMaxCapacity = *out.ScalableTargets[0].MaxCapacity
+					return err
+				default:
+					return fmt.Errorf("more than one scalable target found for DynamoDB table")
+				}
 			})
-			switch l := len(out.ScalableTargets); l {
-			case 0:
-				return err
-			case 1:
-				desc.WriteScaleEnabled = true
-				desc.WriteScaleRoleARN = *out.ScalableTargets[0].RoleARN
-				desc.WriteScaleMinCapacity = *out.ScalableTargets[0].MinCapacity
-				desc.WriteScaleMaxCapacity = *out.ScalableTargets[0].MaxCapacity
-				return err
-			default:
-				return fmt.Errorf("more than one scalable target found for DynamoDB table")
-			}
 		})
-	})
 
-	err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DescribeScalingPoliciesWithContext", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
-			out, err := d.ApplicationAutoScaling.DescribeScalingPoliciesWithContext(ctx, &applicationautoscaling.DescribeScalingPoliciesInput{
-				PolicyNames:       []*string{aws.String(autoScalingPolicyNamePrefix + desc.Name)},
-				ResourceId:        aws.String("table/" + desc.Name),
-				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
-				ServiceNamespace:  aws.String("dynamodb"),
+		err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
+			return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DescribeScalingPoliciesWithContext", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+				out, err := d.ApplicationAutoScaling.DescribeScalingPoliciesWithContext(ctx, &applicationautoscaling.DescribeScalingPoliciesInput{
+					PolicyNames:       []*string{aws.String(autoScalingPolicyNamePrefix + desc.Name)},
+					ResourceId:        aws.String("table/" + desc.Name),
+					ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
+					ServiceNamespace:  aws.String("dynamodb"),
+				})
+				switch l := len(out.ScalingPolicies); l {
+				case 0:
+					return err
+				case 1:
+					desc.WriteScaleInCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleInCooldown
+					desc.WriteScaleOutCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleOutCooldown
+					desc.WriteScaleTargetValue = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.TargetValue
+					return err
+				default:
+					return fmt.Errorf("more than one scaling policy found for DynamoDB table")
+				}
 			})
-			switch l := len(out.ScalingPolicies); l {
-			case 0:
-				return err
-			case 1:
-				desc.WriteScaleInCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleInCooldown
-				desc.WriteScaleOutCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleOutCooldown
-				desc.WriteScaleTargetValue = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.TargetValue
-				return err
-			default:
-				return fmt.Errorf("more than one scaling policy found for DynamoDB table")
-			}
 		})
-	})
+	}
 	return
 }
 

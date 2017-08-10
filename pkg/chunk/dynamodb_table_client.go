@@ -247,12 +247,12 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected Ta
 	enableAutoScaling := !current.WriteScaleEnabled && expected.WriteScaleEnabled
 	updateAutoScaling := current.WriteScaleEnabled && expected.WriteScaleEnabled && !current.AutoScalingEquals(expected)
 	if disableAutoScaling {
-		err := d.disableAutoScaling(ctx, current)
+		err := d.disableAutoScaling(ctx, expected)
 		if err != nil {
 			return err
 		}
 	} else if enableAutoScaling || updateAutoScaling {
-		err := d.enableAutoScaling(ctx, current)
+		err := d.enableAutoScaling(ctx, expected)
 		if err != nil {
 			return err
 		}
@@ -306,7 +306,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected Ta
 }
 
 func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc) error {
-	// Register scallable target
+	// Registers or updates a scallable target
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.RegisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
 			input := &applicationautoscaling.RegisterScalableTargetInput{
@@ -327,7 +327,7 @@ func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc
 		return err
 	}
 
-	// Put scaling policy
+	// Puts or updates a scaling policy
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.PutScalingPolicy", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
 			input := &applicationautoscaling.PutScalingPolicyInput{

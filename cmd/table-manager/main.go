@@ -28,6 +28,10 @@ func main() {
 	util.RegisterFlags(&serverConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
 
+	if schemaConfig.ChunkTables.WriteScaleEnabled && storageConfig.ApplicationAutoScaling.URL != nil {
+		log.Fatal("WriteScale is enabled but no ApplicationAutoScaling URL has been provided")
+	}
+
 	tableClient, err := storage.NewTableClient(storageConfig)
 	if err != nil {
 		log.Fatalf("Error initializing DynamoDB table client: %v", err)

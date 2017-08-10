@@ -2,19 +2,15 @@ package chunk
 
 import (
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
 	"github.com/aws/aws-sdk-go/service/applicationautoscaling/applicationautoscalingiface"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 
@@ -49,9 +45,13 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
 		return nil, err
 	}
 
-	applicationAutoScaling, err := applicationAutoScalingClientFromURL(cfg.DynamoDB.URL)
-	if err != nil {
-		return nil, err
+	var applicationAutoScaling applicationautoscalingiface.ApplicationAutoScalingAPI
+	if cfg.ApplicationAutoScaling.URL != nil {
+		session, err := awsSessionFromURL(cfg.ApplicationAutoScaling.URL)
+		if err != nil {
+			return nil, err
+		}
+		applicationAutoScaling = applicationautoscaling.New(session)
 	}
 
 	return dynamoTableClient{
@@ -59,22 +59,6 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
 		ApplicationAutoScaling: applicationAutoScaling,
 		limiter:                rate.NewLimiter(rate.Limit(cfg.APILimit), 1),
 	}, nil
-}
-
-// applicationAutoScalingClientFromURL creates a new ApplicationAuthScaling client from a URL.
-func applicationAutoScalingClientFromURL(awsURL *url.URL) (applicationautoscalingiface.ApplicationAutoScalingAPI, error) {
-	if awsURL == nil {
-		return nil, fmt.Errorf("no URL specified for DynamoDB")
-	}
-	path := strings.TrimPrefix(awsURL.Path, "/")
-	if len(path) > 0 {
-		log.Warnf("Ignoring DynamoDB URL path: %v.", path)
-	}
-	config, err := awsConfigFromURL(awsURL)
-	if err != nil {
-		return nil, err
-	}
-	return applicationautoscaling.New(session.New(config)), nil
 }
 
 func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.Context) error) error {

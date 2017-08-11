@@ -237,13 +237,7 @@ func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 			table.ProvisionedWrite = cfg.ProvisionedWriteThroughput
 
 			if cfg.WriteScale.Enabled {
-				table.WriteScale.Enabled = true
-				table.WriteScale.RoleARN = cfg.WriteScale.RoleARN
-				table.WriteScale.MinCapacity = cfg.WriteScale.MinCapacity
-				table.WriteScale.MaxCapacity = cfg.WriteScale.MaxCapacity
-				table.WriteScale.OutCooldown = cfg.WriteScale.OutCooldown
-				table.WriteScale.InCooldown = cfg.WriteScale.InCooldown
-				table.WriteScale.TargetValue = cfg.WriteScale.TargetValue
+				table.WriteScale = cfg.WriteScale
 			}
 		}
 		result = append(result, table)

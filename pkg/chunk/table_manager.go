@@ -196,13 +196,7 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			legacyTable.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
 
 			if m.cfg.IndexTables.WriteScale.Enabled {
-				legacyTable.WriteScale.Enabled = true
-				legacyTable.WriteScale.RoleARN = m.cfg.IndexTables.WriteScale.RoleARN
-				legacyTable.WriteScale.MinCapacity = m.cfg.IndexTables.WriteScale.MinCapacity
-				legacyTable.WriteScale.MaxCapacity = m.cfg.IndexTables.WriteScale.MaxCapacity
-				legacyTable.WriteScale.OutCooldown = m.cfg.IndexTables.WriteScale.OutCooldown
-				legacyTable.WriteScale.InCooldown = m.cfg.IndexTables.WriteScale.InCooldown
-				legacyTable.WriteScale.TargetValue = m.cfg.IndexTables.WriteScale.TargetValue
+				legacyTable.WriteScale = m.cfg.IndexTables.WriteScale
 			}
 		}
 	}

@@ -243,19 +243,20 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 }
 
 func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected TableDesc) error {
-	disableAutoScaling := current.WriteScaleEnabled && !expected.WriteScaleEnabled
-	enableAutoScaling := !current.WriteScaleEnabled && expected.WriteScaleEnabled
-	updateAutoScaling := current.WriteScaleEnabled && expected.WriteScaleEnabled && !current.AutoScalingEquals(expected)
-	if disableAutoScaling {
-		err := d.disableAutoScaling(ctx, expected)
-		if err != nil {
-			return err
+	var err error
+	if !current.WriteScaleEnabled {
+		if expected.WriteScaleEnabled {
+			err = d.enableAutoScaling(ctx, expected)
 		}
-	} else if enableAutoScaling || updateAutoScaling {
-		err := d.enableAutoScaling(ctx, expected)
-		if err != nil {
-			return err
+	} else {
+		if !expected.WriteScaleEnabled {
+			err = d.disableAutoScaling(ctx, expected)
+		} else if !current.AutoScalingEquals(expected) {
+			err = d.enableAutoScaling(ctx, expected)
 		}
+	}
+	if err != nil {
+		return err
 	}
 
 	if current.ProvisionedRead != expected.ProvisionedRead || current.ProvisionedWrite != expected.ProvisionedWrite {

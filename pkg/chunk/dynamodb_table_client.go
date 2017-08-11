@@ -27,8 +27,8 @@ var applicationAutoScalingRequestDuration = prometheus.NewHistogramVec(prometheu
 	Name:      "application_autoscaling_request_duration_seconds",
 	Help:      "Time spent doing ApplicationAutoScaling requests.",
 
-	// ApplicationAutoScaling latency seems to range from a few ms to a few sec and is
-	// important.  So use 8 buckets from 128us to 2s.
+	// AWS latency seems to range from a few ms to a few sec. So use 8 buckets
+	// from 128us to 2s. TODO: Confirm that this is the case for ApplicationAutoScaling.
 	Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
 }, []string{"operation", "status_code"})
 

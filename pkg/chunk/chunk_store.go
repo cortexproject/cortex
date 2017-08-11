@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -40,9 +41,27 @@ func init() {
 	prometheus.MustRegister(rowWrites)
 }
 
+// QuerierConfig holds values significant to requests from Querier
+// (though logic using them may well be in ChunkStore)
+type QuerierConfig struct {
+	MaxTimeRange time.Duration
+}
+
+// RegisterFlags arranges that given FlagSet will config this
+func (cfg *QuerierConfig) RegisterFlags(f *flag.FlagSet) {
+	// Note that parsing by DurationVar doesn't support units bigger than h(our)
+	// ie no days weeks months years
+	// See for example https://github.com/golang/go/issues/11473 (which attracted comment from RPike)
+	// So to specify 13months(ish), you'll need:   -querier.max-time-range=9600h
+	f.DurationVar(&cfg.MaxTimeRange, "querier.max-time-range",
+		time.Hour*24*400, // Just over 13 months
+		"Max period query_range will accept (0 for unlimited) default 400d")
+}
+
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
 	CacheConfig
+	QuerierConfig
 
 	// For injecting different schemas in tests.
 	schemaFactory func(cfg SchemaConfig) Schema
@@ -51,6 +70,7 @@ type StoreConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlags(f)
+	cfg.QuerierConfig.RegisterFlags(f)
 }
 
 // Store implements Store
@@ -153,6 +173,14 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
 	if through < from {
 		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
+	}
+	if c.cfg.MaxTimeRange == 0 {
+		// Specified as unlimited
+	} else {
+		if through.After(from.Add(c.cfg.MaxTimeRange)) {
+			return nil, fmt.Errorf("invalid query: queryrange %v..%v (ie duration %v) exceeds limit of %v",
+				from, through, through.Sub(from), c.cfg.MaxTimeRange)
+		}
 	}
 
 	now := model.Now()

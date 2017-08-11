@@ -59,6 +59,35 @@ func (s ByFingerprint) Less(i, j int) bool {
 	return s[i].Metric().Metric.Fingerprint() < s[j].Metric().Metric.Fingerprint()
 }
 
+func TestChunkStore_Get_paramValidation(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	now := model.Now()
+	const maxTimeRange = time.Hour * 24 * 30
+	store := newTestChunkStore(t, StoreConfig{
+		schemaFactory: v8Schema, // arbitrary choice ... seems little gain trying all schema flavours
+		QuerierConfig: QuerierConfig{MaxTimeRange: maxTimeRange},
+	})
+	nameMatcher := mustNewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo1")
+	{ // Query with acceptable time-range
+		_, err := store.Get(ctx, now.Add(-maxTimeRange+time.Hour), now, nameMatcher)
+		if err != nil {
+			t.Errorf("Expected success, but actually yielded error: %#v", err)
+		}
+	}
+	{ // Query with overlong time-range => should reject
+		_, err := store.Get(ctx, now.Add(-maxTimeRange-time.Hour), now, nameMatcher)
+		if err == nil {
+			t.Errorf("Expected rejection of overlength time-range, but got success")
+		}
+	}
+	{ // Query with back to front time-range-end => should reject
+		_, err := store.Get(ctx, now, now.Add(-maxTimeRange+time.Hour), nameMatcher)
+		if err == nil {
+			t.Errorf("Expected rejection of back to front time-range, but got success")
+		}
+	}
+}
+
 // TestChunkStore_Get tests iterators are returned correctly depending on the type of query
 func TestChunkStore_Get_concrete(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)

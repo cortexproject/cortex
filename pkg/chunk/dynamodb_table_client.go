@@ -307,7 +307,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected Ta
 }
 
 func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc) error {
-	// Registers or updates a scallable target
+	// Registers or updates a scalable target
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.RegisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
 			input := &applicationautoscaling.RegisterScalableTargetInput{
@@ -359,7 +359,7 @@ func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc
 }
 
 func (d dynamoTableClient) disableAutoScaling(ctx context.Context, desc TableDesc) error {
-	// Deregister scallable target
+	// Deregister scalable target
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DeregisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
 			input := &applicationautoscaling.DeregisterScalableTargetInput{

@@ -195,14 +195,14 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			legacyTable.ProvisionedRead = m.cfg.IndexTables.ProvisionedReadThroughput
 			legacyTable.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
 
-			if m.cfg.IndexTables.WriteScaleEnabled {
-				legacyTable.WriteScaleEnabled = true
-				legacyTable.WriteScaleRoleARN = m.cfg.IndexTables.WriteScaleRoleARN
-				legacyTable.WriteScaleMinCapacity = m.cfg.IndexTables.WriteScaleMinCapacity
-				legacyTable.WriteScaleMaxCapacity = m.cfg.IndexTables.WriteScaleMaxCapacity
-				legacyTable.WriteScaleOutCooldown = m.cfg.IndexTables.WriteScaleOutCooldown
-				legacyTable.WriteScaleInCooldown = m.cfg.IndexTables.WriteScaleInCooldown
-				legacyTable.WriteScaleTargetValue = m.cfg.IndexTables.WriteScaleTargetValue
+			if m.cfg.IndexTables.WriteScale.Enabled {
+				legacyTable.WriteScale.Enabled = true
+				legacyTable.WriteScale.RoleARN = m.cfg.IndexTables.WriteScale.RoleARN
+				legacyTable.WriteScale.MinCapacity = m.cfg.IndexTables.WriteScale.MinCapacity
+				legacyTable.WriteScale.MaxCapacity = m.cfg.IndexTables.WriteScale.MaxCapacity
+				legacyTable.WriteScale.OutCooldown = m.cfg.IndexTables.WriteScale.OutCooldown
+				legacyTable.WriteScale.InCooldown = m.cfg.IndexTables.WriteScale.InCooldown
+				legacyTable.WriteScale.TargetValue = m.cfg.IndexTables.WriteScale.TargetValue
 			}
 		}
 	}

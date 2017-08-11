@@ -343,13 +343,14 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			ProvisionedReadThroughput:  read,
 			InactiveWriteThroughput:    inactiveWrite,
 			InactiveReadThroughput:     inactiveRead,
-
-			WriteScaleEnabled:     true,
-			WriteScaleMinCapacity: 10,
-			WriteScaleMaxCapacity: 20,
-			WriteScaleOutCooldown: 100,
-			WriteScaleInCooldown:  100,
-			WriteScaleTargetValue: 80.0,
+			WriteScale: autoScalingConfig{
+				Enabled:     true,
+				MinCapacity: 10,
+				MaxCapacity: 20,
+				OutCooldown: 100,
+				InCooldown:  100,
+				TargetValue: 80.0,
+			},
 		},
 
 		ChunkTables: periodicTableConfig{
@@ -360,13 +361,14 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			ProvisionedReadThroughput:  read,
 			InactiveWriteThroughput:    inactiveWrite,
 			InactiveReadThroughput:     inactiveRead,
-
-			WriteScaleEnabled:     true,
-			WriteScaleMinCapacity: 10,
-			WriteScaleMaxCapacity: 20,
-			WriteScaleOutCooldown: 100,
-			WriteScaleInCooldown:  100,
-			WriteScaleTargetValue: 80.0,
+			WriteScale: autoScalingConfig{
+				Enabled:     true,
+				MinCapacity: 10,
+				MaxCapacity: 20,
+				OutCooldown: 100,
+				InCooldown:  100,
+				TargetValue: 80.0,
+			},
 		},
 
 		CreationGracePeriod: gracePeriod,
@@ -391,26 +393,30 @@ func TestTableManagerAutoScaling(t *testing.T) {
 					ProvisionedWrite: inactiveWrite,
 				},
 				{
-					Name:                  tablePrefix + "0",
-					ProvisionedRead:       read,
-					ProvisionedWrite:      write,
-					WriteScaleEnabled:     true,
-					WriteScaleMinCapacity: 10,
-					WriteScaleMaxCapacity: 20,
-					WriteScaleOutCooldown: 100,
-					WriteScaleInCooldown:  100,
-					WriteScaleTargetValue: 80.0,
+					Name:             tablePrefix + "0",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
 				},
 				{
-					Name:                  chunkTablePrefix + "0",
-					ProvisionedRead:       read,
-					ProvisionedWrite:      write,
-					WriteScaleEnabled:     true,
-					WriteScaleMinCapacity: 10,
-					WriteScaleMaxCapacity: 20,
-					WriteScaleOutCooldown: 100,
-					WriteScaleInCooldown:  100,
-					WriteScaleTargetValue: 80.0,
+					Name:             chunkTablePrefix + "0",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
 				},
 			},
 		)
@@ -418,8 +424,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are updated with new settings
 	{
-		cfg.IndexTables.WriteScaleOutCooldown = 200
-		cfg.ChunkTables.WriteScaleTargetValue = 90.0
+		cfg.IndexTables.WriteScale.OutCooldown = 200
+		cfg.ChunkTables.WriteScale.TargetValue = 90.0
 
 		tableManager, err := NewTableManager(cfg, client)
 		if err != nil {
@@ -437,26 +443,30 @@ func TestTableManagerAutoScaling(t *testing.T) {
 					ProvisionedWrite: inactiveWrite,
 				},
 				{
-					Name:                  tablePrefix + "0",
-					ProvisionedRead:       read,
-					ProvisionedWrite:      write,
-					WriteScaleEnabled:     true,
-					WriteScaleMinCapacity: 10,
-					WriteScaleMaxCapacity: 20,
-					WriteScaleOutCooldown: 200,
-					WriteScaleInCooldown:  100,
-					WriteScaleTargetValue: 80.0,
+					Name:             tablePrefix + "0",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 200,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
 				},
 				{
-					Name:                  chunkTablePrefix + "0",
-					ProvisionedRead:       read,
-					ProvisionedWrite:      write,
-					WriteScaleEnabled:     true,
-					WriteScaleMinCapacity: 10,
-					WriteScaleMaxCapacity: 20,
-					WriteScaleOutCooldown: 100,
-					WriteScaleInCooldown:  100,
-					WriteScaleTargetValue: 90.0,
+					Name:             chunkTablePrefix + "0",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 90.0,
+					},
 				},
 			},
 		)
@@ -464,8 +474,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are degristered when autoscaling is disabled for inactive tables
 	{
-		cfg.IndexTables.WriteScaleOutCooldown = 200
-		cfg.ChunkTables.WriteScaleTargetValue = 90.0
+		cfg.IndexTables.WriteScale.OutCooldown = 200
+		cfg.ChunkTables.WriteScale.TargetValue = 90.0
 
 		tableManager, err := NewTableManager(cfg, client)
 		if err != nil {
@@ -483,38 +493,46 @@ func TestTableManagerAutoScaling(t *testing.T) {
 					ProvisionedWrite: inactiveWrite,
 				},
 				{
-					Name:              tablePrefix + "0",
-					ProvisionedRead:   inactiveRead,
-					ProvisionedWrite:  inactiveWrite,
-					WriteScaleEnabled: false,
+					Name:             tablePrefix + "0",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled: false,
+					},
 				},
 				{
-					Name:              chunkTablePrefix + "0",
-					ProvisionedRead:   inactiveRead,
-					ProvisionedWrite:  inactiveWrite,
-					WriteScaleEnabled: false,
+					Name:             chunkTablePrefix + "0",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled: false,
+					},
 				},
 				{
-					Name:                  tablePrefix + "1",
-					ProvisionedRead:       read,
-					ProvisionedWrite:      write,
-					WriteScaleEnabled:     true,
-					WriteScaleMinCapacity: 10,
-					WriteScaleMaxCapacity: 20,
-					WriteScaleOutCooldown: 200,
-					WriteScaleInCooldown:  100,
-					WriteScaleTargetValue: 80.0,
+					Name:             tablePrefix + "1",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 200,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
 				},
 				{
-					Name:                  chunkTablePrefix + "1",
-					ProvisionedRead:       read,
-					ProvisionedWrite:      write,
-					WriteScaleEnabled:     true,
-					WriteScaleMinCapacity: 10,
-					WriteScaleMaxCapacity: 20,
-					WriteScaleOutCooldown: 100,
-					WriteScaleInCooldown:  100,
-					WriteScaleTargetValue: 90.0,
+					Name:             chunkTablePrefix + "1",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 90.0,
+					},
 				},
 			},
 		)
@@ -522,8 +540,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are degristered when autoscaling is disabled entirely
 	{
-		cfg.IndexTables.WriteScaleEnabled = false
-		cfg.ChunkTables.WriteScaleEnabled = false
+		cfg.IndexTables.WriteScale.Enabled = false
+		cfg.ChunkTables.WriteScale.Enabled = false
 
 		tableManager, err := NewTableManager(cfg, client)
 		if err != nil {
@@ -541,28 +559,36 @@ func TestTableManagerAutoScaling(t *testing.T) {
 					ProvisionedWrite: inactiveWrite,
 				},
 				{
-					Name:              tablePrefix + "0",
-					ProvisionedRead:   inactiveRead,
-					ProvisionedWrite:  inactiveWrite,
-					WriteScaleEnabled: false,
+					Name:             tablePrefix + "0",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled: false,
+					},
 				},
 				{
-					Name:              chunkTablePrefix + "0",
-					ProvisionedRead:   inactiveRead,
-					ProvisionedWrite:  inactiveWrite,
-					WriteScaleEnabled: false,
+					Name:             chunkTablePrefix + "0",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled: false,
+					},
 				},
 				{
-					Name:              tablePrefix + "1",
-					ProvisionedRead:   read,
-					ProvisionedWrite:  write,
-					WriteScaleEnabled: false,
+					Name:             tablePrefix + "1",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+					WriteScale: autoScalingConfig{
+						Enabled: false,
+					},
 				},
 				{
-					Name:              chunkTablePrefix + "1",
-					ProvisionedRead:   read,
-					ProvisionedWrite:  write,
-					WriteScaleEnabled: false,
+					Name:             chunkTablePrefix + "1",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+					WriteScale: autoScalingConfig{
+						Enabled: false,
+					},
 				},
 			},
 		)

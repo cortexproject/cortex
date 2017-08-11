@@ -140,7 +140,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) erro
 		return err
 	}
 
-	if desc.WriteScaleEnabled {
+	if desc.WriteScale.Enabled {
 		err := d.enableAutoScaling(ctx, desc)
 		if err != nil {
 			return err
@@ -206,10 +206,10 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 				case 0:
 					return err
 				case 1:
-					desc.WriteScaleEnabled = true
-					desc.WriteScaleRoleARN = *out.ScalableTargets[0].RoleARN
-					desc.WriteScaleMinCapacity = *out.ScalableTargets[0].MinCapacity
-					desc.WriteScaleMaxCapacity = *out.ScalableTargets[0].MaxCapacity
+					desc.WriteScale.Enabled = true
+					desc.WriteScale.RoleARN = *out.ScalableTargets[0].RoleARN
+					desc.WriteScale.MinCapacity = *out.ScalableTargets[0].MinCapacity
+					desc.WriteScale.MaxCapacity = *out.ScalableTargets[0].MaxCapacity
 					return err
 				default:
 					return fmt.Errorf("more than one scalable target found for DynamoDB table")
@@ -229,9 +229,9 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 				case 0:
 					return err
 				case 1:
-					desc.WriteScaleInCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleInCooldown
-					desc.WriteScaleOutCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleOutCooldown
-					desc.WriteScaleTargetValue = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.TargetValue
+					desc.WriteScale.InCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleInCooldown
+					desc.WriteScale.OutCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleOutCooldown
+					desc.WriteScale.TargetValue = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.TargetValue
 					return err
 				default:
 					return fmt.Errorf("more than one scaling policy found for DynamoDB table")
@@ -244,14 +244,14 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 
 func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected TableDesc) error {
 	var err error
-	if !current.WriteScaleEnabled {
-		if expected.WriteScaleEnabled {
+	if !current.WriteScale.Enabled {
+		if expected.WriteScale.Enabled {
 			err = d.enableAutoScaling(ctx, expected)
 		}
 	} else {
-		if !expected.WriteScaleEnabled {
+		if !expected.WriteScale.Enabled {
 			err = d.disableAutoScaling(ctx, expected)
-		} else if !current.AutoScalingEquals(expected) {
+		} else if current.WriteScale != expected.WriteScale {
 			err = d.enableAutoScaling(ctx, expected)
 		}
 	}
@@ -311,10 +311,10 @@ func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.RegisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
 			input := &applicationautoscaling.RegisterScalableTargetInput{
-				MinCapacity:       aws.Int64(desc.WriteScaleMinCapacity),
-				MaxCapacity:       aws.Int64(desc.WriteScaleMaxCapacity),
+				MinCapacity:       aws.Int64(desc.WriteScale.MinCapacity),
+				MaxCapacity:       aws.Int64(desc.WriteScale.MaxCapacity),
 				ResourceId:        aws.String("table/" + desc.Name),
-				RoleARN:           aws.String(desc.WriteScaleRoleARN),
+				RoleARN:           aws.String(desc.WriteScale.RoleARN),
 				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
 				ServiceNamespace:  aws.String("dynamodb"),
 			}
@@ -341,9 +341,9 @@ func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc
 					PredefinedMetricSpecification: &applicationautoscaling.PredefinedMetricSpecification{
 						PredefinedMetricType: aws.String("DynamoDBWriteCapacityUtilization"),
 					},
-					ScaleInCooldown:  aws.Int64(desc.WriteScaleInCooldown),
-					ScaleOutCooldown: aws.Int64(desc.WriteScaleOutCooldown),
-					TargetValue:      aws.Float64(desc.WriteScaleTargetValue),
+					ScaleInCooldown:  aws.Int64(desc.WriteScale.InCooldown),
+					ScaleOutCooldown: aws.Int64(desc.WriteScale.OutCooldown),
+					TargetValue:      aws.Float64(desc.WriteScale.TargetValue),
 				},
 			}
 			_, err := d.ApplicationAutoScaling.PutScalingPolicy(input)

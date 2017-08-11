@@ -161,13 +161,7 @@ type periodicTableConfig struct {
 	InactiveWriteThroughput    int64
 	InactiveReadThroughput     int64
 
-	WriteScaleEnabled     bool
-	WriteScaleRoleARN     string
-	WriteScaleMinCapacity int64
-	WriteScaleMaxCapacity int64
-	WriteScaleOutCooldown int64
-	WriteScaleInCooldown  int64
-	WriteScaleTargetValue float64
+	WriteScale autoScalingConfig
 
 	// Temporarily in place to support tags set on all tables, as means of
 	// smoothing transition to per-table tags.
@@ -184,16 +178,29 @@ func (cfg *periodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *
 	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
 	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
 	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
-
-	f.BoolVar(&cfg.WriteScaleEnabled, argPrefix+".write-scale.enabled", false, "Should we autoscale table writes.")
-	f.StringVar(&cfg.WriteScaleRoleARN, argPrefix+".write-scale.role-arn", "", "AWS AutoScaling role ARN")
-	f.Int64Var(&cfg.WriteScaleMinCapacity, argPrefix+".write-scale.min-capacity", 3000, "DynamoDB minimum provision capacity.")
-	f.Int64Var(&cfg.WriteScaleMaxCapacity, argPrefix+".write-scale.max-capacity", 6000, "DynamoDB maximum provision capacity.")
-	f.Int64Var(&cfg.WriteScaleOutCooldown, argPrefix+".write-scale.out-cooldown", 3000, "DynamoDB minimum time between each autoscaling event that increases provision capacity.")
-	f.Int64Var(&cfg.WriteScaleInCooldown, argPrefix+".write-scale.in-cooldown", 3000, "DynamoDB minimum time between each autoscaling event that decreases provision capacity.")
-	f.Float64Var(&cfg.WriteScaleTargetValue, argPrefix+".write-scale.target-value", 80, "DynamoDB target ratio of consumed capacity to provisioned capacity.")
-
 	f.Var(&cfg.From, argPrefix+".start", fmt.Sprintf("Deprecated: use '%s.from'.", argPrefix))
+
+	cfg.WriteScale.RegisterFlags(argPrefix+".write-scale", f)
+}
+
+type autoScalingConfig struct {
+	Enabled     bool
+	RoleARN     string
+	MinCapacity int64
+	MaxCapacity int64
+	OutCooldown int64
+	InCooldown  int64
+	TargetValue float64
+}
+
+func (cfg *autoScalingConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, argPrefix+".enabled", false, "Should we enable autoscale for the table.")
+	f.StringVar(&cfg.RoleARN, argPrefix+".role-arn", "", "AWS AutoScaling role ARN")
+	f.Int64Var(&cfg.MinCapacity, argPrefix+".min-capacity", 3000, "DynamoDB minimum provision capacity.")
+	f.Int64Var(&cfg.MaxCapacity, argPrefix+".max-capacity", 6000, "DynamoDB maximum provision capacity.")
+	f.Int64Var(&cfg.OutCooldown, argPrefix+".out-cooldown", 3000, "DynamoDB minimum time between each autoscaling event that increases provision capacity.")
+	f.Int64Var(&cfg.InCooldown, argPrefix+".in-cooldown", 3000, "DynamoDB minimum time between each autoscaling event that decreases provision capacity.")
+	f.Float64Var(&cfg.TargetValue, argPrefix+".target-value", 80, "DynamoDB target ratio of consumed capacity to provisioned capacity.")
 }
 
 func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duration) []TableDesc {
@@ -229,14 +236,14 @@ func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 			table.ProvisionedRead = cfg.ProvisionedReadThroughput
 			table.ProvisionedWrite = cfg.ProvisionedWriteThroughput
 
-			if cfg.WriteScaleEnabled {
-				table.WriteScaleEnabled = true
-				table.WriteScaleRoleARN = cfg.WriteScaleRoleARN
-				table.WriteScaleMinCapacity = cfg.WriteScaleMinCapacity
-				table.WriteScaleMaxCapacity = cfg.WriteScaleMaxCapacity
-				table.WriteScaleOutCooldown = cfg.WriteScaleOutCooldown
-				table.WriteScaleInCooldown = cfg.WriteScaleInCooldown
-				table.WriteScaleTargetValue = cfg.WriteScaleTargetValue
+			if cfg.WriteScale.Enabled {
+				table.WriteScale.Enabled = true
+				table.WriteScale.RoleARN = cfg.WriteScale.RoleARN
+				table.WriteScale.MinCapacity = cfg.WriteScale.MinCapacity
+				table.WriteScale.MaxCapacity = cfg.WriteScale.MaxCapacity
+				table.WriteScale.OutCooldown = cfg.WriteScale.OutCooldown
+				table.WriteScale.InCooldown = cfg.WriteScale.InCooldown
+				table.WriteScale.TargetValue = cfg.WriteScale.TargetValue
 			}
 		}
 		result = append(result, table)

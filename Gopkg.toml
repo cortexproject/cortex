@@ -1,3 +1,6 @@
+[[constraint]]
+  name = "github.com/aws/aws-sdk-go"
+  version = "v1.10.8"
 
 [[constraint]]
   name = "github.com/prometheus/alertmanager"

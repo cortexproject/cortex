@@ -178,6 +178,8 @@ type MultitenantAlertmanagerConfig struct {
 	MeshPeerHost            string
 	MeshPeerService         string
 	MeshPeerRefreshInterval time.Duration
+
+	FallbackConfigFile string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -188,6 +190,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.Var(&cfg.ExternalURL, "alertmanager.web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.")
 
 	flag.Var(&cfg.ConfigsAPIURL, "alertmanager.configs.url", "URL of configs API server.")
+	flag.StringVar(&cfg.FallbackConfigFile, "alertmanager.configs.fallback", "", "Filename of fallback config to use if none specified for instance.")
 	flag.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 	flag.DurationVar(&cfg.ClientTimeout, "alertmanager.configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 
@@ -207,6 +210,8 @@ type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
 	configsAPI configs_client.AlertManagerConfigsAPI
+
+	fallbackConfig *amconfig.Config
 
 	// All the organization configurations that we have. Only used for instrumentation.
 	cfgs map[string]configs.Config
@@ -240,16 +245,25 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 		Timeout: cfg.ClientTimeout,
 	}
 
+	var fallbackConfig *amconfig.Config
+	if cfg.FallbackConfigFile != "" {
+		fallbackConfig, err = amconfig.LoadFile(cfg.FallbackConfigFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read fallback config %q: %s", cfg.FallbackConfigFile, err)
+		}
+	}
+
 	gf := newGossipFactory(mrouter)
 	am := &MultitenantAlertmanager{
-		cfg:           cfg,
-		configsAPI:    configsAPI,
-		cfgs:          map[string]configs.Config{},
-		alertmanagers: map[string]*Alertmanager{},
-		meshRouter:    &gf,
-		srvDiscovery:  newSRVDiscovery(cfg.MeshPeerService, cfg.MeshPeerHost, cfg.MeshPeerRefreshInterval),
-		stop:          make(chan struct{}),
-		done:          make(chan struct{}),
+		cfg:            cfg,
+		configsAPI:     configsAPI,
+		fallbackConfig: fallbackConfig,
+		cfgs:           map[string]configs.Config{},
+		alertmanagers:  map[string]*Alertmanager{},
+		meshRouter:     &gf,
+		srvDiscovery:   newSRVDiscovery(cfg.MeshPeerService, cfg.MeshPeerHost, cfg.MeshPeerRefreshInterval),
+		stop:           make(chan struct{}),
+		done:           make(chan struct{}),
 	}
 	return am, nil
 }
@@ -364,8 +378,9 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.View) {
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Config) error {
+	_, hasExisting := am.alertmanagers[userID]
 	amConfig, err := configs_client.AlertmanagerConfigFromConfig(config)
-	if err != nil {
+	if err != nil && (hasExisting || am.fallbackConfig == nil) {
 		// XXX: This means that if a user has a working configuration and
 		// they submit a broken one, we'll keep processing the last known
 		// working configuration, and they'll never know.
@@ -374,8 +389,13 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 		return fmt.Errorf("invalid Cortex configuration for %v: %v", userID, err)
 	}
 
+	if amConfig == nil && am.fallbackConfig != nil {
+		log.Infof("invalid Cortex configuration; using fallback for %v", userID)
+		amConfig = am.fallbackConfig
+	}
+
 	// If no Alertmanager instance exists for this user yet, start one.
-	if _, ok := am.alertmanagers[userID]; !ok {
+	if !hasExisting {
 		newAM, err := am.newAlertmanager(userID, amConfig)
 		if err != nil {
 			return err

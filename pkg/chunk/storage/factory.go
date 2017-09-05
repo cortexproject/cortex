@@ -32,9 +32,11 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageCl
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "aws":
-		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			log.Warnf("Ignoring DynamoDB URL path: %v.", path)
+		if cfg.DynamoDB.URL != nil {
+			path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
+			if len(path) > 0 {
+				log.Warnf("Ignoring DynamoDB URL path: %v.", path)
+			}
 		}
 		return chunk.NewAWSStorageClient(cfg.AWSStorageConfig, schemaCfg)
 	case "gcp":

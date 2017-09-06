@@ -1,5 +1,5 @@
 {
-    "memo": "79d93ca7f69df15a00f71f3c5d627fb8e1d2bf67bb293d3ba3e4a741d0e25a92",
+    "memo": "da75051bbc17a7d3150e4802566b0006a131b2503746f1cb94215cd18fb5a9e4",
     "projects": [
         {
             "name": "cloud.google.com/go",
@@ -47,27 +47,11 @@
             ]
         },
         {
-            "name": "github.com/Shopify/sarama",
-            "version": "v1.11.0",
-            "revision": "0fb560e5f7fbcaee2f75e3c34174320709f69944",
-            "packages": [
-                "."
-            ]
-        },
-        {
             "name": "github.com/Sirupsen/logrus",
             "version": "v0.11.5",
             "revision": "ba1b36c82c5e05c4f912a88eab0dcd91a171688f",
             "packages": [
                 "."
-            ]
-        },
-        {
-            "name": "github.com/apache/thrift",
-            "version": "0.10.0",
-            "revision": "b2a4d4ae21c789b689dd162deb819665567f481c",
-            "packages": [
-                "lib/go/thrift"
             ]
         },
         {
@@ -126,14 +110,6 @@
             ]
         },
         {
-            "name": "github.com/boltdb/bolt",
-            "version": "v1.3.0",
-            "revision": "583e8937c61f1af6513608ccc75c97b6abdf4ff9",
-            "packages": [
-                "."
-            ]
-        },
-        {
             "name": "github.com/coreos/go-oidc",
             "branch": "master",
             "revision": "be73733bb8cc830d0205609b95d125215f8e9c70",
@@ -181,30 +157,6 @@
             ]
         },
         {
-            "name": "github.com/eapache/go-resiliency",
-            "version": "v1.0.0",
-            "revision": "6800482f2c813e689c88b7ed3282262385011890",
-            "packages": [
-                "breaker"
-            ]
-        },
-        {
-            "name": "github.com/eapache/go-xerial-snappy",
-            "branch": "master",
-            "revision": "bb955e01b9346ac19dc29eb16586c90ded99a98c",
-            "packages": [
-                "."
-            ]
-        },
-        {
-            "name": "github.com/eapache/queue",
-            "version": "v1.0.2",
-            "revision": "ded5959c0d4e360646dc9e9908cff48666781367",
-            "packages": [
-                "."
-            ]
-        },
-        {
             "name": "github.com/emicklei/go-restful",
             "version": "v1.2",
             "revision": "777bb3f19bcafe2575ffb2a3e46af92509ae9594",
@@ -226,14 +178,6 @@
             "name": "github.com/go-ini/ini",
             "version": "v1.26.0",
             "revision": "1730955e3146956d6a087861380f9b4667ed5071",
-            "packages": [
-                "."
-            ]
-        },
-        {
-            "name": "github.com/go-logfmt/logfmt",
-            "version": "v0.3.0",
-            "revision": "390ab7935ee28ec6b286364bba9b4dd6410cb3d5",
             "packages": [
                 "."
             ]
@@ -275,8 +219,11 @@
             "version": "v0.4",
             "revision": "100ba4e885062801d56799d78530b73b178a78f3",
             "packages": [
+                "gogoproto",
                 "proto",
-                "sortkeys"
+                "protoc-gen-gogo/descriptor",
+                "sortkeys",
+                "types"
             ]
         },
         {
@@ -292,7 +239,8 @@
             "branch": "master",
             "revision": "c9c7427a2a70d2eb3bafa0ab2dc163e45f143317",
             "packages": [
-                "proto"
+                "proto",
+                "ptypes/timestamp"
             ]
         },
         {
@@ -392,22 +340,6 @@
             ]
         },
         {
-            "name": "github.com/klauspost/crc32",
-            "version": "v1.1",
-            "revision": "cb6bfca970f6908083f26f39a79009d608efd5cd",
-            "packages": [
-                "."
-            ]
-        },
-        {
-            "name": "github.com/kr/logfmt",
-            "branch": "master",
-            "revision": "b84e30acd515aadc4b783ad4ff83aff3299bdfe0",
-            "packages": [
-                "."
-            ]
-        },
-        {
             "name": "github.com/mailru/easyjson",
             "branch": "master",
             "revision": "db58e6f9072c545a3a24b8d44c51d81fff6dcb51",
@@ -484,40 +416,11 @@
             ]
         },
         {
-            "name": "github.com/openzipkin/zipkin-go-opentracing",
-            "version": "v0.2.3",
-            "revision": "6022d4d3ed39632fad842942bda1813a9b4f63c8",
-            "packages": [
-                ".",
-                "_thrift/gen-go/scribe",
-                "_thrift/gen-go/zipkincore",
-                "flag",
-                "types",
-                "wire"
-            ]
-        },
-        {
             "name": "github.com/pborman/uuid",
             "version": "v1.0",
             "revision": "a97ce2ca70fa5a848076093f05e639a89ca34d06",
             "packages": [
                 "."
-            ]
-        },
-        {
-            "name": "github.com/pierrec/lz4",
-            "branch": "master",
-            "revision": "90290f74b1b4d9c097f0a3b3c7eba2ef3875c699",
-            "packages": [
-                "."
-            ]
-        },
-        {
-            "name": "github.com/pierrec/xxHash",
-            "version": "v0.1.1",
-            "revision": "f051bb7f1d1aaf1b5a665d74fb6b0217712c69f7",
-            "packages": [
-                "xxHash32"
             ]
         },
         {
@@ -599,27 +502,11 @@
             ]
         },
         {
-            "name": "github.com/rcrowley/go-metrics",
-            "branch": "master",
-            "revision": "1f30fe9094a513ce4c700b9a54458bbb0c96996c",
-            "packages": [
-                "."
-            ]
-        },
-        {
             "name": "github.com/samuel/go-zookeeper",
             "branch": "master",
             "revision": "1d7be4effb13d2d908342d349d71a284a7542693",
             "packages": [
                 "zk"
-            ]
-        },
-        {
-            "name": "github.com/sburnett/lexicographic-tuples",
-            "branch": "master",
-            "revision": "0d464282e8c00ae6790278a57c91e5d527d2277c",
-            "packages": [
-                "."
             ]
         },
         {
@@ -679,22 +566,6 @@
                 "server",
                 "signals",
                 "user"
-            ]
-        },
-        {
-            "name": "github.com/willf/bitset",
-            "branch": "master",
-            "revision": "5c3c0fce48842b2c0bbaa99b4e61b0175d84b47c",
-            "packages": [
-                "."
-            ]
-        },
-        {
-            "name": "github.com/willf/bloom",
-            "version": "v2.0.0",
-            "revision": "73320a6e73f3e139842058d7e4886e09ca83ac9b",
-            "packages": [
-                "."
             ]
         },
         {

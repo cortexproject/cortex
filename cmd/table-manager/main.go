@@ -28,7 +28,11 @@ func main() {
 	util.RegisterFlags(&serverConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
 
-	if schemaConfig.ChunkTables.WriteScale.Enabled && storageConfig.ApplicationAutoScaling.URL == nil {
+	if (schemaConfig.ChunkTables.WriteScale.Enabled ||
+		schemaConfig.IndexTables.WriteScale.Enabled ||
+		schemaConfig.ChunkTables.InactiveWriteScale.Enabled ||
+		schemaConfig.IndexTables.InactiveWriteScale.Enabled) &&
+		storageConfig.ApplicationAutoScaling.URL == nil {
 		log.Fatal("WriteScale is enabled but no ApplicationAutoScaling URL has been provided")
 	}
 

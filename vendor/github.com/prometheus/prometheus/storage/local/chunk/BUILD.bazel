@@ -11,6 +11,7 @@ go_library(
         "varbit.go",
         "varbit_helpers.go",
     ],
+    importpath = "github.com/prometheus/prometheus/storage/local/chunk",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
@@ -26,6 +27,7 @@ go_test(
         "delta_test.go",
         "varbit_test.go",
     ],
+    importpath = "github.com/prometheus/prometheus/storage/local/chunk",
     library = ":go_default_library",
     deps = ["//vendor/github.com/prometheus/common/model:go_default_library"],
 )

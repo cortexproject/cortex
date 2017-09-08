@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["options.go"],
+    importpath = "github.com/syndtr/goleveldb/leveldb/opt",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/syndtr/goleveldb/leveldb/cache:go_default_library",

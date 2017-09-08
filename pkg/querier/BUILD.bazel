@@ -6,6 +6,7 @@ go_library(
         "dummy.go",
         "querier.go",
     ],
+    importpath = "github.com/weaveworks/cortex/pkg/querier",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/ingester/client:go_default_library",
@@ -22,6 +23,7 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["querier_test.go"],
+    importpath = "github.com/weaveworks/cortex/pkg/querier",
     library = ":go_default_library",
     deps = [
         "//pkg/ingester/client:go_default_library",

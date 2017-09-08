@@ -6,6 +6,7 @@ go_library(
         "client.go",
         "compression.go",
     ],
+    importpath = "github.com/prometheus/prometheus/util/httputil",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/prometheus/prometheus/config:go_default_library"],
 )

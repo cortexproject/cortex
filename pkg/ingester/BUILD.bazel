@@ -16,6 +16,7 @@ go_library(
         "user_state.go",
         "util.go",
     ],
+    importpath = "github.com/weaveworks/cortex/pkg/ingester",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/chunk:go_default_library",
@@ -43,6 +44,7 @@ go_test(
         "mapper_test.go",
         "rate_test.go",
     ],
+    importpath = "github.com/weaveworks/cortex/pkg/ingester",
     library = ":go_default_library",
     deps = [
         "//pkg/chunk:go_default_library",

@@ -11,6 +11,7 @@ go_library(
         "util.go",
         "watcher.go",
     ],
+    importpath = "github.com/sercand/kuberesolver",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/google.golang.org/grpc:go_default_library",
@@ -22,6 +23,7 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["balancer_test.go"],
+    importpath = "github.com/sercand/kuberesolver",
     library = ":go_default_library",
     deps = ["//vendor/google.golang.org/grpc/naming:go_default_library"],
 )

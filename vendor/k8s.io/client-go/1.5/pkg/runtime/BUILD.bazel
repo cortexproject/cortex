@@ -22,6 +22,7 @@ go_library(
         "unstructured.go",
         "zz_generated.deepcopy.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/runtime",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/gogo/protobuf/proto:go_default_library",

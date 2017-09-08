@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["main.go"],
+    importpath = "github.com/weaveworks/cortex/cmd/ruler",
     visibility = ["//visibility:private"],
     deps = [
         "//pkg/chunk:go_default_library",
@@ -21,6 +22,7 @@ go_library(
 
 go_binary(
     name = "ruler",
+    importpath = "github.com/weaveworks/cortex/cmd/ruler",
     library = ":go_default_library",
     visibility = ["//visibility:public"],
 )

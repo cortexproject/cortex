@@ -9,6 +9,7 @@ go_library(
         "types.go",
         "zz_generated.deepcopy.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/apis/authorization",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/ugorji/go/codec:go_default_library",

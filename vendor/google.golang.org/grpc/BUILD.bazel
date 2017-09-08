@@ -19,6 +19,7 @@ go_library(
         "stream.go",
         "trace.go",
     ],
+    importpath = "google.golang.org/grpc",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/golang/protobuf/proto:go_default_library",
@@ -54,6 +55,7 @@ go_test(
         "rpc_util_test.go",
         "server_test.go",
     ],
+    importpath = "google.golang.org/grpc",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/golang/protobuf/proto:go_default_library",

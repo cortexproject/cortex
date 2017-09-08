@@ -33,6 +33,7 @@ go_library(
         ],
         "//conditions:default": [],
     }),
+    importpath = "github.com/tinylib/msgp/msgp",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/philhofer/fwd:go_default_library"],
 )
@@ -52,6 +53,7 @@ go_test(
         "write_bytes_test.go",
         "write_test.go",
     ],
+    importpath = "github.com/tinylib/msgp/msgp",
     library = ":go_default_library",
 )
 
@@ -68,12 +70,13 @@ go_test(
         ],
         "//conditions:default": [],
     }),
+    importpath = "github.com/tinylib/msgp/msgp_test",
     deps = select({
         "@io_bazel_rules_go//go/platform:darwin_amd64": [
-            "//vendor/github.com/tinylib/msgp/msgp:go_default_library",
+            ":go_default_library",
         ],
         "@io_bazel_rules_go//go/platform:linux_amd64": [
-            "//vendor/github.com/tinylib/msgp/msgp:go_default_library",
+            ":go_default_library",
         ],
         "//conditions:default": [],
     }),

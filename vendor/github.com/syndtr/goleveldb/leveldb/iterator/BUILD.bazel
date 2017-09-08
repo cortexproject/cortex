@@ -8,6 +8,7 @@ go_library(
         "iter.go",
         "merged_iter.go",
     ],
+    importpath = "github.com/syndtr/goleveldb/leveldb/iterator",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/syndtr/goleveldb/leveldb/comparer:go_default_library",
@@ -24,11 +25,12 @@ go_test(
         "iter_suite_test.go",
         "merged_iter_test.go",
     ],
+    importpath = "github.com/syndtr/goleveldb/leveldb/iterator_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/onsi/ginkgo:go_default_library",
         "//vendor/github.com/onsi/gomega:go_default_library",
         "//vendor/github.com/syndtr/goleveldb/leveldb/comparer:go_default_library",
-        "//vendor/github.com/syndtr/goleveldb/leveldb/iterator:go_default_library",
         "//vendor/github.com/syndtr/goleveldb/leveldb/testutil:go_default_library",
     ],
 )

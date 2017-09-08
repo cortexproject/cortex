@@ -6,11 +6,13 @@ go_library(
         "context.go",
         "doc.go",
     ],
+    importpath = "github.com/gorilla/context",
     visibility = ["//visibility:public"],
 )
 
 go_test(
     name = "go_default_test",
     srcs = ["context_test.go"],
+    importpath = "github.com/gorilla/context",
     library = ":go_default_library",
 )

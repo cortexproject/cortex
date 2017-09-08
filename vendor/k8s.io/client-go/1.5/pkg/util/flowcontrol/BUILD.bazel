@@ -6,6 +6,7 @@ go_library(
         "backoff.go",
         "throttle.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/util/flowcontrol",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/juju/ratelimit:go_default_library",

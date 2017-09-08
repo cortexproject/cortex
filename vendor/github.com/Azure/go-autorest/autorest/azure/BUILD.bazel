@@ -11,6 +11,7 @@ go_library(
         "persist.go",
         "token.go",
     ],
+    importpath = "github.com/Azure/go-autorest/autorest/azure",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/Azure/go-autorest/autorest:go_default_library",
@@ -29,6 +30,7 @@ go_test(
         "persist_test.go",
         "token_test.go",
     ],
+    importpath = "github.com/Azure/go-autorest/autorest/azure",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/Azure/go-autorest/autorest:go_default_library",

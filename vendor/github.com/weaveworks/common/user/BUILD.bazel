@@ -8,6 +8,7 @@ go_library(
         "id.go",
         "logging.go",
     ],
+    importpath = "github.com/weaveworks/common/user",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/Sirupsen/logrus:go_default_library",

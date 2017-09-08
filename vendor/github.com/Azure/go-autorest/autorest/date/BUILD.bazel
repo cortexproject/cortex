@@ -8,6 +8,7 @@ go_library(
         "timerfc1123.go",
         "utility.go",
     ],
+    importpath = "github.com/Azure/go-autorest/autorest/date",
     visibility = ["//visibility:public"],
 )
 
@@ -18,5 +19,6 @@ go_test(
         "time_test.go",
         "timerfc1123_test.go",
     ],
+    importpath = "github.com/Azure/go-autorest/autorest/date",
     library = ":go_default_library",
 )

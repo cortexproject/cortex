@@ -7,6 +7,7 @@ go_library(
         "writer.go",
         "writer_unsafe.go",
     ],
+    importpath = "github.com/philhofer/fwd",
     visibility = ["//visibility:public"],
 )
 
@@ -16,5 +17,6 @@ go_test(
         "reader_test.go",
         "writer_test.go",
     ],
+    importpath = "github.com/philhofer/fwd",
     library = ":go_default_library",
 )

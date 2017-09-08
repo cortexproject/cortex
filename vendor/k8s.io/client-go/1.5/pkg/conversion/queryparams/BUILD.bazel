@@ -6,5 +6,6 @@ go_library(
         "convert.go",
         "doc.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/conversion/queryparams",
     visibility = ["//visibility:public"],
 )

@@ -11,6 +11,7 @@ go_library(
         "service.go",
         "waiters.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/service/dynamodb",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
@@ -31,13 +32,14 @@ go_test(
         "customizations_test.go",
         "examples_test.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/service/dynamodb_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/awserr:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/client:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/request:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/session:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/awstesting/unit:go_default_library",
-        "//vendor/github.com/aws/aws-sdk-go/service/dynamodb:go_default_library",
     ],
 )

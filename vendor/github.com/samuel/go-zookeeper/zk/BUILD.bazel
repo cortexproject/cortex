@@ -13,6 +13,7 @@ go_library(
         "structs.go",
         "util.go",
     ],
+    importpath = "github.com/samuel/go-zookeeper/zk",
     visibility = ["//visibility:public"],
 )
 
@@ -29,5 +30,6 @@ go_test(
         "util_test.go",
         "zk_test.go",
     ],
+    importpath = "github.com/samuel/go-zookeeper/zk",
     library = ":go_default_library",
 )

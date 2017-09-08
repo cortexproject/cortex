@@ -17,6 +17,7 @@ go_library(
         "well_known_labels.go",
         "zz_generated.deepcopy.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/api/unversioned",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/go-openapi/spec:go_default_library",

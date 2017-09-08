@@ -6,6 +6,7 @@ go_library(
         "driver.go",
         "registry.go",
     ],
+    importpath = "github.com/mattes/migrate/driver",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/mattes/migrate/file:go_default_library"],
 )

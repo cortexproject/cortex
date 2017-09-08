@@ -26,6 +26,7 @@ go_library(
         "util.go",
         "version.go",
     ],
+    importpath = "github.com/syndtr/goleveldb/leveldb",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/syndtr/goleveldb/leveldb/cache:go_default_library",
@@ -56,6 +57,7 @@ go_test(
         "testutil_test.go",
         "version_test.go",
     ],
+    importpath = "github.com/syndtr/goleveldb/leveldb",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/onsi/ginkgo:go_default_library",

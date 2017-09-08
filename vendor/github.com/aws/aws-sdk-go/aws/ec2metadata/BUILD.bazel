@@ -6,6 +6,7 @@ go_library(
         "api.go",
         "service.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/aws/ec2metadata",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
@@ -22,10 +23,11 @@ go_test(
         "api_test.go",
         "service_test.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/aws/ec2metadata_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/awserr:go_default_library",
-        "//vendor/github.com/aws/aws-sdk-go/aws/ec2metadata:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/request:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/awstesting/unit:go_default_library",
         "//vendor/github.com/stretchr/testify/assert:go_default_library",

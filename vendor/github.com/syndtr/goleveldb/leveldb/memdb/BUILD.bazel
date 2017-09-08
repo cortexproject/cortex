@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = ["memdb.go"],
+    importpath = "github.com/syndtr/goleveldb/leveldb/memdb",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/syndtr/goleveldb/leveldb/comparer:go_default_library",
@@ -19,6 +20,7 @@ go_test(
         "memdb_suite_test.go",
         "memdb_test.go",
     ],
+    importpath = "github.com/syndtr/goleveldb/leveldb/memdb",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/onsi/ginkgo:go_default_library",

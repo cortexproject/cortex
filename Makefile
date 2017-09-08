@@ -120,8 +120,7 @@ clean:
 # and https://github.com/bazelbuild/rules_go/issues/423.  If you ever regenerate
 # the BUILD files, watch out for the rules in vendor/golang.org/x/crypto/curve25519
 update-gazelle: $(PROTOS_GO)
-	gazelle -go_prefix github.com/weaveworks/cortex -external vendored \
-		-build_file_name BUILD.bazel
+	bazel run //:gazelle
 
 update-vendor:
 	dep ensure && dep prune

@@ -28,6 +28,7 @@ type ReadRing interface {
 	Get(key uint32, n int, op Operation) ([]*IngesterDesc, error)
 	BatchGet(keys []uint32, n int, op Operation) ([][]*IngesterDesc, error)
 	GetAll() []*IngesterDesc
+	IsHealthy(*IngesterDesc) bool
 }
 
 // Operation can be Read or Write
@@ -209,7 +210,8 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, er
 	return ingesters, nil
 }
 
-func (r *Ring) isHealthy(ingester *IngesterDesc) bool {
+// IsHealthy checks whether an ingester appears to be alive and heartbeating
+func (r *Ring) IsHealthy(ingester *IngesterDesc) bool {
 	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.heartbeatTimeout
 }
 
@@ -224,7 +226,7 @@ func (r *Ring) GetAll() []*IngesterDesc {
 
 	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.isHealthy(ingester) {
+		if !r.IsHealthy(ingester) {
 			continue
 		}
 		ingesters = append(ingesters, ingester)
@@ -287,7 +289,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		LEAVING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.isHealthy(ingester) {
+		if !r.IsHealthy(ingester) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

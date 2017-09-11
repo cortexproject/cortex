@@ -72,7 +72,6 @@ type Config struct {
 	BillingConfig billing.Config
 
 	ReplicationFactor   int
-	HeartbeatTimeout    time.Duration
 	RemoteTimeout       time.Duration
 	ClientCleanupPeriod time.Duration
 	IngestionRateLimit  float64
@@ -88,7 +87,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 
 	flag.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
-	flag.DurationVar(&cfg.HeartbeatTimeout, "distributor.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
@@ -324,7 +322,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		// will cause the whole write to fail.
 		liveIngesters := make([]*ring.IngesterDesc, 0, len(ingesters[i]))
 		for _, ingester := range ingesters[i] {
-			if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= d.cfg.HeartbeatTimeout {
+			if d.ring.IsHealthy(ingester) {
 				liveIngesters = append(liveIngesters, ingester)
 			}
 		}

@@ -200,6 +200,10 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, er
 	return ingesters, nil
 }
 
+func (r *Ring) isHealthy(ingester *IngesterDesc) bool {
+	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.heartbeatTimeout
+}
+
 // GetAll returns all available ingesters in the circle.
 func (r *Ring) GetAll() []*IngesterDesc {
 	r.mtx.RLock()
@@ -211,7 +215,7 @@ func (r *Ring) GetAll() []*IngesterDesc {
 
 	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
+		if !r.isHealthy(ingester) {
 			continue
 		}
 		ingesters = append(ingesters, ingester)
@@ -274,7 +278,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		LEAVING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
+		if !r.isHealthy(ingester) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

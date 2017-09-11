@@ -294,7 +294,7 @@ func (c *consulClient) WatchKey(key string, done <-chan struct{}, f func(interfa
 			WaitIndex:         index,
 			WaitTime:          longPollDuration,
 		})
-		if err != nil {
+		if err != nil || kvp == nil {
 			log.Errorf("Error getting path %s: %v", key, err)
 			backoff.wait()
 			continue
@@ -308,14 +308,10 @@ func (c *consulClient) WatchKey(key string, done <-chan struct{}, f func(interfa
 		}
 		index = meta.LastIndex
 
-		var out interface{}
-		if kvp != nil {
-			var err error
-			out, err = c.codec.Decode(kvp.Value)
-			if err != nil {
-				log.Errorf("Error decoding %s: %v", key, err)
-				continue
-			}
+		out, err := c.codec.Decode(kvp.Value)
+		if err != nil {
+			log.Errorf("Error decoding %s: %v", key, err)
+			continue
 		}
 		if !f(out) {
 			return

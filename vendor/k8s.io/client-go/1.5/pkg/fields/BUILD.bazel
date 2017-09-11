@@ -8,6 +8,7 @@ go_library(
         "requirements.go",
         "selector.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/fields",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/client-go/1.5/pkg/selection:go_default_library"],
 )

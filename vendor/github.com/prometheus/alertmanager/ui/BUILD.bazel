@@ -6,6 +6,7 @@ go_library(
         "bindata.go",
         "web.go",
     ],
+    importpath = "github.com/prometheus/alertmanager/ui",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",

@@ -9,6 +9,7 @@ go_library(
         "port_split.go",
         "util.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/util/net",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",

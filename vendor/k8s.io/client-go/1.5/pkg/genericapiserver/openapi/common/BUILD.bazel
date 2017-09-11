@@ -6,6 +6,7 @@ go_library(
         "common.go",
         "doc.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/genericapiserver/openapi/common",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/go-openapi/spec:go_default_library"],
 )

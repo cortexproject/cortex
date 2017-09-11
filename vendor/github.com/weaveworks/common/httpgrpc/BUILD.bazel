@@ -6,6 +6,7 @@ go_library(
         "httpgrpc.go",
         "httpgrpc.pb.go",
     ],
+    importpath = "github.com/weaveworks/common/httpgrpc",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/Sirupsen/logrus:go_default_library",

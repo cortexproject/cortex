@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = ["shared_config.go"],
+    importpath = "github.com/aws/aws-sdk-go/internal/shareddefaults",
     visibility = ["//vendor/github.com/aws/aws-sdk-go:__subpackages__"],
 )
 
@@ -16,8 +17,9 @@ go_test(
         ],
         "//conditions:default": [],
     }),
+    importpath = "github.com/aws/aws-sdk-go/internal/shareddefaults_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/awstesting:go_default_library",
-        "//vendor/github.com/aws/aws-sdk-go/internal/shareddefaults:go_default_library",
     ],
 )

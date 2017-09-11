@@ -12,6 +12,7 @@ go_library(
         "urlbackoff.go",
         "versions.go",
     ],
+    importpath = "k8s.io/client-go/1.5/rest",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",
@@ -47,6 +48,7 @@ go_test(
         "url_utils_test.go",
         "urlbackoff_test.go",
     ],
+    importpath = "k8s.io/client-go/1.5/rest",
     library = ":go_default_library",
     deps = [
         "//vendor/k8s.io/client-go/1.5/pkg/api:go_default_library",

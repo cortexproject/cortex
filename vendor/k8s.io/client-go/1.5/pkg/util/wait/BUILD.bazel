@@ -6,5 +6,6 @@ go_library(
         "doc.go",
         "wait.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/util/wait",
     visibility = ["//visibility:public"],
 )

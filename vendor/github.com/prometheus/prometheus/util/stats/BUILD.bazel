@@ -6,5 +6,6 @@ go_library(
         "query_stats.go",
         "timer.go",
     ],
+    importpath = "github.com/prometheus/prometheus/util/stats",
     visibility = ["//visibility:public"],
 )

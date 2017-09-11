@@ -1,3 +1,12 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_prefix")
+load("@io_bazel_rules_go//go:def.bzl", "go_prefix", "gazelle")
 
 go_prefix("github.com/weaveworks/cortex")
+gazelle(
+    name = "gazelle",
+    args = [
+        "-build_file_name",
+        "BUILD.bazel",
+    ],
+    external = "vendored",
+    prefix = "github.com/weaveworks/cortex",
+)

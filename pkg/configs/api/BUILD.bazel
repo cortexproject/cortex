@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = ["api.go"],
+    importpath = "github.com/weaveworks/cortex/pkg/configs/api",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/configs:go_default_library",
@@ -20,6 +21,7 @@ go_test(
         "api_test.go",
         "helpers_test.go",
     ],
+    importpath = "github.com/weaveworks/cortex/pkg/configs/api_test",
     deps = [
         ":go_default_library",
         "//pkg/configs:go_default_library",

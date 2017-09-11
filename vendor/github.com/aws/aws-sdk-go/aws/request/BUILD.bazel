@@ -18,6 +18,7 @@ go_library(
         "validation.go",
         "waiter.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/aws/request",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
@@ -38,6 +39,7 @@ go_test(
         "retryer_test.go",
         "timeout_read_closer_test.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/aws/request",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
@@ -61,7 +63,9 @@ go_test(
         "timeout_read_closer_benchmark_test.go",
         "waiter_test.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/aws/request_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/awserr:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/client:go_default_library",
@@ -69,7 +73,6 @@ go_test(
         "//vendor/github.com/aws/aws-sdk-go/aws/corehandlers:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/credentials:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/defaults:go_default_library",
-        "//vendor/github.com/aws/aws-sdk-go/aws/request:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/signer/v4:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/awstesting:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/awstesting/mock:go_default_library",

@@ -9,6 +9,7 @@ go_library(
         "server.go",
         "shared.go",
     ],
+    importpath = "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/opentracing/opentracing-go:go_default_library",

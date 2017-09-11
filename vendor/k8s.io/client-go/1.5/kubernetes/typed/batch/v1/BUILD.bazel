@@ -8,6 +8,7 @@ go_library(
         "generated_expansion.go",
         "job.go",
     ],
+    importpath = "k8s.io/client-go/1.5/kubernetes/typed/batch/v1",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/client-go/1.5/pkg/api:go_default_library",

@@ -6,6 +6,7 @@ go_library(
         "list.go",
         "map.go",
     ],
+    importpath = "github.com/lann/ps",
     visibility = ["//visibility:public"],
 )
 
@@ -15,5 +16,6 @@ go_test(
         "list_test.go",
         "map_test.go",
     ],
+    importpath = "github.com/lann/ps",
     library = ":go_default_library",
 )

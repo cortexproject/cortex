@@ -8,6 +8,7 @@ go_library(
         "doc.go",
         "generated_expansion.go",
     ],
+    importpath = "k8s.io/client-go/1.5/kubernetes/typed/certificates/v1alpha1",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/k8s.io/client-go/1.5/pkg/api:go_default_library",

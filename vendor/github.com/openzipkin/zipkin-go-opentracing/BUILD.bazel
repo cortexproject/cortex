@@ -23,6 +23,7 @@ go_library(
         "zipkin-endpoint.go",
         "zipkin-recorder.go",
     ],
+    importpath = "github.com/openzipkin/zipkin-go-opentracing",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/Shopify/sarama:go_default_library",
@@ -54,6 +55,7 @@ go_test(
         "span_test.go",
         "testutil_test.go",
     ],
+    importpath = "github.com/openzipkin/zipkin-go-opentracing",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/Shopify/sarama:go_default_library",
@@ -73,10 +75,11 @@ go_test(
         "propagation_test.go",
         "sample_test.go",
     ],
+    importpath = "github.com/openzipkin/zipkin-go-opentracing_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/davecgh/go-spew/spew:go_default_library",
         "//vendor/github.com/opentracing/opentracing-go:go_default_library",
-        "//vendor/github.com/openzipkin/zipkin-go-opentracing:go_default_library",
         "//vendor/github.com/openzipkin/zipkin-go-opentracing/flag:go_default_library",
         "//vendor/github.com/openzipkin/zipkin-go-opentracing/types:go_default_library",
     ],

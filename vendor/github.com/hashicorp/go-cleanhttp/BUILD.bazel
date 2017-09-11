@@ -6,5 +6,6 @@ go_library(
         "cleanhttp.go",
         "doc.go",
     ],
+    importpath = "github.com/hashicorp/go-cleanhttp",
     visibility = ["//visibility:public"],
 )

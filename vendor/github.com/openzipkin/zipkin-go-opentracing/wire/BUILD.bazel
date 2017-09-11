@@ -7,6 +7,7 @@ go_library(
         "gen.go",
         "wire.pb.go",
     ],
+    importpath = "github.com/openzipkin/zipkin-go-opentracing/wire",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/gogo/protobuf/proto:go_default_library",
@@ -24,10 +25,11 @@ filegroup(
 go_test(
     name = "go_default_xtest",
     srcs = ["carrier_test.go"],
+    importpath = "github.com/openzipkin/zipkin-go-opentracing/wire_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/openzipkin/zipkin-go-opentracing:go_default_library",
         "//vendor/github.com/openzipkin/zipkin-go-opentracing/flag:go_default_library",
         "//vendor/github.com/openzipkin/zipkin-go-opentracing/types:go_default_library",
-        "//vendor/github.com/openzipkin/zipkin-go-opentracing/wire:go_default_library",
     ],
 )

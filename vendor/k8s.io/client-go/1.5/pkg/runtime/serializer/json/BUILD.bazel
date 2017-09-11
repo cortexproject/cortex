@@ -6,6 +6,7 @@ go_library(
         "json.go",
         "meta.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/runtime/serializer/json",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/ghodss/yaml:go_default_library",

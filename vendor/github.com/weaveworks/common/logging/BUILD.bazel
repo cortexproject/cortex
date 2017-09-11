@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["logging.go"],
+    importpath = "github.com/weaveworks/common/logging",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/Sirupsen/logrus:go_default_library",

@@ -13,6 +13,7 @@ go_library(
         "quantile.go",
         "test.go",
     ],
+    importpath = "github.com/prometheus/prometheus/promql",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
@@ -38,6 +39,7 @@ go_test(
         "printer_test.go",
         "promql_test.go",
     ],
+    importpath = "github.com/prometheus/prometheus/promql",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/prometheus/common/model:go_default_library",

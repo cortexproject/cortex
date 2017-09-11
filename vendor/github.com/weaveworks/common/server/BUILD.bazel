@@ -6,6 +6,7 @@ go_library(
         "fake_server.pb.go",
         "server.go",
     ],
+    importpath = "github.com/weaveworks/common/server",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/Sirupsen/logrus:go_default_library",
@@ -36,6 +37,7 @@ filegroup(
 go_test(
     name = "go_default_test",
     srcs = ["server_test.go"],
+    importpath = "github.com/weaveworks/common/server",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/golang/protobuf/ptypes/empty:go_default_library",

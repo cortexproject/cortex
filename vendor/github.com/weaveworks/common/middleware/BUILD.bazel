@@ -14,6 +14,7 @@ go_library(
         "middleware.go",
         "path_rewrite.go",
     ],
+    importpath = "github.com/weaveworks/common/middleware",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/Sirupsen/logrus:go_default_library",
@@ -30,5 +31,6 @@ go_library(
 go_test(
     name = "go_default_xtest",
     srcs = ["instrument_test.go"],
-    deps = ["//vendor/github.com/weaveworks/common/middleware:go_default_library"],
+    importpath = "github.com/weaveworks/common/middleware_test",
+    deps = [":go_default_library"],
 )

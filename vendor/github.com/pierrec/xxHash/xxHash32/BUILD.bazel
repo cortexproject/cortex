@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = ["xxHash32.go"],
+    importpath = "github.com/pierrec/xxHash/xxHash32",
     visibility = ["//visibility:public"],
 )
 
@@ -12,5 +13,6 @@ go_test(
         "example_test.go",
         "xxHash32_test.go",
     ],
-    deps = ["//vendor/github.com/pierrec/xxHash/xxHash32:go_default_library"],
+    importpath = "github.com/pierrec/xxHash/xxHash32_test",
+    deps = [":go_default_library"],
 )

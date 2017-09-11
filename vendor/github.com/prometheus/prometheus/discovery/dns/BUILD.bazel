@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["dns.go"],
+    importpath = "github.com/prometheus/prometheus/discovery/dns",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/miekg/dns:go_default_library",

@@ -6,6 +6,7 @@ go_library(
         "handlers.go",
         "param_validator.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/aws/corehandlers",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
@@ -22,12 +23,13 @@ go_test(
         "handlers_test.go",
         "param_validator_test.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/aws/corehandlers_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/awserr:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/client:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/client/metadata:go_default_library",
-        "//vendor/github.com/aws/aws-sdk-go/aws/corehandlers:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/credentials:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/request:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/session:go_default_library",

@@ -3,5 +3,6 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["flags.go"],
+    importpath = "github.com/openzipkin/zipkin-go-opentracing/flag",
     visibility = ["//visibility:public"],
 )

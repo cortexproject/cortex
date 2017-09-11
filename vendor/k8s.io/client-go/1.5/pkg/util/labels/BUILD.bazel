@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "labels.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/util/labels",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/client-go/1.5/pkg/api/unversioned:go_default_library"],
 )

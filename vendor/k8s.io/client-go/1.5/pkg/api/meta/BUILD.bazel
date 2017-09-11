@@ -14,6 +14,7 @@ go_library(
         "restmapper.go",
         "unstructured.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/api/meta",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",

@@ -10,6 +10,7 @@ go_library(
         "regexp.go",
         "route.go",
     ],
+    importpath = "github.com/gorilla/mux",
     visibility = ["//visibility:public"],
     deps = ["//vendor/github.com/gorilla/context:go_default_library"],
 )
@@ -23,6 +24,7 @@ go_test(
         "mux_test.go",
         "old_test.go",
     ],
+    importpath = "github.com/gorilla/mux",
     library = ":go_default_library",
     deps = ["//vendor/github.com/gorilla/context:go_default_library"],
 )

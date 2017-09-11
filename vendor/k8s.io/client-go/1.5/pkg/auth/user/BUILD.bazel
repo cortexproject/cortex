@@ -6,5 +6,6 @@ go_library(
         "doc.go",
         "user.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/auth/user",
     visibility = ["//visibility:public"],
 )

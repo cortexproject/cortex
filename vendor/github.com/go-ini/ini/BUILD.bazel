@@ -10,6 +10,7 @@ go_library(
         "section.go",
         "struct.go",
     ],
+    importpath = "github.com/go-ini/ini",
     visibility = ["//visibility:public"],
 )
 
@@ -22,6 +23,7 @@ go_test(
         "section_test.go",
         "struct_test.go",
     ],
+    importpath = "github.com/go-ini/ini",
     library = ":go_default_library",
     deps = ["//vendor/github.com/smartystreets/goconvey/convey:go_default_library"],
 )

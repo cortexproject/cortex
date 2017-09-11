@@ -6,5 +6,6 @@ go_library(
         "bytes_comparer.go",
         "comparer.go",
     ],
+    importpath = "github.com/syndtr/goleveldb/leveldb/comparer",
     visibility = ["//visibility:public"],
 )

@@ -10,6 +10,7 @@ go_library(
         "range.go",
         "util.go",
     ],
+    importpath = "github.com/syndtr/goleveldb/leveldb/util",
     visibility = ["//visibility:public"],
 )
 
@@ -19,5 +20,6 @@ go_test(
         "buffer_test.go",
         "hash_test.go",
     ],
+    importpath = "github.com/syndtr/goleveldb/leveldb/util",
     library = ":go_default_library",
 )

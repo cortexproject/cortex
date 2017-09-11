@@ -9,5 +9,6 @@ go_library(
         "uid.go",
         "unix_user_id.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/types",
     visibility = ["//visibility:public"],
 )

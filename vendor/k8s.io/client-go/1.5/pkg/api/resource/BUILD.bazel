@@ -11,6 +11,7 @@ go_library(
         "scale_int.go",
         "suffix.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/api/resource",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/go-openapi/spec:go_default_library",

@@ -24,6 +24,7 @@ go_library(
         ],
         "//conditions:default": [],
     }),
+    importpath = "golang.org/x/sys/windows",
     visibility = ["//visibility:public"],
 )
 
@@ -36,9 +37,10 @@ go_test(
         ],
         "//conditions:default": [],
     }),
+    importpath = "golang.org/x/sys/windows_test",
     deps = select({
         "@io_bazel_rules_go//go/platform:windows_amd64": [
-            "//vendor/golang.org/x/sys/windows:go_default_library",
+            ":go_default_library",
         ],
         "//conditions:default": [],
     }),

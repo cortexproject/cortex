@@ -8,6 +8,7 @@ go_library(
         "io.go",
         "pem.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/util/cert",
     visibility = ["//visibility:public"],
     deps = ["//vendor/k8s.io/client-go/1.5/pkg/apis/certificates:go_default_library"],
 )

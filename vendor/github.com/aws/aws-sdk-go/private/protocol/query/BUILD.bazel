@@ -7,6 +7,7 @@ go_library(
         "unmarshal.go",
         "unmarshal_error.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/private/protocol/query",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws/awserr:go_default_library",
@@ -22,7 +23,9 @@ go_test(
         "build_test.go",
         "unmarshal_test.go",
     ],
+    importpath = "github.com/aws/aws-sdk-go/private/protocol/query_test",
     deps = [
+        ":go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/client:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/client/metadata:go_default_library",
@@ -31,7 +34,6 @@ go_test(
         "//vendor/github.com/aws/aws-sdk-go/awstesting:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/awstesting/unit:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/private/protocol:go_default_library",
-        "//vendor/github.com/aws/aws-sdk-go/private/protocol/query:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/private/util:go_default_library",
         "//vendor/github.com/stretchr/testify/assert:go_default_library",

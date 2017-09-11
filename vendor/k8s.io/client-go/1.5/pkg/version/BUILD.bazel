@@ -8,6 +8,7 @@ go_library(
         "semver.go",
         "version.go",
     ],
+    importpath = "k8s.io/client-go/1.5/pkg/version",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/blang/semver:go_default_library",

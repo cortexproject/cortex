@@ -21,6 +21,15 @@ const (
 	ConsulKey = "ring"
 )
 
+// ReadRing represents the read inferface to the ring.
+type ReadRing interface {
+	prometheus.Collector
+
+	Get(key uint32, n int, op Operation) ([]*IngesterDesc, error)
+	BatchGet(keys []uint32, n int, op Operation) ([][]*IngesterDesc, error)
+	GetAll() []*IngesterDesc
+}
+
 // Operation can be Read or Write
 type Operation int
 

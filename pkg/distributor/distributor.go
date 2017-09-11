@@ -44,7 +44,7 @@ var (
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
 	cfg        Config
-	ring       ReadRing
+	ring       ring.ReadRing
 	clientsMtx sync.RWMutex
 	clients    map[string]client.IngesterClient
 	quit       chan struct{}
@@ -63,15 +63,6 @@ type Distributor struct {
 	ingesterAppendFailures *prometheus.CounterVec
 	ingesterQueries        *prometheus.CounterVec
 	ingesterQueryFailures  *prometheus.CounterVec
-}
-
-// ReadRing represents the read inferface to the ring.
-type ReadRing interface {
-	prometheus.Collector
-
-	Get(key uint32, n int, op ring.Operation) ([]*ring.IngesterDesc, error)
-	BatchGet(keys []uint32, n int, op ring.Operation) ([][]*ring.IngesterDesc, error)
-	GetAll() []*ring.IngesterDesc
 }
 
 // Config contains the configuration require to
@@ -105,7 +96,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, ring ReadRing) (*Distributor, error) {
+func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	if 0 > cfg.ReplicationFactor {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}

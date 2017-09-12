@@ -21,6 +21,16 @@ const (
 	ConsulKey = "ring"
 )
 
+// ReadRing represents the read inferface to the ring.
+type ReadRing interface {
+	prometheus.Collector
+
+	Get(key uint32, n int, op Operation) ([]*IngesterDesc, error)
+	BatchGet(keys []uint32, n int, op Operation) ([][]*IngesterDesc, error)
+	GetAll() []*IngesterDesc
+	IsHealthy(*IngesterDesc) bool
+}
+
 // Operation can be Read or Write
 type Operation int
 
@@ -200,6 +210,11 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, er
 	return ingesters, nil
 }
 
+// IsHealthy checks whether an ingester appears to be alive and heartbeating
+func (r *Ring) IsHealthy(ingester *IngesterDesc) bool {
+	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.heartbeatTimeout
+}
+
 // GetAll returns all available ingesters in the circle.
 func (r *Ring) GetAll() []*IngesterDesc {
 	r.mtx.RLock()
@@ -211,7 +226,7 @@ func (r *Ring) GetAll() []*IngesterDesc {
 
 	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
+		if !r.IsHealthy(ingester) {
 			continue
 		}
 		ingesters = append(ingesters, ingester)
@@ -274,7 +289,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		LEAVING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > r.heartbeatTimeout {
+		if !r.IsHealthy(ingester) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

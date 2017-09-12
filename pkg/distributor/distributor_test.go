@@ -20,7 +20,8 @@ import (
 // mockRing doesn't do any consistent hashing, just returns same ingesters for every query.
 type mockRing struct {
 	prometheus.Counter
-	ingesters []*ring.IngesterDesc
+	ingesters        []*ring.IngesterDesc
+	heartbeatTimeout time.Duration
 }
 
 func (r mockRing) Get(key uint32, n int, op ring.Operation) ([]*ring.IngesterDesc, error) {
@@ -37,6 +38,10 @@ func (r mockRing) BatchGet(keys []uint32, n int, op ring.Operation) ([][]*ring.I
 
 func (r mockRing) GetAll() []*ring.IngesterDesc {
 	return r.ingesters
+}
+
+func (r mockRing) IsHealthy(ingester *ring.IngesterDesc) bool {
+	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.heartbeatTimeout
 }
 
 type mockIngester struct {
@@ -149,12 +154,12 @@ func TestDistributorPush(t *testing.T) {
 				Counter: prometheus.NewCounter(prometheus.CounterOpts{
 					Name: "foo",
 				}),
-				ingesters: ingesterDescs,
+				ingesters:        ingesterDescs,
+				heartbeatTimeout: 1 * time.Minute,
 			}
 
 			d, err := New(Config{
 				ReplicationFactor:   3,
-				HeartbeatTimeout:    1 * time.Minute,
 				RemoteTimeout:       1 * time.Minute,
 				ClientCleanupPeriod: 1 * time.Minute,
 				IngestionRateLimit:  10000,
@@ -289,12 +294,12 @@ func TestDistributorQuery(t *testing.T) {
 				Counter: prometheus.NewCounter(prometheus.CounterOpts{
 					Name: "foo",
 				}),
-				ingesters: ingesterDescs,
+				ingesters:        ingesterDescs,
+				heartbeatTimeout: 1 * time.Minute,
 			}
 
 			d, err := New(Config{
 				ReplicationFactor:   3,
-				HeartbeatTimeout:    1 * time.Minute,
 				RemoteTimeout:       1 * time.Minute,
 				ClientCleanupPeriod: 1 * time.Minute,
 				IngestionRateLimit:  10000,

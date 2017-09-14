@@ -1,5 +1,21 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+
+proto_library(
+    name = "ring_proto",
+    srcs = ["ring.proto"],
+    visibility = ["//visibility:public"],
+)
+
+go_proto_library(
+    name = "ring_go_proto",
+    proto = ":ring_proto",
+    importpath = "github.com/weaveworks/cortex/pkg/ring",
+    compiler = "//tools/bazel-rules:gogo_proto",
+    visibility = ["//visibility:public"],
+)
+
 go_library(
     name = "go_default_library",
     srcs = [
@@ -8,9 +24,9 @@ go_library(
         "http.go",
         "model.go",
         "ring.go",
-        "ring.pb.go",
         "util.go",
     ],
+    embed = [":ring_go_proto"],
     importpath = "github.com/weaveworks/cortex/pkg/ring",
     visibility = ["//visibility:public"],
     deps = [

@@ -1,0 +1,42 @@
+load('@io_bazel_rules_go//proto:toolchain.bzl', 'go_proto_toolchain')
+
+go_proto_toolchain(
+    name = "gogo_impl",
+    deps = [
+        "//vendor/github.com/gogo/protobuf/gogoproto:go_default_library",
+        "//vendor/github.com/gogo/protobuf/proto:go_default_library",
+        "//vendor/github.com/gogo/protobuf/sortkeys:go_default_library",
+    ],
+    plugin = "@com_github_gogo_protobuf//protoc-gen-gogoslick",
+    visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "gogo",
+    toolchain_type = "@io_bazel_rules_go//proto:go_proto",
+    exec_compatible_with = [],
+    target_compatible_with = [],
+    toolchain = "//tools/build/bazel:gogo_impl",
+)
+
+go_proto_toolchain(
+    name = "gogo_grpc_impl",
+    deps = [
+        "//vendor/github.com/gogo/protobuf/gogoproto:go_default_library",
+        "//vendor/github.com/gogo/protobuf/proto:go_default_library",
+        "//vendor/github.com/gogo/protobuf/sortkeys:go_default_library",
+        "//vendor/google.golang.org/grpc:go_default_library",
+        "//vendor/golang.org/x/net/context:go_default_library",
+    ],
+    plugin = "@com_github_gogo_protobuf//protoc-gen-gogoslick",
+    options = ["plugins=grpc"],
+    visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "gogo_grpc",
+    toolchain_type = "@io_bazel_rules_go//proto:go_grpc",
+    exec_compatible_with = [],
+    target_compatible_with = [],
+    toolchain = "//tools/build/bazel:gogo_grpc_impl",
+)

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package ring;
 
+option go_package = "github.com/weaveworks/cortex/pkg/ring";
+
 message Desc {
 	map<string,IngesterDesc> ingesters = 1;
 	repeated TokenDesc tokens = 2;

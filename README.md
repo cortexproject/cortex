@@ -47,11 +47,11 @@ so it is not used to produce the final binaries and docker container images.
 
 We use `dep` to vendor dependencies.  To fetch a new dependency, run:
 
-    dep ensure && dep prune
+    make update-vendor
 
 To update dependencies, run
 
-    dep ensure --update && dep prune
+    dep ensure --update && make update-vendor
 
 ## Further reading
 

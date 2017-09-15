@@ -535,8 +535,8 @@
 [[projects]]
   branch = "master"
   name = "github.com/weaveworks/common"
-  packages = ["errors","httpgrpc","httpgrpc/server","instrument","logging","mflag","mflagext","middleware","mtime","server","signals","test","user"]
-  revision = "9d0d55ac26906ec5438e1db8837c78cad26c2428"
+  packages = ["aws","errors","httpgrpc","httpgrpc/server","instrument","logging","mflag","mflagext","middleware","mtime","server","signals","test","user"]
+  revision = "b811bc96d43d51edbae6693e7d1b0a367114595b"
 
 [[projects]]
   name = "github.com/weaveworks/mesh"
@@ -636,6 +636,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8be12a636608cb17b57d70dba3863bc0a42c6845db85421306b96a356539f059"
+  inputs-digest = "66364b9ca354031a147a4cc7f92dcb00ff3a323a95ae1a6459714fddc65d7f39"
   solver-name = "gps-cdcl"
   solver-version = 1

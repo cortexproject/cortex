@@ -42,11 +42,7 @@ func main() {
 		&chunkStoreConfig, &schemaConfig, &storageConfig)
 	flag.Parse()
 
-	hook, err := promrus.NewPrometheusHook()
-	if err != nil {
-		log.Fatalf("Error initializing promrus: %v", err)
-	}
-	log.AddHook(hook)
+	log.AddHook(promrus.MustNewPrometheusHook())
 
 	r, err := ring.New(ringConfig)
 	if err != nil {

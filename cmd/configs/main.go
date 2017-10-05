@@ -29,11 +29,7 @@ func main() {
 	util.RegisterFlags(&serverConfig, &dbConfig)
 	flag.Parse()
 
-	hook, err := promrus.NewPrometheusHook()
-	if err != nil {
-		log.Fatalf("Error initializing promrus: %v", err)
-	}
-	log.AddHook(hook)
+	log.AddHook(promrus.MustNewPrometheusHook())
 
 	db, err := db.New(dbConfig)
 	if err != nil {

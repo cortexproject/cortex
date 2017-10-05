@@ -13,6 +13,8 @@ type PrometheusHook struct {
 var supportedLevels = []logrus.Level{logrus.DebugLevel, logrus.InfoLevel, logrus.WarnLevel, logrus.ErrorLevel}
 
 // NewPrometheusHook creates a new instance of PrometheusHook which exposes Prometheus counters for various log levels.
+// Contrarily to MustNewPrometheusHook, it returns an error to the caller in case of issue.
+// Use NewPrometheusHook if you want more control. Use MustNewPrometheusHook if you want a less verbose hook creation.
 func NewPrometheusHook() (*PrometheusHook, error) {
 	counterVec := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "log_messages",
@@ -30,6 +32,17 @@ func NewPrometheusHook() (*PrometheusHook, error) {
 	return &PrometheusHook{
 		counterVec: counterVec,
 	}, nil
+}
+
+// MustNewPrometheusHook creates a new instance of PrometheusHook which exposes Prometheus counters for various log levels.
+// Contrarily to NewPrometheusHook, it does not return any error to the caller, but panics instead.
+// Use MustNewPrometheusHook if you want a less verbose hook creation. Use NewPrometheusHook if you want more control.
+func MustNewPrometheusHook() *PrometheusHook {
+	hook, err := NewPrometheusHook()
+	if err != nil {
+		panic(err)
+	}
+	return hook
 }
 
 // Fire increments the appropriate Prometheus counter depending on the entry's log level.

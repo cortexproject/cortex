@@ -12,7 +12,7 @@
 
 [[constraint]]
   name = "github.com/weaveworks/promrus"
-  version = "v1.0.0-legacy"
+  version = "v1.1.0-legacy"
 
 [[override]]
   name = "github.com/Azure/azure-sdk-for-go"

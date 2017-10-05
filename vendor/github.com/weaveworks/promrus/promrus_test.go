@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
 	log "github.com/Sirupsen/logrus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/assert"
+
 	"github.com/weaveworks/promrus"
 )
 
@@ -23,46 +23,45 @@ const (
 
 func TestExposeAndQueryLogrusCounters(t *testing.T) {
 	// Create Prometheus hook and configure logrus to use it:
-	hook, err := promrus.NewPrometheusHook()
-	assert.Nil(t, err)
+	hook := promrus.MustNewPrometheusHook()
 	log.AddHook(hook)
-	log.SetLevel(logrus.DebugLevel)
+	log.SetLevel(log.DebugLevel)
 
 	httpServePrometheusMetrics(t)
 
 	lines := httpGetMetrics(t)
-	assert.Equal(t, 0, countFor(t, logrus.DebugLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.InfoLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.WarnLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.ErrorLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.DebugLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.InfoLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.WarnLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.ErrorLevel, lines))
 
 	log.Debug("this is at debug level!")
 	lines = httpGetMetrics(t)
-	assert.Equal(t, 1, countFor(t, logrus.DebugLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.InfoLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.WarnLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.ErrorLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.DebugLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.InfoLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.WarnLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.ErrorLevel, lines))
 
 	log.Info("this is at info level!")
 	lines = httpGetMetrics(t)
-	assert.Equal(t, 1, countFor(t, logrus.DebugLevel, lines))
-	assert.Equal(t, 1, countFor(t, logrus.InfoLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.WarnLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.ErrorLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.DebugLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.InfoLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.WarnLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.ErrorLevel, lines))
 
 	log.Warn("this is at warning level!")
 	lines = httpGetMetrics(t)
-	assert.Equal(t, 1, countFor(t, logrus.DebugLevel, lines))
-	assert.Equal(t, 1, countFor(t, logrus.InfoLevel, lines))
-	assert.Equal(t, 1, countFor(t, logrus.WarnLevel, lines))
-	assert.Equal(t, 0, countFor(t, logrus.ErrorLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.DebugLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.InfoLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.WarnLevel, lines))
+	assert.Equal(t, 0, countFor(t, log.ErrorLevel, lines))
 
 	log.Error("this is at error level!")
 	lines = httpGetMetrics(t)
-	assert.Equal(t, 1, countFor(t, logrus.DebugLevel, lines))
-	assert.Equal(t, 1, countFor(t, logrus.InfoLevel, lines))
-	assert.Equal(t, 1, countFor(t, logrus.WarnLevel, lines))
-	assert.Equal(t, 1, countFor(t, logrus.ErrorLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.DebugLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.InfoLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.WarnLevel, lines))
+	assert.Equal(t, 1, countFor(t, log.ErrorLevel, lines))
 }
 
 // httpServePrometheusMetrics exposes the Prometheus metrics over HTTP, in a different go routine.
@@ -85,7 +84,7 @@ func httpGetMetrics(t *testing.T) []string {
 }
 
 // countFor is a helper function to get the counter's value for the provided level.
-func countFor(t *testing.T, level logrus.Level, lines []string) int {
+func countFor(t *testing.T, level log.Level, lines []string) int {
 	// Metrics are exposed as per the below example:
 	//   # HELP test_debug Number of log statements at debug level.
 	//   # TYPE test_debug counter

@@ -28,11 +28,8 @@ func main() {
 	)
 	util.RegisterFlags(&serverConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
-	hook, err := promrus.NewPrometheusHook()
-	if err != nil {
-		log.Fatalf("Error initializing promrus: %v", err)
-	}
-	log.AddHook(hook)
+
+	log.AddHook(promrus.MustNewPrometheusHook())
 
 	if (schemaConfig.ChunkTables.WriteScale.Enabled ||
 		schemaConfig.IndexTables.WriteScale.Enabled ||

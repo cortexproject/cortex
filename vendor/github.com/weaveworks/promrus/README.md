@@ -42,10 +42,7 @@ import (
 
 func main() {
 	// Create the Prometheus hook:
-	hook, err := promrus.NewPrometheusHook()
-	if err != nil {
-		return
-	}
+	hook := promrus.MustNewPrometheusHook()
 
 	// Configure logrus to use the Prometheus hook:
 	log.AddHook(hook)

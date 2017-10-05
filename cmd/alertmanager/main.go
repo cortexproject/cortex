@@ -38,10 +38,8 @@ func main() {
 	)
 	util.RegisterFlags(&serverConfig, &alertmanagerConfig)
 	flag.Parse()
-	hook, err := promrus.NewPrometheusHook()
-	if err != nil {
-		log.Fatalf("Error initializing promrus: %v", err)
-	}
+
+	hook := promrus.MustNewPrometheusHook()
 	log.AddHook(hook)
 
 	multiAM, err := alertmanager.NewMultitenantAlertmanager(&alertmanagerConfig)

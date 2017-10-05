@@ -13,6 +13,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -45,6 +46,11 @@ func main() {
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig)
 	flag.Parse()
+	hook, err := promrus.NewPrometheusHook()
+	if err != nil {
+		log.Fatalf("Error initializing promrus: %v", err)
+	}
+	log.AddHook(hook)
 
 	r, err := ring.New(ringConfig)
 	if err != nil {

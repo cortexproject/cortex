@@ -11,6 +11,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -27,6 +28,11 @@ func main() {
 	)
 	util.RegisterFlags(&serverConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
+	hook, err := promrus.NewPrometheusHook()
+	if err != nil {
+		log.Fatalf("Error initializing promrus: %v", err)
+	}
+	log.AddHook(hook)
 
 	if (schemaConfig.ChunkTables.WriteScale.Enabled ||
 		schemaConfig.IndexTables.WriteScale.Enabled ||

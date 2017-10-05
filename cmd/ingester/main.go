@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/ingester"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -35,6 +36,12 @@ func main() {
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
 		&schemaConfig, &ingesterConfig)
 	flag.Parse()
+
+	hook, err := promrus.NewPrometheusHook()
+	if err != nil {
+		log.Fatalf("Error initializing promrus: %v", err)
+	}
+	log.AddHook(hook)
 
 	server, err := server.New(serverConfig)
 	if err != nil {

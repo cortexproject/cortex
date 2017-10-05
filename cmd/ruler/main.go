@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/ruler"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -35,6 +36,12 @@ func main() {
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
 		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
+
+	hook, err := promrus.NewPrometheusHook()
+	if err != nil {
+		log.Fatalf("Error initializing promrus: %v", err)
+	}
+	log.AddHook(hook)
 
 	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {

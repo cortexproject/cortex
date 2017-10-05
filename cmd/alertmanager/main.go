@@ -15,14 +15,15 @@ package main
 
 import (
 	"flag"
-	"log"
 
 	"google.golang.org/grpc"
 
+	"github.com/prometheus/common/log"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/pkg/alertmanager"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -37,6 +38,11 @@ func main() {
 	)
 	util.RegisterFlags(&serverConfig, &alertmanagerConfig)
 	flag.Parse()
+	hook, err := promrus.NewPrometheusHook()
+	if err != nil {
+		log.Fatalf("Error initializing promrus: %v", err)
+	}
+	log.AddHook(hook)
 
 	multiAM, err := alertmanager.NewMultitenantAlertmanager(&alertmanagerConfig)
 	if err != nil {

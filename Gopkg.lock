@@ -546,8 +546,8 @@
 [[projects]]
   name = "github.com/weaveworks/promrus"
   packages = ["."]
-  revision = "0eadec5d0f597c43c2107b8fee02b7ea7f92e9b2"
-  version = "v1.0.0-legacy"
+  revision = "2864c50798f22ea4ceaaad3dd35c8c6c1e05daee"
+  version = "v1.1.0-legacy"
 
 [[projects]]
   branch = "master"
@@ -642,6 +642,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2d013ed5c812b3170cfb22111cbfd6d180bd43ca85496f0ccea0a31d38082cf2"
+  inputs-digest = "4fa3bb878529b3633701283addf8cb9d4216d312fd3ba95842de77759407f166"
   solver-name = "gps-cdcl"
   solver-version = 1

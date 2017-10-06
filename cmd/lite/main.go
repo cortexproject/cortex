@@ -52,11 +52,7 @@ func main() {
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 
-	hook, err := promrus.NewPrometheusHook()
-	if err != nil {
-		log.Fatalf("Error initializing promrus: %v", err)
-	}
-	log.AddHook(hook)
+	log.AddHook(promrus.MustNewPrometheusHook())
 
 	server, err := server.New(serverConfig)
 	if err != nil {

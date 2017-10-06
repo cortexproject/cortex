@@ -37,11 +37,7 @@ func main() {
 		&schemaConfig, &ingesterConfig)
 	flag.Parse()
 
-	hook, err := promrus.NewPrometheusHook()
-	if err != nil {
-		log.Fatalf("Error initializing promrus: %v", err)
-	}
-	log.AddHook(hook)
+	log.AddHook(promrus.MustNewPrometheusHook())
 
 	server, err := server.New(serverConfig)
 	if err != nil {

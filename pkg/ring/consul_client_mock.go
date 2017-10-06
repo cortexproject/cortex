@@ -23,8 +23,9 @@ func NewInMemoryKVClient() KVClient {
 	m.cond = sync.NewCond(&m.mtx)
 	go m.loop()
 	return &consulClient{
-		kv:    &m,
-		codec: ProtoCodec{Factory: ProtoDescFactory},
+		kv:               &m,
+		codec:            ProtoCodec{Factory: ProtoDescFactory},
+		longPollDuration: time.Minute,
 	}
 }
 

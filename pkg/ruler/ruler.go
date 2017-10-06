@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,6 +134,9 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	u := rulerConfig.AlertmanagerURL
 	var sdConfig config.ServiceDiscoveryConfig
 	if rulerConfig.AlertmanagerDiscovery {
+		if !strings.Contains(u.Host, "_tcp.") {
+			return nil, fmt.Errorf("When alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", u.Host)
+		}
 		dnsSDConfig := config.DNSSDConfig{
 			Names:           []string{u.Host},
 			RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),

@@ -77,6 +77,10 @@ type Config struct {
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
+	// Config for rejecting old samples
+	RejectOldSamples       bool
+	RejectOldSamplesMaxAge time.Duration
+
 	// For testing, you can override the address and ID of this ingester
 	addr                  string
 	infName               string
@@ -101,6 +105,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", promql.StalenessDelta, "Maximum chunk idle time before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
+
+	f.BoolVar(&cfg.RejectOldSamples, "ingester.reject-old-samples", false, "Reject old samples.")
+	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "ingester.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -302,6 +309,10 @@ samples:
 }
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
+	if i.cfg.RejectOldSamples && sample.Timestamp < model.Now().Add(-i.cfg.RejectOldSamplesMaxAge) {
+		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is older than the maximum accepted age", sample.Timestamp)
+	}
+
 	if err := util.ValidateSample(sample); err != nil {
 		util.WithContext(ctx).Errorf("Error validating sample: %v", err)
 		return nil

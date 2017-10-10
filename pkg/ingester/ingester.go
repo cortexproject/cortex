@@ -29,8 +29,9 @@ const (
 	discardReasonLabel = "reason"
 
 	// Reasons to discard samples.
-	outOfOrderTimestamp = "timestamp_out_of_order"
-	duplicateSample     = "multiple_values_for_timestamp"
+	outOfOrderTimestamp     = "timestamp_out_of_order"
+	duplicateSample         = "multiple_values_for_timestamp"
+	greaterThanMaxSampleAge = "greater_than_max_sample_age"
 
 	// DefaultConcurrentFlush is the number of series to flush concurrently
 	DefaultConcurrentFlush = 50
@@ -310,6 +311,7 @@ samples:
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 	if i.cfg.RejectOldSamples && sample.Timestamp < model.Now().Add(-i.cfg.RejectOldSamplesMaxAge) {
+		discardedSamples.WithLabelValues(greaterThanMaxSampleAge).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is older than the maximum accepted age", sample.Timestamp)
 	}
 

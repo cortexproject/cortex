@@ -16,7 +16,7 @@ var (
 	discardedSamples = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "cortex_ingester_out_of_order_samples_total",
-			Help: "The total number of samples that were discarded because their timestamps were at or before the last received sample for a series.",
+			Help: "The total number of samples that were discarded.",
 		},
 		[]string{discardReasonLabel},
 	)

@@ -10,8 +10,11 @@ import (
 )
 
 func TestValidate(t *testing.T) {
-
-	cfg := ValidateConfig{MaxLabelValueLength: 25, MaxLabelNameLength: 25}
+	cfg := ValidateConfig{
+		MaxLabelValueLength:    25,
+		MaxLabelNameLength:     25,
+		MaxLabelNamesPerSeries: 64,
+	}
 	for _, c := range []struct {
 		metric model.Metric
 		err    error

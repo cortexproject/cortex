@@ -180,6 +180,7 @@ type MultitenantAlertmanagerConfig struct {
 	MeshPeerRefreshInterval time.Duration
 
 	FallbackConfigFile string
+	AutoSlackRoot      string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -191,6 +192,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	flag.Var(&cfg.ConfigsAPIURL, "alertmanager.configs.url", "URL of configs API server.")
 	flag.StringVar(&cfg.FallbackConfigFile, "alertmanager.configs.fallback", "", "Filename of fallback config to use if none specified for instance.")
+	flag.StringVar(&cfg.AutoSlackRoot, "alertmanager.configs.auto-slack-root", "", "Root of URL to generate if config requests")
 	flag.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 	flag.DurationVar(&cfg.ClientTimeout, "alertmanager.configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 
@@ -392,6 +394,17 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 	if amConfig == nil && am.fallbackConfig != nil {
 		log.Infof("invalid Cortex configuration; using fallback for %v", userID)
 		amConfig = am.fallbackConfig
+	}
+
+	// Magic ability to configure a Slack receiver if config requests it
+	if am.cfg.AutoSlackRoot != "" {
+		for _, r := range amConfig.Receivers {
+			for _, s := range r.SlackConfigs {
+				if s.APIURL == "internal://monitor" {
+					s.APIURL = amconfig.Secret(am.cfg.AutoSlackRoot + "/" + userID + "/monitor")
+				}
+			}
+		}
 	}
 
 	// If no Alertmanager instance exists for this user yet, start one.

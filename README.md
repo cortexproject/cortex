@@ -3,6 +3,7 @@
 # Open source, horizontally scalable Prometheus as a service
 
 [![Circle CI](https://circleci.com/gh/weaveworks/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/weaveworks/cortex/tree/master)
+[![GoDoc](https://godoc.org/github.com/weaveworks/cortex?status.svg)](https://godoc.org/github.com/weaveworks/cortex)
 [![Slack Status](https://slack.weave.works/badge.svg)](https://slack.weave.works)
 
 Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works).

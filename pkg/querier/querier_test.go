@@ -2,6 +2,7 @@ package querier
 
 import (
 	"bytes"
+	"context"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -10,26 +11,27 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/local"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 	"github.com/weaveworks/cortex/pkg/util/wire"
-	"golang.org/x/net/context"
 )
 
 func TestRemoteReadHandler(t *testing.T) {
-	mq := MergeQuerier{
-		Queriers: []Querier{
+	q := MergeQueryable{
+		queriers: []Querier{
 			mockQuerier{
-				iters: []local.SeriesIterator{
-					util.NewSampleStreamIterator(&model.SampleStream{
+				matrix: model.Matrix{
+					{
 						Metric: model.Metric{"foo": "bar"},
 						Values: []model.SamplePair{
-							{0, 0}, {1, 1}, {2, 2}, {3, 3},
+							{Timestamp: 0, Value: 0},
+							{Timestamp: 1, Value: 1},
+							{Timestamp: 2, Value: 2},
+							{Timestamp: 3, Value: 3},
 						},
-					}),
+					},
 				},
 			},
 		},
@@ -47,7 +49,7 @@ func TestRemoteReadHandler(t *testing.T) {
 	request.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
 
 	recorder := httptest.NewRecorder()
-	mq.RemoteReadHandler(recorder, request)
+	q.RemoteReadHandler(recorder, request)
 
 	require.Equal(t, 200, recorder.Result().StatusCode)
 	responseBody, err := ioutil.ReadAll(recorder.Result().Body)
@@ -64,10 +66,16 @@ func TestRemoteReadHandler(t *testing.T) {
 				Timeseries: []client.TimeSeries{
 					{
 						Labels: []client.LabelPair{
-							{wire.Bytes([]byte("foo")), wire.Bytes([]byte("bar"))},
+							{
+								Name:  wire.Bytes([]byte("foo")),
+								Value: wire.Bytes([]byte("bar")),
+							},
 						},
 						Samples: []client.Sample{
-							{0, 0}, {1, 1}, {2, 2}, {3, 3},
+							{Value: 0, TimestampMs: 0},
+							{Value: 1, TimestampMs: 1},
+							{Value: 2, TimestampMs: 2},
+							{Value: 3, TimestampMs: 3},
 						},
 					},
 				},
@@ -78,17 +86,17 @@ func TestRemoteReadHandler(t *testing.T) {
 }
 
 type mockQuerier struct {
-	iters []local.SeriesIterator
+	matrix model.Matrix
 }
 
-func (m mockQuerier) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
-	return m.iters, nil
+func (m mockQuerier) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
+	return m.matrix, nil
 }
 
 func (mockQuerier) LabelValuesForLabelName(context.Context, model.LabelName) (model.LabelValues, error) {
 	return nil, nil
 }
 
-func (mockQuerier) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matcherSets ...metric.LabelMatchers) ([]metric.Metric, error) {
+func (mockQuerier) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matcherSets ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, nil
 }

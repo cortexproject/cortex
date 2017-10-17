@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/local/chunk"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
 	"github.com/weaveworks/common/user"
 

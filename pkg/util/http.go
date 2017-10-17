@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -11,7 +12,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/weaveworks/common/instrument"
-	"golang.org/x/net/context"
 )
 
 // WriteJSONResponse writes some JSON as a HTTP response.

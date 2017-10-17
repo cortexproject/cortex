@@ -7,7 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/prometheus/prometheus/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
 )
@@ -47,8 +49,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	}
 	defer n.Stop()
 
-	n.Send(&model.Alert{
-		Labels: model.LabelSet{"alertname": "testalert"},
+	n.Send(&notifier.Alert{
+		Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
 	})
 
 	wg.Wait()

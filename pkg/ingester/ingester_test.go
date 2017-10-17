@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sort"
@@ -10,10 +11,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -137,10 +137,10 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		matcher, err := metric.NewLabelMatcher(metric.RegexMatch, model.JobLabel, ".+")
+		matcher, err := labels.NewMatcher(labels.MatchRegexp, model.JobLabel, ".+")
 		require.NoError(t, err)
 
-		req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
+		req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
 		require.NoError(t, err)
 
 		resp, err := ing.Query(ctx, req)
@@ -228,10 +228,10 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Read samples back via ingester queries.
-	matcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "testmetric")
+	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
 
-	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
+	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	resp, err := ing.Query(ctx, req)
@@ -299,10 +299,10 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Read samples back via ingester queries.
-	matcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "testmetric")
+	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
 
-	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
+	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	resp, err := ing.Query(ctx, req)
@@ -370,10 +370,10 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 	}
 
 	// Read samples back via ingester queries.
-	matcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "testmetric")
+	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
 
-	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*metric.LabelMatcher{matcher})
+	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	resp, err := ing.Query(ctx, req)

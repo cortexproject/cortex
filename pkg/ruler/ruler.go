@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	gklog "github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
@@ -180,7 +181,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 		}
 
 		if password, isSet := u.User.Password(); isSet {
-			amConfig.HTTPClientConfig.BasicAuth.Password = password
+			amConfig.HTTPClientConfig.BasicAuth.Password = config.Secret(password)
 		}
 	}
 
@@ -188,7 +189,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 }
 
 func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, error) {
-	appender := appenderAdapter{pusher: r.pusher, ctx: ctx}
+	appendable := &appendableAppender{pusher: r.pusher, ctx: ctx}
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -198,14 +199,15 @@ func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, er
 		return nil, err
 	}
 	opts := &rules.ManagerOptions{
-		SampleAppender: appender,
-		QueryEngine:    r.engine,
-		Context:        ctx,
-		ExternalURL:    r.alertURL,
-		Notifier:       notifier,
+		Appendable:  appendable,
+		QueryEngine: r.engine,
+		Context:     ctx,
+		ExternalURL: r.alertURL,
+		Notifier:    notifier,
+		Logger:      gklog.NewNopLogger(),
 	}
 	delay := 0 * time.Second // Unused, so 0 value is fine.
-	return rules.NewGroup("default", delay, rs, opts), nil
+	return rules.NewGroup("default", "none", delay, rs, opts), nil
 }
 
 func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
@@ -229,7 +231,7 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 			}
 			return ctxhttp.Do(ctx, client, req)
 		},
-	})
+	}, gklog.NewNopLogger())
 
 	// This should never fail, unless there's a programming mistake.
 	if err := n.ApplyConfig(r.notifierCfg); err != nil {
@@ -252,7 +254,7 @@ func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 		logger.Errorf("Failed to create rule group: %v", err)
 		return
 	}
-	g.Eval()
+	g.Eval(start)
 
 	// The prometheus routines we're calling have their own instrumentation
 	// but, a) it's rule-based, not group-based, b) it's a summary, not a

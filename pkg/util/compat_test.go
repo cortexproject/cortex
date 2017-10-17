@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/test"
 )
 
@@ -33,26 +33,26 @@ func TestWriteRequest(t *testing.T) {
 
 func TestQueryRequest(t *testing.T) {
 	from, to := model.Time(int64(0)), model.Time(int64(10))
-	matchers := []*metric.LabelMatcher{}
-	matcher1, err := metric.NewLabelMatcher(metric.Equal, model.LabelName("foo"), model.LabelValue("1"))
+	matchers := []*labels.Matcher{}
+	matcher1, err := labels.NewMatcher(labels.MatchEqual, "foo", "1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	matchers = append(matchers, matcher1)
 
-	matcher2, err := metric.NewLabelMatcher(metric.NotEqual, model.LabelName("bar"), model.LabelValue("2"))
+	matcher2, err := labels.NewMatcher(labels.MatchNotEqual, "bar", "2")
 	if err != nil {
 		t.Fatal(err)
 	}
 	matchers = append(matchers, matcher2)
 
-	matcher3, err := metric.NewLabelMatcher(metric.RegexMatch, model.LabelName("baz"), model.LabelValue("3"))
+	matcher3, err := labels.NewMatcher(labels.MatchRegexp, "baz", "3")
 	if err != nil {
 		t.Fatal(err)
 	}
 	matchers = append(matchers, matcher3)
 
-	matcher4, err := metric.NewLabelMatcher(metric.RegexNoMatch, model.LabelName("bop"), model.LabelValue("4"))
+	matcher4, err := labels.NewMatcher(labels.MatchNotRegexp, "bop", "4")
 	if err != nil {
 		t.Fatal(err)
 	}

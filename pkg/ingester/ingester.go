@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -8,14 +9,14 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
+	// Needed for gRPC compatibility.
+	old_ctx "golang.org/x/net/context"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage/local/chunk"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
 	"github.com/weaveworks/common/httpgrpc"
 	cortex_chunk "github.com/weaveworks/cortex/pkg/chunk"
@@ -103,7 +104,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
 
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
-	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", promql.StalenessDelta, "Maximum chunk idle time before flushing.")
+	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 5*time.Minute, "Maximum chunk idle time before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
 
@@ -288,7 +289,7 @@ func New(cfg Config, schemaCfg cortex_chunk.SchemaConfig, chunkStore ChunkStore)
 }
 
 // Push implements client.IngesterServer
-func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	var lastPartialErr error
 	samples := util.FromWriteRequest(req)
 
@@ -358,7 +359,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 }
 
 // Query implements service.IngesterServer
-func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
 	start, end, matchers, err := util.FromQueryRequest(req)
 	if err != nil {
 		return nil, err
@@ -372,7 +373,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 	return util.ToQueryResponse(matrix), nil
 }
 
-func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher) (model.Matrix, error) {
+func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*labels.Matcher) (model.Matrix, error) {
 	i.queries.Inc()
 
 	i.userStatesMtx.RLock()
@@ -402,7 +403,7 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 }
 
 // LabelValues returns all label values that are associated with a given label name.
-func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
@@ -419,7 +420,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 }
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
-func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
@@ -454,7 +455,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 }
 
 // UserStats returns ingestion statistics for the current user.
-func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)

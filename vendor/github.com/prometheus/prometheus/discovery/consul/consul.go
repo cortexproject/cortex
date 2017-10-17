@@ -21,12 +21,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
+	"github.com/mwitkow/go-conntrack"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/util/httputil"
+	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
 )
 
@@ -38,6 +41,8 @@ const (
 	addressLabel = model.MetaLabelPrefix + "consul_address"
 	// nodeLabel is the name for the label containing a target's node name.
 	nodeLabel = model.MetaLabelPrefix + "consul_node"
+	// metaDataLabel is the prefix for the labels mapping to a target's metadata.
+	metaDataLabel = model.MetaLabelPrefix + "consul_metadata_"
 	// tagsLabel is the name of the label containing the tags assigned to the target.
 	tagsLabel = model.MetaLabelPrefix + "consul_tags"
 	// serviceLabel is the name of the label containing the service name.
@@ -89,25 +94,36 @@ type Discovery struct {
 	clientDatacenter string
 	tagSeparator     string
 	watchedServices  []string // Set of services which will be discovered.
+	logger           log.Logger
 }
 
 // NewDiscovery returns a new Discovery for the given config.
-func NewDiscovery(conf *config.ConsulSDConfig) (*Discovery, error) {
+func NewDiscovery(conf *config.ConsulSDConfig, logger log.Logger) (*Discovery, error) {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	tls, err := httputil.NewTLSConfig(conf.TLSConfig)
 	if err != nil {
 		return nil, err
 	}
-	transport := &http.Transport{TLSClientConfig: tls}
+	transport := &http.Transport{
+		TLSClientConfig: tls,
+		DialContext: conntrack.NewDialContextFunc(
+			conntrack.DialWithTracing(),
+			conntrack.DialWithName("consul_sd"),
+		),
+	}
 	wrapper := &http.Client{Transport: transport}
 
 	clientConf := &consul.Config{
 		Address:    conf.Server,
 		Scheme:     conf.Scheme,
 		Datacenter: conf.Datacenter,
-		Token:      conf.Token,
+		Token:      string(conf.Token),
 		HttpAuth: &consul.HttpBasicAuth{
 			Username: conf.Username,
-			Password: conf.Password,
+			Password: string(conf.Password),
 		},
 		HttpClient: wrapper,
 	}
@@ -121,6 +137,7 @@ func NewDiscovery(conf *config.ConsulSDConfig) (*Discovery, error) {
 		tagSeparator:     conf.TagSeparator,
 		watchedServices:  conf.Services,
 		clientDatacenter: clientConf.Datacenter,
+		logger:           logger,
 	}
 	return cd, nil
 }
@@ -163,7 +180,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*config.TargetGroup) {
 		}
 
 		if err != nil {
-			log.Errorf("Error refreshing service list: %s", err)
+			level.Error(d.logger).Log("msg", "Error refreshing service list", "err", err)
 			rpcFailuresCount.Inc()
 			time.Sleep(retryInterval)
 			continue
@@ -179,7 +196,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*config.TargetGroup) {
 		if d.clientDatacenter == "" {
 			info, err := d.client.Agent().Self()
 			if err != nil {
-				log.Errorf("Error retrieving datacenter name: %s", err)
+				level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 				time.Sleep(retryInterval)
 				continue
 			}
@@ -203,6 +220,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*config.TargetGroup) {
 					datacenterLabel: model.LabelValue(d.clientDatacenter),
 				},
 				tagSeparator: d.tagSeparator,
+				logger:       d.logger,
 			}
 
 			wctx, cancel := context.WithCancel(ctx)
@@ -235,6 +253,7 @@ type consulService struct {
 	labels       model.LabelSet
 	client       *consul.Client
 	tagSeparator string
+	logger       log.Logger
 }
 
 func (srv *consulService) watch(ctx context.Context, ch chan<- []*config.TargetGroup) {
@@ -258,7 +277,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*config.TargetG
 		}
 
 		if err != nil {
-			log.Errorf("Error refreshing service %s: %s", srv.name, err)
+			level.Error(srv.logger).Log("msg", "Error refreshing service", "service", srv.name, "err", err)
 			rpcFailuresCount.Inc()
 			time.Sleep(retryInterval)
 			continue
@@ -290,7 +309,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*config.TargetG
 				addr = net.JoinHostPort(node.Address, fmt.Sprintf("%d", node.ServicePort))
 			}
 
-			tgroup.Targets = append(tgroup.Targets, model.LabelSet{
+			labels := model.LabelSet{
 				model.AddressLabel:  model.LabelValue(addr),
 				addressLabel:        model.LabelValue(node.Address),
 				nodeLabel:           model.LabelValue(node.Node),
@@ -298,7 +317,15 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*config.TargetG
 				serviceAddressLabel: model.LabelValue(node.ServiceAddress),
 				servicePortLabel:    model.LabelValue(strconv.Itoa(node.ServicePort)),
 				serviceIDLabel:      model.LabelValue(node.ServiceID),
-			})
+			}
+
+			// Add all key/value pairs from the node's metadata as their own labels
+			for k, v := range node.NodeMeta {
+				name := strutil.SanitizeLabelName(k)
+				labels[metaDataLabel+model.LabelName(name)] = model.LabelValue(v)
+			}
+
+			tgroup.Targets = append(tgroup.Targets, labels)
 		}
 		// Check context twice to ensure we always catch cancelation.
 		select {

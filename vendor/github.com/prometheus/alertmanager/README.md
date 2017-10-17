@@ -1,4 +1,4 @@
-# Alertmanager [![Build Status](https://travis-ci.org/prometheus/alertmanager.svg)][travis]
+# Alertmanager [![Build Status](https://travis-ci.org/prometheus/alertmanager.svg?branch=master)][travis]
 
 [![CircleCI](https://circleci.com/gh/prometheus/alertmanager/tree/master.svg?style=shield)][circleci]
 [![Docker Repository on Quay](https://quay.io/repository/prometheus/alertmanager/status)][quay]
@@ -45,6 +45,11 @@ $ make build
 $ ./alertmanager -config.file=<your_file>
 ```
 
+You can also build just one of the binaries in this repo by passing a name to the build function:
+```
+$ make build BINARIES=amtool
+```
+
 ## Example
 
 This is an example configuration that should cover most relevant aspects of the new YAML configuration format. The full documentation of the configuration can be found [here](https://prometheus.io/docs/alerting/configuration/).
@@ -61,7 +66,7 @@ route:
   # all alerts. It needs to have a receiver configured so alerts that do not
   # match any of the sub-routes are sent to someone.
   receiver: 'team-X-mails'
-  
+
   # The labels by which incoming alerts are grouped together. For example,
   # multiple alerts coming in for cluster=A and alertname=LatencyHigh would
   # be batched into a single group.
@@ -82,7 +87,7 @@ route:
   # resend them.
   repeat_interval: 3h
 
-  # All the above attributes are inherited by all child routes and can 
+  # All the above attributes are inherited by all child routes and can
   # overwritten on each.
 
   # The child route trees.
@@ -166,24 +171,138 @@ receivers:
   - service_key: <team-DB-key>
 ```
 
+## Amtool
+
+`amtool` is a cli tool for interacting with the alertmanager api. It is bundled with all releases of alertmanager.
+
+### Install
+
+Alternatively you can install with:
+```
+go get github.com/prometheus/alertmanager/cmd/amtool
+```
+
+### Examples
+
+View all currently firing alerts
+```
+$ amtool alert
+Alertname        Starts At                Summary
+Test_Alert       2017-08-02 18:30:18 UTC  This is a testing alert!
+Test_Alert       2017-08-02 18:30:18 UTC  This is a testing alert!
+Check_Foo_Fails  2017-08-02 18:30:18 UTC  This is a testing alert!
+Check_Foo_Fails  2017-08-02 18:30:18 UTC  This is a testing alert!
+```
+
+View all currently firing alerts with extended output
+```
+$ amtool -o extended alert
+Labels                                        Annotations                                                    Starts At                Ends At                  Generator URL
+alertname="Test_Alert" instance="node0"       link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+alertname="Test_Alert" instance="node1"       link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+alertname="Check_Foo_Fails" instance="node0"  link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+alertname="Check_Foo_Fails" instance="node1"  link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+```
+
+In addition to viewing alerts you can use the rich query syntax provided by alertmanager
+```
+$ amtool -o extended alert query alertname="Test_Alert"
+Labels                                   Annotations                                                    Starts At                Ends At                  Generator URL
+alertname="Test_Alert" instance="node0"  link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+alertname="Test_Alert" instance="node1"  link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+
+$ amtool -o extended alert query instance=~".+1"
+Labels                                        Annotations                                                    Starts At                Ends At                  Generator URL
+alertname="Test_Alert" instance="node1"       link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+alertname="Check_Foo_Fails" instance="node1"  link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+
+$ amtool -o extended alert query alertname=~"Test.*" instance=~".+1"
+Labels                                   Annotations                                                    Starts At                Ends At                  Generator URL
+alertname="Test_Alert" instance="node1"  link="https://example.com" summary="This is a testing alert!"  2017-08-02 18:31:24 UTC  0001-01-01 00:00:00 UTC  http://my.testing.script.local
+```
+
+Silence an alert
+```
+$ amtool silence add alertname=Test_Alert
+b3ede22e-ca14-4aa0-932c-ca2f3445f926
+
+$ amtool silence add alertname="Test_Alert" instance=~".+0"
+e48cb58a-0b17-49ba-b734-3585139b1d25
+```
+
+View silences
+```
+$ amtool silence query
+ID                                    Matchers              Ends At                  Created By  Comment
+b3ede22e-ca14-4aa0-932c-ca2f3445f926  alertname=Test_Alert  2017-08-02 19:54:50 UTC  kellel
+
+$ amtool silence query instance=~".+0"
+ID                                    Matchers                            Ends At                  Created By  Comment
+e48cb58a-0b17-49ba-b734-3585139b1d25  alertname=Test_Alert instance=~.+0  2017-08-02 22:41:39 UTC  kellel
+```
+
+Expire a silence
+```
+$ amtool silence expire b3ede22e-ca14-4aa0-932c-ca2f3445f926
+```
+
+Expire all silences matching a query
+```
+$ amtool silence query instance=~".+0"
+ID                                    Matchers                            Ends At                  Created By  Comment
+e48cb58a-0b17-49ba-b734-3585139b1d25  alertname=Test_Alert instance=~.+0  2017-08-02 22:41:39 UTC  kellel
+
+$ amtool silence expire $(amtool silence -q query instance=~".+0")
+
+$ amtool silence query instance=~".+0"
+
+```
+
+Expire all silences
+```
+$ amtool silence expire $(amtool silence query -q)
+```
+
+### Config
+
+Amtool allows a config file to specify some options for convenience. The default config file paths are `$HOME/.config/amtool/config.yml` or `/etc/amtool/config.yml`
+
+An example configfile might look like the following:
+```
+# Define the path that amtool can find your `alertmanager` instance at
+alertmanager.url: "http://localhost:9093"
+
+# Override the default author. (unset defaults to your username)
+author: me@example.com
+
+# Force amtool to give you an error if you don't include a comment on a silence
+comment_require: true
+
+# Set a default output format. (unset defaults to simple)
+output: extended
+```
+
 ## High Availability
 
-> Warning: High Availablility is under active development
+> Warning: High Availability is under active development
 
 To create a highly available cluster of the Alertmanager the instances need to
 be configured to communicate with each other. This is configured using the
 `-mesh.*` flags.
 
-- `-mesh.hardware-address` string: MAC address, i.e. mesh peer ID (default "&lt;hardware-mac-address&gt;")
+- `-mesh.peer-id` string: mesh peer ID (default "&lt;hardware-mac-address&gt;")
 - `-mesh.listen-address` string: mesh listen address (default "0.0.0.0:6783")
-- `-mesh.nickname` string: peer nickname (default "&lt;machine-hostname&gt;")
-- `-mesh.peer` value: initial peers (may be repeated)
+- `-mesh.nickname` string: mesh peer nickname (default "&lt;machine-hostname&gt;")
+- `-mesh.peer` value: initial peers (repeat flag for each additional peer)
 
-The `mesh.hardware-address` flag is used as a unique ID among the peers. It
-defaults to the MAC address, therefore the default value should typically be a
-good option. The same applies to the default of the `mesh.nickname` flag, as it
-defaults to the hostname. The chosen port in the `mesh.listen-address` flag is
-the port that needs to be specified in the `mesh.peer` flag of the other peers.
+The `mesh.peer-id` flag is used as a unique ID among the peers. It defaults to
+the MAC address, therefore the default value should typically be a good option.
+
+The same applies to the default of the `mesh.nickname` flag, as it defaults to
+the hostname.
+
+The chosen port in the `mesh.listen-address` flag is the port that needs to be
+specified in the `mesh.peer` flag of the other peers.
 
 To start a cluster of three peers on your local machine use `goreman` and the
 Procfile within this repository.
@@ -197,6 +316,12 @@ Start your prometheus like this, for example:
 	./prometheus -config.file=prometheus.yml -alertmanager.url http://localhost:9095,http://localhost:9094,http://localhost:9093
 
 > Note: make sure to have a valid `prometheus.yml` in your current directory
+
+> Important: Do not load balance traffic between Prometheus and its Alertmanagers, but instead point Prometheus to a list of all Alertmanagers. The Alertmanager implementation expects all alerts to be sent to all Alertmanagers to ensure high availability.
+
+## Contributing to the Front-End
+
+Refer to [ui/app/CONTRIBUTING.md](ui/app/CONTRIBUTING.md).
 
 ## Architecture
 

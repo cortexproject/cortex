@@ -17,18 +17,17 @@ package silence
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"os"
+	"reflect"
 	"regexp"
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/matttproud/golang_protobuf_extensions/pbutil"
+	"github.com/pkg/errors"
 	pb "github.com/prometheus/alertmanager/silence/silencepb"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
@@ -104,7 +103,7 @@ type Silences struct {
 	// range and affected labels.
 	// Mutex also guards the matcherCache, which always need write lock access.
 	mtx sync.Mutex
-	st  gossipData
+	st  *gossipData
 	mc  matcherCache
 }
 
@@ -114,9 +113,29 @@ type metrics struct {
 	queriesTotal     prometheus.Counter
 	queryErrorsTotal prometheus.Counter
 	queryDuration    prometheus.Histogram
+	silencesActive   prometheus.GaugeFunc
+	silencesPending  prometheus.GaugeFunc
+	silencesExpired  prometheus.GaugeFunc
 }
 
-func newMetrics(r prometheus.Registerer) *metrics {
+func newSilenceMetricByState(s *Silences, st SilenceState) prometheus.GaugeFunc {
+	return prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name:        "alertmanager_silences",
+			Help:        "How many silences by state.",
+			ConstLabels: prometheus.Labels{"state": string(st)},
+		},
+		func() float64 {
+			count, err := s.CountState(st)
+			if err != nil {
+				s.logger.With("err", err).Error("counting silences failed")
+			}
+			return float64(count)
+		},
+	)
+}
+
+func newMetrics(r prometheus.Registerer, s *Silences) *metrics {
 	m := &metrics{}
 
 	m.gcDuration = prometheus.NewSummary(prometheus.SummaryOpts{
@@ -139,6 +158,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		Name: "alertmanager_silences_query_duration_seconds",
 		Help: "Duration of silence query evaluation.",
 	})
+	if s != nil {
+		m.silencesActive = newSilenceMetricByState(s, StateActive)
+		m.silencesPending = newSilenceMetricByState(s, StatePending)
+		m.silencesExpired = newSilenceMetricByState(s, StateExpired)
+	}
 
 	if r != nil {
 		r.MustRegister(
@@ -147,6 +171,9 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			m.queriesTotal,
 			m.queryErrorsTotal,
 			m.queryDuration,
+			m.silencesActive,
+			m.silencesPending,
+			m.silencesExpired,
 		)
 	}
 	return m
@@ -196,12 +223,13 @@ func New(o Options) (*Silences, error) {
 	s := &Silences{
 		mc:        matcherCache{},
 		logger:    log.NewNopLogger(),
-		metrics:   newMetrics(o.Metrics),
 		retention: o.Retention,
 		now:       utcNow,
 		gossip:    nopGossip{},
-		st:        gossipData{},
+		st:        newGossipData(),
 	}
+	s.metrics = newMetrics(o.Metrics, s)
+
 	if o.Logger != nil {
 		s.logger = o.Logger
 	}
@@ -276,33 +304,24 @@ func (s *Silences) GC() (int, error) {
 	start := time.Now()
 	defer func() { s.metrics.gcDuration.Observe(time.Since(start).Seconds()) }()
 
-	now, err := s.nowProto()
-	if err != nil {
-		return 0, err
-	}
+	now := s.now()
 	var n int
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	for id, sil := range s.st {
-		if !protoBefore(now, sil.ExpiresAt) {
-			delete(s.st, id)
+	for id, sil := range s.st.data {
+		if sil.ExpiresAt.IsZero() {
+			return n, errors.New("unexpected zero expiration timestamp")
+		}
+		if !sil.ExpiresAt.After(now) {
+			delete(s.st.data, id)
 			delete(s.mc, sil.Silence)
 			n++
 		}
 	}
-	return n, nil
-}
 
-func protoBefore(a, b *timestamp.Timestamp) bool {
-	if a.Seconds > b.Seconds {
-		return false
-	}
-	if a.Seconds == b.Seconds {
-		return a.Nanos < b.Nanos
-	}
-	return true
+	return n, nil
 }
 
 func validateMatcher(m *pb.Matcher) error {
@@ -336,19 +355,17 @@ func validateSilence(s *pb.Silence) error {
 			return fmt.Errorf("invalid label matcher %d: %s", i, err)
 		}
 	}
-	startsAt, err := ptypes.Timestamp(s.StartsAt)
-	if err != nil {
-		return fmt.Errorf("invalid start time: %s", err)
+	if s.StartsAt.IsZero() {
+		return errors.New("invalid zero start timestamp")
 	}
-	endsAt, err := ptypes.Timestamp(s.EndsAt)
-	if err != nil {
-		return fmt.Errorf("invalid end time: %s", err)
+	if s.EndsAt.IsZero() {
+		return errors.New("invalid zero end timestamp")
 	}
-	if endsAt.Before(startsAt) {
+	if s.EndsAt.Before(s.StartsAt) {
 		return errors.New("end time must not be before start time")
 	}
-	if _, err := ptypes.Timestamp(s.UpdatedAt); err != nil {
-		return fmt.Errorf("invalid update timestamp: %s", err)
+	if s.UpdatedAt.IsZero() {
+		return errors.New("invalid zero update timestamp")
 	}
 	return nil
 }
@@ -360,7 +377,7 @@ func cloneSilence(sil *pb.Silence) *pb.Silence {
 }
 
 func (s *Silences) getSilence(id string) (*pb.Silence, bool) {
-	msil, ok := s.st[id]
+	msil, ok := s.st.data[id]
 	if !ok {
 		return nil, false
 	}
@@ -368,152 +385,116 @@ func (s *Silences) getSilence(id string) (*pb.Silence, bool) {
 }
 
 func (s *Silences) setSilence(sil *pb.Silence) error {
-	endsAt, err := ptypes.Timestamp(sil.EndsAt)
-	if err != nil {
-		return err
-	}
-	expiresAt, err := ptypes.TimestampProto(endsAt.Add(s.retention))
-	if err != nil {
-		return err
+	sil.UpdatedAt = s.now()
+
+	if err := validateSilence(sil); err != nil {
+		return errors.Wrap(err, "silence invalid")
 	}
 
 	msil := &pb.MeshSilence{
 		Silence:   sil,
-		ExpiresAt: expiresAt,
+		ExpiresAt: sil.EndsAt.Add(s.retention),
 	}
-	st := gossipData{sil.Id: msil}
+	st := &gossipData{
+		data: silenceMap{sil.Id: msil},
+	}
 
 	s.st.Merge(st)
-	s.gossip.GossipBroadcast(st)
+	// setSilence() is called with s.mtx locked, which can produce
+	// a deadlock if we call GossipBroadcast from here.
+	go s.gossip.GossipBroadcast(st)
 
 	return nil
 }
 
-func (s *Silences) nowProto() (*timestamp.Timestamp, error) {
-	now := s.now()
-	return ptypes.TimestampProto(now)
-}
-
-// Create adds a new silence and returns its ID.
-func (s *Silences) Create(sil *pb.Silence) (id string, err error) {
-	if sil.Id != "" {
-		return "", fmt.Errorf("unexpected ID in new silence")
-	}
-	sil.Id = uuid.NewV4().String()
-
-	now, err := s.nowProto()
-	if err != nil {
-		return "", err
-	}
-	if sil.StartsAt == nil {
-		sil.StartsAt = now
-	} else if protoBefore(sil.StartsAt, now) {
-		return "", fmt.Errorf("new silence must not start in the past")
-	}
-	sil.UpdatedAt = now
-
-	if err := validateSilence(sil); err != nil {
-		return "", fmt.Errorf("invalid silence: %s", err)
-	}
-
+// Set the specified silence. If a silence with the ID already exists and the modification
+// modifies history, the old silence gets expired and a new one is created.
+func (s *Silences) Set(sil *pb.Silence) (string, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	if err := s.setSilence(sil); err != nil {
-		return "", err
+	now := s.now()
+	prev, ok := s.getSilence(sil.Id)
+
+	if sil.Id != "" && !ok {
+		return "", ErrNotFound
 	}
-	return sil.Id, nil
+	if ok {
+		if canUpdate(prev, sil, now) {
+			return sil.Id, s.setSilence(sil)
+		}
+		if getState(prev, s.now()) != StateExpired {
+			// We cannot update the silence, expire the old one.
+			if err := s.expire(prev.Id); err != nil {
+				return "", errors.Wrap(err, "expire previous silence")
+			}
+		}
+	}
+	// If we got here it's either a new silence or a replacing one.
+	sil.Id = uuid.NewV4().String()
+
+	if sil.StartsAt.Before(now) {
+		sil.StartsAt = now
+	}
+
+	return sil.Id, s.setSilence(sil)
+}
+
+// canUpdate returns true if silence a can be updated to b without
+// affecting the historic view of silencing.
+func canUpdate(a, b *pb.Silence, now time.Time) bool {
+	if !reflect.DeepEqual(a.Matchers, b.Matchers) {
+		return false
+	}
+	// Allowed timestamp modifications depend on the current time.
+	switch st := getState(a, now); st {
+	case StateActive:
+		if !b.StartsAt.Equal(a.StartsAt) {
+			return false
+		}
+		if b.EndsAt.Before(now) {
+			return false
+		}
+	case StatePending:
+		if b.StartsAt.Before(now) {
+			return false
+		}
+	case StateExpired:
+		return false
+	default:
+		panic("unknown silence state")
+	}
+	return true
 }
 
 // Expire the silence with the given ID immediately.
 func (s *Silences) Expire(id string) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+	return s.expire(id)
+}
 
+// Expire the silence with the given ID immediately.
+func (s *Silences) expire(id string) error {
 	sil, ok := s.getSilence(id)
 	if !ok {
 		return ErrNotFound
 	}
-
-	now, err := s.nowProto()
-	if err != nil {
-		return err
-	}
-	if sil, err = silenceSetTimeRange(sil, now, sil.StartsAt, now); err != nil {
-		return err
-	}
-	return s.setSilence(sil)
-}
-
-// SetTimeRange adjust the time range of a silence if allowed. If start or end
-// are zero times, the current value remains unmodified.
-func (s *Silences) SetTimeRange(id string, start, end time.Time) error {
-	now, err := s.nowProto()
-	if err != nil {
-		return err
-	}
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	sil, ok := s.getSilence(id)
-	if !ok {
-		return ErrNotFound
-	}
-
-	// Retrieve protobuf start and end time, default to current value
-	// of the silence.
-	var startp, endp *timestamp.Timestamp
-	if start.IsZero() {
-		startp = sil.StartsAt
-	} else if startp, err = ptypes.TimestampProto(start); err != nil {
-		return err
-	}
-	if end.IsZero() {
-		endp = sil.EndsAt
-	} else if endp, err = ptypes.TimestampProto(end); err != nil {
-		return err
-	}
-
-	if sil, err = silenceSetTimeRange(sil, now, startp, endp); err != nil {
-		return err
-	}
-	return s.setSilence(sil)
-}
-
-func silenceSetTimeRange(sil *pb.Silence, now, start, end *timestamp.Timestamp) (*pb.Silence, error) {
-	if protoBefore(end, start) {
-		return nil, fmt.Errorf("end time must not be before start time")
-	}
-	// Validate modification based on current silence state.
-	switch getState(sil, now) {
-	case StateActive:
-		if *start != *sil.StartsAt {
-			return nil, fmt.Errorf("start time of active silence cannot be modified")
-		}
-		if protoBefore(end, now) {
-			return nil, fmt.Errorf("end time cannot be set into the past")
-		}
-	case StatePending:
-		if protoBefore(start, now) {
-			return nil, fmt.Errorf("start time cannot be set into the past")
-		}
-	case StateExpired:
-		return nil, fmt.Errorf("expired silence must not be modified")
-	default:
-		panic("unknown silence state")
-	}
-
 	sil = cloneSilence(sil)
-	sil.StartsAt = start
-	sil.EndsAt = end
-	sil.UpdatedAt = now
+	now := s.now()
 
-	return sil, nil
-}
+	switch getState(sil, now) {
+	case StateExpired:
+		return errors.Errorf("silence %s already expired", id)
+	case StateActive:
+		sil.EndsAt = now
+	case StatePending:
+		// Set both to now to make Silence move to "expired" state
+		sil.StartsAt = now
+		sil.EndsAt = now
+	}
 
-// AddComment adds a new comment to the silence with the given ID.
-func (s *Silences) AddComment(id string, author, comment string) error {
-	panic("not implemented")
+	return s.setSilence(sil)
 }
 
 // QueryParam expresses parameters along which silences are queried.
@@ -526,7 +507,7 @@ type query struct {
 
 // silenceFilter is a function that returns true if a silence
 // should be dropped from a result set for a given time.
-type silenceFilter func(*pb.Silence, *Silences, *timestamp.Timestamp) (bool, error)
+type silenceFilter func(*pb.Silence, *Silences, time.Time) (bool, error)
 
 var errNotSupported = errors.New("query parameter not supported")
 
@@ -550,7 +531,7 @@ func QTimeRange(start, end time.Time) QueryParam {
 // QMatches returns silences that match the given label set.
 func QMatches(set model.LabelSet) QueryParam {
 	return func(q *query) error {
-		f := func(sil *pb.Silence, s *Silences, _ *timestamp.Timestamp) (bool, error) {
+		f := func(sil *pb.Silence, s *Silences, _ time.Time) (bool, error) {
 			m, err := s.mc.Get(sil)
 			if err != nil {
 				return true, err
@@ -573,11 +554,11 @@ const (
 )
 
 // getState returns a silence's SilenceState at the given timestamp.
-func getState(sil *pb.Silence, ts *timestamp.Timestamp) SilenceState {
-	if protoBefore(ts, sil.StartsAt) {
+func getState(sil *pb.Silence, ts time.Time) SilenceState {
+	if ts.Before(sil.StartsAt) {
 		return StatePending
 	}
-	if protoBefore(sil.EndsAt, ts) {
+	if ts.After(sil.EndsAt) {
 		return StateExpired
 	}
 	return StateActive
@@ -586,7 +567,7 @@ func getState(sil *pb.Silence, ts *timestamp.Timestamp) SilenceState {
 // QState filters queried silences by the given states.
 func QState(states ...SilenceState) QueryParam {
 	return func(q *query) error {
-		f := func(sil *pb.Silence, _ *Silences, now *timestamp.Timestamp) (bool, error) {
+		f := func(sil *pb.Silence, _ *Silences, now time.Time) (bool, error) {
 			s := getState(sil, now)
 
 			for _, ps := range states {
@@ -601,6 +582,19 @@ func QState(states ...SilenceState) QueryParam {
 	}
 }
 
+// QueryOne queries with the given parameters and returns the first result.
+// Returns ErrNotFound if the query result is empty.
+func (s *Silences) QueryOne(params ...QueryParam) (*pb.Silence, error) {
+	res, err := s.Query(params...)
+	if err != nil {
+		return nil, err
+	}
+	if len(res) == 0 {
+		return nil, ErrNotFound
+	}
+	return res[0], nil
+}
+
 // Query for silences based on the given query parameters.
 func (s *Silences) Query(params ...QueryParam) ([]*pb.Silence, error) {
 	start := time.Now()
@@ -613,11 +607,7 @@ func (s *Silences) Query(params ...QueryParam) ([]*pb.Silence, error) {
 				return nil, err
 			}
 		}
-		nowpb, err := s.nowProto()
-		if err != nil {
-			return nil, err
-		}
-		return s.query(q, nowpb)
+		return s.query(q, s.now())
 	}()
 	if err != nil {
 		s.metrics.queryErrorsTotal.Inc()
@@ -626,7 +616,17 @@ func (s *Silences) Query(params ...QueryParam) ([]*pb.Silence, error) {
 	return sils, err
 }
 
-func (s *Silences) query(q *query, now *timestamp.Timestamp) ([]*pb.Silence, error) {
+// Count silences by state.
+func (s *Silences) CountState(states ...SilenceState) (int, error) {
+	// This could probably be optimized.
+	sils, err := s.Query(QState(states...))
+	if err != nil {
+		return -1, err
+	}
+	return len(sils), nil
+}
+
+func (s *Silences) query(q *query, now time.Time) ([]*pb.Silence, error) {
 	// If we have an ID constraint, all silences are our base set.
 	// This and the use of post-filter functions is the
 	// the trivial solution for now.
@@ -637,12 +637,12 @@ func (s *Silences) query(q *query, now *timestamp.Timestamp) ([]*pb.Silence, err
 
 	if q.ids != nil {
 		for _, id := range q.ids {
-			if s, ok := s.st[string(id)]; ok {
+			if s, ok := s.st.data[string(id)]; ok {
 				res = append(res, s.Silence)
 			}
 		}
 	} else {
-		for _, sil := range s.st {
+		for _, sil := range s.st.data {
 			res = append(res, sil.Silence)
 		}
 	}
@@ -661,7 +661,7 @@ func (s *Silences) query(q *query, now *timestamp.Timestamp) ([]*pb.Silence, err
 			}
 		}
 		if !remove {
-			resf = append(resf, sil)
+			resf = append(resf, cloneSilence(sil))
 		}
 	}
 
@@ -671,7 +671,7 @@ func (s *Silences) query(q *query, now *timestamp.Timestamp) ([]*pb.Silence, err
 // loadSnapshot loads a snapshot generated by Snapshot() into the state.
 // Any previous state is wiped.
 func (s *Silences) loadSnapshot(r io.Reader) error {
-	st := gossipData{}
+	st := newGossipData()
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -684,14 +684,21 @@ func (s *Silences) loadSnapshot(r io.Reader) error {
 			}
 			return err
 		}
-		st[sil.Silence.Id] = &sil
+		// Comments list was moved to a single comment. Upgrade on loading the snapshot.
+		if len(sil.Silence.Comments) > 0 {
+			sil.Silence.Comment = sil.Silence.Comments[0].Comment
+			sil.Silence.CreatedBy = sil.Silence.Comments[0].Author
+			sil.Silence.Comments = nil
+		}
+
+		st.data[sil.Silence.Id] = &sil
 		_, err := s.mc.Get(sil.Silence)
 		if err != nil {
 			return err
 		}
 	}
 
-	s.st = st
+	s.st.data = st.data
 
 	return nil
 }
@@ -706,7 +713,7 @@ func (s *Silences) Snapshot(w io.Writer) (int, error) {
 	defer s.mtx.Unlock()
 
 	var n int
-	for _, s := range s.st {
+	for _, s := range s.st.data {
 		m, err := pbutil.WriteDelimited(w, s)
 		if err != nil {
 			return n + m, err
@@ -737,7 +744,7 @@ func (g gossiper) OnGossip(msg []byte) (mesh.GossipData, error) {
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
 
-	if delta := g.st.mergeDelta(gd); len(delta) > 0 {
+	if delta := g.st.mergeDelta(gd); len(delta.data) > 0 {
 		return delta, nil
 	}
 	return nil, nil
@@ -761,10 +768,23 @@ func (g gossiper) OnGossipUnicast(src mesh.PeerName, msg []byte) error {
 	panic("not implemented")
 }
 
-type gossipData map[string]*pb.MeshSilence
+type silenceMap map[string]*pb.MeshSilence
 
-func decodeGossipData(msg []byte) (gossipData, error) {
-	gd := gossipData{}
+type gossipData struct {
+	data silenceMap
+	mtx  sync.RWMutex
+}
+
+var _ mesh.GossipData = &gossipData{}
+
+func newGossipData() *gossipData {
+	return &gossipData{
+		data: silenceMap{},
+	}
+}
+
+func decodeGossipData(msg []byte) (*gossipData, error) {
+	gd := newGossipData()
 	rd := bytes.NewReader(msg)
 
 	for {
@@ -775,13 +795,13 @@ func decodeGossipData(msg []byte) (gossipData, error) {
 			}
 			return gd, err
 		}
-		gd[s.Silence.Id] = &s
+		gd.data[s.Silence.Id] = &s
 	}
 	return gd, nil
 }
 
 // Encode implements the mesh.GossipData interface.
-func (gd gossipData) Encode() [][]byte {
+func (gd *gossipData) Encode() [][]byte {
 	// Split into sub-messages of ~1MB.
 	const maxSize = 1024 * 1024
 
@@ -790,7 +810,11 @@ func (gd gossipData) Encode() [][]byte {
 		res [][]byte
 		n   int
 	)
-	for _, s := range gd {
+
+	gd.mtx.RLock()
+	defer gd.mtx.RUnlock()
+
+	for _, s := range gd.data {
 		m, err := pbutil.WriteDelimited(&buf, s)
 		n += m
 		if err != nil {
@@ -808,59 +832,88 @@ func (gd gossipData) Encode() [][]byte {
 	return res
 }
 
-func (gd gossipData) clone() gossipData {
-	res := make(gossipData, len(gd))
-	for id, s := range gd {
-		res[id] = s
+func (gd *gossipData) clone() *gossipData {
+	gd.mtx.RLock()
+	defer gd.mtx.RUnlock()
+
+	data := make(silenceMap, len(gd.data))
+	for id, s := range gd.data {
+		data[id] = s
 	}
-	return res
+	return &gossipData{data: data}
 }
 
 // Merge the silence set with gossip data and return a new silence state.
-func (gd gossipData) Merge(other mesh.GossipData) mesh.GossipData {
-	for id, s := range other.(gossipData) {
-		prev, ok := gd[id]
+func (gd *gossipData) Merge(other mesh.GossipData) mesh.GossipData {
+	ot := other.(*gossipData)
+	ot.mtx.RLock()
+	defer ot.mtx.RUnlock()
+
+	gd.mtx.Lock()
+	defer gd.mtx.Unlock()
+
+	for id, s := range ot.data {
+		// Comments list was moved to a single comment. Apply upgrade
+		// on silences received from peers.
+		if len(s.Silence.Comments) > 0 {
+			s.Silence.Comment = s.Silence.Comments[0].Comment
+			s.Silence.CreatedBy = s.Silence.Comments[0].Author
+			s.Silence.Comments = nil
+		}
+
+		prev, ok := gd.data[id]
 		if !ok {
-			gd[id] = s
+			gd.data[id] = s
 			continue
 		}
-		pts, err := ptypes.Timestamp(prev.Silence.UpdatedAt)
-		if err != nil {
-			panic(err)
-		}
-		sts, err := ptypes.Timestamp(s.Silence.UpdatedAt)
-		if err != nil {
-			panic(err)
-		}
-		if pts.Before(sts) {
-			gd[id] = s
+		if prev.Silence.UpdatedAt.Before(s.Silence.UpdatedAt) {
+			gd.data[id] = s
 		}
 	}
 	return gd
 }
 
-// mergeDelta behaves like Merge but returns a gossipData only
-// containing things that have changed.
-func (gd gossipData) mergeDelta(od gossipData) gossipData {
-	delta := gossipData{}
-	for id, s := range od {
-		prev, ok := gd[id]
-		if !ok {
-			gd[id] = s
-			delta[id] = s
+// mergeDelta behaves like Merge but ignores expired silences, and
+// returns a gossipData only containing things that have changed.
+func (gd *gossipData) mergeDelta(od *gossipData) *gossipData {
+	delta := newGossipData()
+
+	od.mtx.RLock()
+	defer od.mtx.RUnlock()
+
+	gd.mtx.Lock()
+	defer gd.mtx.Unlock()
+
+	for id, s := range od.data {
+		// If a gossiped silence is expired, skip it.
+		// For a given silence duration exceeding a few minutes,
+		// active silences will have already been gossiped.
+		// Once the active silence is gossiped, its expiration
+		// should happen more or less simultaneously on the different
+		// alertmanager nodes. Preventing the gossiping of expired
+		// silences allows them to be GC'd, and doesn't affect
+		// consistency across the mesh.
+		if !s.ExpiresAt.After(utcNow()) {
 			continue
 		}
-		pts, err := ptypes.Timestamp(prev.Silence.UpdatedAt)
-		if err != nil {
-			panic(err)
+
+		// Comments list was moved to a single comment. Apply upgrade
+		// on silences received from peers.
+		if len(s.Silence.Comments) > 0 {
+			s.Silence.Comment = s.Silence.Comments[0].Comment
+			s.Silence.CreatedBy = s.Silence.Comments[0].Author
+			s.Silence.Comments = nil
 		}
-		sts, err := ptypes.Timestamp(s.Silence.UpdatedAt)
-		if err != nil {
-			panic(err)
+
+		prev, ok := gd.data[id]
+		if !ok {
+			gd.data[id] = s
+			delta.data[id] = s
+			continue
 		}
-		if pts.Before(sts) {
-			gd[id] = s
-			delta[id] = s
+		if prev.Silence.UpdatedAt.Before(s.Silence.UpdatedAt) {
+			gd.data[id] = s
+			delta.data[id] = s
 		}
 	}
 	return delta

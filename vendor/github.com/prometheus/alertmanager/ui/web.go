@@ -41,6 +41,7 @@ func serveAsset(w http.ResponseWriter, req *http.Request, fp string) {
 		return
 	}
 
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	http.ServeContent(w, req, info.Name(), info.ModTime(), bytes.NewReader(file))
 }
 
@@ -48,24 +49,26 @@ func serveAsset(w http.ResponseWriter, req *http.Request, fp string) {
 func Register(r *route.Router, reloadCh chan<- struct{}) {
 	ihf := prometheus.InstrumentHandlerFunc
 
-	r.Get("/app/*filepath", ihf("app_files",
-		func(w http.ResponseWriter, req *http.Request) {
-			fp := route.Param(route.Context(req), "filepath")
-			serveAsset(w, req, filepath.Join("ui/app", fp))
-		},
-	))
-	r.Get("/lib/*filepath", ihf("lib_files",
-		func(w http.ResponseWriter, req *http.Request) {
-			fp := route.Param(route.Context(req), "filepath")
-			serveAsset(w, req, filepath.Join("ui/lib", fp))
-		},
-	))
-
 	r.Get("/metrics", prometheus.Handler().ServeHTTP)
 
 	r.Get("/", ihf("index", func(w http.ResponseWriter, req *http.Request) {
 		serveAsset(w, req, "ui/app/index.html")
 	}))
+
+	r.Get("/script.js", ihf("app", func(w http.ResponseWriter, req *http.Request) {
+		serveAsset(w, req, "ui/app/script.js")
+	}))
+
+	r.Get("/favicon.ico", ihf("app", func(w http.ResponseWriter, req *http.Request) {
+		serveAsset(w, req, "ui/app/favicon.ico")
+	}))
+
+	r.Get("/lib/*filepath", ihf("lib_files",
+		func(w http.ResponseWriter, req *http.Request) {
+			fp := route.Param(req.Context(), "filepath")
+			serveAsset(w, req, filepath.Join("ui/lib", fp))
+		},
+	))
 
 	r.Post("/-/reload", func(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte("Reloading configuration file..."))

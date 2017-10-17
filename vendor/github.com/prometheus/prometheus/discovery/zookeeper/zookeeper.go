@@ -24,6 +24,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 	"golang.org/x/net/context"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/prometheus/prometheus/util/treecache"
@@ -39,17 +40,18 @@ type Discovery struct {
 	updates    chan treecache.ZookeeperTreeCacheEvent
 	treeCaches []*treecache.ZookeeperTreeCache
 
-	parse func(data []byte, path string) (model.LabelSet, error)
+	parse  func(data []byte, path string) (model.LabelSet, error)
+	logger log.Logger
 }
 
 // NewNerveDiscovery returns a new Discovery for the given Nerve config.
-func NewNerveDiscovery(conf *config.NerveSDConfig) *Discovery {
-	return NewDiscovery(conf.Servers, time.Duration(conf.Timeout), conf.Paths, parseNerveMember)
+func NewNerveDiscovery(conf *config.NerveSDConfig, logger log.Logger) *Discovery {
+	return NewDiscovery(conf.Servers, time.Duration(conf.Timeout), conf.Paths, logger, parseNerveMember)
 }
 
 // NewServersetDiscovery returns a new Discovery for the given serverset config.
-func NewServersetDiscovery(conf *config.ServersetSDConfig) *Discovery {
-	return NewDiscovery(conf.Servers, time.Duration(conf.Timeout), conf.Paths, parseServersetMember)
+func NewServersetDiscovery(conf *config.ServersetSDConfig, logger log.Logger) *Discovery {
+	return NewDiscovery(conf.Servers, time.Duration(conf.Timeout), conf.Paths, logger, parseServersetMember)
 }
 
 // NewDiscovery returns a new discovery along Zookeeper parses with
@@ -58,8 +60,13 @@ func NewDiscovery(
 	srvs []string,
 	timeout time.Duration,
 	paths []string,
+	logger log.Logger,
 	pf func(data []byte, path string) (model.LabelSet, error),
 ) *Discovery {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	conn, _, err := zk.Connect(srvs, timeout)
 	conn.SetLogger(treecache.ZookeeperLogger{})
 	if err != nil {
@@ -71,9 +78,10 @@ func NewDiscovery(
 		updates: updates,
 		sources: map[string]*config.TargetGroup{},
 		parse:   pf,
+		logger:  logger,
 	}
 	for _, path := range paths {
-		sd.treeCaches = append(sd.treeCaches, treecache.NewZookeeperTreeCache(conn, path, updates))
+		sd.treeCaches = append(sd.treeCaches, treecache.NewZookeeperTreeCache(conn, path, updates, logger))
 	}
 	return sd
 }
@@ -93,6 +101,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*config.TargetGroup) {
 	for {
 		select {
 		case <-ctx.Done():
+			return
 		case event := <-d.updates:
 			tg := &config.TargetGroup{
 				Source: event.Path,

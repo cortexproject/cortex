@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 )
 
@@ -77,6 +78,18 @@ test_metric2{foo="boo",instance="i"} 1 6000000
 test_metric_without_labels{instance=""} 1001 6000000
 `,
 	},
+	"test_stale_metric": {
+		params: "match[]=test_metric_stale",
+		code:   200,
+		body:   ``,
+	},
+	"test_old_metric": {
+		params: "match[]=test_metric_old",
+		code:   200,
+		body: `# TYPE test_metric_old untyped
+test_metric_old{instance=""} 981 5880000
+`,
+	},
 	"{foo='boo'}": {
 		params: "match[]={foo='boo'}",
 		code:   200,
@@ -104,6 +117,8 @@ test_metric1{foo="bar",instance="i"} 10000 6000000
 test_metric1{foo="boo",instance="i"} 1 6000000
 # TYPE test_metric2 untyped
 test_metric2{foo="boo",instance="i"} 1 6000000
+# TYPE test_metric_old untyped
+test_metric_old{instance=""} 981 5880000
 # TYPE test_metric_without_labels untyped
 test_metric_without_labels{instance=""} 1001 6000000
 `,
@@ -111,7 +126,9 @@ test_metric_without_labels{instance=""} 1001 6000000
 	"empty label value matches everything that doesn't have that label": {
 		params: "match[]={foo='',__name__=~'.%2b'}",
 		code:   200,
-		body: `# TYPE test_metric_without_labels untyped
+		body: `# TYPE test_metric_old untyped
+test_metric_old{instance=""} 981 5880000
+# TYPE test_metric_without_labels untyped
 test_metric_without_labels{instance=""} 1001 6000000
 `,
 	},
@@ -123,6 +140,8 @@ test_metric1{foo="bar",instance="i"} 10000 6000000
 test_metric1{foo="boo",instance="i"} 1 6000000
 # TYPE test_metric2 untyped
 test_metric2{foo="boo",instance="i"} 1 6000000
+# TYPE test_metric_old untyped
+test_metric_old{instance=""} 981 5880000
 # TYPE test_metric_without_labels untyped
 test_metric_without_labels{instance=""} 1001 6000000
 `,
@@ -136,6 +155,8 @@ test_metric1{foo="bar",instance="i",zone="ie"} 10000 6000000
 test_metric1{foo="boo",instance="i",zone="ie"} 1 6000000
 # TYPE test_metric2 untyped
 test_metric2{foo="boo",instance="i",zone="ie"} 1 6000000
+# TYPE test_metric_old untyped
+test_metric_old{foo="baz",instance="",zone="ie"} 981 5880000
 # TYPE test_metric_without_labels untyped
 test_metric_without_labels{foo="baz",instance="",zone="ie"} 1001 6000000
 `,
@@ -151,6 +172,8 @@ test_metric1{foo="bar",instance="i"} 10000 6000000
 test_metric1{foo="boo",instance="i"} 1 6000000
 # TYPE test_metric2 untyped
 test_metric2{foo="boo",instance="i"} 1 6000000
+# TYPE test_metric_old untyped
+test_metric_old{instance="baz"} 981 5880000
 # TYPE test_metric_without_labels untyped
 test_metric_without_labels{instance="baz"} 1001 6000000
 `,
@@ -164,6 +187,8 @@ func TestFederation(t *testing.T) {
 			test_metric1{foo="boo",instance="i"}    1+0x100
 			test_metric2{foo="boo",instance="i"}    1+0x100
 			test_metric_without_labels 1+10x100
+			test_metric_stale                       1+10x99 stale
+			test_metric_old                         1+10x98
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -178,10 +203,13 @@ func TestFederation(t *testing.T) {
 		storage:     suite.Storage(),
 		queryEngine: suite.QueryEngine(),
 		now:         func() model.Time { return 101 * 60 * 1000 }, // 101min after epoch.
+		config: &config.Config{
+			GlobalConfig: config.GlobalConfig{},
+		},
 	}
 
 	for name, scenario := range scenarios {
-		h.externalLabels = scenario.externalLabels
+		h.config.GlobalConfig.ExternalLabels = scenario.externalLabels
 		req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(
 			"GET http://example.org/federate?" + scenario.params + " HTTP/1.0\r\n\r\n",
 		)))
@@ -204,7 +232,7 @@ func TestFederation(t *testing.T) {
 			t.Errorf("Scenario %q: got code %d, want %d", name, got, want)
 		}
 		if got, want := normalizeBody(res.Body), scenario.body; got != want {
-			t.Errorf("Scenario %q: got body %s, want %s", name, got, want)
+			t.Errorf("Scenario %q: got body\n%s\n, want\n%s\n", name, got, want)
 		}
 	}
 }

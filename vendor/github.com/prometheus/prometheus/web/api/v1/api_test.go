@@ -29,6 +29,9 @@ import (
 	"github.com/prometheus/common/route"
 	"golang.org/x/net/context"
 
+	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/retrieval"
 )
@@ -39,10 +42,19 @@ func (f targetRetrieverFunc) Targets() []*retrieval.Target {
 	return f()
 }
 
-type alertmanagerRetrieverFunc func() []string
+type alertmanagerRetrieverFunc func() []*url.URL
 
-func (f alertmanagerRetrieverFunc) Alertmanagers() []string {
+func (f alertmanagerRetrieverFunc) Alertmanagers() []*url.URL {
 	return f()
+}
+
+var samplePrometheusCfg = config.Config{
+	GlobalConfig:       config.GlobalConfig{},
+	AlertingConfig:     config.AlertingConfig{},
+	RuleFiles:          []string{},
+	ScrapeConfigs:      []*config.ScrapeConfig{},
+	RemoteWriteConfigs: []*config.RemoteWriteConfig{},
+	RemoteReadConfigs:  []*config.RemoteReadConfig{},
 }
 
 func TestEndpoints(t *testing.T) {
@@ -61,35 +73,42 @@ func TestEndpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	now := model.Now()
+	now := time.Now()
 
 	tr := targetRetrieverFunc(func() []*retrieval.Target {
 		return []*retrieval.Target{
 			retrieval.NewTarget(
-				model.LabelSet{
+				labels.FromMap(map[string]string{
 					model.SchemeLabel:      "http",
 					model.AddressLabel:     "example.com:8080",
 					model.MetricsPathLabel: "/metrics",
-				},
-				model.LabelSet{},
+				}),
+				nil,
 				url.Values{},
 			),
 		}
 	})
 
-	ar := alertmanagerRetrieverFunc(func() []string {
-		return []string{"http://alertmanager.example.com:8080/api/v1/alerts"}
+	ar := alertmanagerRetrieverFunc(func() []*url.URL {
+		return []*url.URL{{
+			Scheme: "http",
+			Host:   "alertmanager.example.com:8080",
+			Path:   "/api/v1/alerts",
+		}}
 	})
 
 	api := &API{
-		Storage:               suite.Storage(),
+		Queryable:             suite.Storage(),
 		QueryEngine:           suite.QueryEngine(),
 		targetRetriever:       tr,
 		alertmanagerRetriever: ar,
-		now: func() model.Time { return now },
+		now:    func() time.Time { return now },
+		config: func() config.Config { return samplePrometheusCfg },
+		ready:  func(f http.HandlerFunc) http.HandlerFunc { return f },
 	}
 
-	start := model.Time(0)
+	start := time.Unix(0, 0)
+
 	var tests = []struct {
 		endpoint apiFunc
 		params   map[string]string
@@ -101,13 +120,13 @@ func TestEndpoints(t *testing.T) {
 			endpoint: api.query,
 			query: url.Values{
 				"query": []string{"2"},
-				"time":  []string{"123.3"},
+				"time":  []string{"123.4"},
 			},
 			response: &queryData{
-				ResultType: model.ValScalar,
-				Result: &model.Scalar{
-					Value:     2,
-					Timestamp: start.Add(123*time.Second + 300*time.Millisecond),
+				ResultType: promql.ValueTypeScalar,
+				Result: promql.Scalar{
+					V: 2,
+					T: timestamp.FromTime(start.Add(123*time.Second + 400*time.Millisecond)),
 				},
 			},
 		},
@@ -118,10 +137,10 @@ func TestEndpoints(t *testing.T) {
 				"time":  []string{"1970-01-01T00:02:03Z"},
 			},
 			response: &queryData{
-				ResultType: model.ValScalar,
-				Result: &model.Scalar{
-					Value:     0.333,
-					Timestamp: start.Add(123 * time.Second),
+				ResultType: promql.ValueTypeScalar,
+				Result: promql.Scalar{
+					V: 0.333,
+					T: timestamp.FromTime(start.Add(123 * time.Second)),
 				},
 			},
 		},
@@ -132,10 +151,10 @@ func TestEndpoints(t *testing.T) {
 				"time":  []string{"1970-01-01T01:02:03+01:00"},
 			},
 			response: &queryData{
-				ResultType: model.ValScalar,
-				Result: &model.Scalar{
-					Value:     0.333,
-					Timestamp: start.Add(123 * time.Second),
+				ResultType: promql.ValueTypeScalar,
+				Result: promql.Scalar{
+					V: 0.333,
+					T: timestamp.FromTime(start.Add(123 * time.Second)),
 				},
 			},
 		},
@@ -145,10 +164,10 @@ func TestEndpoints(t *testing.T) {
 				"query": []string{"0.333"},
 			},
 			response: &queryData{
-				ResultType: model.ValScalar,
-				Result: &model.Scalar{
-					Value:     0.333,
-					Timestamp: now,
+				ResultType: promql.ValueTypeScalar,
+				Result: promql.Scalar{
+					V: 0.333,
+					T: timestamp.FromTime(now),
 				},
 			},
 		},
@@ -161,15 +180,15 @@ func TestEndpoints(t *testing.T) {
 				"step":  []string{"1"},
 			},
 			response: &queryData{
-				ResultType: model.ValMatrix,
-				Result: model.Matrix{
-					&model.SampleStream{
-						Values: []model.SamplePair{
-							{Value: 0, Timestamp: start},
-							{Value: 1, Timestamp: start.Add(1 * time.Second)},
-							{Value: 2, Timestamp: start.Add(2 * time.Second)},
+				ResultType: promql.ValueTypeMatrix,
+				Result: promql.Matrix{
+					promql.Series{
+						Points: []promql.Point{
+							{V: 0, T: timestamp.FromTime(start)},
+							{V: 1, T: timestamp.FromTime(start.Add(1 * time.Second))},
+							{V: 2, T: timestamp.FromTime(start.Add(2 * time.Second))},
 						},
-						Metric: model.Metric{},
+						Metric: nil,
 					},
 				},
 			},
@@ -259,7 +278,7 @@ func TestEndpoints(t *testing.T) {
 			params: map[string]string{
 				"name": "__name__",
 			},
-			response: model.LabelValues{
+			response: []string{
 				"test_metric1",
 				"test_metric2",
 			},
@@ -269,7 +288,7 @@ func TestEndpoints(t *testing.T) {
 			params: map[string]string{
 				"name": "foo",
 			},
-			response: model.LabelValues{
+			response: []string{
 				"bar",
 				"boo",
 			},
@@ -287,11 +306,8 @@ func TestEndpoints(t *testing.T) {
 			query: url.Values{
 				"match[]": []string{`test_metric2`},
 			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric2",
-					"foo":      "boo",
-				},
+			response: []labels.Labels{
+				labels.FromStrings("__name__", "test_metric2", "foo", "boo"),
 			},
 		},
 		{
@@ -299,23 +315,17 @@ func TestEndpoints(t *testing.T) {
 			query: url.Values{
 				"match[]": []string{`test_metric1{foo=~".+o"}`},
 			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric1",
-					"foo":      "boo",
-				},
+			response: []labels.Labels{
+				labels.FromStrings("__name__", "test_metric1", "foo", "boo"),
 			},
 		},
 		{
 			endpoint: api.series,
 			query: url.Values{
-				"match[]": []string{`test_metric1{foo=~"o$"}`, `test_metric1{foo=~".+o"}`},
+				"match[]": []string{`test_metric1{foo=~".+o$"}`, `test_metric1{foo=~".+o"}`},
 			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric1",
-					"foo":      "boo",
-				},
+			response: []labels.Labels{
+				labels.FromStrings("__name__", "test_metric1", "foo", "boo"),
 			},
 		},
 		{
@@ -323,11 +333,8 @@ func TestEndpoints(t *testing.T) {
 			query: url.Values{
 				"match[]": []string{`test_metric1{foo=~".+o"}`, `none`},
 			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric1",
-					"foo":      "boo",
-				},
+			response: []labels.Labels{
+				labels.FromStrings("__name__", "test_metric1", "foo", "boo"),
 			},
 		},
 		// Start and end before series starts.
@@ -338,7 +345,7 @@ func TestEndpoints(t *testing.T) {
 				"start":   []string{"-2"},
 				"end":     []string{"-1"},
 			},
-			response: []model.Metric{},
+			response: []labels.Labels{},
 		},
 		// Start and end after series ends.
 		{
@@ -348,7 +355,7 @@ func TestEndpoints(t *testing.T) {
 				"start":   []string{"100000"},
 				"end":     []string{"100001"},
 			},
-			response: []model.Metric{},
+			response: []labels.Labels{},
 		},
 		// Start before series starts, end after series ends.
 		{
@@ -358,11 +365,8 @@ func TestEndpoints(t *testing.T) {
 				"start":   []string{"-1"},
 				"end":     []string{"100000"},
 			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric2",
-					"foo":      "boo",
-				},
+			response: []labels.Labels{
+				labels.FromStrings("__name__", "test_metric2", "foo", "boo"),
 			},
 		},
 		// Start and end within series.
@@ -373,11 +377,8 @@ func TestEndpoints(t *testing.T) {
 				"start":   []string{"1"},
 				"end":     []string{"100"},
 			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric2",
-					"foo":      "boo",
-				},
+			response: []labels.Labels{
+				labels.FromStrings("__name__", "test_metric2", "foo", "boo"),
 			},
 		},
 		// Start within series, end after.
@@ -388,11 +389,8 @@ func TestEndpoints(t *testing.T) {
 				"start":   []string{"1"},
 				"end":     []string{"100000"},
 			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric2",
-					"foo":      "boo",
-				},
+			response: []labels.Labels{
+				labels.FromStrings("__name__", "test_metric2", "foo", "boo"),
 			},
 		},
 		// Start before series, end within series.
@@ -403,11 +401,8 @@ func TestEndpoints(t *testing.T) {
 				"start":   []string{"-1"},
 				"end":     []string{"1"},
 			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric2",
-					"foo":      "boo",
-				},
+			response: []labels.Labels{
+				labels.FromStrings("__name__", "test_metric2", "foo", "boo"),
 			},
 		},
 		// Missing match[] query params in series requests.
@@ -417,51 +412,22 @@ func TestEndpoints(t *testing.T) {
 		},
 		{
 			endpoint: api.dropSeries,
-			errType:  errorBadData,
-		},
-		// The following tests delete time series from the test storage. They
-		// must remain at the end and are fixed in their order.
-		{
-			endpoint: api.dropSeries,
-			query: url.Values{
-				"match[]": []string{`test_metric1{foo=~".+o"}`},
-			},
-			response: struct {
-				NumDeleted int `json:"numDeleted"`
-			}{1},
+			errType:  errorInternal,
 		},
 		{
-			endpoint: api.series,
-			query: url.Values{
-				"match[]": []string{`test_metric1`},
-			},
-			response: []model.Metric{
-				{
-					"__name__": "test_metric1",
-					"foo":      "bar",
-				},
-			},
-		}, {
-			endpoint: api.dropSeries,
-			query: url.Values{
-				"match[]": []string{`{__name__=~".+"}`},
-			},
-			response: struct {
-				NumDeleted int `json:"numDeleted"`
-			}{2},
-		}, {
 			endpoint: api.targets,
 			response: &TargetDiscovery{
 				ActiveTargets: []*Target{
 					{
-						DiscoveredLabels: model.LabelSet{},
-						Labels:           model.LabelSet{},
+						DiscoveredLabels: map[string]string{},
+						Labels:           map[string]string{},
 						ScrapeURL:        "http://example.com:8080/metrics",
 						Health:           "unknown",
 					},
 				},
 			},
-		}, {
+		},
+		{
 			endpoint: api.alertmanagers,
 			response: &AlertmanagerDiscovery{
 				ActiveAlertmanagers: []*AlertmanagerTarget{
@@ -469,6 +435,12 @@ func TestEndpoints(t *testing.T) {
 						URL: "http://alertmanager.example.com:8080/api/v1/alerts",
 					},
 				},
+			},
+		},
+		{
+			endpoint: api.serveConfig,
+			response: &prometheusConfig{
+				YAML: samplePrometheusCfg.String(),
 			},
 		},
 	}
@@ -479,15 +451,13 @@ func TestEndpoints(t *testing.T) {
 		for p, v := range test.params {
 			ctx = route.WithParam(ctx, p, v)
 		}
-		api.context = func(r *http.Request) context.Context {
-			return ctx
-		}
+		t.Logf("run query %q", test.query.Encode())
 
 		req, err := http.NewRequest("ANY", fmt.Sprintf("http://example.com?%s", test.query.Encode()), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp, apiErr := test.endpoint(req)
+		resp, apiErr := test.endpoint(req.WithContext(ctx))
 		if apiErr != nil {
 			if test.errType == errorNone {
 				t.Fatalf("Unexpected error: %s", apiErr)
@@ -503,8 +473,6 @@ func TestEndpoints(t *testing.T) {
 		if !reflect.DeepEqual(resp, test.response) {
 			t.Fatalf("Response does not match, expected:\n%+v\ngot:\n%+v", test.response, resp)
 		}
-		// Ensure that removed metrics are unindexed before the next request.
-		suite.Storage().WaitForIndexing()
 	}
 }
 
@@ -605,14 +573,6 @@ func TestParseTime(t *testing.T) {
 			input: "30s",
 			fail:  true,
 		}, {
-			// Internal int64 overflow.
-			input: "-148966367200.372",
-			fail:  true,
-		}, {
-			// Internal int64 overflow.
-			input: "148966367200.372",
-			fail:  true,
-		}, {
 			input:  "123",
 			result: time.Unix(123, 0),
 		}, {
@@ -637,9 +597,8 @@ func TestParseTime(t *testing.T) {
 			t.Errorf("Expected error for %q but got none", test.input)
 			continue
 		}
-		res := model.TimeFromUnixNano(test.result.UnixNano())
-		if !test.fail && ts != res {
-			t.Errorf("Expected time %v for input %q but got %v", res, test.input, ts)
+		if !test.fail && !ts.Equal(test.result) {
+			t.Errorf("Expected time %v for input %q but got %v", test.result, test.input, ts)
 		}
 	}
 }
@@ -699,8 +658,8 @@ func TestParseDuration(t *testing.T) {
 }
 
 func TestOptionsMethod(t *testing.T) {
-	r := route.New(nil)
-	api := &API{}
+	r := route.New()
+	api := &API{ready: func(f http.HandlerFunc) http.HandlerFunc { return f }}
 	api.Register(r)
 
 	s := httptest.NewServer(r)

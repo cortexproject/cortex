@@ -15,16 +15,23 @@ package rules
 
 import (
 	"fmt"
+	"net/url"
 	"sync"
 	"time"
+
+	yaml "gopkg.in/yaml.v2"
 
 	"golang.org/x/net/context"
 
 	html_template "html/template"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/template"
 	"github.com/prometheus/prometheus/util/strutil"
@@ -32,12 +39,12 @@ import (
 
 const (
 	// AlertMetricName is the metric name for synthetic alert timeseries.
-	alertMetricName model.LabelValue = "ALERTS"
+	alertMetricName = "ALERTS"
 
 	// AlertNameLabel is the label name indicating the name of an alert.
-	alertNameLabel model.LabelName = "alertname"
+	alertNameLabel = "alertname"
 	// AlertStateLabel is the label name indicating the state of an alert.
-	alertStateLabel model.LabelName = "alertstate"
+	alertStateLabel = "alertstate"
 )
 
 // AlertState denotes the state of an active alert.
@@ -68,14 +75,16 @@ func (s AlertState) String() string {
 
 // Alert is the user-level representation of a single instance of an alerting rule.
 type Alert struct {
-	State       AlertState
-	Labels      model.LabelSet
-	Annotations model.LabelSet
+	State AlertState
+
+	Labels      labels.Labels
+	Annotations labels.Labels
+
 	// The value at the last evaluation of the alerting expression.
-	Value model.SampleValue
+	Value float64
 	// The interval during which the condition of this alert held true.
 	// ResolvedAt will be 0 to indicate a still active alert.
-	ActiveAt, ResolvedAt model.Time
+	ActiveAt, ResolvedAt time.Time
 }
 
 // An AlertingRule generates alerts from its vector expression.
@@ -88,26 +97,29 @@ type AlertingRule struct {
 	// output vector before an alert transitions from Pending to Firing state.
 	holdDuration time.Duration
 	// Extra labels to attach to the resulting alert sample vectors.
-	labels model.LabelSet
+	labels labels.Labels
 	// Non-identifying key/value pairs.
-	annotations model.LabelSet
+	annotations labels.Labels
 
 	// Protects the below.
 	mtx sync.Mutex
 	// A map of alerts which are currently active (Pending or Firing), keyed by
 	// the fingerprint of the labelset they correspond to.
-	active map[model.Fingerprint]*Alert
+	active map[uint64]*Alert
+
+	logger log.Logger
 }
 
 // NewAlertingRule constructs a new AlertingRule.
-func NewAlertingRule(name string, vec promql.Expr, hold time.Duration, lbls, anns model.LabelSet) *AlertingRule {
+func NewAlertingRule(name string, vec promql.Expr, hold time.Duration, lbls, anns labels.Labels, logger log.Logger) *AlertingRule {
 	return &AlertingRule{
 		name:         name,
 		vector:       vec,
 		holdDuration: hold,
 		labels:       lbls,
 		annotations:  anns,
-		active:       map[model.Fingerprint]*Alert{},
+		active:       map[uint64]*Alert{},
+		logger:       logger,
 	}
 }
 
@@ -117,27 +129,23 @@ func (r *AlertingRule) Name() string {
 }
 
 func (r *AlertingRule) equal(o *AlertingRule) bool {
-	return r.name == o.name && r.labels.Equal(o.labels)
+	return r.name == o.name && labels.Equal(r.labels, o.labels)
 }
 
-func (r *AlertingRule) sample(alert *Alert, ts model.Time, set bool) *model.Sample {
-	metric := model.Metric(r.labels.Clone())
+func (r *AlertingRule) sample(alert *Alert, ts time.Time) promql.Sample {
+	lb := labels.NewBuilder(r.labels)
 
-	for ln, lv := range alert.Labels {
-		metric[ln] = lv
+	for _, l := range alert.Labels {
+		lb.Set(l.Name, l.Value)
 	}
 
-	metric[model.MetricNameLabel] = alertMetricName
-	metric[model.AlertNameLabel] = model.LabelValue(r.name)
-	metric[alertStateLabel] = model.LabelValue(alert.State.String())
+	lb.Set(labels.MetricName, alertMetricName)
+	lb.Set(labels.AlertName, r.name)
+	lb.Set(alertStateLabel, alert.State.String())
 
-	s := &model.Sample{
-		Metric:    metric,
-		Timestamp: ts,
-		Value:     0,
-	}
-	if set {
-		s.Value = 1
+	s := promql.Sample{
+		Metric: lb.Labels(),
+		Point:  promql.Point{T: timestamp.FromTime(ts), V: 1},
 	}
 	return s
 }
@@ -148,7 +156,7 @@ const resolvedRetention = 15 * time.Minute
 
 // Eval evaluates the rule expression and then creates pending alerts and fires
 // or removes previously pending alerts accordingly.
-func (r *AlertingRule) Eval(ctx context.Context, ts model.Time, engine *promql.Engine, externalURLPath string) (model.Vector, error) {
+func (r *AlertingRule) Eval(ctx context.Context, ts time.Time, engine *promql.Engine, externalURL *url.URL) (promql.Vector, error) {
 	query, err := engine.NewInstantQuery(r.vector.String(), ts)
 	if err != nil {
 		return nil, err
@@ -163,13 +171,13 @@ func (r *AlertingRule) Eval(ctx context.Context, ts model.Time, engine *promql.E
 
 	// Create pending alerts for any new vector elements in the alert expression
 	// or update the expression value for existing elements.
-	resultFPs := map[model.Fingerprint]struct{}{}
+	resultFPs := map[uint64]struct{}{}
 
 	for _, smpl := range res {
 		// Provide the alert information to the template.
 		l := make(map[string]string, len(smpl.Metric))
-		for k, v := range smpl.Metric {
-			l[string(k)] = string(v)
+		for _, lbl := range smpl.Metric {
+			l[lbl.Name] = lbl.Value
 		}
 
 		tmplData := struct {
@@ -177,74 +185,69 @@ func (r *AlertingRule) Eval(ctx context.Context, ts model.Time, engine *promql.E
 			Value  float64
 		}{
 			Labels: l,
-			Value:  float64(smpl.Value),
+			Value:  smpl.V,
 		}
 		// Inject some convenience variables that are easier to remember for users
 		// who are not used to Go's templating system.
 		defs := "{{$labels := .Labels}}{{$value := .Value}}"
 
-		expand := func(text model.LabelValue) model.LabelValue {
+		expand := func(text string) string {
 			tmpl := template.NewTemplateExpander(
 				ctx,
 				defs+string(text),
 				"__alert_"+r.Name(),
 				tmplData,
-				ts,
+				model.Time(timestamp.FromTime(ts)),
 				engine,
-				externalURLPath,
+				externalURL,
 			)
 			result, err := tmpl.Expand()
 			if err != nil {
 				result = fmt.Sprintf("<error expanding template: %s>", err)
-				log.Warnf("Error expanding alert template %v with data '%v': %s", r.Name(), tmplData, err)
+				level.Warn(r.logger).Log("msg", "Expanding alert template failed", "err", err, "data", tmplData)
 			}
-			return model.LabelValue(result)
+			return result
 		}
 
-		delete(smpl.Metric, model.MetricNameLabel)
-		labels := make(model.LabelSet, len(smpl.Metric)+len(r.labels)+1)
-		for ln, lv := range smpl.Metric {
-			labels[ln] = lv
-		}
-		for ln, lv := range r.labels {
-			labels[ln] = expand(lv)
-		}
-		labels[model.AlertNameLabel] = model.LabelValue(r.Name())
+		lb := labels.NewBuilder(smpl.Metric).Del(labels.MetricName)
 
-		annotations := make(model.LabelSet, len(r.annotations))
-		for an, av := range r.annotations {
-			annotations[an] = expand(av)
+		for _, l := range r.labels {
+			lb.Set(l.Name, expand(l.Value))
 		}
-		fp := smpl.Metric.Fingerprint()
-		resultFPs[fp] = struct{}{}
+		lb.Set(labels.AlertName, r.Name())
+
+		annotations := make(labels.Labels, 0, len(r.annotations))
+		for _, a := range r.annotations {
+			annotations = append(annotations, labels.Label{Name: a.Name, Value: expand(a.Value)})
+		}
+
+		h := smpl.Metric.Hash()
+		resultFPs[h] = struct{}{}
 
 		// Check whether we already have alerting state for the identifying label set.
 		// Update the last value and annotations if so, create a new alert entry otherwise.
-		if alert, ok := r.active[fp]; ok && alert.State != StateInactive {
-			alert.Value = smpl.Value
+		if alert, ok := r.active[h]; ok && alert.State != StateInactive {
+			alert.Value = smpl.V
 			alert.Annotations = annotations
 			continue
 		}
 
-		r.active[fp] = &Alert{
-			Labels:      labels,
+		r.active[h] = &Alert{
+			Labels:      lb.Labels(),
 			Annotations: annotations,
 			ActiveAt:    ts,
 			State:       StatePending,
-			Value:       smpl.Value,
+			Value:       smpl.V,
 		}
 	}
 
-	var vec model.Vector
+	var vec promql.Vector
 	// Check if any pending alerts should be removed or fire now. Write out alert timeseries.
 	for fp, a := range r.active {
 		if _, ok := resultFPs[fp]; !ok {
-			if a.State != StateInactive {
-				vec = append(vec, r.sample(a, ts, false))
-			}
 			// If the alert was previously firing, keep it around for a given
 			// retention time so it is reported as resolved to the AlertManager.
-			if a.State == StatePending || (a.ResolvedAt != 0 && ts.Sub(a.ResolvedAt) > resolvedRetention) {
+			if a.State == StatePending || (!a.ResolvedAt.IsZero() && ts.Sub(a.ResolvedAt) > resolvedRetention) {
 				delete(r.active, fp)
 			}
 			if a.State != StateInactive {
@@ -255,11 +258,10 @@ func (r *AlertingRule) Eval(ctx context.Context, ts model.Time, engine *promql.E
 		}
 
 		if a.State == StatePending && ts.Sub(a.ActiveAt) >= r.holdDuration {
-			vec = append(vec, r.sample(a, ts, false))
 			a.State = StateFiring
 		}
 
-		vec = append(vec, r.sample(a, ts, true))
+		vec = append(vec, r.sample(a, ts))
 	}
 
 	return vec, nil
@@ -284,7 +286,7 @@ func (r *AlertingRule) State() AlertState {
 func (r *AlertingRule) ActiveAlerts() []*Alert {
 	var res []*Alert
 	for _, a := range r.currentAlerts() {
-		if a.ResolvedAt == 0 {
+		if a.ResolvedAt.IsZero() {
 			res = append(res, a)
 		}
 	}
@@ -307,18 +309,20 @@ func (r *AlertingRule) currentAlerts() []*Alert {
 }
 
 func (r *AlertingRule) String() string {
-	s := fmt.Sprintf("ALERT %s", r.name)
-	s += fmt.Sprintf("\n\tIF %s", r.vector)
-	if r.holdDuration > 0 {
-		s += fmt.Sprintf("\n\tFOR %s", model.Duration(r.holdDuration))
+	ar := rulefmt.Rule{
+		Alert:       r.name,
+		Expr:        r.vector.String(),
+		For:         model.Duration(r.holdDuration),
+		Labels:      r.labels.Map(),
+		Annotations: r.annotations.Map(),
 	}
-	if len(r.labels) > 0 {
-		s += fmt.Sprintf("\n\tLABELS %s", r.labels)
+
+	byt, err := yaml.Marshal(ar)
+	if err != nil {
+		return fmt.Sprintf("error marshalling alerting rule: %s", err.Error())
 	}
-	if len(r.annotations) > 0 {
-		s += fmt.Sprintf("\n\tANNOTATIONS %s", r.annotations)
-	}
-	return s
+
+	return string(byt)
 }
 
 // HTMLSnippet returns an HTML snippet representing this alerting rule. The
@@ -329,16 +333,28 @@ func (r *AlertingRule) HTMLSnippet(pathPrefix string) html_template.HTML {
 		model.MetricNameLabel: alertMetricName,
 		alertNameLabel:        model.LabelValue(r.name),
 	}
-	s := fmt.Sprintf("ALERT <a href=%q>%s</a>", pathPrefix+strutil.GraphLinkForExpression(alertMetric.String()), r.name)
-	s += fmt.Sprintf("\n  IF <a href=%q>%s</a>", pathPrefix+strutil.GraphLinkForExpression(r.vector.String()), html_template.HTMLEscapeString(r.vector.String()))
-	if r.holdDuration > 0 {
-		s += fmt.Sprintf("\n  FOR %s", model.Duration(r.holdDuration))
+
+	labels := make(map[string]string, len(r.labels))
+	for _, l := range r.labels {
+		labels[l.Name] = html_template.HTMLEscapeString(l.Value)
 	}
-	if len(r.labels) > 0 {
-		s += fmt.Sprintf("\n  LABELS %s", html_template.HTMLEscapeString(r.labels.String()))
+
+	annotations := make(map[string]string, len(r.annotations))
+	for _, l := range r.annotations {
+		annotations[l.Name] = html_template.HTMLEscapeString(l.Value)
 	}
-	if len(r.annotations) > 0 {
-		s += fmt.Sprintf("\n  ANNOTATIONS %s", html_template.HTMLEscapeString(r.annotations.String()))
+
+	ar := rulefmt.Rule{
+		Alert:       fmt.Sprintf("<a href=%q>%s</a>", pathPrefix+strutil.TableLinkForExpression(alertMetric.String()), r.name),
+		Expr:        fmt.Sprintf("<a href=%q>%s</a>", pathPrefix+strutil.TableLinkForExpression(r.vector.String()), html_template.HTMLEscapeString(r.vector.String())),
+		For:         model.Duration(r.holdDuration),
+		Labels:      labels,
+		Annotations: annotations,
 	}
-	return html_template.HTML(s)
+
+	byt, err := yaml.Marshal(ar)
+	if err != nil {
+		return html_template.HTML(fmt.Sprintf("error marshalling alerting rule: %q", err.Error()))
+	}
+	return html_template.HTML(byt)
 }

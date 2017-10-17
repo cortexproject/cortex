@@ -15,13 +15,16 @@ package template
 
 import (
 	"math"
+	"net/url"
 	"testing"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage/local"
+	"github.com/prometheus/prometheus/util/testutil"
 )
 
 type testTemplatesScenario struct {
@@ -196,32 +199,48 @@ func TestTemplateExpansion(t *testing.T) {
 			output: "x",
 			html:   true,
 		},
+		{
+			// pathPrefix.
+			text:   "{{ pathPrefix }}",
+			output: "/path/prefix",
+		},
+		{
+			// externalURL.
+			text:   "{{ externalURL }}",
+			output: "http://testhost:9090/path/prefix",
+		},
 	}
 
 	time := model.Time(0)
 
-	storage, closer := local.NewTestStorage(t, 2)
-	defer closer.Close()
-	storage.Append(&model.Sample{
-		Metric: model.Metric{
-			model.MetricNameLabel: "metric",
-			"instance":            "a"},
-		Value: 11,
-	})
-	storage.Append(&model.Sample{
-		Metric: model.Metric{
-			model.MetricNameLabel: "metric",
-			"instance":            "b"},
-		Value: 21,
-	})
-	storage.WaitForIndexing()
+	storage := testutil.NewStorage(t)
+	defer storage.Close()
+
+	app, err := storage.Appender()
+	if err != nil {
+		t.Fatalf("get appender: %s", err)
+	}
+
+	_, err = app.Add(labels.FromStrings(labels.MetricName, "metric", "instance", "a"), 0, 11)
+	require.NoError(t, err)
+	_, err = app.Add(labels.FromStrings(labels.MetricName, "metric", "instance", "b"), 0, 21)
+	require.NoError(t, err)
+
+	if err := app.Commit(); err != nil {
+		t.Fatalf("commit samples: %s", err)
+	}
 
 	engine := promql.NewEngine(storage, nil)
+
+	extURL, err := url.Parse("http://testhost:9090/path/prefix")
+	if err != nil {
+		panic(err)
+	}
 
 	for i, s := range scenarios {
 		var result string
 		var err error
-		expander := NewTemplateExpander(context.Background(), s.text, "test", s.input, time, engine, "")
+		expander := NewTemplateExpander(context.Background(), s.text, "test", s.input, time, engine, extURL)
 		if s.html {
 			result, err = expander.ExpandHTML(nil)
 		} else {

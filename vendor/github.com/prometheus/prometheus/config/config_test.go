@@ -17,12 +17,14 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/url"
-	"reflect"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/util/testutil"
 	"gopkg.in/yaml.v2"
 )
 
@@ -47,9 +49,8 @@ var expectedConf = &Config{
 	},
 
 	RuleFiles: []string{
-		"testdata/first.rules",
-		"/absolute/second.rules",
-		"testdata/my/*.rules",
+		filepath.FromSlash("testdata/first.rules"),
+		filepath.FromSlash("testdata/my/*.rules"),
 	},
 
 	RemoteWriteConfigs: []*RemoteWriteConfig{
@@ -65,10 +66,12 @@ var expectedConf = &Config{
 					Action:       RelabelDrop,
 				},
 			},
+			QueueConfig: DefaultQueueConfig,
 		},
 		{
 			URL:           mustParseURL("http://remote2/push"),
 			RemoteTimeout: model.Duration(30 * time.Second),
+			QueueConfig:   DefaultQueueConfig,
 		},
 	},
 
@@ -84,7 +87,7 @@ var expectedConf = &Config{
 			Scheme:      DefaultScrapeConfig.Scheme,
 
 			HTTPClientConfig: HTTPClientConfig{
-				BearerTokenFile: "testdata/valid_token_file",
+				BearerTokenFile: filepath.FromSlash("testdata/valid_token_file"),
 			},
 
 			ServiceDiscoveryConfig: ServiceDiscoveryConfig{
@@ -103,11 +106,11 @@ var expectedConf = &Config{
 
 				FileSDConfigs: []*FileSDConfig{
 					{
-						Files:           []string{"foo/*.slow.json", "foo/*.slow.yml", "single/file.yml"},
+						Files:           []string{"testdata/foo/*.slow.json", "testdata/foo/*.slow.yml", "testdata/single/file.yml"},
 						RefreshInterval: model.Duration(10 * time.Minute),
 					},
 					{
-						Files:           []string{"bar/*.yaml"},
+						Files:           []string{"testdata/bar/*.yaml"},
 						RefreshInterval: model.Duration(5 * time.Minute),
 					},
 				},
@@ -144,6 +147,7 @@ var expectedConf = &Config{
 			},
 		},
 		{
+
 			JobName: "service-x",
 
 			ScrapeInterval: model.Duration(50 * time.Second),
@@ -153,7 +157,7 @@ var expectedConf = &Config{
 			HTTPClientConfig: HTTPClientConfig{
 				BasicAuth: &BasicAuth{
 					Username: "admin_name",
-					Password: "admin_password",
+					Password: "multiline\nmysecret\ntest",
 				},
 			},
 			MetricsPath: "/my_path",
@@ -245,13 +249,14 @@ var expectedConf = &Config{
 				ConsulSDConfigs: []*ConsulSDConfig{
 					{
 						Server:       "localhost:1234",
+						Token:        "mysecret",
 						Services:     []string{"nginx", "cache", "mysql"},
 						TagSeparator: DefaultConsulSDConfig.TagSeparator,
 						Scheme:       "https",
 						TLSConfig: TLSConfig{
-							CertFile:           "testdata/valid_cert_file",
-							KeyFile:            "testdata/valid_key_file",
-							CAFile:             "testdata/valid_ca_file",
+							CertFile:           filepath.FromSlash("testdata/valid_cert_file"),
+							KeyFile:            filepath.FromSlash("testdata/valid_key_file"),
+							CAFile:             filepath.FromSlash("testdata/valid_ca_file"),
 							InsecureSkipVerify: false,
 						},
 					},
@@ -280,11 +285,11 @@ var expectedConf = &Config{
 
 			HTTPClientConfig: HTTPClientConfig{
 				TLSConfig: TLSConfig{
-					CertFile: "testdata/valid_cert_file",
-					KeyFile:  "testdata/valid_key_file",
+					CertFile: filepath.FromSlash("testdata/valid_cert_file"),
+					KeyFile:  filepath.FromSlash("testdata/valid_key_file"),
 				},
 
-				BearerToken: "avalidtoken",
+				BearerToken: "mysecret",
 			},
 		},
 		{
@@ -303,7 +308,31 @@ var expectedConf = &Config{
 						Role:      KubernetesRoleEndpoint,
 						BasicAuth: &BasicAuth{
 							Username: "myusername",
-							Password: "mypassword",
+							Password: "mysecret",
+						},
+						NamespaceDiscovery: KubernetesNamespaceDiscovery{},
+					},
+				},
+			},
+		},
+		{
+			JobName: "service-kubernetes-namespaces",
+
+			ScrapeInterval: model.Duration(15 * time.Second),
+			ScrapeTimeout:  DefaultGlobalConfig.ScrapeTimeout,
+
+			MetricsPath: DefaultScrapeConfig.MetricsPath,
+			Scheme:      DefaultScrapeConfig.Scheme,
+
+			ServiceDiscoveryConfig: ServiceDiscoveryConfig{
+				KubernetesSDConfigs: []*KubernetesSDConfig{
+					{
+						APIServer: kubernetesSDHostURL(),
+						Role:      KubernetesRoleEndpoint,
+						NamespaceDiscovery: KubernetesNamespaceDiscovery{
+							Names: []string{
+								"default",
+							},
 						},
 					},
 				},
@@ -327,8 +356,8 @@ var expectedConf = &Config{
 						Timeout:         model.Duration(30 * time.Second),
 						RefreshInterval: model.Duration(30 * time.Second),
 						TLSConfig: TLSConfig{
-							CertFile: "testdata/valid_cert_file",
-							KeyFile:  "testdata/valid_key_file",
+							CertFile: filepath.FromSlash("testdata/valid_cert_file"),
+							KeyFile:  filepath.FromSlash("testdata/valid_key_file"),
 						},
 					},
 				},
@@ -348,7 +377,7 @@ var expectedConf = &Config{
 					{
 						Region:          "us-east-1",
 						AccessKey:       "access",
-						SecretKey:       "secret",
+						SecretKey:       "mysecret",
 						Profile:         "profile",
 						RefreshInterval: model.Duration(60 * time.Second),
 						Port:            80,
@@ -371,7 +400,7 @@ var expectedConf = &Config{
 						SubscriptionID:  "11AAAA11-A11A-111A-A111-1111A1111A11",
 						TenantID:        "BBBB222B-B2B2-2B22-B222-2BB2222BB2B2",
 						ClientID:        "333333CC-3C33-3333-CCC3-33C3CCCCC33C",
-						ClientSecret:    "nAdvAK2oBuVym4IXix",
+						ClientSecret:    "mysecret",
 						RefreshInterval: model.Duration(5 * time.Minute),
 						Port:            9100,
 					},
@@ -488,35 +517,40 @@ var expectedConf = &Config{
 func TestLoadConfig(t *testing.T) {
 	// Parse a valid file that sets a global scrape timeout. This tests whether parsing
 	// an overwritten default field in the global config permanently changes the default.
-	if _, err := LoadFile("testdata/global_timeout.good.yml"); err != nil {
-		t.Errorf("Error parsing %s: %s", "testdata/global_timeout.good.yml", err)
-	}
+	_, err := LoadFile("testdata/global_timeout.good.yml")
+	testutil.Ok(t, err)
 
 	c, err := LoadFile("testdata/conf.good.yml")
-	if err != nil {
-		t.Fatalf("Error parsing %s: %s", "testdata/conf.good.yml", err)
-	}
+	testutil.Ok(t, err)
 
-	bgot, err := yaml.Marshal(c)
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-
-	bexp, err := yaml.Marshal(expectedConf)
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
 	expectedConf.original = c.original
+	testutil.Equals(t, expectedConf, c)
+}
 
-	if !reflect.DeepEqual(c, expectedConf) {
-		t.Fatalf("%s: unexpected config result: \n\n%s\n expected\n\n%s", "testdata/conf.good.yml", bgot, bexp)
-	}
+// YAML marshalling must not reveal authentication credentials.
+func TestElideSecrets(t *testing.T) {
+	c, err := LoadFile("testdata/conf.good.yml")
+	testutil.Ok(t, err)
 
-	// String method must not reveal authentication credentials.
-	s := c.String()
-	if strings.Contains(s, "admin_password") {
-		t.Fatalf("config's String method reveals authentication credentials.")
-	}
+	secretRe := regexp.MustCompile(`\\u003csecret\\u003e|<secret>`)
+
+	config, err := yaml.Marshal(c)
+	testutil.Ok(t, err)
+	yamlConfig := string(config)
+
+	matches := secretRe.FindAllStringIndex(yamlConfig, -1)
+	testutil.Assert(t, len(matches) == 6, "wrong number of secret matches found")
+	testutil.Assert(t, !strings.Contains(yamlConfig, "mysecret"),
+		"yaml marshal reveals authentication credentials.")
+}
+
+func TestLoadConfigRuleFilesAbsolutePath(t *testing.T) {
+	// Parse a valid file that sets a rule files with an absolute path
+	c, err := LoadFile(ruleFilesConfigFile)
+	testutil.Ok(t, err)
+
+	ruleFilesExpectedConf.original = c.original
+	testutil.Equals(t, ruleFilesExpectedConf, c)
 }
 
 var expectedErrors = []struct {
@@ -593,6 +627,9 @@ var expectedErrors = []struct {
 		filename: "kubernetes_role.bad.yml",
 		errMsg:   "role",
 	}, {
+		filename: "kubernetes_namespace_discovery.bad.yml",
+		errMsg:   "unknown fields in namespaces",
+	}, {
 		filename: "kubernetes_bearertoken_basicauth.bad.yml",
 		errMsg:   "at most one of basic_auth, bearer_token & bearer_token_file must be configured",
 	}, {
@@ -607,57 +644,49 @@ var expectedErrors = []struct {
 	}, {
 		filename: "target_label_hashmod_missing.bad.yml",
 		errMsg:   "relabel configuration for hashmod action requires 'target_label' value",
+	}, {
+		filename: "unknown_global_attr.bad.yml",
+		errMsg:   "unknown fields in global config: nonexistent_field",
+	}, {
+		filename: "remote_read_url_missing.bad.yml",
+		errMsg:   `url for remote_read is empty`,
+	}, {
+		filename: "remote_write_url_missing.bad.yml",
+		errMsg:   `url for remote_write is empty`,
 	},
 }
 
 func TestBadConfigs(t *testing.T) {
 	for _, ee := range expectedErrors {
 		_, err := LoadFile("testdata/" + ee.filename)
-		if err == nil {
-			t.Errorf("Expected error parsing %s but got none", ee.filename)
-			continue
-		}
-		if !strings.Contains(err.Error(), ee.errMsg) {
-			t.Errorf("Expected error for %s to contain %q but got: %s", ee.filename, ee.errMsg, err)
-		}
+		testutil.Assert(t, err != nil,
+			"Expected error parsing %s but got none", ee.filename)
+		testutil.Assert(t, strings.Contains(err.Error(), ee.errMsg),
+			"Expected error for %s to contain %q but got: %s", ee.filename, ee.errMsg, err)
 	}
 }
 
 func TestBadStaticConfigs(t *testing.T) {
 	content, err := ioutil.ReadFile("testdata/static_config.bad.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	testutil.Ok(t, err)
 	var tg TargetGroup
 	err = json.Unmarshal(content, &tg)
-	if err == nil {
-		t.Errorf("Expected unmarshal error but got none.")
-	}
+	testutil.Assert(t, err != nil, "Expected unmarshal error but got none.")
 }
 
 func TestEmptyConfig(t *testing.T) {
 	c, err := Load("")
-	if err != nil {
-		t.Fatalf("Unexpected error parsing empty config file: %s", err)
-	}
+	testutil.Ok(t, err)
 	exp := DefaultConfig
-
-	if !reflect.DeepEqual(*c, exp) {
-		t.Fatalf("want %v, got %v", exp, c)
-	}
+	testutil.Equals(t, exp, *c)
 }
 
 func TestEmptyGlobalBlock(t *testing.T) {
 	c, err := Load("global:\n")
-	if err != nil {
-		t.Fatalf("Unexpected error parsing empty config file: %s", err)
-	}
+	testutil.Ok(t, err)
 	exp := DefaultConfig
 	exp.original = "global:\n"
-
-	if !reflect.DeepEqual(*c, exp) {
-		t.Fatalf("want %v, got %v", exp, c)
-	}
+	testutil.Equals(t, exp, *c)
 }
 
 func TestTargetLabelValidity(t *testing.T) {
@@ -682,9 +711,8 @@ func TestTargetLabelValidity(t *testing.T) {
 		{"foo${bar}foo", true},
 	}
 	for _, test := range tests {
-		if relabelTarget.Match([]byte(test.str)) != test.valid {
-			t.Fatalf("Expected %q to be %v", test.str, test.valid)
-		}
+		testutil.Assert(t, relabelTarget.Match([]byte(test.str)) == test.valid,
+			"Expected %q to be %v", test.str, test.valid)
 	}
 }
 

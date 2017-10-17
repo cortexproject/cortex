@@ -4,12 +4,12 @@ import (
 	"flag"
 	"net/http"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 
@@ -75,18 +75,24 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
-	queryable := querier.NewQueryable(dist, chunkStore)
-	engine := promql.NewEngine(queryable, nil)
-	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable},
-		querier.DummyTargetRetriever{}, querier.DummyAlertmanagerRetriever{})
-	promRouter := route.New(func(r *http.Request) (context.Context, error) {
-		return r.Context(), nil
-	}).WithPrefix("/api/prom/api/v1")
+	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
+	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
+
+	engine := promql.NewEngine(sampleQueryable, nil)
+	api := v1.NewAPI(
+		engine,
+		metadataQueryable,
+		querier.DummyTargetRetriever{},
+		querier.DummyAlertmanagerRetriever{},
+		func() config.Config { return config.Config{} },
+		func(f http.HandlerFunc) http.HandlerFunc { return f },
+	)
+	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(middleware.AuthenticateUser.Wrap(promRouter))
-	subrouter.Path("/read").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(queryable.Q.RemoteReadHandler)))
+	subrouter.Path("/read").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(sampleQueryable.RemoteReadHandler)))
 	subrouter.Path("/validate_expr").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 

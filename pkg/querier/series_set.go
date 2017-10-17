@@ -42,23 +42,6 @@ func (e errSeriesSet) Err() error {
 	return e.err
 }
 
-type metadataSeriesSet struct {
-	cur    int
-	series []storage.Series
-}
-
-func (s metadataSeriesSet) Next() bool {
-	panic("not implemented")
-}
-
-func (s metadataSeriesSet) At() storage.Series {
-	panic("not implemented")
-}
-
-func (s metadataSeriesSet) Err() error {
-	panic("not implemented")
-}
-
 // concreteSeriesSet implements storage.SeriesSet.
 type concreteSeriesSet struct {
 	cur    int

@@ -8,8 +8,10 @@ go_library(
     deps = [
         "//pkg/alertmanager:go_default_library",
         "//pkg/util:go_default_library",
+        "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/weaveworks/common/middleware:go_default_library",
         "//vendor/github.com/weaveworks/common/server:go_default_library",
+        "//vendor/github.com/weaveworks/promrus:go_default_library",
         "//vendor/google.golang.org/grpc:go_default_library",
     ],
 )

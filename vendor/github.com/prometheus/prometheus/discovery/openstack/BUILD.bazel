@@ -1,0 +1,45 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "hypervisor.go",
+        "instance.go",
+        "mock.go",
+        "openstack.go",
+    ],
+    importpath = "github.com/prometheus/prometheus/discovery/openstack",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
+        "//vendor/github.com/gophercloud/gophercloud:go_default_library",
+        "//vendor/github.com/gophercloud/gophercloud/openstack:go_default_library",
+        "//vendor/github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/floatingips:go_default_library",
+        "//vendor/github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors:go_default_library",
+        "//vendor/github.com/gophercloud/gophercloud/openstack/compute/v2/servers:go_default_library",
+        "//vendor/github.com/gophercloud/gophercloud/pagination:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
+        "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/config:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/util/strutil:go_default_library",
+        "//vendor/golang.org/x/net/context:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "hypervisor_test.go",
+        "instance_test.go",
+    ],
+    importpath = "github.com/prometheus/prometheus/discovery/openstack",
+    library = ":go_default_library",
+    deps = [
+        "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/config:go_default_library",
+        "//vendor/github.com/stretchr/testify/assert:go_default_library",
+        "//vendor/github.com/stretchr/testify/require:go_default_library",
+        "//vendor/github.com/stretchr/testify/suite:go_default_library",
+    ],
+)

@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "lockfile.go",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "lockfile_unix.go",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "lockfile_unix.go",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "lockfile_windows.go",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "github.com/nightlyone/lockfile",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["lockfile_test.go"],
+    importpath = "github.com/nightlyone/lockfile",
+    library = ":go_default_library",
+)

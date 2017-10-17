@@ -7,7 +7,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -201,17 +201,17 @@ func TestDistributorPush(t *testing.T) {
 func TestDistributorQuery(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "user")
 
-	nameMatcher, err := metric.NewLabelMatcher(metric.Equal, model.LabelName("__name__"), model.LabelValue("foo"))
+	nameMatcher, err := labels.NewMatcher(labels.MatchEqual, "__name__", "foo")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	jobMatcher, err := metric.NewLabelMatcher(metric.Equal, model.LabelName("job"), model.LabelValue("foo"))
+	jobMatcher, err := labels.NewMatcher(labels.MatchEqual, "job", "foo")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	matchers := []*metric.LabelMatcher{
+	matchers := []*labels.Matcher{
 		nameMatcher,
 		jobMatcher,
 	}
@@ -315,7 +315,7 @@ func TestDistributorQuery(t *testing.T) {
 			defer d.Stop()
 
 			for _, matcher := range matchers {
-				response, err := d.matrixQuery(ctx, 0, 10, matcher)
+				response, err := d.Query(ctx, 0, 10, matcher)
 				assert.Equal(t, tc.expectedResponse, response, "Wrong response")
 				assert.Equal(t, tc.expectedError, err, "Wrong error")
 			}

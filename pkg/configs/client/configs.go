@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	gklog "github.com/go-kit/kit/log"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
@@ -61,7 +62,8 @@ func RulesFromConfig(c configs.Config) ([]rules.Rule, error) {
 
 			switch r := stmt.(type) {
 			case *promql.AlertStmt:
-				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations)
+				// TODO(prom2): Wrap our logger into a gokit logger.
+				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations, gklog.NewNopLogger())
 
 			case *promql.RecordStmt:
 				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)

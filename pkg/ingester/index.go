@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 type invertedIndex struct {
@@ -40,7 +40,7 @@ func (i *invertedIndex) add(metric model.Metric, fp model.Fingerprint) {
 	}
 }
 
-func (i *invertedIndex) lookup(matchers []*metric.LabelMatcher) []model.Fingerprint {
+func (i *invertedIndex) lookup(matchers []*labels.Matcher) []model.Fingerprint {
 	if len(matchers) == 0 {
 		return nil
 	}
@@ -50,13 +50,13 @@ func (i *invertedIndex) lookup(matchers []*metric.LabelMatcher) []model.Fingerpr
 	// intersection is initially nil, which is a special case.
 	var intersection []model.Fingerprint
 	for _, matcher := range matchers {
-		values, ok := i.idx[matcher.Name]
+		values, ok := i.idx[model.LabelName(matcher.Name)]
 		if !ok {
 			return nil
 		}
 		var toIntersect []model.Fingerprint
 		for value, fps := range values {
-			if matcher.Match(value) {
+			if matcher.Matches(string(value)) {
 				toIntersect = merge(toIntersect, fps)
 			}
 		}

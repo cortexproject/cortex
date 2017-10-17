@@ -14,7 +14,7 @@ import (
 
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -129,10 +129,10 @@ func TestIngesterTransfer(t *testing.T) {
 	ing1.Shutdown()
 
 	// And check the second ingester has the sample
-	matcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
+	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
 	require.NoError(t, err)
 
-	request, err := util.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*metric.LabelMatcher{matcher})
+	request, err := util.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	response, err := ing2.Query(ctx, request)

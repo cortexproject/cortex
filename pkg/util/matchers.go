@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 // SplitFiltersAndMatchers splits empty matchers off, which are treated as filters, see #220
-func SplitFiltersAndMatchers(allMatchers []*metric.LabelMatcher) (filters, matchers []*metric.LabelMatcher) {
+func SplitFiltersAndMatchers(allMatchers []*labels.Matcher) (filters, matchers []*labels.Matcher) {
 	for _, matcher := range allMatchers {
 		// If a matcher matches "", we need to fetch possible chunks where
 		// there is no value and will therefore not be in our label index.
@@ -16,7 +16,7 @@ func SplitFiltersAndMatchers(allMatchers []*metric.LabelMatcher) (filters, match
 		// chunks which do not have a foo label set. When looking entries in
 		// the index, we should ignore this matcher to fetch all possible chunks
 		// and then filter on the matcher after the chunks have been fetched.
-		if matcher.Match("") {
+		if matcher.Matches("") {
 			filters = append(filters, matcher)
 		} else {
 			matchers = append(matchers, matcher)
@@ -36,14 +36,14 @@ func ExtractMetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
 }
 
 // ExtractMetricNameMatcherFromMatchers extracts the metric name from a set of matchers
-func ExtractMetricNameMatcherFromMatchers(matchers []*metric.LabelMatcher) (*metric.LabelMatcher, []*metric.LabelMatcher, bool) {
+func ExtractMetricNameMatcherFromMatchers(matchers []*labels.Matcher) (*labels.Matcher, []*labels.Matcher, bool) {
 	// Handle the case where there is no metric name and all matchers have been
 	// filtered out e.g. {foo=""}.
 	if len(matchers) == 0 {
 		return nil, matchers, false
 	}
 
-	outMatchers := make([]*metric.LabelMatcher, len(matchers)-1)
+	outMatchers := make([]*labels.Matcher, len(matchers)-1)
 	for i, matcher := range matchers {
 		if matcher.Name != model.MetricNameLabel {
 			continue

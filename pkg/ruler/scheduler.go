@@ -1,11 +1,11 @@
 package ruler
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"github.com/jonboulle/clockwork"
-	"golang.org/x/net/context"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"

@@ -39,7 +39,7 @@ func main() {
 		storageConfig     storage.Config
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
-		&chunkStoreConfig, &schemaConfig, &storageConfig)
+		&chunkStoreConfig, &schemaConfig, &storageConfig, util.LogLevel{})
 	flag.Parse()
 
 	log.AddHook(promrus.MustNewPrometheusHook())

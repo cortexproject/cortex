@@ -17,23 +17,21 @@ import (
 	"math"
 	"sort"
 
-	"github.com/prometheus/common/model"
-
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 // Helpers to calculate quantiles.
 
 // excludedLabels are the labels to exclude from signature calculation for
 // quantiles.
-var excludedLabels = map[model.LabelName]struct{}{
-	model.MetricNameLabel: {},
-	model.BucketLabel:     {},
+var excludedLabels = []string{
+	labels.MetricName,
+	labels.BucketLabel,
 }
 
 type bucket struct {
 	upperBound float64
-	count      model.SampleValue
+	count      float64
 }
 
 // buckets implements sort.Interface.
@@ -44,7 +42,7 @@ func (b buckets) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b buckets) Less(i, j int) bool { return b[i].upperBound < b[j].upperBound }
 
 type metricWithBuckets struct {
-	metric  metric.Metric
+	metric  labels.Labels
 	buckets buckets
 }
 
@@ -70,7 +68,7 @@ type metricWithBuckets struct {
 // If q<0, -Inf is returned.
 //
 // If q>1, +Inf is returned.
-func bucketQuantile(q model.SampleValue, buckets buckets) float64 {
+func bucketQuantile(q float64, buckets buckets) float64 {
 	if q < 0 {
 		return math.Inf(-1)
 	}
@@ -156,7 +154,7 @@ func ensureMonotonic(buckets buckets) {
 
 // qauntile calculates the given quantile of a vector of samples.
 //
-// The vector will be sorted.
+// The Vector will be sorted.
 // If 'values' has zero elements, NaN is returned.
 // If q<0, -Inf is returned.
 // If q>1, +Inf is returned.
@@ -181,5 +179,5 @@ func quantile(q float64, values vectorByValueHeap) float64 {
 	upperIndex := math.Min(n-1, lowerIndex+1)
 
 	weight := rank - math.Floor(rank)
-	return float64(values[int(lowerIndex)].Value)*(1-weight) + float64(values[int(upperIndex)].Value)*weight
+	return float64(values[int(lowerIndex)].V)*(1-weight) + float64(values[int(upperIndex)].V)*weight
 }

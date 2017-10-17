@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"sort"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -28,10 +28,12 @@ import (
 	"github.com/prometheus/common/route"
 	"golang.org/x/net/context"
 
+	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/retrieval"
-	"github.com/prometheus/prometheus/storage/local"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
 )
 
@@ -74,7 +76,7 @@ type targetRetriever interface {
 }
 
 type alertmanagerRetriever interface {
-	Alertmanagers() []string
+	Alertmanagers() []*url.URL
 }
 
 type response struct {
@@ -96,25 +98,34 @@ type apiFunc func(r *http.Request) (interface{}, *apiError)
 // API can register a set of endpoints in a router and handle
 // them using the provided storage and query engine.
 type API struct {
-	Storage     local.Storage
+	Queryable   promql.Queryable
 	QueryEngine *promql.Engine
 
 	targetRetriever       targetRetriever
 	alertmanagerRetriever alertmanagerRetriever
 
-	context func(r *http.Request) context.Context
-	now     func() model.Time
+	now    func() time.Time
+	config func() config.Config
+	ready  func(http.HandlerFunc) http.HandlerFunc
 }
 
 // NewAPI returns an initialized API type.
-func NewAPI(qe *promql.Engine, st local.Storage, tr targetRetriever, ar alertmanagerRetriever) *API {
+func NewAPI(
+	qe *promql.Engine,
+	q promql.Queryable,
+	tr targetRetriever,
+	ar alertmanagerRetriever,
+	configFunc func() config.Config,
+	readyFunc func(http.HandlerFunc) http.HandlerFunc,
+) *API {
 	return &API{
 		QueryEngine:           qe,
-		Storage:               st,
+		Queryable:             q,
 		targetRetriever:       tr,
 		alertmanagerRetriever: ar,
-		context:               route.Context,
-		now:                   model.Now,
+		now:    time.Now,
+		config: configFunc,
+		ready:  readyFunc,
 	}
 }
 
@@ -131,9 +142,9 @@ func (api *API) Register(r *route.Router) {
 				w.WriteHeader(http.StatusNoContent)
 			}
 		})
-		return prometheus.InstrumentHandler(name, httputil.CompressionHandler{
+		return api.ready(prometheus.InstrumentHandler(name, httputil.CompressionHandler{
 			Handler: hf,
-		})
+		}))
 	}
 
 	r.Options("/*path", instr("options", api.options))
@@ -148,11 +159,13 @@ func (api *API) Register(r *route.Router) {
 
 	r.Get("/targets", instr("targets", api.targets))
 	r.Get("/alertmanagers", instr("alertmanagers", api.alertmanagers))
+
+	r.Get("/status/config", instr("config", api.serveConfig))
 }
 
 type queryData struct {
-	ResultType model.ValueType `json:"resultType"`
-	Result     model.Value     `json:"result"`
+	ResultType promql.ValueType `json:"resultType"`
+	Result     promql.Value     `json:"result"`
 }
 
 func (api *API) options(r *http.Request) (interface{}, *apiError) {
@@ -160,7 +173,7 @@ func (api *API) options(r *http.Request) (interface{}, *apiError) {
 }
 
 func (api *API) query(r *http.Request) (interface{}, *apiError) {
-	var ts model.Time
+	var ts time.Time
 	if t := r.FormValue("time"); t != "" {
 		var err error
 		ts, err = parseTime(t)
@@ -171,7 +184,7 @@ func (api *API) query(r *http.Request) (interface{}, *apiError) {
 		ts = api.now()
 	}
 
-	ctx := api.context(r)
+	ctx := r.Context()
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
 		timeout, err := parseDuration(to)
@@ -237,7 +250,7 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		return nil, &apiError{errorBadData, err}
 	}
 
-	ctx := api.context(r)
+	ctx := r.Context()
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
 		timeout, err := parseDuration(to)
@@ -264,6 +277,7 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		}
 		return nil, &apiError{errorExec, res.Err}
 	}
+
 	return &queryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
@@ -271,25 +285,31 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 }
 
 func (api *API) labelValues(r *http.Request) (interface{}, *apiError) {
-	name := route.Param(api.context(r), "name")
+	ctx := r.Context()
+	name := route.Param(ctx, "name")
 
 	if !model.LabelNameRE.MatchString(name) {
 		return nil, &apiError{errorBadData, fmt.Errorf("invalid label name: %q", name)}
 	}
-	q, err := api.Storage.Querier()
+	q, err := api.Queryable.Querier(ctx, math.MinInt64, math.MaxInt64)
 	if err != nil {
 		return nil, &apiError{errorExec, err}
 	}
 	defer q.Close()
 
-	vals, err := q.LabelValuesForLabelName(api.context(r), model.LabelName(name))
+	// TODO(fabxc): add back request context.
+	vals, err := q.LabelValues(name)
 	if err != nil {
 		return nil, &apiError{errorExec, err}
 	}
-	sort.Sort(vals)
 
 	return vals, nil
 }
+
+var (
+	minTime = time.Unix(math.MinInt64/1000+62135596801, 0)
+	maxTime = time.Unix(math.MaxInt64/1000-62135596801, 999999999)
+)
 
 func (api *API) series(r *http.Request) (interface{}, *apiError) {
 	r.ParseForm()
@@ -297,7 +317,7 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 		return nil, &apiError{errorBadData, fmt.Errorf("no match[] parameter provided")}
 	}
 
-	var start model.Time
+	var start time.Time
 	if t := r.FormValue("start"); t != "" {
 		var err error
 		start, err = parseTime(t)
@@ -305,10 +325,10 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 			return nil, &apiError{errorBadData, err}
 		}
 	} else {
-		start = model.Earliest
+		start = minTime
 	}
 
-	var end model.Time
+	var end time.Time
 	if t := r.FormValue("end"); t != "" {
 		var err error
 		end, err = parseTime(t)
@@ -316,10 +336,10 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 			return nil, &apiError{errorBadData, err}
 		}
 	} else {
-		end = model.Latest
+		end = maxTime
 	}
 
-	var matcherSets []metric.LabelMatchers
+	var matcherSets [][]*labels.Matcher
 	for _, s := range r.Form["match[]"] {
 		matchers, err := promql.ParseMetricSelector(s)
 		if err != nil {
@@ -328,57 +348,40 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 		matcherSets = append(matcherSets, matchers)
 	}
 
-	q, err := api.Storage.Querier()
+	q, err := api.Queryable.Querier(r.Context(), timestamp.FromTime(start), timestamp.FromTime(end))
 	if err != nil {
 		return nil, &apiError{errorExec, err}
 	}
 	defer q.Close()
 
-	res, err := q.MetricsForLabelMatchers(api.context(r), start, end, matcherSets...)
-	if err != nil {
-		return nil, &apiError{errorExec, err}
+	var set storage.SeriesSet
+
+	for _, mset := range matcherSets {
+		set = storage.DeduplicateSeriesSet(set, q.Select(mset...))
 	}
 
-	metrics := make([]model.Metric, 0, len(res))
-	for _, met := range res {
-		metrics = append(metrics, met.Metric)
+	metrics := []labels.Labels{}
+
+	for set.Next() {
+		metrics = append(metrics, set.At().Labels())
 	}
+	if set.Err() != nil {
+		return nil, &apiError{errorExec, set.Err()}
+	}
+
 	return metrics, nil
 }
 
 func (api *API) dropSeries(r *http.Request) (interface{}, *apiError) {
-	r.ParseForm()
-	if len(r.Form["match[]"]) == 0 {
-		return nil, &apiError{errorBadData, fmt.Errorf("no match[] parameter provided")}
-	}
-
-	numDeleted := 0
-	for _, s := range r.Form["match[]"] {
-		matchers, err := promql.ParseMetricSelector(s)
-		if err != nil {
-			return nil, &apiError{errorBadData, err}
-		}
-		n, err := api.Storage.DropMetricsForLabelMatchers(context.TODO(), matchers...)
-		if err != nil {
-			return nil, &apiError{errorExec, err}
-		}
-		numDeleted += n
-	}
-
-	res := struct {
-		NumDeleted int `json:"numDeleted"`
-	}{
-		NumDeleted: numDeleted,
-	}
-	return res, nil
+	return nil, &apiError{errorInternal, fmt.Errorf("not implemented")}
 }
 
 // Target has the information for one target.
 type Target struct {
 	// Labels before any processing.
-	DiscoveredLabels model.LabelSet `json:"discoveredLabels"`
+	DiscoveredLabels map[string]string `json:"discoveredLabels"`
 	// Any labels that are added to this target and its metrics.
-	Labels model.LabelSet `json:"labels"`
+	Labels map[string]string `json:"labels"`
 
 	ScrapeURL string `json:"scrapeUrl"`
 
@@ -404,8 +407,8 @@ func (api *API) targets(r *http.Request) (interface{}, *apiError) {
 		}
 
 		res.ActiveTargets[i] = &Target{
-			DiscoveredLabels: t.DiscoveredLabels(),
-			Labels:           t.Labels(),
+			DiscoveredLabels: t.DiscoveredLabels().Map(),
+			Labels:           t.Labels().Map(),
 			ScrapeURL:        t.URL().String(),
 			LastError:        lastErrStr,
 			LastScrape:       t.LastScrape(),
@@ -430,11 +433,22 @@ func (api *API) alertmanagers(r *http.Request) (interface{}, *apiError) {
 	urls := api.alertmanagerRetriever.Alertmanagers()
 	ams := &AlertmanagerDiscovery{ActiveAlertmanagers: make([]*AlertmanagerTarget, len(urls))}
 
-	for i := range urls {
-		ams.ActiveAlertmanagers[i] = &AlertmanagerTarget{URL: urls[i]}
+	for i, url := range urls {
+		ams.ActiveAlertmanagers[i] = &AlertmanagerTarget{URL: url.String()}
 	}
 
 	return ams, nil
+}
+
+type prometheusConfig struct {
+	YAML string `json:"yaml"`
+}
+
+func (api *API) serveConfig(r *http.Request) (interface{}, *apiError) {
+	cfg := &prometheusConfig{
+		YAML: api.config().String(),
+	}
+	return cfg, nil
 }
 
 func respond(w http.ResponseWriter, data interface{}) {
@@ -481,18 +495,15 @@ func respondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
 	w.Write(b)
 }
 
-func parseTime(s string) (model.Time, error) {
+func parseTime(s string) (time.Time, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
-		ts := t * float64(time.Second)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, fmt.Errorf("cannot parse %q to a valid timestamp. It overflows int64", s)
-		}
-		return model.TimeFromUnixNano(int64(ts)), nil
+		s, ns := math.Modf(t)
+		return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
 	}
 	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return model.TimeFromUnixNano(t.UnixNano()), nil
+		return t, nil
 	}
-	return 0, fmt.Errorf("cannot parse %q to a valid timestamp", s)
+	return time.Time{}, fmt.Errorf("cannot parse %q to a valid timestamp", s)
 }
 
 func parseDuration(s string) (time.Duration, error) {

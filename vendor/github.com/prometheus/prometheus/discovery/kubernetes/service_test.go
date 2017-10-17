@@ -17,11 +17,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/tools/cache"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/tools/cache"
 )
 
 func serviceStoreKeyFunc(obj interface{}) (string, error) {
@@ -34,12 +34,12 @@ func newFakeServiceInformer() *fakeInformer {
 
 func makeTestServiceDiscovery() (*Service, *fakeInformer) {
 	i := newFakeServiceInformer()
-	return NewService(log.Base(), i), i
+	return NewService(nil, i), i
 }
 
 func makeMultiPortService() *v1.Service {
 	return &v1.Service{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:        "testservice",
 			Namespace:   "default",
 			Labels:      map[string]string{"testlabel": "testvalue"},
@@ -64,7 +64,7 @@ func makeMultiPortService() *v1.Service {
 
 func makeSuffixedService(suffix string) *v1.Service {
 	return &v1.Service{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("testservice%s", suffix),
 			Namespace: "default",
 		},

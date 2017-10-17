@@ -4,7 +4,11 @@
 
 [[constraint]]
   name = "github.com/prometheus/alertmanager"
-  revision = "0ecc59076ca6b4cbb63252fa7720a3d89d1c81d3"
+  revision = "4a8e71069177280d0317ccd80a8201a06f2d8139"
+
+[[constraint]]
+  name = "github.com/prometheus/prometheus"
+  branch = "master"
 
 [[constraint]]
   name = "github.com/weaveworks/common"
@@ -15,12 +19,20 @@
   version = "v1.1.0-legacy"
 
 [[override]]
+  name = "k8s.io/client-go"
+  revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"
+
+[[override]]
+  name = "k8s.io/apimachinery"
+  revision = "75b8dd260ef0469d96d578705a87cffd0e09dab8"
+
+[[override]]
   name = "github.com/Azure/azure-sdk-for-go"
   revision = "bd73d950fa4440dae889bd9917bff7cef539f86e"
 
 [[override]]
   name = "github.com/prometheus/common"
-  revision = "49fee292b27bfff7f354ee0f64e1bc4850462edf"
+  revision = "1bab55dd05dbff384524a6a1c99006d9eb5f139b"
 
 [[override]]
   name = "github.com/weaveworks/mesh"

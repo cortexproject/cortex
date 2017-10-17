@@ -17,15 +17,18 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/go-kit/kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/storage"
 )
 
 var (
@@ -41,7 +44,7 @@ func (h *Handler) federation(w http.ResponseWriter, req *http.Request) {
 
 	req.ParseForm()
 
-	var matcherSets []metric.LabelMatchers
+	var matcherSets [][]*labels.Matcher
 	for _, s := range req.Form["match[]"] {
 		matchers, err := promql.ParseMetricSelector(s)
 		if err != nil {
@@ -52,13 +55,14 @@ func (h *Handler) federation(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var (
-		minTimestamp = h.now().Add(-promql.StalenessDelta)
-		format       = expfmt.Negotiate(req.Header)
-		enc          = expfmt.NewEncoder(w, format)
+		mint   = timestamp.FromTime(h.now().Time().Add(-promql.LookbackDelta))
+		maxt   = timestamp.FromTime(h.now().Time())
+		format = expfmt.Negotiate(req.Header)
+		enc    = expfmt.NewEncoder(w, format)
 	)
 	w.Header().Set("Content-Type", string(format))
 
-	q, err := h.storage.Querier()
+	q, err := h.storage.Querier(req.Context(), mint, maxt)
 	if err != nil {
 		federationErrors.Inc()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -66,15 +70,58 @@ func (h *Handler) federation(w http.ResponseWriter, req *http.Request) {
 	}
 	defer q.Close()
 
-	vector, err := q.LastSampleForLabelMatchers(h.context, minTimestamp, matcherSets...)
-	if err != nil {
+	vec := make(promql.Vector, 0, 8000)
+
+	var set storage.SeriesSet
+
+	for _, mset := range matcherSets {
+		set = storage.DeduplicateSeriesSet(set, q.Select(mset...))
+	}
+	if set == nil {
+		return
+	}
+
+	for set.Next() {
+		s := set.At()
+
+		// TODO(fabxc): allow fast path for most recent sample either
+		// in the storage itself or caching layer in Prometheus.
+		it := storage.NewBuffer(s.Iterator(), int64(promql.LookbackDelta/1e6))
+
+		var t int64
+		var v float64
+
+		ok := it.Seek(maxt)
+		if ok {
+			t, v = it.Values()
+		} else {
+			t, v, ok = it.PeekBack(1)
+			if !ok {
+				continue
+			}
+		}
+		// The exposition formats do not support stale markers, so drop them. This
+		// is good enough for staleness handling of federated data, as the
+		// interval-based limits on staleness will do the right thing for supported
+		// use cases (which is to say federating aggregated time series).
+		if value.IsStaleNaN(v) {
+			continue
+		}
+
+		vec = append(vec, promql.Sample{
+			Metric: s.Labels(),
+			Point:  promql.Point{T: t, V: v},
+		})
+	}
+	if set.Err() != nil {
 		federationErrors.Inc()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sort.Sort(byName(vector))
 
-	externalLabels := h.externalLabels.Clone()
+	sort.Sort(byName(vec))
+
+	externalLabels := h.config.GlobalConfig.ExternalLabels.Clone()
 	if _, ok := externalLabels[model.InstanceLabel]; !ok {
 		externalLabels[model.InstanceLabel] = ""
 	}
@@ -85,33 +132,25 @@ func (h *Handler) federation(w http.ResponseWriter, req *http.Request) {
 	sort.Sort(externalLabelNames)
 
 	var (
-		lastMetricName model.LabelValue
+		lastMetricName string
 		protMetricFam  *dto.MetricFamily
 	)
-	for _, s := range vector {
+	for _, s := range vec {
 		nameSeen := false
-		globalUsed := map[model.LabelName]struct{}{}
+		globalUsed := map[string]struct{}{}
 		protMetric := &dto.Metric{
 			Untyped: &dto.Untyped{},
 		}
 
-		// Sort labelnames for unittest consistency.
-		labelNames := make(model.LabelNames, 0, len(s.Metric))
-		for ln := range s.Metric {
-			labelNames = append(labelNames, ln)
-		}
-		sort.Sort(labelNames)
-
-		for _, ln := range labelNames {
-			lv := s.Metric[ln]
-			if lv == "" {
+		for _, l := range s.Metric {
+			if l.Value == "" {
 				// No value means unset. Never consider those labels.
 				// This is also important to protect against nameless metrics.
 				continue
 			}
-			if ln == model.MetricNameLabel {
+			if l.Name == labels.MetricName {
 				nameSeen = true
-				if lv == lastMetricName {
+				if l.Value == lastMetricName {
 					// We already have the name in the current MetricFamily,
 					// and we ignore nameless metrics.
 					continue
@@ -121,33 +160,33 @@ func (h *Handler) federation(w http.ResponseWriter, req *http.Request) {
 				if protMetricFam != nil {
 					if err := enc.Encode(protMetricFam); err != nil {
 						federationErrors.Inc()
-						log.With("err", err).Error("federation failed")
+						level.Error(h.logger).Log("msg", "federation failed", "err", err)
 						return
 					}
 				}
 				protMetricFam = &dto.MetricFamily{
 					Type: dto.MetricType_UNTYPED.Enum(),
-					Name: proto.String(string(lv)),
+					Name: proto.String(l.Value),
 				}
-				lastMetricName = lv
+				lastMetricName = l.Value
 				continue
 			}
 			protMetric.Label = append(protMetric.Label, &dto.LabelPair{
-				Name:  proto.String(string(ln)),
-				Value: proto.String(string(lv)),
+				Name:  proto.String(l.Name),
+				Value: proto.String(l.Value),
 			})
-			if _, ok := externalLabels[ln]; ok {
-				globalUsed[ln] = struct{}{}
+			if _, ok := externalLabels[model.LabelName(l.Name)]; ok {
+				globalUsed[l.Name] = struct{}{}
 			}
 		}
 		if !nameSeen {
-			log.With("metric", s.Metric).Warn("Ignoring nameless metric during federation.")
+			level.Warn(h.logger).Log("msg", "Ignoring nameless metric during federation", "metric", s.Metric)
 			continue
 		}
 		// Attach global labels if they do not exist yet.
 		for _, ln := range externalLabelNames {
 			lv := externalLabels[ln]
-			if _, ok := globalUsed[ln]; !ok {
+			if _, ok := globalUsed[string(ln)]; !ok {
 				protMetric.Label = append(protMetric.Label, &dto.LabelPair{
 					Name:  proto.String(string(ln)),
 					Value: proto.String(string(lv)),
@@ -155,8 +194,8 @@ func (h *Handler) federation(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		protMetric.TimestampMs = proto.Int64(int64(s.Timestamp))
-		protMetric.Untyped.Value = proto.Float64(float64(s.Value))
+		protMetric.TimestampMs = proto.Int64(s.T)
+		protMetric.Untyped.Value = proto.Float64(s.V)
 
 		protMetricFam.Metric = append(protMetricFam.Metric, protMetric)
 	}
@@ -164,19 +203,19 @@ func (h *Handler) federation(w http.ResponseWriter, req *http.Request) {
 	if protMetricFam != nil {
 		if err := enc.Encode(protMetricFam); err != nil {
 			federationErrors.Inc()
-			log.With("err", err).Error("federation failed")
+			level.Error(h.logger).Log("msg", "federation failed", "err", err)
 		}
 	}
 }
 
 // byName makes a model.Vector sortable by metric name.
-type byName model.Vector
+type byName promql.Vector
 
 func (vec byName) Len() int      { return len(vec) }
 func (vec byName) Swap(i, j int) { vec[i], vec[j] = vec[j], vec[i] }
 
 func (vec byName) Less(i, j int) bool {
-	ni := vec[i].Metric[model.MetricNameLabel]
-	nj := vec[j].Metric[model.MetricNameLabel]
+	ni := vec[i].Metric.Get(labels.MetricName)
+	nj := vec[j].Metric.Get(labels.MetricName)
 	return ni < nj
 }

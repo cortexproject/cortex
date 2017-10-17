@@ -13,10 +13,11 @@
 
 GO    := GO15VENDOREXPERIMENT=1 go
 PROMU := $(GOPATH)/bin/promu
-pkgs   = $(shell $(GO) list ./... | grep -v /vendor/)
+pkgs   = $(shell $(GO) list ./... | grep -v -E '/vendor/|/ui')
 
 PREFIX                  ?= $(shell pwd)
 BIN_DIR                 ?= $(shell pwd)
+FRONTEND_DIR            = $(BIN_DIR)/ui/app
 DOCKER_IMAGE_NAME       ?= alertmanager
 DOCKER_IMAGE_TAG        ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 
@@ -43,9 +44,13 @@ vet:
 	@echo ">> vetting code"
 	@$(GO) vet $(pkgs)
 
+# Will only build the back-end
 build: promu
 	@echo ">> building binaries"
-	@$(PROMU) build --prefix $(PREFIX)
+	@$(PROMU) build --prefix $(PREFIX) $(BINARIES)
+
+# Will build both the front-end as well as the back-end
+build-all: assets build
 
 tarball: promu
 	@echo ">> building release tarball"
@@ -55,16 +60,37 @@ docker:
 	@echo ">> building docker image"
 	@docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
 
-assets:
-	@echo ">> writing assets"
+assets: go-bindata ui/bindata.go template/internal/deftmpl/bindata.go
+
+go-bindata:
 	-@$(GO) get -u github.com/jteeuwen/go-bindata/...
-	@go-bindata $(bindata_flags) -pkg ui -o ui/bindata.go ui/...
-	@go-bindata $(bindata_flags) -pkg deftmpl -o template/internal/deftmpl/bindata.go template/default.tmpl
+
+template/internal/deftmpl/bindata.go: template/default.tmpl
+	@go-bindata $(bindata_flags) -mode 420 -modtime 1 -pkg deftmpl -o template/internal/deftmpl/bindata.go template/default.tmpl
+
+ui/bindata.go: ui/app/script.js ui/app/index.html ui/lib
+# Using "-mode 420" and "-modtime 1" to make assets make target deterministic.
+# It sets all file permissions and time stamps to 420 and 1
+	@go-bindata $(bindata_flags) -mode 420 -modtime 1 -pkg ui -o \
+		ui/bindata.go ui/app/script.js \
+		ui/app/index.html \
+		ui/app/favicon.ico \
+		ui/lib/...
+
+ui/app/script.js: $(shell find ui/app/src -iname *.elm)
+	cd $(FRONTEND_DIR) && $(MAKE) script.js
 
 promu:
 	@GOOS=$(shell uname -s | tr A-Z a-z) \
 	GOARCH=$(subst x86_64,amd64,$(patsubst i%86,386,$(shell uname -m))) \
 	$(GO) get -u github.com/prometheus/promu
 
+proto:
+	scripts/genproto.sh
 
-.PHONY: all style format build test vet assets tarball docker promu
+clean:
+	rm template/internal/deftmpl/bindata.go
+	rm ui/bindata.go
+	cd $(FRONTEND_DIR) && $(MAKE) clean
+
+.PHONY: all style format build test vet assets tarball docker promu proto

@@ -1,0 +1,12 @@
+language: go
+sudo: false
+go:
+  - 1.8
+  - tip
+install:
+  - go get github.com/golang/dep/cmd/dep
+  - dep ensure
+  - go build ./{cmd,pkg}/...
+script:
+  - go vet ./{cmd,pkg}/...
+  - go test -v -race ./{cmd,pkg}/...

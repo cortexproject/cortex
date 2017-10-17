@@ -16,7 +16,8 @@ package retrieval
 import (
 	"sync"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"golang.org/x/net/context"
 
 	"github.com/prometheus/prometheus/config"
@@ -28,7 +29,7 @@ import (
 // creates the new targets based on the target groups it receives from various
 // target providers.
 type TargetManager struct {
-	appender      storage.SampleAppender
+	append        Appendable
 	scrapeConfigs []*config.ScrapeConfig
 
 	mtx    sync.RWMutex
@@ -38,6 +39,7 @@ type TargetManager struct {
 
 	// Set of unqiue targets by scrape configuration.
 	targetSets map[string]*targetSet
+	logger     log.Logger
 }
 
 type targetSet struct {
@@ -48,17 +50,22 @@ type targetSet struct {
 	sp *scrapePool
 }
 
+type Appendable interface {
+	Appender() (storage.Appender, error)
+}
+
 // NewTargetManager creates a new TargetManager.
-func NewTargetManager(app storage.SampleAppender) *TargetManager {
+func NewTargetManager(app Appendable, logger log.Logger) *TargetManager {
 	return &TargetManager{
-		appender:   app,
+		append:     app,
 		targetSets: map[string]*targetSet{},
+		logger:     logger,
 	}
 }
 
 // Run starts background processing to handle target updates.
 func (tm *TargetManager) Run() {
-	log.Info("Starting target manager...")
+	level.Info(tm.logger).Log("msg", "Starting target manager...")
 
 	tm.mtx.Lock()
 
@@ -72,7 +79,7 @@ func (tm *TargetManager) Run() {
 
 // Stop all background processing.
 func (tm *TargetManager) Stop() {
-	log.Infoln("Stopping target manager...")
+	level.Info(tm.logger).Log("msg", "Stopping target manager...")
 
 	tm.mtx.Lock()
 	// Cancel the base context, this will cause all target providers to shut down
@@ -84,7 +91,7 @@ func (tm *TargetManager) Stop() {
 	// Wait for all scrape inserts to complete.
 	tm.wg.Wait()
 
-	log.Debugln("Target manager stopped")
+	level.Info(tm.logger).Log("msg", "Target manager stopped")
 }
 
 func (tm *TargetManager) reload() {
@@ -100,7 +107,7 @@ func (tm *TargetManager) reload() {
 			ts = &targetSet{
 				ctx:    ctx,
 				cancel: cancel,
-				sp:     newScrapePool(ctx, scfg, tm.appender),
+				sp:     newScrapePool(ctx, scfg, tm.append, log.With(tm.logger, "scrape_pool", scfg.JobName)),
 			}
 			ts.ts = discovery.NewTargetSet(ts.sp)
 
@@ -118,7 +125,7 @@ func (tm *TargetManager) reload() {
 		} else {
 			ts.sp.reload(scfg)
 		}
-		ts.ts.UpdateProviders(discovery.ProvidersFromConfig(scfg.ServiceDiscoveryConfig))
+		ts.ts.UpdateProviders(discovery.ProvidersFromConfig(scfg.ServiceDiscoveryConfig, tm.logger))
 	}
 
 	// Remove old target sets. Waiting for scrape pools to complete pending

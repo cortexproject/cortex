@@ -17,23 +17,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"sort"
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/common/version"
-	"golang.org/x/net/context"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
+	"github.com/prometheus/alertmanager/pkg/parse"
 	"github.com/prometheus/alertmanager/provider"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/silence/silencepb"
 	"github.com/prometheus/alertmanager/types"
+	"github.com/weaveworks/mesh"
 )
 
 var (
@@ -73,26 +76,30 @@ func setCORS(w http.ResponseWriter) {
 type API struct {
 	alerts         provider.Alerts
 	silences       *silence.Silences
-	config         string
-	configJSON     config.Config
+	config         *config.Config
+	route          *dispatch.Route
 	resolveTimeout time.Duration
 	uptime         time.Time
+	mrouter        *mesh.Router
 
-	groups func() dispatch.AlertOverview
+	groups         groupsFn
+	getAlertStatus getAlertStatusFn
 
-	// context is an indirection for testing.
-	context func(r *http.Request) context.Context
-	mtx     sync.RWMutex
+	mtx sync.RWMutex
 }
 
+type groupsFn func([]*labels.Matcher) dispatch.AlertOverview
+type getAlertStatusFn func(model.Fingerprint) types.AlertStatus
+
 // New returns a new API.
-func New(alerts provider.Alerts, silences *silence.Silences, gf func() dispatch.AlertOverview) *API {
+func New(alerts provider.Alerts, silences *silence.Silences, gf groupsFn, sf getAlertStatusFn, router *mesh.Router) *API {
 	return &API{
-		context:  route.Context,
-		alerts:   alerts,
-		silences: silences,
-		groups:   gf,
-		uptime:   time.Now(),
+		alerts:         alerts,
+		silences:       silences,
+		groups:         gf,
+		getAlertStatus: sf,
+		uptime:         time.Now(),
+		mrouter:        router,
 	}
 }
 
@@ -115,32 +122,26 @@ func (api *API) Register(r *route.Router) {
 	r = r.WithPrefix("/v1")
 
 	r.Get("/status", ihf("status", api.status))
+	r.Get("/receivers", ihf("receivers", api.receivers))
 	r.Get("/alerts/groups", ihf("alert_groups", api.alertGroups))
 
 	r.Get("/alerts", ihf("list_alerts", api.listAlerts))
 	r.Post("/alerts", ihf("add_alerts", api.addAlerts))
 
 	r.Get("/silences", ihf("list_silences", api.listSilences))
-	r.Post("/silences", ihf("add_silence", api.addSilence))
+	r.Post("/silences", ihf("add_silence", api.setSilence))
 	r.Get("/silence/:sid", ihf("get_silence", api.getSilence))
 	r.Del("/silence/:sid", ihf("del_silence", api.delSilence))
 }
 
 // Update sets the configuration string to a new value.
-func (api *API) Update(cfg string, resolveTimeout time.Duration) error {
+func (api *API) Update(cfg *config.Config, resolveTimeout time.Duration) error {
 	api.mtx.Lock()
 	defer api.mtx.Unlock()
 
-	api.config = cfg
 	api.resolveTimeout = resolveTimeout
-
-	configJSON, err := config.Load(cfg)
-	if err != nil {
-		log.Errorf("error: %v", err)
-		return err
-	}
-
-	api.configJSON = *configJSON
+	api.config = cfg
+	api.route = dispatch.NewRoute(cfg.Route, nil)
 	return nil
 }
 
@@ -161,17 +162,30 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("%s: %s", e.typ, e.err)
 }
 
+func (api *API) receivers(w http.ResponseWriter, req *http.Request) {
+	api.mtx.RLock()
+	defer api.mtx.RUnlock()
+
+	receivers := make([]string, 0, len(api.config.Receivers))
+	for _, r := range api.config.Receivers {
+		receivers = append(receivers, r.Name)
+	}
+
+	respond(w, receivers)
+}
+
 func (api *API) status(w http.ResponseWriter, req *http.Request) {
 	api.mtx.RLock()
 
 	var status = struct {
-		Config      string            `json:"config"`
-		ConfigJSON  config.Config     `json:"configJSON"`
+		ConfigYAML  string            `json:"configYAML"`
+		ConfigJSON  *config.Config    `json:"configJSON"`
 		VersionInfo map[string]string `json:"versionInfo"`
 		Uptime      time.Time         `json:"uptime"`
+		MeshStatus  *meshStatus       `json:"meshStatus"`
 	}{
-		Config:     api.config,
-		ConfigJSON: api.configJSON,
+		ConfigYAML: api.config.String(),
+		ConfigJSON: api.config,
 		VersionInfo: map[string]string{
 			"version":   version.Version,
 			"revision":  version.Revision,
@@ -180,7 +194,8 @@ func (api *API) status(w http.ResponseWriter, req *http.Request) {
 			"buildDate": version.BuildDate,
 			"goVersion": version.GoVersion,
 		},
-		Uptime: api.uptime,
+		Uptime:     api.uptime,
+		MeshStatus: getMeshStatus(api),
 	}
 
 	api.mtx.RUnlock()
@@ -188,24 +203,154 @@ func (api *API) status(w http.ResponseWriter, req *http.Request) {
 	respond(w, status)
 }
 
-func (api *API) alertGroups(w http.ResponseWriter, req *http.Request) {
-	respond(w, api.groups())
+type meshStatus struct {
+	Name     string       `json:"name"`
+	NickName string       `json:"nickName"`
+	Peers    []peerStatus `json:"peers"`
+}
+
+type peerStatus struct {
+	Name     string `json:"name"`     // e.g. "00:00:00:00:00:01"
+	NickName string `json:"nickName"` // e.g. "a"
+	UID      uint64 `json:"uid"`      // e.g. "14015114173033265000"
+}
+
+func getMeshStatus(api *API) *meshStatus {
+	if api.mrouter == nil {
+		return nil
+	}
+
+	status := mesh.NewStatus(api.mrouter)
+	strippedStatus := &meshStatus{
+		Name:     status.Name,
+		NickName: status.NickName,
+		Peers:    make([]peerStatus, len(status.Peers)),
+	}
+
+	for i := 0; i < len(status.Peers); i++ {
+		strippedStatus.Peers[i] = peerStatus{
+			Name:     status.Peers[i].Name,
+			NickName: status.Peers[i].NickName,
+			UID:      uint64(status.Peers[i].UID),
+		}
+	}
+
+	return strippedStatus
+}
+
+func (api *API) alertGroups(w http.ResponseWriter, r *http.Request) {
+	var err error
+	matchers := []*labels.Matcher{}
+
+	if filter := r.FormValue("filter"); filter != "" {
+		matchers, err = parse.Matchers(filter)
+		if err != nil {
+			respondError(w, apiError{
+				typ: errorBadData,
+				err: err,
+			}, nil)
+			return
+		}
+	}
+
+	groups := api.groups(matchers)
+
+	respond(w, groups)
 }
 
 func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		re  *regexp.Regexp
+		// Initialize result slice to prevent api returning `null` when there
+		// are no alerts present
+		res          = []*dispatch.APIAlert{}
+		matchers     = []*labels.Matcher{}
+		showSilenced = true
+	)
+
+	if filter := r.FormValue("filter"); filter != "" {
+		matchers, err = parse.Matchers(filter)
+		if err != nil {
+			respondError(w, apiError{
+				typ: errorBadData,
+				err: err,
+			}, nil)
+			return
+		}
+	}
+
+	if silencedParam := r.FormValue("silenced"); silencedParam != "" {
+		if silencedParam == "false" {
+			showSilenced = false
+		} else if silencedParam != "true" {
+			respondError(w, apiError{
+				typ: errorBadData,
+				err: fmt.Errorf(
+					"parameter 'silenced' can either be 'true' or 'false', not '%v'",
+					silencedParam,
+				),
+			}, nil)
+			return
+		}
+	}
+
+	if receiverParam := r.FormValue("receiver"); receiverParam != "" {
+		re, err = regexp.Compile("^(?:" + receiverParam + ")$")
+		if err != nil {
+			respondError(w, apiError{
+				typ: errorBadData,
+				err: fmt.Errorf(
+					"failed to parse receiver param: %s",
+					receiverParam,
+				),
+			}, nil)
+			return
+		}
+	}
+
 	alerts := api.alerts.GetPending()
 	defer alerts.Close()
 
-	var (
-		err error
-		res []*types.Alert
-	)
 	// TODO(fabxc): enforce a sensible timeout.
 	for a := range alerts.Next() {
 		if err = alerts.Err(); err != nil {
 			break
 		}
-		res = append(res, a)
+
+		routes := api.route.Match(a.Labels)
+		receivers := make([]string, 0, len(routes))
+		for _, r := range routes {
+			receivers = append(receivers, r.RouteOpts.Receiver)
+		}
+
+		if re != nil && !regexpAny(re, receivers) {
+			continue
+		}
+
+		if !alertMatchesFilterLabels(&a.Alert, matchers) {
+			continue
+		}
+
+		// Continue if alert is resolved
+		if !a.Alert.EndsAt.IsZero() && a.Alert.EndsAt.Before(time.Now()) {
+			continue
+		}
+
+		status := api.getAlertStatus(a.Fingerprint())
+
+		if !showSilenced && len(status.SilencedBy) != 0 {
+			continue
+		}
+
+		apiAlert := &dispatch.APIAlert{
+			Alert:       &a.Alert,
+			Status:      status,
+			Receivers:   receivers,
+			Fingerprint: a.Fingerprint().String(),
+		}
+
+		res = append(res, apiAlert)
 	}
 
 	if err != nil {
@@ -215,7 +360,30 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 		}, nil)
 		return
 	}
-	respond(w, types.Alerts(res...))
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].Fingerprint < res[j].Fingerprint
+	})
+	respond(w, res)
+}
+
+func regexpAny(re *regexp.Regexp, ss []string) bool {
+	for _, s := range ss {
+		if re.MatchString(s) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func alertMatchesFilterLabels(a *model.Alert, matchers []*labels.Matcher) bool {
+	for _, m := range matchers {
+		if v, prs := a.Labels[model.LabelName(m.Name)]; !prs || !m.Matches(string(v)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (api *API) legacyAddAlerts(w http.ResponseWriter, r *http.Request) {
@@ -319,7 +487,7 @@ func (api *API) insertAlerts(w http.ResponseWriter, r *http.Request, alerts ...*
 	respond(w, nil)
 }
 
-func (api *API) addSilence(w http.ResponseWriter, r *http.Request) {
+func (api *API) setSilence(w http.ResponseWriter, r *http.Request) {
 	var sil types.Silence
 	if err := receive(r, &sil); err != nil {
 		respondError(w, apiError{
@@ -336,15 +504,11 @@ func (api *API) addSilence(w http.ResponseWriter, r *http.Request) {
 		}, nil)
 		return
 	}
-	// Drop start time for new silences so we default to now.
-	if sil.ID == "" && sil.StartsAt.Before(time.Now()) {
-		psil.StartsAt = nil
-	}
 
-	sid, err := api.silences.Create(psil)
+	sid, err := api.silences.Set(psil)
 	if err != nil {
 		respondError(w, apiError{
-			typ: errorInternal,
+			typ: errorBadData,
 			err: err,
 		}, nil)
 		return
@@ -358,7 +522,7 @@ func (api *API) addSilence(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) getSilence(w http.ResponseWriter, r *http.Request) {
-	sid := route.Param(api.context(r), "sid")
+	sid := route.Param(r.Context(), "sid")
 
 	sils, err := api.silences.Query(silence.QIDs(sid))
 	if err != nil || len(sils) == 0 {
@@ -378,7 +542,7 @@ func (api *API) getSilence(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) delSilence(w http.ResponseWriter, r *http.Request) {
-	sid := route.Param(api.context(r), "sid")
+	sid := route.Param(r.Context(), "sid")
 
 	if err := api.silences.Expire(sid); err != nil {
 		respondError(w, apiError{
@@ -400,7 +564,19 @@ func (api *API) listSilences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var sils []*types.Silence
+	matchers := []*labels.Matcher{}
+	if filter := r.FormValue("filter"); filter != "" {
+		matchers, err = parse.Matchers(filter)
+		if err != nil {
+			respondError(w, apiError{
+				typ: errorBadData,
+				err: err,
+			}, nil)
+			return
+		}
+	}
+
+	sils := []*types.Silence{}
 	for _, ps := range psils {
 		s, err := silenceFromProto(ps)
 		if err != nil {
@@ -410,30 +586,65 @@ func (api *API) listSilences(w http.ResponseWriter, r *http.Request) {
 			}, nil)
 			return
 		}
+
+		if !matchesFilterLabels(s, matchers) {
+			continue
+		}
 		sils = append(sils, s)
 	}
 
-	respond(w, sils)
+	var active, pending, expired, silences []*types.Silence
+
+	for _, s := range sils {
+		switch s.Status.State {
+		case "active":
+			active = append(active, s)
+		case "pending":
+			pending = append(pending, s)
+		case "expired":
+			expired = append(expired, s)
+		}
+	}
+
+	sort.Slice(active, func(i int, j int) bool {
+		return active[i].EndsAt.Before(active[j].EndsAt)
+	})
+	sort.Slice(pending, func(i int, j int) bool {
+		return pending[i].StartsAt.Before(pending[j].EndsAt)
+	})
+	sort.Slice(expired, func(i int, j int) bool {
+		return expired[i].EndsAt.After(expired[j].EndsAt)
+	})
+
+	silences = append(silences, active...)
+	silences = append(silences, pending...)
+	silences = append(silences, expired...)
+
+	respond(w, silences)
+}
+
+func matchesFilterLabels(s *types.Silence, matchers []*labels.Matcher) bool {
+	sms := map[string]string{}
+	for _, m := range s.Matchers {
+		sms[m.Name] = m.Value
+	}
+	for _, m := range matchers {
+		if v, prs := sms[m.Name]; !prs || !m.Matches(v) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func silenceToProto(s *types.Silence) (*silencepb.Silence, error) {
-	startsAt, err := ptypes.TimestampProto(s.StartsAt)
-	if err != nil {
-		return nil, err
-	}
-	endsAt, err := ptypes.TimestampProto(s.EndsAt)
-	if err != nil {
-		return nil, err
-	}
-	updatedAt, err := ptypes.TimestampProto(s.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
 	sil := &silencepb.Silence{
 		Id:        s.ID,
-		StartsAt:  startsAt,
-		EndsAt:    endsAt,
-		UpdatedAt: updatedAt,
+		StartsAt:  s.StartsAt,
+		EndsAt:    s.EndsAt,
+		UpdatedAt: s.UpdatedAt,
+		Comment:   s.Comment,
+		CreatedBy: s.CreatedBy,
 	}
 	for _, m := range s.Matchers {
 		matcher := &silencepb.Matcher{
@@ -446,32 +657,20 @@ func silenceToProto(s *types.Silence) (*silencepb.Silence, error) {
 		}
 		sil.Matchers = append(sil.Matchers, matcher)
 	}
-	sil.Comments = append(sil.Comments, &silencepb.Comment{
-		Timestamp: updatedAt,
-		Author:    s.CreatedBy,
-		Comment:   s.Comment,
-	})
 	return sil, nil
 }
 
 func silenceFromProto(s *silencepb.Silence) (*types.Silence, error) {
-	startsAt, err := ptypes.Timestamp(s.StartsAt)
-	if err != nil {
-		return nil, err
-	}
-	endsAt, err := ptypes.Timestamp(s.EndsAt)
-	if err != nil {
-		return nil, err
-	}
-	updatedAt, err := ptypes.Timestamp(s.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
 	sil := &types.Silence{
 		ID:        s.Id,
-		StartsAt:  startsAt,
-		EndsAt:    endsAt,
-		UpdatedAt: updatedAt,
+		StartsAt:  s.StartsAt,
+		EndsAt:    s.EndsAt,
+		UpdatedAt: s.UpdatedAt,
+		Status: types.SilenceStatus{
+			State: types.CalcSilenceState(s.StartsAt, s.EndsAt),
+		},
+		Comment:   s.Comment,
+		CreatedBy: s.CreatedBy,
 	}
 	for _, m := range s.Matchers {
 		matcher := &types.Matcher{
@@ -486,10 +685,6 @@ func silenceFromProto(s *silencepb.Silence) (*types.Silence, error) {
 			return nil, fmt.Errorf("unknown matcher type")
 		}
 		sil.Matchers = append(sil.Matchers, matcher)
-	}
-	if len(s.Comments) > 0 {
-		sil.CreatedBy = s.Comments[0].Author
-		sil.Comment = s.Comments[0].Comment
 	}
 
 	return sil, nil

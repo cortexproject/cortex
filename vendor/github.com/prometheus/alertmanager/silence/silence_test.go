@@ -22,9 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	pb "github.com/prometheus/alertmanager/silence/silencepb"
+	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/mesh"
@@ -80,15 +79,19 @@ func TestSilencesGC(t *testing.T) {
 	s.now = func() time.Time { return now }
 
 	newSilence := func(exp time.Time) *pb.MeshSilence {
-		return &pb.MeshSilence{ExpiresAt: mustTimeProto(exp)}
+		return &pb.MeshSilence{ExpiresAt: exp}
 	}
-	s.st = gossipData{
-		"1": newSilence(now),
-		"2": newSilence(now.Add(-time.Second)),
-		"3": newSilence(now.Add(time.Second)),
+	s.st = &gossipData{
+		data: silenceMap{
+			"1": newSilence(now),
+			"2": newSilence(now.Add(-time.Second)),
+			"3": newSilence(now.Add(time.Second)),
+		},
 	}
-	want := gossipData{
-		"3": newSilence(now.Add(time.Second)),
+	want := &gossipData{
+		data: silenceMap{
+			"3": newSilence(now.Add(time.Second)),
+		},
 	}
 
 	n, err := s.GC()
@@ -113,11 +116,11 @@ func TestSilencesSnapshot(t *testing.T) {
 							{Name: "label1", Pattern: "val1", Type: pb.Matcher_EQUAL},
 							{Name: "label2", Pattern: "val.+", Type: pb.Matcher_REGEXP},
 						},
-						StartsAt:  mustTimeProto(now),
-						EndsAt:    mustTimeProto(now),
-						UpdatedAt: mustTimeProto(now),
+						StartsAt:  now,
+						EndsAt:    now,
+						UpdatedAt: now,
 					},
-					ExpiresAt: mustTimeProto(now),
+					ExpiresAt: now,
 				},
 				{
 					Silence: &pb.Silence{
@@ -125,11 +128,11 @@ func TestSilencesSnapshot(t *testing.T) {
 						Matchers: []*pb.Matcher{
 							{Name: "label1", Pattern: "val1", Type: pb.Matcher_EQUAL},
 						},
-						StartsAt:  mustTimeProto(now.Add(time.Hour)),
-						EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-						UpdatedAt: mustTimeProto(now),
+						StartsAt:  now.Add(time.Hour),
+						EndsAt:    now.Add(2 * time.Hour),
+						UpdatedAt: now,
 					},
-					ExpiresAt: mustTimeProto(now.Add(24 * time.Hour)),
+					ExpiresAt: now.Add(24 * time.Hour),
 				},
 			},
 		},
@@ -139,10 +142,10 @@ func TestSilencesSnapshot(t *testing.T) {
 		f, err := ioutil.TempFile("", "snapshot")
 		require.NoError(t, err, "creating temp file failed")
 
-		s1 := &Silences{st: gossipData{}, metrics: newMetrics(nil)}
+		s1 := &Silences{st: newGossipData(), metrics: newMetrics(nil, nil)}
 		// Setup internal state manually.
 		for _, e := range c.entries {
-			s1.st[e.Silence.Id] = e
+			s1.st.data[e.Silence.Id] = e
 		}
 		_, err = s1.Snapshot(f)
 		require.NoError(t, err, "creating snapshot failed")
@@ -153,10 +156,10 @@ func TestSilencesSnapshot(t *testing.T) {
 		require.NoError(t, err, "opening snapshot file failed")
 
 		// Check again against new nlog instance.
-		s2 := &Silences{mc: matcherCache{}}
+		s2 := &Silences{mc: matcherCache{}, st: newGossipData()}
 		err = s2.loadSnapshot(f)
 		require.NoError(t, err, "error loading snapshot")
-		require.Equal(t, s1.st, s2.st, "state after loading snapshot did not match snapshotted state")
+		require.Equal(t, s1.st.data, s2.st.data, "state after loading snapshot did not match snapshotted state")
 
 		require.NoError(t, f.Close(), "closing snapshot file failed")
 	}
@@ -176,104 +179,220 @@ func TestSilencesSetSilence(t *testing.T) {
 	require.NoError(t, err)
 
 	now := utcNow()
-	nowpb := mustTimeProto(now)
+	nowpb := now
 
 	sil := &pb.Silence{
-		Id:     "some_id",
-		EndsAt: nowpb,
+		Id:       "some_id",
+		Matchers: []*pb.Matcher{{Name: "abc", Pattern: "def"}},
+		StartsAt: nowpb,
+		EndsAt:   nowpb,
 	}
 
-	want := gossipData{
-		"some_id": &pb.MeshSilence{
-			Silence:   sil,
-			ExpiresAt: mustTimeProto(now.Add(time.Minute)),
+	want := &gossipData{
+		data: silenceMap{
+			"some_id": &pb.MeshSilence{
+				Silence:   sil,
+				ExpiresAt: now.Add(time.Minute),
+			},
 		},
 	}
 
-	var called bool
+	done := make(chan bool)
 	s.gossip = &mockGossip{
 		broadcast: func(d mesh.GossipData) {
-			data, ok := d.(gossipData)
-			require.True(t, ok, "gossip data of unknown type")
-			require.Equal(t, want, data, "unexpected gossip broadcast data")
+			data, ok := d.(*gossipData)
 
-			called = true
+			// Double check that we can take a lock on s.mtx here.
+			s.mtx.Lock()
+			defer s.mtx.Unlock()
+
+			require.True(t, ok, "gossip data of unknown type")
+			require.Equal(t, want.data, data.data, "unexpected gossip broadcast data")
+			close(done)
 		},
 	}
-	require.NoError(t, s.setSilence(sil))
-	require.True(t, called, "GossipBroadcast was not called")
-	require.Equal(t, want, s.st, "Unexpected silence state")
+
+	// setSilence() is always called with s.mtx locked()
+	go func() {
+		s.mtx.Lock()
+		require.NoError(t, s.setSilence(sil))
+		s.mtx.Unlock()
+	}()
+
+	// GossipBroadcast is called in a goroutine.
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("GossipBroadcast was not called")
+	}
+
+	require.Equal(t, want.data, s.st.data, "Unexpected silence state")
 }
 
-func TestSilenceCreate(t *testing.T) {
+func TestSilenceSet(t *testing.T) {
 	s, err := New(Options{
 		Retention: time.Hour,
 	})
 	require.NoError(t, err)
 
 	now := utcNow()
+	now1 := now
 	s.now = func() time.Time { return now }
 
 	// Insert silence with fixed start time.
 	sil1 := &pb.Silence{
 		Matchers: []*pb.Matcher{{Name: "a", Pattern: "b"}},
-		StartsAt: mustTimeProto(now.Add(2 * time.Minute)),
-		EndsAt:   mustTimeProto(now.Add(5 * time.Minute)),
+		StartsAt: now.Add(2 * time.Minute),
+		EndsAt:   now.Add(5 * time.Minute),
 	}
-	id1, err := s.Create(sil1)
+	id1, err := s.Set(sil1)
 	require.NoError(t, err)
 	require.NotEqual(t, id1, "")
 
-	want := gossipData{
-		id1: &pb.MeshSilence{
-			Silence: &pb.Silence{
-				Id:        id1,
-				Matchers:  []*pb.Matcher{{Name: "a", Pattern: "b"}},
-				StartsAt:  mustTimeProto(now.Add(2 * time.Minute)),
-				EndsAt:    mustTimeProto(now.Add(5 * time.Minute)),
-				UpdatedAt: mustTimeProto(now),
+	want := &gossipData{
+		data: silenceMap{
+			id1: &pb.MeshSilence{
+				Silence: &pb.Silence{
+					Id:        id1,
+					Matchers:  []*pb.Matcher{{Name: "a", Pattern: "b"}},
+					StartsAt:  now1.Add(2 * time.Minute),
+					EndsAt:    now1.Add(5 * time.Minute),
+					UpdatedAt: now1,
+				},
+				ExpiresAt: now1.Add(5*time.Minute + s.retention),
 			},
-			ExpiresAt: mustTimeProto(now.Add(5*time.Minute + s.retention)),
 		},
 	}
-	require.Equal(t, want, s.st, "unexpected state after silence creation")
+	require.Equal(t, want.data, s.st.data, "unexpected state after silence creation")
 
 	// Insert silence with unset start time. Must be set to now.
+	now = now.Add(time.Minute)
+	now2 := now
+
 	sil2 := &pb.Silence{
 		Matchers: []*pb.Matcher{{Name: "a", Pattern: "b"}},
-		EndsAt:   mustTimeProto(now.Add(1 * time.Minute)),
+		EndsAt:   now.Add(1 * time.Minute),
 	}
-	id2, err := s.Create(sil2)
+	id2, err := s.Set(sil2)
 	require.NoError(t, err)
 	require.NotEqual(t, id2, "")
 
-	want = gossipData{
-		id1: &pb.MeshSilence{
-			Silence: &pb.Silence{
-				Id:        id1,
-				Matchers:  []*pb.Matcher{{Name: "a", Pattern: "b"}},
-				StartsAt:  mustTimeProto(now.Add(2 * time.Minute)),
-				EndsAt:    mustTimeProto(now.Add(5 * time.Minute)),
-				UpdatedAt: mustTimeProto(now),
+	want = &gossipData{
+		data: silenceMap{
+			id1: want.data[id1],
+			id2: &pb.MeshSilence{
+				Silence: &pb.Silence{
+					Id:        id2,
+					Matchers:  []*pb.Matcher{{Name: "a", Pattern: "b"}},
+					StartsAt:  now2,
+					EndsAt:    now2.Add(1 * time.Minute),
+					UpdatedAt: now2,
+				},
+				ExpiresAt: now2.Add(1*time.Minute + s.retention),
 			},
-			ExpiresAt: mustTimeProto(now.Add(5*time.Minute + s.retention)),
-		},
-		id2: &pb.MeshSilence{
-			Silence: &pb.Silence{
-				Id:        id2,
-				Matchers:  []*pb.Matcher{{Name: "a", Pattern: "b"}},
-				StartsAt:  mustTimeProto(now),
-				EndsAt:    mustTimeProto(now.Add(1 * time.Minute)),
-				UpdatedAt: mustTimeProto(now),
-			},
-			ExpiresAt: mustTimeProto(now.Add(1*time.Minute + s.retention)),
 		},
 	}
-	require.Equal(t, want, s.st, "unexpected state after silence creation")
+	require.Equal(t, want.data, s.st.data, "unexpected state after silence creation")
 
+	// Overwrite silence 2 with new end time.
+	now = now.Add(time.Minute)
+	now3 := now
+
+	sil3 := cloneSilence(sil2)
+	sil3.EndsAt = now.Add(100 * time.Minute)
+
+	id3, err := s.Set(sil3)
+	require.NoError(t, err)
+	require.Equal(t, id2, id3)
+
+	want = &gossipData{
+		data: silenceMap{
+			id1: want.data[id1],
+			id2: &pb.MeshSilence{
+				Silence: &pb.Silence{
+					Id:        id2,
+					Matchers:  []*pb.Matcher{{Name: "a", Pattern: "b"}},
+					StartsAt:  now2,
+					EndsAt:    now3.Add(100 * time.Minute),
+					UpdatedAt: now3,
+				},
+				ExpiresAt: now3.Add(100*time.Minute + s.retention),
+			},
+		},
+	}
+	require.Equal(t, want.data, s.st.data, "unexpected state after silence creation")
+
+	// Update silence 2 with new matcher expires it and creates a new one.
+	now = now.Add(time.Minute)
+	now4 := now
+
+	sil4 := cloneSilence(sil3)
+	sil4.Matchers = []*pb.Matcher{{Name: "a", Pattern: "c"}}
+
+	id4, err := s.Set(sil4)
+	require.NoError(t, err)
+	require.NotEqual(t, id2, id4)
+
+	want = &gossipData{
+		data: silenceMap{
+			id1: want.data[id1],
+			id2: &pb.MeshSilence{
+				Silence: &pb.Silence{
+					Id:        id2,
+					Matchers:  []*pb.Matcher{{Name: "a", Pattern: "b"}},
+					StartsAt:  now2,
+					EndsAt:    now4,
+					UpdatedAt: now4,
+				},
+				ExpiresAt: now4.Add(s.retention),
+			},
+			id4: &pb.MeshSilence{
+				Silence: &pb.Silence{
+					Id:        id4,
+					Matchers:  []*pb.Matcher{{Name: "a", Pattern: "c"}},
+					StartsAt:  now4,
+					EndsAt:    now3.Add(100 * time.Minute),
+					UpdatedAt: now4,
+				},
+				ExpiresAt: now3.Add(100*time.Minute + s.retention),
+			},
+		},
+	}
+	require.Equal(t, want.data, s.st.data, "unexpected state after silence creation")
+
+	// Re-create expired silence.
+	now = now.Add(time.Minute)
+	now5 := now
+
+	sil5 := cloneSilence(sil3)
+	sil5.StartsAt = now
+	sil5.EndsAt = now.Add(5 * time.Minute)
+
+	id5, err := s.Set(sil5)
+	require.NoError(t, err)
+	require.NotEqual(t, id2, id4)
+
+	want = &gossipData{
+		data: silenceMap{
+			id1: want.data[id1],
+			id2: want.data[id2],
+			id4: want.data[id4],
+			id5: &pb.MeshSilence{
+				Silence: &pb.Silence{
+					Id:        id5,
+					Matchers:  []*pb.Matcher{{Name: "a", Pattern: "b"}},
+					StartsAt:  now5,
+					EndsAt:    now5.Add(5 * time.Minute),
+					UpdatedAt: now5,
+				},
+				ExpiresAt: now5.Add(5*time.Minute + s.retention),
+			},
+		},
+	}
+	require.Equal(t, want.data, s.st.data, "unexpected state after silence creation")
 }
 
-func TestSilencesCreateFail(t *testing.T) {
+func TestSilencesSetFail(t *testing.T) {
 	s, err := New(Options{})
 	require.NoError(t, err)
 
@@ -286,17 +405,14 @@ func TestSilencesCreateFail(t *testing.T) {
 	}{
 		{
 			s:   &pb.Silence{Id: "some_id"},
-			err: "unexpected ID in new silence",
-		}, {
-			s:   &pb.Silence{StartsAt: mustTimeProto(now.Add(-time.Minute))},
-			err: "new silence must not start in the past",
+			err: ErrNotFound.Error(),
 		}, {
 			s:   &pb.Silence{}, // Silence without matcher.
-			err: "invalid silence",
+			err: "silence invalid",
 		},
 	}
 	for _, c := range cases {
-		_, err := s.Create(c.s)
+		_, err := s.Set(c.s)
 		if err == nil {
 			if c.err != "" {
 				t.Errorf("expected error containing %q but got none", c.err)
@@ -323,24 +439,24 @@ func TestQState(t *testing.T) {
 	}{
 		{
 			sil: &pb.Silence{
-				StartsAt: mustTimeProto(now.Add(time.Minute)),
-				EndsAt:   mustTimeProto(now.Add(time.Hour)),
+				StartsAt: now.Add(time.Minute),
+				EndsAt:   now.Add(time.Hour),
 			},
 			states: []SilenceState{StateActive, StateExpired},
 			keep:   false,
 		},
 		{
 			sil: &pb.Silence{
-				StartsAt: mustTimeProto(now.Add(time.Minute)),
-				EndsAt:   mustTimeProto(now.Add(time.Hour)),
+				StartsAt: now.Add(time.Minute),
+				EndsAt:   now.Add(time.Hour),
 			},
 			states: []SilenceState{StatePending},
 			keep:   true,
 		},
 		{
 			sil: &pb.Silence{
-				StartsAt: mustTimeProto(now.Add(time.Minute)),
-				EndsAt:   mustTimeProto(now.Add(time.Hour)),
+				StartsAt: now.Add(time.Minute),
+				EndsAt:   now.Add(time.Hour),
 			},
 			states: []SilenceState{StateExpired, StatePending},
 			keep:   true,
@@ -351,7 +467,7 @@ func TestQState(t *testing.T) {
 		QState(c.states...)(q)
 		f := q.filters[0]
 
-		keep, err := f(c.sil, nil, mustTimeProto(now))
+		keep, err := f(c.sil, nil, now)
 		require.NoError(t, err)
 		require.Equal(t, c.keep, keep, "unexpected filter result for case %d", i)
 	}
@@ -409,7 +525,7 @@ func TestQMatches(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		drop, err := f(c.sil, &Silences{mc: matcherCache{}}, nil)
+		drop, err := f(c.sil, &Silences{mc: matcherCache{}, st: newGossipData()}, time.Time{})
 		require.NoError(t, err)
 		require.Equal(t, c.drop, drop, "unexpected filter result")
 	}
@@ -419,12 +535,14 @@ func TestSilencesQuery(t *testing.T) {
 	s, err := New(Options{})
 	require.NoError(t, err)
 
-	s.st = gossipData{
-		"1": &pb.MeshSilence{Silence: &pb.Silence{Id: "1"}},
-		"2": &pb.MeshSilence{Silence: &pb.Silence{Id: "2"}},
-		"3": &pb.MeshSilence{Silence: &pb.Silence{Id: "3"}},
-		"4": &pb.MeshSilence{Silence: &pb.Silence{Id: "4"}},
-		"5": &pb.MeshSilence{Silence: &pb.Silence{Id: "5"}},
+	s.st = &gossipData{
+		data: silenceMap{
+			"1": &pb.MeshSilence{Silence: &pb.Silence{Id: "1"}},
+			"2": &pb.MeshSilence{Silence: &pb.Silence{Id: "2"}},
+			"3": &pb.MeshSilence{Silence: &pb.Silence{Id: "3"}},
+			"4": &pb.MeshSilence{Silence: &pb.Silence{Id: "4"}},
+			"5": &pb.MeshSilence{Silence: &pb.Silence{Id: "5"}},
+		},
 	}
 	cases := []struct {
 		q   *query
@@ -455,7 +573,7 @@ func TestSilencesQuery(t *testing.T) {
 			// Retrieve all and filter
 			q: &query{
 				filters: []silenceFilter{
-					func(sil *pb.Silence, _ *Silences, _ *timestamp.Timestamp) (bool, error) {
+					func(sil *pb.Silence, _ *Silences, _ time.Time) (bool, error) {
 						return sil.Id == "1" || sil.Id == "2", nil
 					},
 				},
@@ -470,7 +588,7 @@ func TestSilencesQuery(t *testing.T) {
 			q: &query{
 				ids: []string{"2", "5"},
 				filters: []silenceFilter{
-					func(sil *pb.Silence, _ *Silences, _ *timestamp.Timestamp) (bool, error) {
+					func(sil *pb.Silence, _ *Silences, _ time.Time) (bool, error) {
 						return sil.Id == "1" || sil.Id == "2", nil
 					},
 				},
@@ -483,7 +601,7 @@ func TestSilencesQuery(t *testing.T) {
 
 	for _, c := range cases {
 		// Run default query of retrieving all silences.
-		res, err := s.query(c.q, nil)
+		res, err := s.query(c.q, time.Time{})
 		require.NoError(t, err, "unexpected error on querying")
 
 		// Currently there are no sorting guarantees in the querying API.
@@ -499,125 +617,216 @@ func (s silencesByID) Len() int           { return len(s) }
 func (s silencesByID) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s silencesByID) Less(i, j int) bool { return s[i].Id < s[j].Id }
 
-func TestSilenceSetTimeRange(t *testing.T) {
+func TestSilenceCanUpdate(t *testing.T) {
 	now := utcNow()
 
 	cases := []struct {
-		sil        *pb.Silence
-		start, end *timestamp.Timestamp
-		err        string
+		a, b *pb.Silence
+		ok   bool
 	}{
 		// Bad arguments.
 		{
-			sil:   &pb.Silence{},
-			start: mustTimeProto(now),
-			end:   mustTimeProto(now.Add(-time.Minute)),
-			err:   "end time must not be before start time",
+			a: &pb.Silence{},
+			b: &pb.Silence{
+				StartsAt: now,
+				EndsAt:   now.Add(-time.Minute),
+			},
+			ok: false,
 		},
 		// Expired silence.
 		{
-			sil: &pb.Silence{
-				StartsAt: mustTimeProto(now.Add(-time.Hour)),
-				EndsAt:   mustTimeProto(now.Add(-time.Second)),
+			a: &pb.Silence{
+				StartsAt: now.Add(-time.Hour),
+				EndsAt:   now.Add(-time.Second),
 			},
-			start: mustTimeProto(now),
-			end:   mustTimeProto(now),
-			err:   "expired silence must not be modified",
+			b: &pb.Silence{
+				StartsAt: now,
+				EndsAt:   now,
+			},
+			ok: false,
 		},
 		// Pending silences.
 		{
-			sil: &pb.Silence{
-				StartsAt:  mustTimeProto(now.Add(time.Hour)),
-				EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-				UpdatedAt: mustTimeProto(now.Add(-time.Hour)),
+			a: &pb.Silence{
+				StartsAt:  now.Add(time.Hour),
+				EndsAt:    now.Add(2 * time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
 			},
-			start: mustTimeProto(now.Add(-time.Minute)),
-			end:   mustTimeProto(now.Add(time.Hour)),
-			err:   "start time cannot be set into the past",
+			b: &pb.Silence{
+				StartsAt: now.Add(-time.Minute),
+				EndsAt:   now.Add(time.Hour),
+			},
+			ok: false,
 		},
 		{
-			sil: &pb.Silence{
-				StartsAt:  mustTimeProto(now.Add(time.Hour)),
-				EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-				UpdatedAt: mustTimeProto(now.Add(-time.Hour)),
+			a: &pb.Silence{
+				StartsAt:  now.Add(time.Hour),
+				EndsAt:    now.Add(2 * time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
 			},
-			start: mustTimeProto(now.Add(time.Minute)),
-			end:   mustTimeProto(now.Add(time.Minute)),
+			b: &pb.Silence{
+				StartsAt: now.Add(time.Minute),
+				EndsAt:   now.Add(time.Minute),
+			},
+			ok: true,
 		},
 		{
-			sil: &pb.Silence{
-				StartsAt:  mustTimeProto(now.Add(time.Hour)),
-				EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-				UpdatedAt: mustTimeProto(now.Add(-time.Hour)),
+			a: &pb.Silence{
+				StartsAt:  now.Add(time.Hour),
+				EndsAt:    now.Add(2 * time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
 			},
-			start: mustTimeProto(now), // set to exactly start now.
-			end:   mustTimeProto(now.Add(2 * time.Hour)),
+			b: &pb.Silence{
+				StartsAt: now, // set to exactly start now.
+				EndsAt:   now.Add(2 * time.Hour),
+			},
+			ok: true,
 		},
 		// Active silences.
 		{
-			sil: &pb.Silence{
-				StartsAt:  mustTimeProto(now.Add(-time.Hour)),
-				EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-				UpdatedAt: mustTimeProto(now.Add(-time.Hour)),
+			a: &pb.Silence{
+				StartsAt:  now.Add(-time.Hour),
+				EndsAt:    now.Add(2 * time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
 			},
-			start: mustTimeProto(now.Add(-time.Minute)),
-			end:   mustTimeProto(now.Add(2 * time.Hour)),
-			err:   "start time of active silence cannot be modified",
+			b: &pb.Silence{
+				StartsAt: now.Add(-time.Minute),
+				EndsAt:   now.Add(2 * time.Hour),
+			},
+			ok: false,
 		},
 		{
-			sil: &pb.Silence{
-				StartsAt:  mustTimeProto(now.Add(-time.Hour)),
-				EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-				UpdatedAt: mustTimeProto(now.Add(-time.Hour)),
+			a: &pb.Silence{
+				StartsAt:  now.Add(-time.Hour),
+				EndsAt:    now.Add(2 * time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
 			},
-			start: mustTimeProto(now.Add(-time.Hour)),
-			end:   mustTimeProto(now.Add(-time.Second)),
-			err:   "end time cannot be set into the past",
+			b: &pb.Silence{
+				StartsAt: now.Add(-time.Hour),
+				EndsAt:   now.Add(-time.Second),
+			},
+			ok: false,
 		},
 		{
-			sil: &pb.Silence{
-				StartsAt:  mustTimeProto(now.Add(-time.Hour)),
-				EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-				UpdatedAt: mustTimeProto(now.Add(-time.Hour)),
+			a: &pb.Silence{
+				StartsAt:  now.Add(-time.Hour),
+				EndsAt:    now.Add(2 * time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
 			},
-			start: mustTimeProto(now.Add(-time.Hour)),
-			end:   mustTimeProto(now),
+			b: &pb.Silence{
+				StartsAt: now.Add(-time.Hour),
+				EndsAt:   now,
+			},
+			ok: true,
 		},
 		{
-			sil: &pb.Silence{
-				StartsAt:  mustTimeProto(now.Add(-time.Hour)),
-				EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-				UpdatedAt: mustTimeProto(now.Add(-time.Hour)),
+			a: &pb.Silence{
+				StartsAt:  now.Add(-time.Hour),
+				EndsAt:    now.Add(2 * time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
 			},
-			start: mustTimeProto(now.Add(-time.Hour)),
-			end:   mustTimeProto(now.Add(3 * time.Hour)),
+			b: &pb.Silence{
+				StartsAt: now.Add(-time.Hour),
+				EndsAt:   now.Add(3 * time.Hour),
+			},
+			ok: true,
 		},
 	}
 	for _, c := range cases {
-		origSilence := cloneSilence(c.sil)
-
-		sil, err := silenceSetTimeRange(c.sil, mustTimeProto(now), c.start, c.end)
-		if err == nil {
-			if c.err != "" {
-				t.Errorf("expected error containing %q but got none", c.err)
-			}
-			// The original silence must not have been modified.
-			require.Equal(t, origSilence, c.sil, "original silence illegally modified")
-
-			require.Equal(t, sil.StartsAt, c.start)
-			require.Equal(t, sil.EndsAt, c.end)
-			require.Equal(t, sil.UpdatedAt, mustTimeProto(now))
-			continue
+		ok := canUpdate(c.a, c.b, now)
+		if ok && !c.ok {
+			t.Errorf("expected not-updateable but was: %v, %v", c.a, c.b)
 		}
-		if err != nil && c.err == "" {
-			t.Errorf("unexpected error %q", err)
-			continue
+		if ok && !c.ok {
+			t.Errorf("expected updateable but was not: %v, %v", c.a, c.b)
 		}
-		if !strings.Contains(err.Error(), c.err) {
-			t.Errorf("expected error to contain %q but got %q", c.err, err)
-		}
-
 	}
+}
+
+func TestSilenceExpire(t *testing.T) {
+	s, err := New(Options{})
+	require.NoError(t, err)
+
+	now := time.Now()
+	s.now = func() time.Time { return now }
+
+	m := &pb.Matcher{Type: pb.Matcher_EQUAL, Name: "a", Pattern: "b"}
+
+	s.st = &gossipData{
+		data: silenceMap{
+			"pending": &pb.MeshSilence{Silence: &pb.Silence{
+				Id:        "pending",
+				Matchers:  []*pb.Matcher{m},
+				StartsAt:  now.Add(time.Minute),
+				EndsAt:    now.Add(time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
+			}},
+			"active": &pb.MeshSilence{Silence: &pb.Silence{
+				Id:        "active",
+				Matchers:  []*pb.Matcher{m},
+				StartsAt:  now.Add(-time.Minute),
+				EndsAt:    now.Add(time.Hour),
+				UpdatedAt: now.Add(-time.Hour),
+			}},
+			"expired": &pb.MeshSilence{Silence: &pb.Silence{
+				Id:        "expired",
+				Matchers:  []*pb.Matcher{m},
+				StartsAt:  now.Add(-time.Hour),
+				EndsAt:    now.Add(-time.Minute),
+				UpdatedAt: now.Add(-time.Hour),
+			}},
+		},
+	}
+
+	count, err := s.CountState(StatePending)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	require.NoError(t, s.expire("pending"))
+	require.NoError(t, s.expire("active"))
+
+	err = s.expire("expired")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already expired")
+
+	sil, err := s.QueryOne(QIDs("pending"))
+	require.NoError(t, err)
+	require.Equal(t, &pb.Silence{
+		Id:        "pending",
+		Matchers:  []*pb.Matcher{m},
+		StartsAt:  now,
+		EndsAt:    now,
+		UpdatedAt: now,
+	}, sil)
+
+	count, err = s.CountState(StatePending)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+
+	// Expiring a pending Silence should make the API return the
+	// SilenceStateExpired Silence state.
+	silenceState := types.CalcSilenceState(sil.StartsAt, sil.EndsAt)
+	require.Equal(t, silenceState, types.SilenceStateExpired)
+
+	sil, err = s.QueryOne(QIDs("active"))
+	require.NoError(t, err)
+	require.Equal(t, &pb.Silence{
+		Id:        "active",
+		Matchers:  []*pb.Matcher{m},
+		StartsAt:  now.Add(-time.Minute),
+		EndsAt:    now,
+		UpdatedAt: now,
+	}, sil)
+
+	sil, err = s.QueryOne(QIDs("expired"))
+	require.NoError(t, err)
+	require.Equal(t, &pb.Silence{
+		Id:        "expired",
+		Matchers:  []*pb.Matcher{m},
+		StartsAt:  now.Add(-time.Hour),
+		EndsAt:    now.Add(-time.Minute),
+		UpdatedAt: now.Add(-time.Hour),
+	}, sil)
 }
 
 func TestValidateMatcher(t *testing.T) {
@@ -683,9 +892,9 @@ func TestValidateMatcher(t *testing.T) {
 
 func TestValidateSilence(t *testing.T) {
 	var (
-		now              = utcNow()
-		invalidTimestamp = &timestamp.Timestamp{Nanos: 1 << 30}
-		validTimestamp   = mustTimeProto(now)
+		now            = utcNow()
+		zeroTimestamp  = time.Time{}
+		validTimestamp = now
 	)
 	cases := []struct {
 		s   *pb.Silence
@@ -744,8 +953,8 @@ func TestValidateSilence(t *testing.T) {
 				Matchers: []*pb.Matcher{
 					&pb.Matcher{Name: "a", Pattern: "b"},
 				},
-				StartsAt:  mustTimeProto(now),
-				EndsAt:    mustTimeProto(now.Add(-time.Second)),
+				StartsAt:  now,
+				EndsAt:    now.Add(-time.Second),
 				UpdatedAt: validTimestamp,
 			},
 			err: "end time must not be before start time",
@@ -756,11 +965,11 @@ func TestValidateSilence(t *testing.T) {
 				Matchers: []*pb.Matcher{
 					&pb.Matcher{Name: "a", Pattern: "b"},
 				},
-				StartsAt:  invalidTimestamp,
+				StartsAt:  zeroTimestamp,
 				EndsAt:    validTimestamp,
 				UpdatedAt: validTimestamp,
 			},
-			err: "invalid start time",
+			err: "invalid zero start timestamp",
 		},
 		{
 			s: &pb.Silence{
@@ -769,10 +978,10 @@ func TestValidateSilence(t *testing.T) {
 					&pb.Matcher{Name: "a", Pattern: "b"},
 				},
 				StartsAt:  validTimestamp,
-				EndsAt:    invalidTimestamp,
+				EndsAt:    zeroTimestamp,
 				UpdatedAt: validTimestamp,
 			},
-			err: "invalid end time",
+			err: "invalid zero end timestamp",
 		},
 		{
 			s: &pb.Silence{
@@ -782,9 +991,9 @@ func TestValidateSilence(t *testing.T) {
 				},
 				StartsAt:  validTimestamp,
 				EndsAt:    validTimestamp,
-				UpdatedAt: invalidTimestamp,
+				UpdatedAt: zeroTimestamp,
 			},
-			err: "invalid update timestamp",
+			err: "invalid zero update timestamp",
 		},
 	}
 	for _, c := range cases {
@@ -812,33 +1021,42 @@ func TestGossipDataMerge(t *testing.T) {
 	// merging logic.
 	newSilence := func(ts time.Time) *pb.MeshSilence {
 		return &pb.MeshSilence{
-			Silence: &pb.Silence{UpdatedAt: mustTimeProto(ts)},
+			Silence: &pb.Silence{UpdatedAt: ts},
 		}
 	}
+
 	cases := []struct {
-		a, b         gossipData
-		final, delta gossipData
+		a, b         *gossipData
+		final, delta *gossipData
 	}{
 		{
-			a: gossipData{
-				"a1": newSilence(now),
-				"a2": newSilence(now),
-				"a3": newSilence(now),
+			a: &gossipData{
+				data: silenceMap{
+					"a1": newSilence(now),
+					"a2": newSilence(now),
+					"a3": newSilence(now),
+				},
 			},
-			b: gossipData{
-				"b1": newSilence(now),                   // new key, should be added
-				"a2": newSilence(now.Add(-time.Minute)), // older timestamp, should be dropped
-				"a3": newSilence(now.Add(time.Minute)),  // newer timestamp, should overwrite
+			b: &gossipData{
+				data: silenceMap{
+					"b1": newSilence(now),                   // new key, should be added
+					"a2": newSilence(now.Add(-time.Minute)), // older timestamp, should be dropped
+					"a3": newSilence(now.Add(time.Minute)),  // newer timestamp, should overwrite
+				},
 			},
-			final: gossipData{
-				"a1": newSilence(now),
-				"a2": newSilence(now),
-				"a3": newSilence(now.Add(time.Minute)),
-				"b1": newSilence(now),
+			final: &gossipData{
+				data: silenceMap{
+					"a1": newSilence(now),
+					"a2": newSilence(now),
+					"a3": newSilence(now.Add(time.Minute)),
+					"b1": newSilence(now),
+				},
 			},
-			delta: gossipData{
-				"b1": newSilence(now),
-				"a3": newSilence(now.Add(time.Minute)),
+			delta: &gossipData{
+				data: silenceMap{
+					"b1": newSilence(now),
+					"a3": newSilence(now.Add(time.Minute)),
+				},
 			},
 		},
 	}
@@ -851,8 +1069,68 @@ func TestGossipDataMerge(t *testing.T) {
 		require.Equal(t, c.final, res, "Merge result should match expectation")
 		require.Equal(t, c.final, ca, "Merge should apply changes to original state")
 		require.Equal(t, c.b, cb, "Merged state should remain unmodified")
+	}
+}
 
-		ca, cb = c.a.clone(), c.b.clone()
+func TestGossipDataMergeDelta(t *testing.T) {
+	now := utcNow()
+
+	// We only care about key names and timestamps for the
+	// merging logic.
+	newSilence := func(ts time.Time) *pb.MeshSilence {
+		return &pb.MeshSilence{
+			Silence:   &pb.Silence{UpdatedAt: ts},
+			ExpiresAt: ts.Add(time.Hour),
+		}
+	}
+
+	newExpiredSilence := func(ts time.Time) *pb.MeshSilence {
+		return &pb.MeshSilence{
+			Silence:   &pb.Silence{UpdatedAt: ts},
+			ExpiresAt: ts,
+		}
+	}
+
+	cases := []struct {
+		a, b         *gossipData
+		final, delta *gossipData
+	}{
+		{
+			a: &gossipData{
+				data: silenceMap{
+					"a1": newSilence(now),
+					"a2": newSilence(now),
+					"a3": newSilence(now),
+				},
+			},
+			b: &gossipData{
+				data: silenceMap{
+					"b1": newSilence(now),                          // new key, should be added
+					"a2": newSilence(now.Add(-time.Minute)),        // older timestamp, should be dropped
+					"a3": newSilence(now.Add(time.Minute)),         // newer timestamp, should overwrite
+					"a4": newExpiredSilence(now.Add(-time.Minute)), // expired, should be dropped
+					"a5": newExpiredSilence(now.Add(-time.Hour)),   // expired, should be dropped
+				},
+			},
+			final: &gossipData{
+				data: silenceMap{
+					"a1": newSilence(now),
+					"a2": newSilence(now),
+					"a3": newSilence(now.Add(time.Minute)),
+					"b1": newSilence(now),
+				},
+			},
+			delta: &gossipData{
+				data: silenceMap{
+					"b1": newSilence(now),
+					"a3": newSilence(now.Add(time.Minute)),
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		ca, cb := c.a.clone(), c.b.clone()
 
 		delta := ca.mergeDelta(cb)
 
@@ -878,11 +1156,11 @@ func TestGossipDataCoding(t *testing.T) {
 							{Name: "label1", Pattern: "val1", Type: pb.Matcher_EQUAL},
 							{Name: "label2", Pattern: "val.+", Type: pb.Matcher_REGEXP},
 						},
-						StartsAt:  mustTimeProto(now),
-						EndsAt:    mustTimeProto(now),
-						UpdatedAt: mustTimeProto(now),
+						StartsAt:  now,
+						EndsAt:    now,
+						UpdatedAt: now,
 					},
-					ExpiresAt: mustTimeProto(now),
+					ExpiresAt: now,
 				},
 				{
 					Silence: &pb.Silence{
@@ -890,11 +1168,11 @@ func TestGossipDataCoding(t *testing.T) {
 						Matchers: []*pb.Matcher{
 							{Name: "label1", Pattern: "val1", Type: pb.Matcher_EQUAL},
 						},
-						StartsAt:  mustTimeProto(now.Add(time.Hour)),
-						EndsAt:    mustTimeProto(now.Add(2 * time.Hour)),
-						UpdatedAt: mustTimeProto(now),
+						StartsAt:  now.Add(time.Hour),
+						EndsAt:    now.Add(2 * time.Hour),
+						UpdatedAt: now,
 					},
-					ExpiresAt: mustTimeProto(now.Add(24 * time.Hour)),
+					ExpiresAt: now.Add(24 * time.Hour),
 				},
 			},
 		},
@@ -902,9 +1180,9 @@ func TestGossipDataCoding(t *testing.T) {
 
 	for _, c := range cases {
 		// Create gossip data from input.
-		in := gossipData{}
+		in := newGossipData()
 		for _, e := range c.entries {
-			in[e.Silence.Id] = e
+			in.data[e.Silence.Id] = e
 		}
 		msg := in.Encode()
 		require.Equal(t, 1, len(msg), "expected single message for input")
@@ -914,49 +1192,4 @@ func TestGossipDataCoding(t *testing.T) {
 
 		require.Equal(t, in, out, "decoded data doesn't match encoded data")
 	}
-
-}
-
-func TestProtoBefore(t *testing.T) {
-	now := utcNow()
-	nowpb, err := ptypes.TimestampProto(now)
-	require.NoError(t, err)
-
-	cases := []struct {
-		ts     time.Time
-		before bool
-	}{
-		{
-			ts:     now.Add(time.Second),
-			before: true,
-		}, {
-			ts:     now.Add(-time.Second),
-			before: false,
-		}, {
-			ts:     now.Add(time.Nanosecond),
-			before: true,
-		}, {
-			ts:     now.Add(-time.Nanosecond),
-			before: false,
-		}, {
-			ts:     now,
-			before: false,
-		},
-	}
-
-	for _, c := range cases {
-		tspb, err := ptypes.TimestampProto(c.ts)
-		require.NoError(t, err)
-
-		res := protoBefore(nowpb, tspb)
-		require.Equal(t, c.before, res, "protoBefore returned unexpected result")
-	}
-}
-
-func mustTimeProto(ts time.Time) *timestamp.Timestamp {
-	pt, err := ptypes.TimestampProto(ts)
-	if err != nil {
-		panic(err)
-	}
-	return pt
 }

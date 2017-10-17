@@ -15,11 +15,12 @@ go_library(
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
         "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/prometheus/common/route:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/config:go_default_library",
         "//vendor/github.com/prometheus/prometheus/promql:go_default_library",
         "//vendor/github.com/prometheus/prometheus/web/api/v1:go_default_library",
         "//vendor/github.com/weaveworks/common/middleware:go_default_library",
         "//vendor/github.com/weaveworks/common/server:go_default_library",
-        "//vendor/golang.org/x/net/context:go_default_library",
+        "//vendor/github.com/weaveworks/promrus:go_default_library",
         "//vendor/google.golang.org/grpc:go_default_library",
     ],
 )

@@ -5,36 +5,39 @@ go_library(
     srcs = [
         "dummy.go",
         "querier.go",
+        "series_set.go",
     ],
     importpath = "github.com/weaveworks/cortex/pkg/querier",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/ingester/client:go_default_library",
+        "//pkg/prom1/storage/metric:go_default_library",
         "//pkg/util:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/pkg/labels:go_default_library",
         "//vendor/github.com/prometheus/prometheus/promql:go_default_library",
         "//vendor/github.com/prometheus/prometheus/retrieval:go_default_library",
-        "//vendor/github.com/prometheus/prometheus/storage/local:go_default_library",
-        "//vendor/github.com/prometheus/prometheus/storage/metric:go_default_library",
-        "//vendor/golang.org/x/net/context:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/storage:go_default_library",
     ],
 )
 
 go_test(
     name = "go_default_test",
-    srcs = ["querier_test.go"],
+    srcs = [
+        "querier_test.go",
+        "series_set_test.go",
+    ],
     importpath = "github.com/weaveworks/cortex/pkg/querier",
     library = ":go_default_library",
     deps = [
         "//pkg/ingester/client:go_default_library",
-        "//pkg/util:go_default_library",
+        "//pkg/prom1/storage/metric:go_default_library",
         "//pkg/util/wire:go_default_library",
         "//vendor/github.com/gogo/protobuf/proto:go_default_library",
         "//vendor/github.com/golang/snappy:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
-        "//vendor/github.com/prometheus/prometheus/storage/local:go_default_library",
-        "//vendor/github.com/prometheus/prometheus/storage/metric:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/pkg/labels:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/storage:go_default_library",
         "//vendor/github.com/stretchr/testify/require:go_default_library",
-        "//vendor/golang.org/x/net/context:go_default_library",
     ],
 )

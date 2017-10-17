@@ -1,0 +1,26 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "backoff.go",
+        "exponential.go",
+        "retry.go",
+        "ticker.go",
+    ],
+    importpath = "github.com/cenkalti/backoff",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "backoff_test.go",
+        "example_test.go",
+        "exponential_test.go",
+        "retry_test.go",
+        "ticker_test.go",
+    ],
+    importpath = "github.com/cenkalti/backoff",
+    library = ":go_default_library",
+)

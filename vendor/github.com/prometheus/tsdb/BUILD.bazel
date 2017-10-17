@@ -1,0 +1,64 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "block.go",
+        "chunks.go",
+        "compact.go",
+        "db.go",
+        "db_unix.go",
+        "encoding_helpers.go",
+        "head.go",
+        "index.go",
+        "postings.go",
+        "querier.go",
+        "tombstones.go",
+        "wal.go",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "db_windows.go",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "github.com/prometheus/tsdb",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/coreos/etcd/pkg/fileutil:go_default_library",
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
+        "//vendor/github.com/nightlyone/lockfile:go_default_library",
+        "//vendor/github.com/oklog/ulid:go_default_library",
+        "//vendor/github.com/pkg/errors:go_default_library",
+        "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
+        "//vendor/github.com/prometheus/tsdb/chunks:go_default_library",
+        "//vendor/github.com/prometheus/tsdb/labels:go_default_library",
+        "//vendor/golang.org/x/sync/errgroup:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "block_test.go",
+        "chunks_test.go",
+        "compact_test.go",
+        "db_test.go",
+        "head_test.go",
+        "index_test.go",
+        "postings_test.go",
+        "querier_test.go",
+        "tombstones_test.go",
+        "wal_test.go",
+    ],
+    importpath = "github.com/prometheus/tsdb",
+    library = ":go_default_library",
+    deps = [
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
+        "//vendor/github.com/pkg/errors:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/pkg/labels:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/pkg/textparse:go_default_library",
+        "//vendor/github.com/prometheus/tsdb/chunks:go_default_library",
+        "//vendor/github.com/prometheus/tsdb/labels:go_default_library",
+        "//vendor/github.com/stretchr/testify/require:go_default_library",
+    ],
+)

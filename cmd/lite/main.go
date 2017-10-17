@@ -48,7 +48,7 @@ func main() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
-		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig)
+		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig, util.LogLevel{})
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 

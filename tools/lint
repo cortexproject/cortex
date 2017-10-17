@@ -80,7 +80,9 @@ lint_go() {
         echo "${filename}: run gofmt -s -w ${filename}"
     fi
 
-    go tool vet "${filename}" || lint_result=$?
+    # -methods=false disables checks for non-standard signatures for methods with familiar names.
+    # This is needed because the Prometheus storage interface requires a non-standard Seek() method.
+    go tool vet -methods=false "${filename}" || lint_result=$?
 
     # golint is completely optional.  If you don't like it
     # don't have it installed.

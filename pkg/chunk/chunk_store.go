@@ -294,7 +294,7 @@ outer:
 		// TODO(prom2): why is sorting needed?
 		sort.Sort(byMatcherLabel(matchers))
 
-		m, err := c.getMetricNameMatrix(ctx, from, through, matchers, metricNameMatcher.Name)
+		m, err := c.getMetricNameMatrix(ctx, from, through, matchers, metricNameMatcher.Value)
 		if err != nil {
 			return nil, err
 		}

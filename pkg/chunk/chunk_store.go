@@ -173,7 +173,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 		return c.getMetricNameMatrix(ctx, from, through, matchers, metricNameMatcher.Value)
 	}
 
-	// Otherwise we will create lazy iterators for all series in our index
+	// Otherwise we consult the metric name index first and then create queries for each matching metric name.
 	return c.getSeriesMatrix(ctx, from, through, matchers, metricNameMatcher)
 }
 

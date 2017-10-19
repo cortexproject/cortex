@@ -11,9 +11,11 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/weaveworks/cortex/pkg/util"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/test"
@@ -57,97 +59,136 @@ func (bfp ByFingerprint) Less(i, j int) bool {
 	return bfp[i].Metric.Fingerprint() < bfp[j].Metric.Fingerprint()
 }
 
-// TODO(prom2): reintroduce tests that were part of TestChunkStore_Get_lazy
 // TestChunkStore_Get tests results are returned correctly depending on the type of query
 func TestChunkStore_Get(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
 
-	// foo chunks (used for fuzzy lazy iterator tests)
-	foo1Metric1 := model.Metric{
-		model.MetricNameLabel: "foo1",
+	fooMetric1 := model.Metric{
+		model.MetricNameLabel: "foo",
 		"bar":  "baz",
 		"toms": "code",
 		"flip": "flop",
 	}
-	foo1Metric2 := model.Metric{
-		model.MetricNameLabel: "foo1",
+	fooMetric2 := model.Metric{
+		model.MetricNameLabel: "foo",
 		"bar":  "beep",
 		"toms": "code",
 	}
 
-	foo1Chunk1 := dummyChunkFor(foo1Metric1)
-	foo1Chunk2 := dummyChunkFor(foo1Metric2)
+	// barMetric1 is a subset of barMetric2 to test over-matching bug.
+	barMetric1 := model.Metric{
+		model.MetricNameLabel: "bar",
+		"bar": "baz",
+	}
+	barMetric2 := model.Metric{
+		model.MetricNameLabel: "bar",
+		"bar":  "baz",
+		"toms": "code",
+	}
 
-	foo1SampleStream1, err := createSampleStreamFrom(foo1Chunk1)
+	fooChunk1 := dummyChunkFor(fooMetric1)
+	fooChunk2 := dummyChunkFor(fooMetric2)
+
+	barChunk1 := dummyChunkFor(barMetric1)
+	barChunk2 := dummyChunkFor(barMetric2)
+
+	fooSampleStream1, err := createSampleStreamFrom(fooChunk1)
 	require.NoError(t, err)
-	foo1SampleStream2, err := createSampleStreamFrom(foo1Chunk2)
+	fooSampleStream2, err := createSampleStreamFrom(fooChunk2)
+	require.NoError(t, err)
+
+	barSampleStream1, err := createSampleStreamFrom(barChunk1)
+	require.NoError(t, err)
+	barSampleStream2, err := createSampleStreamFrom(barChunk2)
 	require.NoError(t, err)
 
 	schemas := []struct {
-		name string
-		fn   func(cfg SchemaConfig) Schema
+		name              string
+		fn                func(cfg SchemaConfig) Schema
+		requireMetricName bool
 	}{
-		{"v1 schema", v1Schema},
-		{"v2 schema", v2Schema},
-		{"v3 schema", v3Schema},
-		{"v4 schema", v4Schema},
-		{"v5 schema", v5Schema},
-		{"v6 schema", v6Schema},
-		{"v7 schema", v7Schema},
-		{"v8 schema", v8Schema},
+		{"v1 schema", v1Schema, true},
+		{"v2 schema", v2Schema, true},
+		{"v3 schema", v3Schema, true},
+		{"v4 schema", v4Schema, true},
+		{"v5 schema", v5Schema, true},
+		{"v6 schema", v6Schema, true},
+		{"v7 schema", v7Schema, true},
+		{"v8 schema", v8Schema, false},
 	}
 
-	nameMatcher := mustNewLabelMatcher(labels.MatchEqual, model.MetricNameLabel, "foo1")
-
 	for _, tc := range []struct {
-		query    string
-		expect   model.Matrix
-		matchers []*labels.Matcher
+		query  string
+		expect model.Matrix
 	}{
 		{
-			`foo1`,
-			model.Matrix{foo1SampleStream1, foo1SampleStream2},
-			[]*labels.Matcher{nameMatcher},
+			`foo`,
+			model.Matrix{fooSampleStream1, fooSampleStream2},
 		},
 		{
-			`foo1{flip=""}`,
-			model.Matrix{foo1SampleStream2},
-			[]*labels.Matcher{nameMatcher, mustNewLabelMatcher(labels.MatchEqual, "flip", "")},
+			`foo{flip=""}`,
+			model.Matrix{fooSampleStream2},
 		},
 		{
-			`foo1{bar="baz"}`,
-			model.Matrix{foo1SampleStream1},
-			[]*labels.Matcher{nameMatcher, mustNewLabelMatcher(labels.MatchEqual, "bar", "baz")},
+			`foo{bar="baz"}`,
+			model.Matrix{fooSampleStream1},
 		},
 		{
-			`foo1{bar="beep"}`,
-			model.Matrix{foo1SampleStream2},
-			[]*labels.Matcher{nameMatcher, mustNewLabelMatcher(labels.MatchEqual, "bar", "beep")},
+			`foo{bar="beep"}`,
+			model.Matrix{fooSampleStream2},
 		},
 		{
-			`foo1{toms="code"}`,
-			model.Matrix{foo1SampleStream1, foo1SampleStream2},
-			[]*labels.Matcher{nameMatcher, mustNewLabelMatcher(labels.MatchEqual, "toms", "code")},
+			`foo{toms="code"}`,
+			model.Matrix{fooSampleStream1, fooSampleStream2},
 		},
 		{
-			`foo1{bar!="baz"}`,
-			model.Matrix{foo1SampleStream2},
-			[]*labels.Matcher{nameMatcher, mustNewLabelMatcher(labels.MatchNotEqual, "bar", "baz")},
+			`foo{bar!="baz"}`,
+			model.Matrix{fooSampleStream2},
 		},
 		{
-			`foo1{bar=~"beep|baz"}`,
-			model.Matrix{foo1SampleStream1, foo1SampleStream2},
-			[]*labels.Matcher{nameMatcher, mustNewLabelMatcher(labels.MatchRegexp, "bar", "beep|baz")},
+			`foo{bar=~"beep|baz"}`,
+			model.Matrix{fooSampleStream1, fooSampleStream2},
 		},
 		{
-			`foo1{toms="code", bar=~"beep|baz"}`,
-			model.Matrix{foo1SampleStream1, foo1SampleStream2},
-			[]*labels.Matcher{nameMatcher, mustNewLabelMatcher(labels.MatchEqual, "toms", "code"), mustNewLabelMatcher(labels.MatchRegexp, "bar", "beep|baz")},
+			`foo{toms="code", bar=~"beep|baz"}`,
+			model.Matrix{fooSampleStream1, fooSampleStream2},
 		},
 		{
-			`foo1{toms="code", bar="baz"}`,
-			model.Matrix{foo1SampleStream1}, []*labels.Matcher{nameMatcher, mustNewLabelMatcher(labels.MatchEqual, "toms", "code"), mustNewLabelMatcher(labels.MatchEqual, "bar", "baz")},
+			`foo{toms="code", bar="baz"}`,
+			model.Matrix{fooSampleStream1},
+		},
+		{
+			`{__name__=~"foo"}`,
+			model.Matrix{fooSampleStream1, fooSampleStream2},
+		},
+		{
+			`{__name__=~"foobar"}`,
+			model.Matrix{},
+		},
+		{
+			`{__name__=~"fo.*"}`,
+			model.Matrix{fooSampleStream1, fooSampleStream2},
+		},
+		{
+			`{__name__=~"foo", toms="code"}`,
+			model.Matrix{fooSampleStream1, fooSampleStream2},
+		},
+		{
+			`{__name__!="foo", toms="code"}`,
+			model.Matrix{barSampleStream2},
+		},
+		{
+			`{__name__!="bar", toms="code"}`,
+			model.Matrix{fooSampleStream1, fooSampleStream2},
+		},
+		{
+			`{__name__=~"bar", bar="baz"}`,
+			model.Matrix{barSampleStream1, barSampleStream2},
+		},
+		{
+			`{__name__=~"bar", bar="baz",toms!="code"}`,
+			model.Matrix{barSampleStream1},
 		},
 	} {
 		for _, schema := range schemas {
@@ -158,36 +199,48 @@ func TestChunkStore_Get(t *testing.T) {
 				})
 
 				if err := store.Put(ctx, []Chunk{
-					foo1Chunk1,
-					foo1Chunk2,
+					fooChunk1,
+					fooChunk2,
+					barChunk1,
+					barChunk2,
 				}); err != nil {
 					t.Fatal(err)
 				}
 
+				matchers, err := promql.ParseMetricSelector(tc.query)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				metricNameMatcher, _, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
+				if schema.requireMetricName && (!ok || metricNameMatcher.Type != labels.MatchEqual) {
+					return
+				}
+
 				// Query with ordinary time-range
-				iterators1, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
+				matrix1, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
 				require.NoError(t, err)
 
-				sort.Sort(ByFingerprint(iterators1))
-				if !reflect.DeepEqual(tc.expect, iterators1) {
-					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, iterators1))
+				sort.Sort(ByFingerprint(matrix1))
+				if !reflect.DeepEqual(tc.expect, matrix1) {
+					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix1))
 				}
 
 				// Pushing end of time-range into future should yield exact same resultset
-				iterators2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), tc.matchers...)
+				matrix2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), matchers...)
 				require.NoError(t, err)
 
-				sort.Sort(ByFingerprint(iterators2))
-				if !reflect.DeepEqual(tc.expect, iterators2) {
-					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, iterators2))
+				sort.Sort(ByFingerprint(matrix2))
+				if !reflect.DeepEqual(tc.expect, matrix2) {
+					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix2))
 				}
 
 				// Query with both begin & end of time-range in future should yield empty resultset
-				iterators3, err := store.Get(ctx, now.Add(time.Hour), now.Add(time.Hour*2), tc.matchers...)
+				matrix3, err := store.Get(ctx, now.Add(time.Hour), now.Add(time.Hour*2), matchers...)
 				require.NoError(t, err)
-				if len(iterators3) != 0 {
+				if len(matrix3) != 0 {
 					t.Fatalf("%s: future query should yield empty resultset ... actually got %v chunks: %#v",
-						tc.query, len(iterators3), iterators3)
+						tc.query, len(matrix3), matrix3)
 				}
 			})
 		}

@@ -237,12 +237,6 @@ outer:
 	return filteredChunks, nil
 }
 
-type byMatcherLabel []*labels.Matcher
-
-func (lms byMatcherLabel) Len() int           { return len(lms) }
-func (lms byMatcherLabel) Swap(i, j int)      { lms[i], lms[j] = lms[j], lms[i] }
-func (lms byMatcherLabel) Less(i, j int) bool { return lms[i].Name < lms[j].Name }
-
 func (c *Store) getSeriesMatrix(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricNameMatcher *labels.Matcher) (model.Matrix, error) {
 	// Get all series from the index
 	userID, err := user.ExtractOrgID(ctx)
@@ -258,7 +252,7 @@ func (c *Store) getSeriesMatrix(ctx context.Context, from, through model.Time, a
 		return nil, err
 	}
 
-	matrix := make(model.Matrix, 0, len(seriesEntries))
+	chunks := make([]Chunk, 0, len(seriesEntries))
 outer:
 	for _, seriesEntry := range seriesEntries {
 		metric, err := parseSeriesRangeValue(seriesEntry.RangeValue, seriesEntry.Value)
@@ -278,7 +272,6 @@ outer:
 			}
 		}
 
-		// TODO(prom2): Does this contraption over-match?
 		var matchers []*labels.Matcher
 		for labelName, labelValue := range metric {
 			if labelName == "__name__" {
@@ -291,17 +284,21 @@ outer:
 			}
 			matchers = append(matchers, matcher)
 		}
-		// TODO(prom2): why is sorting needed?
-		sort.Sort(byMatcherLabel(matchers))
 
-		m, err := c.getMetricNameMatrix(ctx, from, through, matchers, metricNameMatcher.Value)
+		cs, err := c.getMetricNameChunks(ctx, from, through, matchers, string(metric[model.MetricNameLabel]))
 		if err != nil {
 			return nil, err
 		}
 
-		matrix = append(matrix, m...)
+		for _, chunk := range cs {
+			// getMetricNameChunks() may have selected too many metrics - metrics that match all matchers,
+			// but also have additional labels. We don't want to return those.
+			if chunk.Metric.Equal(metric) {
+				chunks = append(chunks, chunk)
+			}
+		}
 	}
-	return matrix, nil
+	return chunksToMatrix(chunks)
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {

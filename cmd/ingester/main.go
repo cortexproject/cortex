@@ -34,7 +34,7 @@ func main() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
-		&schemaConfig, &ingesterConfig)
+		&schemaConfig, &ingesterConfig, util.LogLevel{})
 	flag.Parse()
 
 	log.AddHook(promrus.MustNewPrometheusHook())

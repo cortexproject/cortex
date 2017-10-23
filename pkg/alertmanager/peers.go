@@ -49,7 +49,11 @@ func newSRVDiscovery(service, hostname string, pollInterval time.Duration) *srvD
 		stop:         make(chan struct{}),
 		done:         make(chan struct{}),
 	}
-	go disco.loop()
+	if service != "" && hostname != "" {
+		go disco.loop()
+	} else {
+		log.Infof("Peer discovery disabled")
+	}
 	return disco
 }
 

@@ -143,5 +143,8 @@ func metricToLabels(m model.Metric) labels.Labels {
 			Value: string(v),
 		})
 	}
+	// PromQL expects all labels to be sorted! In general, anyone constructing
+	// a labels.Labels list is responsible for sorting it during construction time.
+	sort.Sort(ls)
 	return ls
 }

@@ -85,6 +85,45 @@ func TestRemoteReadHandler(t *testing.T) {
 	require.Equal(t, expected, response)
 }
 
+func TestMergeQuerierSortsMetricLabels(t *testing.T) {
+	mq := mergeQuerier{
+		ctx: context.Background(),
+		queriers: []Querier{
+			mockQuerier{
+				matrix: model.Matrix{
+					{
+						Metric: model.Metric{
+							model.MetricNameLabel: "testmetric",
+							"e": "f",
+							"a": "b",
+							"g": "h",
+							"c": "d",
+						},
+						Values: []model.SamplePair{{Timestamp: 0, Value: 0}},
+					},
+				},
+			},
+		},
+		mint:         0,
+		maxt:         0,
+		metadataOnly: false,
+	}
+	m, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	require.NoError(t, err)
+	ss := mq.Select(m)
+	require.NoError(t, ss.Err())
+	ss.Next()
+	require.NoError(t, ss.Err())
+	l := ss.At().Labels()
+	require.Equal(t, labels.Labels{
+		{Name: string(model.MetricNameLabel), Value: "testmetric"},
+		{Name: "a", Value: "b"},
+		{Name: "c", Value: "d"},
+		{Name: "e", Value: "f"},
+		{Name: "g", Value: "h"},
+	}, l)
+}
+
 type mockQuerier struct {
 	matrix model.Matrix
 }

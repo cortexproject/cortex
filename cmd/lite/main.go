@@ -51,6 +51,7 @@ func main() {
 		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig, util.LogLevel{})
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
+	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
 	log.AddHook(promrus.MustNewPrometheusHook())
 
@@ -85,7 +86,7 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	ingester, err := ingester.New(ingesterConfig, schemaConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, chunkStore)
 	if err != nil {
 		log.Fatal(err)
 	}

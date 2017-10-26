@@ -116,7 +116,7 @@ func chunksToMatrix(chunks []chunk.Chunk) (model.Matrix, error) {
 func TestIngesterAppend(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	store := newTestStore()
-	ing, err := New(cfg, chunk.SchemaConfig{}, store)
+	ing, err := New(cfg, store)
 	require.NoError(t, err)
 
 	userIDs := []string{"1", "2", "3"}
@@ -164,7 +164,7 @@ func TestIngesterAppend(t *testing.T) {
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	store := newTestStore()
-	ing, err := New(cfg, chunk.SchemaConfig{}, store)
+	ing, err := New(cfg, store)
 	require.NoError(t, err)
 	defer ing.Shutdown()
 
@@ -195,7 +195,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	}
 
 	store := newTestStore()
-	ing, err := New(cfg, chunk.SchemaConfig{}, store)
+	ing, err := New(cfg, store)
 	require.NoError(t, err)
 	defer ing.Shutdown()
 
@@ -266,7 +266,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	store := newTestStore()
-	ing, err := New(cfg, chunk.SchemaConfig{}, store)
+	ing, err := New(cfg, store)
 	require.NoError(t, err)
 	defer ing.Shutdown()
 
@@ -336,7 +336,7 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 	cfg.RejectOldSamplesMaxAge = 24 * time.Hour
 
 	store := newTestStore()
-	ing, err := New(cfg, chunk.SchemaConfig{}, store)
+	ing, err := New(cfg, store)
 	require.NoError(t, err)
 	defer ing.Shutdown()
 

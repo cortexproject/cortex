@@ -254,7 +254,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 
 	var fallbackConfig *amconfig.Config
 	if cfg.FallbackConfigFile != "" {
-		fallbackConfig, err = amconfig.LoadFile(cfg.FallbackConfigFile)
+		fallbackConfig, _, err = amconfig.LoadFile(cfg.FallbackConfigFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read fallback config %q: %s", cfg.FallbackConfigFile, err)
 		}

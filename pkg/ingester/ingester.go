@@ -75,6 +75,7 @@ type Config struct {
 	// Config for chunk flushing
 	FlushCheckPeriod  time.Duration
 	MaxChunkIdle      time.Duration
+	FlushOpTimeout    time.Duration
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
@@ -104,6 +105,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", promql.StalenessDelta, "Maximum chunk idle time before flushing.")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
 

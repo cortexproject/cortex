@@ -389,16 +389,25 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	if amConfig == nil { // shouldn't happen, but check just in case
 		return nil, fmt.Errorf("no usable Cortex configuration for %v", userID)
 	}
-	newConfig := *amConfig // take a copy to modify
+	newConfig := *amConfig
 	// Magic ability to configure a Slack receiver if config requests it
 	if am.cfg.AutoSlackRoot != "" {
-		for _, r := range newConfig.Receivers {
-			for _, s := range r.SlackConfigs {
-				if s.APIURL == autoSlackURL {
-					s.APIURL = amconfig.Secret(am.cfg.AutoSlackRoot + "/" + userID + "/monitor")
+		newReceivers := make([]*amconfig.Receiver, len(newConfig.Receivers))
+		for i, r := range newConfig.Receivers {
+			// r.SlackConfigs is a slice of pointers, so copy the values into a new slice
+			newReceiver := *r
+			newReceiver.SlackConfigs = make([]*amconfig.SlackConfig, len(r.SlackConfigs))
+			for j, s := range r.SlackConfigs {
+				newSlackConfig := *s
+				if newSlackConfig.APIURL == autoSlackURL {
+					log.Debugf("Setting API URL for %v: %v", userID, am.cfg.AutoSlackRoot+"/"+userID+"/monitor")
+					newSlackConfig.APIURL = amconfig.Secret(am.cfg.AutoSlackRoot + "/" + userID + "/monitor")
 				}
+				newReceiver.SlackConfigs[j] = &newSlackConfig
 			}
+			newReceivers[i] = &newReceiver
 		}
+		newConfig.Receivers = newReceivers
 	}
 
 	return &newConfig, nil
@@ -416,11 +425,6 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 		// TODO: Provide a way of communicating this to the user and for removing
 		// Alertmanager instances.
 		return fmt.Errorf("invalid Cortex configuration for %v: %v", userID, err)
-	}
-
-	if amConfig == nil && am.fallbackConfig != nil {
-		log.Infof("invalid Cortex configuration; using fallback for %v", userID)
-		amConfig = am.fallbackConfig
 	}
 
 	if amConfig, err = am.transformConfig(userID, amConfig); err != nil {

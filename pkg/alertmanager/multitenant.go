@@ -1,6 +1,7 @@
 package alertmanager
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
@@ -382,14 +383,14 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.View) {
 }
 
 func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {
-	if amConfig == nil && am.fallbackConfig != nil {
-		log.Infof("using fallback configuration for %v", userID)
-		amConfig = am.fallbackConfig
-	}
 	if amConfig == nil { // shouldn't happen, but check just in case
 		return nil, fmt.Errorf("no usable Cortex configuration for %v", userID)
 	}
-	newConfig := *amConfig // take a copy to modify
+	newConfig, err := copyConfig(amConfig)
+	if err != nil {
+		log.Errorf("cannot copy config: %s", err)
+		return nil, err
+	}
 	// Magic ability to configure a Slack receiver if config requests it
 	if am.cfg.AutoSlackRoot != "" {
 		for _, r := range newConfig.Receivers {
@@ -401,7 +402,28 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 		}
 	}
 
-	return &newConfig, nil
+	return newConfig, nil
+}
+
+// deep copy because of config struct contains a lot of references types (slices of pointers tec)
+// this copy works even if we add/change other fields of config
+// or if fields are changing somewhere else in the code
+func copyConfig(config *amconfig.Config) (*amconfig.Config, error) {
+	configBytes, err := json.Marshal(config)
+	if err != nil {
+		log.Errorf("cannot marshal config to json, error: %s", err)
+		return nil, err
+	}
+
+	newConfig := &amconfig.Config{}
+
+	err = json.Unmarshal(configBytes, newConfig)
+	if err != nil {
+		log.Errorf("cannot unmarshal json to config, error: %s", err)
+		return nil, err
+	}
+
+	return newConfig, nil
 }
 
 // setConfig applies the given configuration to the alertmanager for `userID`,

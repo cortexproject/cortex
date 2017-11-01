@@ -493,9 +493,10 @@
   version = "v1.0.0"
 
 [[projects]]
+  branch = "fix-no-send-resolved-notifications"
   name = "github.com/prometheus/alertmanager"
   packages = ["api","config","dispatch","inhibit","nflog","nflog/nflogpb","notify","pkg/parse","provider","provider/mem","silence","silence/silencepb","template","template/internal/deftmpl","types","ui"]
-  revision = "4a8e71069177280d0317ccd80a8201a06f2d8139"
+  revision = "9a38a21f481262c4473bec0c24d860a9f0002e04"
 
 [[projects]]
   name = "github.com/prometheus/client_golang"
@@ -724,6 +725,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f3e6a0aa581391df10d07667021d39019b641609dff811717b8c93562c6d91bc"
+  inputs-digest = "66482b156119f4655bca972d4a7fd5acd6b159749f142068537799e785ed56fa"
   solver-name = "gps-cdcl"
   solver-version = 1

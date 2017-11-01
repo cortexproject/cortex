@@ -6,6 +6,8 @@ go_library(
     importpath = "github.com/prometheus/alertmanager/api",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/config:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/dispatch:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/pkg/parse:go_default_library",
@@ -14,7 +16,6 @@ go_library(
         "//vendor/github.com/prometheus/alertmanager/silence/silencepb:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/types:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
-        "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/common/route:go_default_library",
         "//vendor/github.com/prometheus/common/version:go_default_library",

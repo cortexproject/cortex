@@ -6,10 +6,11 @@ go_library(
     importpath = "github.com/prometheus/alertmanager/nflog",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
         "//vendor/github.com/matttproud/golang_protobuf_extensions/pbutil:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/nflog/nflogpb:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
-        "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/weaveworks/mesh:go_default_library",
     ],
 )

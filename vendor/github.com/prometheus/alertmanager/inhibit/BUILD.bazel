@@ -6,11 +6,12 @@ go_library(
     importpath = "github.com/prometheus/alertmanager/inhibit",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
         "//vendor/github.com/oklog/oklog/pkg/group:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/config:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/provider:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/types:go_default_library",
-        "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
     ],
 )

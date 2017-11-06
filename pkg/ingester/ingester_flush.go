@@ -167,6 +167,9 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 
 	// flush the chunks without locking the series, as we don't want to hold the series lock for the duration of the dynamo/s3 rpcs.
 	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
+	defer cancel() // releases resources if slowOperation completes before timeout elapses
+
 	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
 		return err

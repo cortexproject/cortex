@@ -430,19 +430,25 @@ func copyConfig(config *amconfig.Config) (*amconfig.Config, error) {
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Config) error {
 	_, hasExisting := am.alertmanagers[userID]
-	amConfig, err := configs_client.AlertmanagerConfigFromConfig(config)
-	if err != nil && (hasExisting || am.fallbackConfig == nil) {
-		// XXX: This means that if a user has a working configuration and
-		// they submit a broken one, we'll keep processing the last known
-		// working configuration, and they'll never know.
-		// TODO: Provide a way of communicating this to the user and for removing
-		// Alertmanager instances.
-		return fmt.Errorf("invalid Cortex configuration for %v: %v", userID, err)
-	}
+	var amConfig *amconfig.Config
+	var err error
 
-	if amConfig == nil && am.fallbackConfig != nil {
-		log.Infof("invalid Cortex configuration; using fallback for %v", userID)
+	if config.AlertmanagerConfig == "" {
+		if am.fallbackConfig == nil {
+			return fmt.Errorf("blank Alertmanager configuration for %v", userID)
+		}
+		log.Infof("blank Alertmanager configuration; using fallback for %v", userID)
 		amConfig = am.fallbackConfig
+	} else {
+		amConfig, err = configs_client.AlertmanagerConfigFromConfig(config)
+		if err != nil && hasExisting {
+			// XXX: This means that if a user has a working configuration and
+			// they submit a broken one, we'll keep processing the last known
+			// working configuration, and they'll never know.
+			// TODO: Provide a way of communicating this to the user and for removing
+			// Alertmanager instances.
+			return fmt.Errorf("invalid Cortex configuration for %v: %v", userID, err)
+		}
 	}
 
 	if amConfig, err = am.transformConfig(userID, amConfig); err != nil {

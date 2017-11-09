@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -184,6 +185,9 @@ func TestChunksToMatrix(t *testing.T) {
 	} {
 		matrix, err := chunksToMatrix(c.chunks)
 		require.NoError(t, err)
+
+		sort.Sort(matrix)
+		sort.Sort(c.expectedMatrix)
 		require.Equal(t, c.expectedMatrix, matrix)
 	}
 }

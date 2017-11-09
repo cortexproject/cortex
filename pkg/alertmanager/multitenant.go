@@ -2,10 +2,10 @@ package alertmanager
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -218,7 +218,10 @@ type MultitenantAlertmanager struct {
 
 	configsAPI configs_client.AlertManagerConfigsAPI
 
-	fallbackConfig *amconfig.Config
+	// The fallback config is stored as a string and parsed every time it's needed
+	// because we mutate the parsed results and don't want those changes to take
+	// effect here.
+	fallbackConfig string
 
 	// All the organization configurations that we have. Only used for instrumentation.
 	cfgs map[string]configs.Config
@@ -252,11 +255,15 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 		Timeout: cfg.ClientTimeout,
 	}
 
-	var fallbackConfig *amconfig.Config
+	var fallbackConfig []byte
 	if cfg.FallbackConfigFile != "" {
-		fallbackConfig, _, err = amconfig.LoadFile(cfg.FallbackConfigFile)
+		fallbackConfig, err = ioutil.ReadFile(cfg.FallbackConfigFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read fallback config %q: %s", cfg.FallbackConfigFile, err)
+		}
+		_, _, err = amconfig.LoadFile(cfg.FallbackConfigFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load fallback config %q: %s", cfg.FallbackConfigFile, err)
 		}
 	}
 
@@ -264,7 +271,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 	am := &MultitenantAlertmanager{
 		cfg:            cfg,
 		configsAPI:     configsAPI,
-		fallbackConfig: fallbackConfig,
+		fallbackConfig: string(fallbackConfig),
 		cfgs:           map[string]configs.Config{},
 		alertmanagers:  map[string]*Alertmanager{},
 		meshRouter:     &gf,
@@ -386,14 +393,9 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	if amConfig == nil { // shouldn't happen, but check just in case
 		return nil, fmt.Errorf("no usable Cortex configuration for %v", userID)
 	}
-	newConfig, err := copyConfig(amConfig)
-	if err != nil {
-		log.Errorf("cannot copy config: %s", err)
-		return nil, err
-	}
 	// Magic ability to configure a Slack receiver if config requests it
 	if am.cfg.AutoSlackRoot != "" {
-		for _, r := range newConfig.Receivers {
+		for _, r := range amConfig.Receivers {
 			for _, s := range r.SlackConfigs {
 				if s.APIURL == autoSlackURL {
 					s.APIURL = amconfig.Secret(am.cfg.AutoSlackRoot + "/" + userID + "/monitor")
@@ -402,28 +404,7 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 		}
 	}
 
-	return newConfig, nil
-}
-
-// deep copy because of config struct contains a lot of references types (slices of pointers tec)
-// this copy works even if we add/change other fields of config
-// or if fields are changing somewhere else in the code
-func copyConfig(config *amconfig.Config) (*amconfig.Config, error) {
-	configBytes, err := json.Marshal(config)
-	if err != nil {
-		log.Errorf("cannot marshal config to json, error: %s", err)
-		return nil, err
-	}
-
-	newConfig := &amconfig.Config{}
-
-	err = json.Unmarshal(configBytes, newConfig)
-	if err != nil {
-		log.Errorf("cannot unmarshal json to config, error: %s", err)
-		return nil, err
-	}
-
-	return newConfig, nil
+	return amConfig, nil
 }
 
 // setConfig applies the given configuration to the alertmanager for `userID`,
@@ -434,11 +415,14 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 	var err error
 
 	if config.AlertmanagerConfig == "" {
-		if am.fallbackConfig == nil {
+		if am.fallbackConfig == "" {
 			return fmt.Errorf("blank Alertmanager configuration for %v", userID)
 		}
 		log.Infof("blank Alertmanager configuration; using fallback for %v", userID)
-		amConfig = am.fallbackConfig
+		amConfig, err = amconfig.Load(am.fallbackConfig)
+		if err != nil {
+			return fmt.Errorf("unable to load fallback configuration for %v: %v", userID, err)
+		}
 	} else {
 		amConfig, err = configs_client.AlertmanagerConfigFromConfig(config)
 		if err != nil && hasExisting {

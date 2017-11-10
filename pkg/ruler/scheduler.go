@@ -70,13 +70,13 @@ func (w workItem) Defer(interval time.Duration, currentRules []rules.Rule) workI
 
 type scheduler struct {
 	configsAPI         configs_client.RulesAPI
-	evaluationInterval time.Duration
+	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
-	pollInterval time.Duration
+	pollInterval time.Duration // how often we check for new config
 
 	cfgs         map[string][]rules.Rule // all rules for all users
-	latestConfig configs.ID
+	latestConfig configs.ID              // # of last update received from config
 	sync.RWMutex
 
 	stop chan struct{}

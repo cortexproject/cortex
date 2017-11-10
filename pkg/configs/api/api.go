@@ -157,7 +157,7 @@ func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request)
 func validateAlertmanagerConfig(cfg string) error {
 	amCfg, err := amconfig.Load(cfg)
 	if err != nil {
-		return fmt.Errorf("error parsing YAML: %s", err)
+		return err
 	}
 
 	if len(amCfg.Templates) != 0 {

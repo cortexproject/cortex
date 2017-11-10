@@ -115,6 +115,12 @@
   version = "v15"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/codahale/hdrhistogram"
+  packages = ["."]
+  revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
+
+[[projects]]
   name = "github.com/coreos/pkg"
   packages = ["capnslog"]
   revision = "3ac0863d7acf3bc44daf49afef8919af12f704ef"
@@ -579,6 +585,18 @@
   packages = ["msgp"]
   revision = "38a6f61a768dc24552dad94611923841b53acc4f"
   version = "v1.0"
+
+[[projects]]
+  name = "github.com/uber/jaeger-client-go"
+  packages = [".","config","internal/spanlog","log","rpcmetrics","thrift-gen/agent","thrift-gen/jaeger","thrift-gen/sampling","thrift-gen/zipkincore","utils"]
+  revision = "3e3870040def0ebdaf65a003863fa64f5cb26139"
+  version = "v2.9.0"
+
+[[projects]]
+  name = "github.com/uber/jaeger-lib"
+  packages = ["metrics"]
+  revision = "3b2a9ad2a045881ab7a0f81d465be54c8292ee4f"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"

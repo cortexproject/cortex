@@ -299,7 +299,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 
 	var ingesters [][]*ring.IngesterDesc
-	if err := instrument.TimeRequestHistogram(ctx, "Distributor.Push[ring-lookup]", nil, func(context.Context) error {
+	if err := instrument.TimeRequestHistogram(ctx, "Distributor.Push[ring-lookup]", d.sendDuration, func(context.Context) error {
 		var err error
 		ingesters, err = d.ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
 		if err != nil {

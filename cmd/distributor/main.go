@@ -4,6 +4,8 @@ import (
 	"flag"
 	"net/http"
 
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"google.golang.org/grpc"
@@ -12,6 +14,7 @@ import (
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/ring"
+	"github.com/weaveworks/cortex/pkg/tracing"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/promrus"
 )
@@ -47,6 +50,10 @@ func main() {
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, util.LogLevel{})
 	flag.Parse()
 
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	trace := tracing.New("distributor")
+	defer trace.Close()
+
 	log.AddHook(promrus.MustNewPrometheusHook())
 
 	r, err := ring.New(ringConfig)
@@ -69,6 +76,16 @@ func main() {
 	defer server.Shutdown()
 
 	server.HTTP.Handle("/ring", r)
-	server.HTTP.Handle("/api/prom/push", middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.PushHandler)))
+
+	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
+		return r.URL.RequestURI()
+	})
+	server.HTTP.Handle("/api/prom/push", middleware.Merge(
+		middleware.Func(func(handler http.Handler) http.Handler {
+			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
+		}),
+		middleware.AuthenticateUser,
+	).Wrap(http.HandlerFunc(dist.PushHandler)))
+
 	server.Run()
 }

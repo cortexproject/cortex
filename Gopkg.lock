@@ -103,6 +103,12 @@
   version = "v1.0.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/codahale/hdrhistogram"
+  packages = ["."]
+  revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
+
+[[projects]]
   name = "github.com/coreos/etcd"
   packages = ["pkg/fileutil"]
   revision = "bb66589f8cf18960c7f3d56b1b83753caeed9c7a"
@@ -113,12 +119,6 @@
   packages = ["journal"]
   revision = "d2196463941895ee908e13531a23a39feb9e1243"
   version = "v15"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/codahale/hdrhistogram"
-  packages = ["."]
-  revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
 
 [[projects]]
   name = "github.com/coreos/pkg"
@@ -742,6 +742,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f3e6a0aa581391df10d07667021d39019b641609dff811717b8c93562c6d91bc"
+  inputs-digest = "bf1ace4ad357c3b8f278c131d7e35cfd9b06903d433421aa39343866998e5bc3"
   solver-name = "gps-cdcl"
   solver-version = 1

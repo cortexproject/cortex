@@ -6,7 +6,8 @@ go_library(
     importpath = "github.com/prometheus/prometheus/discovery",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/prometheus/common/log:go_default_library",
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
         "//vendor/github.com/prometheus/prometheus/config:go_default_library",
         "//vendor/github.com/prometheus/prometheus/discovery/azure:go_default_library",
         "//vendor/github.com/prometheus/prometheus/discovery/consul:go_default_library",
@@ -16,6 +17,7 @@ go_library(
         "//vendor/github.com/prometheus/prometheus/discovery/gce:go_default_library",
         "//vendor/github.com/prometheus/prometheus/discovery/kubernetes:go_default_library",
         "//vendor/github.com/prometheus/prometheus/discovery/marathon:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/discovery/openstack:go_default_library",
         "//vendor/github.com/prometheus/prometheus/discovery/triton:go_default_library",
         "//vendor/github.com/prometheus/prometheus/discovery/zookeeper:go_default_library",
         "//vendor/golang.org/x/net/context:go_default_library",

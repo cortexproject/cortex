@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -27,13 +28,17 @@ import (
 )
 
 func TestFileSD(t *testing.T) {
-	defer os.Remove("fixtures/_test.yml")
-	defer os.Remove("fixtures/_test.json")
-	testFileSD(t, ".yml")
-	testFileSD(t, ".json")
+	defer os.Remove("fixtures/_test_valid.yml")
+	defer os.Remove("fixtures/_test_valid.json")
+	defer os.Remove("fixtures/_test_invalid_nil.json")
+	defer os.Remove("fixtures/_test_invalid_nil.yml")
+	testFileSD(t, "valid", ".yml", true)
+	testFileSD(t, "valid", ".json", true)
+	testFileSD(t, "invalid_nil", ".json", false)
+	testFileSD(t, "invalid_nil", ".yml", false)
 }
 
-func testFileSD(t *testing.T, ext string) {
+func testFileSD(t *testing.T, prefix, ext string, expect bool) {
 	// As interval refreshing is more of a fallback, we only want to test
 	// whether file watches work as expected.
 	var conf config.FileSDConfig
@@ -41,7 +46,7 @@ func testFileSD(t *testing.T, ext string) {
 	conf.RefreshInterval = model.Duration(1 * time.Hour)
 
 	var (
-		fsd         = NewDiscovery(&conf)
+		fsd         = NewDiscovery(&conf, nil)
 		ch          = make(chan []*config.TargetGroup)
 		ctx, cancel = context.WithCancel(context.Background())
 	)
@@ -54,13 +59,13 @@ func testFileSD(t *testing.T, ext string) {
 		t.Fatalf("Unexpected target groups in file discovery: %s", tgs)
 	}
 
-	newf, err := os.Create("fixtures/_test" + ext)
+	newf, err := os.Create("fixtures/_test_" + prefix + ext)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer newf.Close()
 
-	f, err := os.Open("fixtures/target_groups" + ext)
+	f, err := os.Open("fixtures/" + prefix + ext)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,8 +83,17 @@ retry:
 	for {
 		select {
 		case <-timeout:
-			t.Fatalf("Expected new target group but got none")
+			if expect {
+				t.Fatalf("Expected new target group but got none")
+			} else {
+				// invalid type fsd should always broken down.
+				break retry
+			}
 		case tgs := <-ch:
+			if !expect {
+				t.Fatalf("Unexpected target groups %s, we expected a failure here.", tgs)
+			}
+
 			if len(tgs) != 2 {
 				continue retry // Potentially a partial write, just retry.
 			}
@@ -88,12 +102,12 @@ retry:
 			if _, ok := tg.Labels["foo"]; !ok {
 				t.Fatalf("Label not parsed")
 			}
-			if tg.String() != fmt.Sprintf("fixtures/_test%s:0", ext) {
+			if tg.String() != filepath.FromSlash(fmt.Sprintf("fixtures/_test_%s%s:0", prefix, ext)) {
 				t.Fatalf("Unexpected target group %s", tg)
 			}
 
 			tg = tgs[1]
-			if tg.String() != fmt.Sprintf("fixtures/_test%s:1", ext) {
+			if tg.String() != filepath.FromSlash(fmt.Sprintf("fixtures/_test_%s%s:1", prefix, ext)) {
 				t.Fatalf("Unexpected target groups %s", tg)
 			}
 			break retry
@@ -133,7 +147,7 @@ retry:
 	}
 	newf.Close()
 
-	os.Rename(newf.Name(), "fixtures/_test"+ext)
+	os.Rename(newf.Name(), "fixtures/_test_"+prefix+ext)
 
 	cancel()
 	<-drained

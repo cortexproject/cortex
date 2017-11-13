@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["stack.go"],
+    importpath = "github.com/go-stack/stack",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["stackinternal_test.go"],
+    importpath = "github.com/go-stack/stack",
+    library = ":go_default_library",
+)
+
+go_test(
+    name = "go_default_xtest",
+    srcs = [
+        "format_test.go",
+        "stack_test.go",
+    ],
+    importpath = "github.com/go-stack/stack_test",
+    deps = [":go_default_library"],
+)

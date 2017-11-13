@@ -34,8 +34,9 @@ func main() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
-		&schemaConfig, &ingesterConfig)
+		&schemaConfig, &ingesterConfig, util.LogLevel{})
 	flag.Parse()
+	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
 	log.AddHook(promrus.MustNewPrometheusHook())
 
@@ -56,7 +57,7 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
-	ingester, err := ingester.New(ingesterConfig, schemaConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, chunkStore)
 	if err != nil {
 		log.Fatal(err)
 	}

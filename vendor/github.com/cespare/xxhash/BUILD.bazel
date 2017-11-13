@@ -1,0 +1,50 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "xxhash.go",
+        "xxhash_other.go",
+        "xxhash_unsafe.go",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "xxhash_amd64.go",
+            "xxhash_amd64.s",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "xxhash_amd64.go",
+            "xxhash_amd64.s",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "xxhash_amd64.go",
+            "xxhash_amd64.s",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "github.com/cespare/xxhash",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "xxhash_test.go",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "xxhash_amd64_test.go",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "xxhash_amd64_test.go",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "xxhash_amd64_test.go",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "github.com/cespare/xxhash",
+    library = ":go_default_library",
+    deps = [
+        "//vendor/github.com/OneOfOne/xxhash:go_default_library",
+        "//vendor/github.com/spaolacci/murmur3:go_default_library",
+    ],
+)

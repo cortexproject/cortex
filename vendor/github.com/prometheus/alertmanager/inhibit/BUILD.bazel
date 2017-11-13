@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/prometheus/alertmanager/inhibit",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/oklog/oklog/pkg/group:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/config:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/provider:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/types:go_default_library",

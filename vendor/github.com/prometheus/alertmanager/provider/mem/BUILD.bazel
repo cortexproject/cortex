@@ -19,6 +19,7 @@ go_test(
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/kylelemons/godebug/pretty:go_default_library",
+        "//vendor/github.com/prometheus/alertmanager/provider:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/types:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
     ],

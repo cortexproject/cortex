@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/prometheus/prometheus/discovery/zookeeper",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/prometheus/config:go_default_library",
         "//vendor/github.com/prometheus/prometheus/util/strutil:go_default_library",

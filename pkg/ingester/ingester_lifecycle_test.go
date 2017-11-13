@@ -14,10 +14,9 @@ import (
 
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -52,7 +51,7 @@ func TestIngesterRestart(t *testing.T) {
 	config.skipUnregister = true
 
 	{
-		ingester, err := New(config, chunk.SchemaConfig{}, nil)
+		ingester, err := New(config, nil)
 		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
@@ -63,7 +62,7 @@ func TestIngesterRestart(t *testing.T) {
 	})
 
 	{
-		ingester, err := New(config, chunk.SchemaConfig{}, nil)
+		ingester, err := New(config, nil)
 		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
@@ -85,7 +84,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.addr = "ingester1"
 	cfg1.ClaimOnRollout = true
 	cfg1.SearchPendingFor = aLongTime
-	ing1, err := New(cfg1, chunk.SchemaConfig{}, nil)
+	ing1, err := New(cfg1, nil)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -115,7 +114,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.id = "ingester2"
 	cfg2.addr = "ingester2"
 	cfg2.JoinAfter = aLongTime
-	ing2, err := New(cfg2, chunk.SchemaConfig{}, nil)
+	ing2, err := New(cfg2, nil)
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
@@ -129,10 +128,10 @@ func TestIngesterTransfer(t *testing.T) {
 	ing1.Shutdown()
 
 	// And check the second ingester has the sample
-	matcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "foo")
+	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
 	require.NoError(t, err)
 
-	request, err := util.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*metric.LabelMatcher{matcher})
+	request, err := util.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	response, err := ing2.Query(ctx, request)
@@ -271,7 +270,7 @@ func TestIngesterFlush(t *testing.T) {
 	store := newTestStore()
 
 	// Start the ingester, and get it into ACTIVE state.
-	ing, err := New(cfg, chunk.SchemaConfig{}, store)
+	ing, err := New(cfg, store)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {

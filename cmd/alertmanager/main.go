@@ -36,7 +36,7 @@ func main() {
 		}
 		alertmanagerConfig alertmanager.MultitenantAlertmanagerConfig
 	)
-	util.RegisterFlags(&serverConfig, &alertmanagerConfig)
+	util.RegisterFlags(&serverConfig, &alertmanagerConfig, util.LogLevel{})
 	flag.Parse()
 
 	hook := promrus.MustNewPrometheusHook()

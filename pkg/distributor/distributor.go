@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,16 +11,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 
-	"github.com/prometheus/prometheus/storage/local"
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
@@ -299,7 +299,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 
 	var ingesters [][]*ring.IngesterDesc
-	if err := instrument.TimeRequestHistogram(ctx, "Distributor.Push[ring-lookup]", nil, func(ctx context.Context) error {
+	if err := instrument.TimeRequestHistogram(ctx, "Distributor.Push[ring-lookup]", nil, func(context.Context) error {
 		var err error
 		ingesters, err = d.ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
 		if err != nil {
@@ -430,21 +430,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 }
 
 // Query implements Querier.
-func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
-	matrix, err := d.matrixQuery(ctx, from, to, matchers...)
-	if err != nil {
-		return nil, err
-	}
-
-	iterators := make([]local.SeriesIterator, 0, len(matrix))
-	for _, ss := range matrix {
-		iterators = append(iterators, util.NewSampleStreamIterator(ss))
-	}
-
-	return iterators, err
-}
-
-func (d *Distributor) matrixQuery(ctx context.Context, from, to model.Time, matchers ...*metric.LabelMatcher) (model.Matrix, error) {
+func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	var matrix model.Matrix
 	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", d.queryDuration, func(ctx context.Context) error {
 		userID, err := user.ExtractOrgID(ctx)
@@ -461,7 +447,7 @@ func (d *Distributor) matrixQuery(ctx context.Context, from, to model.Time, matc
 
 		// Get ingesters by metricName if one exists, otherwise get all ingesters
 		var ingesters []*ring.IngesterDesc
-		if ok && metricNameMatcher.Type == metric.Equal {
+		if ok && metricNameMatcher.Type == labels.MatchEqual {
 			ingesters, err = d.ring.Get(tokenFor(userID, []byte(metricNameMatcher.Value)), d.cfg.ReplicationFactor, ring.Read)
 			if err != nil {
 				return promql.ErrStorage(err)
@@ -613,7 +599,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 }
 
 // MetricsForLabelMatchers gets the metrics that match said matchers
-func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...metric.LabelMatchers) ([]metric.Metric, error) {
+func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	req, err := util.ToMetricsForLabelMatchersRequest(from, through, matchers)
 	if err != nil {
 		return nil, err

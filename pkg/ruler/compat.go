@@ -1,8 +1,11 @@
 package ruler
 
 import (
+	"context"
+
 	"github.com/prometheus/common/model"
-	"golang.org/x/net/context"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/storage"
 
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -13,22 +16,50 @@ type Pusher interface {
 	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
 
-// appenderAdapter adapts a distributor.Distributor to prometheus.SampleAppender
+// appendableAppender adapts a distributor.Distributor to both a ruler.Appendable
+// and a storage.Appender.
 //
-// Distributors need a context and prometheus.SampleAppender doesn't allow for
+// Distributors need a context and storage.Appender doesn't allow for
 // one. See
 // https://github.com/prometheus/prometheus/pull/2000#discussion_r79108319 for
 // reasons why.
-type appenderAdapter struct {
-	pusher Pusher
-	ctx    context.Context
+type appendableAppender struct {
+	pusher  Pusher
+	ctx     context.Context
+	samples []model.Sample
 }
 
-func (a appenderAdapter) Append(sample *model.Sample) error {
-	_, err := a.pusher.Push(a.ctx, util.ToWriteRequest([]model.Sample{*sample}))
+func (a *appendableAppender) Appender() (storage.Appender, error) {
+	return a, nil
+}
+
+func (a *appendableAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
+	m := make(model.Metric, len(l))
+	for _, lbl := range l {
+		m[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+	a.samples = append(a.samples, model.Sample{
+		Metric:    m,
+		Timestamp: model.Time(t),
+		Value:     model.SampleValue(v),
+	})
+	return 0, nil
+}
+
+func (a *appendableAppender) AddFast(l labels.Labels, ref uint64, t int64, v float64) error {
+	_, err := a.Add(l, t, v)
 	return err
 }
 
-func (a appenderAdapter) NeedsThrottling() bool {
-	return false
+func (a *appendableAppender) Commit() error {
+	if _, err := a.pusher.Push(a.ctx, util.ToWriteRequest(a.samples)); err != nil {
+		return err
+	}
+	a.samples = nil
+	return nil
+}
+
+func (a *appendableAppender) Rollback() error {
+	a.samples = nil
+	return nil
 }

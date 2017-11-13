@@ -10,7 +10,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/cenkalti/backoff:go_default_library",
-        "//vendor/github.com/golang/protobuf/ptypes:go_default_library",
+        "//vendor/github.com/cespare/xxhash:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/config:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/inhibit:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/nflog:go_default_library",
@@ -21,6 +21,7 @@ go_library(
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
         "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/prometheus/common/version:go_default_library",
         "//vendor/golang.org/x/net/context:go_default_library",
         "//vendor/golang.org/x/net/context/ctxhttp:go_default_library",
     ],

@@ -6,8 +6,10 @@ go_library(
     importpath = "github.com/prometheus/prometheus/discovery/marathon",
     visibility = ["//visibility:public"],
     deps = [
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
+        "//vendor/github.com/mwitkow/go-conntrack:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
-        "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/prometheus/config:go_default_library",
         "//vendor/github.com/prometheus/prometheus/util/httputil:go_default_library",

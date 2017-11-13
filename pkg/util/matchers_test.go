@@ -5,76 +5,76 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestExtractMetricNameMatcherFromMatchers(t *testing.T) {
-	metricMatcher, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, "testmetric")
+	metricMatcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	if err != nil {
 		t.Fatal(err)
 	}
-	labelMatcher1, err := metric.NewLabelMatcher(metric.Equal, "label", "value1")
+	labelMatcher1, err := labels.NewMatcher(labels.MatchEqual, "label", "value1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	labelMatcher2, err := metric.NewLabelMatcher(metric.Equal, "label", "value2")
+	labelMatcher2, err := labels.NewMatcher(labels.MatchEqual, "label", "value2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	nonEqualityMetricMatcher, err := metric.NewLabelMatcher(metric.NotEqual, model.MetricNameLabel, "testmetric")
+	nonEqualityMetricMatcher, err := labels.NewMatcher(labels.MatchNotEqual, model.MetricNameLabel, "testmetric")
 	if err != nil {
 		t.Fatal(err)
 	}
-	jobMatcher, err := metric.NewLabelMatcher(metric.Equal, model.JobLabel, "testjob")
+	jobMatcher, err := labels.NewMatcher(labels.MatchEqual, model.JobLabel, "testjob")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for i, tc := range []struct {
-		matchers         []*metric.LabelMatcher
-		expMetricMatcher *metric.LabelMatcher
-		expOutMatchers   []*metric.LabelMatcher
+		matchers         []*labels.Matcher
+		expMetricMatcher *labels.Matcher
+		expOutMatchers   []*labels.Matcher
 		expOk            bool
 	}{
 		{
-			matchers:         []*metric.LabelMatcher{metricMatcher},
+			matchers:         []*labels.Matcher{metricMatcher},
 			expMetricMatcher: metricMatcher,
-			expOutMatchers:   []*metric.LabelMatcher{},
+			expOutMatchers:   []*labels.Matcher{},
 			expOk:            true,
 		}, {
-			matchers:         []*metric.LabelMatcher{metricMatcher, labelMatcher1, labelMatcher2},
+			matchers:         []*labels.Matcher{metricMatcher, labelMatcher1, labelMatcher2},
 			expMetricMatcher: metricMatcher,
-			expOutMatchers:   []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOutMatchers:   []*labels.Matcher{labelMatcher1, labelMatcher2},
 			expOk:            true,
 		}, {
-			matchers:         []*metric.LabelMatcher{labelMatcher1, metricMatcher, labelMatcher2},
+			matchers:         []*labels.Matcher{labelMatcher1, metricMatcher, labelMatcher2},
 			expMetricMatcher: metricMatcher,
-			expOutMatchers:   []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOutMatchers:   []*labels.Matcher{labelMatcher1, labelMatcher2},
 			expOk:            true,
 		}, {
-			matchers:         []*metric.LabelMatcher{labelMatcher1, labelMatcher2, metricMatcher},
+			matchers:         []*labels.Matcher{labelMatcher1, labelMatcher2, metricMatcher},
 			expMetricMatcher: metricMatcher,
-			expOutMatchers:   []*metric.LabelMatcher{labelMatcher1, labelMatcher2},
+			expOutMatchers:   []*labels.Matcher{labelMatcher1, labelMatcher2},
 			expOk:            true,
 		}, {
-			matchers:         []*metric.LabelMatcher{nonEqualityMetricMatcher},
+			matchers:         []*labels.Matcher{nonEqualityMetricMatcher},
 			expMetricMatcher: nonEqualityMetricMatcher,
-			expOutMatchers:   []*metric.LabelMatcher{},
+			expOutMatchers:   []*labels.Matcher{},
 			expOk:            true,
 		}, {
-			matchers:         []*metric.LabelMatcher{jobMatcher},
+			matchers:         []*labels.Matcher{jobMatcher},
 			expMetricMatcher: nil,
-			expOutMatchers:   []*metric.LabelMatcher{jobMatcher},
+			expOutMatchers:   []*labels.Matcher{jobMatcher},
 			expOk:            false,
 		}, {
-			matchers:         []*metric.LabelMatcher{},
+			matchers:         []*labels.Matcher{},
 			expMetricMatcher: nil,
-			expOutMatchers:   []*metric.LabelMatcher{},
+			expOutMatchers:   []*labels.Matcher{},
 			expOk:            false,
 		},
 	} {
-		matchersCopy := make([]*metric.LabelMatcher, len(tc.matchers))
+		matchersCopy := make([]*labels.Matcher, len(tc.matchers))
 		copy(matchersCopy, tc.matchers)
 
 		nameMatcher, outMatchers, ok := ExtractMetricNameMatcherFromMatchers(tc.matchers)

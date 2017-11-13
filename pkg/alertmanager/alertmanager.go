@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/mesh"
 )
 
@@ -108,16 +109,23 @@ func New(cfg *Config) (*Alertmanager, error) {
 		am.wg.Done()
 	}()
 
-	am.alerts, err = mem.NewAlerts(cfg.DataDir)
+	marker := types.NewMarker()
+	am.alerts, err = mem.NewAlerts(marker, 30*time.Minute, cfg.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
 
-	am.api = api.New(am.alerts, am.silences, func() dispatch.AlertOverview {
-		return am.dispatcher.Groups()
-	})
+	am.api = api.New(
+		am.alerts,
+		am.silences,
+		func(matchers []*labels.Matcher) dispatch.AlertOverview {
+			return am.dispatcher.Groups(matchers)
+		},
+		marker.Status,
+		nil, // Passing a nil mesh router since we don't show mesh router information in Cortex anyway.
+	)
 
-	am.router = route.New(nil)
+	am.router = route.New()
 
 	webReload := make(chan struct{})
 	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload)
@@ -157,7 +165,7 @@ func (am *Alertmanager) ApplyConfig(conf *config.Config) error {
 	}
 	tmpl.ExternalURL = am.cfg.ExternalURL
 
-	err = am.api.Update(conf.String(), time.Duration(conf.Global.ResolveTimeout))
+	err = am.api.Update(conf, time.Duration(conf.Global.ResolveTimeout))
 	if err != nil {
 		return err
 	}

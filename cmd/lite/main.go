@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
@@ -48,9 +48,10 @@ func main() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
-		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig)
+		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig, util.LogLevel{})
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
+	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
 	log.AddHook(promrus.MustNewPrometheusHook())
 
@@ -85,7 +86,7 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	ingester, err := ingester.New(ingesterConfig, schemaConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, chunkStore)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,13 +119,19 @@ func main() {
 		defer rulerServer.Stop()
 	}
 
-	queryable := querier.NewQueryable(dist, chunkStore)
-	engine := promql.NewEngine(queryable, nil)
-	api := v1.NewAPI(engine, querier.DummyStorage{Queryable: queryable},
-		querier.DummyTargetRetriever{}, querier.DummyAlertmanagerRetriever{})
-	promRouter := route.New(func(r *http.Request) (context.Context, error) {
-		return r.Context(), nil
-	}).WithPrefix("/api/prom/api/v1")
+	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
+	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
+
+	engine := promql.NewEngine(sampleQueryable, nil)
+	api := v1.NewAPI(
+		engine,
+		metadataQueryable,
+		querier.DummyTargetRetriever{},
+		querier.DummyAlertmanagerRetriever{},
+		func() config.Config { return config.Config{} },
+		func(f http.HandlerFunc) http.HandlerFunc { return f },
+	)
+	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)
 
 	activeMiddleware := middleware.AuthenticateUser
@@ -139,7 +146,7 @@ func main() {
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(activeMiddleware.Wrap(promRouter))
-	subrouter.Path("/read").Handler(activeMiddleware.Wrap(http.HandlerFunc(queryable.Q.RemoteReadHandler)))
+	subrouter.Path("/read").Handler(activeMiddleware.Wrap(http.HandlerFunc(sampleQueryable.RemoteReadHandler)))
 	subrouter.Path("/validate_expr").Handler(activeMiddleware.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(activeMiddleware.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 

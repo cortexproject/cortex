@@ -5,7 +5,15 @@ go_library(
     srcs = [
         "directory.go",
         "error.go",
+        "roundtrip.go",
+        "storage.go",
+        "testing.go",
     ],
     importpath = "github.com/prometheus/prometheus/util/testutil",
     visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/storage:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/storage/tsdb:go_default_library",
+    ],
 )

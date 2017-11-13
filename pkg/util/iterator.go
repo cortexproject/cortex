@@ -4,60 +4,8 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/local"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
-
-// MergeSeriesIterator combines SampleStreamIterator. Based off mergeIterator
-// implemented in promtheus/storage/fanin/fanin.go.
-type MergeSeriesIterator struct {
-	iterators []local.SeriesIterator
-}
-
-// NewMergeSeriesIterator creates a mergeSeriesIterator
-func NewMergeSeriesIterator(iterators []local.SeriesIterator) MergeSeriesIterator {
-	return MergeSeriesIterator{
-		iterators: iterators,
-	}
-}
-
-// Metric implements the SeriesIterator interface.
-func (msit MergeSeriesIterator) Metric() metric.Metric {
-	return metric.Metric{Metric: msit.iterators[0].Metric().Metric}
-}
-
-// ValueAtOrBeforeTime implements the SeriesIterator interface.
-func (msit MergeSeriesIterator) ValueAtOrBeforeTime(ts model.Time) model.SamplePair {
-	latest := model.ZeroSamplePair
-	for _, it := range msit.iterators {
-		v := it.ValueAtOrBeforeTime(ts)
-		if v.Timestamp.After(latest.Timestamp) {
-			latest = v
-		}
-	}
-	return latest
-}
-
-// RangeValues implements the SeriesIterator interface.
-func (msit MergeSeriesIterator) RangeValues(in metric.Interval) []model.SamplePair {
-	var sampleSets [][]model.SamplePair
-	for _, it := range msit.iterators {
-		sampleSets = append(sampleSets, it.RangeValues(in))
-	}
-
-	samples := MergeNSampleSets(sampleSets...)
-	if len(samples) == 0 {
-		return nil
-	}
-	return samples
-}
-
-// Close implements the SeriesIterator interface.
-func (msit MergeSeriesIterator) Close() {
-	for _, it := range msit.iterators {
-		it.Close()
-	}
-}
 
 // SampleStreamIterator is a struct and not just a renamed type because otherwise the Metric
 // field and Metric() methods would clash.

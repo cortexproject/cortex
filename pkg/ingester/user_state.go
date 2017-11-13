@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -253,7 +253,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.
 // Deals with locking and the quirks of zero-length matcher values.
-func (u *userState) forSeriesMatching(allMatchers []*metric.LabelMatcher, callback func(model.Fingerprint, *memorySeries) error) error {
+func (u *userState) forSeriesMatching(allMatchers []*labels.Matcher, callback func(model.Fingerprint, *memorySeries) error) error {
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	fps := u.index.lookup(matchers)
 
@@ -268,7 +268,7 @@ outer:
 		}
 
 		for _, filter := range filters {
-			if !filter.Match(series.metric[filter.Name]) {
+			if !filter.Matches(string(series.metric[model.LabelName(filter.Name)])) {
 				u.fpLocker.Unlock(fp)
 				continue outer
 			}

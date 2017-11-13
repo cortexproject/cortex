@@ -6,8 +6,8 @@ go_library(
     importpath = "github.com/prometheus/alertmanager/silence/silencepb",
     visibility = ["//visibility:public"],
     deps = [
-        "//vendor/github.com/golang/protobuf/proto:go_default_library",
-        "//vendor/github.com/golang/protobuf/ptypes/timestamp:go_default_library",
+        "//vendor/github.com/gogo/protobuf/proto:go_default_library",
+        "//vendor/github.com/gogo/protobuf/types:go_default_library",
     ],
 )
 

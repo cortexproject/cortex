@@ -20,13 +20,16 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"golang.org/x/net/context"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/mwitkow/go-conntrack"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/util/httputil"
@@ -43,6 +46,9 @@ const (
 	appLabel model.LabelName = metaLabelPrefix + "app"
 	// imageLabel is the label that is used for the docker image running the service.
 	imageLabel model.LabelName = metaLabelPrefix + "image"
+	// portIndexLabel is the integer port index when multiple ports are defined;
+	// e.g. PORT1 would have a value of '1'
+	portIndexLabel model.LabelName = metaLabelPrefix + "port_index"
 	// taskLabel contains the mesos task name of the app instance.
 	taskLabel model.LabelName = metaLabelPrefix + "task"
 
@@ -85,16 +91,21 @@ type Discovery struct {
 	lastRefresh     map[string]*config.TargetGroup
 	appsClient      AppListClient
 	token           string
+	logger          log.Logger
 }
 
 // NewDiscovery returns a new Marathon Discovery.
-func NewDiscovery(conf *config.MarathonSDConfig) (*Discovery, error) {
+func NewDiscovery(conf *config.MarathonSDConfig, logger log.Logger) (*Discovery, error) {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	tls, err := httputil.NewTLSConfig(conf.TLSConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	token := conf.BearerToken
+	token := string(conf.BearerToken)
 	if conf.BearerTokenFile != "" {
 		bf, err := ioutil.ReadFile(conf.BearerTokenFile)
 		if err != nil {
@@ -107,6 +118,10 @@ func NewDiscovery(conf *config.MarathonSDConfig) (*Discovery, error) {
 		Timeout: time.Duration(conf.Timeout),
 		Transport: &http.Transport{
 			TLSClientConfig: tls,
+			DialContext: conntrack.NewDialContextFunc(
+				conntrack.DialWithTracing(),
+				conntrack.DialWithName("marathon_sd"),
+			),
 		},
 	}
 
@@ -116,6 +131,7 @@ func NewDiscovery(conf *config.MarathonSDConfig) (*Discovery, error) {
 		refreshInterval: time.Duration(conf.RefreshInterval),
 		appsClient:      fetchApps,
 		token:           token,
+		logger:          logger,
 	}, nil
 }
 
@@ -128,7 +144,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*config.TargetGroup) {
 		case <-time.After(d.refreshInterval):
 			err := d.updateServices(ctx, ch)
 			if err != nil {
-				log.Errorf("Error while updating services: %s", err)
+				level.Error(d.logger).Log("msg", "Error while updating services", "err", err)
 			}
 		}
 	}
@@ -167,7 +183,7 @@ func (d *Discovery) updateServices(ctx context.Context, ch chan<- []*config.Targ
 			case <-ctx.Done():
 				return ctx.Err()
 			case ch <- []*config.TargetGroup{{Source: source}}:
-				log.Debugf("Removing group for %s", source)
+				level.Debug(d.logger).Log("msg", "Removing group", "source", source)
 			}
 		}
 	}
@@ -321,6 +337,7 @@ func targetsForApp(app *App) []model.LabelSet {
 			target := model.LabelSet{
 				model.AddressLabel: model.LabelValue(targetAddress),
 				taskLabel:          model.LabelValue(t.ID),
+				portIndexLabel:     model.LabelValue(strconv.Itoa(i)),
 			}
 			if i < len(app.PortDefinitions) {
 				for ln, lv := range app.PortDefinitions[i].Labels {

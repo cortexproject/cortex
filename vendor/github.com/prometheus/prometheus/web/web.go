@@ -19,35 +19,49 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	stdlog "log"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"google.golang.org/grpc"
 
 	pprof_runtime "runtime/pprof"
 	template_text "text/template"
 
+	"github.com/cockroachdb/cmux"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/tsdb"
 	"golang.org/x/net/context"
 	"golang.org/x/net/netutil"
 
+	"github.com/mwitkow/go-conntrack"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/retrieval"
 	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/template"
 	"github.com/prometheus/prometheus/util/httputil"
 	api_v1 "github.com/prometheus/prometheus/web/api/v1"
+	api_v2 "github.com/prometheus/prometheus/web/api/v2"
 	"github.com/prometheus/prometheus/web/ui"
 )
 
@@ -55,20 +69,23 @@ var localhostRepresentations = []string{"127.0.0.1", "localhost"}
 
 // Handler serves various HTTP endpoints of the Prometheus server
 type Handler struct {
+	logger log.Logger
+
 	targetManager *retrieval.TargetManager
 	ruleManager   *rules.Manager
 	queryEngine   *promql.Engine
 	context       context.Context
-	storage       local.Storage
+	tsdb          func() *tsdb.DB
+	storage       storage.Storage
 	notifier      *notifier.Notifier
 
 	apiV1 *api_v1.API
 
 	router       *route.Router
-	listenErrCh  chan error
 	quitCh       chan struct{}
 	reloadCh     chan chan error
 	options      *Options
+	config       *config.Config
 	configString string
 	versionInfo  *PrometheusVersion
 	birth        time.Time
@@ -78,15 +95,16 @@ type Handler struct {
 	externalLabels model.LabelSet
 	mtx            sync.RWMutex
 	now            func() model.Time
+
+	ready uint32 // ready is uint32 rather than boolean to be able to use atomic functions.
 }
 
-// ApplyConfig updates the status state as the new config requires.
+// ApplyConfig updates the config field of the Handler struct
 func (h *Handler) ApplyConfig(conf *config.Config) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	h.externalLabels = conf.GlobalConfig.ExternalLabels
-	h.configString = conf.String()
+	h.config = conf
 
 	return nil
 }
@@ -104,7 +122,8 @@ type PrometheusVersion struct {
 // Options for the web Handler.
 type Options struct {
 	Context       context.Context
-	Storage       local.Storage
+	TSDB          func() *tsdb.DB
+	Storage       storage.Storage
 	QueryEngine   *promql.Engine
 	TargetManager *retrieval.TargetManager
 	RuleManager   *rules.Manager
@@ -122,24 +141,25 @@ type Options struct {
 	UserAssetsPath       string
 	ConsoleTemplatesPath string
 	ConsoleLibrariesPath string
-	EnableQuit           bool
+	EnableLifecycle      bool
+	EnableAdminAPI       bool
 }
 
 // New initializes a new web Handler.
-func New(o *Options) *Handler {
-	router := route.New(func(r *http.Request) (context.Context, error) {
-		return o.Context, nil
-	})
-
+func New(logger log.Logger, o *Options) *Handler {
+	router := route.New()
 	cwd, err := os.Getwd()
 
 	if err != nil {
 		cwd = "<error retrieving current working directory>"
 	}
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
 
 	h := &Handler{
+		logger:      logger,
 		router:      router,
-		listenErrCh: make(chan error),
 		quitCh:      make(chan struct{}),
 		reloadCh:    make(chan chan error),
 		options:     o,
@@ -152,12 +172,23 @@ func New(o *Options) *Handler {
 		targetManager: o.TargetManager,
 		ruleManager:   o.RuleManager,
 		queryEngine:   o.QueryEngine,
+		tsdb:          o.TSDB,
 		storage:       o.Storage,
 		notifier:      o.Notifier,
 
-		apiV1: api_v1.NewAPI(o.QueryEngine, o.Storage, o.TargetManager, o.Notifier),
-		now:   model.Now,
+		now: model.Now,
+
+		ready: 0,
 	}
+
+	h.apiV1 = api_v1.NewAPI(h.queryEngine, h.storage, h.targetManager, h.notifier,
+		func() config.Config {
+			h.mtx.RLock()
+			defer h.mtx.RUnlock()
+			return *h.config
+		},
+		h.testReady,
+	)
 
 	if o.RoutePrefix != "/" {
 		// If the prefix is missing for the root path, prepend it.
@@ -169,68 +200,132 @@ func New(o *Options) *Handler {
 
 	instrh := prometheus.InstrumentHandler
 	instrf := prometheus.InstrumentHandlerFunc
+	readyf := h.testReady
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		router.Redirect(w, r, "/graph", http.StatusFound)
+		http.Redirect(w, r, path.Join(o.ExternalURL.Path, "/graph"), http.StatusFound)
 	})
 
-	router.Get("/alerts", instrf("alerts", h.alerts))
-	router.Get("/graph", instrf("graph", h.graph))
-	router.Get("/status", instrf("status", h.status))
-	router.Get("/flags", instrf("flags", h.flags))
-	router.Get("/config", instrf("config", h.config))
-	router.Get("/rules", instrf("rules", h.rules))
-	router.Get("/targets", instrf("targets", h.targets))
-	router.Get("/version", instrf("version", h.version))
+	router.Get("/alerts", readyf(instrf("alerts", h.alerts)))
+	router.Get("/graph", readyf(instrf("graph", h.graph)))
+	router.Get("/status", readyf(instrf("status", h.status)))
+	router.Get("/flags", readyf(instrf("flags", h.flags)))
+	router.Get("/config", readyf(instrf("config", h.serveConfig)))
+	router.Get("/rules", readyf(instrf("rules", h.rules)))
+	router.Get("/targets", readyf(instrf("targets", h.targets)))
+	router.Get("/version", readyf(instrf("version", h.version)))
 
-	router.Get("/heap", instrf("heap", dumpHeap))
+	router.Get("/heap", instrf("heap", h.dumpHeap))
 
-	router.Get(o.MetricsPath, prometheus.Handler().ServeHTTP)
+	router.Get("/metrics", prometheus.Handler().ServeHTTP)
 
-	router.Get("/federate", instrh("federate", httputil.CompressionHandler{
+	router.Get("/federate", readyf(instrh("federate", httputil.CompressionHandler{
 		Handler: http.HandlerFunc(h.federation),
-	}))
+	})))
 
-	h.apiV1.Register(router.WithPrefix("/api/v1"))
+	router.Get("/consoles/*filepath", readyf(instrf("consoles", h.consoles)))
 
-	router.Get("/consoles/*filepath", instrf("consoles", h.consoles))
-
-	router.Get("/static/*filepath", instrf("static", serveStaticAsset))
+	router.Get("/static/*filepath", instrf("static", h.serveStaticAsset))
 
 	if o.UserAssetsPath != "" {
 		router.Get("/user/*filepath", instrf("user", route.FileServe(o.UserAssetsPath)))
 	}
 
-	if o.EnableQuit {
+	if o.EnableLifecycle {
 		router.Post("/-/quit", h.quit)
+		router.Post("/-/reload", h.reload)
+	} else {
+		router.Post("/-/quit", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte("Lifecycle APIs are not enabled"))
+		})
+		router.Post("/-/reload", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte("Lifecycle APIs are not enabled"))
+		})
 	}
-
-	router.Post("/-/reload", h.reload)
-	router.Get("/-/reload", func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/-/quit", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "This endpoint requires a POST request.\n")
+		w.Write([]byte("Only POST requests allowed"))
+	})
+	router.Get("/-/reload", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte("Only POST requests allowed"))
 	})
 
-	router.Get("/debug/*subpath", http.DefaultServeMux.ServeHTTP)
-	router.Post("/debug/*subpath", http.DefaultServeMux.ServeHTTP)
+	router.Get("/debug/*subpath", serveDebug)
+	router.Post("/debug/*subpath", serveDebug)
+
+	router.Get("/-/healthy", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Prometheus is Healthy.\n")
+	})
+	router.Get("/-/ready", readyf(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Prometheus is Ready.\n")
+	}))
 
 	return h
 }
 
-func serveStaticAsset(w http.ResponseWriter, req *http.Request) {
-	fp := route.Param(route.Context(req), "filepath")
+var corsHeaders = map[string]string{
+	"Access-Control-Allow-Headers":  "Accept, Authorization, Content-Type, Origin",
+	"Access-Control-Allow-Methods":  "GET, OPTIONS",
+	"Access-Control-Allow-Origin":   "*",
+	"Access-Control-Expose-Headers": "Date",
+}
+
+// Enables cross-site script calls.
+func setCORS(w http.ResponseWriter) {
+	for h, v := range corsHeaders {
+		w.Header().Set(h, v)
+	}
+}
+
+func serveDebug(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	subpath := route.Param(ctx, "subpath")
+
+	if subpath == "/pprof" {
+		http.Redirect(w, req, req.URL.Path+"/", http.StatusMovedPermanently)
+		return
+	}
+
+	if !strings.HasPrefix(subpath, "/pprof/") {
+		http.NotFound(w, req)
+		return
+	}
+	subpath = strings.TrimPrefix(subpath, "/pprof/")
+
+	switch subpath {
+	case "cmdline":
+		pprof.Cmdline(w, req)
+	case "profile":
+		pprof.Profile(w, req)
+	case "symbol":
+		pprof.Symbol(w, req)
+	case "trace":
+		pprof.Trace(w, req)
+	default:
+		req.URL.Path = "/debug/pprof/" + subpath
+		pprof.Index(w, req)
+	}
+}
+
+func (h *Handler) serveStaticAsset(w http.ResponseWriter, req *http.Request) {
+	fp := route.Param(req.Context(), "filepath")
 	fp = filepath.Join("web/ui/static", fp)
 
 	info, err := ui.AssetInfo(fp)
 	if err != nil {
-		log.With("file", fp).Warn("Could not get file info: ", err)
+		level.Warn(h.logger).Log("msg", "Could not get file info", "err", err, "file", fp)
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	file, err := ui.Asset(fp)
 	if err != nil {
 		if err != io.EOF {
-			log.With("file", fp).Warn("Could not get file: ", err)
+			level.Warn(h.logger).Log("msg", "Could not get file", "err", err, "file", fp)
 		}
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -239,9 +334,35 @@ func serveStaticAsset(w http.ResponseWriter, req *http.Request) {
 	http.ServeContent(w, req, info.Name(), info.ModTime(), bytes.NewReader(file))
 }
 
-// ListenError returns the receive-only channel that signals errors while starting the web server.
-func (h *Handler) ListenError() <-chan error {
-	return h.listenErrCh
+// Ready sets Handler to be ready.
+func (h *Handler) Ready() {
+	atomic.StoreUint32(&h.ready, 1)
+}
+
+// Verifies whether the server is ready or not.
+func (h *Handler) isReady() bool {
+	ready := atomic.LoadUint32(&h.ready)
+	if ready == 0 {
+		return false
+	}
+	return true
+}
+
+// Checks if server is ready, calls f if it is, returns 503 if it is not.
+func (h *Handler) testReady(f http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if h.isReady() {
+			f(w, r)
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "Service Unavailable")
+		}
+	}
+}
+
+// Checks if server is ready, calls f if it is, returns 503 if it is not.
+func (h *Handler) testReadyHandler(f http.Handler) http.HandlerFunc {
+	return h.testReady(f.ServeHTTP)
 }
 
 // Quit returns the receive-only quit channel.
@@ -255,21 +376,91 @@ func (h *Handler) Reload() <-chan chan error {
 }
 
 // Run serves the HTTP endpoints.
-func (h *Handler) Run() {
-	log.Infof("Listening on %s", h.options.ListenAddress)
-	server := &http.Server{
-		Addr:        h.options.ListenAddress,
-		Handler:     h.router,
-		ErrorLog:    log.NewErrorLogger(),
-		ReadTimeout: h.options.ReadTimeout,
-	}
+func (h *Handler) Run(ctx context.Context) error {
+	level.Info(h.logger).Log("msg", "Start listening for connections", "address", h.options.ListenAddress)
+
 	listener, err := net.Listen("tcp", h.options.ListenAddress)
 	if err != nil {
-		h.listenErrCh <- err
-	} else {
-		limitedListener := netutil.LimitListener(listener, h.options.MaxConnections)
-		h.listenErrCh <- server.Serve(limitedListener)
+		return err
 	}
+	listener = netutil.LimitListener(listener, h.options.MaxConnections)
+
+	// Monitor incoming connections with conntrack.
+	listener = conntrack.NewListener(listener,
+		conntrack.TrackWithName("http"),
+		conntrack.TrackWithTracing())
+
+	var (
+		m       = cmux.New(listener)
+		grpcl   = m.Match(cmux.HTTP2HeaderField("content-type", "application/grpc"))
+		httpl   = m.Match(cmux.HTTP1Fast())
+		grpcSrv = grpc.NewServer()
+	)
+	av2 := api_v2.New(
+		time.Now,
+		h.options.TSDB,
+		h.options.QueryEngine,
+		h.options.Storage.Querier,
+		func() []*retrieval.Target {
+			return h.options.TargetManager.Targets()
+		},
+		func() []*url.URL {
+			return h.options.Notifier.Alertmanagers()
+		},
+		h.options.EnableAdminAPI,
+	)
+	av2.RegisterGRPC(grpcSrv)
+
+	hh, err := av2.HTTPHandler(grpcl.Addr().String())
+	if err != nil {
+		return err
+	}
+
+	hhFunc := h.testReadyHandler(hh)
+
+	operationName := nethttp.OperationNameFunc(func(r *http.Request) string {
+		return fmt.Sprintf("%s %s", r.Method, r.URL.Path)
+	})
+	mux := http.NewServeMux()
+	mux.Handle("/", h.router)
+
+	av1 := route.New()
+	h.apiV1.Register(av1)
+	apiPath := "/api"
+	if h.options.RoutePrefix != "/" {
+		apiPath = h.options.RoutePrefix + apiPath
+		level.Info(h.logger).Log("msg", "router prefix", "prefix", h.options.RoutePrefix)
+	}
+
+	mux.Handle(apiPath+"/v1/", http.StripPrefix(apiPath+"/v1", av1))
+
+	mux.Handle(apiPath+"/", http.StripPrefix(apiPath,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			setCORS(w)
+			hhFunc(w, r)
+		}),
+	))
+
+	errlog := stdlog.New(log.NewStdlibAdapter(level.Error(h.logger)), "", 0)
+
+	httpSrv := &http.Server{
+		Handler:     nethttp.Middleware(opentracing.GlobalTracer(), mux, operationName),
+		ErrorLog:    errlog,
+		ReadTimeout: h.options.ReadTimeout,
+	}
+
+	go func() {
+		if err := httpSrv.Serve(httpl); err != nil {
+			level.Warn(h.logger).Log("msg", "error serving HTTP", "err", err)
+		}
+	}()
+	go func() {
+		if err := grpcSrv.Serve(grpcl); err != nil {
+			level.Warn(h.logger).Log("msg", "error serving gRPC", "err", err)
+		}
+	}()
+
+	return m.Serve()
 }
 
 func (h *Handler) alerts(w http.ResponseWriter, r *http.Request) {
@@ -289,7 +480,7 @@ func (h *Handler) alerts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) consoles(w http.ResponseWriter, r *http.Request) {
-	ctx := route.Context(r)
+	ctx := r.Context()
 	name := route.Param(ctx, "filepath")
 
 	file, err := http.Dir(h.options.ConsoleTemplatesPath).Open(name)
@@ -324,7 +515,7 @@ func (h *Handler) consoles(w http.ResponseWriter, r *http.Request) {
 		Path:      strings.TrimLeft(name, "/"),
 	}
 
-	tmpl := template.NewTemplateExpander(h.context, string(text), "__console_"+name, data, h.now(), h.queryEngine, h.options.ExternalURL.Path)
+	tmpl := template.NewTemplateExpander(h.context, string(text), "__console_"+name, data, h.now(), h.queryEngine, h.options.ExternalURL)
 	filenames, err := filepath.Glob(h.options.ConsoleLibrariesPath + "/*.lib")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -347,7 +538,7 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 		Birth         time.Time
 		CWD           string
 		Version       *PrometheusVersion
-		Alertmanagers []string
+		Alertmanagers []*url.URL
 	}{
 		Birth:         h.birth,
 		CWD:           h.cwd,
@@ -360,11 +551,11 @@ func (h *Handler) flags(w http.ResponseWriter, r *http.Request) {
 	h.executeTemplate(w, "flags.html", h.flagsMap)
 }
 
-func (h *Handler) config(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) serveConfig(w http.ResponseWriter, r *http.Request) {
 	h.mtx.RLock()
 	defer h.mtx.RUnlock()
 
-	h.executeTemplate(w, "config.html", h.configString)
+	h.executeTemplate(w, "config.html", h.config.String())
 }
 
 func (h *Handler) rules(w http.ResponseWriter, r *http.Request) {
@@ -375,13 +566,13 @@ func (h *Handler) targets(w http.ResponseWriter, r *http.Request) {
 	// Bucket targets by job label
 	tps := map[string][]*retrieval.Target{}
 	for _, t := range h.targetManager.Targets() {
-		job := string(t.Labels()[model.JobLabel])
+		job := t.Labels().Get(model.JobLabel)
 		tps[job] = append(tps[job], t)
 	}
 
 	for _, targets := range tps {
 		sort.Slice(targets, func(i, j int) bool {
-			return targets[i].Labels()[model.InstanceLabel] < targets[j].Labels()[model.InstanceLabel]
+			return targets[i].Labels().Get(labels.InstanceName) < targets[j].Labels().Get(labels.InstanceName)
 		})
 	}
 
@@ -432,7 +623,7 @@ func tmplFuncs(consolesPath string, opts *Options) template_text.FuncMap {
 		"consolesPath": func() string { return consolesPath },
 		"pathPrefix":   func() string { return opts.ExternalURL.Path },
 		"buildVersion": func() string { return opts.Version.Revision },
-		"stripLabels": func(lset model.LabelSet, labels ...model.LabelName) model.LabelSet {
+		"stripLabels": func(lset map[string]string, labels ...string) map[string]string {
 			for _, ln := range labels {
 				delete(lset, ln)
 			}
@@ -475,6 +666,16 @@ func tmplFuncs(consolesPath string, opts *Options) template_text.FuncMap {
 				}
 			}
 			return u
+		},
+		"numHealthy": func(pool []*retrieval.Target) int {
+			alive := len(pool)
+			for _, p := range pool {
+				if p.Health() != retrieval.HealthGood {
+					alive--
+				}
+			}
+
+			return alive
 		},
 		"healthToClass": func(th retrieval.TargetHealth) string {
 			switch th {
@@ -519,7 +720,7 @@ func (h *Handler) executeTemplate(w http.ResponseWriter, name string, data inter
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	tmpl := template.NewTemplateExpander(h.context, text, name, data, h.now(), h.queryEngine, h.options.ExternalURL.Path)
+	tmpl := template.NewTemplateExpander(h.context, text, name, data, h.now(), h.queryEngine, h.options.ExternalURL)
 	tmpl.Funcs(tmplFuncs(h.consolesPath(), h.options))
 
 	result, err := tmpl.ExpandHTML(nil)
@@ -530,11 +731,11 @@ func (h *Handler) executeTemplate(w http.ResponseWriter, name string, data inter
 	io.WriteString(w, result)
 }
 
-func dumpHeap(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) dumpHeap(w http.ResponseWriter, r *http.Request) {
 	target := fmt.Sprintf("/tmp/%d.heap", time.Now().Unix())
 	f, err := os.Create(target)
 	if err != nil {
-		log.Error("Could not dump heap: ", err)
+		level.Error(h.logger).Log("msg", "Could not dump heap", "err", err)
 	}
 	fmt.Fprintf(w, "Writing to %s...", target)
 	defer f.Close()

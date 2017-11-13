@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/metric"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 )
 
@@ -47,7 +47,7 @@ func ToWriteRequest(samples []model.Sample) *client.WriteRequest {
 }
 
 // ToQueryRequest builds a QueryRequest proto.
-func ToQueryRequest(from, to model.Time, matchers []*metric.LabelMatcher) (*client.QueryRequest, error) {
+func ToQueryRequest(from, to model.Time, matchers []*labels.Matcher) (*client.QueryRequest, error) {
 	ms, err := toLabelMatchers(matchers)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func ToQueryRequest(from, to model.Time, matchers []*metric.LabelMatcher) (*clie
 }
 
 // FromQueryRequest unpacks a QueryRequest proto.
-func FromQueryRequest(req *client.QueryRequest) (model.Time, model.Time, []*metric.LabelMatcher, error) {
+func FromQueryRequest(req *client.QueryRequest) (model.Time, model.Time, []*labels.Matcher, error) {
 	matchers, err := fromLabelMatchers(req.Matchers)
 	if err != nil {
 		return 0, 0, nil, err
@@ -110,28 +110,22 @@ func FromQueryResponse(resp *client.QueryResponse) model.Matrix {
 }
 
 // ToMetricsForLabelMatchersRequest builds a MetricsForLabelMatchersRequest proto
-func ToMetricsForLabelMatchersRequest(from, to model.Time, matchersSet []metric.LabelMatchers) (*client.MetricsForLabelMatchersRequest, error) {
-	req := &client.MetricsForLabelMatchersRequest{
-		StartTimestampMs: int64(from),
-		EndTimestampMs:   int64(to),
-		MatchersSet:      make([]*client.LabelMatchers, 0, len(matchersSet)),
+func ToMetricsForLabelMatchersRequest(from, to model.Time, matchers []*labels.Matcher) (*client.MetricsForLabelMatchersRequest, error) {
+	ms, err := toLabelMatchers(matchers)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, matchers := range matchersSet {
-		ms, err := toLabelMatchers(matchers)
-		if err != nil {
-			return nil, err
-		}
-		req.MatchersSet = append(req.MatchersSet, &client.LabelMatchers{
-			Matchers: ms,
-		})
-	}
-	return req, nil
+	return &client.MetricsForLabelMatchersRequest{
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
+		MatchersSet:      []*client.LabelMatchers{{Matchers: ms}},
+	}, nil
 }
 
 // FromMetricsForLabelMatchersRequest unpacks a MetricsForLabelMatchersRequest proto
-func FromMetricsForLabelMatchersRequest(req *client.MetricsForLabelMatchersRequest) (model.Time, model.Time, []metric.LabelMatchers, error) {
-	matchersSet := make([]metric.LabelMatchers, 0, len(req.MatchersSet))
+func FromMetricsForLabelMatchersRequest(req *client.MetricsForLabelMatchersRequest) (model.Time, model.Time, [][]*labels.Matcher, error) {
+	matchersSet := make([][]*labels.Matcher, 0, len(req.MatchersSet))
 	for _, matchers := range req.MatchersSet {
 		matchers, err := fromLabelMatchers(matchers.Matchers)
 		if err != nil {
@@ -166,18 +160,18 @@ func FromMetricsForLabelMatchersResponse(resp *client.MetricsForLabelMatchersRes
 	return metrics
 }
 
-func toLabelMatchers(matchers []*metric.LabelMatcher) ([]*client.LabelMatcher, error) {
+func toLabelMatchers(matchers []*labels.Matcher) ([]*client.LabelMatcher, error) {
 	result := make([]*client.LabelMatcher, 0, len(matchers))
 	for _, matcher := range matchers {
 		var mType client.MatchType
 		switch matcher.Type {
-		case metric.Equal:
+		case labels.MatchEqual:
 			mType = client.EQUAL
-		case metric.NotEqual:
+		case labels.MatchNotEqual:
 			mType = client.NOT_EQUAL
-		case metric.RegexMatch:
+		case labels.MatchRegexp:
 			mType = client.REGEX_MATCH
-		case metric.RegexNoMatch:
+		case labels.MatchNotRegexp:
 			mType = client.REGEX_NO_MATCH
 		default:
 			return nil, fmt.Errorf("invalid matcher type")
@@ -191,23 +185,23 @@ func toLabelMatchers(matchers []*metric.LabelMatcher) ([]*client.LabelMatcher, e
 	return result, nil
 }
 
-func fromLabelMatchers(matchers []*client.LabelMatcher) ([]*metric.LabelMatcher, error) {
-	result := make(metric.LabelMatchers, 0, len(matchers))
+func fromLabelMatchers(matchers []*client.LabelMatcher) ([]*labels.Matcher, error) {
+	result := make([]*labels.Matcher, 0, len(matchers))
 	for _, matcher := range matchers {
-		var mtype metric.MatchType
+		var mtype labels.MatchType
 		switch matcher.Type {
 		case client.EQUAL:
-			mtype = metric.Equal
+			mtype = labels.MatchEqual
 		case client.NOT_EQUAL:
-			mtype = metric.NotEqual
+			mtype = labels.MatchNotEqual
 		case client.REGEX_MATCH:
-			mtype = metric.RegexMatch
+			mtype = labels.MatchRegexp
 		case client.REGEX_NO_MATCH:
-			mtype = metric.RegexNoMatch
+			mtype = labels.MatchNotRegexp
 		default:
 			return nil, fmt.Errorf("invalid matcher type")
 		}
-		matcher, err := metric.NewLabelMatcher(mtype, model.LabelName(matcher.Name), model.LabelValue(matcher.Value))
+		matcher, err := labels.NewMatcher(mtype, matcher.Name, matcher.Value)
 		if err != nil {
 			return nil, err
 		}

@@ -19,5 +19,9 @@ go_test(
     srcs = ["config_test.go"],
     importpath = "github.com/prometheus/alertmanager/config",
     library = ":go_default_library",
-    deps = ["//vendor/gopkg.in/yaml.v2:go_default_library"],
+    deps = [
+        "//vendor/github.com/prometheus/common/model:go_default_library",
+        "//vendor/github.com/stretchr/testify/require:go_default_library",
+        "//vendor/gopkg.in/yaml.v2:go_default_library",
+    ],
 )

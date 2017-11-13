@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	gklog "github.com/go-kit/kit/log"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/prometheus/promql"
@@ -45,6 +47,28 @@ func (c ConfigsResponse) GetLatestConfigID() configs.ID {
 	return latest
 }
 
+// Prometheus alerting rules log warnings when they fail to expand notification
+// templates. This requires a go-kit logger to be injected (see below). The
+// warnLogWriter is an io.Writer that gets wrapped into a go-kit logger and
+// outputs any log messages at warning level with the usual Cortex (Prometheus)
+// logger we use. The output is a bit messy (because structured key/vals are nested
+// within a single key of the outer logger), but doing a full conversion of fields
+// between go-kit and our logger seems like overkill just for this one case.
+//
+// TODO: Eventually, template expansion errors should be displayed to the user
+//       somehow, though part of that can be caught during configuration-saving time.
+type warnLogWriter struct{}
+
+func (l warnLogWriter) Write(p []byte) (int, error) {
+	var buf bytes.Buffer
+	n, err := buf.Write(p)
+	if err != nil {
+		return n, err
+	}
+	log.Warn(buf.String())
+	return n, nil
+}
+
 // RulesFromConfig gets the rules from the Cortex configuration.
 //
 // Strongly inspired by `loadGroups` in Prometheus.
@@ -61,7 +85,7 @@ func RulesFromConfig(c configs.Config) ([]rules.Rule, error) {
 
 			switch r := stmt.(type) {
 			case *promql.AlertStmt:
-				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations)
+				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations, gklog.NewLogfmtLogger(warnLogWriter{}))
 
 			case *promql.RecordStmt:
 				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)

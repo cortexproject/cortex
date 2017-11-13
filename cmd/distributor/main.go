@@ -44,7 +44,7 @@ func main() {
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, util.LogLevel{})
 	flag.Parse()
 
 	log.AddHook(promrus.MustNewPrometheusHook())

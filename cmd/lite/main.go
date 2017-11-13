@@ -4,6 +4,8 @@ import (
 	"flag"
 	"net/http"
 
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
@@ -23,6 +25,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/ruler"
+	"github.com/weaveworks/cortex/pkg/tracing"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/promrus"
 )
@@ -52,6 +55,10 @@ func main() {
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
+
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	trace := tracing.New("lite")
+	defer trace.Close()
 
 	log.AddHook(promrus.MustNewPrometheusHook())
 
@@ -154,6 +161,14 @@ func main() {
 	server.HTTP.Handle("/ready", http.HandlerFunc(ingester.ReadinessHandler))
 	server.HTTP.Handle("/flush", http.HandlerFunc(ingester.FlushHandler))
 	server.HTTP.Handle("/ring", r)
-	server.HTTP.Handle("/api/prom/push", activeMiddleware.Wrap(http.HandlerFunc(dist.PushHandler)))
+	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
+		return r.URL.RequestURI()
+	})
+	server.HTTP.Handle("/api/prom/push", middleware.Merge(
+		middleware.Func(func(handler http.Handler) http.Handler {
+			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
+		}),
+		middleware.AuthenticateUser,
+	).Wrap(http.HandlerFunc(dist.PushHandler)))
 	server.Run()
 }

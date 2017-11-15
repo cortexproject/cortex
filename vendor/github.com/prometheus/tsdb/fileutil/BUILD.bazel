@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "dir_unix.go",
+        "fileutil.go",
+        "preallocate.go",
+        "preallocate_other.go",
+        "sync.go",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "preallocate_darwin.go",
+            "sync_darwin.go",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "preallocate_linux.go",
+            "sync_linux.go",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "dir_windows.go",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "github.com/prometheus/tsdb/fileutil",
+    visibility = ["//visibility:public"],
+)

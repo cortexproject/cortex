@@ -21,6 +21,7 @@ import (
 	"unsafe"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/tsdb/chunks"
 	"github.com/prometheus/tsdb/labels"
 
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
@@ -36,12 +37,13 @@ func BenchmarkCreateSeries(b *testing.B) {
 	if err != nil {
 		require.NoError(b, err)
 	}
+	defer h.Close()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for _, l := range lbls {
-		h.create(l.Hash(), l)
+		h.getOrCreate(l.Hash(), l)
 	}
 }
 
@@ -83,16 +85,94 @@ func readPrometheusLabels(fn string, n int) ([]labels.Labels, error) {
 	return mets, nil
 }
 
+type memoryWAL struct {
+	nopWAL
+	entries []interface{}
+}
+
+func (w *memoryWAL) Reader() WALReader {
+	return w
+}
+
+func (w *memoryWAL) Read(series func([]RefSeries), samples func([]RefSample), deletes func([]Stone)) error {
+	for _, e := range w.entries {
+		switch v := e.(type) {
+		case []RefSeries:
+			series(v)
+		case []RefSample:
+			samples(v)
+		case []Stone:
+			deletes(v)
+		}
+	}
+	return nil
+}
+
+func TestHead_ReadWAL(t *testing.T) {
+	entries := []interface{}{
+		[]RefSeries{
+			{Ref: 10, Labels: labels.FromStrings("a", "1")},
+			{Ref: 11, Labels: labels.FromStrings("a", "2")},
+			{Ref: 100, Labels: labels.FromStrings("a", "3")},
+		},
+		[]RefSample{
+			{Ref: 0, T: 99, V: 1},
+			{Ref: 10, T: 100, V: 2},
+			{Ref: 100, T: 100, V: 3},
+		},
+		[]RefSeries{
+			{Ref: 50, Labels: labels.FromStrings("a", "4")},
+		},
+		[]RefSample{
+			{Ref: 10, T: 101, V: 5},
+			{Ref: 50, T: 101, V: 6},
+		},
+	}
+	wal := &memoryWAL{entries: entries}
+
+	head, err := NewHead(nil, nil, wal, 1000)
+	require.NoError(t, err)
+	defer head.Close()
+
+	require.NoError(t, head.ReadWAL())
+	require.Equal(t, uint64(100), head.lastSeriesID)
+
+	s10 := head.series.getByID(10)
+	s11 := head.series.getByID(11)
+	s50 := head.series.getByID(50)
+	s100 := head.series.getByID(100)
+
+	require.Equal(t, labels.FromStrings("a", "1"), s10.lset)
+	require.Equal(t, labels.FromStrings("a", "2"), s11.lset)
+	require.Equal(t, labels.FromStrings("a", "4"), s50.lset)
+	require.Equal(t, labels.FromStrings("a", "3"), s100.lset)
+
+	expandChunk := func(c chunks.Iterator) (x []sample) {
+		for c.Next() {
+			t, v := c.At()
+			x = append(x, sample{t: t, v: v})
+		}
+		require.NoError(t, c.Err())
+		return x
+	}
+
+	require.Equal(t, []sample{{100, 2}, {101, 5}}, expandChunk(s10.iterator(0)))
+	require.Equal(t, 0, len(s11.chunks))
+	require.Equal(t, []sample{{101, 6}}, expandChunk(s50.iterator(0)))
+	require.Equal(t, []sample{{100, 3}}, expandChunk(s100.iterator(0)))
+}
+
 func TestHead_Truncate(t *testing.T) {
 	h, err := NewHead(nil, nil, nil, 1000)
 	require.NoError(t, err)
+	defer h.Close()
 
 	h.initTime(0)
 
-	s1 := h.create(1, labels.FromStrings("a", "1", "b", "1"))
-	s2 := h.create(2, labels.FromStrings("a", "2", "b", "1"))
-	s3 := h.create(3, labels.FromStrings("a", "1", "b", "2"))
-	s4 := h.create(4, labels.FromStrings("a", "2", "b", "2", "c", "1"))
+	s1, _ := h.getOrCreate(1, labels.FromStrings("a", "1", "b", "1"))
+	s2, _ := h.getOrCreate(2, labels.FromStrings("a", "2", "b", "1"))
+	s3, _ := h.getOrCreate(3, labels.FromStrings("a", "1", "b", "2"))
+	s4, _ := h.getOrCreate(4, labels.FromStrings("a", "2", "b", "2", "c", "1"))
 
 	s1.chunks = []*memChunk{
 		{minTime: 0, maxTime: 999},
@@ -110,8 +190,8 @@ func TestHead_Truncate(t *testing.T) {
 	}
 	s4.chunks = []*memChunk{}
 
-	// Truncation must be aligned.
-	require.Error(t, h.Truncate(1))
+	// Truncation need not be aligned.
+	require.NoError(t, h.Truncate(1))
 
 	h.Truncate(2000)
 
@@ -198,6 +278,7 @@ func TestHeadDeleteSimple(t *testing.T) {
 
 	head, err := NewHead(nil, nil, nil, 1000)
 	require.NoError(t, err)
+	defer head.Close()
 
 	app := head.Appender()
 
@@ -245,7 +326,8 @@ Outer:
 		}
 
 		// Compare the result.
-		q := NewBlockQuerier(head.Index(), head.Chunks(), head.Tombstones(), head.MinTime(), head.MaxTime())
+		q, err := NewBlockQuerier(head, head.MinTime(), head.MaxTime())
+		require.NoError(t, err)
 		res := q.Select(labels.NewEqualMatcher("a", "b"))
 
 		expSamples := make([]sample, 0, len(c.remaint))
@@ -580,5 +662,45 @@ func TestComputeChunkEndTime(t *testing.T) {
 		if got != c.res {
 			t.Errorf("expected %d for (start: %d, cur: %d, max: %d), got %d", c.res, c.start, c.cur, c.max, got)
 		}
+	}
+}
+
+func TestMemSeries_append(t *testing.T) {
+	s := newMemSeries(labels.Labels{}, 1, 500)
+
+	// Add first two samples at the very end of a chunk range and the next two
+	// on and after it.
+	// New chunk must correctly be cut at 1000.
+	ok, chunkCreated := s.append(998, 1)
+	Assert(t, ok, "append failed")
+	Assert(t, chunkCreated, "first sample created chunk")
+
+	ok, chunkCreated = s.append(999, 2)
+	Assert(t, ok, "append failed")
+	Assert(t, !chunkCreated, "second sample should use same chunk")
+
+	ok, chunkCreated = s.append(1000, 3)
+	Assert(t, ok, "append failed")
+	Assert(t, ok, "expected new chunk on boundary")
+
+	ok, chunkCreated = s.append(1001, 4)
+	Assert(t, ok, "append failed")
+	Assert(t, !chunkCreated, "second sample should use same chunk")
+
+	Assert(t, s.chunks[0].minTime == 998 && s.chunks[0].maxTime == 999, "wrong chunk range")
+	Assert(t, s.chunks[1].minTime == 1000 && s.chunks[1].maxTime == 1001, "wrong chunk range")
+
+	// Fill the range [1000,2000) with many samples. Intermediate chunks should be cut
+	// at approximately 120 samples per chunk.
+	for i := 1; i < 1000; i++ {
+		ok, _ := s.append(1001+int64(i), float64(i))
+		Assert(t, ok, "append failed")
+	}
+
+	Assert(t, len(s.chunks) > 7, "expected intermediate chunks")
+
+	// All chunks but the first and last should now be moderately full.
+	for i, c := range s.chunks[1 : len(s.chunks)-1] {
+		Assert(t, c.chunk.NumSamples() > 100, "unexpected small chunk %d of length %d", i, c.chunk.NumSamples())
 	}
 }

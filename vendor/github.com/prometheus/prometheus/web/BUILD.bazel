@@ -36,7 +36,6 @@ go_library(
         "//vendor/github.com/prometheus/prometheus/web/api/v2:go_default_library",
         "//vendor/github.com/prometheus/prometheus/web/ui:go_default_library",
         "//vendor/github.com/prometheus/tsdb:go_default_library",
-        "//vendor/golang.org/x/net/context:go_default_library",
         "//vendor/golang.org/x/net/netutil:go_default_library",
         "//vendor/google.golang.org/grpc:go_default_library",
     ],

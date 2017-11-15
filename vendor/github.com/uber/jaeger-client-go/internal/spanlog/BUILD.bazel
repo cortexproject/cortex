@@ -1,0 +1,9 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["json.go"],
+    importpath = "github.com/uber/jaeger-client-go/internal/spanlog",
+    visibility = ["//vendor/github.com/uber/jaeger-client-go:__subpackages__"],
+    deps = ["//vendor/github.com/opentracing/opentracing-go/log:go_default_library"],
+)

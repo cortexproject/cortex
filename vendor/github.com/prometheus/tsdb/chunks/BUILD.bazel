@@ -9,10 +9,7 @@ go_library(
     ],
     importpath = "github.com/prometheus/tsdb/chunks",
     visibility = ["//visibility:public"],
-    deps = [
-        "//vendor/github.com/dgryski/go-bits:go_default_library",
-        "//vendor/github.com/pkg/errors:go_default_library",
-    ],
+    deps = ["//vendor/github.com/pkg/errors:go_default_library"],
 )
 
 go_test(

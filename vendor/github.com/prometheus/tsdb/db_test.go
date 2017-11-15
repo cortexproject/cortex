@@ -68,7 +68,8 @@ func TestDataAvailableOnlyAfterCommit(t *testing.T) {
 	_, err := app.Add(labels.FromStrings("foo", "bar"), 0, 0)
 	require.NoError(t, err)
 
-	querier := db.Querier(0, 1)
+	querier, err := db.Querier(0, 1)
+	require.NoError(t, err)
 	seriesSet := readSeriesSet(t, querier.Select(labels.NewEqualMatcher("foo", "bar")))
 
 	require.Equal(t, seriesSet, map[string][]sample{})
@@ -77,7 +78,8 @@ func TestDataAvailableOnlyAfterCommit(t *testing.T) {
 	err = app.Commit()
 	require.NoError(t, err)
 
-	querier = db.Querier(0, 1)
+	querier, err = db.Querier(0, 1)
+	require.NoError(t, err)
 	defer querier.Close()
 
 	seriesSet = readSeriesSet(t, querier.Select(labels.NewEqualMatcher("foo", "bar")))
@@ -96,7 +98,8 @@ func TestDataNotAvailableAfterRollback(t *testing.T) {
 	err = app.Rollback()
 	require.NoError(t, err)
 
-	querier := db.Querier(0, 1)
+	querier, err := db.Querier(0, 1)
+	require.NoError(t, err)
 	defer querier.Close()
 
 	seriesSet := readSeriesSet(t, querier.Select(labels.NewEqualMatcher("foo", "bar")))
@@ -140,7 +143,9 @@ func TestDBAppenderAddRef(t *testing.T) {
 
 	require.NoError(t, app2.Commit())
 
-	q := db.Querier(0, 200)
+	q, err := db.Querier(0, 200)
+	require.NoError(t, err)
+
 	res := readSeriesSet(t, q.Select(labels.NewEqualMatcher("a", "b")))
 
 	require.Equal(t, map[string][]sample{
@@ -190,7 +195,9 @@ Outer:
 		}
 
 		// Compare the result.
-		q := db.Querier(0, numSamples)
+		q, err := db.Querier(0, numSamples)
+		require.NoError(t, err)
+
 		res := q.Select(labels.NewEqualMatcher("a", "b"))
 
 		expSamples := make([]sample, 0, len(c.remaint))
@@ -284,7 +291,9 @@ func TestSkippingInvalidValuesInSameTxn(t *testing.T) {
 	require.NoError(t, app.Commit())
 
 	// Make sure the right value is stored.
-	q := db.Querier(0, 10)
+	q, err := db.Querier(0, 10)
+	require.NoError(t, err)
+
 	ss := q.Select(labels.NewEqualMatcher("a", "b"))
 	ssMap := readSeriesSet(t, ss)
 
@@ -302,7 +311,9 @@ func TestSkippingInvalidValuesInSameTxn(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, app.Commit())
 
-	q = db.Querier(0, 10)
+	q, err = db.Querier(0, 10)
+	require.NoError(t, err)
+
 	ss = q.Select(labels.NewEqualMatcher("a", "b"))
 	ssMap = readSeriesSet(t, ss)
 
@@ -310,6 +321,49 @@ func TestSkippingInvalidValuesInSameTxn(t *testing.T) {
 		labels.New(labels.Label{"a", "b"}).String(): []sample{{0, 1}, {10, 3}},
 	}, ssMap)
 	require.NoError(t, q.Close())
+}
+
+func TestDB_Snapshot(t *testing.T) {
+	db, close := openTestDB(t, nil)
+	defer close()
+
+	// append data
+	app := db.Appender()
+	mint := int64(1414141414000)
+	for i := 0; i < 1000; i++ {
+		_, err := app.Add(labels.FromStrings("foo", "bar"), mint+int64(i), 1.0)
+		require.NoError(t, err)
+	}
+	require.NoError(t, app.Commit())
+	require.NoError(t, app.Rollback())
+
+	// create snapshot
+	snap, err := ioutil.TempDir("", "snap")
+	require.NoError(t, err)
+	require.NoError(t, db.Snapshot(snap))
+	require.NoError(t, db.Close())
+
+	// reopen DB from snapshot
+	db, err = Open(snap, nil, nil, nil)
+	require.NoError(t, err)
+
+	querier, err := db.Querier(mint, mint+1000)
+	require.NoError(t, err)
+	defer querier.Close()
+
+	// sum values
+	seriesSet := querier.Select(labels.NewEqualMatcher("foo", "bar"))
+	sum := 0.0
+	for seriesSet.Next() {
+		series := seriesSet.At().Iterator()
+		for series.Next() {
+			_, v := series.At()
+			sum += v
+		}
+		require.NoError(t, series.Err())
+	}
+	require.NoError(t, seriesSet.Err())
+	require.Equal(t, sum, 1000.0)
 }
 
 func TestDB_e2e(t *testing.T) {
@@ -443,7 +497,9 @@ func TestDB_e2e(t *testing.T) {
 				}
 			}
 
-			q := db.Querier(mint, maxt)
+			q, err := db.Querier(mint, maxt)
+			require.NoError(t, err)
+
 			ss := q.Select(qry.ms...)
 
 			result := map[string][]sample{}
@@ -467,4 +523,31 @@ func TestDB_e2e(t *testing.T) {
 	}
 
 	return
+}
+
+func TestWALFlushedOnDBClose(t *testing.T) {
+	tmpdir, _ := ioutil.TempDir("", "test")
+	defer os.RemoveAll(tmpdir)
+
+	db, err := Open(tmpdir, nil, nil, nil)
+	require.NoError(t, err)
+
+	lbls := labels.Labels{labels.Label{Name: "labelname", Value: "labelvalue"}}
+
+	app := db.Appender()
+	_, err = app.Add(lbls, 0, 1)
+	require.NoError(t, err)
+	require.NoError(t, app.Commit())
+
+	db.Close()
+
+	db, err = Open(tmpdir, nil, nil, nil)
+	require.NoError(t, err)
+
+	q, err := db.Querier(0, 1)
+	require.NoError(t, err)
+
+	values, err := q.LabelValues("labelname")
+	require.NoError(t, err)
+	require.Equal(t, values, []string{"labelvalue"})
 }

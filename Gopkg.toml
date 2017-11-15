@@ -7,14 +7,6 @@
   revision = "4a8e71069177280d0317ccd80a8201a06f2d8139"
 
 [[constraint]]
-  name = "github.com/prometheus/prometheus"
-  branch = "master"
-
-[[constraint]]
-  name = "github.com/weaveworks/common"
-  branch = "master"
-
-[[constraint]]
   name = "github.com/weaveworks/promrus"
   version = "v1.1.0-legacy"
 
@@ -37,3 +29,9 @@
 [[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
+
+[[override]]
+  name = "github.com/grpc-ecosystem/grpc-gateway"
+  # This version is currently vendored in github.com/prometheus/prometheus,
+  # and newer versions have changed method signatures, so break the build.
+  revision = "589b126116b5fc961939b3e156c29e4d9d58222f"

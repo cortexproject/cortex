@@ -15,11 +15,48 @@ package tsdb
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math/rand"
+	"sort"
 	"testing"
 
+	"github.com/prometheus/tsdb/labels"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMemPostings_addFor(t *testing.T) {
+	p := newMemPostings()
+	p.m[allPostingsKey] = []uint64{1, 2, 3, 4, 6, 7, 8}
+
+	p.addFor(5, allPostingsKey)
+
+	require.Equal(t, []uint64{1, 2, 3, 4, 5, 6, 7, 8}, p.m[allPostingsKey])
+}
+
+func TestMemPostings_ensureOrder(t *testing.T) {
+	p := newUnorderedMemPostings()
+
+	for i := 0; i < 100; i++ {
+		l := make([]uint64, 100)
+		for j := range l {
+			l[j] = rand.Uint64()
+		}
+		v := fmt.Sprintf("%d", i)
+
+		p.m[labels.Label{"a", v}] = l
+	}
+
+	p.ensureOrder()
+
+	for _, l := range p.m {
+		ok := sort.SliceIsSorted(l, func(i, j int) bool {
+			return l[i] < l[j]
+		})
+		if !ok {
+			t.Fatalf("postings list %v is not sorted", l)
+		}
+	}
+}
 
 type mockPostings struct {
 	next  func() bool
@@ -32,13 +69,6 @@ func (m *mockPostings) Next() bool         { return m.next() }
 func (m *mockPostings) Seek(v uint64) bool { return m.seek(v) }
 func (m *mockPostings) Value() uint64      { return m.value() }
 func (m *mockPostings) Err() error         { return m.err() }
-
-func expandPostings(p Postings) (res []uint64, err error) {
-	for p.Next() {
-		res = append(res, p.At())
-	}
-	return res, p.Err()
-}
 
 func TestIntersect(t *testing.T) {
 	var cases = []struct {

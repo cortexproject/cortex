@@ -20,6 +20,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/ring"
+	"github.com/weaveworks/cortex/pkg/tracing"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/promrus"
 )
@@ -41,6 +42,10 @@ func main() {
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
 		&chunkStoreConfig, &schemaConfig, &storageConfig, util.LogLevel{})
 	flag.Parse()
+
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	trace := tracing.New("querier")
+	defer trace.Close()
 
 	log.AddHook(promrus.MustNewPrometheusHook())
 

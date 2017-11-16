@@ -109,24 +109,6 @@
   revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
 
 [[projects]]
-  name = "github.com/coreos/etcd"
-  packages = ["pkg/fileutil"]
-  revision = "bb66589f8cf18960c7f3d56b1b83753caeed9c7a"
-  version = "v3.2.7"
-
-[[projects]]
-  name = "github.com/coreos/go-systemd"
-  packages = ["journal"]
-  revision = "d2196463941895ee908e13531a23a39feb9e1243"
-  version = "v15"
-
-[[projects]]
-  name = "github.com/coreos/pkg"
-  packages = ["capnslog"]
-  revision = "3ac0863d7acf3bc44daf49afef8919af12f704ef"
-  version = "v3"
-
-[[projects]]
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
@@ -137,12 +119,6 @@
   packages = ["."]
   revision = "d2709f9f1f31ebcda9651b03077758c1f3a0018c"
   version = "v3.0.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/dgryski/go-bits"
-  packages = ["."]
-  revision = "2ad8d707cc05b1815ce6ff2543bb5e8d8f9298ef"
 
 [[projects]]
   name = "github.com/docker/distribution"
@@ -249,7 +225,7 @@
 [[projects]]
   branch = "master"
   name = "github.com/golang/protobuf"
-  packages = ["proto","protoc-gen-go/descriptor","ptypes","ptypes/any","ptypes/duration","ptypes/empty","ptypes/timestamp","ptypes/wrappers"]
+  packages = ["jsonpb","proto","protoc-gen-go/descriptor","ptypes","ptypes/any","ptypes/duration","ptypes/empty","ptypes/timestamp","ptypes/wrappers"]
   revision = "2bba0603135d7d7f5cb73b2125beeda19c09f4ef"
 
 [[projects]]
@@ -287,6 +263,11 @@
   packages = ["."]
   revision = "392c28fe23e1c45ddba891b0320b3b5df220beea"
   version = "v1.3.0"
+
+[[projects]]
+  name = "github.com/grpc-ecosystem/grpc-gateway"
+  packages = ["runtime","runtime/internal","utilities"]
+  revision = "589b126116b5fc961939b3e156c29e4d9d58222f"
 
 [[projects]]
   branch = "master"
@@ -527,16 +508,16 @@
   revision = "6ac8c5d890d415025dd5aae7595bcb2a6e7e2fad"
 
 [[projects]]
-  branch = "master"
   name = "github.com/prometheus/prometheus"
-  packages = ["config","discovery","discovery/azure","discovery/consul","discovery/dns","discovery/ec2","discovery/file","discovery/gce","discovery/kubernetes","discovery/marathon","discovery/openstack","discovery/triton","discovery/zookeeper","notifier","pkg/labels","pkg/pool","pkg/relabel","pkg/rulefmt","pkg/textparse","pkg/timestamp","pkg/value","promql","retrieval","rules","storage","storage/tsdb","template","util/httputil","util/stats","util/strutil","util/testutil","util/treecache","web/api/v1"]
-  revision = "e948721a0b269707a6e89e0c513eb434a7b66c8a"
+  packages = ["config","discovery","discovery/azure","discovery/consul","discovery/dns","discovery/ec2","discovery/file","discovery/gce","discovery/kubernetes","discovery/marathon","discovery/openstack","discovery/triton","discovery/zookeeper","notifier","pkg/labels","pkg/pool","pkg/relabel","pkg/rulefmt","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","relabel","retrieval","rules","storage","storage/remote","storage/tsdb","template","util/httputil","util/stats","util/strutil","util/testutil","util/treecache","web/api/v1"]
+  revision = "0a74f98628a0463dddc90528220c94de5032d1a0"
+  version = "v2.0.0"
 
 [[projects]]
   branch = "master"
   name = "github.com/prometheus/tsdb"
-  packages = [".","chunks","labels"]
-  revision = "2187388292bc7e4341232f98dbbe217c6290c89c"
+  packages = [".","chunks","fileutil","labels"]
+  revision = "a00d700d48ec14d46c270eff928dfe17187d3b57"
 
 [[projects]]
   branch = "master"
@@ -742,6 +723,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "bf1ace4ad357c3b8f278c131d7e35cfd9b06903d433421aa39343866998e5bc3"
+  inputs-digest = "120466dcae90bbb03f968a0ed67b11c3ea5e61398a3edf8c4acdfdedefbe86e7"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "constants.go",
+        "ttypes.go",
+        "zipkincollector.go",
+    ],
+    importpath = "github.com/uber/jaeger-client-go/thrift-gen/zipkincore",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/apache/thrift/lib/go/thrift:go_default_library"],
+)

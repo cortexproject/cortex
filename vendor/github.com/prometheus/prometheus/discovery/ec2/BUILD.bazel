@@ -8,7 +8,9 @@ go_library(
     deps = [
         "//vendor/github.com/aws/aws-sdk-go/aws:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/credentials:go_default_library",
+        "//vendor/github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/credentials/stscreds:go_default_library",
+        "//vendor/github.com/aws/aws-sdk-go/aws/ec2metadata:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/session:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/service/ec2:go_default_library",
         "//vendor/github.com/go-kit/kit/log:go_default_library",
@@ -17,6 +19,5 @@ go_library(
         "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/prometheus/config:go_default_library",
         "//vendor/github.com/prometheus/prometheus/util/strutil:go_default_library",
-        "//vendor/golang.org/x/net/context:go_default_library",
     ],
 )

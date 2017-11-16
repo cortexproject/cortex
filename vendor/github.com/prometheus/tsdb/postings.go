@@ -15,6 +15,7 @@ package tsdb
 
 import (
 	"encoding/binary"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -22,14 +23,30 @@ import (
 	"github.com/prometheus/tsdb/labels"
 )
 
+// memPostings holds postings list for series ID per label pair. They may be written
+// to out of order.
+// ensureOrder() must be called once before any reads are done. This allows for quick
+// unordered batch fills on startup.
 type memPostings struct {
-	mtx sync.RWMutex
-	m   map[labels.Label][]uint64
+	mtx     sync.RWMutex
+	m       map[labels.Label][]uint64
+	ordered bool
 }
 
+// newMemPoistings returns a memPostings that's ready for reads and writes.
 func newMemPostings() *memPostings {
 	return &memPostings{
-		m: make(map[labels.Label][]uint64, 512),
+		m:       make(map[labels.Label][]uint64, 512),
+		ordered: true,
+	}
+}
+
+// newUnorderedMemPostings returns a memPostings that is not safe to be read from
+// until ensureOrder was called once.
+func newUnorderedMemPostings() *memPostings {
+	return &memPostings{
+		m:       make(map[labels.Label][]uint64, 512),
+		ordered: false,
 	}
 }
 
@@ -45,7 +62,41 @@ func (p *memPostings) get(name, value string) Postings {
 	return newListPostings(l)
 }
 
-var allLabel = labels.Label{}
+var allPostingsKey = labels.Label{}
+
+// ensurePostings ensures that all postings lists are sorted. After it returns all further
+// calls to add and addFor will insert new IDs in a sorted manner.
+func (p *memPostings) ensureOrder() {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+
+	if p.ordered {
+		return
+	}
+
+	n := runtime.GOMAXPROCS(0)
+	workc := make(chan []uint64)
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+
+	for i := 0; i < n; i++ {
+		go func() {
+			for l := range workc {
+				sort.Slice(l, func(i, j int) bool { return l[i] < l[j] })
+			}
+			wg.Done()
+		}()
+	}
+
+	for _, l := range p.m {
+		workc <- l
+	}
+	close(workc)
+	wg.Wait()
+
+	p.ordered = true
+}
 
 // add adds a document to the index. The caller has to ensure that no
 // term argument appears twice.
@@ -53,11 +104,37 @@ func (p *memPostings) add(id uint64, lset labels.Labels) {
 	p.mtx.Lock()
 
 	for _, l := range lset {
-		p.m[l] = append(p.m[l], id)
+		p.addFor(id, l)
 	}
-	p.m[allLabel] = append(p.m[allLabel], id)
+	p.addFor(id, allPostingsKey)
 
 	p.mtx.Unlock()
+}
+
+func (p *memPostings) addFor(id uint64, l labels.Label) {
+	list := append(p.m[l], id)
+	p.m[l] = list
+
+	if !p.ordered {
+		return
+	}
+	// There is no guarantee that no higher ID was inserted before as they may
+	// be generated independently before adding them to postings.
+	// We repair order violations on insert. The invariant is that the first n-1
+	// items in the list are already sorted.
+	for i := len(list) - 1; i >= 1; i-- {
+		if list[i] >= list[i-1] {
+			break
+		}
+		list[i], list[i-1] = list[i-1], list[i]
+	}
+}
+
+func expandPostings(p Postings) (res []uint64, err error) {
+	for p.Next() {
+		res = append(res, p.At())
+	}
+	return res, p.Err()
 }
 
 // Postings provides iterative access over a postings list.

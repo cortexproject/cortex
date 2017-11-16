@@ -3,6 +3,7 @@ package tsdb
 import (
 	"encoding/binary"
 	"hash"
+	"hash/crc32"
 	"unsafe"
 )
 
@@ -77,20 +78,9 @@ func (d *decbuf) uvarint32() uint32 { return uint32(d.uvarint64()) }
 func (d *decbuf) be32int() int      { return int(d.be32()) }
 func (d *decbuf) be64int64() int64  { return int64(d.be64()) }
 
-// uvarintTempStr decodes like uvarintStr but the returned string is
-// not safe to use if the underyling buffer changes.
-func (d *decbuf) uvarintTempStr() string {
-	l := d.uvarint64()
-	if d.e != nil {
-		return ""
-	}
-	if len(d.b) < int(l) {
-		d.e = errInvalidSize
-		return ""
-	}
-	s := yoloString(d.b[:l])
-	d.b = d.b[l:]
-	return s
+// crc32 returns a CRC32 checksum over the remaining bytes.
+func (d *decbuf) crc32() uint32 {
+	return crc32.Checksum(d.b, castagnoliTable)
 }
 
 func (d *decbuf) uvarintStr() string {

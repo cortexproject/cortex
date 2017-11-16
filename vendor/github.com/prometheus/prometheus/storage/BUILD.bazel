@@ -6,12 +6,14 @@ go_library(
         "buffer.go",
         "fanout.go",
         "interface.go",
+        "noop.go",
     ],
     importpath = "github.com/prometheus/prometheus/storage",
     visibility = ["//visibility:public"],
     deps = [
         "//vendor/github.com/go-kit/kit/log:go_default_library",
         "//vendor/github.com/go-kit/kit/log/level:go_default_library",
+        "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/prometheus/pkg/labels:go_default_library",
     ],
 )

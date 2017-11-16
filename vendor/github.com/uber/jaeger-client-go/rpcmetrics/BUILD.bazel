@@ -1,0 +1,40 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "doc.go",
+        "endpoints.go",
+        "metrics.go",
+        "normalizer.go",
+        "observer.go",
+    ],
+    importpath = "github.com/uber/jaeger-client-go/rpcmetrics",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/opentracing/opentracing-go:go_default_library",
+        "//vendor/github.com/opentracing/opentracing-go/ext:go_default_library",
+        "//vendor/github.com/uber/jaeger-client-go:go_default_library",
+        "//vendor/github.com/uber/jaeger-lib/metrics:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "endpoints_test.go",
+        "metrics_test.go",
+        "normalizer_test.go",
+        "observer_test.go",
+    ],
+    importpath = "github.com/uber/jaeger-client-go/rpcmetrics",
+    library = ":go_default_library",
+    deps = [
+        "//vendor/github.com/opentracing/opentracing-go:go_default_library",
+        "//vendor/github.com/opentracing/opentracing-go/ext:go_default_library",
+        "//vendor/github.com/stretchr/testify/assert:go_default_library",
+        "//vendor/github.com/uber/jaeger-client-go:go_default_library",
+        "//vendor/github.com/uber/jaeger-lib/metrics:go_default_library",
+        "//vendor/github.com/uber/jaeger-lib/metrics/testutils:go_default_library",
+    ],
+)

@@ -19,15 +19,14 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	"math"
-
-	"github.com/coreos/etcd/pkg/fileutil"
 	"github.com/pkg/errors"
+	"github.com/prometheus/tsdb/fileutil"
 	"github.com/prometheus/tsdb/labels"
 )
 
@@ -36,6 +35,8 @@ const (
 	MagicIndex = 0xBAAAD700
 
 	indexFormatV1 = 1
+
+	size_unit = 4
 )
 
 const indexFilename = "index"
@@ -154,6 +155,8 @@ func newIndexWriter(dir string) (*indexWriter, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer df.Close() // close for flatform windows
+
 	f, err := os.OpenFile(filepath.Join(dir, indexFilename), os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		return nil, err
@@ -202,12 +205,13 @@ func (w *indexWriter) write(bufs ...[]byte) error {
 	return nil
 }
 
-// addPadding adds zero byte padding until the file size is a multiple of n.
-func (w *indexWriter) addPadding(n int) error {
-	p := n - (int(w.pos) % n)
+// addPadding adds zero byte padding until the file size is a multiple size_unit.
+func (w *indexWriter) addPadding() error {
+	p := w.pos % size_unit
 	if p == 0 {
 		return nil
 	}
+	p = size_unit - p
 	return errors.Wrap(w.write(make([]byte, p)), "add padding")
 }
 
@@ -232,13 +236,13 @@ func (w *indexWriter) ensureStage(s indexWriterStage) error {
 		w.toc.labelIndices = w.pos
 
 	case idxStagePostings:
+		w.toc.postings = w.pos
+
+	case idxStageDone:
 		w.toc.labelIndicesTable = w.pos
 		if err := w.writeOffsetTable(w.labelIndexes); err != nil {
 			return err
 		}
-		w.toc.postings = w.pos
-
-	case idxStageDone:
 		w.toc.postingsTable = w.pos
 		if err := w.writeOffsetTable(w.postings); err != nil {
 			return err
@@ -372,7 +376,7 @@ func (w *indexWriter) WriteLabelIndex(names []string, values []string) error {
 	sort.Sort(valt)
 
 	// Align beginning to 4 bytes for more efficient index list scans.
-	if err := w.addPadding(4); err != nil {
+	if err := w.addPadding(); err != nil {
 		return err
 	}
 
@@ -404,10 +408,8 @@ func (w *indexWriter) WriteLabelIndex(names []string, values []string) error {
 
 // writeOffsetTable writes a sequence of readable hash entries.
 func (w *indexWriter) writeOffsetTable(entries []hashEntry) error {
-	w.buf1.reset()
-	w.buf1.putBE32int(len(entries))
-
 	w.buf2.reset()
+	w.buf2.putBE32int(len(entries))
 
 	for _, e := range entries {
 		w.buf2.putUvarint(len(e.keys))
@@ -417,6 +419,7 @@ func (w *indexWriter) writeOffsetTable(entries []hashEntry) error {
 		w.buf2.putUvarint64(e.offset)
 	}
 
+	w.buf1.reset()
 	w.buf1.putBE32int(w.buf2.len())
 	w.buf2.putHash(w.crc32)
 
@@ -446,7 +449,7 @@ func (w *indexWriter) WritePostings(name, value string, it Postings) error {
 	}
 
 	// Align beginning to 4 bytes for more efficient postings list scans.
-	if err := w.addPadding(4); err != nil {
+	if err := w.addPadding(); err != nil {
 		return err
 	}
 
@@ -527,6 +530,8 @@ type IndexReader interface {
 
 	// Postings returns the postings list iterator for the label pair.
 	// The Postings here contain the offsets to the series inside the index.
+	// Found IDs are not strictly required to point to a valid Series, e.g. during
+	// background garbage collections.
 	Postings(name, value string) (Postings, error)
 
 	// SortedPostings returns a postings list that is reordered to be sorted
@@ -535,6 +540,7 @@ type IndexReader interface {
 
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
+	// Returns ErrNotFound if the ref does not resolve to a known series.
 	Series(ref uint64, lset *labels.Labels, chks *[]ChunkMeta) error
 
 	// LabelIndices returns the label pairs for which indices exist.
@@ -554,7 +560,7 @@ type StringTuples interface {
 
 type indexReader struct {
 	// The underlying byte slice holding the encoded series data.
-	b   []byte
+	b   ByteSlice
 	toc indexTOC
 
 	// Close that releases the underlying resources of the byte slice.
@@ -563,35 +569,78 @@ type indexReader struct {
 	// Cached hashmaps of section offsets.
 	labels   map[string]uint32
 	postings map[string]uint32
+	// Cache of read symbols. Strings that are returned when reading from the
+	// block are always backed by true strings held in here rather than
+	// strings that are backed by byte slices from the mmap'd index file. This
+	// prevents memory faults when applications work with read symbols after
+	// the block has been unmapped.
+	symbols map[uint32]string
+
+	crc32 hash.Hash32
 }
 
 var (
-	errInvalidSize = fmt.Errorf("invalid size")
-	errInvalidFlag = fmt.Errorf("invalid flag")
+	errInvalidSize     = fmt.Errorf("invalid size")
+	errInvalidFlag     = fmt.Errorf("invalid flag")
+	errInvalidChecksum = fmt.Errorf("invalid checksum")
 )
 
-// NewIndexReader returns a new IndexReader on the given directory.
-func NewIndexReader(dir string) (IndexReader, error) { return newIndexReader(dir) }
+// ByteSlice abstracts a byte slice.
+type ByteSlice interface {
+	Len() int
+	Range(start, end int) []byte
+}
 
-// newIndexReader returns a new indexReader on the given directory.
-func newIndexReader(dir string) (*indexReader, error) {
-	f, err := openMmapFile(filepath.Join(dir, "index"))
+type realByteSlice []byte
+
+func (b realByteSlice) Len() int {
+	return len(b)
+}
+
+func (b realByteSlice) Range(start, end int) []byte {
+	return b[start:end]
+}
+
+func (b realByteSlice) Sub(start, end int) ByteSlice {
+	return b[start:end]
+}
+
+// NewIndexReader returns a new IndexReader on the given byte slice.
+func NewIndexReader(b ByteSlice) (IndexReader, error) {
+	return newIndexReader(b, nil)
+}
+
+// NewFileIndexReader returns a new index reader against the given index file.
+func NewFileIndexReader(path string) (IndexReader, error) {
+	f, err := openMmapFile(path)
 	if err != nil {
 		return nil, err
 	}
-	r := &indexReader{b: f.b, c: f}
+	return newIndexReader(realByteSlice(f.b), f)
+}
 
+func newIndexReader(b ByteSlice, c io.Closer) (*indexReader, error) {
+	r := &indexReader{
+		b:       b,
+		c:       c,
+		symbols: map[uint32]string{},
+		crc32:   newCRC32(),
+	}
 	// Verify magic number.
-	if len(f.b) < 4 {
+	if b.Len() < 4 {
 		return nil, errors.Wrap(errInvalidSize, "index header")
 	}
-	if m := binary.BigEndian.Uint32(r.b[:4]); m != MagicIndex {
+	if m := binary.BigEndian.Uint32(r.b.Range(0, 4)); m != MagicIndex {
 		return nil, errors.Errorf("invalid magic number %x", m)
 	}
 
 	if err := r.readTOC(); err != nil {
 		return nil, errors.Wrap(err, "read TOC")
 	}
+	if err := r.readSymbols(int(r.toc.symbols)); err != nil {
+		return nil, errors.Wrap(err, "read symbols")
+	}
+	var err error
 
 	r.labels, err = r.readOffsetTable(r.toc.labelIndicesTable)
 	if err != nil {
@@ -602,7 +651,17 @@ func newIndexReader(dir string) (*indexReader, error) {
 }
 
 func (r *indexReader) readTOC() error {
-	d := r.decbufAt(len(r.b) - indexTOCLen)
+	if r.b.Len() < indexTOCLen {
+		return errInvalidSize
+	}
+	b := r.b.Range(r.b.Len()-indexTOCLen, r.b.Len())
+
+	expCRC := binary.BigEndian.Uint32(b[len(b)-4:])
+	d := decbuf{b: b[:len(b)-4]}
+
+	if d.crc32() != expCRC {
+		return errInvalidChecksum
+	}
 
 	r.toc.symbols = d.be64()
 	r.toc.series = d.be64()
@@ -611,99 +670,131 @@ func (r *indexReader) readTOC() error {
 	r.toc.postings = d.be64()
 	r.toc.postingsTable = d.be64()
 
-	// TODO(fabxc): validate checksum.
-
-	return nil
+	return d.err()
 }
 
+// decbufAt returns a new decoding buffer. It expects the first 4 bytes
+// after offset to hold the big endian encoded content length, followed by the contents and the expected
+// checksum.
 func (r *indexReader) decbufAt(off int) decbuf {
-	if len(r.b) < off {
+	if r.b.Len() < off+4 {
 		return decbuf{e: errInvalidSize}
 	}
-	return decbuf{b: r.b[off:]}
+	b := r.b.Range(off, off+4)
+	l := int(binary.BigEndian.Uint32(b))
+
+	if r.b.Len() < off+4+l+4 {
+		return decbuf{e: errInvalidSize}
+	}
+
+	// Load bytes holding the contents plus a CRC32 checksum.
+	b = r.b.Range(off+4, off+4+l+4)
+	dec := decbuf{b: b[:len(b)-4]}
+
+	if exp := binary.BigEndian.Uint32(b[len(b)-4:]); dec.crc32() != exp {
+		return decbuf{e: errInvalidChecksum}
+	}
+	return dec
+}
+
+// decbufUvarintAt returns a new decoding buffer. It expects the first bytes
+// after offset to hold the uvarint-encoded buffers length, followed by the contents and the expected
+// checksum.
+func (r *indexReader) decbufUvarintAt(off int) decbuf {
+	// We never have to access this method at the far end of the byte slice. Thus just checking
+	// against the MaxVarintLen32 is sufficient.
+	if r.b.Len() < off+binary.MaxVarintLen32 {
+		return decbuf{e: errInvalidSize}
+	}
+	b := r.b.Range(off, off+binary.MaxVarintLen32)
+
+	l, n := binary.Uvarint(b)
+	if n > binary.MaxVarintLen32 {
+		return decbuf{e: errors.New("invalid uvarint")}
+	}
+
+	if r.b.Len() < off+n+int(l)+4 {
+		return decbuf{e: errInvalidSize}
+	}
+
+	// Load bytes holding the contents plus a CRC32 checksum.
+	b = r.b.Range(off+n, off+n+int(l)+4)
+	dec := decbuf{b: b[:len(b)-4]}
+
+	if dec.crc32() != binary.BigEndian.Uint32(b[len(b)-4:]) {
+		return decbuf{e: errInvalidChecksum}
+	}
+	return dec
+}
+
+// readSymbols reads the symbol table fully into memory and allocates proper strings for them.
+// Strings backed by the mmap'd memory would cause memory faults if applications keep using them
+// after the reader is closed.
+func (r *indexReader) readSymbols(off int) error {
+	if off == 0 {
+		return nil
+	}
+	d := r.decbufAt(off)
+
+	var (
+		origLen = d.len()
+		cnt     = d.be32int()
+		basePos = uint32(off) + 4
+		nextPos = basePos + uint32(origLen-d.len())
+	)
+	for d.err() == nil && d.len() > 0 && cnt > 0 {
+		s := d.uvarintStr()
+		r.symbols[uint32(nextPos)] = s
+
+		nextPos = basePos + uint32(origLen-d.len())
+		cnt--
+	}
+	return d.err()
 }
 
 // readOffsetTable reads an offset table at the given position and returns a map
 // with the key strings concatenated by the 0xff unicode non-character.
 func (r *indexReader) readOffsetTable(off uint64) (map[string]uint32, error) {
-	// A table might not have been written at all, in which case the position
-	// is zeroed out.
-	if off == 0 {
-		return nil, nil
-	}
-
 	const sep = "\xff"
 
-	var (
-		d1  = r.decbufAt(int(off))
-		cnt = d1.be32()
-		d2  = d1.decbuf(d1.be32int())
-	)
+	d := r.decbufAt(int(off))
+	cnt := d.be32()
 
-	res := make(map[string]uint32, 512)
+	res := make(map[string]uint32, cnt)
 
-	for d2.err() == nil && d2.len() > 0 && cnt > 0 {
-		keyCount := int(d2.uvarint())
+	for d.err() == nil && d.len() > 0 && cnt > 0 {
+		keyCount := int(d.uvarint())
 		keys := make([]string, 0, keyCount)
 
 		for i := 0; i < keyCount; i++ {
-			keys = append(keys, d2.uvarintTempStr())
+			keys = append(keys, d.uvarintStr())
 		}
-		res[strings.Join(keys, sep)] = uint32(d2.uvarint())
+		res[strings.Join(keys, sep)] = uint32(d.uvarint())
 
 		cnt--
 	}
-
-	// TODO(fabxc): verify checksum from remainer of d1.
-	return res, d2.err()
+	return res, d.err()
 }
 
 func (r *indexReader) Close() error {
 	return r.c.Close()
 }
 
-func (r *indexReader) section(o uint32) (byte, []byte, error) {
-	b := r.b[o:]
-
-	if len(b) < 5 {
-		return 0, nil, errors.Wrap(errInvalidSize, "read header")
-	}
-
-	flag := b[0]
-	l := binary.BigEndian.Uint32(b[1:5])
-
-	b = b[5:]
-
-	// b must have the given length plus 4 bytes for the CRC32 checksum.
-	if len(b) < int(l)+4 {
-		return 0, nil, errors.Wrap(errInvalidSize, "section content")
-	}
-	return flag, b[:l], nil
-}
-
 func (r *indexReader) lookupSymbol(o uint32) (string, error) {
-	d := r.decbufAt(int(o))
-
-	s := d.uvarintTempStr()
-	if d.err() != nil {
-		return "", errors.Wrapf(d.err(), "read symbol at %d", o)
+	s, ok := r.symbols[o]
+	if !ok {
+		return "", errors.Errorf("unknown symbol offset %d", o)
 	}
 	return s, nil
 }
 
 func (r *indexReader) Symbols() (map[string]struct{}, error) {
-	d1 := r.decbufAt(int(r.toc.symbols))
-	d2 := d1.decbuf(d1.be32int())
+	res := make(map[string]struct{}, len(r.symbols))
 
-	count := d2.be32int()
-	sym := make(map[string]struct{}, count)
-
-	for ; count > 0; count-- {
-		s := d2.uvarintTempStr()
-		sym[s] = struct{}{}
+	for _, s := range r.symbols {
+		res[s] = struct{}{}
 	}
-
-	return sym, d2.err()
+	return res, nil
 }
 
 func (r *indexReader) LabelValues(names ...string) (StringTuples, error) {
@@ -718,21 +809,17 @@ func (r *indexReader) LabelValues(names ...string) (StringTuples, error) {
 		//return nil, fmt.Errorf("label index doesn't exist")
 	}
 
-	d1 := r.decbufAt(int(off))
-	d2 := d1.decbuf(d1.be32int())
+	d := r.decbufAt(int(off))
 
-	nc := d2.be32int()
-	d2.be32() // consume unused value entry count.
+	nc := d.be32int()
+	d.be32() // consume unused value entry count.
 
-	if d2.err() != nil {
-		return nil, errors.Wrap(d2.err(), "read label value index")
+	if d.err() != nil {
+		return nil, errors.Wrap(d.err(), "read label value index")
 	}
-
-	// TODO(fabxc): verify checksum in 4 remaining bytes of d1.
-
 	st := &serializedStringTuples{
 		l:      nc,
-		b:      d2.get(),
+		b:      d.get(),
 		lookup: r.lookupSymbol,
 	}
 	return st, nil
@@ -755,20 +842,19 @@ func (r *indexReader) LabelIndices() ([][]string, error) {
 }
 
 func (r *indexReader) Series(ref uint64, lbls *labels.Labels, chks *[]ChunkMeta) error {
-	d1 := r.decbufAt(int(ref))
-	d2 := d1.decbuf(int(d1.uvarint()))
+	d := r.decbufUvarintAt(int(ref))
 
 	*lbls = (*lbls)[:0]
 	*chks = (*chks)[:0]
 
-	k := int(d2.uvarint())
+	k := int(d.uvarint())
 
 	for i := 0; i < k; i++ {
-		lno := uint32(d2.uvarint())
-		lvo := uint32(d2.uvarint())
+		lno := uint32(d.uvarint())
+		lvo := uint32(d.uvarint())
 
-		if d2.err() != nil {
-			return errors.Wrap(d2.err(), "read series label offsets")
+		if d.err() != nil {
+			return errors.Wrap(d.err(), "read series label offsets")
 		}
 
 		ln, err := r.lookupSymbol(lno)
@@ -784,15 +870,15 @@ func (r *indexReader) Series(ref uint64, lbls *labels.Labels, chks *[]ChunkMeta)
 	}
 
 	// Read the chunks meta data.
-	k = int(d2.uvarint())
+	k = int(d.uvarint())
 
 	if k == 0 {
 		return nil
 	}
 
-	t0 := d2.varint64()
-	maxt := int64(d2.uvarint64()) + t0
-	ref0 := int64(d2.uvarint64())
+	t0 := d.varint64()
+	maxt := int64(d.uvarint64()) + t0
+	ref0 := int64(d.uvarint64())
 
 	*chks = append(*chks, ChunkMeta{
 		Ref:     uint64(ref0),
@@ -802,14 +888,14 @@ func (r *indexReader) Series(ref uint64, lbls *labels.Labels, chks *[]ChunkMeta)
 	t0 = maxt
 
 	for i := 1; i < k; i++ {
-		mint := int64(d2.uvarint64()) + t0
-		maxt := int64(d2.uvarint64()) + mint
+		mint := int64(d.uvarint64()) + t0
+		maxt := int64(d.uvarint64()) + mint
 
-		ref0 += d2.varint64()
+		ref0 += d.varint64()
 		t0 = maxt
 
-		if d2.err() != nil {
-			return errors.Wrapf(d2.err(), "read meta for chunk %d", i)
+		if d.err() != nil {
+			return errors.Wrapf(d.err(), "read meta for chunk %d", i)
 		}
 
 		*chks = append(*chks, ChunkMeta{
@@ -818,10 +904,7 @@ func (r *indexReader) Series(ref uint64, lbls *labels.Labels, chks *[]ChunkMeta)
 			MaxTime: maxt,
 		})
 	}
-
-	// TODO(fabxc): verify CRC32.
-
-	return nil
+	return d.err()
 }
 
 func (r *indexReader) Postings(name, value string) (Postings, error) {
@@ -832,19 +915,10 @@ func (r *indexReader) Postings(name, value string) (Postings, error) {
 	if !ok {
 		return emptyPostings, nil
 	}
+	d := r.decbufAt(int(off))
+	d.be32() // consume unused postings list length.
 
-	d1 := r.decbufAt(int(off))
-	d2 := d1.decbuf(d1.be32int())
-
-	d2.be32() // consume unused postings list length.
-
-	if d2.err() != nil {
-		return nil, errors.Wrap(d2.err(), "get postings bytes")
-	}
-
-	// TODO(fabxc): read checksum from 4 remainer bytes of d1 and verify.
-
-	return newBigEndianPostings(d2.get()), nil
+	return newBigEndianPostings(d.get()), errors.Wrap(d.err(), "get postings bytes")
 }
 
 func (r *indexReader) SortedPostings(p Postings) Postings {

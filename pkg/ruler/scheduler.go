@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -20,6 +21,8 @@ const (
 	// Backoff for loading initial configuration set.
 	minBackoff = 100 * time.Millisecond
 	maxBackoff = 2 * time.Second
+
+	timeLogFormat = "2006-01-02T15:04:05"
 )
 
 var (
@@ -66,6 +69,10 @@ func (w workItem) Scheduled() time.Time {
 // Defer returns a work item with updated rules, rescheduled to a later time.
 func (w workItem) Defer(interval time.Duration, currentRules []rules.Rule) workItem {
 	return workItem{w.userID, currentRules, w.scheduled.Add(interval)}
+}
+
+func (w workItem) String() string {
+	return fmt.Sprintf("%s:%d@%s", w.userID, len(w.rules), w.scheduled.Format(timeLogFormat))
 }
 
 type scheduler struct {
@@ -188,6 +195,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.View) {
 			continue
 		}
 
+		log.Infof("Scheduler: updating rules for %v: len=%d", userID, len(rules))
 		s.Lock()
 		s.cfgs[userID] = rules
 		s.Unlock()
@@ -234,6 +242,6 @@ func (s *scheduler) workItemDone(i workItem) {
 		return
 	}
 	next := i.Defer(s.evaluationInterval, currentRules)
-	log.Debugf("Scheduler: work item %v rescheduled for %v", i, next.scheduled.Format("2006-01-02 15:04:05"))
+	log.Debugf("Scheduler: work item %v rescheduled for %v", i, next.scheduled.Format(timeLogFormat))
 	s.addWorkItem(next)
 }

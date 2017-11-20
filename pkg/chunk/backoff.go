@@ -32,7 +32,9 @@ func (b *backoff) backoff() {
 }
 
 func (b *backoff) backoffWithoutCounting() {
-	time.Sleep(b.duration)
+	if !b.finished() {
+		time.Sleep(b.duration)
+	}
 	// Based on the "Decorrelated Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
 	// sleep = min(cap, random_between(base, sleep * 3))
 	b.duration = minBackoff + time.Duration(rand.Int63n(int64((b.duration*3)-minBackoff)))

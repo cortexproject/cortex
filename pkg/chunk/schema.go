@@ -55,6 +55,10 @@ type IndexQuery struct {
 	ValueEqual []byte
 }
 
+func (iq IndexQuery) String() string {
+	return fmt.Sprintf("[IndexQuery: table %q hash %q prefix %q start %q equal %q]", iq.TableName, iq.HashValue, string(iq.RangeValuePrefix), string(iq.RangeValueStart), string(iq.ValueEqual))
+}
+
 // IndexEntry describes an entry in the chunk index
 type IndexEntry struct {
 	TableName string

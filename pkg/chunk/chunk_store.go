@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 
+	ot "github.com/opentracing/opentracing-go"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -238,11 +240,15 @@ outer:
 }
 
 func (c *Store) getSeriesMatrix(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricNameMatcher *labels.Matcher) (model.Matrix, error) {
+	span, ctx := ot.StartSpanFromContext(ctx, "getSeriesMatrix")
+	defer span.Finish()
+
 	// Get all series from the index
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
 	}
+	span.SetTag("userID", userID)
 	seriesQueries, err := c.schema.GetReadQueries(from, through, userID)
 	if err != nil {
 		return nil, err
@@ -302,6 +308,8 @@ outer:
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
+	span, ctx := ot.StartSpanFromContext(ctx, "lookupChunksByMetricName")
+	defer span.Finish()
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -369,6 +377,8 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 		}
 	}
 
+	span2, ctx := ot.StartSpanFromContext(ctx, "nWayIntersect")
+	defer span2.Finish()
 	// Merge chunkSets in order because we wish to keep label series together consecutively
 	return nWayIntersect(chunkSets), lastErr
 }
@@ -424,6 +434,9 @@ func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]I
 }
 
 func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) (ByKey, error) {
+	span, ctx := ot.StartSpanFromContext(ctx, "convertIndexEntriesToChunks")
+	defer span.Finish()
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err

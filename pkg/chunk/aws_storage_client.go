@@ -252,7 +252,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 }
 
 func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
-	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{"tableName", query.TableName}, ot.Tag{"hashValue", query.HashValue})
+	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{"tableName", query.TableName}, ot.Tag{"query", query.String()})
 	defer sp.Finish()
 
 	input := &dynamodb.QueryInput{
@@ -327,8 +327,13 @@ func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryIn
 
 	var err error
 	for ; numRetries < maxRetries; numRetries++ {
-		err = instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
-			return page.Send()
+		err = instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(ctx context.Context) error {
+			err := page.Send()
+			if span := ot.SpanFromContext(ctx); span != nil && err == nil {
+				queryOutput := page.Data().(*dynamodb.QueryOutput)
+				span.SetTag("items", len(queryOutput.Items))
+			}
+			return err
 		})
 
 		if cc := page.Data().(*dynamodb.QueryOutput).ConsumedCapacity; cc != nil {

@@ -184,6 +184,8 @@ func (a awsStorageClient) NewWriteBatch() WriteBatch {
 }
 
 // BatchWrite writes requests to the underlying storage, handling retires and backoff.
+// Structure is identical to getDynamoDBChunks(), but operating on different datatypes
+// so cannot share implementation.  If you fix a bug here fix it there too.
 func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) error {
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
@@ -194,11 +196,12 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 	}()
 
 	for outstanding.Len()+unprocessed.Len() > 0 && numRetries < maxRetries {
-		reqs := dynamoDBWriteBatch{}
-		reqs.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
-		reqs.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
+		requests := dynamoDBWriteBatch{}
+		requests.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
+		requests.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
+
 		request := a.batchWriteItemRequestFn(ctx, &dynamodb.BatchWriteItemInput{
-			RequestItems:           reqs,
+			RequestItems:           requests,
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
 
@@ -213,9 +216,22 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		}
 
 		if err != nil {
-			for tableName := range reqs {
+			for tableName := range requests {
 				recordDynamoError(tableName, err, "DynamoDB.BatchWriteItem")
 			}
+
+			// If we get provisionedThroughputExceededException, then no items were processed,
+			// so back off and retry all.
+			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
+				unprocessed.TakeReqs(requests, -1)
+				time.Sleep(backoff)
+				backoff = nextBackoff(backoff)
+				numRetries++
+				continue
+			}
+
+			// All other errors are critical.
+			return err
 		}
 
 		// If there are unprocessed items, backoff and retry those items.
@@ -224,21 +240,6 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
 			continue
-		}
-
-		// If we get provisionedThroughputExceededException, then no items were processed,
-		// so back off and retry all.
-		if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
-			unprocessed.TakeReqs(reqs, -1)
-			time.Sleep(backoff)
-			backoff = nextBackoff(backoff)
-			numRetries++
-			continue
-		}
-
-		// All other errors are fatal.
-		if err != nil {
-			return err
 		}
 
 		backoff = minBackoff
@@ -542,6 +543,9 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, e
 // we need to provide a non-null, non-empty value for the range value.
 var placeholder = []byte{'c'}
 
+// Fetch a set of chunks from DynamoDB, handling retires and backoff.
+// Structure is identical to BatchWrite(), but operating on different datatypes
+// so cannot share implementation.  If you fix a bug here fix it there too.
 func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "getDynamoDBChunks", ot.Tag{"numChunks", len(chunks)})
 	defer sp.Finish()
@@ -570,6 +574,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 			RequestItems:           requests,
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
+
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
 			return request.Send()
 		})

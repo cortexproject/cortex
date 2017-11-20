@@ -131,6 +131,7 @@ func CollectedRequest(ctx context.Context, method string, col collector, toStatu
 
 	if err != nil {
 		ext.Error.Set(sp, true)
+		sp.SetTag("error.message", err.Error())
 	}
 	sp.Finish()
 

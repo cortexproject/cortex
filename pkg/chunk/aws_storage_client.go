@@ -183,7 +183,7 @@ func (a awsStorageClient) NewWriteBatch() WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
-// batchWrite writes requests to the underlying storage, handling retires and backoff.
+// BatchWrite writes requests to the underlying storage, handling retires and backoff.
 func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) error {
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
@@ -810,7 +810,7 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 	})
 }
 
-// Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
+// Fill 'b' with ReadRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
 func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen

@@ -13,6 +13,7 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/configs"
+	configs_client "github.com/weaveworks/cortex/pkg/configs/client"
 	"github.com/weaveworks/cortex/pkg/configs/db"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -112,7 +113,13 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validateAlertmanagerConfig(cfg.AlertmanagerConfig); err != nil && cfg.AlertmanagerConfig != "" {
+		logger.Errorf("Invalid Alertmanager config: %v", err)
 		http.Error(w, fmt.Sprintf("Invalid Alertmanager config: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := validateRulesFiles(cfg); err != nil {
+		logger.Errorf("Invalid Rules: %v", err)
+		http.Error(w, fmt.Sprintf("Invalid Rules: %v", err), http.StatusBadRequest)
 		return
 	}
 	if err := a.db.SetConfig(userID, cfg); err != nil {
@@ -150,7 +157,7 @@ func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request)
 func validateAlertmanagerConfig(cfg string) error {
 	amCfg, err := amconfig.Load(cfg)
 	if err != nil {
-		return fmt.Errorf("error parsing YAML: %s", err)
+		return err
 	}
 
 	if len(amCfg.Templates) != 0 {
@@ -164,6 +171,11 @@ func validateAlertmanagerConfig(cfg string) error {
 	}
 
 	return nil
+}
+
+func validateRulesFiles(c configs.Config) error {
+	_, err := configs_client.RulesFromConfig(c)
+	return err
 }
 
 // ConfigsView renders multiple configurations, mapping userID to configs.View.

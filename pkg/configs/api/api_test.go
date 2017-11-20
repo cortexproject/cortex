@@ -230,7 +230,7 @@ var amCfgValidationTests = []struct {
 	{
 		config:      "invalid config",
 		shouldFail:  true,
-		errContains: "error parsing YAML",
+		errContains: "yaml",
 	}, {
 		config: `
         route:

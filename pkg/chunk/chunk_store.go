@@ -308,7 +308,7 @@ outer:
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
-	span, ctx := ot.StartSpanFromContext(ctx, "lookupChunksByMetricName")
+	span, ctx := ot.StartSpanFromContext(ctx, "lookupChunksByMetricName", ot.Tag{"metric.name", metricName}, ot.Tag{"matchers.count", len(matchers)})
 	defer span.Finish()
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {

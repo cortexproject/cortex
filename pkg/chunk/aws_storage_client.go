@@ -195,8 +195,8 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 
 	for outstanding.Len()+unprocessed.Len() > 0 && numRetries < maxRetries {
 		reqs := dynamoDBWriteBatch{}
-		reqs.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
 		reqs.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
+		reqs.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
 		request := a.batchWriteItemRequestFn(ctx, &dynamodb.BatchWriteItemInput{
 			RequestItems:           reqs,
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
@@ -563,8 +563,8 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 	for outstanding.Len()+unprocessed.Len() > 0 && numRetries < maxRetries {
 		requests := dynamoDBReadRequest{}
-		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
 		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
+		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
 
 		request := a.batchGetItemRequestFn(ctx, &dynamodb.BatchGetItemInput{
 			RequestItems:           requests,

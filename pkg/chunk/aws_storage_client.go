@@ -175,7 +175,7 @@ func (a awsStorageClient) NewWriteBatch() WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
-// BatchWrite writes requests to the underlying storage, handling retires and backoff.
+// BatchWrite writes requests to the underlying storage, handling retries and backoff.
 // Structure is identical to getDynamoDBChunks(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
 func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) error {
@@ -227,6 +227,8 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		// If there are unprocessed items, backoff and retry those items.
 		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
 			unprocessed.TakeReqs(unprocessedItems, -1)
+			// I am unclear why we don't count here; perhaps the idea is
+			// that while we are making _some_ progress we should carry on.
 			backoff.backoffWithoutCounting()
 			continue
 		}
@@ -529,7 +531,7 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, e
 // we need to provide a non-null, non-empty value for the range value.
 var placeholder = []byte{'c'}
 
-// Fetch a set of chunks from DynamoDB, handling retires and backoff.
+// Fetch a set of chunks from DynamoDB, handling retries and backoff.
 // Structure is identical to BatchWrite(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
 func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
@@ -597,6 +599,8 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		// If there are unprocessed items, backoff and retry those items.
 		if unprocessedKeys := response.UnprocessedKeys; unprocessedKeys != nil && dynamoDBReadRequest(unprocessedKeys).Len() > 0 {
 			unprocessed.TakeReqs(unprocessedKeys, -1)
+			// I am unclear why we don't count here; perhaps the idea is
+			// that while we are making _some_ progress we should carry on.
 			backoff.backoffWithoutCounting()
 			continue
 		}

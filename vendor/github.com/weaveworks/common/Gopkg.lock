@@ -32,6 +32,12 @@
   revision = "4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/codahale/hdrhistogram"
+  packages = ["."]
+  revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
+
+[[projects]]
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
@@ -230,6 +236,18 @@
   version = "v1.1.4"
 
 [[projects]]
+  name = "github.com/uber/jaeger-client-go"
+  packages = [".","config","internal/baggage","internal/baggage/remote","internal/spanlog","log","rpcmetrics","thrift-gen/agent","thrift-gen/baggage","thrift-gen/jaeger","thrift-gen/sampling","thrift-gen/zipkincore","utils"]
+  revision = "0ce42f3f87dae4f5ba84bdc60c99a908db419cb8"
+  version = "v2.10.0"
+
+[[projects]]
+  name = "github.com/uber/jaeger-lib"
+  packages = ["metrics"]
+  revision = "c48167d9cae5887393dd5e61efd06a4a48b7fbb3"
+  version = "v1.2.1"
+
+[[projects]]
   branch = "master"
   name = "github.com/weaveworks-experiments/loki"
   packages = ["pkg/client"]
@@ -286,6 +304,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f0129b411593e3ada6198352b8c9d637371fe1cdf2d606a29779ced5ac1b3153"
+  inputs-digest = "6017005e4b26c7bc0f51389719088ec7b828c8c545b42eb8e27f0f2489a7321d"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -1,4 +1,4 @@
-package chunk
+package util
 
 import (
 	"math/rand"
@@ -13,27 +13,46 @@ const (
 	maxRetries = 20
 )
 
-type backoff struct {
+type Backoff struct {
+	done       <-chan struct{}
 	numRetries int
+	cancelled  bool
 	duration   time.Duration
 }
 
-func resetBackoff() backoff {
-	return backoff{numRetries: 0, duration: minBackoff}
+func NewBackoff(done <-chan struct{}) *Backoff {
+	return &Backoff{
+		done:     done,
+		duration: minBackoff,
+	}
 }
 
-func (b backoff) finished() bool {
-	return b.numRetries >= maxRetries
+func (b *Backoff) Reset() {
+	b.numRetries = 0
+	b.cancelled = false
+	b.duration = minBackoff
 }
 
-func (b *backoff) backoff() {
+func (b *Backoff) Finished() bool {
+	return b.cancelled || b.numRetries >= maxRetries
+}
+
+func (b *Backoff) NumRetries() int {
+	return b.numRetries
+}
+
+func (b *Backoff) Wait() {
 	b.numRetries++
-	b.backoffWithoutCounting()
+	b.WaitWithoutCounting()
 }
 
-func (b *backoff) backoffWithoutCounting() {
-	if !b.finished() {
-		time.Sleep(b.duration)
+func (b *Backoff) WaitWithoutCounting() {
+	if !b.Finished() {
+		select {
+		case <-b.done:
+			b.cancelled = true
+		case <-time.After(b.duration):
+		}
 	}
 	// Based on the "Decorrelated Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
 	// sleep = min(cap, random_between(base, sleep * 3))

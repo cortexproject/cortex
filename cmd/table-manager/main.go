@@ -2,8 +2,9 @@ package main
 
 import (
 	"flag"
+	"os"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
@@ -11,7 +12,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -25,35 +25,40 @@ func main() {
 
 		storageConfig storage.Config
 		schemaConfig  chunk.SchemaConfig
+		logLevel      util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &storageConfig, &schemaConfig)
+	util.RegisterFlags(&serverConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.Parse()
 
-	log.AddHook(promrus.MustNewPrometheusHook())
+	util.InitLogger(logLevel.AllowedLevel)
 
 	if (schemaConfig.ChunkTables.WriteScale.Enabled ||
 		schemaConfig.IndexTables.WriteScale.Enabled ||
 		schemaConfig.ChunkTables.InactiveWriteScale.Enabled ||
 		schemaConfig.IndexTables.InactiveWriteScale.Enabled) &&
 		storageConfig.ApplicationAutoScaling.URL == nil {
-		log.Fatal("WriteScale is enabled but no ApplicationAutoScaling URL has been provided")
+		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling URL has been provided")
+		os.Exit(1)
 	}
 
 	tableClient, err := storage.NewTableClient(storageConfig)
 	if err != nil {
-		log.Fatalf("Error initializing DynamoDB table client: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
+		os.Exit(1)
 	}
 
 	tableManager, err := chunk.NewTableManager(schemaConfig, tableClient)
 	if err != nil {
-		log.Fatalf("Error initializing DynamoDB table manager: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table manager", "err", err)
+		os.Exit(1)
 	}
 	tableManager.Start()
 	defer tableManager.Stop()
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 

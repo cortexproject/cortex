@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 
 	"golang.org/x/net/context"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
@@ -63,7 +64,7 @@ func (i *Ingester) isReady() bool {
 
 	ringDesc, err := i.ringKVStore.Get(ring.ConsulKey)
 	if err != nil {
-		log.Errorf("Error talking to consul: %v", err)
+		level.Error(util.Logger).Log("msg", "error talking to consul", "err", err)
 		return false
 	}
 
@@ -98,7 +99,7 @@ func (i *Ingester) ClaimTokensFor(ingesterID string) error {
 		}
 
 		if err := i.ringKVStore.CAS(ring.ConsulKey, claimTokens); err != nil {
-			log.Errorf("Failed to write to consul: %v", err)
+			level.Error(util.Logger).Log("msg", "Failed to write to consul", "err", err)
 		}
 
 		i.tokens = tokens
@@ -127,14 +128,15 @@ func (i *Ingester) Shutdown() {
 
 func (i *Ingester) loop() {
 	defer func() {
-		log.Infof("Ingester.loop() exited gracefully")
+		level.Info(util.Logger).Log("msg", "Ingester.loop() exited gracefully")
 		i.done.Done()
 	}()
 
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
 	if err := i.initRing(); err != nil {
-		log.Fatalf("Failed to join consul: %v", err)
+		level.Error(util.Logger).Log("msg", "failed to join consul", "err", err)
+		os.Exit(1)
 	}
 
 	// We do various period tasks
@@ -156,16 +158,17 @@ loop:
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
 			if i.state == ring.PENDING {
-				log.Infof("Auto-joining cluster after timeout.")
+				level.Info(util.Logger).Log("msg", "auto-joining cluster after timeout")
 				if err := i.autoJoin(); err != nil {
-					log.Fatalf("failed to pick tokens in consul: %v", err)
+					level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
+					os.Exit(1)
 				}
 			}
 
 		case <-heartbeatTicker.C:
 			consulHeartbeats.Inc()
 			if err := i.updateConsul(); err != nil {
-				log.Errorf("Failed to write to consul, sleeping: %v", err)
+				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
 			}
 
 		case <-flushTicker.C:
@@ -199,7 +202,7 @@ heartbeatLoop:
 		case <-heartbeatTicker.C:
 			consulHeartbeats.Inc()
 			if err := i.updateConsul(); err != nil {
-				log.Errorf("Failed to write to consul, sleeping: %v", err)
+				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
 			}
 
 		case <-done:
@@ -209,9 +212,10 @@ heartbeatLoop:
 
 	if !i.cfg.skipUnregister {
 		if err := i.unregister(); err != nil {
-			log.Fatalf("Failed to unregister from consul: %v", err)
+			level.Error(util.Logger).Log("msg", "Failed to unregister from consul", "err", err)
+			os.Exit(1)
 		}
-		log.Infof("Ingester removed from consul")
+		level.Info(util.Logger).Log("msg", "ingester removed from consul")
 	}
 }
 
@@ -230,7 +234,7 @@ func (i *Ingester) initRing() error {
 		ingesterDesc, ok := ringDesc.Ingesters[i.id]
 		if !ok {
 			// Either we are a new ingester, or consul must have restarted
-			log.Infof("Entry not found in ring, adding with no tokens.")
+			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
 			ringDesc.AddIngester(i.id, i.addr, []uint32{}, i.state)
 			return ringDesc, true, nil
 		}
@@ -239,7 +243,7 @@ func (i *Ingester) initRing() error {
 		i.state = ingesterDesc.State
 		i.tokens, _ = ringDesc.TokensFor(i.id)
 
-		log.Infof("Existing entry found in ring with state=%s, tokens=%v.", i.state, i.tokens)
+		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.state, "tokens", i.tokens)
 		return ringDesc, true, nil
 	})
 }
@@ -257,7 +261,7 @@ func (i *Ingester) autoJoin() error {
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		myTokens, takenTokens := ringDesc.TokensFor(i.id)
 		if len(myTokens) > 0 {
-			log.Errorf("%d tokens already exist for this ingester - wasn't expecting any!", len(myTokens))
+			level.Error(util.Logger).Log("msg", "tokens already exist for this ingester - wasn't expecting any!", "num_tokens", len(myTokens))
 		}
 
 		newTokens := ring.GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
@@ -286,7 +290,7 @@ func (i *Ingester) updateConsul() error {
 		ingesterDesc, ok := ringDesc.Ingesters[i.id]
 		if !ok {
 			// consul must have restarted
-			log.Infof("Found empty ring, inserting tokens!")
+			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
 			ringDesc.AddIngester(i.id, i.addr, i.tokens, i.state)
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
@@ -311,7 +315,7 @@ func (i *Ingester) changeState(state ring.IngesterState) error {
 		return fmt.Errorf("Changing ingester state from %v -> %v is disallowed", i.state, state)
 	}
 
-	log.Infof("Changing ingester state from %v -> %v", i.state, state)
+	level.Info(util.Logger).Log("msg", "changing ingester state from", "old_state", i.state, "new_state", state)
 	i.state = state
 	return i.updateConsul()
 }
@@ -320,7 +324,7 @@ func (i *Ingester) processShutdown() {
 	flushRequired := true
 	if i.cfg.ClaimOnRollout {
 		if err := i.transferChunks(); err != nil {
-			log.Errorf("Failed to transfer chunks to another ingester: %v", err)
+			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester: %v", err)
 		} else {
 			flushRequired = false
 		}
@@ -353,7 +357,7 @@ func (i *Ingester) transferChunks() error {
 		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
 	}
 
-	log.Infof("Sending chunks to %v", targetIngester.Addr)
+	level.Info(util.Logger).Log("msg", "sending chunks to ingester", "ingester", targetIngester.Addr)
 	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.cfg.SearchPendingFor)
 	if err != nil {
 		return err
@@ -396,7 +400,7 @@ func (i *Ingester) transferChunks() error {
 		return err
 	}
 
-	log.Infof("Successfully sent chunks to '%s'", targetIngester.Addr)
+	level.Info(util.Logger).Log("msg", "successfully sent chunks to ingester", "ingester", targetIngester.Addr)
 	return nil
 }
 
@@ -420,7 +424,7 @@ func (i *Ingester) findTargetIngester() (*ring.IngesterDesc, error) {
 	for {
 		ingester, err := findIngester()
 		if err != nil {
-			log.Errorf("Error looking for pending ingester: %v", err)
+			level.Error(util.Logger).Log("msg", "Error looking for pending ingester: %v", err)
 			if time.Now().Before(deadline) {
 				time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
 				continue

@@ -13,8 +13,9 @@ go_library(
         "//pkg/configs:go_default_library",
         "//pkg/configs/db/memory:go_default_library",
         "//pkg/configs/db/postgres:go_default_library",
+        "//pkg/util:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
-        "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/weaveworks/common/instrument:go_default_library",
     ],
 )

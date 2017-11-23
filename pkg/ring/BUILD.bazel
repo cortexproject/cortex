@@ -15,6 +15,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/util:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
         "//vendor/github.com/gogo/protobuf/proto:go_default_library",
         "//vendor/github.com/gogo/protobuf/sortkeys:go_default_library",
         "//vendor/github.com/golang/protobuf/proto:go_default_library",
@@ -22,7 +23,6 @@ go_library(
         "//vendor/github.com/hashicorp/consul/api:go_default_library",
         "//vendor/github.com/hashicorp/go-cleanhttp:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",
-        "//vendor/github.com/prometheus/common/log:go_default_library",
     ],
 )
 

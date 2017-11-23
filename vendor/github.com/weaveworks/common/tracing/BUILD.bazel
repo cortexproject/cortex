@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["tracing.go"],
+    importpath = "github.com/weaveworks/common/tracing",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/uber/jaeger-client-go:go_default_library",
+        "//vendor/github.com/uber/jaeger-client-go/config:go_default_library",
+    ],
+)

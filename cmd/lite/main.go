@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
@@ -28,7 +28,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/ruler"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -46,13 +45,14 @@ func main() {
 		rulerConfig       ruler.Config
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
+		logLevel          util.LogLevel
 
 		unauthenticated bool
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
-		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig, util.LogLevel{})
+		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
@@ -62,54 +62,62 @@ func main() {
 	trace := tracing.New(jaegerAgentHost, "lite")
 	defer trace.Close()
 
-	log.AddHook(promrus.MustNewPrometheusHook())
+	util.InitLogger(logLevel.AllowedLevel)
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 
 	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
-		log.Fatalf("Error initializing storage client: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
+		os.Exit(1)
 	}
 
 	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
-		log.Fatal(err)
+		level.Error(util.Logger).Log("err", err)
+		os.Exit(1)
 	}
 	defer chunkStore.Stop()
 
 	r, err := ring.New(ingesterConfig.RingConfig)
 	if err != nil {
-		log.Fatalf("Error initializing ring: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
+		os.Exit(1)
 	}
 	defer r.Stop()
 	ingesterConfig.KVClient = r.KVClient
 
 	dist, err := distributor.New(distributorConfig, r)
 	if err != nil {
-		log.Fatalf("Error initializing distributor: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
+		os.Exit(1)
 	}
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
 	ingester, err := ingester.New(ingesterConfig, chunkStore)
 	if err != nil {
-		log.Fatal(err)
+		level.Error(util.Logger).Log("err", err)
+		os.Exit(1)
 	}
 	prometheus.MustRegister(ingester)
 	defer ingester.Shutdown()
 
 	tableClient, err := storage.NewTableClient(storageConfig)
 	if err != nil {
-		log.Fatalf("Error initializing DynamoDB table client: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
+		os.Exit(1)
 	}
 
 	tableManager, err := chunk.NewTableManager(schemaConfig, tableClient)
 	if err != nil {
-		log.Fatalf("Error initializing DynamoDB table manager: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table manager", "err", err)
+		os.Exit(1)
 	}
 	tableManager.Start()
 	defer tableManager.Stop()
@@ -117,13 +125,15 @@ func main() {
 	if rulerConfig.ConfigsAPIURL.String() != "" {
 		rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
 		if err != nil {
-			log.Fatalf("Error initializing ruler: %v", err)
+			level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)
+			os.Exit(1)
 		}
 		defer rlr.Stop()
 
 		rulerServer, err := ruler.NewServer(rulerConfig, rlr)
 		if err != nil {
-			log.Fatalf("Error initializing ruler server: %v", err)
+			level.Error(util.Logger).Log("msg", "error initializing ruler server", "err", err)
+			os.Exit(1)
 		}
 		defer rulerServer.Stop()
 	}

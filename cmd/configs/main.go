@@ -2,8 +2,9 @@ package main
 
 import (
 	"flag"
+	"os"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
@@ -11,7 +12,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/configs/api"
 	"github.com/weaveworks/cortex/pkg/configs/db"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -25,15 +25,17 @@ func main() {
 			},
 		}
 		dbConfig db.Config
+		logLevel util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &dbConfig)
+	util.RegisterFlags(&serverConfig, &dbConfig, &logLevel)
 	flag.Parse()
 
-	log.AddHook(promrus.MustNewPrometheusHook())
+	util.InitLogger(logLevel.AllowedLevel)
 
 	db, err := db.New(dbConfig)
 	if err != nil {
-		log.Fatalf("Error initializing database: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing database", "err", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -41,7 +43,8 @@ func main() {
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 

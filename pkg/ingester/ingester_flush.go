@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 
 	"github.com/weaveworks/common/user"
@@ -106,7 +106,7 @@ func (i *Ingester) shouldFlushChunk(c *desc) bool {
 
 func (i *Ingester) flushLoop(j int) {
 	defer func() {
-		log.Debug("Ingester.flushLoop() exited")
+		level.Debug(util.Logger).Log("msg", "Ingester.flushLoop() exited")
 		i.flushQueuesDone.Done()
 	}()
 
@@ -119,7 +119,7 @@ func (i *Ingester) flushLoop(j int) {
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			util.WithUserID(op.userID).Errorf("Failed to flush user: %v", err)
+			level.Error(util.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation

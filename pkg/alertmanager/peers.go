@@ -4,8 +4,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (
@@ -65,7 +66,7 @@ func (s *srvDiscovery) updatePeers() {
 	srvRequests.Inc()
 	if err != nil {
 		srvRequestFailures.Inc()
-		log.Warnf("Error discovering services for %s %s: %v", s.service, s.hostname, err)
+		level.Warn(util.Logger).Log("msg", "error discovering services for hostname", "service", s.service, "hostname", s.hostname, "err", err)
 	} else {
 		s.addresses <- addrs
 	}

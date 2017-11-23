@@ -12,8 +12,8 @@ import (
 	// Needed for gRPC compatibility.
 	old_ctx "golang.org/x/net/context"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
@@ -117,7 +117,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.Fatalf("Failed to get hostname: %v", err)
+		level.Error(util.Logger).Log("msg", "failed to get hostname", "err", err)
+		os.Exit(1)
 	}
 
 	f.StringVar(&cfg.infName, "ingester.interface", "eth0", "Name of network interface to read address from.")
@@ -319,7 +320,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 	}
 
 	if err := util.ValidateSample(sample); err != nil {
-		util.WithContext(ctx).Errorf("Error validating sample: %v", err)
+		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
 		return nil
 	}
 

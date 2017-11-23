@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
 
@@ -75,7 +76,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	logger := util.WithContext(r.Context())
+	logger := util.WithContext(r.Context(), util.Logger)
 
 	cfg, err := a.db.GetConfig(userID)
 	if err == sql.ErrNoRows {
@@ -83,7 +84,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if err != nil {
 		// XXX: Untested
-		logger.Errorf("Error getting config: %v", err)
+		level.Error(logger).Log("msg", "error getting config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -91,7 +92,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(cfg); err != nil {
 		// XXX: Untested
-		logger.Errorf("Error encoding config: %v", err)
+		level.Error(logger).Log("msg", "error encoding config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -103,28 +104,28 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	logger := util.WithContext(r.Context())
+	logger := util.WithContext(r.Context(), util.Logger)
 
 	var cfg configs.Config
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		// XXX: Untested
-		logger.Errorf("Error decoding json body: %v", err)
+		level.Error(logger).Log("msg", "error decoding json body", "err", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := validateAlertmanagerConfig(cfg.AlertmanagerConfig); err != nil && cfg.AlertmanagerConfig != "" {
-		logger.Errorf("Invalid Alertmanager config: %v", err)
+		level.Error(logger).Log("msg", "invalid Alertmanager config", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid Alertmanager config: %v", err), http.StatusBadRequest)
 		return
 	}
 	if err := validateRulesFiles(cfg); err != nil {
-		logger.Errorf("Invalid Rules: %v", err)
-		http.Error(w, fmt.Sprintf("Invalid Rules: %v", err), http.StatusBadRequest)
+		level.Error(logger).Log("msg", "invalid rules", "err", err)
+		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return
 	}
 	if err := a.db.SetConfig(userID, cfg); err != nil {
 		// XXX: Untested
-		logger.Errorf("Error storing config: %v", err)
+		level.Error(logger).Log("msg", "error storing config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -132,10 +133,10 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request) {
-	logger := util.WithContext(r.Context())
+	logger := util.WithContext(r.Context(), util.Logger)
 	cfg, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		logger.Errorf("Error reading request body: %v", err)
+		level.Error(logger).Log("msg", "error reading request body", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -187,14 +188,14 @@ type ConfigsView struct {
 func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 	var cfgs map[string]configs.View
 	var err error
-	logger := util.WithContext(r.Context())
+	logger := util.WithContext(r.Context(), util.Logger)
 	rawSince := r.FormValue("since")
 	if rawSince == "" {
 		cfgs, err = a.db.GetAllConfigs()
 	} else {
 		since, err := strconv.ParseUint(rawSince, 10, 0)
 		if err != nil {
-			logger.Infof("Invalid config ID: %v", err)
+			level.Info(logger).Log("msg", "invalid config ID", "err", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -203,7 +204,7 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		// XXX: Untested
-		logger.Errorf("Error getting configs: %v", err)
+		level.Error(logger).Log("msg", "error getting configs", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

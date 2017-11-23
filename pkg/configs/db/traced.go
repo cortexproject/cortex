@@ -1,8 +1,11 @@
 package db
 
 import (
-	"github.com/prometheus/common/log"
+	"fmt"
+
+	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/cortex/pkg/configs"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // traced adds log trace lines on each db call
@@ -11,7 +14,7 @@ type traced struct {
 }
 
 func (t traced) trace(name string, args ...interface{}) {
-	log.Debugf("%s: %#v", name, args)
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("%s: %#v", name, args))
 }
 
 func (t traced) GetConfig(userID string) (cfg configs.View, err error) {

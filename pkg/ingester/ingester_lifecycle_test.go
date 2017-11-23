@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -154,7 +154,7 @@ func TestIngesterTransfer(t *testing.T) {
 func numTokens(c ring.KVClient, name string) int {
 	ringDesc, err := c.Get(ring.ConsulKey)
 	if err != nil {
-		log.Errorf("Error reading consul: %v", err)
+		level.Error(util.Logger).Log("msg", "error reading consul", "err", err)
 		return 0
 	}
 

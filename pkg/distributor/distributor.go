@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -194,14 +194,14 @@ func (d *Distributor) removeStaleIngesterClients() {
 		if _, ok := ingesters[addr]; ok {
 			continue
 		}
-		log.Info("Removing stale ingester client for ", addr)
+		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
 		delete(d.clients, addr)
 
 		// Do the gRPC closing in the background since it might take a while and
 		// we're holding a mutex.
 		go func(addr string, closer io.Closer) {
 			if err := closer.Close(); err != nil {
-				log.Errorf("Error closing connection to ingester %q: %v", addr, err)
+				level.Error(util.Logger).Log("msg", "error closing connection to ingester", "ingester", addr, "err", err)
 			}
 		}(addr, client.(io.Closer))
 	}

@@ -15,15 +15,15 @@ package main
 
 import (
 	"flag"
+	"os"
 
 	"google.golang.org/grpc"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/pkg/alertmanager"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -35,23 +35,25 @@ func main() {
 			},
 		}
 		alertmanagerConfig alertmanager.MultitenantAlertmanagerConfig
+		logLevel           util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &alertmanagerConfig, util.LogLevel{})
+	util.RegisterFlags(&serverConfig, &alertmanagerConfig, &logLevel)
 	flag.Parse()
 
-	hook := promrus.MustNewPrometheusHook()
-	log.AddHook(hook)
+	util.InitLogger(logLevel.AllowedLevel)
 
 	multiAM, err := alertmanager.NewMultitenantAlertmanager(&alertmanagerConfig)
 	if err != nil {
-		log.Fatalf("Error initializing MultitenantAlertmanager: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing MultitenantAlertmanager", "err", err)
+		os.Exit(1)
 	}
 	go multiAM.Run()
 	defer multiAM.Stop()
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 

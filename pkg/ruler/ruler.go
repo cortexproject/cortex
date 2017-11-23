@@ -286,9 +286,7 @@ func NewServer(cfg Config, ruler *Ruler) (*Server, error) {
 		Timeout: cfg.ClientTimeout,
 	}
 	// TODO: Separate configuration for polling interval.
-	// N.B.: there is currently a race condition between rules evaluation and alerts scheduling,
-	// so we offset the interval, but only by a small amount, to minimise the odds of the race happening.
-	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval+10*time.Millisecond)
+	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval)
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}

@@ -10,7 +10,8 @@ import (
 	oldcontext "golang.org/x/net/context"
 )
 
-type collector interface {
+// Collector describes something that collects data before and/or after a task.
+type Collector interface {
 	Register()
 	Before(method string, start time.Time)
 	After(method, statusCode string, start time.Time)
@@ -24,7 +25,15 @@ type HistogramCollector struct {
 // HistogramCollectorBuckets define the buckets when passing the metric
 var HistogramCollectorBuckets = []string{"operation", "status_code"}
 
-// NewHistogramCollector creates a collector from a metric.
+// NewHistogramCollectorFromOpts creates a Collector from histogram options.
+// It makes sure that the buckets are named properly and should be preferred over
+// NewHistogramCollector().
+func NewHistogramCollectorFromOpts(opts prometheus.HistogramOpts) *HistogramCollector {
+	metric := prometheus.NewHistogramVec(opts, HistogramCollectorBuckets)
+	return &HistogramCollector{metric}
+}
+
+// NewHistogramCollector creates a Collector from a metric.
 func NewHistogramCollector(metric *prometheus.HistogramVec) *HistogramCollector {
 	return &HistogramCollector{metric}
 }
@@ -112,12 +121,12 @@ func (c *JobCollector) After(method, statusCode string, start time.Time) {
 	c.completed.WithLabelValues(method, statusCode).Inc()
 }
 
-// CollectedRequest runs a tracked request. It uses the given collector to monitor requests.
+// CollectedRequest runs a tracked request. It uses the given Collector to monitor requests.
 //
 // If `f` returns no error we log "200" as status code, otherwise "500". Pass in a function
 // for `toStatusCode` to overwrite this behaviour. It will also emit an OpenTracing span if
 // you have a global tracer configured.
-func CollectedRequest(ctx context.Context, method string, col collector, toStatusCode func(error) string, f func(context.Context) error) error {
+func CollectedRequest(ctx context.Context, method string, col Collector, toStatusCode func(error) string, f func(context.Context) error) error {
 	if toStatusCode == nil {
 		toStatusCode = ErrorCode
 	}

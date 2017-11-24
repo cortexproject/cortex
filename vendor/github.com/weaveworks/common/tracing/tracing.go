@@ -3,20 +3,16 @@ package tracing
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 
 	jaeger "github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 )
 
-type nopCloser struct {
-}
-
-func (nopCloser) Close() error { return nil }
-
 // New registers Jaeger as the OpenTracing implementation.
-func New(serviceName string) io.Closer {
-	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
+// If jaegerAgentHost is an empty string, tracing is disabled.
+func New(jaegerAgentHost, serviceName string) io.Closer {
 	if jaegerAgentHost != "" {
 		cfg := jaegercfg.Configuration{
 			Sampler: &jaegercfg.SamplerConfig{
@@ -36,5 +32,5 @@ func New(serviceName string) io.Closer {
 		}
 		return closer
 	}
-	return nopCloser{}
+	return ioutil.NopCloser(nil)
 }

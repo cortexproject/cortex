@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"net/http"
+	"os"
 
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/tracing"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/storage"
@@ -25,7 +27,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/ruler"
-	"github.com/weaveworks/cortex/pkg/tracing"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/promrus"
 )
@@ -57,7 +58,8 @@ func main() {
 	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace := tracing.New("lite")
+	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
+	trace := tracing.New(jaegerAgentHost, "lite")
 	defer trace.Close()
 
 	log.AddHook(promrus.MustNewPrometheusHook())

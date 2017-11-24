@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"net/http"
+	"os"
 
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
@@ -12,9 +13,9 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/tracing"
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/ring"
-	"github.com/weaveworks/cortex/pkg/tracing"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/promrus"
 )
@@ -51,7 +52,8 @@ func main() {
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace := tracing.New("distributor")
+	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
+	trace := tracing.New(jaegerAgentHost, "distributor")
 	defer trace.Close()
 
 	log.AddHook(promrus.MustNewPrometheusHook())

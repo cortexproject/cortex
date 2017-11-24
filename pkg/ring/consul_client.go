@@ -190,10 +190,10 @@ func (c *consulClient) CAS(key string, f CASCallback) error {
 	return fmt.Errorf("failed to CAS %s", key)
 }
 
-const (
-	initialBackoff = 1 * time.Second
-	maxBackoff     = 1 * time.Minute
-)
+var backoffConfig = util.BackoffConfig{
+	MinBackoff: 1 * time.Second,
+	MaxBackoff: 1 * time.Minute,
+}
 
 func isClosed(done <-chan struct{}) bool {
 	select {
@@ -212,7 +212,7 @@ func isClosed(done <-chan struct{}) bool {
 // the done channel is closed.
 func (c *consulClient) WatchPrefix(prefix string, done <-chan struct{}, f func(string, interface{}) bool) {
 	var (
-		backoff = util.NewBackoff(done)
+		backoff = util.NewBackoff(backoffConfig, done)
 		index   = uint64(0)
 	)
 	for {
@@ -259,7 +259,7 @@ func (c *consulClient) WatchPrefix(prefix string, done <-chan struct{}, f func(s
 // the done channel is closed.
 func (c *consulClient) WatchKey(key string, done <-chan struct{}, f func(interface{}) bool) {
 	var (
-		backoff = util.NewBackoff(done)
+		backoff = util.NewBackoff(backoffConfig, done)
 		index   = uint64(0)
 	)
 	for {

@@ -5,36 +5,36 @@ import (
 	"time"
 )
 
-const (
-	// Backoff for dynamoDB requests, to match AWS lib - see:
-	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
-	minBackoff = 50 * time.Millisecond
-	maxBackoff = 50 * time.Second
-	maxRetries = 20
-)
+type BackoffConfig struct {
+	MinBackoff time.Duration // start backoff at this level
+	MaxBackoff time.Duration // increase exponentially to this level
+	MaxRetries int           // give up after this many; zero means infinite retries
+}
 
 type Backoff struct {
+	cfg        BackoffConfig
 	done       <-chan struct{}
 	numRetries int
 	cancelled  bool
 	duration   time.Duration
 }
 
-func NewBackoff(done <-chan struct{}) *Backoff {
+func NewBackoff(cfg BackoffConfig, done <-chan struct{}) *Backoff {
 	return &Backoff{
+		cfg:      cfg,
 		done:     done,
-		duration: minBackoff,
+		duration: cfg.MinBackoff,
 	}
 }
 
 func (b *Backoff) Reset() {
 	b.numRetries = 0
 	b.cancelled = false
-	b.duration = minBackoff
+	b.duration = b.cfg.MinBackoff
 }
 
 func (b *Backoff) Finished() bool {
-	return b.cancelled || b.numRetries >= maxRetries
+	return b.cancelled || (b.cfg.MaxRetries > 0 && b.numRetries >= b.cfg.MaxRetries)
 }
 
 func (b *Backoff) NumRetries() int {
@@ -56,8 +56,8 @@ func (b *Backoff) WaitWithoutCounting() {
 	}
 	// Based on the "Decorrelated Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
 	// sleep = min(cap, random_between(base, sleep * 3))
-	b.duration = minBackoff + time.Duration(rand.Int63n(int64((b.duration*3)-minBackoff)))
-	if b.duration > maxBackoff {
-		b.duration = maxBackoff
+	b.duration = b.cfg.MinBackoff + time.Duration(rand.Int63n(int64((b.duration*3)-b.cfg.MinBackoff)))
+	if b.duration > b.cfg.MaxBackoff {
+		b.duration = b.cfg.MaxBackoff
 	}
 }

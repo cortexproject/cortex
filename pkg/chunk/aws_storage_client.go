@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
@@ -42,6 +43,14 @@ const (
 	dynamoDBMaxWriteBatchSize = 25
 	dynamoDBMaxReadBatchSize  = 100
 )
+
+var backoffConfig = util.BackoffConfig{
+	// Backoff for dynamoDB requests, to match AWS lib - see:
+	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
+	MinBackoff: 50 * time.Millisecond,
+	MaxBackoff: 50 * time.Second,
+	MaxRetries: 20,
+}
 
 var (
 	dynamoRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -182,7 +191,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
-	backoff := util.NewBackoff(ctx.Done())
+	backoff := util.NewBackoff(backoffConfig, ctx.Done())
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("BatchWrite").Observe(float64(backoff.NumRetries()))
 	}()
@@ -310,7 +319,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 }
 
 func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
-	backoff := util.NewBackoff(ctx.Done())
+	backoff := util.NewBackoff(backoffConfig, ctx.Done())
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
 	}()
@@ -548,7 +557,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 	result := []Chunk{}
 	unprocessed := dynamoDBReadRequest{}
-	backoff := util.NewBackoff(ctx.Done())
+	backoff := util.NewBackoff(backoffConfig, ctx.Done())
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("getDynamoDBChunks").Observe(float64(backoff.NumRetries()))
 	}()

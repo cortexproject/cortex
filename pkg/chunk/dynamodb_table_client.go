@@ -66,7 +66,7 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 		d.limiter.Wait(ctx)
 	}
 
-	backoff := util.NewBackoff(ctx.Done())
+	backoff := util.NewBackoff(backoffConfig, ctx.Done())
 	for !backoff.Finished() {
 		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {

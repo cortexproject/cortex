@@ -19,6 +19,7 @@
 package alertmanager
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"sort"
@@ -27,8 +28,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log/level"
 
+	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/mesh"
 )
 
@@ -36,23 +38,26 @@ type promLog struct{}
 
 // Printf implements the mesh.Logger interface.
 func (p promLog) Printf(format string, args ...interface{}) {
-	log.Infof(format, args...)
+	level.Info(util.Logger).Log(fmt.Sprintf(format, args...))
 }
 
 func initMesh(addr, hwaddr, nickname, pw string) *mesh.Router {
 	host, portStr, err := net.SplitHostPort(addr)
 
 	if err != nil {
-		log.Fatalf("mesh address: %s: %v", addr, err)
+		level.Error(util.Logger).Log("msg", "invalid mesh address", "addr", addr, "err", err)
+		os.Exit(1)
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		log.Fatalf("mesh address: %s: %v", addr, err)
+		level.Error(util.Logger).Log("msg", "invalid mesh address", "addr", addr, "err", err)
+		os.Exit(1)
 	}
 
 	name, err := mesh.PeerNameFromString(hwaddr)
 	if err != nil {
-		log.Fatalf("invalid hardware address %q: %v", hwaddr, err)
+		level.Error(util.Logger).Log("msg", "invalid hardware address", "hwaddr", hwaddr, "err", err)
+		os.Exit(1)
 	}
 
 	password := []byte(pw)

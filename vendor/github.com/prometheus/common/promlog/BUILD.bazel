@@ -2,13 +2,12 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "go_default_library",
-    srcs = ["factory.go"],
-    importpath = "github.com/weaveworks/cortex/pkg/chunk/storage",
+    srcs = ["log.go"],
+    importpath = "github.com/prometheus/common/promlog",
     visibility = ["//visibility:public"],
     deps = [
-        "//pkg/chunk:go_default_library",
-        "//pkg/chunk/gcp:go_default_library",
-        "//pkg/util:go_default_library",
+        "//vendor/github.com/go-kit/kit/log:go_default_library",
         "//vendor/github.com/go-kit/kit/log/level:go_default_library",
+        "//vendor/github.com/pkg/errors:go_default_library",
     ],
 )

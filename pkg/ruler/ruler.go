@@ -10,8 +10,8 @@ import (
 	"time"
 
 	gklog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
@@ -246,12 +246,12 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 
 // Evaluate a list of rules in the given context.
 func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
-	logger := util.WithContext(ctx)
-	logger.Debugf("Evaluating %d rules...", len(rs))
+	logger := util.WithContext(ctx, util.Logger)
+	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(rs))
 	start := time.Now()
 	g, err := r.newGroup(ctx, rs)
 	if err != nil {
-		logger.Errorf("Failed to create rule group: %v", err)
+		level.Error(logger).Log("msg", "failed to create rule group", "err", err)
 		return
 	}
 	g.Eval(start)
@@ -310,7 +310,7 @@ func (s *Server) run() {
 	for _, w := range s.workers {
 		go w.Run()
 	}
-	log.Infof("Ruler up and running")
+	level.Info(util.Logger).Log("msg", "ruler up and running")
 }
 
 // Stop the server.
@@ -353,18 +353,18 @@ func (w *worker) Run() {
 		default:
 		}
 		blockedWorkers.Inc()
-		log.Debugf("Waiting for next work item")
+		level.Debug(util.Logger).Log("msg", "waiting for next work item")
 		item := w.scheduler.nextWorkItem()
 		blockedWorkers.Dec()
 		if item == nil {
-			log.Debugf("Queue closed and empty. Terminating worker.")
+			level.Debug(util.Logger).Log("msg", "queue closed and empty; terminating worker")
 			return
 		}
-		log.Debugf("Processing %v", item)
+		level.Debug(util.Logger).Log("msg", "processing item", "item", item)
 		ctx := user.InjectOrgID(context.Background(), item.userID)
 		w.ruler.Evaluate(ctx, item.rules)
 		w.scheduler.workItemDone(*item)
-		log.Debugf("%v handed back to queue", item)
+		level.Debug(util.Logger).Log("msg", "item handed back to queue", "item", item)
 	}
 }
 

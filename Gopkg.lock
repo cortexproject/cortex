@@ -498,7 +498,7 @@
 
 [[projects]]
   name = "github.com/prometheus/common"
-  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","log","model","route","version"]
+  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","log","model","promlog","route","version"]
   revision = "1bab55dd05dbff384524a6a1c99006d9eb5f139b"
 
 [[projects]]
@@ -723,6 +723,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4b6129c73d8f640a7bfd1c87e8d1460457e86de5a336c391fa9f11903013f445"
+  inputs-digest = "964891df04ed2e61f4a7b2c31717a5ef815ac247a8e7a05fe811b0fdfb704f73"
   solver-name = "gps-cdcl"
   solver-version = 1

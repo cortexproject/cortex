@@ -6,11 +6,12 @@ import (
 	"errors"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/go-kit/kit/log/level"
 	_ "github.com/lib/pq"                         // Import the postgres sql driver
 	_ "github.com/mattes/migrate/driver/postgres" // Import the postgres migrations driver
 	"github.com/mattes/migrate/migrate"
-	"github.com/prometheus/common/log"
 	"github.com/weaveworks/cortex/pkg/configs"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (
@@ -44,12 +45,12 @@ type dbProxy interface {
 // New creates a new postgres DB
 func New(uri, migrationsDir string) (DB, error) {
 	if migrationsDir != "" {
-		log.Infof("Running Database Migrations...")
+		level.Info(util.Logger).Log("msg", "running database migrations...")
 		if errs, ok := migrate.UpSync(uri, migrationsDir); !ok {
 			for _, err := range errs {
-				log.Error(err)
+				level.Error(util.Logger).Log("err", err)
 			}
-			return DB{}, errors.New("Database migrations failed")
+			return DB{}, errors.New("database migrations failed")
 		}
 	}
 	db, err := sql.Open("postgres", uri)
@@ -152,7 +153,7 @@ func (d DB) Transaction(f func(DB) error) error {
 	if err != nil {
 		// Rollback error is ignored as we already have one in progress
 		if err2 := tx.Rollback(); err2 != nil {
-			log.Warn("transaction rollback: %v (ignored)", err2)
+			level.Warn(util.Logger).Log("msg", "transaction rollback error (ignored)", "error", err2)
 		}
 		return err
 	}

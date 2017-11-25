@@ -1,11 +1,13 @@
 package ring
 
 import (
+	fmt "fmt"
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
-	"github.com/prometheus/common/log"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 type mockKV struct {
@@ -68,7 +70,7 @@ func (m *mockKV) Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMet
 }
 
 func (m *mockKV) CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error) {
-	log.Debugf("CAS %s (%d) <- %.40q...", p.Key, p.ModifyIndex, p.Value)
+	level.Debug(util.Logger).Log("msg", "CAS", "key", p.Key, "modify_index", p.ModifyIndex, "value", fmt.Sprintf("%.40q", p.Value))
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -95,14 +97,14 @@ func (m *mockKV) CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.Wr
 }
 
 func (m *mockKV) Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consul.QueryMeta, error) {
-	log.Debugf("Get %s (%d)", key, q.WaitIndex)
+	level.Debug(util.Logger).Log("msg", "Get", "key", key, "wait_index", q.WaitIndex)
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	value, ok := m.kvps[key]
 	if !ok {
-		log.Debugf("Get %s - not found", key)
+		level.Debug(util.Logger).Log("msg", "Get - not found", "key", key)
 		return nil, &consul.QueryMeta{LastIndex: m.current}, nil
 	}
 
@@ -112,12 +114,12 @@ func (m *mockKV) Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consu
 			m.cond.Wait()
 		}
 		if time.Now().After(deadline) {
-			log.Debugf("Get %s - deadline exceeded", key)
+			level.Debug(util.Logger).Log("msg", "Get - deadline exceeded", "key", key)
 			return nil, &consul.QueryMeta{LastIndex: q.WaitIndex}, nil
 		}
 	}
 
-	log.Debugf("Get %s (%d) = %.40q...", key, value.ModifyIndex, value.Value)
+	level.Debug(util.Logger).Log("msg", "Get", "key", key, "modify_index", value.ModifyIndex, "value", fmt.Sprintf("%.40q", value.Value))
 	return copyKVPair(value), &consul.QueryMeta{LastIndex: value.ModifyIndex}, nil
 }
 

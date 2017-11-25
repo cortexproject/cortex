@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"net/http"
+	"os"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
@@ -15,7 +16,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/ingester"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -30,36 +30,41 @@ func main() {
 		schemaConfig     chunk.SchemaConfig
 		storageConfig    storage.Config
 		ingesterConfig   ingester.Config
+		logLevel         util.LogLevel
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
-		&schemaConfig, &ingesterConfig, util.LogLevel{})
+		&schemaConfig, &ingesterConfig, &logLevel)
 	flag.Parse()
 	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
-	log.AddHook(promrus.MustNewPrometheusHook())
+	util.InitLogger(logLevel.AllowedLevel)
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 
 	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
-		log.Fatalf("Error initializing storage client: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
+		os.Exit(1)
 	}
 
 	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
-		log.Fatal(err)
+		level.Error(util.Logger).Log("err", err)
+		os.Exit(1)
 	}
 	defer chunkStore.Stop()
 
 	ingester, err := ingester.New(ingesterConfig, chunkStore)
 	if err != nil {
-		log.Fatal(err)
+		level.Error(util.Logger).Log("err", err)
+		os.Exit(1)
 	}
 	prometheus.MustRegister(ingester)
 	defer ingester.Shutdown()

@@ -13,6 +13,7 @@ go_library(
         "//pkg/ingester/client:go_default_library",
         "//pkg/prom1/storage/metric:go_default_library",
         "//pkg/util:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/prometheus/pkg/labels:go_default_library",
         "//vendor/github.com/prometheus/prometheus/promql:go_default_library",

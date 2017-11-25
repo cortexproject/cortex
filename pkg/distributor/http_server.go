@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -16,9 +17,9 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 	var req client.WriteRequest
 	buf, err := util.ParseProtoRequest(r.Context(), r, &req, compressionType)
-	logger := util.WithContext(r.Context())
+	logger := util.WithContext(r.Context(), util.Logger)
 	if err != nil {
-		logger.Errorf(err.Error())
+		level.Error(logger).Log("err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -29,16 +30,16 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 			samples += int64(len(ts.Samples))
 		}
 		if err := d.emitBillingRecord(r.Context(), buf, samples); err != nil {
-			logger.Errorf("Error emitting billing record: %v", err)
+			level.Error(logger).Log("msg", "error emitting billing record", "err", err)
 		}
 	}
 
 	if _, err := d.Push(r.Context(), &req); err != nil {
 		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			logger.Debugf("Push error: %v", err)
+			level.Error(logger).Log("msg", "push error", "err", err)
 			http.Error(w, string(httpResp.Body), int(httpResp.Code))
 		} else {
-			logger.Errorf("Push error: %v", err)
+			level.Error(logger).Log("msg", "push error", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -128,9 +129,9 @@ func (q MergeQueryable) RemoteReadHandler(w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 	var req client.ReadRequest
-	logger := util.WithContext(r.Context())
+	logger := util.WithContext(r.Context(), util.Logger)
 	if _, err := util.ParseProtoRequest(ctx, r, &req, compressionType); err != nil {
-		logger.Errorf(err.Error())
+		level.Error(logger).Log("err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -178,7 +179,7 @@ func (q MergeQueryable) RemoteReadHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := util.SerializeProtoResponse(w, &resp, compressionType); err != nil {
-		logger.Errorf("error sending remote read response: %v", err)
+		level.Error(logger).Log("msg", "error sending remote read response", "err", err)
 	}
 }
 
@@ -244,7 +245,7 @@ func (mq mergeQuerier) selectSamplesMatrix(matchers ...*labels.Matcher) (model.M
 
 	mergedMatrix, err := mergeMatrices(incomingMatrices, incomingErrors, len(mq.queriers))
 	if err != nil {
-		util.WithContext(mq.ctx).Errorf("Error in mergeQuerier.selectSamples: %+v", err)
+		level.Error(util.WithContext(mq.ctx, util.Logger)).Log("msg", "error in mergeQuerier.selectSamples", "err", err)
 		return nil, err
 	}
 	return mergedMatrix, nil

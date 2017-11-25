@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -297,16 +298,16 @@ func (am *MultitenantAlertmanager) Run() {
 				peers = append(peers, net.JoinHostPort(srv.Target, strconv.FormatUint(uint64(srv.Port), 10)))
 			}
 			sort.Strings(peers)
-			log.Infof("Updating alertmanager peers from %v to %v", am.meshRouter.getPeers(), peers)
+			level.Info(util.Logger).Log("msg", "updating alertmanager peers", "old", am.meshRouter.getPeers(), "new", peers)
 			errs := am.meshRouter.ConnectionMaker.InitiateConnections(peers, true)
 			for _, err := range errs {
-				log.Error(err)
+				level.Error(util.Logger).Log("err", err)
 			}
 			totalPeers.Set(float64(len(peers)))
 		case now := <-ticker.C:
 			err := am.updateConfigs(now)
 			if err != nil {
-				log.Warnf("MultitenantAlertmanager: error updating configs: %v", err)
+				level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: error updating configs", "err", err)
 			}
 		case <-am.stop:
 			ticker.Stop()
@@ -324,7 +325,7 @@ func (am *MultitenantAlertmanager) Stop() {
 		am.Stop()
 	}
 	am.meshRouter.Stop()
-	log.Debugf("MultitenantAlertmanager stopped")
+	level.Debug(util.Logger).Log("msg", "MultitenantAlertmanager stopped")
 }
 
 // Load the full set of configurations from the server, retrying with backoff
@@ -334,10 +335,10 @@ func (am *MultitenantAlertmanager) loadAllConfigs() map[string]configs.View {
 	for {
 		cfgs, err := am.poll()
 		if err == nil {
-			log.Debugf("MultitenantAlertmanager: found %d configurations in initial load", len(cfgs))
+			level.Debug(util.Logger).Log("msg", "MultitenantAlertmanager: initial configuration load", "num_configs", len(cfgs))
 			return cfgs
 		}
-		log.Warnf("MultitenantAlertmanager: error fetching all configurations, backing off: %v", err)
+		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: error fetching all configurations, backing off", "err", err)
 		time.Sleep(backoff)
 		backoff *= 2
 		if backoff > maxBackoff {
@@ -365,7 +366,7 @@ func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
 		return err
 	})
 	if err != nil {
-		log.Warnf("MultitenantAlertmanager: configs server poll failed: %v", err)
+		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: configs server poll failed", "err", err)
 		return nil, err
 	}
 	am.latestMutex.Lock()
@@ -376,12 +377,12 @@ func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
 
 func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.View) {
 	// TODO: instrument how many configs we have, both valid & invalid.
-	log.Debugf("Adding %d configurations", len(cfgs))
+	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	for userID, config := range cfgs {
 
 		err := am.setConfig(userID, config.Config)
 		if err != nil {
-			log.Warnf("MultitenantAlertmanager: %v", err)
+			level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: error applying config", "err", err)
 			continue
 		}
 
@@ -418,7 +419,7 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 		if am.fallbackConfig == "" {
 			return fmt.Errorf("blank Alertmanager configuration for %v", userID)
 		}
-		log.Infof("blank Alertmanager configuration; using fallback for %v", userID)
+		level.Info(util.Logger).Log("msg", "blank Alertmanager configuration; using fallback", "user_id", userID)
 		amConfig, err = amconfig.Load(am.fallbackConfig)
 		if err != nil {
 			return fmt.Errorf("unable to load fallback configuration for %v: %v", userID, err)

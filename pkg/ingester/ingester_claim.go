@@ -2,9 +2,10 @@ package ingester
 
 import (
 	"io"
+	"os"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
@@ -50,7 +51,8 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			}
 		}
 		if err := <-errc; err != nil {
-			log.Fatalf("Error rolling back failed TransferChunks: %v", err)
+			level.Error(util.Logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -71,7 +73,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		// round this loop.
 		if fromIngesterID == "" {
 			fromIngesterID = wireSeries.FromIngesterId
-			log.Infof("Processing TransferChunks request from ingester '%s'.", fromIngesterID)
+			level.Info(util.Logger).Log("msg", "processing TransferChunks request from ingester", "ingester", fromIngesterID)
 		}
 		metric := util.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)

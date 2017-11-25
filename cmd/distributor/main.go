@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,9 +48,12 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		logLevel          util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, util.LogLevel{})
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &logLevel)
 	flag.Parse()
+
+	util.InitLogger(logLevel.AllowedLevel)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
@@ -60,20 +64,23 @@ func main() {
 
 	r, err := ring.New(ringConfig)
 	if err != nil {
-		log.Fatalf("Error initializing ring: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
+		os.Exit(1)
 	}
 	defer r.Stop()
 
 	dist, err := distributor.New(distributorConfig, r)
 	if err != nil {
-		log.Fatalf("Error initializing distributor: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
+		os.Exit(1)
 	}
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 

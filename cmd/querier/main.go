@@ -7,8 +7,8 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
@@ -23,7 +23,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -39,9 +38,10 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
+		logLevel          util.LogLevel
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
-		&chunkStoreConfig, &schemaConfig, &storageConfig, util.LogLevel{})
+		&chunkStoreConfig, &schemaConfig, &storageConfig, &logLevel)
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
@@ -49,36 +49,41 @@ func main() {
 	trace := tracing.New(jaegerAgentHost, "querier")
 	defer trace.Close()
 
-	log.AddHook(promrus.MustNewPrometheusHook())
+	util.InitLogger(logLevel.AllowedLevel)
 
 	r, err := ring.New(ringConfig)
 	if err != nil {
-		log.Fatalf("Error initializing ring: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
+		os.Exit(1)
 	}
 	defer r.Stop()
 
 	dist, err := distributor.New(distributorConfig, r)
 	if err != nil {
-		log.Fatalf("Error initializing distributor: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
+		os.Exit(1)
 	}
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 	server.HTTP.Handle("/ring", r)
 
 	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
-		log.Fatalf("Error initializing storage client: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
+		os.Exit(1)
 	}
 
 	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
-		log.Fatal(err)
+		level.Error(util.Logger).Log("err", err)
+		os.Exit(1)
 	}
 	defer chunkStore.Stop()
 

@@ -10,8 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (
@@ -133,7 +134,7 @@ func (r *Ring) loop() {
 	defer close(r.done)
 	r.KVClient.WatchKey(ConsulKey, r.quit, func(value interface{}) bool {
 		if value == nil {
-			log.Infof("Ring doesn't exist in consul yet.")
+			level.Info(util.Logger).Log("msg", "ring doesn't exist in consul yet")
 			return true
 		}
 

@@ -2,9 +2,10 @@ package main
 
 import (
 	"flag"
+	"os"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
@@ -15,7 +16,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/ruler"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -32,52 +32,60 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
+		logLevel          util.LogLevel
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
-		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig)
+		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.Parse()
 
-	log.AddHook(promrus.MustNewPrometheusHook())
+	util.InitLogger(logLevel.AllowedLevel)
 
 	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
-		log.Fatalf("Error initializing storage client: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing storage client: %v", err)
+		os.Exit(1)
 	}
 
 	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
-		log.Fatal(err)
+		level.Error(util.Logger).Log("err", err)
+		os.Exit(1)
 	}
 	defer chunkStore.Stop()
 
 	r, err := ring.New(ringConfig)
 	if err != nil {
-		log.Fatalf("Error initializing ring: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ring: %v", err)
+		os.Exit(1)
 	}
 	defer r.Stop()
 
 	dist, err := distributor.New(distributorConfig, r)
 	if err != nil {
-		log.Fatalf("Error initializing distributor: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing distributor: %v", err)
+		os.Exit(1)
 	}
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
 	rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
 	if err != nil {
-		log.Fatalf("Error initializing ruler: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ruler: %v", err)
+		os.Exit(1)
 	}
 	defer rlr.Stop()
 
 	rulerServer, err := ruler.NewServer(rulerConfig, rlr)
 	if err != nil {
-		log.Fatalf("Error initializing ruler server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ruler server: %v", err)
+		os.Exit(1)
 	}
 	defer rulerServer.Stop()
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatalf("Error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server: %v", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 

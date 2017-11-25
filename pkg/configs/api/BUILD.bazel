@@ -7,8 +7,10 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/configs:go_default_library",
+        "//pkg/configs/client:go_default_library",
         "//pkg/configs/db:go_default_library",
         "//pkg/util:go_default_library",
+        "//vendor/github.com/go-kit/kit/log/level:go_default_library",
         "//vendor/github.com/gorilla/mux:go_default_library",
         "//vendor/github.com/prometheus/alertmanager/config:go_default_library",
         "//vendor/github.com/weaveworks/common/user:go_default_library",

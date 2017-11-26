@@ -18,11 +18,13 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
-const (
+var backoffConfig = util.BackoffConfig{
 	// Backoff for loading initial configuration set.
-	minBackoff = 100 * time.Millisecond
-	maxBackoff = 2 * time.Second
+	MinBackoff: 100 * time.Millisecond,
+	MaxBackoff: 2 * time.Second,
+}
 
+const (
 	timeLogFormat = "2006-01-02T15:04:05"
 )
 
@@ -136,7 +138,7 @@ func (s *scheduler) Stop() {
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
 func (s *scheduler) loadAllConfigs() map[string]configs.View {
-	backoff := minBackoff
+	backoff := util.NewBackoff(backoffConfig, nil)
 	for {
 		cfgs, err := s.poll()
 		if err == nil {
@@ -144,11 +146,7 @@ func (s *scheduler) loadAllConfigs() map[string]configs.View {
 			return cfgs
 		}
 		level.Warn(util.Logger).Log("msg", "scheduler: error fetching all configurations, backing off", "err", err)
-		time.Sleep(backoff)
-		backoff *= 2
-		if backoff > maxBackoff {
-			backoff = maxBackoff
-		}
+		backoff.Wait()
 	}
 }
 

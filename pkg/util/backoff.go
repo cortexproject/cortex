@@ -33,8 +33,8 @@ func (b *Backoff) Reset() {
 	b.duration = b.cfg.MinBackoff
 }
 
-func (b *Backoff) Finished() bool {
-	return b.cancelled || (b.cfg.MaxRetries > 0 && b.numRetries >= b.cfg.MaxRetries)
+func (b *Backoff) Ongoing() bool {
+	return !b.cancelled && (b.cfg.MaxRetries == 0 || b.numRetries < b.cfg.MaxRetries)
 }
 
 func (b *Backoff) NumRetries() int {
@@ -47,7 +47,7 @@ func (b *Backoff) Wait() {
 }
 
 func (b *Backoff) WaitWithoutCounting() {
-	if !b.Finished() {
+	if b.Ongoing() {
 		select {
 		case <-b.done:
 			b.cancelled = true

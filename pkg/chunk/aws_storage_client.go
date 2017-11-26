@@ -196,7 +196,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		dynamoQueryRetryCount.WithLabelValues("BatchWrite").Observe(float64(backoff.NumRetries()))
 	}()
 
-	for outstanding.Len()+unprocessed.Len() > 0 && !backoff.Finished() {
+	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBWriteBatch{}
 		requests.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
 		requests.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
@@ -325,7 +325,7 @@ func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryIn
 	}()
 
 	var err error
-	for !backoff.Finished() {
+	for backoff.Ongoing() {
 		err = instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
@@ -562,7 +562,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		dynamoQueryRetryCount.WithLabelValues("getDynamoDBChunks").Observe(float64(backoff.NumRetries()))
 	}()
 
-	for outstanding.Len()+unprocessed.Len() > 0 && !backoff.Finished() {
+	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBReadRequest{}
 		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
 		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)

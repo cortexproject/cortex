@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -48,6 +49,10 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer n.Stop()
+	// Loop until notifier discovery syncs up
+	for len(n.Alertmanagers()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	n.Send(&notifier.Alert{
 		Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},

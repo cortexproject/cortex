@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -38,7 +39,7 @@ func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
 // by having an instance factory passed in to methods and deserialising into that.
 type KVClient interface {
 	CAS(key string, f CASCallback) error
-	WatchKey(key string, done <-chan struct{}, f func(interface{}) bool)
+	WatchKey(ctx context.Context, key string, f func(interface{}) bool)
 	Get(key string) (interface{}, error)
 	PutBytes(key string, buf []byte) error
 }
@@ -194,30 +195,18 @@ var backoffConfig = util.BackoffConfig{
 	MaxBackoff: 1 * time.Minute,
 }
 
-func isClosed(done <-chan struct{}) bool {
-	select {
-	case <-done:
-		return true
-	default:
-		return false
-	}
-}
-
 // WatchKey will watch a given key in consul for changes. When the value
 // under said key changes, the f callback is called with the deserialised
 // value. To construct the deserialised value, a factory function should be
 // supplied which generates an empty struct for WatchKey to deserialise
 // into. Values in Consul are assumed to be JSON. This function blocks until
-// the done channel is closed.
-func (c *consulClient) WatchKey(key string, done <-chan struct{}, f func(interface{}) bool) {
+// the context is cancelled.
+func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	var (
-		backoff = util.NewBackoff(backoffConfig, done)
+		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
 	)
-	for {
-		if isClosed(done) {
-			return
-		}
+	for backoff.Ongoing() {
 		kvp, meta, err := c.kv.Get(key, &consul.QueryOptions{
 			RequireConsistent: true,
 			WaitIndex:         index,
@@ -281,8 +270,8 @@ func (c *prefixedConsulClient) CAS(key string, f CASCallback) error {
 }
 
 // WatchKey watches a key.
-func (c *prefixedConsulClient) WatchKey(key string, done <-chan struct{}, f func(interface{}) bool) {
-	c.consul.WatchKey(c.prefix+key, done, f)
+func (c *prefixedConsulClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+	c.consul.WatchKey(ctx, c.prefix+key, f)
 }
 
 // PutBytes writes bytes to Consul.

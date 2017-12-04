@@ -3,6 +3,7 @@ package ring
 // Based on https://raw.githubusercontent.com/stathat/consistent/master/consistent.go
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"math"
@@ -69,7 +70,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ring holds the information about the members of the consistent hash circle.
 type Ring struct {
 	KVClient         KVClient
-	quit, done       chan struct{}
+	done             chan struct{}
+	quit             context.CancelFunc
 	heartbeatTimeout time.Duration
 
 	mtx      sync.RWMutex
@@ -101,7 +103,6 @@ func New(cfg Config) (*Ring, error) {
 	r := &Ring{
 		KVClient:         store,
 		heartbeatTimeout: cfg.HeartbeatTimeout,
-		quit:             make(chan struct{}),
 		done:             make(chan struct{}),
 		ringDesc:         &Desc{},
 		ingesterOwnershipDesc: prometheus.NewDesc(
@@ -126,13 +127,15 @@ func New(cfg Config) (*Ring, error) {
 
 // Stop the distributor.
 func (r *Ring) Stop() {
-	close(r.quit)
+	r.quit()
 	<-r.done
 }
 
 func (r *Ring) loop() {
+	var ctx context.Context
+	ctx, r.quit = context.WithCancel(context.Background())
 	defer close(r.done)
-	r.KVClient.WatchKey(ConsulKey, r.quit, func(value interface{}) bool {
+	r.KVClient.WatchKey(ctx, ConsulKey, func(value interface{}) bool {
 		if value == nil {
 			level.Info(util.Logger).Log("msg", "ring doesn't exist in consul yet")
 			return true

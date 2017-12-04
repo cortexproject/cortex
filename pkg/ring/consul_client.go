@@ -38,7 +38,6 @@ func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
 // by having an instance factory passed in to methods and deserialising into that.
 type KVClient interface {
 	CAS(key string, f CASCallback) error
-	WatchPrefix(path string, done <-chan struct{}, f func(string, interface{}) bool)
 	WatchKey(key string, done <-chan struct{}, f func(interface{}) bool)
 	Get(key string) (interface{}, error)
 	PutBytes(key string, buf []byte) error
@@ -204,53 +203,6 @@ func isClosed(done <-chan struct{}) bool {
 	}
 }
 
-// WatchPrefix will watch a given prefix in consul for changes. When a value
-// under said prefix changes, the f callback is called with the deserialised
-// value. To construct the deserialised value, a factory function should be
-// supplied which generates an empty struct for WatchPrefix to deserialise
-// into. Values in Consul are assumed to be JSON. This function blocks until
-// the done channel is closed.
-func (c *consulClient) WatchPrefix(prefix string, done <-chan struct{}, f func(string, interface{}) bool) {
-	var (
-		backoff = util.NewBackoff(backoffConfig, done)
-		index   = uint64(0)
-	)
-	for {
-		if isClosed(done) {
-			return
-		}
-		kvps, meta, err := c.kv.List(prefix, &consul.QueryOptions{
-			RequireConsistent: true,
-			WaitIndex:         index,
-			WaitTime:          c.longPollDuration,
-		})
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
-			backoff.Wait()
-			continue
-		}
-		backoff.Reset()
-
-		// Skip if the index is the same as last time, because the key value is
-		// guaranteed to be the same as last time
-		if index == meta.LastIndex {
-			continue
-		}
-		index = meta.LastIndex
-
-		for _, kvp := range kvps {
-			out, err := c.codec.Decode(kvp.Value)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error decoding key", "key", kvp.Key, "err", err)
-				continue
-			}
-			if !f(kvp.Key, out) {
-				return
-			}
-		}
-	}
-}
-
 // WatchKey will watch a given key in consul for changes. When the value
 // under said key changes, the f callback is called with the deserialised
 // value. To construct the deserialised value, a factory function should be
@@ -326,11 +278,6 @@ func PrefixClient(client KVClient, prefix string) KVClient {
 // you'll get 'nil' as an argument to your callback.
 func (c *prefixedConsulClient) CAS(key string, f CASCallback) error {
 	return c.consul.CAS(c.prefix+key, f)
-}
-
-// WatchPrefix watches a prefix. This is in addition to the prefix we already have.
-func (c *prefixedConsulClient) WatchPrefix(path string, done <-chan struct{}, f func(string, interface{}) bool) {
-	c.consul.WatchPrefix(c.prefix+path, done, f)
 }
 
 // WatchKey watches a key.

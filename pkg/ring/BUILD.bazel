@@ -12,6 +12,7 @@ go_proto_library(
     name = "ring_go_proto",
     proto = ":ring_proto",
     importpath = "github.com/weaveworks/cortex/pkg/ring",
+    compiler = "//tools/build/bazel:gogo_proto",
     visibility = ["//visibility:public"],
 )
 

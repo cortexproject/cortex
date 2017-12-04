@@ -32,9 +32,4 @@ def gogo_dependencies():
       strip_prefix = "protobuf-2adc21fd136931e0388e278825291678e1d98309",
       type = "zip",
   )
-  native.register_toolchains(
-      "@io_bazel_rules_go//proto:proto",
-      "//tools/build/bazel:gogo",
-      "//tools/build/bazel:gogo_grpc",
-  )
   _gogo_proto_repository(name = "internal_gogo_proto_repository")

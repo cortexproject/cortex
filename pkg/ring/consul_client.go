@@ -11,6 +11,7 @@ import (
 	"github.com/golang/snappy"
 	consul "github.com/hashicorp/consul/api"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
+
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -189,36 +190,9 @@ func (c *consulClient) CAS(key string, f CASCallback) error {
 	return fmt.Errorf("failed to CAS %s", key)
 }
 
-const (
-	initialBackoff = 1 * time.Second
-	maxBackoff     = 1 * time.Minute
-)
-
-type backoff struct {
-	done    <-chan struct{}
-	backoff time.Duration
-}
-
-func newBackoff(done <-chan struct{}) *backoff {
-	return &backoff{
-		done:    done,
-		backoff: initialBackoff,
-	}
-}
-
-func (b *backoff) reset() {
-	b.backoff = initialBackoff
-}
-
-func (b *backoff) wait() {
-	select {
-	case <-b.done:
-	case <-time.After(b.backoff):
-		b.backoff = b.backoff * 2
-		if b.backoff > maxBackoff {
-			b.backoff = maxBackoff
-		}
-	}
+var backoffConfig = util.BackoffConfig{
+	MinBackoff: 1 * time.Second,
+	MaxBackoff: 1 * time.Minute,
 }
 
 func isClosed(done <-chan struct{}) bool {
@@ -238,7 +212,7 @@ func isClosed(done <-chan struct{}) bool {
 // the done channel is closed.
 func (c *consulClient) WatchPrefix(prefix string, done <-chan struct{}, f func(string, interface{}) bool) {
 	var (
-		backoff = newBackoff(done)
+		backoff = util.NewBackoff(backoffConfig, done)
 		index   = uint64(0)
 	)
 	for {
@@ -252,10 +226,10 @@ func (c *consulClient) WatchPrefix(prefix string, done <-chan struct{}, f func(s
 		})
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
-			backoff.wait()
+			backoff.Wait()
 			continue
 		}
-		backoff.reset()
+		backoff.Reset()
 
 		// Skip if the index is the same as last time, because the key value is
 		// guaranteed to be the same as last time
@@ -285,7 +259,7 @@ func (c *consulClient) WatchPrefix(prefix string, done <-chan struct{}, f func(s
 // the done channel is closed.
 func (c *consulClient) WatchKey(key string, done <-chan struct{}, f func(interface{}) bool) {
 	var (
-		backoff = newBackoff(done)
+		backoff = util.NewBackoff(backoffConfig, done)
 		index   = uint64(0)
 	)
 	for {
@@ -299,10 +273,10 @@ func (c *consulClient) WatchKey(key string, done <-chan struct{}, f func(interfa
 		})
 		if err != nil || kvp == nil {
 			level.Error(util.Logger).Log("msg", "error getting path", "key", key, "err", err)
-			backoff.wait()
+			backoff.Wait()
 			continue
 		}
-		backoff.reset()
+		backoff.Reset()
 
 		// Skip if the index is the same as last time, because the key value is
 		// guaranteed to be the same as last time

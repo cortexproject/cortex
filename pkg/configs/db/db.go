@@ -22,8 +22,24 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
 }
 
+// RulesDB has ruler-specific DB interfaces.
+type RulesDB interface {
+	// GetRulesConfig gets the user's ruler config
+	GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
+	SetRulesConfig(userID string, config configs.RulesConfig) error
+	// SetRulesConfig sets the user's ruler config
+
+	// GetAllRulesConfigs gets all of the ruler configs
+	GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error)
+	// GetRulesConfigs gets all of the configs that have been added or have
+	// changed since the provided config.
+	GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error)
+}
+
 // DB is the interface for the database.
 type DB interface {
+	RulesDB
+
 	GetConfig(userID string) (configs.View, error)
 	SetConfig(userID string, cfg configs.Config) error
 

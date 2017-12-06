@@ -134,6 +134,71 @@ func (d DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
 	})
 }
 
+// GetRulesConfig gets the latest alertmanager config for a user.
+func (d DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error) {
+	current, err := d.GetConfig(userID)
+	if err != nil {
+		return configs.VersionedRulesConfig{}, err
+	}
+	return current.GetVersionedRulesConfig(), nil
+}
+
+// SetRulesConfig sets the current alertmanager config for a user.
+func (d DB) SetRulesConfig(userID string, config configs.RulesConfig) error {
+	current, err := d.GetConfig(userID)
+	if err != nil {
+		return err
+	}
+	new := configs.Config{
+		AlertmanagerConfig: current.Config.AlertmanagerConfig,
+		RulesFiles:         config,
+	}
+	return d.SetConfig(userID, new)
+}
+
+func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {
+	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'").
+		Options("DISTINCT ON (owner_id)").
+		From("configs").
+		Where(filter).
+		Where("config ->> 'rules_files' <> '{}'").
+		OrderBy("owner_id, id DESC").
+		Query()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cfgs := map[string]configs.VersionedRulesConfig{}
+	for rows.Next() {
+		var cfg configs.VersionedRulesConfig
+		var userID string
+		var cfgBytes []byte
+		err = rows.Scan(&cfg.ID, &userID, &cfgBytes)
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(cfgBytes, &cfg.Config)
+		if err != nil {
+			return nil, err
+		}
+		cfgs[userID] = cfg
+	}
+	return cfgs, nil
+}
+
+// GetAllRulesConfigs gets all alertmanager configs for all users.
+func (d DB) GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error) {
+	return d.findRulesConfigs(activeConfig)
+}
+
+// GetRulesConfigs gets all the alertmanager configs that have changed since a given config.
+func (d DB) GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+	return d.findRulesConfigs(squirrel.And{
+		activeConfig,
+		squirrel.Gt{"id": since},
+	})
+}
+
 // Transaction runs the given function in a postgres transaction. If fn returns
 // an error the txn will be rolled back.
 func (d DB) Transaction(f func(DB) error) error {

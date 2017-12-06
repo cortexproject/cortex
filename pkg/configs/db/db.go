@@ -84,3 +84,12 @@ func New(cfg Config) (DB, error) {
 	}
 	return traced{timed{d}}, nil
 }
+
+// NewRulesDB creates a new rules config database.
+func NewRulesDB(cfg Config) (RulesDB, error) {
+	db, err := New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return db, err
+}

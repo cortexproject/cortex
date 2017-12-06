@@ -104,3 +104,33 @@ func (t timed) GetAlertmanagerConfigs(since configs.ID) (cfgs map[string]configs
 	})
 	return
 }
+
+func (t timed) GetRulesConfig(userID string) (cfg configs.VersionedRulesConfig, err error) {
+	t.timeRequest("GetRulesConfig", func(_ context.Context) error {
+		cfg, err = t.d.GetRulesConfig(userID)
+		return err
+	})
+	return
+}
+
+func (t timed) SetRulesConfig(userID string, cfg configs.RulesConfig) (err error) {
+	return t.timeRequest("SetRulesConfig", func(_ context.Context) error {
+		return t.d.SetRulesConfig(userID, cfg)
+	})
+}
+
+func (t timed) GetAllRulesConfigs() (cfgs map[string]configs.VersionedRulesConfig, err error) {
+	t.timeRequest("GetAllRulesConfigs", func(_ context.Context) error {
+		cfgs, err = t.d.GetAllRulesConfigs()
+		return err
+	})
+	return
+}
+
+func (t timed) GetRulesConfigs(since configs.ID) (cfgs map[string]configs.VersionedRulesConfig, err error) {
+	t.timeRequest("GetRulesConfigs", func(_ context.Context) error {
+		cfgs, err = t.d.GetRulesConfigs(since)
+		return err
+	})
+	return
+}

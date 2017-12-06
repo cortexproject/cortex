@@ -61,3 +61,23 @@ func (t traced) GetAlertmanagerConfigs(since configs.ID) (cfgs map[string]config
 	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
 	return t.d.GetAlertmanagerConfigs(since)
 }
+
+func (t traced) GetRulesConfig(userID string) (cfg configs.VersionedRulesConfig, err error) {
+	defer func() { t.trace("GetRulesConfig", userID, cfg, err) }()
+	return t.d.GetRulesConfig(userID)
+}
+
+func (t traced) SetRulesConfig(userID string, cfg configs.RulesConfig) (err error) {
+	defer func() { t.trace("SetRulesConfig", userID, cfg, err) }()
+	return t.d.SetRulesConfig(userID, cfg)
+}
+
+func (t traced) GetAllRulesConfigs() (cfgs map[string]configs.VersionedRulesConfig, err error) {
+	defer func() { t.trace("GetAllRulesConfigs", cfgs, err) }()
+	return t.d.GetAllRulesConfigs()
+}
+
+func (t traced) GetRulesConfigs(since configs.ID) (cfgs map[string]configs.VersionedRulesConfig, err error) {
+	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
+	return t.d.GetRulesConfigs(since)
+}

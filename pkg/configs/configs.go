@@ -13,7 +13,7 @@ type ID int
 // A Config is a Cortex configuration for a single user.
 type Config struct {
 	// RulesFiles maps from a rules filename to file contents.
-	RulesFiles         map[string]string  `json:"rules_files"`
+	RulesFiles         RulesConfig        `json:"rules_files"`
 	AlertmanagerConfig AlertmanagerConfig `json:"alertmanager_config"`
 }
 
@@ -37,6 +37,14 @@ func (v View) GetVersionedAlertmanagerConfig() VersionedAlertmanagerConfig {
 	}
 }
 
+// GetVersionedRulesConfig specializes the view to just the rules config.
+func (v View) GetVersionedRulesConfig() VersionedRulesConfig {
+	return VersionedRulesConfig{
+		ID:     v.ID,
+		Config: v.Config.RulesFiles,
+	}
+}
+
 // AlertmanagerConfig is an alertmanager config.
 type AlertmanagerConfig string
 
@@ -53,4 +61,14 @@ func (c AlertmanagerConfig) Parse() (*amConfig.Config, error) {
 type VersionedAlertmanagerConfig struct {
 	ID     ID                 `json:"id"`
 	Config AlertmanagerConfig `json:"config"`
+}
+
+// RulesConfig are the set of rules files for a particular organization.
+type RulesConfig map[string]string
+
+// VersionedRulesConfig is a RulesConfig together with a version.
+// `data Versioned a = Versioned { id :: ID , config :: a }`
+type VersionedRulesConfig struct {
+	ID     ID          `json:"id"`
+	Config RulesConfig `json:"config"`
 }

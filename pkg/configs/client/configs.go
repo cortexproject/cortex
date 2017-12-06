@@ -78,11 +78,7 @@ func RulesFromConfig(c configs.Config) ([]rules.Rule, error) {
 
 // AlertmanagerConfigFromConfig returns the Alertmanager config from the Cortex configuration.
 func AlertmanagerConfigFromConfig(c configs.Config) (*config.Config, error) {
-	cfg, err := config.Load(c.AlertmanagerConfig)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing Alertmanager config: %s", err)
-	}
-	return cfg, nil
+	return c.AlertmanagerConfig.Parse()
 }
 
 func getConfigs(endpoint string, timeout time.Duration, since configs.ID) (*ConfigsResponse, error) {

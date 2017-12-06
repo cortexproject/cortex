@@ -74,3 +74,33 @@ func (t timed) Close() error {
 		return t.d.Close()
 	})
 }
+
+func (t timed) GetAlertmanagerConfig(userID string) (cfg configs.VersionedAlertmanagerConfig, err error) {
+	t.timeRequest("GetAlertmanagerConfig", func(_ context.Context) error {
+		cfg, err = t.d.GetAlertmanagerConfig(userID)
+		return err
+	})
+	return
+}
+
+func (t timed) SetAlertmanagerConfig(userID string, cfg configs.AlertmanagerConfig) (err error) {
+	return t.timeRequest("SetAlertmanagerConfig", func(_ context.Context) error {
+		return t.d.SetAlertmanagerConfig(userID, cfg)
+	})
+}
+
+func (t timed) GetAllAlertmanagerConfigs() (cfgs map[string]configs.VersionedAlertmanagerConfig, err error) {
+	t.timeRequest("GetAllAlertmanagerConfigs", func(_ context.Context) error {
+		cfgs, err = t.d.GetAllAlertmanagerConfigs()
+		return err
+	})
+	return
+}
+
+func (t timed) GetAlertmanagerConfigs(since configs.ID) (cfgs map[string]configs.VersionedAlertmanagerConfig, err error) {
+	t.timeRequest("GetAlertmanagerConfigs", func(_ context.Context) error {
+		cfgs, err = t.d.GetAlertmanagerConfigs(since)
+		return err
+	})
+	return
+}

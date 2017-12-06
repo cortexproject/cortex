@@ -284,7 +284,7 @@ func Test_ValidateAlertmanagerConfig(t *testing.T) {
 func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
-		cfg := configs.Config{AlertmanagerConfig: test.config}
+		cfg := configs.Config{AlertmanagerConfig: configs.AlertmanagerConfig(test.config)}
 		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", readerFromConfig(t, cfg))
 
 		if !test.shouldFail {

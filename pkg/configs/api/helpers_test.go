@@ -70,13 +70,13 @@ func makeUserID() string {
 // makeConfig makes some arbitrary configuration.
 func makeConfig() configs.Config {
 	return configs.Config{
-		AlertmanagerConfig: makeString(`
+		AlertmanagerConfig: configs.AlertmanagerConfig(makeString(`
             # Config no. %d.
             route:
               receiver: noop
 
             receivers:
-            - name: noop`),
+            - name: noop`)),
 		RulesFiles: nil,
 	}
 }

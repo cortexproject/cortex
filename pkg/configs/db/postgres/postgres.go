@@ -134,6 +134,69 @@ func (d DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
 	})
 }
 
+// GetAlertmanagerConfig gets the latest alertmanager config for a user.
+func (d DB) GetAlertmanagerConfig(userID string) (configs.VersionedAlertmanagerConfig, error) {
+	current, err := d.GetConfig(userID)
+	if err != nil {
+		return configs.VersionedAlertmanagerConfig{}, err
+	}
+	return configs.VersionedAlertmanagerConfig{
+		ID:     current.ID,
+		Config: current.Config.AlertmanagerConfig,
+	}, nil
+}
+
+// SetAlertmanagerConfig sets the current alertmanager config for a user.
+func (d DB) SetAlertmanagerConfig(userID string, config configs.AlertmanagerConfig) error {
+	current, err := d.GetConfig(userID)
+	if err != nil {
+		return err
+	}
+	new := configs.Config{
+		RulesFiles:         current.Config.RulesFiles,
+		AlertmanagerConfig: config,
+	}
+	return d.SetConfig(userID, new)
+}
+
+func (d DB) findAlertmanagerConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedAlertmanagerConfig, error) {
+	rows, err := d.Select("id", "owner_id", "config ->> 'alertmanager_config'").
+		Options("DISTINCT ON (owner_id)").
+		From("configs").
+		Where(filter).
+		Where("config @> 'alertmanager_config' AND config ->> 'alertmanager_config' <> ''").
+		OrderBy("owner_id, id DESC").
+		Query()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cfgs := map[string]configs.VersionedAlertmanagerConfig{}
+	for rows.Next() {
+		var cfg configs.VersionedAlertmanagerConfig
+		var userID string
+		err = rows.Scan(&cfg.ID, &userID, &cfg.Config)
+		if err != nil {
+			return nil, err
+		}
+		cfgs[userID] = cfg
+	}
+	return cfgs, nil
+}
+
+// GetAllAlertmanagerConfigs gets all alertmanager configs for all users.
+func (d DB) GetAllAlertmanagerConfigs() (map[string]configs.VersionedAlertmanagerConfig, error) {
+	return d.findAlertmanagerConfigs(activeConfig)
+}
+
+// GetAlertmanagerConfigs gets all the alertmanager configs that have changed since a given config.
+func (d DB) GetAlertmanagerConfigs(since configs.ID) (map[string]configs.VersionedAlertmanagerConfig, error) {
+	return d.findAlertmanagerConfigs(squirrel.And{
+		activeConfig,
+		squirrel.Gt{"id": since},
+	})
+}
+
 // Transaction runs the given function in a postgres transaction. If fn returns
 // an error the txn will be rolled back.
 func (d DB) Transaction(f func(DB) error) error {

@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
-	amconfig "github.com/prometheus/alertmanager/config"
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/configs"
@@ -141,7 +140,7 @@ func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err = validateAlertmanagerConfig(string(cfg)); err != nil {
+	if err = validateAlertmanagerConfig(configs.AlertmanagerConfig(cfg)); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		util.WriteJSONResponse(w, map[string]string{
 			"status": "error",
@@ -155,8 +154,8 @@ func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func validateAlertmanagerConfig(cfg string) error {
-	amCfg, err := amconfig.Load(cfg)
+func validateAlertmanagerConfig(cfg configs.AlertmanagerConfig) error {
+	amCfg, err := cfg.Parse()
 	if err != nil {
 		return err
 	}

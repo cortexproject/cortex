@@ -22,8 +22,24 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
 }
 
+// AlertmanagerDB has alertmanager-specific DB interfaces
+type AlertmanagerDB interface {
+	// GetAlertmanagerConfig gets the user's alertmanager config
+	GetAlertmanagerConfig(userID string) (configs.VersionedAlertmanagerConfig, error)
+	// SetAlertmanagerConfig sets the user's alertmanager config
+	SetAlertmanagerConfig(userID string, config configs.AlertmanagerConfig) error
+
+	// GetAllAlertmanagerConfigs gets all of the alertmanager configs
+	GetAllAlertmanagerConfigs() (map[string]configs.VersionedAlertmanagerConfig, error)
+	// GetAlertmanagerConfigs gets all of the configs that have been added or
+	// have changed since the provided config.
+	GetAlertmanagerConfigs(since configs.ID) (map[string]configs.VersionedAlertmanagerConfig, error)
+}
+
 // DB is the interface for the database.
 type DB interface {
+	AlertmanagerDB
+
 	GetConfig(userID string) (configs.View, error)
 	SetConfig(userID string, cfg configs.Config) error
 

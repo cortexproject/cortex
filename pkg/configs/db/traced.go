@@ -41,3 +41,23 @@ func (t traced) Close() (err error) {
 	defer func() { t.trace("Close", err) }()
 	return t.d.Close()
 }
+
+func (t traced) GetAlertmanagerConfig(userID string) (cfg configs.VersionedAlertmanagerConfig, err error) {
+	defer func() { t.trace("GetAlertmanagerConfig", userID, cfg, err) }()
+	return t.d.GetAlertmanagerConfig(userID)
+}
+
+func (t traced) SetAlertmanagerConfig(userID string, cfg configs.AlertmanagerConfig) (err error) {
+	defer func() { t.trace("SetAlertmanagerConfig", userID, cfg, err) }()
+	return t.d.SetAlertmanagerConfig(userID, cfg)
+}
+
+func (t traced) GetAllAlertmanagerConfigs() (cfgs map[string]configs.VersionedAlertmanagerConfig, err error) {
+	defer func() { t.trace("GetAllAlertmanagerConfigs", cfgs, err) }()
+	return t.d.GetAllAlertmanagerConfigs()
+}
+
+func (t traced) GetAlertmanagerConfigs(since configs.ID) (cfgs map[string]configs.VersionedAlertmanagerConfig, err error) {
+	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
+	return t.d.GetAlertmanagerConfigs(since)
+}

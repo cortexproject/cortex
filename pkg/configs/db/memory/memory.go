@@ -72,3 +72,55 @@ func (d *DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
 func (d *DB) Close() error {
 	return nil
 }
+
+// GetAlertmanagerConfig gets the alertmanager config for a user.
+func (d *DB) GetAlertmanagerConfig(userID string) (configs.VersionedAlertmanagerConfig, error) {
+	c, ok := d.cfgs[userID]
+	if !ok {
+		return configs.VersionedAlertmanagerConfig{}, sql.ErrNoRows
+	}
+	return configs.VersionedAlertmanagerConfig{
+		ID:     c.id,
+		Config: c.cfg.AlertmanagerConfig,
+	}, nil
+}
+
+// SetAlertmanagerConfig sets the alertmanager config for a user.
+func (d *DB) SetAlertmanagerConfig(userID string, config configs.AlertmanagerConfig) error {
+	c, ok := d.cfgs[userID]
+	if !ok {
+		return d.SetConfig(userID, configs.Config{AlertmanagerConfig: config})
+	}
+	return d.SetConfig(userID, configs.Config{
+		RulesFiles:         c.cfg.RulesFiles,
+		AlertmanagerConfig: config,
+	})
+}
+
+// GetAllAlertmanagerConfigs gets the alertmanager configs for all users that have them.
+func (d *DB) GetAllAlertmanagerConfigs() (map[string]configs.VersionedAlertmanagerConfig, error) {
+	cfgs := map[string]configs.VersionedAlertmanagerConfig{}
+	for user, c := range d.cfgs {
+		cfgs[user] = configs.VersionedAlertmanagerConfig{
+			ID:     c.id,
+			Config: c.cfg.AlertmanagerConfig,
+		}
+	}
+	return cfgs, nil
+}
+
+// GetAlertmanagerConfigs gets the alertmanager configs that have changed
+// since the given config version.
+func (d *DB) GetAlertmanagerConfigs(since configs.ID) (map[string]configs.VersionedAlertmanagerConfig, error) {
+	cfgs := map[string]configs.VersionedAlertmanagerConfig{}
+	for user, c := range d.cfgs {
+		if c.id <= since {
+			continue
+		}
+		cfgs[user] = configs.VersionedAlertmanagerConfig{
+			ID:     c.id,
+			Config: c.cfg.AlertmanagerConfig,
+		}
+	}
+	return cfgs, nil
+}

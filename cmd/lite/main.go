@@ -169,6 +169,18 @@ func main() {
 		})
 	}
 
+	// Only serve the API for setting & getting rules configs if the database
+	// was provided. Allows for smoother migration. See
+	// https://github.com/weaveworks/cortex/issues/619
+	if configStoreConfig.DBConfig.URI != "" {
+		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
+			os.Exit(1)
+		}
+		a.RegisterRoutes(server.HTTP)
+	}
+
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(activeMiddleware.Wrap(promRouter))
 	subrouter.Path("/read").Handler(activeMiddleware.Wrap(http.HandlerFunc(sampleQueryable.RemoteReadHandler)))

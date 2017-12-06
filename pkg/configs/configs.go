@@ -1,5 +1,13 @@
 package configs
 
+import (
+	"fmt"
+
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/rules"
+	"github.com/weaveworks/cortex/pkg/util"
+)
+
 // An ID is the ID of a single users's Cortex configuration. When a
 // configuration changes, it gets a new ID.
 type ID int
@@ -32,6 +40,36 @@ func (v View) GetVersionedRulesConfig() VersionedRulesConfig {
 
 // RulesConfig are the set of rules files for a particular organization.
 type RulesConfig map[string]string
+
+// Parse rules from the Cortex configuration.
+//
+// Strongly inspired by `loadGroups` in Prometheus.
+func (c RulesConfig) Parse() ([]rules.Rule, error) {
+	result := []rules.Rule{}
+	for fn, content := range c {
+		stmts, err := promql.ParseStmts(content)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
+		}
+
+		for _, stmt := range stmts {
+			var rule rules.Rule
+
+			switch r := stmt.(type) {
+			case *promql.AlertStmt:
+				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations, util.Logger)
+
+			case *promql.RecordStmt:
+				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)
+
+			default:
+				return nil, fmt.Errorf("ruler.GetRules: unknown statement type")
+			}
+			result = append(result, rule)
+		}
+	}
+	return result, nil
+}
 
 // VersionedRulesConfig is a RulesConfig together with a version.
 // `data Versioned a = Versioned { id :: ID , config :: a }`

@@ -28,6 +28,15 @@ type View struct {
 	Config Config `json:"config"`
 }
 
+// GetVersionedAlertmanagerConfig specializes the view to just an alertmanager
+// config.
+func (v View) GetVersionedAlertmanagerConfig() VersionedAlertmanagerConfig {
+	return VersionedAlertmanagerConfig{
+		ID:     v.ID,
+		Config: v.Config.AlertmanagerConfig,
+	}
+}
+
 // AlertmanagerConfig is an alertmanager config.
 type AlertmanagerConfig string
 

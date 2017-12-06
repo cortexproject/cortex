@@ -63,10 +63,7 @@ func (d *DB) GetAlertmanagerConfig(userID string) (configs.VersionedAlertmanager
 	if !ok {
 		return configs.VersionedAlertmanagerConfig{}, sql.ErrNoRows
 	}
-	return configs.VersionedAlertmanagerConfig{
-		ID:     c.ID,
-		Config: c.Config.AlertmanagerConfig,
-	}, nil
+	return c.GetVersionedAlertmanagerConfig(), nil
 }
 
 // SetAlertmanagerConfig sets the alertmanager config for a user.
@@ -85,10 +82,7 @@ func (d *DB) SetAlertmanagerConfig(userID string, config configs.AlertmanagerCon
 func (d *DB) GetAllAlertmanagerConfigs() (map[string]configs.VersionedAlertmanagerConfig, error) {
 	cfgs := map[string]configs.VersionedAlertmanagerConfig{}
 	for user, c := range d.cfgs {
-		cfgs[user] = configs.VersionedAlertmanagerConfig{
-			ID:     c.ID,
-			Config: c.Config.AlertmanagerConfig,
-		}
+		cfgs[user] = c.GetVersionedAlertmanagerConfig()
 	}
 	return cfgs, nil
 }
@@ -101,10 +95,7 @@ func (d *DB) GetAlertmanagerConfigs(since configs.ID) (map[string]configs.Versio
 		if c.ID <= since {
 			continue
 		}
-		cfgs[user] = configs.VersionedAlertmanagerConfig{
-			ID:     c.ID,
-			Config: c.Config.AlertmanagerConfig,
-		}
+		cfgs[user] = c.GetVersionedAlertmanagerConfig()
 	}
 	return cfgs, nil
 }

@@ -140,10 +140,7 @@ func (d DB) GetAlertmanagerConfig(userID string) (configs.VersionedAlertmanagerC
 	if err != nil {
 		return configs.VersionedAlertmanagerConfig{}, err
 	}
-	return configs.VersionedAlertmanagerConfig{
-		ID:     current.ID,
-		Config: current.Config.AlertmanagerConfig,
-	}, nil
+	return current.GetVersionedAlertmanagerConfig(), nil
 }
 
 // SetAlertmanagerConfig sets the current alertmanager config for a user.

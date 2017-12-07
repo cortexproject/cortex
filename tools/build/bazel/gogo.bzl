@@ -31,5 +31,6 @@ def gogo_dependencies():
       urls = ["https://codeload.github.com/ianthehat/protobuf/zip/2adc21fd136931e0388e278825291678e1d98309"],
       strip_prefix = "protobuf-2adc21fd136931e0388e278825291678e1d98309",
       type = "zip",
+      build_file_proto_mode="disable",
   )
   _gogo_proto_repository(name = "internal_gogo_proto_repository")

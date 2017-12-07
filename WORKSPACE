@@ -2,8 +2,8 @@ workspace(name = "com_github_weaveworks_cortex")
 
 http_archive(
     name = "io_bazel_rules_go",
-    url = "https://codeload.github.com/bazelbuild/rules_go/zip/0fb90c43c5fab2a0b2d7a8684f26f6995d9aa212",
-    strip_prefix = "rules_go-0fb90c43c5fab2a0b2d7a8684f26f6995d9aa212",
+    url = "https://codeload.github.com/bazelbuild/rules_go/zip/5a08d3fc11190fede27b55bded93bda152abae68",
+    strip_prefix = "rules_go-5a08d3fc11190fede27b55bded93bda152abae68",
     type = "zip",
 )
 

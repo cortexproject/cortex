@@ -40,12 +40,12 @@ func (b *Backoff) Reset() {
 // Ongoing returns true if caller should keep going
 func (b *Backoff) Ongoing() bool {
 	// Stop if Context has errored or max retry count is exceeded
-	return (b.ctx == nil || b.ctx.Err() == nil) && (b.cfg.MaxRetries == 0 || b.numRetries < b.cfg.MaxRetries)
+	return b.ctx.Err() == nil && (b.cfg.MaxRetries == 0 || b.numRetries < b.cfg.MaxRetries)
 }
 
 // Err returns the reason for terminating the backoff, or nil if it didn't terminate
 func (b *Backoff) Err() error {
-	if b.ctx != nil && b.ctx.Err() != nil {
+	if b.ctx.Err() != nil {
 		return b.ctx.Err()
 	}
 	if b.cfg.MaxRetries != 0 && b.numRetries >= b.cfg.MaxRetries {

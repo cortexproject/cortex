@@ -138,7 +138,7 @@ func (s *scheduler) Stop() {
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
 func (s *scheduler) loadAllConfigs() map[string]configs.View {
-	backoff := util.NewBackoff(nil, backoffConfig)
+	backoff := util.NewBackoff(context.Background(), backoffConfig)
 	for {
 		cfgs, err := s.poll()
 		if err == nil {

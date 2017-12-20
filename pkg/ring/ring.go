@@ -121,7 +121,9 @@ func New(cfg Config) (*Ring, error) {
 			nil, nil,
 		),
 	}
-	go r.loop()
+	var ctx context.Context
+	ctx, r.quit = context.WithCancel(context.Background())
+	go r.loop(ctx)
 	return r, nil
 }
 
@@ -131,9 +133,7 @@ func (r *Ring) Stop() {
 	<-r.done
 }
 
-func (r *Ring) loop() {
-	var ctx context.Context
-	ctx, r.quit = context.WithCancel(context.Background())
+func (r *Ring) loop(ctx context.Context) {
 	defer close(r.done)
 	r.KVClient.WatchKey(ctx, ConsulKey, func(value interface{}) bool {
 		if value == nil {

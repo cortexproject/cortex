@@ -107,6 +107,18 @@ func main() {
 	subrouter.Path("/read").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(sampleQueryable.RemoteReadHandler)))
 	subrouter.Path("/validate_expr").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
+	subrouter.Path("/query_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(QueryStatsHandler)))
 
 	server.Run()
+}
+
+type queryStats struct {
+	Data string
+}
+
+// UserStatsHandler handles user stats to the Distributor.
+func QueryStatsHandler(w http.ResponseWriter, r *http.Request) {
+	stats := queryStats{Data: "Some stats here"}
+
+	util.WriteJSONResponse(w, stats)
 }

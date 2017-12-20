@@ -123,20 +123,3 @@ func (c *AlertManagerConfigsAPI) GetConfigs(since configs.ID) (*ConfigsResponse,
 	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.URL.String(), suffix)
 	return GetConfigs(endpoint, c.Timeout, since)
 }
-
-// RulesAPI allows retrieving recording and alerting rules.
-type RulesAPI struct {
-	URL     *url.URL
-	Timeout time.Duration
-}
-
-// GetConfigs returns all Cortex configurations from a configs API server
-// that have been updated after the given configs.ID was last updated.
-func (c *RulesAPI) GetConfigs(since configs.ID) (*ConfigsResponse, error) {
-	suffix := ""
-	if since != 0 {
-		suffix = fmt.Sprintf("?since=%d", since)
-	}
-	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.URL.String(), suffix)
-	return GetConfigs(endpoint, c.Timeout, since)
-}

@@ -333,7 +333,7 @@ func (am *MultitenantAlertmanager) Stop() {
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
 func (am *MultitenantAlertmanager) loadAllConfigs() map[string]configs.View {
-	backoff := util.NewBackoff(backoffConfig, nil)
+	backoff := util.NewBackoff(context.Background(), backoffConfig)
 	for {
 		cfgs, err := am.poll()
 		if err == nil {

@@ -69,6 +69,8 @@ func NewChunk(userID string, fp model.Fingerprint, metric model.Metric, c prom_c
 	}
 }
 
+var nilChunk Chunk
+
 // parseExternalKey is used to construct a partially-populated chunk from the
 // key in DynamoDB.  This chunk can then be used to calculate the key needed
 // to fetch the Chunk data from Memcache/S3, and then fully populate the chunk
@@ -88,10 +90,10 @@ func parseExternalKey(userID, externalKey string) (Chunk, error) {
 	}
 	chunk, err := parseNewExternalKey(externalKey)
 	if err != nil {
-		return Chunk{}, err
+		return nilChunk, err
 	}
 	if chunk.UserID != userID {
-		return Chunk{}, errors.WithStack(ErrWrongMetadata)
+		return nilChunk, errors.WithStack(ErrWrongMetadata)
 	}
 	return chunk, nil
 }
@@ -99,19 +101,19 @@ func parseExternalKey(userID, externalKey string) (Chunk, error) {
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 3 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return nilChunk, errors.WithStack(ErrInvalidChunkID)
 	}
 	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil {
-		return Chunk{}, err
+		return nilChunk, err
 	}
 	from, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return Chunk{}, err
+		return nilChunk, err
 	}
 	through, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
-		return Chunk{}, err
+		return nilChunk, err
 	}
 	return Chunk{
 		UserID:      userID,
@@ -124,28 +126,28 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 func parseNewExternalKey(key string) (Chunk, error) {
 	parts := strings.Split(key, "/")
 	if len(parts) != 2 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return nilChunk, errors.WithStack(ErrInvalidChunkID)
 	}
 	userID := parts[0]
 	hexParts := strings.Split(parts[1], ":")
 	if len(hexParts) != 4 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return nilChunk, errors.WithStack(ErrInvalidChunkID)
 	}
 	fingerprint, err := strconv.ParseUint(hexParts[0], 16, 64)
 	if err != nil {
-		return Chunk{}, err
+		return nilChunk, err
 	}
 	from, err := strconv.ParseInt(hexParts[1], 16, 64)
 	if err != nil {
-		return Chunk{}, err
+		return nilChunk, err
 	}
 	through, err := strconv.ParseInt(hexParts[2], 16, 64)
 	if err != nil {
-		return Chunk{}, err
+		return nilChunk, err
 	}
 	checksum, err := strconv.ParseUint(hexParts[3], 16, 32)
 	if err != nil {
-		return Chunk{}, err
+		return nilChunk, err
 	}
 	return Chunk{
 		UserID:      userID,

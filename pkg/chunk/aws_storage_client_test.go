@@ -535,8 +535,6 @@ func testStorageClientChunks(t *testing.T, client StorageClient) {
 				"index":               model.LabelValue(strconv.Itoa(i*batchSize + j)),
 			})
 			chunks = append(chunks, chunk)
-			_, err := chunk.Encode() // Need to encode it, side effect calculates crc
-			require.NoError(t, err)
 			written = append(written, chunk.ExternalKey())
 		}
 		err := client.PutChunks(context.Background(), chunks)

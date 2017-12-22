@@ -83,7 +83,8 @@ func TestChunkCodec(t *testing.T) {
 			buf, err := c.chunk.Encode()
 			require.NoError(t, err)
 
-			have, err := parseExternalKey(userID, c.chunk.ExternalKey())
+			var have Chunk
+			have.ChunkDesc, err = parseExternalKey(userID, c.chunk.ExternalKey())
 			require.NoError(t, err)
 
 			if c.f != nil {
@@ -103,17 +104,17 @@ func TestChunkCodec(t *testing.T) {
 func TestParseExternalKey(t *testing.T) {
 	for _, c := range []struct {
 		key   string
-		chunk Chunk
+		chunk ChunkDesc
 		err   error
 	}{
-		{key: "2:1484661279394:1484664879394", chunk: Chunk{
+		{key: "2:1484661279394:1484664879394", chunk: ChunkDesc{
 			UserID:      userID,
 			Fingerprint: model.Fingerprint(2),
 			From:        model.Time(1484661279394),
 			Through:     model.Time(1484664879394),
 		}},
 
-		{key: userID + "/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{
+		{key: userID + "/2:270d8f00:270d8f00:f84c5745", chunk: ChunkDesc{
 			UserID:      userID,
 			Fingerprint: model.Fingerprint(2),
 			From:        model.Time(655200000),
@@ -122,7 +123,7 @@ func TestParseExternalKey(t *testing.T) {
 			Checksum:    4165752645,
 		}},
 
-		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
+		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: ChunkDesc{}, err: ErrWrongMetadata},
 	} {
 		chunk, err := parseExternalKey(userID, c.key)
 		require.Equal(t, c.err, errors.Cause(err))

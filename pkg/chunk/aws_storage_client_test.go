@@ -548,7 +548,7 @@ func testStorageClientChunks(t *testing.T, client StorageClient) {
 			key := written[rand.Intn(len(written))]
 			chunk, err := parseNewExternalKey(key)
 			require.NoError(t, err)
-			chunksToGet = append(chunksToGet, chunk)
+			chunksToGet = append(chunksToGet, Chunk{ChunkDesc: chunk})
 		}
 
 		chunksWeGot, err := client.GetChunks(context.Background(), chunksToGet)

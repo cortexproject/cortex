@@ -28,23 +28,28 @@ const (
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
 
-// Chunk contains encoded timeseries data
-type Chunk struct {
+type ChunkDesc struct {
 	// These two fields will be missing from older chunks (as will the hash).
 	// On fetch we will initialise these fields from the DynamoDB key.
 	Fingerprint model.Fingerprint `json:"fingerprint"`
 	UserID      string            `json:"userID"`
 
 	// These fields will be in all chunks, including old ones.
-	From    model.Time   `json:"from"`
-	Through model.Time   `json:"through"`
-	Metric  model.Metric `json:"metric"`
+	From    model.Time `json:"from"`
+	Through model.Time `json:"through"`
 
 	// The hash is not written to the external storage either.  We use
 	// crc32, Castagnoli table.  See http://www.evanjones.ca/crc32c.html.
 	// For old chunks, ChecksumSet will be false.
 	ChecksumSet bool   `json:"-"`
 	Checksum    uint32 `json:"-"`
+}
+
+// Chunk contains encoded timeseries data
+type Chunk struct {
+	ChunkDesc
+
+	Metric model.Metric `json:"metric"`
 
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
@@ -59,17 +64,19 @@ type Chunk struct {
 // NewChunk creates a new chunk
 func NewChunk(userID string, fp model.Fingerprint, metric model.Metric, c prom_chunk.Chunk, from, through model.Time) Chunk {
 	return Chunk{
-		Fingerprint: fp,
-		UserID:      userID,
-		From:        from,
-		Through:     through,
-		Metric:      metric,
-		Encoding:    c.Encoding(),
-		Data:        c,
+		ChunkDesc: ChunkDesc{
+			Fingerprint: fp,
+			UserID:      userID,
+			From:        from,
+			Through:     through,
+		},
+		Metric:   metric,
+		Encoding: c.Encoding(),
+		Data:     c,
 	}
 }
 
-var nilChunk Chunk
+var nilChunk ChunkDesc
 
 // parseExternalKey is used to construct a partially-populated chunk from the
 // key in DynamoDB.  This chunk can then be used to calculate the key needed
@@ -84,7 +91,7 @@ var nilChunk Chunk
 // Post-checksums, externals keys become the same across DynamoDB, Memcache
 // and S3.  Numbers become hex encoded.  Keys look like:
 // `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`.
-func parseExternalKey(userID, externalKey string) (Chunk, error) {
+func parseExternalKey(userID, externalKey string) (ChunkDesc, error) {
 	if !strings.Contains(externalKey, "/") {
 		return parseLegacyChunkID(userID, externalKey)
 	}
@@ -98,7 +105,7 @@ func parseExternalKey(userID, externalKey string) (Chunk, error) {
 	return chunk, nil
 }
 
-func parseLegacyChunkID(userID, key string) (Chunk, error) {
+func parseLegacyChunkID(userID, key string) (ChunkDesc, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 3 {
 		return nilChunk, errors.WithStack(ErrInvalidChunkID)
@@ -115,7 +122,7 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	if err != nil {
 		return nilChunk, err
 	}
-	return Chunk{
+	return ChunkDesc{
 		UserID:      userID,
 		Fingerprint: model.Fingerprint(fingerprint),
 		From:        model.Time(from),
@@ -123,7 +130,7 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	}, nil
 }
 
-func parseNewExternalKey(key string) (Chunk, error) {
+func parseNewExternalKey(key string) (ChunkDesc, error) {
 	parts := strings.Split(key, "/")
 	if len(parts) != 2 {
 		return nilChunk, errors.WithStack(ErrInvalidChunkID)
@@ -149,7 +156,7 @@ func parseNewExternalKey(key string) (Chunk, error) {
 	if err != nil {
 		return nilChunk, err
 	}
-	return Chunk{
+	return ChunkDesc{
 		UserID:      userID,
 		Fingerprint: model.Fingerprint(fingerprint),
 		From:        model.Time(from),

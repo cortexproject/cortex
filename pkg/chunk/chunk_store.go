@@ -440,7 +440,8 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 			return nil, err
 		}
 
-		chunk, err := parseExternalKey(userID, chunkKey)
+		var chunk Chunk
+		chunk.ChunkDesc, err = parseExternalKey(userID, chunkKey)
 		if err != nil {
 			return nil, err
 		}

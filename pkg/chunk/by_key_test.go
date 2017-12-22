@@ -11,7 +11,7 @@ import (
 )
 
 func c(id string) Chunk {
-	return Chunk{UserID: id}
+	return Chunk{ChunkDesc: ChunkDesc{UserID: id}}
 }
 
 func TestUnique(t *testing.T) {

@@ -92,7 +92,7 @@ func TestChunkCache(t *testing.T) {
 		chunk, err := parseExternalKey(userID, key)
 		require.NoError(t, err)
 
-		found, missing, err := c.FetchChunkData(context.Background(), []Chunk{chunk})
+		found, missing, err := c.FetchChunkData(context.Background(), []Chunk{Chunk{ChunkDesc: chunk}})
 		require.NoError(t, err)
 		require.Empty(t, missing)
 		require.Len(t, found, 1)
@@ -104,7 +104,7 @@ func TestChunkCache(t *testing.T) {
 	for i := 0; i < len(keys); i++ {
 		chunk, err := parseExternalKey(userID, keys[i])
 		require.NoError(t, err)
-		receivedChunks = append(receivedChunks, chunk)
+		receivedChunks = append(receivedChunks, Chunk{ChunkDesc: chunk})
 	}
 	found, missing, err := c.FetchChunkData(context.Background(), receivedChunks)
 	require.NoError(t, err)

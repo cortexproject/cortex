@@ -37,6 +37,16 @@ func (t traced) GetConfigs(since configs.ID) (cfgs map[string]configs.View, err 
 	return t.d.GetConfigs(since)
 }
 
+func (t traced) DeactivateConfig(userID string) (err error) {
+	defer func() { t.trace("DeactivateConfig", userID, err) }()
+	return t.d.DeactivateConfig(userID)
+}
+
+func (t traced) RestoreConfig(userID string) (err error) {
+	defer func() { t.trace("RestoreConfig", userID, err) }()
+	return t.d.RestoreConfig(userID)
+}
+
 func (t traced) Close() (err error) {
 	defer func() { t.trace("Close", err) }()
 	return t.d.Close()

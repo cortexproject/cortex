@@ -43,6 +43,7 @@ func dummyChunkFor(metric model.Metric) Chunk {
 }
 
 func TestChunkCodec(t *testing.T) {
+	decodeContext := NewDecodeContext()
 	for i, c := range []struct {
 		chunk Chunk
 		err   error
@@ -90,7 +91,7 @@ func TestChunkCodec(t *testing.T) {
 				c.f(&have, buf)
 			}
 
-			err = have.Decode(buf)
+			err = have.Decode(decodeContext, buf)
 			require.Equal(t, c.err, errors.Cause(err))
 
 			if c.err == nil {
@@ -237,9 +238,10 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
+		decodeContext := NewDecodeContext()
 		chunks := make([]Chunk, batchSize)
 		for j := 0; j < batchSize; j++ {
-			chunks[j].Decode(buf)
+			chunks[j].Decode(decodeContext, buf)
 		}
 	}
 }

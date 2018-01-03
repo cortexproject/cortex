@@ -224,6 +224,19 @@ func NewDecodeContext() *DecodeContext {
 	}
 }
 
+// If we have decoded a chunk with the same fingerprint before, re-use its Metric, otherwise parse it
+func (dc *DecodeContext) metric(fingerprint model.Fingerprint, buf []byte) (model.Metric, error) {
+	metric, found := dc.metrics[fingerprint]
+	if !found {
+		err := json.NewDecoder(bytes.NewReader(buf)).Decode(&metric)
+		if err != nil {
+			return nil, errors.Wrap(err, "while parsing chunk metric")
+		}
+		dc.metrics[fingerprint] = metric
+	}
+	return metric, nil
+}
+
 // Decode the chunk from the given buffer, and confirm the chunk is the one we
 // expected.
 func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
@@ -272,16 +285,9 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 		}
 	}
 	*c = tempMetadata.Chunk
-
-	// If we have decoded a chunk with the same fingerprint before, re-use its Metric, otherwise parse it
-	if cachedMetric, found := decodeContext.metrics[c.Fingerprint]; found {
-		c.Metric = cachedMetric
-	} else {
-		err := json.NewDecoder(bytes.NewReader(tempMetadata.RawMetric)).Decode(&c.Metric)
-		if err != nil {
-			return errors.Wrap(err, "while parsing chunk metric")
-		}
-		decodeContext.metrics[c.Fingerprint] = c.Metric
+	c.Metric, err = decodeContext.metric(tempMetadata.Fingerprint, tempMetadata.RawMetric)
+	if err != nil {
+		return err
 	}
 
 	// Flag indicates if metadata was written to index, and if false implies

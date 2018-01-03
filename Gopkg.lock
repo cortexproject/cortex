@@ -601,7 +601,7 @@
   branch = "master"
   name = "github.com/weaveworks/common"
   packages = ["aws","errors","httpgrpc","httpgrpc/server","instrument","logging","mflag","mflagext","middleware","mtime","server","signals","test","tracing","user"]
-  revision = "57600de7028ee2b8070f1696250887ad243b786c"
+  revision = "92029dbfb76a2b715629d9f7e68e62574028df22"
 
 [[projects]]
   name = "github.com/weaveworks/mesh"

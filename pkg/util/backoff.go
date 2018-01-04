@@ -69,15 +69,16 @@ func (b *Backoff) Wait() {
 // WaitWithoutCounting sleeps for the backoff time then increases backoff time
 // Returns immediately if Context is terminated
 func (b *Backoff) WaitWithoutCounting() {
+	// Based on the "Full Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
+	// sleep = random_between(0, min(cap, base * 2 ** attempt))
 	if b.Ongoing() {
+		sleepTime := time.Duration(rand.Int63n(int64(b.duration)))
 		select {
 		case <-b.ctx.Done():
-		case <-time.After(b.duration):
+		case <-time.After(sleepTime):
 		}
 	}
-	// Based on the "Decorrelated Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
-	// sleep = min(cap, random_between(base, sleep * 3))
-	b.duration = b.cfg.MinBackoff + time.Duration(rand.Int63n(int64((b.duration*3)-b.cfg.MinBackoff)))
+	b.duration = b.duration * 2
 	if b.duration > b.cfg.MaxBackoff {
 		b.duration = b.cfg.MaxBackoff
 	}

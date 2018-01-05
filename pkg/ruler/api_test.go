@@ -150,6 +150,32 @@ func Test_PostConfig_CreatesConfig(t *testing.T) {
 	assert.Equal(t, config, result.Config)
 }
 
+// Posting an invalid config when there's none set returns an error and leaves the config unset.
+func Test_PostConfig_InvalidNewConfig(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
+	userID := makeUserID()
+	invalidConfig := map[string]string{
+		"some.rules": "invalid config",
+	}
+	updateRequest := configUpdateRequest{
+		OldConfig: nil,
+		NewConfig: invalidConfig,
+	}
+	b, err := json.Marshal(updateRequest)
+	require.NoError(t, err)
+	reader := bytes.NewReader(b)
+	{
+		w := requestAsUser(t, userID, "POST", endpoint, reader)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	}
+	{
+		w := requestAsUser(t, userID, "GET", endpoint, nil)
+		require.Equal(t, http.StatusNotFound, w.Code)
+	}
+}
+
 // Posting to a configuration sets it so that you can get it again.
 func Test_PostConfig_UpdatesConfig(t *testing.T) {
 	setup(t)
@@ -162,6 +188,32 @@ func Test_PostConfig_UpdatesConfig(t *testing.T) {
 	view2 := post(t, userID, config1, config2)
 	assert.True(t, view2.ID > view1.ID, "%v > %v", view2.ID, view1.ID)
 	assert.Equal(t, config2, view2.Config)
+}
+
+// Posting an invalid config when there's one already set returns an error and leaves the config as is.
+func Test_PostConfig_InvalidChangedConfig(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
+	userID := makeUserID()
+	config := makeRulerConfig()
+	post(t, userID, nil, config)
+	invalidConfig := map[string]string{
+		"some.rules": "invalid config",
+	}
+	updateRequest := configUpdateRequest{
+		OldConfig: nil,
+		NewConfig: invalidConfig,
+	}
+	b, err := json.Marshal(updateRequest)
+	require.NoError(t, err)
+	reader := bytes.NewReader(b)
+	{
+		w := requestAsUser(t, userID, "POST", endpoint, reader)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	}
+	result := get(t, userID)
+	assert.Equal(t, config, result.Config)
 }
 
 // Different users can have different configurations.

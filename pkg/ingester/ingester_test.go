@@ -97,7 +97,7 @@ func chunksToMatrix(chunks []chunk.Chunk) (model.Matrix, error) {
 			sampleStreams[fp] = ss
 		}
 
-		samples, err := c.Samples()
+		samples, err := c.Samples(c.From, c.Through)
 		if err != nil {
 			return nil, err
 		}

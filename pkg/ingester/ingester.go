@@ -257,12 +257,12 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		chunkLength: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_length",
 			Help:    "Distribution of stored chunk lengths (when stored).",
-			Buckets: prometheus.ExponentialBuckets(10, 2, 8), // biggest bucket is 10*2^(8-1) = 1280
+			Buckets: prometheus.ExponentialBuckets(10, 2, 10), // biggest bucket is 10*2^(10-1) = 5120
 		}),
 		chunkAge: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_age_seconds",
 			Help:    "Distribution of chunk ages (when stored).",
-			Buckets: prometheus.ExponentialBuckets(60, 2, 10), // biggest bucket is 60*2^(10-1) = 30720 = 8:32 hrs
+			Buckets: prometheus.ExponentialBuckets(60, 2, 11), // biggest bucket is 60*2^(11-1) = 61440 = 17:04 hrs
 		}),
 		memoryChunks: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_memory_chunks",

@@ -11,6 +11,10 @@ import (
 	oldcontext "golang.org/x/net/context"
 )
 
+// DefBuckets are histogram buckets for the response time (in seconds)
+// of a network service, including one that is responding very slowly.
+var DefBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 50, 100}
+
 // Collector describes something that collects data before and/or after a task.
 type Collector interface {
 	Register()

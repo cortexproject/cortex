@@ -75,7 +75,10 @@ func (c configsClient) GetConfigs(since configs.ID) (map[string]configs.Versione
 	}
 	configs := map[string]configs.VersionedRulesConfig{}
 	for id, view := range response.Configs {
-		configs[id] = view.GetVersionedRulesConfig()
+		cfg := view.GetVersionedRulesConfig()
+		if cfg != nil {
+			configs[id] = *cfg
+		}
 	}
 	return configs, nil
 }

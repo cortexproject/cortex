@@ -141,7 +141,11 @@ func (d DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error) 
 	if err != nil {
 		return configs.VersionedRulesConfig{}, err
 	}
-	return current.GetVersionedRulesConfig(), nil
+	cfg := current.GetVersionedRulesConfig()
+	if cfg == nil {
+		return configs.VersionedRulesConfig{}, sql.ErrNoRows
+	}
+	return *cfg, nil
 }
 
 // SetRulesConfig sets the current alertmanager config for a user.

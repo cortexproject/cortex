@@ -64,7 +64,11 @@ func (d *DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
 	if !ok {
 		return configs.VersionedRulesConfig{}, sql.ErrNoRows
 	}
-	return c.GetVersionedRulesConfig(), nil
+	cfg := c.GetVersionedRulesConfig()
+	if cfg == nil {
+		return configs.VersionedRulesConfig{}, sql.ErrNoRows
+	}
+	return *cfg, nil
 }
 
 // SetRulesConfig sets the rules config for a user.
@@ -86,7 +90,10 @@ func (d *DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesCon
 func (d *DB) GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error) {
 	cfgs := map[string]configs.VersionedRulesConfig{}
 	for user, c := range d.cfgs {
-		cfgs[user] = c.GetVersionedRulesConfig()
+		cfg := c.GetVersionedRulesConfig()
+		if cfg != nil {
+			cfgs[user] = *cfg
+		}
 	}
 	return cfgs, nil
 }
@@ -99,7 +106,10 @@ func (d *DB) GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRule
 		if c.ID <= since {
 			continue
 		}
-		cfgs[user] = c.GetVersionedRulesConfig()
+		cfg := c.GetVersionedRulesConfig()
+		if cfg != nil {
+			cfgs[user] = *cfg
+		}
 	}
 	return cfgs, nil
 }

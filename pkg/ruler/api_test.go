@@ -14,6 +14,7 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/configs"
+	"github.com/weaveworks/cortex/pkg/configs/api"
 	"github.com/weaveworks/cortex/pkg/configs/db"
 	"github.com/weaveworks/cortex/pkg/configs/db/dbtest"
 )
@@ -290,4 +291,69 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID3: config3,
 	}, found)
+}
+
+// postAlertmanagerConfig posts an alertmanager config to the alertmanager configs API.
+func postAlertmanagerConfig(t *testing.T, userID, configFile string) {
+	config := configs.Config{
+		AlertmanagerConfig: configFile,
+		RulesFiles:         nil,
+	}
+	b, err := json.Marshal(config)
+	require.NoError(t, err)
+	reader := bytes.NewReader(b)
+	configsAPI := api.New(database)
+	w := requestAsUser(t, configsAPI, userID, "POST", "/api/prom/configs/alertmanager", reader)
+	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+// getAlertmanagerConfig posts an alertmanager config to the alertmanager configs API.
+func getAlertmanagerConfig(t *testing.T, userID string) string {
+	w := requestAsUser(t, api.New(database), userID, "GET", "/api/prom/configs/alertmanager", nil)
+	var x configs.View
+	b := w.Body.Bytes()
+	err := json.Unmarshal(b, &x)
+	require.NoError(t, err, "Could not unmarshal JSON: %v", string(b))
+	return x.Config.AlertmanagerConfig
+}
+
+// If a user has only got alertmanager config set, then we learn nothing about them via GetConfigs.
+func Test_AlertmanagerConfig_NotInAllConfigs(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
+	config := makeString(`
+            # Config no. %d.
+            route:
+              receiver: noop
+
+            receivers:
+            - name: noop`)
+	postAlertmanagerConfig(t, makeUserID(), config)
+
+	found, err := privateAPI.GetConfigs(0)
+	assert.NoError(t, err, "error getting configs")
+	assert.Equal(t, map[string]configs.VersionedRulesConfig{}, found)
+}
+
+// Setting a ruler config doesn't change alertmanager config.
+func Test_AlertmanagerConfig_RulerConfigDoesntChangeIt(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
+	userID := makeUserID()
+	alertmanagerConfig := makeString(`
+            # Config no. %d.
+            route:
+              receiver: noop
+
+            receivers:
+            - name: noop`)
+	postAlertmanagerConfig(t, userID, alertmanagerConfig)
+
+	rulerConfig := makeRulerConfig()
+	post(t, userID, nil, rulerConfig)
+
+	newAlertmanagerConfig := getAlertmanagerConfig(t, userID)
+	assert.Equal(t, alertmanagerConfig, newAlertmanagerConfig)
 }

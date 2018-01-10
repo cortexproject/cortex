@@ -31,8 +31,11 @@ type View struct {
 }
 
 // GetVersionedRulesConfig specializes the view to just the rules config.
-func (v View) GetVersionedRulesConfig() VersionedRulesConfig {
-	return VersionedRulesConfig{
+func (v View) GetVersionedRulesConfig() *VersionedRulesConfig {
+	if v.Config.RulesFiles == nil {
+		return nil
+	}
+	return &VersionedRulesConfig{
 		ID:     v.ID,
 		Config: v.Config.RulesFiles,
 	}

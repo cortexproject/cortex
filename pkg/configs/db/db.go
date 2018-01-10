@@ -26,7 +26,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type RulesDB interface {
 	// GetRulesConfig gets the user's ruler config
 	GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
-	// SetRulesConfig sets the user's ruler config
+	// SetRulesConfig does a compare-and-swap (CAS) on the user's rules config.
+	// `oldConfig` must precisely match the current config in order to change the config to `newConfig`.
+	// Will return `true` if the config was updated, `false` otherwise.
 	SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConfig) (bool, error)
 
 	// GetAllRulesConfigs gets all of the ruler configs

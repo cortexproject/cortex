@@ -47,9 +47,9 @@ func (t traced) GetRulesConfig(userID string) (cfg configs.VersionedRulesConfig,
 	return t.d.GetRulesConfig(userID)
 }
 
-func (t traced) SetRulesConfig(userID string, cfg configs.RulesConfig) (err error) {
-	defer func() { t.trace("SetRulesConfig", userID, cfg, err) }()
-	return t.d.SetRulesConfig(userID, cfg)
+func (t traced) SetRulesConfig(userID string, oldCfg, newCfg configs.RulesConfig) (updated bool, err error) {
+	defer func() { t.trace("SetRulesConfig", userID, oldCfg, newCfg, updated, err) }()
+	return t.d.SetRulesConfig(userID, oldCfg, newCfg)
 }
 
 func (t traced) GetAllRulesConfigs() (cfgs map[string]configs.VersionedRulesConfig, err error) {

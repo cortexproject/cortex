@@ -2,6 +2,7 @@ package memory
 
 import (
 	"database/sql"
+	"reflect"
 
 	"github.com/weaveworks/cortex/pkg/configs"
 )
@@ -67,14 +68,17 @@ func (d *DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
 }
 
 // SetRulesConfig sets the rules config for a user.
-func (d *DB) SetRulesConfig(userID string, config configs.RulesConfig) error {
+func (d *DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
 	c, ok := d.cfgs[userID]
 	if !ok {
-		return d.SetConfig(userID, configs.Config{RulesFiles: config})
+		return true, d.SetConfig(userID, configs.Config{RulesFiles: newConfig})
 	}
-	return d.SetConfig(userID, configs.Config{
+	if !reflect.DeepEqual(c.Config.RulesFiles, oldConfig) {
+		return false, nil
+	}
+	return true, d.SetConfig(userID, configs.Config{
 		AlertmanagerConfig: c.Config.AlertmanagerConfig,
-		RulesFiles:         config,
+		RulesFiles:         newConfig,
 	})
 }
 

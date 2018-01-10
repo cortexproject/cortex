@@ -83,10 +83,12 @@ func (t timed) GetRulesConfig(userID string) (cfg configs.VersionedRulesConfig, 
 	return
 }
 
-func (t timed) SetRulesConfig(userID string, cfg configs.RulesConfig) (err error) {
-	return t.timeRequest("SetRulesConfig", func(_ context.Context) error {
-		return t.d.SetRulesConfig(userID, cfg)
+func (t timed) SetRulesConfig(userID string, oldCfg, newCfg configs.RulesConfig) (updated bool, err error) {
+	t.timeRequest("SetRulesConfig", func(_ context.Context) error {
+		updated, err = t.d.SetRulesConfig(userID, oldCfg, newCfg)
+		return err
 	})
+	return
 }
 
 func (t timed) GetAllRulesConfigs() (cfgs map[string]configs.VersionedRulesConfig, err error) {

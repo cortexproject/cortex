@@ -46,7 +46,7 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		handler            http.HandlerFunc
 	}{
 		{"get_rules", "GET", "/api/prom/rules", a.getConfig},
-		{"set_rules", "POST", "/api/prom/rules", a.setConfig},
+		{"cas_rules", "POST", "/api/prom/rules", a.casConfig},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}
@@ -79,7 +79,12 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
+type configUpdateRequest struct {
+	OldConfig configs.RulesConfig `json:"old_config"`
+	NewConfig configs.RulesConfig `json:"new_config"`
+}
+
+func (a *API) casConfig(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -87,21 +92,25 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := util.WithContext(r.Context(), util.Logger)
 
-	var cfg configs.RulesConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	var updateReq configUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
 		level.Error(logger).Log("msg", "error decoding json body", "err", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := cfg.Parse(); err != nil {
+	if _, err := updateReq.NewConfig.Parse(); err != nil {
 		level.Error(logger).Log("msg", "invalid rules", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return
 	}
-	if err := a.db.SetRulesConfig(userID, cfg); err != nil {
+	updated, err := a.db.SetRulesConfig(userID, updateReq.OldConfig, updateReq.NewConfig)
+	if err != nil {
 		level.Error(logger).Log("msg", "error storing config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if !updated {
+		http.Error(w, "Supplied configuration doesn't match current configuration", http.StatusConflict)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -26,8 +26,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type RulesDB interface {
 	// GetRulesConfig gets the user's ruler config
 	GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
-	SetRulesConfig(userID string, config configs.RulesConfig) error
 	// SetRulesConfig sets the user's ruler config
+	SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConfig) (bool, error)
 
 	// GetAllRulesConfigs gets all of the ruler configs
 	GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error)

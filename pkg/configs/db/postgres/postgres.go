@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/go-kit/kit/log/level"
@@ -144,16 +145,27 @@ func (d DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error) 
 }
 
 // SetRulesConfig sets the current alertmanager config for a user.
-func (d DB) SetRulesConfig(userID string, config configs.RulesConfig) error {
-	current, err := d.GetConfig(userID)
-	if err != nil {
-		return err
-	}
-	new := configs.Config{
-		AlertmanagerConfig: current.Config.AlertmanagerConfig,
-		RulesFiles:         config,
-	}
-	return d.SetConfig(userID, new)
+func (d DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
+	updated := false
+	err := d.Transaction(func(tx DB) error {
+		current, err := d.GetConfig(userID)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		// The supplied oldConfig must match the current config. If no config
+		// exists, then oldConfig must be nil. Otherwise, it must exactly
+		// equal the existing config.
+		if !((err == sql.ErrNoRows && oldConfig == nil) || reflect.DeepEqual(current.Config.RulesFiles, oldConfig)) {
+			return nil
+		}
+		new := configs.Config{
+			AlertmanagerConfig: current.Config.AlertmanagerConfig,
+			RulesFiles:         newConfig,
+		}
+		updated = true
+		return d.SetConfig(userID, new)
+	})
+	return updated, err
 }
 
 func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {

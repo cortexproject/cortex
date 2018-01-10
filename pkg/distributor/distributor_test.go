@@ -165,7 +165,7 @@ func TestDistributorPush(t *testing.T) {
 				IngestionRateLimit:  10000,
 				IngestionBurstSize:  10000,
 
-				ingesterClientFactory: func(addr string, _ time.Duration) (client.IngesterClient, error) {
+				ingesterClientFactory: func(addr string, _ time.Duration, _ bool) (client.IngesterClient, error) {
 					return ingesters[addr], nil
 				},
 			}, ring)
@@ -305,7 +305,7 @@ func TestDistributorQuery(t *testing.T) {
 				IngestionRateLimit:  10000,
 				IngestionBurstSize:  10000,
 
-				ingesterClientFactory: func(addr string, _ time.Duration) (client.IngesterClient, error) {
+				ingesterClientFactory: func(addr string, _ time.Duration, _ bool) (client.IngesterClient, error) {
 					return ingesters[addr], nil
 				},
 			}, ring)

@@ -17,13 +17,16 @@ type closableIngesterClient struct {
 }
 
 // MakeIngesterClient makes a new IngesterClient
-func MakeIngesterClient(addr string, timeout time.Duration) (IngesterClient, error) {
+func MakeIngesterClient(addr string, timeout time.Duration, withCompression bool) (IngesterClient, error) {
 	opts := []grpc.DialOption{grpc.WithTimeout(timeout),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
 		)),
+	}
+	if withCompression {
+		opts = append(opts, grpc.WithCompressor(grpc.NewGZIPCompressor()))
 	}
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {

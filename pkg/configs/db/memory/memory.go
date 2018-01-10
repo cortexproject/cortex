@@ -2,7 +2,6 @@ package memory
 
 import (
 	"database/sql"
-	"reflect"
 
 	"github.com/weaveworks/cortex/pkg/configs"
 )
@@ -77,7 +76,7 @@ func (d *DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesCon
 	if !ok {
 		return true, d.SetConfig(userID, configs.Config{RulesFiles: newConfig})
 	}
-	if !reflect.DeepEqual(c.Config.RulesFiles, oldConfig) {
+	if !oldConfig.Equal(c.Config.RulesFiles) {
 		return false, nil
 	}
 	return true, d.SetConfig(userID, configs.Config{

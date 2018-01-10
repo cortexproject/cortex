@@ -44,6 +44,22 @@ func (v View) GetVersionedRulesConfig() *VersionedRulesConfig {
 // RulesConfig are the set of rules files for a particular organization.
 type RulesConfig map[string]string
 
+// Equal compares two RulesConfigs for equality.
+//
+// instance Eq RulesConfig
+func (c RulesConfig) Equal(o RulesConfig) bool {
+	if len(o) != len(c) {
+		return false
+	}
+	for k, v1 := range c {
+		v2, ok := o[k]
+		if !ok || v1 != v2 {
+			return false
+		}
+	}
+	return true
+}
+
 // Parse rules from the Cortex configuration.
 //
 // Strongly inspired by `loadGroups` in Prometheus.

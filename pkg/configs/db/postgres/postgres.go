@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"reflect"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/go-kit/kit/log/level"
@@ -159,7 +158,7 @@ func (d DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConf
 		// The supplied oldConfig must match the current config. If no config
 		// exists, then oldConfig must be nil. Otherwise, it must exactly
 		// equal the existing config.
-		if !((err == sql.ErrNoRows && oldConfig == nil) || reflect.DeepEqual(current.Config.RulesFiles, oldConfig)) {
+		if !((err == sql.ErrNoRows && oldConfig == nil) || oldConfig.Equal(current.Config.RulesFiles)) {
 			return nil
 		}
 		new := configs.Config{

@@ -43,22 +43,22 @@ func cleanup(t *testing.T) {
 }
 
 // request makes a request to the configs API.
-func request(t *testing.T, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
+func request(t *testing.T, handler http.Handler, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
-	app.ServeHTTP(w, r)
+	handler.ServeHTTP(w, r)
 	return w
 }
 
 // requestAsUser makes a request to the configs API as the given user.
-func requestAsUser(t *testing.T, userID string, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
+func requestAsUser(t *testing.T, handler http.Handler, userID string, method, urlStr string, body io.Reader) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
 	r = r.WithContext(user.InjectOrgID(r.Context(), userID))
 	user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
-	app.ServeHTTP(w, r)
+	handler.ServeHTTP(w, r)
 	return w
 }
 
@@ -109,14 +109,14 @@ func post(t *testing.T, userID string, oldConfig configs.RulesConfig, newConfig 
 	b, err := json.Marshal(updateRequest)
 	require.NoError(t, err)
 	reader := bytes.NewReader(b)
-	w := requestAsUser(t, userID, "POST", endpoint, reader)
+	w := requestAsUser(t, app, userID, "POST", endpoint, reader)
 	require.Equal(t, http.StatusNoContent, w.Code)
 	return get(t, userID)
 }
 
 // get a config
 func get(t *testing.T, userID string) configs.VersionedRulesConfig {
-	w := requestAsUser(t, userID, "GET", endpoint, nil)
+	w := requestAsUser(t, app, userID, "GET", endpoint, nil)
 	return parseVersionedRulesConfig(t, w.Body.Bytes())
 }
 
@@ -126,7 +126,7 @@ func Test_GetConfig_NotFound(t *testing.T) {
 	defer cleanup(t)
 
 	userID := makeUserID()
-	w := requestAsUser(t, userID, "GET", endpoint, nil)
+	w := requestAsUser(t, app, userID, "GET", endpoint, nil)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -135,7 +135,7 @@ func Test_PostConfig_Anonymous(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	w := request(t, "POST", endpoint, nil)
+	w := request(t, app, "POST", endpoint, nil)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
@@ -167,11 +167,11 @@ func Test_PostConfig_InvalidNewConfig(t *testing.T) {
 	require.NoError(t, err)
 	reader := bytes.NewReader(b)
 	{
-		w := requestAsUser(t, userID, "POST", endpoint, reader)
+		w := requestAsUser(t, app, userID, "POST", endpoint, reader)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 	}
 	{
-		w := requestAsUser(t, userID, "GET", endpoint, nil)
+		w := requestAsUser(t, app, userID, "GET", endpoint, nil)
 		require.Equal(t, http.StatusNotFound, w.Code)
 	}
 }
@@ -209,7 +209,7 @@ func Test_PostConfig_InvalidChangedConfig(t *testing.T) {
 	require.NoError(t, err)
 	reader := bytes.NewReader(b)
 	{
-		w := requestAsUser(t, userID, "POST", endpoint, reader)
+		w := requestAsUser(t, app, userID, "POST", endpoint, reader)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 	}
 	result := get(t, userID)

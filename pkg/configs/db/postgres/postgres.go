@@ -171,11 +171,22 @@ func (d DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConf
 	return updated, err
 }
 
+// findRulesConfigs helps GetAllRulesConfigs and GetRulesConfigs retrieve the
+// set of all active rules configurations across all our users.
 func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {
 	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
 		Where(filter).
+		// `->>` gets a JSON object field as text. When a config row exists
+		// and alertmanager config is provided but ruler config has not yet
+		// been, the 'rules_files' key will have an empty JSON object as its
+		// value. This is (probably) the most efficient way to test for a
+		// non-empty `rules_files` key.
+		//
+		// This whole situation is way too complicated. See
+		// https://github.com/weaveworks/cortex/issues/619 for the whole
+		// story, and our plans to improve it.
 		Where("config ->> 'rules_files' <> '{}'").
 		OrderBy("owner_id, id DESC").
 		Query()

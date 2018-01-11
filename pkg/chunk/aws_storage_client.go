@@ -617,7 +617,8 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		result = append(result, processedChunks...)
 
 		// If there are unprocessed items, backoff and retry those items.
-		if unprocessedKeys := response.UnprocessedKeys; unprocessedKeys != nil && dynamoDBReadRequest(unprocessedKeys).Len() > 0 {
+		if unprocessedKeys := response.UnprocessedKeys; len(unprocessedKeys) > 0 {
+			sp.LogFields(otlog.Int("unprocessedKeys", len(unprocessedKeys)))
 			unprocessed.TakeReqs(unprocessedKeys, -1)
 			// I am unclear why we don't count here; perhaps the idea is
 			// that while we are making _some_ progress we should carry on.

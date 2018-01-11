@@ -96,10 +96,10 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	// Only serve the API for setting & getting rules configs if the database
-	// was provided. Allows for smoother migration. See
-	// https://github.com/weaveworks/cortex/issues/619
-	if configStoreConfig.DBConfig.URI != "" {
+	// Only serve the API for setting & getting rules configs if we're not
+	// serving configs from the configs API. Allows for smoother
+	// migration. See https://github.com/weaveworks/cortex/issues/619
+	if configStoreConfig.ConfigsAPIURL.URL == nil {
 		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)

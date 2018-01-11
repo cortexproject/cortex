@@ -2,15 +2,12 @@ package util
 
 import (
 	"net/http"
-	"regexp"
 
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 )
 
 var (
-	validLabelRE        = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
-	validMetricNameRE   = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 	maxLabelNameLength  = 1024
 	maxLabelValueLength = 4096
 )
@@ -30,12 +27,12 @@ func ValidateSample(s *model.Sample) error {
 		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
 	}
 
-	if !validMetricNameRE.MatchString(string(metricName)) {
+	if !model.IsValidMetricName(metricName) {
 		return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
 	}
 
 	for k, v := range s.Metric {
-		if !validLabelRE.MatchString(string(k)) {
+		if !k.IsValid() {
 			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, k)
 		}
 		if len(k) > maxLabelNameLength {

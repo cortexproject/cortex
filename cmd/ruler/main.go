@@ -32,10 +32,11 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
+		configStoreConfig ruler.ConfigStoreConfig
 		logLevel          util.LogLevel
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
-		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &logLevel)
+		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig, &logLevel)
 	flag.Parse()
 
 	util.InitLogger(logLevel.AllowedLevel)
@@ -75,7 +76,13 @@ func main() {
 	}
 	defer rlr.Stop()
 
-	rulerServer, err := ruler.NewServer(rulerConfig, rlr)
+	rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error initializing rules API", "err", err)
+		os.Exit(1)
+	}
+
+	rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing ruler server: %v", err)
 		os.Exit(1)
@@ -88,6 +95,18 @@ func main() {
 		os.Exit(1)
 	}
 	defer server.Shutdown()
+
+	// Only serve the API for setting & getting rules configs if the database
+	// was provided. Allows for smoother migration. See
+	// https://github.com/weaveworks/cortex/issues/619
+	if configStoreConfig.DBConfig.URI != "" {
+		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
+			os.Exit(1)
+		}
+		a.RegisterRoutes(server.HTTP)
+	}
 
 	server.HTTP.Handle("/ring", r)
 	server.Run()

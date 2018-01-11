@@ -134,6 +134,97 @@ func (d DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
 	})
 }
 
+// GetRulesConfig gets the latest alertmanager config for a user.
+func (d DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error) {
+	current, err := d.GetConfig(userID)
+	if err != nil {
+		return configs.VersionedRulesConfig{}, err
+	}
+	cfg := current.GetVersionedRulesConfig()
+	if cfg == nil {
+		return configs.VersionedRulesConfig{}, sql.ErrNoRows
+	}
+	return *cfg, nil
+}
+
+// SetRulesConfig sets the current alertmanager config for a user.
+func (d DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
+	updated := false
+	err := d.Transaction(func(tx DB) error {
+		current, err := d.GetConfig(userID)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		// The supplied oldConfig must match the current config. If no config
+		// exists, then oldConfig must be nil. Otherwise, it must exactly
+		// equal the existing config.
+		if !((err == sql.ErrNoRows && oldConfig == nil) || oldConfig.Equal(current.Config.RulesFiles)) {
+			return nil
+		}
+		new := configs.Config{
+			AlertmanagerConfig: current.Config.AlertmanagerConfig,
+			RulesFiles:         newConfig,
+		}
+		updated = true
+		return d.SetConfig(userID, new)
+	})
+	return updated, err
+}
+
+// findRulesConfigs helps GetAllRulesConfigs and GetRulesConfigs retrieve the
+// set of all active rules configurations across all our users.
+func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {
+	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'").
+		Options("DISTINCT ON (owner_id)").
+		From("configs").
+		Where(filter).
+		// `->>` gets a JSON object field as text. When a config row exists
+		// and alertmanager config is provided but ruler config has not yet
+		// been, the 'rules_files' key will have an empty JSON object as its
+		// value. This is (probably) the most efficient way to test for a
+		// non-empty `rules_files` key.
+		//
+		// This whole situation is way too complicated. See
+		// https://github.com/weaveworks/cortex/issues/619 for the whole
+		// story, and our plans to improve it.
+		Where("config ->> 'rules_files' <> '{}'").
+		OrderBy("owner_id, id DESC").
+		Query()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cfgs := map[string]configs.VersionedRulesConfig{}
+	for rows.Next() {
+		var cfg configs.VersionedRulesConfig
+		var userID string
+		var cfgBytes []byte
+		err = rows.Scan(&cfg.ID, &userID, &cfgBytes)
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(cfgBytes, &cfg.Config)
+		if err != nil {
+			return nil, err
+		}
+		cfgs[userID] = cfg
+	}
+	return cfgs, nil
+}
+
+// GetAllRulesConfigs gets all alertmanager configs for all users.
+func (d DB) GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error) {
+	return d.findRulesConfigs(activeConfig)
+}
+
+// GetRulesConfigs gets all the alertmanager configs that have changed since a given config.
+func (d DB) GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+	return d.findRulesConfigs(squirrel.And{
+		activeConfig,
+		squirrel.Gt{"id": since},
+	})
+}
+
 // Transaction runs the given function in a postgres transaction. If fn returns
 // an error the txn will be rolled back.
 func (d DB) Transaction(f func(DB) error) error {

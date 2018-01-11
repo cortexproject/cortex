@@ -22,6 +22,7 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	configs "github.com/weaveworks/cortex/pkg/configs/client"
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -53,6 +54,12 @@ func init() {
 
 // Config is the configuration for the recording rules server.
 type Config struct {
+	ConfigsAPIURL util.URLValue
+
+	// HTTP timeout duration for requests made to the Weave Cloud configs
+	// service.
+	ClientTimeout time.Duration
+
 	// This is used for template expansion in alerts; must be a valid URL
 	ExternalURL util.URLValue
 
@@ -77,8 +84,10 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
+	f.Var(&cfg.ConfigsAPIURL, "ruler.configs.url", "URL of configs API server.")
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
+	f.DurationVar(&cfg.ClientTimeout, "ruler.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 	f.IntVar(&cfg.NumWorkers, "ruler.num-workers", 1, "Number of rule evaluator worker routines in this process")
 	f.Var(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "URL of the Alertmanager to send notifications to.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover alertmanager hosts.")
@@ -271,9 +280,13 @@ type Server struct {
 }
 
 // NewServer makes a new rule processing server.
-func NewServer(cfg Config, ruler *Ruler, rulesAPI RulesAPI) (*Server, error) {
+func NewServer(cfg Config, ruler *Ruler) (*Server, error) {
+	c := configs.RulesAPI{
+		URL:     cfg.ConfigsAPIURL.URL,
+		Timeout: cfg.ClientTimeout,
+	}
 	// TODO: Separate configuration for polling interval.
-	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval)
+	s := newScheduler(c, cfg.EvaluationInterval, cfg.EvaluationInterval)
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}

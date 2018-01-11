@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks-experiments/loki/pkg/client"
 	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/signals"
 )
@@ -95,7 +96,7 @@ func New(cfg Config) (*Server, error) {
 		Namespace: cfg.MetricsNamespace,
 		Name:      "request_duration_seconds",
 		Help:      "Time (in seconds) spent serving HTTP requests.",
-		Buckets:   prometheus.DefBuckets,
+		Buckets:   instrument.DefBuckets,
 	}, []string{"method", "route", "status_code", "ws"})
 	prometheus.MustRegister(requestDuration)
 
@@ -110,6 +111,7 @@ func New(cfg Config) (*Server, error) {
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			grpcMiddleware...,
 		)),
+		grpc.RPCDecompressor(grpc.NewGZIPDecompressor()),
 	)
 
 	// Setup HTTP server

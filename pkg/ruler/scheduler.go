@@ -14,6 +14,7 @@ import (
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/cortex/pkg/configs"
+	configs_client "github.com/weaveworks/cortex/pkg/configs/client"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -78,7 +79,7 @@ func (w workItem) String() string {
 }
 
 type scheduler struct {
-	rulesAPI           RulesAPI
+	configsAPI         configs_client.RulesAPI
 	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
@@ -93,9 +94,9 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Duration) scheduler {
+func newScheduler(configsAPI configs_client.RulesAPI, evaluationInterval, pollInterval time.Duration) scheduler {
 	return scheduler{
-		rulesAPI:           rulesAPI,
+		configsAPI:         configsAPI,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
@@ -136,7 +137,7 @@ func (s *scheduler) Stop() {
 
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
-func (s *scheduler) loadAllConfigs() map[string]configs.VersionedRulesConfig {
+func (s *scheduler) loadAllConfigs() map[string]configs.View {
 	backoff := util.NewBackoff(context.Background(), backoffConfig)
 	for {
 		cfgs, err := s.poll()
@@ -159,14 +160,14 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 }
 
 // poll the configuration server. Not re-entrant.
-func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
+func (s *scheduler) poll() (map[string]configs.View, error) {
 	s.Lock()
 	configID := s.latestConfig
 	s.Unlock()
-	var cfgs map[string]configs.VersionedRulesConfig
+	var cfgs *configs_client.ConfigsResponse
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
-		cfgs, err = s.rulesAPI.GetConfigs(configID)
+		cfgs, err = s.configsAPI.GetConfigs(configID)
 		return err
 	})
 	if err != nil {
@@ -174,16 +175,16 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 		return nil, err
 	}
 	s.Lock()
-	s.latestConfig = getLatestConfigID(cfgs, configID)
+	s.latestConfig = cfgs.GetLatestConfigID()
 	s.Unlock()
-	return cfgs, nil
+	return cfgs.Configs, nil
 }
 
-func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.VersionedRulesConfig) {
+func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.View) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	for userID, config := range cfgs {
-		rules, err := config.Config.Parse()
+		rules, err := configs_client.RulesFromConfig(config.Config)
 		if err != nil {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known

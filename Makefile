@@ -106,7 +106,7 @@ shell: build-image/$(UPTODATE)
 	bash
 
 configs-integration-test:
-	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
+	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/..."
 
 endif
 

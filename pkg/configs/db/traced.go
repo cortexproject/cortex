@@ -41,3 +41,23 @@ func (t traced) Close() (err error) {
 	defer func() { t.trace("Close", err) }()
 	return t.d.Close()
 }
+
+func (t traced) GetRulesConfig(userID string) (cfg configs.VersionedRulesConfig, err error) {
+	defer func() { t.trace("GetRulesConfig", userID, cfg, err) }()
+	return t.d.GetRulesConfig(userID)
+}
+
+func (t traced) SetRulesConfig(userID string, oldCfg, newCfg configs.RulesConfig) (updated bool, err error) {
+	defer func() { t.trace("SetRulesConfig", userID, oldCfg, newCfg, updated, err) }()
+	return t.d.SetRulesConfig(userID, oldCfg, newCfg)
+}
+
+func (t traced) GetAllRulesConfigs() (cfgs map[string]configs.VersionedRulesConfig, err error) {
+	defer func() { t.trace("GetAllRulesConfigs", cfgs, err) }()
+	return t.d.GetAllRulesConfigs()
+}
+
+func (t traced) GetRulesConfigs(since configs.ID) (cfgs map[string]configs.VersionedRulesConfig, err error) {
+	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
+	return t.d.GetRulesConfigs(since)
+}

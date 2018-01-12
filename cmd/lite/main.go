@@ -42,6 +42,7 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		distributorConfig distributor.Config
 		ingesterConfig    ingester.Config
+		configStoreConfig ruler.ConfigStoreConfig
 		rulerConfig       ruler.Config
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
@@ -52,7 +53,7 @@ func main() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
-		&ingesterConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
+		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
@@ -122,7 +123,12 @@ func main() {
 	tableManager.Start()
 	defer tableManager.Stop()
 
-	if rulerConfig.ConfigsAPIURL.String() != "" {
+	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
+		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error initializing ruler config store", "err", err)
+			os.Exit(1)
+		}
 		rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)
@@ -130,7 +136,7 @@ func main() {
 		}
 		defer rlr.Stop()
 
-		rulerServer, err := ruler.NewServer(rulerConfig, rlr)
+		rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing ruler server", "err", err)
 			os.Exit(1)
@@ -161,6 +167,18 @@ func main() {
 				next.ServeHTTP(w, r.WithContext(ctx))
 			})
 		})
+	}
+
+	// Only serve the API for setting & getting rules configs if we're not
+	// serving configs from the configs API. Allows for smoother
+	// migration. See https://github.com/weaveworks/cortex/issues/619
+	if configStoreConfig.ConfigsAPIURL.URL == nil {
+		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
+			os.Exit(1)
+		}
+		a.RegisterRoutes(server.HTTP)
 	}
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()

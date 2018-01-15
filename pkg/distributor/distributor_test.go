@@ -139,63 +139,73 @@ func TestDistributorPush(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			ingesterDescs := []*ring.IngesterDesc{}
-			ingesters := map[string]mockIngester{}
-			for i, ingester := range tc.ingesters {
-				addr := fmt.Sprintf("%d", i)
-				ingesterDescs = append(ingesterDescs, &ring.IngesterDesc{
-					Addr:      addr,
-					Timestamp: time.Now().Unix(),
-				})
-				ingesters[addr] = ingester
-			}
-
-			ring := mockRing{
-				Counter: prometheus.NewCounter(prometheus.CounterOpts{
-					Name: "foo",
-				}),
-				ingesters:        ingesterDescs,
-				heartbeatTimeout: 1 * time.Minute,
-			}
-
-			d, err := New(Config{
-				ReplicationFactor:   3,
-				RemoteTimeout:       1 * time.Minute,
-				ClientCleanupPeriod: 1 * time.Minute,
-				IngestionRateLimit:  10000,
-				IngestionBurstSize:  10000,
-
-				ingesterClientFactory: func(addr string, _ time.Duration, _ bool) (client.IngesterClient, error) {
-					return ingesters[addr], nil
-				},
-			}, ring)
+			d, err := setupDistributor(tc.ingesters)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer d.Stop()
 
-			request := &client.WriteRequest{}
-			for i := 0; i < tc.samples; i++ {
-				ts := client.TimeSeries{
-					Labels: []client.LabelPair{
-						{Name: []byte("__name__"), Value: []byte("foo")},
-						{Name: []byte("bar"), Value: []byte("baz")},
-						{Name: []byte("sample"), Value: []byte(fmt.Sprintf("%d", i))},
-					},
-				}
-				ts.Samples = []client.Sample{
-					{
-						Value:       float64(i),
-						TimestampMs: int64(i),
-					},
-				}
-				request.Timeseries = append(request.Timeseries, ts)
-			}
+			request := createRequest(tc.samples)
 			response, err := d.Push(ctx, request)
 			assert.Equal(t, tc.expectedResponse, response, "Wrong response")
 			assert.Equal(t, tc.expectedError, err, "Wrong error")
 		})
 	}
+}
+
+func setupDistributor(is []mockIngester) (*Distributor, error) {
+	ingesterDescs := []*ring.IngesterDesc{}
+	ingesters := map[string]mockIngester{}
+	for i, ingester := range is {
+		addr := fmt.Sprintf("%d", i)
+		ingesterDescs = append(ingesterDescs, &ring.IngesterDesc{
+			Addr:      addr,
+			Timestamp: time.Now().Unix(),
+		})
+		ingesters[addr] = ingester
+	}
+
+	ring := mockRing{
+		Counter: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foo",
+		}),
+		ingesters:        ingesterDescs,
+		heartbeatTimeout: 1 * time.Minute,
+	}
+
+	d, err := New(Config{
+		ReplicationFactor:   3,
+		RemoteTimeout:       1 * time.Minute,
+		ClientCleanupPeriod: 1 * time.Minute,
+		IngestionRateLimit:  10000,
+		IngestionBurstSize:  10000,
+
+		ingesterClientFactory: func(addr string, _ time.Duration, _ bool) (client.IngesterClient, error) {
+			return ingesters[addr], nil
+		},
+	}, ring)
+	return d, err
+}
+
+func createRequest(nSamples int) *client.WriteRequest {
+	request := &client.WriteRequest{}
+	for i := 0; i < nSamples; i++ {
+		ts := client.TimeSeries{
+			Labels: []client.LabelPair{
+				{Name: []byte("__name__"), Value: []byte("foo")},
+				{Name: []byte("bar"), Value: []byte("baz")},
+				{Name: []byte("sample"), Value: []byte(fmt.Sprintf("%d", i))},
+			},
+		}
+		ts.Samples = []client.Sample{
+			{
+				Value:       float64(i),
+				TimestampMs: int64(i),
+			},
+		}
+		request.Timeseries = append(request.Timeseries, ts)
+	}
+	return request
 }
 
 func TestDistributorQuery(t *testing.T) {
@@ -279,36 +289,7 @@ func TestDistributorQuery(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			ingesterDescs := []*ring.IngesterDesc{}
-			ingesters := map[string]mockIngester{}
-			for i, ingester := range tc.ingesters {
-				addr := fmt.Sprintf("%d", i)
-				ingesterDescs = append(ingesterDescs, &ring.IngesterDesc{
-					Addr:      addr,
-					Timestamp: time.Now().Unix(),
-				})
-				ingesters[addr] = ingester
-			}
-
-			ring := mockRing{
-				Counter: prometheus.NewCounter(prometheus.CounterOpts{
-					Name: "foo",
-				}),
-				ingesters:        ingesterDescs,
-				heartbeatTimeout: 1 * time.Minute,
-			}
-
-			d, err := New(Config{
-				ReplicationFactor:   3,
-				RemoteTimeout:       1 * time.Minute,
-				ClientCleanupPeriod: 1 * time.Minute,
-				IngestionRateLimit:  10000,
-				IngestionBurstSize:  10000,
-
-				ingesterClientFactory: func(addr string, _ time.Duration, _ bool) (client.IngesterClient, error) {
-					return ingesters[addr], nil
-				},
-			}, ring)
+			d, err := setupDistributor(tc.ingesters)
 			if err != nil {
 				t.Fatal(err)
 			}

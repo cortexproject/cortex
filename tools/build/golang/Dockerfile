@@ -1,4 +1,4 @@
-FROM golang:1.8.0-stretch
+FROM golang:1.9.2-stretch
 RUN apt-get update && \
     apt-get install -y \
       curl \
@@ -11,9 +11,10 @@ RUN apt-get update && \
       python-pip \
       python-requests \
       python-yaml \
+      shellcheck \
       unzip && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-RUN pip install attrs pyhcl
+RUN pip install attrs pyhcl yapf==0.16.2 flake8==3.3.0
 RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v1.3.0/shfmt_v1.3.0_linux_amd64 && \
 	echo "b1925c2c405458811f0c227266402cf1868b4de529f114722c2e3a5af4ac7bb2  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \

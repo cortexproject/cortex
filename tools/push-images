@@ -47,7 +47,7 @@ done
 
 # Wait individually for tasks so we fail-exit on any non-zero return code
 for p in $pids; do
-    wait $p
+    wait "$p"
 done
 
 wait

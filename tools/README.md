@@ -2,6 +2,7 @@
 
 Included in this repo are tools shared by weave.git and scope.git.  They include
 
+- ```bazel```: Bazel build rules used in our projects
 - ```build```: a set of docker base-images for building weave
   projects. These should be used instead of giving each project its
   own build image.
@@ -32,7 +33,11 @@ Included in this repo are tools shared by weave.git and scope.git.  They include
 ## Requirements
 
 - ```lint``` requires shfmt to lint sh files; get shfmt with
-  ```go get -u gopkg.in/mvdan/sh.v1/cmd/shfmt```
+```
+curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v1.3.0/shfmt_v1.3.0_linux_amd64
+chmod +x shfmt
+```
+  (we pin that version, and it doesn't build from the source repo any more)
 
 ## Using build-tools.git
 

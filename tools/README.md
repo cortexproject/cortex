@@ -2,7 +2,7 @@
 
 Included in this repo are tools shared by weave.git and scope.git.  They include
 
-- ```bazel```: Bazel build rules used in our projects
+- ```bazel-rules```: Bazel build rules used in our projects
 - ```build```: a set of docker base-images for building weave
   projects. These should be used instead of giving each project its
   own build image.

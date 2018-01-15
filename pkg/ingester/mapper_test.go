@@ -49,162 +49,73 @@ func TestFPMapper(t *testing.T) {
 	mapper := newFPMapper(sm)
 
 	// Everything is empty, resolving a FP should do nothing.
-	gotFP := mapper.mapFP(fp1, cm11)
-	if wantFP := fp1; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm12)
-	if wantFP := fp1; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), fp1)
 
 	// cm11 is in sm. Adding cm11 should do nothing. Mapping cm12 should resolve
 	// the collision.
 	sm.put(fp1, &memorySeries{metric: cm11})
-	gotFP = mapper.mapFP(fp1, cm11)
-	if wantFP := fp1; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm12)
-	if wantFP := model.Fingerprint(1); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
 
 	// The mapped cm12 is added to sm, too. That should not change the outcome.
 	sm.put(model.Fingerprint(1), &memorySeries{metric: cm12})
-	gotFP = mapper.mapFP(fp1, cm11)
-	if wantFP := fp1; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm12)
-	if wantFP := model.Fingerprint(1); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
 
 	// Now map cm13, should reproducibly result in the next mapped FP.
-	gotFP = mapper.mapFP(fp1, cm13)
-	if wantFP := model.Fingerprint(2); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm13)
-	if wantFP := model.Fingerprint(2); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm13), model.Fingerprint(2))
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm13), model.Fingerprint(2))
 
 	// Add cm13 to sm. Should not change anything.
 	sm.put(model.Fingerprint(2), &memorySeries{metric: cm13})
-	gotFP = mapper.mapFP(fp1, cm11)
-	if wantFP := fp1; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm12)
-	if wantFP := model.Fingerprint(1); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm13)
-	if wantFP := model.Fingerprint(2); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm13), model.Fingerprint(2))
 
 	// Now add cm21 and cm22 in the same way, checking the mapped FPs.
-	gotFP = mapper.mapFP(fp2, cm21)
-	if wantFP := fp2; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm21), fp2)
 	sm.put(fp2, &memorySeries{metric: cm21})
-	gotFP = mapper.mapFP(fp2, cm21)
-	if wantFP := fp2; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp2, cm22)
-	if wantFP := model.Fingerprint(3); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm21), fp2)
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm22), model.Fingerprint(3))
 	sm.put(model.Fingerprint(3), &memorySeries{metric: cm22})
-	gotFP = mapper.mapFP(fp2, cm21)
-	if wantFP := fp2; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp2, cm22)
-	if wantFP := model.Fingerprint(3); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm21), fp2)
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm22), model.Fingerprint(3))
 
 	// Map cm31, resulting in a mapping straight away.
-	gotFP = mapper.mapFP(fp3, cm31)
-	if wantFP := model.Fingerprint(4); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp3, cm31), model.Fingerprint(4))
 	sm.put(model.Fingerprint(4), &memorySeries{metric: cm31})
 
 	// Map cm32, which is now mapped for two reasons...
-	gotFP = mapper.mapFP(fp3, cm32)
-	if wantFP := model.Fingerprint(5); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp3, cm32), model.Fingerprint(5))
 	sm.put(model.Fingerprint(5), &memorySeries{metric: cm32})
 
 	// Now check ALL the mappings, just to be sure.
-	gotFP = mapper.mapFP(fp1, cm11)
-	if wantFP := fp1; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm12)
-	if wantFP := model.Fingerprint(1); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm13)
-	if wantFP := model.Fingerprint(2); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp2, cm21)
-	if wantFP := fp2; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp2, cm22)
-	if wantFP := model.Fingerprint(3); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp3, cm31)
-	if wantFP := model.Fingerprint(4); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp3, cm32)
-	if wantFP := model.Fingerprint(5); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm13), model.Fingerprint(2))
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm21), fp2)
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm22), model.Fingerprint(3))
+	assertFingerprintEqual(t, mapper.mapFP(fp3, cm31), model.Fingerprint(4))
+	assertFingerprintEqual(t, mapper.mapFP(fp3, cm32), model.Fingerprint(5))
 
 	// Remove all the fingerprints from sm, which should change nothing, as
 	// the existing mappings stay and should be detected.
 	sm.del(fp1)
 	sm.del(fp2)
 	sm.del(fp3)
-	gotFP = mapper.mapFP(fp1, cm11)
-	if wantFP := fp1; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm12)
-	if wantFP := model.Fingerprint(1); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp1, cm13)
-	if wantFP := model.Fingerprint(2); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp2, cm21)
-	if wantFP := fp2; gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp2, cm22)
-	if wantFP := model.Fingerprint(3); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp3, cm31)
-	if wantFP := model.Fingerprint(4); gotFP != wantFP {
-		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
-	}
-	gotFP = mapper.mapFP(fp3, cm32)
-	if wantFP := model.Fingerprint(5); gotFP != wantFP {
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
+	assertFingerprintEqual(t, mapper.mapFP(fp1, cm13), model.Fingerprint(2))
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm21), fp2)
+	assertFingerprintEqual(t, mapper.mapFP(fp2, cm22), model.Fingerprint(3))
+	assertFingerprintEqual(t, mapper.mapFP(fp3, cm31), model.Fingerprint(4))
+	assertFingerprintEqual(t, mapper.mapFP(fp3, cm32), model.Fingerprint(5))
+}
+
+// assertFingerprintEqual asserts that two fingerprints are equal.
+func assertFingerprintEqual(t *testing.T, gotFP, wantFP model.Fingerprint) {
+	if gotFP != wantFP {
 		t.Errorf("got fingerprint %v, want fingerprint %v", gotFP, wantFP)
 	}
 }

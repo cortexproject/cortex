@@ -94,11 +94,9 @@ lint_go() {
     # don't have it installed.  Also never blocks a commit,
     # it just warns.
     if type gocyclo >/dev/null 2>&1; then
-        cycloutput=$(gocyclo -over 25 "${filename}")
-        if [ -n "$cycloutput" ]; then
-            lint_result=1
-            echo "${filename}": higher than 25 cyclomatic complexity - "${cycloutput}"
-        fi
+        gocyclo -over 25 "${filename}" | while read -r line; do
+            echo "${filename}": higher than 25 cyclomatic complexity - "${line}"
+        done
     fi
 
     return $lint_result

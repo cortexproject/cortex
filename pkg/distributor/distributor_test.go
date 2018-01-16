@@ -177,7 +177,7 @@ func setupDistributor(is []mockIngester) (*Distributor, error) {
 		ReplicationFactor:   3,
 		RemoteTimeout:       1 * time.Minute,
 		ClientCleanupPeriod: 1 * time.Minute,
-		IngestionRateLimit:  10000,
+		IngestionRateLimit:  1000000,
 		IngestionBurstSize:  10000,
 
 		ingesterClientFactory: func(addr string, _ time.Duration, _ bool) (client.IngesterClient, error) {
@@ -206,6 +206,31 @@ func createRequest(nSamples int) *client.WriteRequest {
 		request.Timeseries = append(request.Timeseries, ts)
 	}
 	return request
+}
+
+func BenchmarkDistributorPush(b *testing.B) {
+	ingesters := []mockIngester{
+		{happy: true},
+		{happy: true},
+		{happy: true},
+	}
+	d, err := setupDistributor(ingesters)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer d.Stop()
+
+	request := createRequest(100)
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := d.Push(ctx, request)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func TestDistributorQuery(t *testing.T) {

@@ -15,17 +15,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
+
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/mesh"
-
 	"github.com/weaveworks/cortex/pkg/configs"
 	configs_client "github.com/weaveworks/cortex/pkg/configs/client"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/mesh"
 )
 
 var backoffConfig = util.BackoffConfig{
@@ -462,7 +462,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	newAM, err := New(&Config{
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
-		Logger:      log.NewLogger(os.Stderr),
+		Logger:      log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
 		MeshRouter:  am.meshRouter,
 		Retention:   am.cfg.Retention,
 		ExternalURL: am.cfg.ExternalURL.URL,

@@ -127,8 +127,6 @@ func (i *Ingester) Shutdown() {
 }
 
 func (i *Ingester) loop() {
-	level.Debug(util.Logger).Log("msg", "we get logs in failed tests")
-
 	defer func() {
 		level.Info(util.Logger).Log("msg", "Ingester.loop() exited gracefully")
 		i.done.Done()

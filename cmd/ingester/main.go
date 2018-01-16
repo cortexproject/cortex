@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"

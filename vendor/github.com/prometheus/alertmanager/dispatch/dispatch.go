@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"golang.org/x/net/context"
@@ -33,7 +34,7 @@ type Dispatcher struct {
 	ctx    context.Context
 	cancel func()
 
-	log log.Logger
+	logger log.Logger
 }
 
 // NewDispatcher returns a new Dispatcher.
@@ -43,6 +44,7 @@ func NewDispatcher(
 	s notify.Stage,
 	mk types.Marker,
 	to func(time.Duration) time.Duration,
+	l log.Logger,
 ) *Dispatcher {
 	disp := &Dispatcher{
 		alerts:  ap,
@@ -50,7 +52,7 @@ func NewDispatcher(
 		route:   r,
 		marker:  mk,
 		timeout: to,
-		log:     log.With("component", "dispatcher"),
+		logger:  log.With(l, "component", "dispatcher"),
 	}
 	return disp
 }
@@ -178,16 +180,16 @@ func (d *Dispatcher) run(it provider.AlertIterator) {
 			if !ok {
 				// Iterator exhausted for some reason.
 				if err := it.Err(); err != nil {
-					log.Errorf("Error on alert update: %s", err)
+					level.Error(d.logger).Log("msg", "Error on alert update", "err", err)
 				}
 				return
 			}
 
-			d.log.With("alert", alert).Debug("Received alert")
+			level.Debug(d.logger).Log("msg", "Received alert", "alert", alert)
 
 			// Log errors but keep trying.
 			if err := it.Err(); err != nil {
-				log.Errorf("Error on alert update: %s", err)
+				level.Error(d.logger).Log("msg", "Error on alert update", "err", err)
 				continue
 			}
 
@@ -232,36 +234,36 @@ func (d *Dispatcher) Stop() {
 type notifyFunc func(context.Context, ...*types.Alert) bool
 
 // processAlert determines in which aggregation group the alert falls
-// and insert it.
+// and inserts it.
 func (d *Dispatcher) processAlert(alert *types.Alert, route *Route) {
-	group := model.LabelSet{}
+	groupLabels := model.LabelSet{}
 
 	for ln, lv := range alert.Labels {
 		if _, ok := route.RouteOpts.GroupBy[ln]; ok {
-			group[ln] = lv
+			groupLabels[ln] = lv
 		}
 	}
 
-	fp := group.Fingerprint()
+	fp := groupLabels.Fingerprint()
 
 	d.mtx.Lock()
-	groups, ok := d.aggrGroups[route]
+	group, ok := d.aggrGroups[route]
 	if !ok {
-		groups = map[model.Fingerprint]*aggrGroup{}
-		d.aggrGroups[route] = groups
+		group = map[model.Fingerprint]*aggrGroup{}
+		d.aggrGroups[route] = group
 	}
 	d.mtx.Unlock()
 
 	// If the group does not exist, create it.
-	ag, ok := groups[fp]
+	ag, ok := group[fp]
 	if !ok {
-		ag = newAggrGroup(d.ctx, group, route, d.timeout)
-		groups[fp] = ag
+		ag = newAggrGroup(d.ctx, groupLabels, route, d.timeout, d.logger)
+		group[fp] = ag
 
 		go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
-			_, _, err := d.stage.Exec(ctx, alerts...)
+			_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
 			if err != nil {
-				log.Errorf("Notify for %d alerts failed: %s", len(alerts), err)
+				level.Error(d.logger).Log("msg", "Notify for alerts failed", "num_alerts", len(alerts), "err", err)
 			}
 			return err == nil
 		})
@@ -276,7 +278,7 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *Route) {
 type aggrGroup struct {
 	labels   model.LabelSet
 	opts     *RouteOpts
-	log      log.Logger
+	logger   log.Logger
 	routeKey string
 
 	ctx     context.Context
@@ -291,7 +293,7 @@ type aggrGroup struct {
 }
 
 // newAggrGroup returns a new aggregation group.
-func newAggrGroup(ctx context.Context, labels model.LabelSet, r *Route, to func(time.Duration) time.Duration) *aggrGroup {
+func newAggrGroup(ctx context.Context, labels model.LabelSet, r *Route, to func(time.Duration) time.Duration, logger log.Logger) *aggrGroup {
 	if to == nil {
 		to = func(d time.Duration) time.Duration { return d }
 	}
@@ -304,7 +306,7 @@ func newAggrGroup(ctx context.Context, labels model.LabelSet, r *Route, to func(
 	}
 	ag.ctx, ag.cancel = context.WithCancel(ctx)
 
-	ag.log = log.With("aggrGroup", ag)
+	ag.logger = log.With(logger, "aggrGroup", ag)
 
 	// Set an initial one-time wait before flushing
 	// the first batch of notifications.
@@ -345,7 +347,7 @@ func (ag *aggrGroup) run(nf notifyFunc) {
 	for {
 		select {
 		case now := <-ag.next.C:
-			// Give the notifcations time until the next flush to
+			// Give the notifications time until the next flush to
 			// finish before terminating them.
 			ctx, cancel := context.WithTimeout(ag.ctx, ag.timeout(ag.opts.GroupInterval))
 
@@ -425,7 +427,7 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 
 	ag.mtx.Unlock()
 
-	ag.log.Debugln("flushing", alertsSlice)
+	level.Debug(ag.logger).Log("msg", "Flushing", "alerts", fmt.Sprintf("%v", alertsSlice))
 
 	if notify(alertsSlice...) {
 		ag.mtx.Lock()

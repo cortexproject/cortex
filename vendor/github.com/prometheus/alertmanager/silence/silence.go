@@ -26,12 +26,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/matttproud/golang_protobuf_extensions/pbutil"
 	"github.com/pkg/errors"
 	pb "github.com/prometheus/alertmanager/silence/silencepb"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/satori/go.uuid"
 	"github.com/weaveworks/mesh"
@@ -110,6 +111,7 @@ type Silences struct {
 type metrics struct {
 	gcDuration       prometheus.Summary
 	snapshotDuration prometheus.Summary
+	snapshotSize     prometheus.Gauge
 	queriesTotal     prometheus.Counter
 	queryErrorsTotal prometheus.Counter
 	queryDuration    prometheus.Histogram
@@ -118,7 +120,7 @@ type metrics struct {
 	silencesExpired  prometheus.GaugeFunc
 }
 
-func newSilenceMetricByState(s *Silences, st SilenceState) prometheus.GaugeFunc {
+func newSilenceMetricByState(s *Silences, st types.SilenceState) prometheus.GaugeFunc {
 	return prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Name:        "alertmanager_silences",
@@ -128,7 +130,7 @@ func newSilenceMetricByState(s *Silences, st SilenceState) prometheus.GaugeFunc 
 		func() float64 {
 			count, err := s.CountState(st)
 			if err != nil {
-				s.logger.With("err", err).Error("counting silences failed")
+				level.Error(s.logger).Log("msg", "Counting silences failed", "err", err)
 			}
 			return float64(count)
 		},
@@ -146,6 +148,10 @@ func newMetrics(r prometheus.Registerer, s *Silences) *metrics {
 		Name: "alertmanager_silences_snapshot_duration_seconds",
 		Help: "Duration of the last silence snapshot.",
 	})
+	m.snapshotSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "alertmanager_silences_snapshot_size_bytes",
+		Help: "Size of the last silence snapshot in bytes.",
+	})
 	m.queriesTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_silences_queries_total",
 		Help: "How many silence queries were received.",
@@ -159,15 +165,16 @@ func newMetrics(r prometheus.Registerer, s *Silences) *metrics {
 		Help: "Duration of silence query evaluation.",
 	})
 	if s != nil {
-		m.silencesActive = newSilenceMetricByState(s, StateActive)
-		m.silencesPending = newSilenceMetricByState(s, StatePending)
-		m.silencesExpired = newSilenceMetricByState(s, StateExpired)
+		m.silencesActive = newSilenceMetricByState(s, types.SilenceStateActive)
+		m.silencesPending = newSilenceMetricByState(s, types.SilenceStatePending)
+		m.silencesExpired = newSilenceMetricByState(s, types.SilenceStateExpired)
 	}
 
 	if r != nil {
 		r.MustRegister(
 			m.gcDuration,
 			m.snapshotDuration,
+			m.snapshotSize,
 			m.queriesTotal,
 			m.queryErrorsTotal,
 			m.queryDuration,
@@ -258,8 +265,12 @@ func (s *Silences) Maintenance(interval time.Duration, snapf string, stopc <-cha
 
 	f := func() error {
 		start := s.now()
-		s.logger.Info("running maintenance")
-		defer s.logger.With("duration", s.now().Sub(start)).Info("maintenance done")
+		var size int
+		level.Info(s.logger).Log("msg", "Running maintenance")
+		defer func() {
+			level.Info(s.logger).Log("msg", "Maintenance done", "duration", s.now().Sub(start), "size", size)
+			s.metrics.snapshotSize.Set(float64(size))
+		}()
 
 		if _, err := s.GC(); err != nil {
 			return err
@@ -271,8 +282,7 @@ func (s *Silences) Maintenance(interval time.Duration, snapf string, stopc <-cha
 		if err != nil {
 			return err
 		}
-		// TODO(fabxc): potentially expose snapshot size in log message.
-		if _, err := s.Snapshot(f); err != nil {
+		if size, err = s.Snapshot(f); err != nil {
 			return err
 		}
 		return f.Close()
@@ -285,7 +295,7 @@ Loop:
 			break Loop
 		case <-t.C:
 			if err := f(); err != nil {
-				s.logger.With("err", err).Error("running maintenance failed")
+				level.Info(s.logger).Log("msg", "Running maintenance failed", "err", err)
 			}
 		}
 	}
@@ -294,7 +304,7 @@ Loop:
 		return
 	}
 	if err := f(); err != nil {
-		s.logger.With("err", err).Info("msg", "creating shutdown snapshot failed")
+		level.Info(s.logger).Log("msg", "Creating shutdown snapshot failed", "err", err)
 	}
 }
 
@@ -423,7 +433,7 @@ func (s *Silences) Set(sil *pb.Silence) (string, error) {
 		if canUpdate(prev, sil, now) {
 			return sil.Id, s.setSilence(sil)
 		}
-		if getState(prev, s.now()) != StateExpired {
+		if getState(prev, s.now()) != types.SilenceStateExpired {
 			// We cannot update the silence, expire the old one.
 			if err := s.expire(prev.Id); err != nil {
 				return "", errors.Wrap(err, "expire previous silence")
@@ -448,18 +458,18 @@ func canUpdate(a, b *pb.Silence, now time.Time) bool {
 	}
 	// Allowed timestamp modifications depend on the current time.
 	switch st := getState(a, now); st {
-	case StateActive:
+	case types.SilenceStateActive:
 		if !b.StartsAt.Equal(a.StartsAt) {
 			return false
 		}
 		if b.EndsAt.Before(now) {
 			return false
 		}
-	case StatePending:
+	case types.SilenceStatePending:
 		if b.StartsAt.Before(now) {
 			return false
 		}
-	case StateExpired:
+	case types.SilenceStateExpired:
 		return false
 	default:
 		panic("unknown silence state")
@@ -484,11 +494,11 @@ func (s *Silences) expire(id string) error {
 	now := s.now()
 
 	switch getState(sil, now) {
-	case StateExpired:
+	case types.SilenceStateExpired:
 		return errors.Errorf("silence %s already expired", id)
-	case StateActive:
+	case types.SilenceStateActive:
 		sil.EndsAt = now
-	case StatePending:
+	case types.SilenceStatePending:
 		// Set both to now to make Silence move to "expired" state
 		sil.StartsAt = now
 		sil.EndsAt = now
@@ -543,29 +553,19 @@ func QMatches(set model.LabelSet) QueryParam {
 	}
 }
 
-// SilenceState describes the state of a silence based on its time range.
-type SilenceState string
-
-// The only possible states of a silence w.r.t a timestamp.
-const (
-	StateActive  SilenceState = "active"
-	StatePending              = "pending"
-	StateExpired              = "expired"
-)
-
 // getState returns a silence's SilenceState at the given timestamp.
-func getState(sil *pb.Silence, ts time.Time) SilenceState {
+func getState(sil *pb.Silence, ts time.Time) types.SilenceState {
 	if ts.Before(sil.StartsAt) {
-		return StatePending
+		return types.SilenceStatePending
 	}
 	if ts.After(sil.EndsAt) {
-		return StateExpired
+		return types.SilenceStateExpired
 	}
-	return StateActive
+	return types.SilenceStateActive
 }
 
 // QState filters queried silences by the given states.
-func QState(states ...SilenceState) QueryParam {
+func QState(states ...types.SilenceState) QueryParam {
 	return func(q *query) error {
 		f := func(sil *pb.Silence, _ *Silences, now time.Time) (bool, error) {
 			s := getState(sil, now)
@@ -617,7 +617,7 @@ func (s *Silences) Query(params ...QueryParam) ([]*pb.Silence, error) {
 }
 
 // Count silences by state.
-func (s *Silences) CountState(states ...SilenceState) (int, error) {
+func (s *Silences) CountState(states ...types.SilenceState) (int, error) {
 	// This could probably be optimized.
 	sils, err := s.Query(QState(states...))
 	if err != nil {

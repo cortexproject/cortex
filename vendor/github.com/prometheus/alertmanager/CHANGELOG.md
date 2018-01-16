@@ -1,3 +1,69 @@
+## 0.13.0 / 2018-01-12
+
+* [CHANGE] Switch cmd/alertmanager to kingpin (#974)
+* [CHANGE] [amtool] Switch amtool to kingpin (#976)
+* [CHANGE] [amtool] silence query: --expired flag only shows expired silences (#1190)
+* [CHANGE] Return config reload result from reload endpoint (#1180)
+* [CHANGE] Template secret keys for pagerduty notifier (#1182)
+* [FEATURE] UI silence form is populated from location bar (#1148)
+* [FEATURE] Add /-/healthy endpoint (#1159)
+* [ENHANCEMENT] Instrument and log snapshot sizes on maintenance (#1155)
+* [ENHANCEMENT] Make alertGC interval configurable (#1151)
+* [ENHANCEMENT] Display mesh connections in the Status page (#1164)
+* [BUGFIX] Fix expire buttons on the silences page (#1171)
+* [BUGFIX] Fix JavaScript error in MSIE due to endswith() usage (#1172)
+* [BUGFIX] Correctly format UI error output (#1167)
+
+## 0.12.0 / 2017-12-15
+
+* [FEATURE] package amtool in docker container (#1127)
+* [FEATURE] Add notify support for Chinese User wechat (#1059)
+* [FEATURE] [amtool] Add a new `silence import` command (#1082)
+* [FEATURE] [amtool] Add new command to update silence (#1123)
+* [FEATURE] [amtool] Add ability to query for silences that will expire soon (#1120)
+* [ENHANCEMENT] Template source field in PagerDuty alert payload (#1117)
+* [ENHANCEMENT] Add footer field for slack messages (#1141)
+* [ENHANCEMENT] Add Slack additional "fields" to notifications (#1135)
+* [ENHANCEMENT] Adding check for webhook's URL formatting (#1129)
+* [ENHANCEMENT] Let the browser remember the creator of a silence (#1112)
+* [BUGFIX] Fix race in stopping inhibitor (#1118)
+* [BUGFIX] Fix browser UI when entering negative duration (#1132)
+
+## 0.11.0 / 2017-11-16
+
+* [CHANGE] Make silence negative filtering consistent with alert filtering (#1095)
+* [CHANGE] Change HipChat and OpsGenie api config names (#1087)
+* [ENHANCEMENT] amtool: Allow 'd', 'w', 'y' time suffixes when creating silence (#1091)
+* [ENHANCEMENT] Support OpsGenie Priority field (#1094)
+* [BUGFIX] Fix UI when no silences are present (#1090)
+* [BUGFIX] Fix OpsGenie Teams field (#1101)
+* [BUGFIX] Fix OpsGenie Tags field (#1108)
+
+## 0.10.0 / 2017-11-09
+
+* [CHANGE] Prevent inhibiting alerts in the source of the inhibition (#1017)
+* [ENHANCEMENT] Improve amtool check-config use and description text (#1016)
+* [ENHANCEMENT] Add metrics about current silences and alerts (#998)
+* [ENHANCEMENT] Sorted silences based on current status (#1015)
+* [ENHANCEMENT] Add metric of alertmanager position in mesh (#1024)
+* [ENHANCEMENT] Initialise notifications_total and notifications_failed_total (#1011)
+* [ENHANCEMENT] Allow selectable matchers on silence view (#1030)
+* [ENHANCEMENT] Allow template in victorops message_type field (#1038)
+* [ENHANCEMENT] Optionally hide inhibited alerts in API response (#1039)
+* [ENHANCEMENT] Toggle silenced and inhibited alerts in UI (#1049)
+* [ENHANCEMENT] Fix pushover limits (title, message, url) (#1055)
+* [ENHANCEMENT] Add limit to OpsGenie message (#1045)
+* [ENHANCEMENT] Upgrade OpsGenie notifier to v2 API. (#1061)
+* [ENHANCEMENT] Allow template in victorops routing_key field (#1083)
+* [ENHANCEMENT] Add support for PagerDuty API v2 (#1054)
+* [BUGFIX] Fix inhibit race (#1032)
+* [BUGFIX] Fix segfault on amtool (#1031)
+* [BUGFIX] Remove .WasInhibited and .WasSilenced fields of Alert type (#1026)
+* [BUGFIX] nflog: Fix Log() crash when gossip is nil (#1064)
+* [BUGFIX] Fix notifications for flapping alerts (#1071)
+* [BUGFIX] Fix shutdown crash with nil mesh router (#1077)
+* [BUGFIX] Fix negative matchers filtering (#1077)
+
 ## 0.9.1 / 2017-09-29
 * [BUGFIX] Fix -web.external-url regression in ui (#1008)
 * [BUGFIX] Fix multipart email implementation (#1009)

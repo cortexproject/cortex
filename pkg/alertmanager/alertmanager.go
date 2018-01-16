@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
@@ -21,7 +22,6 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/mesh"
@@ -60,7 +60,7 @@ type Alertmanager struct {
 func New(cfg *Config) (*Alertmanager, error) {
 	am := &Alertmanager{
 		cfg:    cfg,
-		logger: cfg.Logger.With("user", cfg.UserID),
+		logger: log.With(cfg.Logger, "user", cfg.UserID),
 		stop:   make(chan struct{}),
 	}
 
@@ -78,7 +78,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 		// For now, these metrics are ignored, as we can't register the same
 		// metric twice with a single registry.
 		nflog.WithMetrics(prometheus.NewRegistry()),
-		nflog.WithLogger(am.logger.With("component", "nflog")),
+		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
@@ -90,7 +90,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 	am.silences, err = silence.New(silence.Options{
 		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
 		Retention:    cfg.Retention,
-		Logger:       am.logger.With("component", "silences"),
+		Logger:       log.With(am.logger, "component", "silences"),
 		// TODO(cortex): Build a registry that can merge metrics from multiple users.
 		// For now, these metrics are ignored, as we can't register the same
 		// metric twice with a single registry.
@@ -110,7 +110,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 	}()
 
 	marker := types.NewMarker()
-	am.alerts, err = mem.NewAlerts(marker, 30*time.Minute, cfg.DataDir)
+	am.alerts, err = mem.NewAlerts(marker, 30*time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -123,12 +123,13 @@ func New(cfg *Config) (*Alertmanager, error) {
 		},
 		marker.Status,
 		nil, // Passing a nil mesh router since we don't show mesh router information in Cortex anyway.
+		log.With(am.logger, "component", "api"),
 	)
 
 	am.router = route.New()
 
-	webReload := make(chan struct{})
-	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload)
+	webReload := make(chan chan error)
+	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload, log.With(am.logger, "component", "ui"))
 	am.api.Register(am.router.WithPrefix(path.Join(am.cfg.ExternalURL.Path, "/api")))
 
 	go func() {
@@ -173,7 +174,7 @@ func (am *Alertmanager) ApplyConfig(conf *config.Config) error {
 	am.inhibitor.Stop()
 	am.dispatcher.Stop()
 
-	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker)
+	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, log.With(am.logger, "component", "inhibitor"))
 
 	waitFunc := meshWait(am.cfg.MeshRouter, 5*time.Second)
 	timeoutFunc := func(d time.Duration) time.Duration {
@@ -191,8 +192,16 @@ func (am *Alertmanager) ApplyConfig(conf *config.Config) error {
 		am.silences,
 		am.nflog,
 		am.marker,
+		log.With(am.logger, "component", "pipeline"),
 	)
-	am.dispatcher = dispatch.NewDispatcher(am.alerts, dispatch.NewRoute(conf.Route, nil), pipeline, am.marker, timeoutFunc)
+	am.dispatcher = dispatch.NewDispatcher(
+		am.alerts,
+		dispatch.NewRoute(conf.Route, nil),
+		pipeline,
+		am.marker,
+		timeoutFunc,
+		log.With(am.logger, "component", "dispatcher"),
+	)
 
 	go am.dispatcher.Run()
 	go am.inhibitor.Run()

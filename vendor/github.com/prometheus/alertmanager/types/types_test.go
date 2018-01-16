@@ -15,48 +15,12 @@ package types
 
 import (
 	"reflect"
-	"regexp"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 )
-
-func TestMatcher(t *testing.T) {
-	m := NewMatcher("foo", "bar")
-
-	if m.String() != "foo=\"bar\"" {
-		t.Errorf("unexpected matcher string %#v", m.String())
-	}
-
-	re, err := regexp.Compile(".*")
-	if err != nil {
-		t.Errorf("unexpected error: %s", err)
-	}
-
-	m = NewRegexMatcher("foo", re)
-
-	if m.String() != "foo=~\".*\"" {
-		t.Errorf("unexpected matcher string %#v", m.String())
-	}
-}
-
-func TestMatchers(t *testing.T) {
-	m1 := NewMatcher("foo", "bar")
-
-	re, err := regexp.Compile(".*")
-	if err != nil {
-		t.Errorf("unexpected error: %s", err)
-	}
-
-	m2 := NewRegexMatcher("bar", re)
-
-	matchers := NewMatchers(m1, m2)
-
-	if matchers.String() != "{bar=~\".*\",foo=\"bar\"}" {
-		t.Errorf("unexpected matcher string %#v", matchers.String())
-	}
-}
 
 func TestAlertMerge(t *testing.T) {
 	now := time.Now()
@@ -97,4 +61,24 @@ func TestAlertMerge(t *testing.T) {
 			t.Errorf("unexpected merged alert %#v", res)
 		}
 	}
+}
+
+func TestCalcSilenceState(t *testing.T) {
+
+	var (
+		pastStartTime = time.Now()
+		pastEndTime   = time.Now()
+
+		futureStartTime = time.Now().Add(time.Hour)
+		futureEndTime   = time.Now().Add(time.Hour)
+	)
+
+	expected := CalcSilenceState(futureStartTime, futureEndTime)
+	require.Equal(t, SilenceStatePending, expected)
+
+	expected = CalcSilenceState(pastStartTime, futureEndTime)
+	require.Equal(t, SilenceStateActive, expected)
+
+	expected = CalcSilenceState(pastStartTime, pastEndTime)
+	require.Equal(t, SilenceStateExpired, expected)
 }

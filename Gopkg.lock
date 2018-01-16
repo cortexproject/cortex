@@ -601,7 +601,7 @@
   branch = "master"
   name = "github.com/weaveworks/common"
   packages = ["aws","errors","httpgrpc","httpgrpc/server","instrument","logging","mflag","mflagext","middleware","mtime","server","signals","test","tracing","user"]
-  revision = "d85bab03a1b1327e94db89d64a84dfd1e79f193f"
+  revision = "bf7fd2fdfaa72bc4bf23b057af82aa3c0dbdc40c"
 
 [[projects]]
   name = "github.com/weaveworks/mesh"
@@ -682,7 +682,7 @@
 
 [[projects]]
   name = "google.golang.org/grpc"
-  packages = [".","balancer","balancer/base","balancer/roundrobin","codes","connectivity","credentials","credentials/oauth","encoding","grpclb/grpc_lb_v1/messages","grpclog","internal","keepalive","metadata","naming","peer","resolver","resolver/dns","resolver/passthrough","stats","status","tap","transport"]
+  packages = [".","balancer","balancer/base","balancer/roundrobin","codes","connectivity","credentials","credentials/oauth","encoding","encoding/gzip","grpclb/grpc_lb_v1/messages","grpclog","internal","keepalive","metadata","naming","peer","resolver","resolver/dns","resolver/passthrough","stats","status","tap","transport"]
   revision = "7cea4cc846bcf00cbb27595b07da5de875ef7de9"
   version = "v1.9.1"
 
@@ -723,6 +723,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "50b77b2122959f3f753d90e0d4a8f344f7374848371c3956e51c4d965ecc0cfc"
+  inputs-digest = "580b7d294648ad7793e7cac316258d28563ccc8de3cca6dcab2c78fe33851db2"
   solver-name = "gps-cdcl"
   solver-version = 1

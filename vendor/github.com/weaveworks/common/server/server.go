@@ -48,6 +48,7 @@ type Config struct {
 	HTTPServerWriteTimeout        time.Duration
 	HTTPServerIdleTimeout         time.Duration
 
+	GRPCOptions    []grpc.ServerOption
 	GRPCMiddleware []grpc.UnaryServerInterceptor
 	HTTPMiddleware []middleware.Interface
 }
@@ -107,12 +108,13 @@ func New(cfg Config) (*Server, error) {
 		otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
 	}
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
-	grpcServer := grpc.NewServer(
+	grpcOptions := []grpc.ServerOption{
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			grpcMiddleware...,
 		)),
-		grpc.RPCDecompressor(grpc.NewGZIPDecompressor()),
-	)
+	}
+	grpcOptions = append(grpcOptions, cfg.GRPCOptions...)
+	grpcServer := grpc.NewServer(grpcOptions...)
 
 	// Setup HTTP server
 	router := mux.NewRouter()

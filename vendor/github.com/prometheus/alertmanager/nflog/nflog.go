@@ -14,7 +14,7 @@
 // Package nflog implements a garbage-collected and snapshottable append-only log of
 // active/resolved notifications. Each log entry stores the active/resolved state,
 // the notified receiver, and a hash digest of the notification's identifying contents.
-// The log can be queried along different paramters.
+// The log can be queried along different parameters.
 package nflog
 
 import (
@@ -27,10 +27,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/matttproud/golang_protobuf_extensions/pbutil"
 	pb "github.com/prometheus/alertmanager/nflog/nflogpb"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/weaveworks/mesh"
 )
 
@@ -116,6 +117,7 @@ type nlog struct {
 type metrics struct {
 	gcDuration       prometheus.Summary
 	snapshotDuration prometheus.Summary
+	snapshotSize     prometheus.Gauge
 	queriesTotal     prometheus.Counter
 	queryErrorsTotal prometheus.Counter
 	queryDuration    prometheus.Histogram
@@ -131,6 +133,10 @@ func newMetrics(r prometheus.Registerer) *metrics {
 	m.snapshotDuration = prometheus.NewSummary(prometheus.SummaryOpts{
 		Name: "alertmanager_nflog_snapshot_duration_seconds",
 		Help: "Duration of the last notification log snapshot.",
+	})
+	m.snapshotSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "alertmanager_nflog_snapshot_size_bytes",
+		Help: "Size of the last notification log snapshot in bytes.",
 	})
 	m.queriesTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_nflog_queries_total",
@@ -283,8 +289,12 @@ func (l *nlog) run() {
 
 	f := func() error {
 		start := l.now()
-		l.logger.Info("running maintenance")
-		defer l.logger.With("duration", l.now().Sub(start)).Info("maintenance done")
+		var size int
+		level.Info(l.logger).Log("msg", "Running maintenance")
+		defer func() {
+			level.Info(l.logger).Log("msg", "Maintenance done", "duration", l.now().Sub(start), "size", size)
+			l.metrics.snapshotSize.Set(float64(size))
+		}()
 
 		if _, err := l.GC(); err != nil {
 			return err
@@ -296,8 +306,7 @@ func (l *nlog) run() {
 		if err != nil {
 			return err
 		}
-		// TODO(fabxc): potentially expose snapshot size in log message.
-		if _, err := l.Snapshot(f); err != nil {
+		if size, err = l.Snapshot(f); err != nil {
 			return err
 		}
 		return f.Close()
@@ -310,7 +319,7 @@ Loop:
 			break Loop
 		case <-t.C:
 			if err := f(); err != nil {
-				l.logger.With("err", err).Error("running maintenance failed")
+				level.Error(l.logger).Log("msg", "Running maintenance failed", "err", err)
 			}
 		}
 	}
@@ -319,7 +328,7 @@ Loop:
 		return
 	}
 	if err := f(); err != nil {
-		l.logger.With("err", err).Error("creating shutdown snapshot failed")
+		level.Error(l.logger).Log("msg", "Creating shutdown snapshot failed", "err", err)
 	}
 }
 
@@ -359,9 +368,11 @@ func (l *nlog) Log(r *pb.Receiver, gkey string, firingAlerts, resolvedAlerts []u
 		},
 		ExpiresAt: now.Add(l.retention),
 	}
-	l.gossip.GossipBroadcast(gossipData{
-		key: e,
-	})
+	if l.gossip != nil {
+		l.gossip.GossipBroadcast(gossipData{
+			key: e,
+		})
+	}
 	l.st[key] = e
 
 	return nil
@@ -488,7 +499,8 @@ func (l *nlog) OnGossip(msg []byte) (mesh.GossipData, error) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	if delta := l.st.mergeDelta(gd); len(delta) > 0 {
+	var delta gossipData
+	if l.st, delta = l.st.mergeDelta(gd); len(delta) > 0 {
 		return delta, nil
 	}
 	return nil, nil
@@ -503,7 +515,10 @@ func (l *nlog) OnGossipBroadcast(src mesh.PeerName, msg []byte) (mesh.GossipData
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	return l.st.mergeDelta(gd), nil
+	var delta mesh.GossipData
+	l.st, delta = l.st.mergeDelta(gd)
+
+	return delta, nil
 }
 
 // OnGossipUnicast implements the mesh.Gossiper interface.
@@ -574,36 +589,38 @@ func (gd gossipData) clone() gossipData {
 // TODO(fabxc): can we just return the receiver. Does it have to remain
 // unmodified. Needs to be clarified upstream.
 func (gd gossipData) Merge(other mesh.GossipData) mesh.GossipData {
+	merged := gd.clone()
 	for k, e := range other.(gossipData) {
-		prev, ok := gd[k]
+		prev, ok := merged[k]
 		if !ok {
-			gd[k] = e
+			merged[k] = e
 			continue
 		}
 		if prev.Entry.Timestamp.Before(e.Entry.Timestamp) {
-			gd[k] = e
+			merged[k] = e
 		}
 	}
-	return gd
+	return merged
 }
 
-// mergeDelta behaves like Merge but returns a gossipData only containing
-// things that have changed.
-func (gd gossipData) mergeDelta(od gossipData) gossipData {
-	delta := gossipData{}
+// mergeDelta behaves like Merge but in addition returns a gossipData only
+// containing things that have changed.
+func (gd gossipData) mergeDelta(od gossipData) (merged gossipData, delta gossipData) {
+	merged = gd.clone()
+	delta = gossipData{}
 	for k, e := range od {
-		prev, ok := gd[k]
+		prev, ok := merged[k]
 		if !ok {
-			gd[k] = e
+			merged[k] = e
 			delta[k] = e
 			continue
 		}
 		if prev.Entry.Timestamp.Before(e.Entry.Timestamp) {
-			gd[k] = e
+			merged[k] = e
 			delta[k] = e
 		}
 	}
-	return delta
+	return merged, delta
 }
 
 // replaceFile wraps a file that is moved to another filename on closing.

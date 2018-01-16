@@ -4,7 +4,7 @@
 
 [[constraint]]
   name = "github.com/prometheus/alertmanager"
-  revision = "4a8e71069177280d0317ccd80a8201a06f2d8139"
+  revision = "fb713f6d8239b57c646cae30f78e8b4b8861a1aa"
 
 [[constraint]]
   name = "github.com/weaveworks/promrus"

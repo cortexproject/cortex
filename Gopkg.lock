@@ -482,7 +482,7 @@
 [[projects]]
   name = "github.com/prometheus/alertmanager"
   packages = ["api","config","dispatch","inhibit","nflog","nflog/nflogpb","notify","pkg/parse","provider","provider/mem","silence","silence/silencepb","template","template/internal/deftmpl","types","ui"]
-  revision = "4a8e71069177280d0317ccd80a8201a06f2d8139"
+  revision = "fb713f6d8239b57c646cae30f78e8b4b8861a1aa"
 
 [[projects]]
   name = "github.com/prometheus/client_golang"
@@ -723,6 +723,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a0dbd4f4bd702793e995197f195de8ec82b3340f351e223eab2d766c0f71c0df"
+  inputs-digest = "50b77b2122959f3f753d90e0d4a8f344f7374848371c3956e51c4d965ecc0cfc"
   solver-name = "gps-cdcl"
   solver-version = 1

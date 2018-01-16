@@ -15,27 +15,29 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"path/filepath"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/route"
 )
 
-func serveAsset(w http.ResponseWriter, req *http.Request, fp string) {
+func serveAsset(w http.ResponseWriter, req *http.Request, fp string, logger log.Logger) {
 	info, err := AssetInfo(fp)
 	if err != nil {
-		log.Warn("Could not get file: ", err)
+		level.Warn(logger).Log("msg", "Could not get file", "err", err)
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	file, err := Asset(fp)
 	if err != nil {
 		if err != io.EOF {
-			log.With("file", fp).Warn("Could not get file: ", err)
+			level.Warn(logger).Log("msg", "Could not get file", "file", fp, "err", err)
 		}
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -46,33 +48,43 @@ func serveAsset(w http.ResponseWriter, req *http.Request, fp string) {
 }
 
 // Register registers handlers to serve files for the web interface.
-func Register(r *route.Router, reloadCh chan<- struct{}) {
+func Register(r *route.Router, reloadCh chan<- chan error, logger log.Logger) {
 	ihf := prometheus.InstrumentHandlerFunc
 
 	r.Get("/metrics", prometheus.Handler().ServeHTTP)
 
 	r.Get("/", ihf("index", func(w http.ResponseWriter, req *http.Request) {
-		serveAsset(w, req, "ui/app/index.html")
+		serveAsset(w, req, "ui/app/index.html", logger)
 	}))
 
 	r.Get("/script.js", ihf("app", func(w http.ResponseWriter, req *http.Request) {
-		serveAsset(w, req, "ui/app/script.js")
+		serveAsset(w, req, "ui/app/script.js", logger)
 	}))
 
 	r.Get("/favicon.ico", ihf("app", func(w http.ResponseWriter, req *http.Request) {
-		serveAsset(w, req, "ui/app/favicon.ico")
+		serveAsset(w, req, "ui/app/favicon.ico", logger)
 	}))
 
 	r.Get("/lib/*filepath", ihf("lib_files",
 		func(w http.ResponseWriter, req *http.Request) {
 			fp := route.Param(req.Context(), "filepath")
-			serveAsset(w, req, filepath.Join("ui/lib", fp))
+			serveAsset(w, req, filepath.Join("ui/app/lib", fp), logger)
 		},
 	))
 
 	r.Post("/-/reload", func(w http.ResponseWriter, req *http.Request) {
-		w.Write([]byte("Reloading configuration file..."))
-		reloadCh <- struct{}{}
+		errc := make(chan error)
+		defer close(errc)
+
+		reloadCh <- errc
+		if err := <-errc; err != nil {
+			http.Error(w, fmt.Sprintf("failed to reload config: %s", err), http.StatusInternalServerError)
+		}
+	})
+
+	r.Get("/-/healthy", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "OK")
 	})
 
 	r.Get("/debug/*subpath", http.DefaultServeMux.ServeHTTP)

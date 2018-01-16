@@ -142,7 +142,7 @@ func TestIngesterTransfer(t *testing.T) {
 				Labels: util.ToLabelPairs(m),
 				Samples: []client.Sample{
 					{
-						Value:       456.,
+						Value:       456,
 						TimestampMs: 123000,
 					},
 				},

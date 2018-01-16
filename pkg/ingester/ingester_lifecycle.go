@@ -155,6 +155,7 @@ loop:
 	for {
 		select {
 		case <-autoJoinAfter:
+			level.Debug(util.Logger).Log("msg", "JoinAfter expired")
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
 			if i.state == ring.PENDING {

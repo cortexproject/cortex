@@ -139,10 +139,11 @@ func TestChunksToMatrix(t *testing.T) {
 		"bar":  "baz",
 		"toms": "code",
 	}
-	chunk1 := dummyChunkFor(model.Now(), metric)
+	now := model.Now()
+	chunk1 := dummyChunkFor(now, metric)
 	chunk1Samples, err := chunk1.Samples(chunk1.From, chunk1.Through)
 	require.NoError(t, err)
-	chunk2 := dummyChunkFor(model.Now(), metric)
+	chunk2 := dummyChunkFor(now, metric)
 	chunk2Samples, err := chunk2.Samples(chunk2.From, chunk2.Through)
 	require.NoError(t, err)
 
@@ -157,7 +158,7 @@ func TestChunksToMatrix(t *testing.T) {
 		"bar":  "baz",
 		"toms": "code",
 	}
-	chunk3 := dummyChunkFor(model.Now(), otherMetric)
+	chunk3 := dummyChunkFor(now, otherMetric)
 	chunk3Samples, err := chunk3.Samples(chunk3.From, chunk3.Through)
 	require.NoError(t, err)
 
@@ -194,9 +195,9 @@ func TestChunksToMatrix(t *testing.T) {
 	}
 }
 
-func benchmarkChunk() Chunk {
+func benchmarkChunk(now model.Time) Chunk {
 	// This is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated
-	return dummyChunkFor(model.Now(), model.Metric{
+	return dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel:              "container_cpu_usage_seconds_total",
 		"beta_kubernetes_io_arch":          "amd64",
 		"beta_kubernetes_io_instance_type": "c3.somesize",
@@ -232,7 +233,7 @@ func BenchmarkDecode100(b *testing.B)   { benchmarkDecode(b, 100) }
 func BenchmarkDecode10000(b *testing.B) { benchmarkDecode(b, 10000) }
 
 func benchmarkDecode(b *testing.B, batchSize int) {
-	chunk := benchmarkChunk()
+	chunk := benchmarkChunk(model.Now())
 	buf, err := chunk.Encode()
 	require.NoError(b, err)
 

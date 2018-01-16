@@ -127,6 +127,8 @@ func (i *Ingester) Shutdown() {
 }
 
 func (i *Ingester) loop() {
+	level.Debug(util.Logger).Log("msg", "we get logs in failed tests")
+
 	defer func() {
 		level.Info(util.Logger).Log("msg", "Ingester.loop() exited gracefully")
 		i.done.Done()
@@ -155,6 +157,7 @@ loop:
 	for {
 		select {
 		case <-autoJoinAfter:
+			level.Debug(util.Logger).Log("msg", "JoinAfter expired")
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
 			if i.state == ring.PENDING {

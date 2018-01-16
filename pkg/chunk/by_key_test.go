@@ -102,7 +102,8 @@ func TestNWayIntersect(t *testing.T) {
 }
 
 func BenchmarkByKeyLess(b *testing.B) {
-	a := ByKey{dummyChunk(model.Now()), dummyChunk(model.Now())}
+	now := model.Now()
+	a := ByKey{dummyChunk(now), dummyChunk(now)}
 
 	b.ResetTimer()
 

@@ -98,9 +98,6 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		sentChunks.Add(float64(len(descs)))
 	}
 
-	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
-		return err
-	}
 
 	if err := i.ClaimTokensFor(fromIngesterID); err != nil {
 		return err
@@ -114,7 +111,9 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	}
 	i.userStates = userStates
 
-	return nil
+	// Close the stream last, as this is what tells the "from" ingester that
+	// it's OK to shut down.
+	return stream.SendAndClose(&client.TransferChunksResponse{})
 }
 
 func toWireChunks(descs []*desc) ([]client.Chunk, error) {

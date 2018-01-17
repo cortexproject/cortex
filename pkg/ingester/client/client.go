@@ -7,6 +7,7 @@ import (
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
+	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 
 	"github.com/weaveworks/common/middleware"
 )
@@ -24,9 +25,11 @@ func MakeIngesterClient(addr string, timeout time.Duration, withCompression bool
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
 		)),
+		// We have seen 20MB returns from queries - add a bit of headroom
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(64 * 1024 * 1024)),
 	}
 	if withCompression {
-		opts = append(opts, grpc.WithCompressor(grpc.NewGZIPCompressor()))
+		opts = append(opts, grpc.WithDefaultCallOptions(grpc.UseCompressor("gzip")))
 	}
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {

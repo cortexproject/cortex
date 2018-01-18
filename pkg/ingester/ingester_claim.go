@@ -112,7 +112,12 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 
 	// Close the stream last, as this is what tells the "from" ingester that
 	// it's OK to shut down.
-	return stream.SendAndClose(&client.TransferChunksResponse{})
+	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
+		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "ingester", fromIngesterID, "err", err)
+		return err
+	}
+	level.Info(util.Logger).Log("msg", "Successfully transferred chunks to ingester", "ingester", fromIngesterID)
+	return nil
 }
 
 func toWireChunks(descs []*desc) ([]client.Chunk, error) {

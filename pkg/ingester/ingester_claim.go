@@ -98,7 +98,6 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		sentChunks.Add(float64(len(descs)))
 	}
 
-
 	if err := i.ClaimTokensFor(fromIngesterID); err != nil {
 		return err
 	}

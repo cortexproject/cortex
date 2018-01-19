@@ -178,11 +178,11 @@ func (c *consulClient) CAS(key string, f CASCallback) error {
 			ModifyIndex: index,
 		}, writeOptions)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error CASing", "ley", key, "err", err)
+			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
 			continue
 		}
 		if !ok {
-			level.Error(util.Logger).Log("msg", "error CASing, trying again", "key", key, "index", index)
+			level.Debug(util.Logger).Log("msg", "error CASing, trying again", "key", key, "index", index)
 			continue
 		}
 		return nil

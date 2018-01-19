@@ -98,10 +98,6 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		sentChunks.Add(float64(len(descs)))
 	}
 
-	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
-		return err
-	}
-
 	if err := i.ClaimTokensFor(fromIngesterID); err != nil {
 		return err
 	}
@@ -114,6 +110,13 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	}
 	i.userStates = userStates
 
+	// Close the stream last, as this is what tells the "from" ingester that
+	// it's OK to shut down.
+	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
+		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "ingester", fromIngesterID, "err", err)
+		return err
+	}
+	level.Info(util.Logger).Log("msg", "Successfully transferred chunks to ingester", "ingester", fromIngesterID)
 	return nil
 }
 

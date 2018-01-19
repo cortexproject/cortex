@@ -425,11 +425,12 @@ func (i *Ingester) findTargetIngester() (*ring.IngesterDesc, error) {
 	for {
 		ingester, err := findIngester()
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "Error looking for pending ingester: %v", err)
+			level.Debug(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
 			if time.Now().Before(deadline) {
 				time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
 				continue
 			} else {
+				level.Warn(util.Logger).Log("msg", "Could not find pending ingester before deadline", "err", err)
 				return nil, err
 			}
 		}

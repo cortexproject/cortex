@@ -43,7 +43,7 @@ func main() {
 
 	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing storage client: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
 		os.Exit(1)
 	}
 
@@ -56,14 +56,14 @@ func main() {
 
 	r, err := ring.New(ringConfig)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ring: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
 		os.Exit(1)
 	}
 	defer r.Stop()
 
 	dist, err := distributor.New(distributorConfig, r)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing distributor: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
 		os.Exit(1)
 	}
 	defer dist.Stop()
@@ -71,7 +71,7 @@ func main() {
 
 	rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ruler: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)
 		os.Exit(1)
 	}
 	defer rlr.Stop()
@@ -84,14 +84,14 @@ func main() {
 
 	rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ruler server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing ruler server", "err", err)
 		os.Exit(1)
 	}
 	defer rulerServer.Stop()
 
 	server, err := server.New(serverConfig)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server: %v", err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
 		os.Exit(1)
 	}
 	defer server.Shutdown()

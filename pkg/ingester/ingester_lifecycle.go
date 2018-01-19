@@ -325,7 +325,7 @@ func (i *Ingester) processShutdown() {
 	flushRequired := true
 	if i.cfg.ClaimOnRollout {
 		if err := i.transferChunks(); err != nil {
-			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester: %v", err)
+			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
 		} else {
 			flushRequired = false
 		}

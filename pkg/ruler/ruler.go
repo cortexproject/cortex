@@ -1,6 +1,9 @@
 package ruler
 
 import (
+	native_ctx "context"
+	"crypto/md5"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -12,11 +15,17 @@ import (
 	gklog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/discovery"
+	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery/dns"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
@@ -97,7 +106,67 @@ type Ruler struct {
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
-	notifiers    map[string]*notifier.Notifier
+	notifiers    map[string]*rulerNotifier
+}
+
+type rulerNotifier struct {
+	notifier  *notifier.Notifier
+	sdCtx     context.Context
+	sdCancel  context.CancelFunc
+	sdManager *discovery.Manager
+	wg        sync.WaitGroup
+	logger    gklog.Logger
+}
+
+func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &rulerNotifier{
+		notifier:  notifier.New(o, l),
+		sdCtx:     ctx,
+		sdCancel:  cancel,
+		sdManager: discovery.NewManager(l),
+		logger:    l,
+	}
+}
+
+func (rn *rulerNotifier) run() {
+	rn.wg.Add(2)
+	go func() {
+		if err := rn.sdManager.Run(rn.sdCtx); err != nil {
+			level.Error(rn.logger).Log("msg", "error starting notifier discovery manager", "err", err)
+		}
+		rn.wg.Done()
+	}()
+	go func() {
+		rn.notifier.Run(rn.sdManager.SyncCh())
+		rn.wg.Done()
+	}()
+}
+
+func (rn *rulerNotifier) applyConfig(cfg *config.Config) error {
+	if err := rn.notifier.ApplyConfig(cfg); err != nil {
+		return err
+	}
+
+	sdCfgs := make(map[string]sd_config.ServiceDiscoveryConfig)
+	for _, v := range cfg.AlertingConfig.AlertmanagerConfigs {
+		// AlertmanagerConfigs doesn't hold an unique identifier so we use the config hash as the identifier.
+		b, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		// This hash needs to be identical to the one computed in the notifier in
+		// https://github.com/prometheus/prometheus/blob/719c579f7b917b384c3d629752dea026513317dc/notifier/notifier.go#L265
+		// This kind of sucks, but it's done in Prometheus in main.go in the same way.
+		sdCfgs[fmt.Sprintf("%x", md5.Sum(b))] = v.ServiceDiscoveryConfig
+	}
+	return rn.sdManager.ApplyConfig(sdCfgs)
+}
+
+func (rn *rulerNotifier) stop() {
+	rn.sdCancel()
+	rn.notifier.Stop()
+	rn.wg.Wait()
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
@@ -112,7 +181,7 @@ func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) (*Ruler, e
 		alertURL:      cfg.ExternalURL.URL,
 		notifierCfg:   ncfg,
 		queueCapacity: cfg.NotificationQueueCapacity,
-		notifiers:     map[string]*notifier.Notifier{},
+		notifiers:     map[string]*rulerNotifier{},
 	}, nil
 }
 
@@ -124,23 +193,23 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	}
 
 	u := rulerConfig.AlertmanagerURL
-	var sdConfig config.ServiceDiscoveryConfig
+	var sdConfig sd_config.ServiceDiscoveryConfig
 	if rulerConfig.AlertmanagerDiscovery {
 		if !strings.Contains(u.Host, "_tcp.") {
 			return nil, fmt.Errorf("When alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", u.Host)
 		}
-		dnsSDConfig := config.DNSSDConfig{
+		dnsSDConfig := dns.SDConfig{
 			Names:           []string{u.Host},
 			RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
 			Type:            "SRV",
 			Port:            0, // Ignored, because of SRV.
 		}
-		sdConfig = config.ServiceDiscoveryConfig{
-			DNSSDConfigs: []*config.DNSSDConfig{&dnsSDConfig},
+		sdConfig = sd_config.ServiceDiscoveryConfig{
+			DNSSDConfigs: []*dns.SDConfig{&dnsSDConfig},
 		}
 	} else {
-		sdConfig = config.ServiceDiscoveryConfig{
-			StaticConfigs: []*config.TargetGroup{
+		sdConfig = sd_config.ServiceDiscoveryConfig{
+			StaticConfigs: []*targetgroup.Group{
 				{
 					Targets: []model.LabelSet{
 						{
@@ -165,14 +234,14 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	}
 
 	if u.User != nil {
-		amConfig.HTTPClientConfig = config.HTTPClientConfig{
-			BasicAuth: &config.BasicAuth{
+		amConfig.HTTPClientConfig = config_util.HTTPClientConfig{
+			BasicAuth: &config_util.BasicAuth{
 				Username: u.User.Username(),
 			},
 		}
 
 		if password, isSet := u.User.Password(); isSet {
-			amConfig.HTTPClientConfig.BasicAuth.Password = config.Secret(password)
+			amConfig.HTTPClientConfig.BasicAuth.Password = config_util.Secret(password)
 		}
 	}
 
@@ -191,14 +260,47 @@ func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, er
 	}
 	opts := &rules.ManagerOptions{
 		Appendable:  appendable,
-		QueryEngine: r.engine,
+		QueryFunc:   rules.EngineQueryFunc(r.engine),
 		Context:     ctx,
 		ExternalURL: r.alertURL,
-		Notifier:    notifier,
+		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
 		Logger:      gklog.NewNopLogger(),
+		Registerer:  prometheus.DefaultRegisterer,
 	}
 	delay := 0 * time.Second // Unused, so 0 value is fine.
 	return rules.NewGroup("default", "none", delay, rs, opts), nil
+}
+
+// sendAlerts implements a the rules.NotifyFunc for a Notifier.
+// It filters any non-firing alerts from the input.
+//
+// Copied from Prometheus's main.go.
+func sendAlerts(n *notifier.Notifier, externalURL string) rules.NotifyFunc {
+	return func(ctx native_ctx.Context, expr string, alerts ...*rules.Alert) error {
+		var res []*notifier.Alert
+
+		for _, alert := range alerts {
+			// Only send actually firing alerts.
+			if alert.State == rules.StatePending {
+				continue
+			}
+			a := &notifier.Alert{
+				StartsAt:     alert.FiredAt,
+				Labels:       alert.Labels,
+				Annotations:  alert.Annotations,
+				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+			}
+			if !alert.ResolvedAt.IsZero() {
+				a.EndsAt = alert.ResolvedAt
+			}
+			res = append(res, a)
+		}
+
+		if len(alerts) > 0 {
+			n.Send(res...)
+		}
+		return nil
+	}
 }
 
 func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
@@ -207,10 +309,10 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 
 	n, ok := r.notifiers[userID]
 	if ok {
-		return n, nil
+		return n.notifier, nil
 	}
 
-	n = notifier.New(&notifier.Options{
+	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.queueCapacity,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 			// Note: The passed-in context comes from the Prometheus rule group code
@@ -222,17 +324,18 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 			}
 			return ctxhttp.Do(ctx, client, req)
 		},
-	}, gklog.NewNopLogger())
+	}, util.Logger)
+
+	go n.run()
 
 	// This should never fail, unless there's a programming mistake.
-	if err := n.ApplyConfig(r.notifierCfg); err != nil {
+	if err := n.applyConfig(r.notifierCfg); err != nil {
 		return nil, err
 	}
-	go n.Run()
 
 	// TODO: Remove notifiers for stale users. Right now this is a slow leak.
 	r.notifiers[userID] = n
-	return n, nil
+	return n.notifier, nil
 }
 
 // Evaluate a list of rules in the given context.
@@ -245,7 +348,7 @@ func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 		level.Error(logger).Log("msg", "failed to create rule group", "err", err)
 		return
 	}
-	g.Eval(start)
+	g.Eval(ctx, start)
 
 	// The prometheus routines we're calling have their own instrumentation
 	// but, a) it's rule-based, not group-based, b) it's a summary, not a
@@ -260,7 +363,7 @@ func (r *Ruler) Stop() {
 	defer r.notifiersMtx.Unlock()
 
 	for _, n := range r.notifiers {
-		n.Stop()
+		n.stop()
 	}
 }
 

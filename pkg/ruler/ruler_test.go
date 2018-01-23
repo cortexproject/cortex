@@ -48,12 +48,13 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer n.Stop()
+	for _, not := range r.notifiers {
+		defer not.stop()
+	}
 	// Loop until notifier discovery syncs up
 	for len(n.Alertmanagers()) == 0 {
 		time.Sleep(10 * time.Millisecond)
 	}
-
 	n.Send(&notifier.Alert{
 		Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
 	})

@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
+	"github.com/prometheus/tsdb"
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -98,6 +99,8 @@ func main() {
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
+		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
+		false, // Disable admin APIs.
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)

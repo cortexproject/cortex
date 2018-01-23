@@ -72,15 +72,18 @@ func (h *Handler) federation(w http.ResponseWriter, req *http.Request) {
 
 	vec := make(promql.Vector, 0, 8000)
 
-	var set storage.SeriesSet
-
+	var sets []storage.SeriesSet
 	for _, mset := range matcherSets {
-		set = storage.DeduplicateSeriesSet(set, q.Select(mset...))
-	}
-	if set == nil {
-		return
+		s, err := q.Select(mset...)
+		if err != nil {
+			federationErrors.Inc()
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sets = append(sets, s)
 	}
 
+	set := storage.NewMergeSeriesSet(sets)
 	for set.Next() {
 		s := set.At()
 

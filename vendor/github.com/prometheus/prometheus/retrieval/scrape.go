@@ -34,6 +34,7 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/pool"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -117,15 +118,16 @@ func init() {
 type scrapePool struct {
 	appendable Appendable
 	logger     log.Logger
-	ctx        context.Context
 
 	mtx    sync.RWMutex
 	config *config.ScrapeConfig
 	client *http.Client
 	// Targets and loops must always be synchronized to have the same
 	// set of hashes.
-	targets map[uint64]*Target
-	loops   map[uint64]loop
+	targets        map[uint64]*Target
+	droppedTargets []*Target
+	loops          map[uint64]loop
+	cancel         context.CancelFunc
 
 	// Constructor for new scrape loops. This is settable for testing convenience.
 	newLoop func(*Target, scraper) loop
@@ -135,7 +137,7 @@ const maxAheadTime = 10 * time.Minute
 
 type labelsMutator func(labels.Labels) labels.Labels
 
-func newScrapePool(ctx context.Context, cfg *config.ScrapeConfig, app Appendable, logger log.Logger) *scrapePool {
+func newScrapePool(cfg *config.ScrapeConfig, app Appendable, logger log.Logger) *scrapePool {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -148,17 +150,20 @@ func newScrapePool(ctx context.Context, cfg *config.ScrapeConfig, app Appendable
 
 	buffers := pool.NewBytesPool(163, 100e6, 3)
 
+	ctx, cancel := context.WithCancel(context.Background())
 	sp := &scrapePool{
+		cancel:     cancel,
 		appendable: app,
 		config:     cfg,
-		ctx:        ctx,
 		client:     client,
 		targets:    map[uint64]*Target{},
 		loops:      map[uint64]loop{},
 		logger:     logger,
 	}
 	sp.newLoop = func(t *Target, s scraper) loop {
-		return newScrapeLoop(sp.ctx, s,
+		return newScrapeLoop(
+			ctx,
+			s,
 			log.With(logger, "target", t),
 			buffers,
 			func(l labels.Labels) labels.Labels { return sp.mutateSampleLabels(l, t) },
@@ -172,6 +177,7 @@ func newScrapePool(ctx context.Context, cfg *config.ScrapeConfig, app Appendable
 
 // stop terminates all scrape loops and returns after they all terminated.
 func (sp *scrapePool) stop() {
+	sp.cancel()
 	var wg sync.WaitGroup
 
 	sp.mtx.Lock()
@@ -188,7 +194,6 @@ func (sp *scrapePool) stop() {
 		delete(sp.loops, fp)
 		delete(sp.targets, fp)
 	}
-
 	wg.Wait()
 }
 
@@ -241,18 +246,27 @@ func (sp *scrapePool) reload(cfg *config.ScrapeConfig) {
 
 // Sync converts target groups into actual scrape targets and synchronizes
 // the currently running scraper with the resulting set.
-func (sp *scrapePool) Sync(tgs []*config.TargetGroup) {
+func (sp *scrapePool) Sync(tgs []*targetgroup.Group) {
 	start := time.Now()
 
 	var all []*Target
+	sp.mtx.Lock()
+	sp.droppedTargets = []*Target{}
 	for _, tg := range tgs {
 		targets, err := targetsFromGroup(tg, sp.config)
 		if err != nil {
 			level.Error(sp.logger).Log("msg", "creating targets failed", "err", err)
 			continue
 		}
-		all = append(all, targets...)
+		for _, t := range targets {
+			if t.Labels().Len() > 0 {
+				all = append(all, t)
+			} else if t.DiscoveredLabels().Len() > 0 {
+				sp.droppedTargets = append(sp.droppedTargets, t)
+			}
+		}
 	}
+	sp.mtx.Unlock()
 	sp.sync(all)
 
 	targetSyncIntervalLength.WithLabelValues(sp.config.JobName).Observe(
@@ -575,8 +589,7 @@ func (c *scrapeCache) forEachStale(f func(labels.Labels) bool) {
 	}
 }
 
-func newScrapeLoop(
-	ctx context.Context,
+func newScrapeLoop(ctx context.Context,
 	sc scraper,
 	l log.Logger,
 	buffers *pool.BytesPool,
@@ -598,8 +611,8 @@ func newScrapeLoop(
 		sampleMutator:       sampleMutator,
 		reportSampleMutator: reportSampleMutator,
 		stopped:             make(chan struct{}),
-		ctx:                 ctx,
 		l:                   l,
+		ctx:                 ctx,
 	}
 	sl.scrapeCtx, sl.cancel = context.WithCancel(ctx)
 
@@ -894,9 +907,9 @@ loop:
 	if err == nil {
 		err = p.Err()
 	}
-	if err == nil && sampleLimitErr != nil {
+	if sampleLimitErr != nil {
+		// We only want to increment this once per scrape, so this is Inc'd outside the loop.
 		targetScrapeSampleLimit.Inc()
-		err = sampleLimitErr
 	}
 	if numOutOfOrder > 0 {
 		level.Warn(sl.l).Log("msg", "Error on ingesting out-of-order samples", "num_dropped", numOutOfOrder)

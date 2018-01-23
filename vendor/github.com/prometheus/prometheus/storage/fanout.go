@@ -216,12 +216,16 @@ func NewMergeQuerier(queriers []Querier) Querier {
 }
 
 // Select returns a set of series that matches the given label matchers.
-func (q *mergeQuerier) Select(matchers ...*labels.Matcher) SeriesSet {
+func (q *mergeQuerier) Select(matchers ...*labels.Matcher) (SeriesSet, error) {
 	seriesSets := make([]SeriesSet, 0, len(q.queriers))
 	for _, querier := range q.queriers {
-		seriesSets = append(seriesSets, querier.Select(matchers...))
+		set, err := querier.Select(matchers...)
+		if err != nil {
+			return nil, err
+		}
+		seriesSets = append(seriesSets, set)
 	}
-	return newMergeSeriesSet(seriesSets)
+	return NewMergeSeriesSet(seriesSets), nil
 }
 
 // LabelValues returns all potential values for a label name.
@@ -296,7 +300,9 @@ type mergeSeriesSet struct {
 	sets          []SeriesSet
 }
 
-func newMergeSeriesSet(sets []SeriesSet) SeriesSet {
+// NewMergeSeriesSet returns a new series set that merges (deduplicates)
+// series returned by the input series sets when iterating.
+func NewMergeSeriesSet(sets []SeriesSet) SeriesSet {
 	// Sets need to be pre-advanced, so we can introspect the label of the
 	// series under the cursor.
 	var h seriesSetHeap

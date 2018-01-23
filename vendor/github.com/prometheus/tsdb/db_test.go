@@ -23,21 +23,25 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/tsdb/labels"
-	"github.com/stretchr/testify/require"
+	"github.com/prometheus/tsdb/testutil"
 )
 
 func openTestDB(t testing.TB, opts *Options) (db *DB, close func()) {
-	tmpdir, _ := ioutil.TempDir("", "test")
+	tmpdir, err := ioutil.TempDir("", "test")
+	testutil.Ok(t, err)
 
-	db, err := Open(tmpdir, nil, nil, opts)
-	require.NoError(t, err)
+	db, err = Open(tmpdir, nil, nil, opts)
+	testutil.Ok(t, err)
 
 	// Do not close the test database by default as it will deadlock on test failures.
 	return db, func() { os.RemoveAll(tmpdir) }
 }
 
-// Convert a SeriesSet into a form useable with reflect.DeepEqual.
-func readSeriesSet(t testing.TB, ss SeriesSet) map[string][]sample {
+// query runs a matcher query against the querier and fully expands its data.
+func query(t testing.TB, q Querier, matchers ...labels.Matcher) map[string][]sample {
+	ss, err := q.Select(matchers...)
+	testutil.Ok(t, err)
+
 	result := map[string][]sample{}
 
 	for ss.Next() {
@@ -49,12 +53,12 @@ func readSeriesSet(t testing.TB, ss SeriesSet) map[string][]sample {
 			t, v := it.At()
 			samples = append(samples, sample{t: t, v: v})
 		}
-		require.NoError(t, it.Err())
+		testutil.Ok(t, it.Err())
 
 		name := series.Labels().String()
 		result[name] = samples
 	}
-	require.NoError(t, ss.Err())
+	testutil.Ok(t, ss.Err())
 
 	return result
 }
@@ -62,93 +66,96 @@ func readSeriesSet(t testing.TB, ss SeriesSet) map[string][]sample {
 func TestDataAvailableOnlyAfterCommit(t *testing.T) {
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	app := db.Appender()
 
 	_, err := app.Add(labels.FromStrings("foo", "bar"), 0, 0)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	querier, err := db.Querier(0, 1)
-	require.NoError(t, err)
-	seriesSet := readSeriesSet(t, querier.Select(labels.NewEqualMatcher("foo", "bar")))
+	testutil.Ok(t, err)
+	seriesSet := query(t, querier, labels.NewEqualMatcher("foo", "bar"))
 
-	require.Equal(t, seriesSet, map[string][]sample{})
-	require.NoError(t, querier.Close())
+	testutil.Equals(t, seriesSet, map[string][]sample{})
+	testutil.Ok(t, querier.Close())
 
 	err = app.Commit()
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	querier, err = db.Querier(0, 1)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 	defer querier.Close()
 
-	seriesSet = readSeriesSet(t, querier.Select(labels.NewEqualMatcher("foo", "bar")))
+	seriesSet = query(t, querier, labels.NewEqualMatcher("foo", "bar"))
 
-	require.Equal(t, seriesSet, map[string][]sample{`{foo="bar"}`: []sample{{t: 0, v: 0}}})
+	testutil.Equals(t, seriesSet, map[string][]sample{`{foo="bar"}`: []sample{{t: 0, v: 0}}})
 }
 
 func TestDataNotAvailableAfterRollback(t *testing.T) {
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	app := db.Appender()
 	_, err := app.Add(labels.FromStrings("foo", "bar"), 0, 0)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	err = app.Rollback()
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	querier, err := db.Querier(0, 1)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 	defer querier.Close()
 
-	seriesSet := readSeriesSet(t, querier.Select(labels.NewEqualMatcher("foo", "bar")))
+	seriesSet := query(t, querier, labels.NewEqualMatcher("foo", "bar"))
 
-	require.Equal(t, seriesSet, map[string][]sample{})
+	testutil.Equals(t, seriesSet, map[string][]sample{})
 }
 
 func TestDBAppenderAddRef(t *testing.T) {
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	app1 := db.Appender()
 
 	ref1, err := app1.Add(labels.FromStrings("a", "b"), 123, 0)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	// Reference should already work before commit.
 	err = app1.AddFast(ref1, 124, 1)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	err = app1.Commit()
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	app2 := db.Appender()
 
 	// first ref should already work in next transaction.
 	err = app2.AddFast(ref1, 125, 0)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	ref2, err := app2.Add(labels.FromStrings("a", "b"), 133, 1)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
-	require.True(t, ref1 == ref2)
+	testutil.Assert(t, ref1 == ref2, "")
 
 	// Reference must be valid to add another sample.
 	err = app2.AddFast(ref2, 143, 2)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	err = app2.AddFast(9999999, 1, 1)
-	require.EqualError(t, errors.Cause(err), ErrNotFound.Error())
+	testutil.Equals(t, errors.Cause(err), ErrNotFound)
 
-	require.NoError(t, app2.Commit())
+	testutil.Ok(t, app2.Commit())
 
 	q, err := db.Querier(0, 200)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
-	res := readSeriesSet(t, q.Select(labels.NewEqualMatcher("a", "b")))
+	res := query(t, q, labels.NewEqualMatcher("a", "b"))
 
-	require.Equal(t, map[string][]sample{
+	testutil.Equals(t, map[string][]sample{
 		labels.FromStrings("a", "b").String(): []sample{
 			{t: 123, v: 0},
 			{t: 124, v: 1},
@@ -158,7 +165,7 @@ func TestDBAppenderAddRef(t *testing.T) {
 		},
 	}, res)
 
-	require.NoError(t, q.Close())
+	testutil.Ok(t, q.Close())
 }
 
 func TestDeleteSimple(t *testing.T) {
@@ -166,6 +173,7 @@ func TestDeleteSimple(t *testing.T) {
 
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	app := db.Appender()
 
@@ -175,7 +183,7 @@ func TestDeleteSimple(t *testing.T) {
 		app.Add(labels.Labels{{"a", "b"}}, i, smpls[i])
 	}
 
-	require.NoError(t, app.Commit())
+	testutil.Ok(t, app.Commit())
 	cases := []struct {
 		intervals Intervals
 		remaint   []int64
@@ -191,14 +199,15 @@ Outer:
 		// TODO(gouthamve): Reset the tombstones somehow.
 		// Delete the ranges.
 		for _, r := range c.intervals {
-			require.NoError(t, db.Delete(r.Mint, r.Maxt, labels.NewEqualMatcher("a", "b")))
+			testutil.Ok(t, db.Delete(r.Mint, r.Maxt, labels.NewEqualMatcher("a", "b")))
 		}
 
 		// Compare the result.
 		q, err := db.Querier(0, numSamples)
-		require.NoError(t, err)
+		testutil.Ok(t, err)
 
-		res := q.Select(labels.NewEqualMatcher("a", "b"))
+		res, err := q.Select(labels.NewEqualMatcher("a", "b"))
+		testutil.Ok(t, err)
 
 		expSamples := make([]sample, 0, len(c.remaint))
 		for _, ts := range c.remaint {
@@ -210,13 +219,13 @@ Outer:
 		})
 
 		if len(expSamples) == 0 {
-			require.False(t, res.Next())
+			testutil.Assert(t, res.Next() == false, "")
 			continue
 		}
 
 		for {
 			eok, rok := expss.Next(), res.Next()
-			require.Equal(t, eok, rok, "next")
+			testutil.Equals(t, eok, rok)
 
 			if !eok {
 				continue Outer
@@ -224,13 +233,13 @@ Outer:
 			sexp := expss.At()
 			sres := res.At()
 
-			require.Equal(t, sexp.Labels(), sres.Labels(), "labels")
+			testutil.Equals(t, sexp.Labels(), sres.Labels())
 
 			smplExp, errExp := expandSeriesIterator(sexp.Iterator())
 			smplRes, errRes := expandSeriesIterator(sres.Iterator())
 
-			require.Equal(t, errExp, errRes, "samples error")
-			require.Equal(t, smplExp, smplRes, "samples")
+			testutil.Equals(t, errExp, errRes)
+			testutil.Equals(t, smplExp, smplRes)
 		}
 	}
 }
@@ -238,89 +247,91 @@ Outer:
 func TestAmendDatapointCausesError(t *testing.T) {
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	app := db.Appender()
 	_, err := app.Add(labels.Labels{}, 0, 0)
-	require.NoError(t, err, "Failed to add sample")
-	require.NoError(t, app.Commit(), "Unexpected error committing appender")
+	testutil.Ok(t, err)
+	testutil.Ok(t, app.Commit())
 
 	app = db.Appender()
 	_, err = app.Add(labels.Labels{}, 0, 1)
-	require.Equal(t, ErrAmendSample, err)
-	require.NoError(t, app.Rollback(), "Unexpected error rolling back appender")
+	testutil.Equals(t, ErrAmendSample, err)
+	testutil.Ok(t, app.Rollback())
 }
 
 func TestDuplicateNaNDatapointNoAmendError(t *testing.T) {
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	app := db.Appender()
 	_, err := app.Add(labels.Labels{}, 0, math.NaN())
-	require.NoError(t, err, "Failed to add sample")
-	require.NoError(t, app.Commit(), "Unexpected error committing appender")
+	testutil.Ok(t, err)
+	testutil.Ok(t, app.Commit())
 
 	app = db.Appender()
 	_, err = app.Add(labels.Labels{}, 0, math.NaN())
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 }
 
 func TestNonDuplicateNaNDatapointsCausesAmendError(t *testing.T) {
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	app := db.Appender()
 	_, err := app.Add(labels.Labels{}, 0, math.Float64frombits(0x7ff0000000000001))
-	require.NoError(t, err, "Failed to add sample")
-	require.NoError(t, app.Commit(), "Unexpected error committing appender")
+	testutil.Ok(t, err)
+	testutil.Ok(t, app.Commit())
 
 	app = db.Appender()
 	_, err = app.Add(labels.Labels{}, 0, math.Float64frombits(0x7ff0000000000002))
-	require.Equal(t, ErrAmendSample, err)
+	testutil.Equals(t, ErrAmendSample, err)
 }
 
 func TestSkippingInvalidValuesInSameTxn(t *testing.T) {
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	// Append AmendedValue.
 	app := db.Appender()
 	_, err := app.Add(labels.Labels{{"a", "b"}}, 0, 1)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 	_, err = app.Add(labels.Labels{{"a", "b"}}, 0, 2)
-	require.NoError(t, err)
-	require.NoError(t, app.Commit())
+	testutil.Ok(t, err)
+	testutil.Ok(t, app.Commit())
 
 	// Make sure the right value is stored.
 	q, err := db.Querier(0, 10)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
-	ss := q.Select(labels.NewEqualMatcher("a", "b"))
-	ssMap := readSeriesSet(t, ss)
+	ssMap := query(t, q, labels.NewEqualMatcher("a", "b"))
 
-	require.Equal(t, map[string][]sample{
+	testutil.Equals(t, map[string][]sample{
 		labels.New(labels.Label{"a", "b"}).String(): []sample{{0, 1}},
 	}, ssMap)
 
-	require.NoError(t, q.Close())
+	testutil.Ok(t, q.Close())
 
 	// Append Out of Order Value.
 	app = db.Appender()
 	_, err = app.Add(labels.Labels{{"a", "b"}}, 10, 3)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 	_, err = app.Add(labels.Labels{{"a", "b"}}, 7, 5)
-	require.NoError(t, err)
-	require.NoError(t, app.Commit())
+	testutil.Ok(t, err)
+	testutil.Ok(t, app.Commit())
 
 	q, err = db.Querier(0, 10)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
-	ss = q.Select(labels.NewEqualMatcher("a", "b"))
-	ssMap = readSeriesSet(t, ss)
+	ssMap = query(t, q, labels.NewEqualMatcher("a", "b"))
 
-	require.Equal(t, map[string][]sample{
+	testutil.Equals(t, map[string][]sample{
 		labels.New(labels.Label{"a", "b"}).String(): []sample{{0, 1}, {10, 3}},
 	}, ssMap)
-	require.NoError(t, q.Close())
+	testutil.Ok(t, q.Close())
 }
 
 func TestDB_Snapshot(t *testing.T) {
@@ -332,27 +343,30 @@ func TestDB_Snapshot(t *testing.T) {
 	mint := int64(1414141414000)
 	for i := 0; i < 1000; i++ {
 		_, err := app.Add(labels.FromStrings("foo", "bar"), mint+int64(i), 1.0)
-		require.NoError(t, err)
+		testutil.Ok(t, err)
 	}
-	require.NoError(t, app.Commit())
-	require.NoError(t, app.Rollback())
+	testutil.Ok(t, app.Commit())
+	testutil.Ok(t, app.Rollback())
 
 	// create snapshot
 	snap, err := ioutil.TempDir("", "snap")
-	require.NoError(t, err)
-	require.NoError(t, db.Snapshot(snap))
-	require.NoError(t, db.Close())
+	testutil.Ok(t, err)
+	testutil.Ok(t, db.Snapshot(snap))
+	testutil.Ok(t, db.Close())
 
 	// reopen DB from snapshot
 	db, err = Open(snap, nil, nil, nil)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
+	defer db.Close()
 
 	querier, err := db.Querier(mint, mint+1000)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 	defer querier.Close()
 
 	// sum values
-	seriesSet := querier.Select(labels.NewEqualMatcher("foo", "bar"))
+	seriesSet, err := querier.Select(labels.NewEqualMatcher("foo", "bar"))
+	testutil.Ok(t, err)
+
 	sum := 0.0
 	for seriesSet.Next() {
 		series := seriesSet.At().Iterator()
@@ -360,10 +374,97 @@ func TestDB_Snapshot(t *testing.T) {
 			_, v := series.At()
 			sum += v
 		}
-		require.NoError(t, series.Err())
+		testutil.Ok(t, series.Err())
 	}
-	require.NoError(t, seriesSet.Err())
-	require.Equal(t, sum, 1000.0)
+	testutil.Ok(t, seriesSet.Err())
+	testutil.Equals(t, sum, 1000.0)
+}
+
+func TestDB_SnapshotWithDelete(t *testing.T) {
+	numSamples := int64(10)
+
+	db, close := openTestDB(t, nil)
+	defer close()
+
+	app := db.Appender()
+
+	smpls := make([]float64, numSamples)
+	for i := int64(0); i < numSamples; i++ {
+		smpls[i] = rand.Float64()
+		app.Add(labels.Labels{{"a", "b"}}, i, smpls[i])
+	}
+
+	testutil.Ok(t, app.Commit())
+	cases := []struct {
+		intervals Intervals
+		remaint   []int64
+	}{
+		{
+			intervals: Intervals{{1, 3}, {4, 7}},
+			remaint:   []int64{0, 8, 9},
+		},
+	}
+
+Outer:
+	for _, c := range cases {
+		// TODO(gouthamve): Reset the tombstones somehow.
+		// Delete the ranges.
+		for _, r := range c.intervals {
+			testutil.Ok(t, db.Delete(r.Mint, r.Maxt, labels.NewEqualMatcher("a", "b")))
+		}
+
+		// create snapshot
+		snap, err := ioutil.TempDir("", "snap")
+		testutil.Ok(t, err)
+		testutil.Ok(t, db.Snapshot(snap))
+		testutil.Ok(t, db.Close())
+
+		// reopen DB from snapshot
+		db, err = Open(snap, nil, nil, nil)
+		testutil.Ok(t, err)
+		defer db.Close()
+
+		// Compare the result.
+		q, err := db.Querier(0, numSamples)
+		testutil.Ok(t, err)
+		defer q.Close()
+
+		res, err := q.Select(labels.NewEqualMatcher("a", "b"))
+		testutil.Ok(t, err)
+
+		expSamples := make([]sample, 0, len(c.remaint))
+		for _, ts := range c.remaint {
+			expSamples = append(expSamples, sample{ts, smpls[ts]})
+		}
+
+		expss := newListSeriesSet([]Series{
+			newSeries(map[string]string{"a": "b"}, expSamples),
+		})
+
+		if len(expSamples) == 0 {
+			testutil.Assert(t, res.Next() == false, "")
+			continue
+		}
+
+		for {
+			eok, rok := expss.Next(), res.Next()
+			testutil.Equals(t, eok, rok)
+
+			if !eok {
+				continue Outer
+			}
+			sexp := expss.At()
+			sres := res.At()
+
+			testutil.Equals(t, sexp.Labels(), sres.Labels())
+
+			smplExp, errExp := expandSeriesIterator(sexp.Iterator())
+			smplRes, errRes := expandSeriesIterator(sres.Iterator())
+
+			testutil.Equals(t, errExp, errRes)
+			testutil.Equals(t, smplExp, smplRes)
+		}
+	}
 }
 
 func TestDB_e2e(t *testing.T) {
@@ -425,6 +526,7 @@ func TestDB_e2e(t *testing.T) {
 
 	db, close := openTestDB(t, nil)
 	defer close()
+	defer db.Close()
 
 	app := db.Appender()
 
@@ -439,7 +541,7 @@ func TestDB_e2e(t *testing.T) {
 			series = append(series, sample{ts, v})
 
 			_, err := app.Add(lset, ts, v)
-			require.NoError(t, err)
+			testutil.Ok(t, err)
 
 			ts += rand.Int63n(timeInterval) + 1
 		}
@@ -447,7 +549,7 @@ func TestDB_e2e(t *testing.T) {
 		seriesMap[lset.String()] = series
 	}
 
-	require.NoError(t, app.Commit())
+	testutil.Ok(t, app.Commit())
 
 	// Query each selector on 1000 random time-ranges.
 	queries := []struct {
@@ -498,9 +600,10 @@ func TestDB_e2e(t *testing.T) {
 			}
 
 			q, err := db.Querier(mint, maxt)
-			require.NoError(t, err)
+			testutil.Ok(t, err)
 
-			ss := q.Select(qry.ms...)
+			ss, err := q.Select(qry.ms...)
+			testutil.Ok(t, err)
 
 			result := map[string][]sample{}
 
@@ -508,15 +611,15 @@ func TestDB_e2e(t *testing.T) {
 				x := ss.At()
 
 				smpls, err := expandSeriesIterator(x.Iterator())
-				require.NoError(t, err)
+				testutil.Ok(t, err)
 
 				if len(smpls) > 0 {
 					result[x.Labels().String()] = smpls
 				}
 			}
 
-			require.NoError(t, ss.Err())
-			require.Equal(t, expected, result)
+			testutil.Ok(t, ss.Err())
+			testutil.Equals(t, expected, result)
 
 			q.Close()
 		}
@@ -526,28 +629,267 @@ func TestDB_e2e(t *testing.T) {
 }
 
 func TestWALFlushedOnDBClose(t *testing.T) {
-	tmpdir, _ := ioutil.TempDir("", "test")
+	tmpdir, err := ioutil.TempDir("", "test")
+	testutil.Ok(t, err)
 	defer os.RemoveAll(tmpdir)
 
 	db, err := Open(tmpdir, nil, nil, nil)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	lbls := labels.Labels{labels.Label{Name: "labelname", Value: "labelvalue"}}
 
 	app := db.Appender()
 	_, err = app.Add(lbls, 0, 1)
-	require.NoError(t, err)
-	require.NoError(t, app.Commit())
+	testutil.Ok(t, err)
+	testutil.Ok(t, app.Commit())
 
-	db.Close()
+	testutil.Ok(t, db.Close())
 
 	db, err = Open(tmpdir, nil, nil, nil)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
+	defer db.Close()
 
 	q, err := db.Querier(0, 1)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	values, err := q.LabelValues("labelname")
-	require.NoError(t, err)
-	require.Equal(t, values, []string{"labelvalue"})
+	testutil.Ok(t, err)
+	testutil.Equals(t, values, []string{"labelvalue"})
+}
+
+func TestTombstoneClean(t *testing.T) {
+	numSamples := int64(10)
+
+	db, close := openTestDB(t, nil)
+	defer close()
+
+	app := db.Appender()
+
+	smpls := make([]float64, numSamples)
+	for i := int64(0); i < numSamples; i++ {
+		smpls[i] = rand.Float64()
+		app.Add(labels.Labels{{"a", "b"}}, i, smpls[i])
+	}
+
+	testutil.Ok(t, app.Commit())
+	cases := []struct {
+		intervals Intervals
+		remaint   []int64
+	}{
+		{
+			intervals: Intervals{{1, 3}, {4, 7}},
+			remaint:   []int64{0, 8, 9},
+		},
+	}
+
+	for _, c := range cases {
+		// Delete the ranges.
+
+		// create snapshot
+		snap, err := ioutil.TempDir("", "snap")
+		testutil.Ok(t, err)
+		testutil.Ok(t, db.Snapshot(snap))
+		testutil.Ok(t, db.Close())
+
+		// reopen DB from snapshot
+		db, err = Open(snap, nil, nil, nil)
+		testutil.Ok(t, err)
+		defer db.Close()
+
+		for _, r := range c.intervals {
+			testutil.Ok(t, db.Delete(r.Mint, r.Maxt, labels.NewEqualMatcher("a", "b")))
+		}
+
+		// All of the setup for THIS line.
+		testutil.Ok(t, db.CleanTombstones())
+
+		// Compare the result.
+		q, err := db.Querier(0, numSamples)
+		testutil.Ok(t, err)
+		defer q.Close()
+
+		res, err := q.Select(labels.NewEqualMatcher("a", "b"))
+		testutil.Ok(t, err)
+
+		expSamples := make([]sample, 0, len(c.remaint))
+		for _, ts := range c.remaint {
+			expSamples = append(expSamples, sample{ts, smpls[ts]})
+		}
+
+		expss := newListSeriesSet([]Series{
+			newSeries(map[string]string{"a": "b"}, expSamples),
+		})
+
+		if len(expSamples) == 0 {
+			testutil.Assert(t, res.Next() == false, "")
+			continue
+		}
+
+		for {
+			eok, rok := expss.Next(), res.Next()
+			testutil.Equals(t, eok, rok)
+
+			if !eok {
+				break
+			}
+			sexp := expss.At()
+			sres := res.At()
+
+			testutil.Equals(t, sexp.Labels(), sres.Labels())
+
+			smplExp, errExp := expandSeriesIterator(sexp.Iterator())
+			smplRes, errRes := expandSeriesIterator(sres.Iterator())
+
+			testutil.Equals(t, errExp, errRes)
+			testutil.Equals(t, smplExp, smplRes)
+		}
+
+		for _, b := range db.blocks {
+			testutil.Equals(t, emptyTombstoneReader, b.tombstones)
+		}
+	}
+}
+
+func TestDB_Retention(t *testing.T) {
+	tmpdir, _ := ioutil.TempDir("", "test")
+	defer os.RemoveAll(tmpdir)
+
+	db, err := Open(tmpdir, nil, nil, nil)
+	testutil.Ok(t, err)
+
+	lbls := labels.Labels{labels.Label{Name: "labelname", Value: "labelvalue"}}
+
+	app := db.Appender()
+	_, err = app.Add(lbls, 0, 1)
+	testutil.Ok(t, err)
+	testutil.Ok(t, app.Commit())
+
+	// create snapshot to make it create a block.
+	// TODO(gouthamve): Add a method to compact headblock.
+	snap, err := ioutil.TempDir("", "snap")
+	testutil.Ok(t, err)
+	testutil.Ok(t, db.Snapshot(snap))
+	testutil.Ok(t, db.Close())
+	defer os.RemoveAll(snap)
+
+	// reopen DB from snapshot
+	db, err = Open(snap, nil, nil, nil)
+	testutil.Ok(t, err)
+
+	testutil.Equals(t, 1, len(db.blocks))
+
+	app = db.Appender()
+	_, err = app.Add(lbls, 100, 1)
+	testutil.Ok(t, err)
+	testutil.Ok(t, app.Commit())
+
+	// Snapshot again to create another block.
+	snap, err = ioutil.TempDir("", "snap")
+	testutil.Ok(t, err)
+	testutil.Ok(t, db.Snapshot(snap))
+	testutil.Ok(t, db.Close())
+	defer os.RemoveAll(snap)
+
+	// reopen DB from snapshot
+	db, err = Open(snap, nil, nil, &Options{
+		RetentionDuration: 10,
+		BlockRanges:       []int64{50},
+	})
+	testutil.Ok(t, err)
+	defer db.Close()
+
+	testutil.Equals(t, 2, len(db.blocks))
+
+	// Now call rentention.
+	changes, err := db.retentionCutoff()
+	testutil.Ok(t, err)
+	testutil.Assert(t, changes, "there should be changes")
+	testutil.Equals(t, 1, len(db.blocks))
+	testutil.Equals(t, int64(100), db.blocks[0].meta.MaxTime) // To verify its the right block.
+}
+
+func TestNotMatcherSelectsLabelsUnsetSeries(t *testing.T) {
+	tmpdir, _ := ioutil.TempDir("", "test")
+	defer os.RemoveAll(tmpdir)
+
+	db, err := Open(tmpdir, nil, nil, nil)
+	testutil.Ok(t, err)
+	defer db.Close()
+
+	labelpairs := []labels.Labels{
+		labels.FromStrings("a", "abcd", "b", "abcde"),
+		labels.FromStrings("labelname", "labelvalue"),
+	}
+
+	app := db.Appender()
+	for _, lbls := range labelpairs {
+		_, err = app.Add(lbls, 0, 1)
+		testutil.Ok(t, err)
+	}
+	testutil.Ok(t, app.Commit())
+
+	cases := []struct {
+		selector labels.Selector
+		series   []labels.Labels
+	}{{
+		selector: labels.Selector{
+			labels.Not(labels.NewEqualMatcher("lname", "lvalue")),
+		},
+		series: labelpairs,
+	}, {
+		selector: labels.Selector{
+			labels.NewEqualMatcher("a", "abcd"),
+			labels.Not(labels.NewEqualMatcher("b", "abcde")),
+		},
+		series: []labels.Labels{},
+	}, {
+		selector: labels.Selector{
+			labels.NewEqualMatcher("a", "abcd"),
+			labels.Not(labels.NewEqualMatcher("b", "abc")),
+		},
+		series: []labels.Labels{labelpairs[0]},
+	}, {
+		selector: labels.Selector{
+			labels.Not(labels.NewMustRegexpMatcher("a", "abd.*")),
+		},
+		series: labelpairs,
+	}, {
+		selector: labels.Selector{
+			labels.Not(labels.NewMustRegexpMatcher("a", "abc.*")),
+		},
+		series: labelpairs[1:],
+	}, {
+		selector: labels.Selector{
+			labels.Not(labels.NewMustRegexpMatcher("c", "abd.*")),
+		},
+		series: labelpairs,
+	}, {
+		selector: labels.Selector{
+			labels.Not(labels.NewMustRegexpMatcher("labelname", "labelvalue")),
+		},
+		series: labelpairs[:1],
+	}}
+
+	q, err := db.Querier(0, 10)
+	testutil.Ok(t, err)
+	defer q.Close()
+
+	for _, c := range cases {
+		ss, err := q.Select(c.selector...)
+		testutil.Ok(t, err)
+
+		lres, err := expandSeriesSet(ss)
+		testutil.Ok(t, err)
+
+		testutil.Equals(t, c.series, lres)
+	}
+}
+
+func expandSeriesSet(ss SeriesSet) ([]labels.Labels, error) {
+	result := []labels.Labels{}
+	for ss.Next() {
+		result = append(result, ss.At().Labels())
+	}
+
+	return result, ss.Err()
 }

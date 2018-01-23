@@ -21,18 +21,17 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-
-	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 )
 
 var (
 	marathonValidLabel = map[string]string{"prometheus": "yes"}
 	testServers        = []string{"http://localhost:8080"}
-	conf               = config.MarathonSDConfig{Servers: testServers}
+	conf               = SDConfig{Servers: testServers}
 )
 
-func testUpdateServices(client AppListClient, ch chan []*config.TargetGroup) error {
-	md, err := NewDiscovery(&conf, nil)
+func testUpdateServices(client AppListClient, ch chan []*targetgroup.Group) error {
+	md, err := NewDiscovery(conf, nil)
 	if err != nil {
 		return err
 	}
@@ -43,7 +42,7 @@ func testUpdateServices(client AppListClient, ch chan []*config.TargetGroup) err
 func TestMarathonSDHandleError(t *testing.T) {
 	var (
 		errTesting = errors.New("testing failure")
-		ch         = make(chan []*config.TargetGroup, 1)
+		ch         = make(chan []*targetgroup.Group, 1)
 		client     = func(client *http.Client, url, token string) (*AppList, error) { return nil, errTesting }
 	)
 	if err := testUpdateServices(client, ch); err != errTesting {
@@ -58,7 +57,7 @@ func TestMarathonSDHandleError(t *testing.T) {
 
 func TestMarathonSDEmptyList(t *testing.T) {
 	var (
-		ch     = make(chan []*config.TargetGroup, 1)
+		ch     = make(chan []*targetgroup.Group, 1)
 		client = func(client *http.Client, url, token string) (*AppList, error) { return &AppList{}, nil }
 	)
 	if err := testUpdateServices(client, ch); err != nil {
@@ -105,7 +104,7 @@ func marathonTestAppList(labels map[string]string, runningTasks int) *AppList {
 
 func TestMarathonSDSendGroup(t *testing.T) {
 	var (
-		ch     = make(chan []*config.TargetGroup, 1)
+		ch     = make(chan []*targetgroup.Group, 1)
 		client = func(client *http.Client, url, token string) (*AppList, error) {
 			return marathonTestAppList(marathonValidLabel, 1), nil
 		}
@@ -139,8 +138,8 @@ func TestMarathonSDSendGroup(t *testing.T) {
 }
 
 func TestMarathonSDRemoveApp(t *testing.T) {
-	var ch = make(chan []*config.TargetGroup, 1)
-	md, err := NewDiscovery(&conf, nil)
+	var ch = make(chan []*targetgroup.Group, 1)
+	md, err := NewDiscovery(conf, nil)
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
@@ -172,11 +171,11 @@ func TestMarathonSDRemoveApp(t *testing.T) {
 func TestMarathonSDRunAndStop(t *testing.T) {
 	var (
 		refreshInterval = model.Duration(time.Millisecond * 10)
-		conf            = config.MarathonSDConfig{Servers: testServers, RefreshInterval: refreshInterval}
-		ch              = make(chan []*config.TargetGroup)
+		conf            = SDConfig{Servers: testServers, RefreshInterval: refreshInterval}
+		ch              = make(chan []*targetgroup.Group)
 		doneCh          = make(chan error)
 	)
-	md, err := NewDiscovery(&conf, nil)
+	md, err := NewDiscovery(conf, nil)
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
@@ -237,7 +236,7 @@ func marathonTestAppListWithMutiplePorts(labels map[string]string, runningTasks 
 
 func TestMarathonSDSendGroupWithMutiplePort(t *testing.T) {
 	var (
-		ch     = make(chan []*config.TargetGroup, 1)
+		ch     = make(chan []*targetgroup.Group, 1)
 		client = func(client *http.Client, url, token string) (*AppList, error) {
 			return marathonTestAppListWithMutiplePorts(marathonValidLabel, 1), nil
 		}
@@ -304,7 +303,7 @@ func marathonTestZeroTaskPortAppList(labels map[string]string, runningTasks int)
 
 func TestMarathonZeroTaskPorts(t *testing.T) {
 	var (
-		ch     = make(chan []*config.TargetGroup, 1)
+		ch     = make(chan []*targetgroup.Group, 1)
 		client = func(client *http.Client, url, token string) (*AppList, error) {
 			return marathonTestZeroTaskPortAppList(marathonValidLabel, 1), nil
 		}
@@ -357,7 +356,7 @@ func marathonTestAppListWithoutPortMappings(labels map[string]string, runningTas
 
 func TestMarathonSDSendGroupWithoutPortMappings(t *testing.T) {
 	var (
-		ch     = make(chan []*config.TargetGroup, 1)
+		ch     = make(chan []*targetgroup.Group, 1)
 		client = func(client *http.Client, url, token string) (*AppList, error) {
 			return marathonTestAppListWithoutPortMappings(marathonValidLabel, 1), nil
 		}
@@ -430,9 +429,84 @@ func marathonTestAppListWithoutPortDefinitions(labels map[string]string, running
 
 func TestMarathonSDSendGroupWithoutPortDefinitions(t *testing.T) {
 	var (
-		ch     = make(chan []*config.TargetGroup, 1)
+		ch     = make(chan []*targetgroup.Group, 1)
 		client = func(client *http.Client, url, token string) (*AppList, error) {
 			return marathonTestAppListWithoutPortDefinitions(marathonValidLabel, 1), nil
+		}
+	)
+	if err := testUpdateServices(client, ch); err != nil {
+		t.Fatalf("Got error: %s", err)
+	}
+	select {
+	case tgs := <-ch:
+		tg := tgs[0]
+
+		if tg.Source != "test-service" {
+			t.Fatalf("Wrong target group name: %s", tg.Source)
+		}
+		if len(tg.Targets) != 2 {
+			t.Fatalf("Wrong number of targets: %v", tg.Targets)
+		}
+		tgt := tg.Targets[0]
+		if tgt[model.AddressLabel] != "mesos-slave1:31000" {
+			t.Fatalf("Wrong target address: %s", tgt[model.AddressLabel])
+		}
+		if tgt[model.LabelName(portMappingLabelPrefix+"prometheus")] != "yes" {
+			t.Fatalf("Wrong first portMappings label from the first port: %s", tgt[model.AddressLabel])
+		}
+		if tgt[model.LabelName(portDefinitionLabelPrefix+"prometheus")] != "" {
+			t.Fatalf("Wrong first portDefinitions label from the first port: %s", tgt[model.AddressLabel])
+		}
+		tgt = tg.Targets[1]
+		if tgt[model.AddressLabel] != "mesos-slave1:32000" {
+			t.Fatalf("Wrong target address: %s", tgt[model.AddressLabel])
+		}
+		if tgt[model.LabelName(portMappingLabelPrefix+"prometheus")] != "" {
+			t.Fatalf("Wrong portMappings label from the second port: %s", tgt[model.AddressLabel])
+		}
+		if tgt[model.LabelName(portDefinitionLabelPrefix+"prometheus")] != "" {
+			t.Fatalf("Wrong portDefinitions label from the second port: %s", tgt[model.AddressLabel])
+		}
+	default:
+		t.Fatal("Did not get a target group.")
+	}
+}
+
+func marathonTestAppListWithContainerPortMappings(labels map[string]string, runningTasks int) *AppList {
+	var (
+		task = Task{
+			ID:    "test-task-1",
+			Host:  "mesos-slave1",
+			Ports: []uint32{31000, 32000},
+		}
+		docker = DockerContainer{
+			Image: "repo/image:tag",
+		}
+		container = Container{
+			Docker: docker,
+			PortMappings: []PortMappings{
+				{Labels: labels},
+				{Labels: make(map[string]string)},
+			},
+		}
+		app = App{
+			ID:           "test-service",
+			Tasks:        []Task{task},
+			RunningTasks: runningTasks,
+			Labels:       labels,
+			Container:    container,
+		}
+	)
+	return &AppList{
+		Apps: []App{app},
+	}
+}
+
+func TestMarathonSDSendGroupWithContainerPortMappings(t *testing.T) {
+	var (
+		ch     = make(chan []*targetgroup.Group, 1)
+		client = func(client *http.Client, url, token string) (*AppList, error) {
+			return marathonTestAppListWithContainerPortMappings(marathonValidLabel, 1), nil
 		}
 	)
 	if err := testUpdateServices(client, ch); err != nil {

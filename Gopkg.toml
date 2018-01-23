@@ -22,16 +22,10 @@
   name = "github.com/Azure/azure-sdk-for-go"
   revision = "bd73d950fa4440dae889bd9917bff7cef539f86e"
 
-[[override]]
-  name = "github.com/prometheus/common"
-  revision = "1bab55dd05dbff384524a6a1c99006d9eb5f139b"
+#[[override]]
+#  name = "github.com/prometheus/common"
+#  revision = "1bab55dd05dbff384524a6a1c99006d9eb5f139b"
 
 [[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
-
-[[override]]
-  name = "github.com/grpc-ecosystem/grpc-gateway"
-  # This version is currently vendored in github.com/prometheus/prometheus,
-  # and newer versions have changed method signatures, so break the build.
-  revision = "589b126116b5fc961939b3e156c29e4d9d58222f"

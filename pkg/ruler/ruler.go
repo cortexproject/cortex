@@ -43,6 +43,12 @@ var (
 		Name:      "blocked_workers",
 		Help:      "How many workers are waiting on an item to be ready.",
 	})
+	evalLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "group_evaluation_latency_seconds",
+		Help:      "How far behind the target time each rule group executed.",
+		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 25},
+	})
 )
 
 func init() {
@@ -345,6 +351,7 @@ func (w *worker) Run() {
 			level.Debug(util.Logger).Log("msg", "queue closed and empty; terminating worker")
 			return
 		}
+		evalLatency.Observe(time.Since(item.scheduled).Seconds())
 		level.Debug(util.Logger).Log("msg", "processing item", "item", item)
 		ctx := user.InjectOrgID(context.Background(), item.userID)
 		w.ruler.Evaluate(ctx, item.rules)

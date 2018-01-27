@@ -347,6 +347,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		done:           make(chan struct{}),
 		err:            make(chan error),
 	}
+	ctx, cancel := context.WithTimeout(ctx, d.cfg.RemoteTimeout)
+	defer cancel() // cancel the timeout to release resources
 	for ingester, samples := range samplesByIngester {
 		go func(ingester *ring.IngesterDesc, samples []*sampleTracker) {
 			d.sendSamples(ctx, ingester, samples, &pushTracker)

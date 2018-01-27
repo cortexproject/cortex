@@ -79,7 +79,7 @@ type Config struct {
 	CompressToIngester  bool
 
 	// for testing
-	ingesterClientFactory func(addr string, timeout time.Duration, withCompression bool) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, withCompression bool) (client.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -224,7 +224,7 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.Ingester
 		return client, nil
 	}
 
-	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.RemoteTimeout, d.cfg.CompressToIngester)
+	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.CompressToIngester)
 	if err != nil {
 		return nil, err
 	}

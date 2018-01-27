@@ -118,7 +118,7 @@ func TestIngesterTransfer(t *testing.T) {
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
-	ing1.cfg.ingesterClientFactory = func(addr string, timeout time.Duration, _ bool) (client.IngesterClient, error) {
+	ing1.cfg.ingesterClientFactory = func(addr string, _ bool) (client.IngesterClient, error) {
 		return ingesterClientAdapater{
 			ingester: ing2,
 		}, nil

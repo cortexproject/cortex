@@ -1,8 +1,6 @@
 package client
 
 import (
-	"time"
-
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing/opentracing-go"
@@ -18,8 +16,8 @@ type closableIngesterClient struct {
 }
 
 // MakeIngesterClient makes a new IngesterClient
-func MakeIngesterClient(addr string, timeout time.Duration, withCompression bool) (IngesterClient, error) {
-	opts := []grpc.DialOption{grpc.WithTimeout(timeout),
+func MakeIngesterClient(addr string, withCompression bool) (IngesterClient, error) {
+	opts := []grpc.DialOption{
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),

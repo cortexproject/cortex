@@ -21,7 +21,7 @@ data:
       access_log   /dev/stderr  main;
       sendfile     on;
       tcp_nopush   on;
-      resolver 10.0.0.10;
+      resolver 10.96.0.10;
 
       server { # simple reverse-proxy
         listen 80;

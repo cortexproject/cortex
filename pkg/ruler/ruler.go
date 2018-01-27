@@ -87,6 +87,8 @@ type Config struct {
 	NotificationQueueCapacity int
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration
+	// Timeout for rule group evaluation, including sending result to ingester
+	GroupTimeout time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -100,6 +102,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing alertmanager hosts.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
+	f.DurationVar(&cfg.GroupTimeout, "ruler.group-timeout", 10*time.Second, "Timeout for rule group evaluation, including sending result to ingester")
 }
 
 // Ruler evaluates rules.
@@ -109,6 +112,7 @@ type Ruler struct {
 	alertURL      *url.URL
 	notifierCfg   *config.Config
 	queueCapacity int
+	groupTimeout  time.Duration
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -191,6 +195,7 @@ func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) (*Ruler, e
 		notifierCfg:   ncfg,
 		queueCapacity: cfg.NotificationQueueCapacity,
 		notifiers:     map[string]*rulerNotifier{},
+		groupTimeout:  cfg.GroupTimeout,
 	}, nil
 }
 
@@ -352,12 +357,18 @@ func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 	logger := util.WithContext(ctx, util.Logger)
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(rs))
 	start := time.Now()
+	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
 	g, err := r.newGroup(ctx, rs)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create rule group", "err", err)
 		return
 	}
 	g.Eval(ctx, start)
+	if err := ctx.Err(); err == nil {
+		cancelTimeout() // release resources
+	} else {
+		level.Warn(util.Logger).Log("msg", "context error", "error", err)
+	}
 
 	// The prometheus routines we're calling have their own instrumentation
 	// but, a) it's rule-based, not group-based, b) it's a summary, not a

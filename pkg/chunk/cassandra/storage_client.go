@@ -171,7 +171,7 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		}
 		key := chunks[i].ExternalKey()
 		tableName := s.schemaCfg.ChunkTables.TableFor(chunks[i].From)
-		b.Query(fmt.Sprintf("INSERT INTO %s (key, value) VALUES (?, ?)", tableName), key, buf)
+		b.Query(fmt.Sprintf("INSERT INTO %s (hash, value) VALUES (?, ?)", tableName), key, buf)
 	}
 
 	return s.session.ExecuteBatch(b)
@@ -209,7 +209,7 @@ func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 func (s *storageClient) getChunk(ctx context.Context, input chunk.Chunk) (chunk.Chunk, error) {
 	tableName := s.schemaCfg.ChunkTables.TableFor(input.From)
 	var buf []byte
-	if err := s.session.Query(fmt.Sprintf("SELECT value FROM %s WHERE key = ?", tableName), input.ExternalKey()).
+	if err := s.session.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), input.ExternalKey()).
 		WithContext(ctx).Scan(&buf); err != nil {
 		return input, err
 	}

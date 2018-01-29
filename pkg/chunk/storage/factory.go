@@ -62,6 +62,8 @@ func NewTableClient(cfg Config) (chunk.TableClient, error) {
 		return chunk.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig)
 	case "gcp":
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
+	case "cassandra":
+		return cassandra.NewTableClient(context.Background(), cfg.CasandraStorageConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, inmemory", cfg.StorageClient)
 	}

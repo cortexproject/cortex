@@ -3,6 +3,8 @@ package cassandra
 import (
 	"context"
 	"flag"
+	"fmt"
+	"time"
 
 	"github.com/gocql/gocql"
 
@@ -15,23 +17,50 @@ const (
 
 // Config for a StorageClient
 type Config struct {
-	address  string
-	keyspace string
+	address           string
+	keyspace          string
+	replicationFactor int
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.address, "cassandra.address", "", "Address of Cassandra instances.")
 	f.StringVar(&cfg.keyspace, "cassandra.keyspace", "", "Keyspace to use in Cassandra.")
+	f.IntVar(&cfg.replicationFactor, "cassandra.replication-factor", 1, "Replication factor to use in Cassandra.")
 }
 
-func (cfg *Config) cluster() *gocql.ClusterConfig {
+func (cfg *Config) session() (*gocql.Session, error) {
+	if err := cfg.createKeyspace(); err != nil {
+		return nil, err
+	}
+
 	cluster := gocql.NewCluster(cfg.address)
 	cluster.Keyspace = cfg.keyspace
 	cluster.Consistency = gocql.Quorum
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
-	return cluster
+
+	return cluster.CreateSession()
+}
+
+// createKeyspace will create the desired keyspace if it doesn't exist.
+func (cfg *Config) createKeyspace() error {
+	cluster := gocql.NewCluster(cfg.address)
+	cluster.Keyspace = "system"
+	cluster.Timeout = 20 * time.Second
+	session, err := cluster.CreateSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+
+	return session.Query(fmt.Sprintf(
+		`CREATE KEYSPACE IF NOT EXISTS %s
+		 WITH replication = {
+			 'class' : 'SimpleStrategy',
+			 'replication_factor' : %d
+		 }`,
+		cfg.keyspace, cfg.replicationFactor)).Exec()
 }
 
 // storageClient implements chunk.storageClient for GCP.
@@ -43,7 +72,7 @@ type storageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
-	session, err := cfg.cluster().CreateSession()
+	session, err := cfg.session()
 	if err != nil {
 		return nil, err
 	}
@@ -70,8 +99,8 @@ func (s *storageClient) NewWriteBatch() chunk.WriteBatch {
 }
 
 func (b writeBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	b.b.Query("INSERT INTO ? (hash, range, value) VALUES (?, ?, ?)",
-		tableName, hashValue, rangeValue, value)
+	b.b.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)", tableName),
+		hashValue, rangeValue, value)
 }
 
 func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
@@ -82,14 +111,14 @@ func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	var q *gocql.Query
 	if len(query.RangeValuePrefix) > 0 {
-		q = s.session.Query("SELECT range, value FROM ? WHERE hash = ? AND range >= ? ",
-			query.TableName, query.HashValue, query.RangeValuePrefix)
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?", query.TableName),
+			query.HashValue, query.RangeValuePrefix)
 	} else if len(query.RangeValueStart) > 0 {
-		q = s.session.Query("SELECT range, value FROM ? WHERE hash = ? AND range >= ? ",
-			query.TableName, query.HashValue, query.RangeValueStart)
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?", query.TableName),
+			query.HashValue, query.RangeValueStart)
 	} else {
-		q = s.session.Query("SELECT range, value FROM ? WHERE hash = ?",
-			query.TableName, query.HashValue)
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ?", query.TableName),
+			query.HashValue)
 	}
 
 	iter := q.WithContext(ctx).Iter()
@@ -142,7 +171,7 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		}
 		key := chunks[i].ExternalKey()
 		tableName := s.schemaCfg.ChunkTables.TableFor(chunks[i].From)
-		b.Query("INSERT INTO ? (key, value) VALUES (?, ?)", tableName, key, buf)
+		b.Query(fmt.Sprintf("INSERT INTO %s (key, value) VALUES (?, ?)", tableName), key, buf)
 	}
 
 	return s.session.ExecuteBatch(b)
@@ -180,7 +209,7 @@ func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 func (s *storageClient) getChunk(ctx context.Context, input chunk.Chunk) (chunk.Chunk, error) {
 	tableName := s.schemaCfg.ChunkTables.TableFor(input.From)
 	var buf []byte
-	if err := s.session.Query("SELECT value FROM ? WHERE key = ?", tableName, input.ExternalKey()).
+	if err := s.session.Query(fmt.Sprintf("SELECT value FROM %s WHERE key = ?", tableName), input.ExternalKey()).
 		WithContext(ctx).Scan(&buf); err != nil {
 		return input, err
 	}

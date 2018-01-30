@@ -171,7 +171,7 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		}
 		key := chunks[i].ExternalKey()
 		tableName := s.schemaCfg.ChunkTables.TableFor(chunks[i].From)
-		b.Query(fmt.Sprintf("INSERT INTO %s (hash, value) VALUES (?, ?)", tableName), key, buf)
+		b.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, 0x00, ?)", tableName), key, buf)
 	}
 
 	return s.session.ExecuteBatch(b)

@@ -2,6 +2,7 @@ package cassandra
 
 import (
 	"context"
+	"strings"
 
 	"github.com/gocql/gocql"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,9 +29,10 @@ func err(err error) string {
 }
 
 func (observer) ObserveBatch(ctx context.Context, b gocql.ObservedBatch) {
-	requestDuration.WithLabelValues("batch", err(b.Err)).Observe(b.End.Sub(b.Start).Seconds())
+	requestDuration.WithLabelValues("BATCH", err(b.Err)).Observe(b.End.Sub(b.Start).Seconds())
 }
 
 func (observer) ObserveQuery(cts context.Context, q gocql.ObservedQuery) {
-	requestDuration.WithLabelValues(q.Statement, err(q.Err)).Observe(q.End.Sub(q.Start).Seconds())
+	parts := strings.SplitN(q.Statement, " ", 2)
+	requestDuration.WithLabelValues(parts[0], err(q.Err)).Observe(q.End.Sub(q.Start).Seconds())
 }

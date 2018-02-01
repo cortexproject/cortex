@@ -69,6 +69,18 @@ func (t timed) GetConfigs(since configs.ID) (cfgs map[string]configs.View, err e
 	return
 }
 
+func (t timed) DeactivateConfig(userID string) (err error) {
+	return t.timeRequest("DeactivateConfig", func(_ context.Context) error {
+		return t.d.DeactivateConfig(userID)
+	})
+}
+
+func (t timed) RestoreConfig(userID string) (err error) {
+	return t.timeRequest("RestoreConfig", func(_ context.Context) error {
+		return t.d.RestoreConfig(userID)
+	})
+}
+
 func (t timed) Close() error {
 	return t.timeRequest("Close", func(_ context.Context) error {
 		return t.d.Close()

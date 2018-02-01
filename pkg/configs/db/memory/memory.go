@@ -2,6 +2,7 @@ package memory
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/weaveworks/cortex/pkg/configs"
 )
@@ -50,6 +51,31 @@ func (d *DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
 		}
 	}
 	return cfgs, nil
+}
+
+// SetDeletedAtConfig sets a deletedAt for configuration
+// by adding a single new row with deleted_at set
+// the same as SetConfig is actually insert
+func (d *DB) SetDeletedAtConfig(userID string, deletedAt time.Time) error {
+	cv, err := d.GetConfig(userID)
+	if err != nil {
+		return err
+	}
+	cv.DeletedAt = deletedAt
+	cv.ID = configs.ID(d.id)
+	d.cfgs[userID] = cv
+	d.id++
+	return nil
+}
+
+// DeactivateConfig deactivates configuration for a user by creating new configuration with DeletedAt set to now
+func (d *DB) DeactivateConfig(userID string) error {
+	return d.SetDeletedAtConfig(userID, time.Now())
+}
+
+// RestoreConfig restores deactivated configuration for a user by creating new configuration with empty DeletedAt
+func (d *DB) RestoreConfig(userID string) error {
+	return d.SetDeletedAtConfig(userID, time.Time{})
 }
 
 // Close finishes using the db. Noop.

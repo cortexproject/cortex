@@ -2,6 +2,7 @@ package configs
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -26,8 +27,9 @@ type Config struct {
 // _version_ of a configuration a unique ID and guarantees that later versions
 // have greater IDs.
 type View struct {
-	ID     ID     `json:"id"`
-	Config Config `json:"config"`
+	ID        ID        `json:"id"`
+	Config    Config    `json:"config"`
+	DeletedAt time.Time `json:"deleted_at"`
 }
 
 // GetVersionedRulesConfig specializes the view to just the rules config.
@@ -36,8 +38,9 @@ func (v View) GetVersionedRulesConfig() *VersionedRulesConfig {
 		return nil
 	}
 	return &VersionedRulesConfig{
-		ID:     v.ID,
-		Config: v.Config.RulesFiles,
+		ID:        v.ID,
+		Config:    v.Config.RulesFiles,
+		DeletedAt: v.DeletedAt,
 	}
 }
 
@@ -93,6 +96,7 @@ func (c RulesConfig) Parse() ([]rules.Rule, error) {
 // VersionedRulesConfig is a RulesConfig together with a version.
 // `data Versioned a = Versioned { id :: ID , config :: a }`
 type VersionedRulesConfig struct {
-	ID     ID          `json:"id"`
-	Config RulesConfig `json:"config"`
+	ID        ID          `json:"id"`
+	Config    RulesConfig `json:"config"`
+	DeletedAt time.Time   `json:"deleted_at"`
 }

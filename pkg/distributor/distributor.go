@@ -285,25 +285,11 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	samplesByIngester := map[*ring.IngesterDesc][]*sampleTracker{}
 	for i := range samples {
 		// We need a response from a quorum of ingesters, which is n/2 + 1.
-		minSuccess := (len(ingesters[i]) / 2) + 1
-		samples[i].minSuccess = minSuccess
-		samples[i].maxFailures = len(ingesters[i]) - minSuccess
-
-		// Skip those that have not heartbeated in a while. NB these are still
-		// included in the calculation of minSuccess, so if too many failed ingesters
-		// will cause the whole write to fail.
-		liveIngesters := make([]*ring.IngesterDesc, 0, len(ingesters[i]))
-		for _, ingester := range ingesters[i] {
-			if d.ring.IsHealthy(ingester) {
-				liveIngesters = append(liveIngesters, ingester)
-			}
-		}
-
-		// This is just a shortcut - if there are not minSuccess available ingesters,
-		// after filtering out dead ones, don't even bother trying.
-		if len(liveIngesters) < minSuccess {
-			return nil, fmt.Errorf("wanted at least %d live ingesters to process write, had %d",
-				minSuccess, len(liveIngesters))
+		var err error
+		var liveIngesters []*ring.IngesterDesc
+		samples[i].minSuccess, samples[i].maxFailures, liveIngesters, err = d.replicationStrategy(ingesters[i])
+		if err != nil {
+			return nil, err
 		}
 
 		for _, liveIngester := range liveIngesters {
@@ -444,39 +430,39 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 // Query implements Querier.
 func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.IngesterDesc, replicationFactor int, req *client.QueryRequest) (model.Matrix, error) {
 	// We need a response from a quorum of ingesters, where maxErrs is n/2, where n is the replicationFactor
-	maxErrs := replicationFactor / 2
-	minSuccess := len(ingesters) - maxErrs
-	if len(ingesters) < minSuccess {
-		return nil, fmt.Errorf("could only find %d ingesters for query. Need at least %d", len(ingesters), minSuccess)
+	minSuccess, maxErrors, ingesters, err := d.replicationStrategy(ingesters)
+	if err != nil {
+		return nil, err
 	}
 
 	// Fetch samples from multiple ingesters
-	var numErrs int32
-	errReceived := make(chan error)
+	errs := make(chan error, len(ingesters))
 	results := make(chan model.Matrix, len(ingesters))
-
 	for _, ing := range ingesters {
 		go func(ing *ring.IngesterDesc) {
 			result, err := d.queryIngester(ctx, ing, req)
 			if err != nil {
-				if atomic.AddInt32(&numErrs, 1) == int32(maxErrs+1) {
-					errReceived <- err
-				}
+				errs <- err
 			} else {
 				results <- result
 			}
 		}(ing)
 	}
 
-	// Only wait for minSuccess ingesters (or an error), and accumulate the samples
+	// Only wait for minSuccessful responses (or maxErrors), and accumulate the samples
 	// by fingerprint, merging them into any existing samples.
 	fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
-	for i := 0; i < minSuccess; i++ {
+	var numErrs, numSuccess int
+	for numSuccess < minSuccess {
 		select {
-		case err := <-errReceived:
-			return nil, err
+		case err := <-errs:
+			numErrs++
+			if numErrs > maxErrors {
+				return nil, err
+			}
 
 		case result := <-results:
+			numSuccess++
 			for _, ss := range result {
 				fp := ss.Metric.Fingerprint()
 				mss, ok := fpToSampleStream[fp]

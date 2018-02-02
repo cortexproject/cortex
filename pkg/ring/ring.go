@@ -49,7 +49,7 @@ func (x uint32s) Less(i, j int) bool { return x[i] < x[j] }
 func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
-var ErrEmptyRing = errors.New("empty circle")
+var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
@@ -67,7 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 }
 
-// Ring holds the information about the members of the consistent hash circle.
+// Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
 	KVClient         KVClient
 	done             chan struct{}
@@ -219,7 +219,7 @@ func (r *Ring) IsHealthy(ingester *IngesterDesc) bool {
 	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.heartbeatTimeout
 }
 
-// GetAll returns all available ingesters in the circle.
+// GetAll returns all available ingesters in the ring.
 func (r *Ring) GetAll() []*IngesterDesc {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()

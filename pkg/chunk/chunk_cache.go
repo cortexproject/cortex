@@ -163,6 +163,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 
 	sp.LogFields(otlog.Int("chunks returned", len(items)))
 	decodeContext := NewDecodeContext()
+	defer decodeContext.Done()
 	for i, externalKey := range keys {
 		item, ok := items[externalKey]
 		if !ok {

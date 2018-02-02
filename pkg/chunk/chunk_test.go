@@ -45,6 +45,7 @@ func dummyChunkFor(now model.Time, metric model.Metric) Chunk {
 func TestChunkCodec(t *testing.T) {
 	dummy := dummyChunk(model.Now())
 	decodeContext := NewDecodeContext()
+	defer decodeContext.Done()
 	for i, c := range []struct {
 		chunk Chunk
 		err   error
@@ -241,6 +242,7 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 
 	for i := 0; i < b.N; i++ {
 		decodeContext := NewDecodeContext()
+		defer decodeContext.Done()
 		b.StopTimer()
 		chunks := make([]Chunk, batchSize)
 		// Copy across the metadata so the check works out ok

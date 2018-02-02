@@ -257,6 +257,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	defer m.mtx.RUnlock()
 
 	decodeContext := NewDecodeContext()
+	defer decodeContext.Done()
 	result := []Chunk{}
 	for _, chunk := range chunkSet {
 		key := chunk.ExternalKey()

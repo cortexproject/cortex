@@ -223,9 +223,18 @@ type DecodeContext struct {
 // NewDecodeContext creates a new, blank, DecodeContext
 func NewDecodeContext() *DecodeContext {
 	return &DecodeContext{
-		reader:  snappy.NewReader(nil),
+		reader:  readerPool.Get().(*snappy.Reader),
 		metrics: make(map[model.Fingerprint]model.Metric),
 	}
+}
+
+func (d *DecodeContext) Done() {
+	d.reader.Reset(nil)
+	readerPool.Put(d.reader)
+}
+
+var readerPool sync.Pool = sync.Pool{
+	New: func() interface{} { return snappy.NewReader(nil) },
 }
 
 // If we have decoded a chunk with the same fingerprint before, re-use its Metric, otherwise parse it

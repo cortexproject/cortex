@@ -541,6 +541,7 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, e
 		return Chunk{}, err
 	}
 	decodeContext := NewDecodeContext()
+	defer decodeContext.Done()
 	if err := chunk.Decode(decodeContext, buf); err != nil {
 		return Chunk{}, err
 	}
@@ -638,6 +639,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]Chunk) ([]Chunk, error) {
 	result := []Chunk{}
 	decodeContext := NewDecodeContext()
+	defer decodeContext.Done()
 	for _, items := range response.Responses {
 		for _, item := range items {
 			key, ok := item[hashKey]

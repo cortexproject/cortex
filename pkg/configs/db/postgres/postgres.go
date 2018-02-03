@@ -7,6 +7,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"                         // Import the postgres sql driver
 	_ "github.com/mattes/migrate/driver/postgres" // Import the postgres migrations driver
 	"github.com/mattes/migrate/migrate"
@@ -89,7 +90,7 @@ func New(uri, migrationsDir string) (DB, error) {
 var statementBuilder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith
 
 func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error) {
-	rows, err := d.Select("id", "owner_id", "config").
+	rows, err := d.Select("id", "owner_id", "config", "deleted_at").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
 		Where(filter).
@@ -104,7 +105,8 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error
 		var cfg configs.View
 		var cfgBytes []byte
 		var userID string
-		err = rows.Scan(&cfg.ID, &userID, &cfgBytes)
+		var deletedAt pq.NullTime
+		err = rows.Scan(&cfg.ID, &userID, &cfgBytes, &deletedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -112,6 +114,7 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error
 		if err != nil {
 			return nil, err
 		}
+		cfg.DeletedAt = deletedAt.Time
 		cfgs[userID] = cfg
 	}
 	return cfgs, nil
@@ -121,15 +124,17 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error
 func (d DB) GetConfig(userID string) (configs.View, error) {
 	var cfgView configs.View
 	var cfgBytes []byte
-	err := d.Select("id", "config").
+	var deletedAt pq.NullTime
+	err := d.Select("id", "config", "deleted_at").
 		From("configs").
 		Where(squirrel.And{allConfigs, squirrel.Eq{"owner_id": userID}}).
 		OrderBy("id DESC").
 		Limit(1).
-		QueryRow().Scan(&cfgView.ID, &cfgBytes)
+		QueryRow().Scan(&cfgView.ID, &cfgBytes, &deletedAt)
 	if err != nil {
 		return cfgView, err
 	}
+	cfgView.DeletedAt = deletedAt.Time
 	err = json.Unmarshal(cfgBytes, &cfgView.Config)
 	return cfgView, err
 }
@@ -200,7 +205,7 @@ func (d DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConf
 // findRulesConfigs helps GetAllRulesConfigs and GetRulesConfigs retrieve the
 // set of all active rules configurations across all our users.
 func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {
-	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'").
+	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'", "deleted_at").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
 		Where(filter).
@@ -225,7 +230,8 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.Versio
 		var cfg configs.VersionedRulesConfig
 		var userID string
 		var cfgBytes []byte
-		err = rows.Scan(&cfg.ID, &userID, &cfgBytes)
+		var deletedAt pq.NullTime
+		err = rows.Scan(&cfg.ID, &userID, &cfgBytes, &deletedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -233,6 +239,7 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.Versio
 		if err != nil {
 			return nil, err
 		}
+		cfg.DeletedAt = deletedAt.Time
 		cfgs[userID] = cfg
 	}
 	return cfgs, nil
@@ -254,7 +261,7 @@ func (d DB) GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRules
 // SetDeletedAtConfig sets a deletedAt for configuration
 // by adding a single new row with deleted_at set
 // the same as SetConfig is actually insert
-func (d DB) SetDeletedAtConfig(userID string, deletedAt time.Time, cfg configs.Config) error {
+func (d DB) SetDeletedAtConfig(userID string, deletedAt pq.NullTime, cfg configs.Config) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -272,7 +279,7 @@ func (d DB) DeactivateConfig(userID string) error {
 	if err != nil {
 		return err
 	}
-	return d.SetDeletedAtConfig(userID, time.Now(), cfg.Config)
+	return d.SetDeletedAtConfig(userID, pq.NullTime{Time: time.Now(), Valid: true}, cfg.Config)
 }
 
 // RestoreConfig restores configuration.
@@ -281,7 +288,7 @@ func (d DB) RestoreConfig(userID string) error {
 	if err != nil {
 		return err
 	}
-	return d.SetDeletedAtConfig(userID, time.Time{}, cfg.Config)
+	return d.SetDeletedAtConfig(userID, pq.NullTime{}, cfg.Config)
 }
 
 // Transaction runs the given function in a postgres transaction. If fn returns

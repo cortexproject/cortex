@@ -25,3 +25,10 @@
 [[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
+
+[[override]]
+  name = "github.com/grpc-ecosystem/grpc-opentracing"
+  # Merging PR https://github.com/grpc-ecosystem/grpc-opentracing/pull/25
+  # into this repo.
+  source = "github.com/Fresh-Tracks/grpc-opentracing"
+  revision = "ed3ba477b4d621be4baf2a0fbff7b37ad854f3ae"

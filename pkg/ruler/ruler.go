@@ -109,6 +109,9 @@ type Ruler struct {
 	notifiers    map[string]*rulerNotifier
 }
 
+// rulerNotifier bundles a notifer.Notifier together with an associated
+// Alertmanager service discovery manager and handles the lifecycle
+// of both actors.
 type rulerNotifier struct {
 	notifier  *notifier.Notifier
 	sdCtx     context.Context
@@ -271,7 +274,7 @@ func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, er
 	return rules.NewGroup("default", "none", delay, rs, opts), nil
 }
 
-// sendAlerts implements a the rules.NotifyFunc for a Notifier.
+// sendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.

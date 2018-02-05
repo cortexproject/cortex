@@ -12,7 +12,7 @@ func (d *Distributor) replicationStrategy(ingesters []*ring.IngesterDesc) (
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
 	// than the replication factor, so we need to account for this.
-	// See comming in ring/ring.go:getInternal.
+	// See comment in ring/ring.go:getInternal.
 	replicationFactor := d.cfg.ReplicationFactor
 	if len(ingesters) > replicationFactor {
 		replicationFactor = len(ingesters)

@@ -284,7 +284,6 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	samplesByIngester := map[*ring.IngesterDesc][]*sampleTracker{}
 	for i := range samples {
-		// We need a response from a quorum of ingesters, which is n/2 + 1.
 		var err error
 		var liveIngesters []*ring.IngesterDesc
 		samples[i].minSuccess, samples[i].maxFailures, liveIngesters, err = d.replicationStrategy(ingesters[i])

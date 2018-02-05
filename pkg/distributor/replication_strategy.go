@@ -9,14 +9,16 @@ import (
 func (d *Distributor) replicationStrategy(ingesters []*ring.IngesterDesc) (
 	minSuccess, maxFailure int, liveIngesters []*ring.IngesterDesc, err error,
 ) {
-	if len(ingesters) < d.cfg.ReplicationFactor {
-		err = fmt.Errorf("at least %d ingesters required, could only find %d ",
-			d.cfg.ReplicationFactor, len(ingesters))
-		return
+	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
+	// case of a node joining/leaving, the actual replica set might be bigger
+	// than the replication factor, so we need to account for this.
+	// See comming in ring/ring.go:getInternal.
+	replicationFactor := d.cfg.ReplicationFactor
+	if len(ingesters) > replicationFactor {
+		replicationFactor = len(ingesters)
 	}
-
-	minSuccess = (len(ingesters) / 2) + 1
-	maxFailure = len(ingesters) - minSuccess
+	minSuccess = (replicationFactor / 2) + 1
+	maxFailure = replicationFactor - minSuccess
 	if maxFailure < 0 {
 		maxFailure = 0
 	}

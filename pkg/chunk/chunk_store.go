@@ -76,11 +76,16 @@ func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storage StorageClient) (*
 		return nil, err
 	}
 
+	cache, err := cache.NewBackground(cfg.CacheConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Store{
 		cfg:     cfg,
 		storage: storage,
 		schema:  schema,
-		cache:   cache.New(cfg.CacheConfig),
+		cache:   cache,
 	}, nil
 }
 

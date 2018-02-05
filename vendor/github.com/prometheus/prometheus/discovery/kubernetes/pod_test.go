@@ -17,8 +17,9 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
 )
@@ -43,6 +44,7 @@ func makeMultiPortPod() *v1.Pod {
 			Namespace:   "default",
 			Labels:      map[string]string{"testlabel": "testvalue"},
 			Annotations: map[string]string{"testannotation": "testannotationvalue"},
+			UID:         types.UID("abc123"),
 		},
 		Spec: v1.PodSpec{
 			NodeName: "testnode",
@@ -85,6 +87,7 @@ func makePod() *v1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testpod",
 			Namespace: "default",
+			UID:       types.UID("abc123"),
 		},
 		Spec: v1.PodSpec{
 			NodeName: "testnode",
@@ -120,7 +123,7 @@ func TestPodDiscoveryInitial(t *testing.T) {
 
 	k8sDiscoveryTest{
 		discovery: n,
-		expectedInitial: []*config.TargetGroup{
+		expectedInitial: []*targetgroup.Group{
 			{
 				Targets: []model.LabelSet{
 					{
@@ -151,6 +154,7 @@ func TestPodDiscoveryInitial(t *testing.T) {
 					"__meta_kubernetes_pod_ip":                        "1.2.3.4",
 					"__meta_kubernetes_pod_host_ip":                   "2.3.4.5",
 					"__meta_kubernetes_pod_ready":                     "true",
+					"__meta_kubernetes_pod_uid":                       "abc123",
 				},
 				Source: "pod/default/testpod",
 			},
@@ -164,7 +168,7 @@ func TestPodDiscoveryAdd(t *testing.T) {
 	k8sDiscoveryTest{
 		discovery:  n,
 		afterStart: func() { go func() { i.Add(makePod()) }() },
-		expectedRes: []*config.TargetGroup{
+		expectedRes: []*targetgroup.Group{
 			{
 				Targets: []model.LabelSet{
 					{
@@ -182,6 +186,7 @@ func TestPodDiscoveryAdd(t *testing.T) {
 					"__meta_kubernetes_pod_ip":        "1.2.3.4",
 					"__meta_kubernetes_pod_host_ip":   "2.3.4.5",
 					"__meta_kubernetes_pod_ready":     "true",
+					"__meta_kubernetes_pod_uid":       "abc123",
 				},
 				Source: "pod/default/testpod",
 			},
@@ -196,7 +201,7 @@ func TestPodDiscoveryDelete(t *testing.T) {
 	k8sDiscoveryTest{
 		discovery:  n,
 		afterStart: func() { go func() { i.Delete(makePod()) }() },
-		expectedInitial: []*config.TargetGroup{
+		expectedInitial: []*targetgroup.Group{
 			{
 				Targets: []model.LabelSet{
 					{
@@ -214,11 +219,12 @@ func TestPodDiscoveryDelete(t *testing.T) {
 					"__meta_kubernetes_pod_ip":        "1.2.3.4",
 					"__meta_kubernetes_pod_host_ip":   "2.3.4.5",
 					"__meta_kubernetes_pod_ready":     "true",
+					"__meta_kubernetes_pod_uid":       "abc123",
 				},
 				Source: "pod/default/testpod",
 			},
 		},
-		expectedRes: []*config.TargetGroup{
+		expectedRes: []*targetgroup.Group{
 			{
 				Source: "pod/default/testpod",
 			},
@@ -233,7 +239,7 @@ func TestPodDiscoveryDeleteUnknownCacheState(t *testing.T) {
 	k8sDiscoveryTest{
 		discovery:  n,
 		afterStart: func() { go func() { i.Delete(cache.DeletedFinalStateUnknown{Obj: makePod()}) }() },
-		expectedInitial: []*config.TargetGroup{
+		expectedInitial: []*targetgroup.Group{
 			{
 				Targets: []model.LabelSet{
 					{
@@ -251,11 +257,12 @@ func TestPodDiscoveryDeleteUnknownCacheState(t *testing.T) {
 					"__meta_kubernetes_pod_ip":        "1.2.3.4",
 					"__meta_kubernetes_pod_host_ip":   "2.3.4.5",
 					"__meta_kubernetes_pod_ready":     "true",
+					"__meta_kubernetes_pod_uid":       "abc123",
 				},
 				Source: "pod/default/testpod",
 			},
 		},
-		expectedRes: []*config.TargetGroup{
+		expectedRes: []*targetgroup.Group{
 			{
 				Source: "pod/default/testpod",
 			},
@@ -269,6 +276,7 @@ func TestPodDiscoveryUpdate(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testpod",
 			Namespace: "default",
+			UID:       "xyz321",
 		},
 		Spec: v1.PodSpec{
 			NodeName: "testnode",
@@ -294,7 +302,7 @@ func TestPodDiscoveryUpdate(t *testing.T) {
 	k8sDiscoveryTest{
 		discovery:  n,
 		afterStart: func() { go func() { i.Update(makePod()) }() },
-		expectedInitial: []*config.TargetGroup{
+		expectedInitial: []*targetgroup.Group{
 			{
 				Targets: []model.LabelSet{
 					{
@@ -312,11 +320,12 @@ func TestPodDiscoveryUpdate(t *testing.T) {
 					"__meta_kubernetes_pod_ip":        "1.2.3.4",
 					"__meta_kubernetes_pod_host_ip":   "2.3.4.5",
 					"__meta_kubernetes_pod_ready":     "unknown",
+					"__meta_kubernetes_pod_uid":       "xyz321",
 				},
 				Source: "pod/default/testpod",
 			},
 		},
-		expectedRes: []*config.TargetGroup{
+		expectedRes: []*targetgroup.Group{
 			{
 				Targets: []model.LabelSet{
 					{
@@ -334,6 +343,7 @@ func TestPodDiscoveryUpdate(t *testing.T) {
 					"__meta_kubernetes_pod_ip":        "1.2.3.4",
 					"__meta_kubernetes_pod_host_ip":   "2.3.4.5",
 					"__meta_kubernetes_pod_ready":     "true",
+					"__meta_kubernetes_pod_uid":       "abc123",
 				},
 				Source: "pod/default/testpod",
 			},

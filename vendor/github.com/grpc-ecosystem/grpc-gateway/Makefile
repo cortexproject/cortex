@@ -43,6 +43,9 @@ OUTPUT_DIR=_output
 RUNTIME_PROTO=runtime/internal/stream_chunk.proto
 RUNTIME_GO=$(RUNTIME_PROTO:.proto=.pb.go)
 
+OPENAPIV2_PROTO=protoc-gen-swagger/options/openapiv2.proto protoc-gen-swagger/options/annotations.proto
+OPENAPIV2_GO=$(OPENAPIV2_PROTO:.proto=.pb.go)
+
 PKGMAP=Mgoogle/protobuf/descriptor.proto=$(GO_PLUGIN_PKG)/descriptor,Mexamples/sub/message.proto=$(PKG)/examples/sub
 ADDITIONAL_FLAGS=
 ifneq "$(GATEWAY_PLUGIN_FLAGS)" ""
@@ -83,17 +86,20 @@ generate: $(RUNTIME_GO)
 
 .SUFFIXES: .go .proto
 
-$(GO_PLUGIN): 
+$(GO_PLUGIN):
 	go get $(GO_PLUGIN_PKG)
 	go build -o $@ $(GO_PLUGIN_PKG)
 
 $(RUNTIME_GO): $(RUNTIME_PROTO) $(GO_PLUGIN)
 	protoc -I $(PROTOC_INC_PATH) --plugin=$(GO_PLUGIN) -I. --go_out=$(PKGMAP):. $(RUNTIME_PROTO)
 
+$(OPENAPIV2_GO): $(OPENAPIV2_PROTO) $(GO_PLUGIN)
+	protoc -I $(PROTOC_INC_PATH) --plugin=$(GO_PLUGIN) -I. --go_out=$(PKGMAP):$(GOPATH)/src $(OPENAPIV2_PROTO)
+
 $(GATEWAY_PLUGIN): $(RUNTIME_GO) $(GATEWAY_PLUGIN_SRC)
 	go build -o $@ $(GATEWAY_PLUGIN_PKG)
 
-$(SWAGGER_PLUGIN): $(SWAGGER_PLUGIN_SRC)
+$(SWAGGER_PLUGIN): $(SWAGGER_PLUGIN_SRC) $(OPENAPIV2_GO)
 	go build -o $@ $(SWAGGER_PLUGIN_PKG)
 
 $(EXAMPLE_SVCSRCS): $(GO_PLUGIN) $(EXAMPLES)
@@ -109,12 +115,16 @@ $(EXAMPLE_SWAGGERSRCS): $(SWAGGER_PLUGIN) $(SWAGGER_EXAMPLES)
 
 $(ECHO_EXAMPLE_SRCS): $(ECHO_EXAMPLE_SPEC)
 	$(SWAGGER_CODEGEN) generate -i $(ECHO_EXAMPLE_SPEC) \
-	    -l go -o examples/clients --additional-properties packageName=echo
-	@rm -f $(EXAMPLE_CLIENT_DIR)/README.md $(EXAMPLE_CLIENT_DIR)/git_push.sh $(EXAMPLE_CLIENT_DIR)/.gitignore
+	    -l go -o examples/clients/echo --additional-properties packageName=echo
+	@rm -f $(EXAMPLE_CLIENT_DIR)/echo/README.md \
+		$(EXAMPLE_CLIENT_DIR)/echo/git_push.sh \
+		$(EXAMPLE_CLIENT_DIR)/echo/.travis.yml
 $(ABE_EXAMPLE_SRCS): $(ABE_EXAMPLE_SPEC)
 	$(SWAGGER_CODEGEN) generate -i $(ABE_EXAMPLE_SPEC) \
-	    -l go -o examples/clients --additional-properties packageName=abe
-	@rm -f $(EXAMPLE_CLIENT_DIR)/README.md $(EXAMPLE_CLIENT_DIR)/git_push.sh $(EXAMPLE_CLIENT_DIR)/.gitignore
+	    -l go -o examples/clients/abe --additional-properties packageName=abe
+	@rm -f $(EXAMPLE_CLIENT_DIR)/abe/README.md \
+		$(EXAMPLE_CLIENT_DIR)/abe/git_push.sh \
+		$(EXAMPLE_CLIENT_DIR)/abe/.travis.yml
 
 examples: $(EXAMPLE_SVCSRCS) $(EXAMPLE_GWSRCS) $(EXAMPLE_DEPSRCS) $(EXAMPLE_SWAGGERSRCS) $(EXAMPLE_CLIENT_SRCS)
 test: examples
@@ -139,5 +149,6 @@ realclean: distclean
 	rm -f $(GO_PLUGIN)
 	rm -f $(SWAGGER_PLUGIN)
 	rm -f $(EXAMPLE_CLIENT_SRCS)
+	rm -f $(OPENAPIV2_GO)
 
 .PHONY: generate examples test lint clean distclean realclean

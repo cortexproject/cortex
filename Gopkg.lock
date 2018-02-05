@@ -267,7 +267,8 @@
 [[projects]]
   name = "github.com/grpc-ecosystem/grpc-gateway"
   packages = ["runtime","runtime/internal","utilities"]
-  revision = "589b126116b5fc961939b3e156c29e4d9d58222f"
+  revision = "07f5e79768022f9a3265235f0db4ac8c3f675fec"
+  version = "v1.3.1"
 
 [[projects]]
   branch = "master"
@@ -497,9 +498,10 @@
   revision = "6f3806018612930941127f2a7c6c453ba2c527d2"
 
 [[projects]]
+  branch = "master"
   name = "github.com/prometheus/common"
-  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","log","model","promlog","route","version"]
-  revision = "1bab55dd05dbff384524a6a1c99006d9eb5f139b"
+  packages = ["config","expfmt","internal/bitbucket.org/ww/goautoneg","log","model","promlog","route","version"]
+  revision = "89604d197083d4781071d3c65855d24ecfb0a563"
 
 [[projects]]
   branch = "master"
@@ -509,15 +511,15 @@
 
 [[projects]]
   name = "github.com/prometheus/prometheus"
-  packages = ["config","discovery","discovery/azure","discovery/consul","discovery/dns","discovery/ec2","discovery/file","discovery/gce","discovery/kubernetes","discovery/marathon","discovery/openstack","discovery/triton","discovery/zookeeper","notifier","pkg/labels","pkg/pool","pkg/relabel","pkg/rulefmt","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","relabel","retrieval","rules","storage","storage/remote","storage/tsdb","template","util/httputil","util/stats","util/strutil","util/testutil","util/treecache","web/api/v1"]
-  revision = "0a74f98628a0463dddc90528220c94de5032d1a0"
-  version = "v2.0.0"
+  packages = ["config","discovery","discovery/azure","discovery/config","discovery/consul","discovery/dns","discovery/ec2","discovery/file","discovery/gce","discovery/kubernetes","discovery/marathon","discovery/openstack","discovery/targetgroup","discovery/triton","discovery/zookeeper","notifier","pkg/labels","pkg/pool","pkg/relabel","pkg/rulefmt","pkg/textparse","pkg/timestamp","pkg/value","prompb","promql","relabel","retrieval","rules","storage","storage/remote","storage/tsdb","template","util/httputil","util/stats","util/strutil","util/testutil","util/treecache","util/yaml","web/api/v1"]
+  revision = "85f23d82a045d103ea7f3c89a91fba4a93e6367a"
+  version = "v2.1.0"
 
 [[projects]]
   branch = "master"
   name = "github.com/prometheus/tsdb"
-  packages = [".","chunks","fileutil","labels"]
-  revision = "a00d700d48ec14d46c270eff928dfe17187d3b57"
+  packages = [".","chunkenc","chunks","fileutil","index","labels"]
+  revision = "467948f3c3f2f6f4ed9881afba27dd3ae24393eb"
 
 [[projects]]
   branch = "master"
@@ -723,6 +725,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "580b7d294648ad7793e7cac316258d28563ccc8de3cca6dcab2c78fe33851db2"
+  inputs-digest = "28012f846980a8d0923820d79f01a661f156d20b6f1f309f8822e820f0327016"
   solver-name = "gps-cdcl"
   solver-version = 1

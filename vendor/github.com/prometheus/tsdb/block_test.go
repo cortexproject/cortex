@@ -12,3 +12,47 @@
 // limitations under the License.
 
 package tsdb
+
+import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/prometheus/tsdb/index"
+	"github.com/prometheus/tsdb/testutil"
+)
+
+func TestSetCompactionFailed(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "test-tsdb")
+	testutil.Ok(t, err)
+
+	b := createEmptyBlock(t, tmpdir)
+
+	testutil.Equals(t, false, b.meta.Compaction.Failed)
+	testutil.Ok(t, b.setCompactionFailed())
+	testutil.Equals(t, true, b.meta.Compaction.Failed)
+	testutil.Ok(t, b.Close())
+
+	b, err = OpenBlock(tmpdir, nil)
+	testutil.Ok(t, err)
+	testutil.Equals(t, true, b.meta.Compaction.Failed)
+}
+
+func createEmptyBlock(t *testing.T, dir string) *Block {
+	testutil.Ok(t, os.MkdirAll(dir, 0777))
+
+	testutil.Ok(t, writeMetaFile(dir, &BlockMeta{Version: 2}))
+
+	ir, err := index.NewWriter(filepath.Join(dir, indexFilename))
+	testutil.Ok(t, err)
+	testutil.Ok(t, ir.Close())
+
+	testutil.Ok(t, os.MkdirAll(chunkDir(dir), 0777))
+
+	testutil.Ok(t, writeTombstoneFile(dir, EmptyTombstoneReader()))
+
+	b, err := OpenBlock(dir, nil)
+	testutil.Ok(t, err)
+	return b
+}

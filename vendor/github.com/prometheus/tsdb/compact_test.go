@@ -14,9 +14,14 @@
 package tsdb
 
 import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/go-kit/kit/log"
+	"github.com/pkg/errors"
+	"github.com/prometheus/tsdb/testutil"
 )
 
 func TestSplitByRange(t *testing.T) {
@@ -118,7 +123,7 @@ func TestSplitByRange(t *testing.T) {
 			}
 		}
 
-		require.Equal(t, exp, splitByRange(blocks, c.trange))
+		testutil.Equals(t, exp, splitByRange(blocks, c.trange))
 	}
 }
 
@@ -142,7 +147,7 @@ func TestNoPanicFor0Tombstones(t *testing.T) {
 	}
 
 	c, err := NewLeveledCompactor(nil, nil, []int64{50}, nil)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 
 	c.plan(metas)
 }
@@ -155,18 +160,7 @@ func TestLeveledCompactor_plan(t *testing.T) {
 		720,
 		2160,
 	}, nil)
-	require.NoError(t, err)
-
-	metaRange := func(name string, mint, maxt int64, stats *BlockStats) dirMeta {
-		meta := &BlockMeta{MinTime: mint, MaxTime: maxt}
-		if stats != nil {
-			meta.Stats = *stats
-		}
-		return dirMeta{
-			dir:  name,
-			meta: meta,
-		}
-	}
+	testutil.Ok(t, err)
 
 	cases := []struct {
 		metas    []dirMeta
@@ -267,10 +261,92 @@ func TestLeveledCompactor_plan(t *testing.T) {
 		},
 	}
 
-	for i, c := range cases {
+	for _, c := range cases {
 		res, err := compactor.plan(c.metas)
-		require.NoError(t, err)
+		testutil.Ok(t, err)
 
-		require.Equal(t, c.expected, res, "test case %d", i)
+		testutil.Equals(t, c.expected, res)
 	}
 }
+
+func TestRangeWithFailedCompactionWontGetSelected(t *testing.T) {
+	compactor, err := NewLeveledCompactor(nil, nil, []int64{
+		20,
+		60,
+		240,
+		720,
+		2160,
+	}, nil)
+	testutil.Ok(t, err)
+
+	cases := []struct {
+		metas []dirMeta
+	}{
+		{
+			metas: []dirMeta{
+				metaRange("1", 0, 20, nil),
+				metaRange("2", 20, 40, nil),
+				metaRange("3", 40, 60, nil),
+			},
+		},
+		{
+			metas: []dirMeta{
+				metaRange("1", 0, 20, nil),
+				metaRange("2", 20, 40, nil),
+				metaRange("3", 60, 80, nil),
+			},
+		},
+		{
+			metas: []dirMeta{
+				metaRange("1", 0, 20, nil),
+				metaRange("2", 20, 40, nil),
+				metaRange("3", 40, 60, nil),
+				metaRange("4", 60, 120, nil),
+				metaRange("5", 120, 180, nil),
+			},
+		},
+	}
+
+	for _, c := range cases {
+		c.metas[1].meta.Compaction.Failed = true
+		res, err := compactor.plan(c.metas)
+		testutil.Ok(t, err)
+
+		testutil.Equals(t, []string(nil), res)
+	}
+}
+
+func TestCompactionFailWillCleanUpTempDir(t *testing.T) {
+	compactor, err := NewLeveledCompactor(nil, log.NewNopLogger(), []int64{
+		20,
+		60,
+		240,
+		720,
+		2160,
+	}, nil)
+	testutil.Ok(t, err)
+
+	tmpdir, err := ioutil.TempDir("", "test")
+	testutil.Ok(t, err)
+
+	testutil.NotOk(t, compactor.write(tmpdir, &BlockMeta{}, erringBReader{}))
+	_, err = os.Stat(filepath.Join(tmpdir, BlockMeta{}.ULID.String()) + ".tmp")
+	testutil.Assert(t, os.IsNotExist(err), "directory is not cleaned up")
+}
+
+func metaRange(name string, mint, maxt int64, stats *BlockStats) dirMeta {
+	meta := &BlockMeta{MinTime: mint, MaxTime: maxt}
+	if stats != nil {
+		meta.Stats = *stats
+	}
+	return dirMeta{
+		dir:  name,
+		meta: meta,
+	}
+}
+
+type erringBReader struct{}
+
+func (erringBReader) Index() (IndexReader, error)          { return nil, errors.New("index") }
+func (erringBReader) Chunks() (ChunkReader, error)         { return nil, errors.New("chunks") }
+func (erringBReader) Tombstones() (TombstoneReader, error) { return nil, errors.New("tombstones") }

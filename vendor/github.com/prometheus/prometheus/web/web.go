@@ -71,7 +71,7 @@ var localhostRepresentations = []string{"127.0.0.1", "localhost"}
 type Handler struct {
 	logger log.Logger
 
-	targetManager *retrieval.TargetManager
+	scrapeManager *retrieval.ScrapeManager
 	ruleManager   *rules.Manager
 	queryEngine   *promql.Engine
 	context       context.Context
@@ -125,7 +125,7 @@ type Options struct {
 	TSDB          func() *tsdb.DB
 	Storage       storage.Storage
 	QueryEngine   *promql.Engine
-	TargetManager *retrieval.TargetManager
+	ScrapeManager *retrieval.ScrapeManager
 	RuleManager   *rules.Manager
 	Notifier      *notifier.Notifier
 	Version       *PrometheusVersion
@@ -169,7 +169,7 @@ func New(logger log.Logger, o *Options) *Handler {
 		flagsMap:    o.Flags,
 
 		context:       o.Context,
-		targetManager: o.TargetManager,
+		scrapeManager: o.ScrapeManager,
 		ruleManager:   o.RuleManager,
 		queryEngine:   o.QueryEngine,
 		tsdb:          o.TSDB,
@@ -181,13 +181,15 @@ func New(logger log.Logger, o *Options) *Handler {
 		ready: 0,
 	}
 
-	h.apiV1 = api_v1.NewAPI(h.queryEngine, h.storage, h.targetManager, h.notifier,
+	h.apiV1 = api_v1.NewAPI(h.queryEngine, h.storage, h.scrapeManager, h.notifier,
 		func() config.Config {
 			h.mtx.RLock()
 			defer h.mtx.RUnlock()
 			return *h.config
 		},
 		h.testReady,
+		h.options.TSDB,
+		h.options.EnableAdminAPI,
 	)
 
 	if o.RoutePrefix != "/" {
@@ -214,6 +216,7 @@ func New(logger log.Logger, o *Options) *Handler {
 	router.Get("/rules", readyf(instrf("rules", h.rules)))
 	router.Get("/targets", readyf(instrf("targets", h.targets)))
 	router.Get("/version", readyf(instrf("version", h.version)))
+	router.Get("/service-discovery", readyf(instrf("servicediscovery", h.serviceDiscovery)))
 
 	router.Get("/heap", instrf("heap", h.dumpHeap))
 
@@ -402,7 +405,7 @@ func (h *Handler) Run(ctx context.Context) error {
 		h.options.QueryEngine,
 		h.options.Storage.Querier,
 		func() []*retrieval.Target {
-			return h.options.TargetManager.Targets()
+			return h.options.ScrapeManager.Targets()
 		},
 		func() []*url.URL {
 			return h.options.Notifier.Alertmanagers()
@@ -411,7 +414,7 @@ func (h *Handler) Run(ctx context.Context) error {
 	)
 	av2.RegisterGRPC(grpcSrv)
 
-	hh, err := av2.HTTPHandler(grpcl.Addr().String())
+	hh, err := av2.HTTPHandler(h.options.ListenAddress)
 	if err != nil {
 		return err
 	}
@@ -460,7 +463,19 @@ func (h *Handler) Run(ctx context.Context) error {
 		}
 	}()
 
-	return m.Serve()
+	errCh := make(chan error)
+	go func() {
+		errCh <- m.Serve()
+	}()
+
+	select {
+	case e := <-errCh:
+		return e
+	case <-ctx.Done():
+		httpSrv.Shutdown(ctx)
+		grpcSrv.GracefulStop()
+		return nil
+	}
 }
 
 func (h *Handler) alerts(w http.ResponseWriter, r *http.Request) {
@@ -515,7 +530,15 @@ func (h *Handler) consoles(w http.ResponseWriter, r *http.Request) {
 		Path:      strings.TrimLeft(name, "/"),
 	}
 
-	tmpl := template.NewTemplateExpander(h.context, string(text), "__console_"+name, data, h.now(), h.queryEngine, h.options.ExternalURL)
+	tmpl := template.NewTemplateExpander(
+		h.context,
+		string(text),
+		"__console_"+name,
+		data,
+		h.now(),
+		template.QueryFunc(rules.EngineQueryFunc(h.queryEngine)),
+		h.options.ExternalURL,
+	)
 	filenames, err := filepath.Glob(h.options.ConsoleLibrariesPath + "/*.lib")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -562,10 +585,27 @@ func (h *Handler) rules(w http.ResponseWriter, r *http.Request) {
 	h.executeTemplate(w, "rules.html", h.ruleManager)
 }
 
+func (h *Handler) serviceDiscovery(w http.ResponseWriter, r *http.Request) {
+	var index []string
+	targets := h.scrapeManager.TargetMap()
+	for job := range targets {
+		index = append(index, job)
+	}
+	sort.Strings(index)
+	scrapeConfigData := struct {
+		Index   []string
+		Targets map[string][]*retrieval.Target
+	}{
+		Index:   index,
+		Targets: targets,
+	}
+	h.executeTemplate(w, "service-discovery.html", scrapeConfigData)
+}
+
 func (h *Handler) targets(w http.ResponseWriter, r *http.Request) {
 	// Bucket targets by job label
 	tps := map[string][]*retrieval.Target{}
-	for _, t := range h.targetManager.Targets() {
+	for _, t := range h.scrapeManager.Targets() {
 		job := t.Labels().Get(model.JobLabel)
 		tps[job] = append(tps[job], t)
 	}
@@ -720,7 +760,15 @@ func (h *Handler) executeTemplate(w http.ResponseWriter, name string, data inter
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	tmpl := template.NewTemplateExpander(h.context, text, name, data, h.now(), h.queryEngine, h.options.ExternalURL)
+	tmpl := template.NewTemplateExpander(
+		h.context,
+		text,
+		name,
+		data,
+		h.now(),
+		template.QueryFunc(rules.EngineQueryFunc(h.queryEngine)),
+		h.options.ExternalURL,
+	)
 	tmpl.Funcs(tmplFuncs(h.consolesPath(), h.options))
 
 	result, err := tmpl.ExpandHTML(nil)

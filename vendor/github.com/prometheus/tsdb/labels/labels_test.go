@@ -15,17 +15,11 @@ package labels
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math/rand"
-	"os"
 	"sort"
 	"testing"
-	"unsafe"
 
-	"github.com/pkg/errors"
-	promlabels "github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/stretchr/testify/require"
+	"github.com/prometheus/tsdb/testutil"
 )
 
 func TestCompareAndEquals(t *testing.T) {
@@ -87,14 +81,14 @@ func TestCompareAndEquals(t *testing.T) {
 		// Use constructor to ensure sortedness.
 		a, b := New(c.a...), New(c.b...)
 
-		require.Equal(t, c.res, Compare(a, b))
-		require.Equal(t, c.res == 0, a.Equals(b))
+		testutil.Equals(t, c.res, Compare(a, b))
+		testutil.Equals(t, c.res == 0, a.Equals(b))
 	}
 }
 
 func BenchmarkSliceSort(b *testing.B) {
-	lbls, err := readPrometheusLabels("../testdata/1m.series", 900000)
-	require.NoError(b, err)
+	lbls, err := ReadLabels("../testdata/1m.series", 900000)
+	testutil.Ok(b, err)
 
 	for len(lbls) < 20e6 {
 		lbls = append(lbls, lbls...)
@@ -120,44 +114,6 @@ func BenchmarkSliceSort(b *testing.B) {
 			}
 		})
 	}
-}
-
-func readPrometheusLabels(fn string, n int) ([]Labels, error) {
-	f, err := os.Open(fn)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	b, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	p := textparse.New(b)
-	i := 0
-	var mets []Labels
-	hashes := map[uint64]struct{}{}
-
-	for p.Next() && i < n {
-		m := make(Labels, 0, 10)
-		p.Metric((*promlabels.Labels)(unsafe.Pointer(&m)))
-
-		h := m.Hash()
-		if _, ok := hashes[h]; ok {
-			continue
-		}
-		mets = append(mets, m)
-		hashes[h] = struct{}{}
-		i++
-	}
-	if err := p.Err(); err != nil {
-		return nil, err
-	}
-	if i != n {
-		return mets, errors.Errorf("requested %d metrics but found %d", n, i)
-	}
-	return mets, nil
 }
 
 func BenchmarkLabelSetFromMap(b *testing.B) {

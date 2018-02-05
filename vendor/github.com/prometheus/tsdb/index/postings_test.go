@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tsdb
+package index
 
 import (
 	"encoding/binary"
@@ -21,20 +21,20 @@ import (
 	"testing"
 
 	"github.com/prometheus/tsdb/labels"
-	"github.com/stretchr/testify/require"
+	"github.com/prometheus/tsdb/testutil"
 )
 
 func TestMemPostings_addFor(t *testing.T) {
-	p := newMemPostings()
+	p := NewMemPostings()
 	p.m[allPostingsKey] = []uint64{1, 2, 3, 4, 6, 7, 8}
 
 	p.addFor(5, allPostingsKey)
 
-	require.Equal(t, []uint64{1, 2, 3, 4, 5, 6, 7, 8}, p.m[allPostingsKey])
+	testutil.Equals(t, []uint64{1, 2, 3, 4, 5, 6, 7, 8}, p.m[allPostingsKey])
 }
 
 func TestMemPostings_ensureOrder(t *testing.T) {
-	p := newUnorderedMemPostings()
+	p := NewUnorderedMemPostings()
 
 	for i := 0; i < 100; i++ {
 		l := make([]uint64, 100)
@@ -46,7 +46,7 @@ func TestMemPostings_ensureOrder(t *testing.T) {
 		p.m[labels.Label{"a", v}] = l
 	}
 
-	p.ensureOrder()
+	p.EnsureOrder()
 
 	for _, l := range p.m {
 		ok := sort.SliceIsSorted(l, func(i, j int) bool {
@@ -100,9 +100,9 @@ func TestIntersect(t *testing.T) {
 		a := newListPostings(c.a)
 		b := newListPostings(c.b)
 
-		res, err := expandPostings(Intersect(a, b))
-		require.NoError(t, err)
-		require.Equal(t, c.res, res)
+		res, err := ExpandPostings(Intersect(a, b))
+		testutil.Ok(t, err)
+		testutil.Equals(t, c.res, res)
 	}
 }
 
@@ -140,10 +140,10 @@ func TestMultiIntersect(t *testing.T) {
 			ps = append(ps, newListPostings(postings))
 		}
 
-		res, err := expandPostings(Intersect(ps...))
+		res, err := ExpandPostings(Intersect(ps...))
 
-		require.NoError(t, err)
-		require.Equal(t, c.res, res)
+		testutil.Ok(t, err)
+		testutil.Equals(t, c.res, res)
 	}
 }
 
@@ -174,7 +174,7 @@ func BenchmarkIntersect(t *testing.B) {
 	t.ResetTimer()
 
 	for i := 0; i < t.N; i++ {
-		if _, err := expandPostings(Intersect(i1, i2, i3, i4)); err != nil {
+		if _, err := ExpandPostings(Intersect(i1, i2, i3, i4)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -198,9 +198,9 @@ func TestMultiMerge(t *testing.T) {
 		i2 := newListPostings(c.b)
 		i3 := newListPostings(c.c)
 
-		res, err := expandPostings(Merge(i1, i2, i3))
-		require.NoError(t, err)
-		require.Equal(t, c.res, res)
+		res, err := ExpandPostings(Merge(i1, i2, i3))
+		testutil.Ok(t, err)
+		testutil.Equals(t, c.res, res)
 	}
 }
 
@@ -230,9 +230,9 @@ func TestMergedPostings(t *testing.T) {
 		a := newListPostings(c.a)
 		b := newListPostings(c.b)
 
-		res, err := expandPostings(newMergedPostings(a, b))
-		require.NoError(t, err)
-		require.Equal(t, c.res, res)
+		res, err := ExpandPostings(newMergedPostings(a, b))
+		testutil.Ok(t, err)
+		testutil.Equals(t, c.res, res)
 	}
 
 }
@@ -285,16 +285,157 @@ func TestMergedPostingsSeek(t *testing.T) {
 
 		p := newMergedPostings(a, b)
 
-		require.Equal(t, c.success, p.Seek(c.seek))
+		testutil.Equals(t, c.success, p.Seek(c.seek))
 
 		// After Seek(), At() should be called.
 		if c.success {
 			start := p.At()
-			lst, err := expandPostings(p)
-			require.NoError(t, err)
+			lst, err := ExpandPostings(p)
+			testutil.Ok(t, err)
 
 			lst = append([]uint64{start}, lst...)
-			require.Equal(t, c.res, lst)
+			testutil.Equals(t, c.res, lst)
+		}
+	}
+
+	return
+}
+
+func TestRemovedPostings(t *testing.T) {
+	var cases = []struct {
+		a, b []uint64
+		res  []uint64
+	}{
+		{
+			a:   nil,
+			b:   nil,
+			res: []uint64(nil),
+		},
+		{
+			a:   []uint64{1, 2, 3, 4},
+			b:   nil,
+			res: []uint64{1, 2, 3, 4},
+		},
+		{
+			a:   nil,
+			b:   []uint64{1, 2, 3, 4},
+			res: []uint64(nil),
+		},
+		{
+			a:   []uint64{1, 2, 3, 4, 5},
+			b:   []uint64{6, 7, 8, 9, 10},
+			res: []uint64{1, 2, 3, 4, 5},
+		},
+		{
+			a:   []uint64{1, 2, 3, 4, 5},
+			b:   []uint64{4, 5, 6, 7, 8},
+			res: []uint64{1, 2, 3},
+		},
+		{
+			a:   []uint64{1, 2, 3, 4, 9, 10},
+			b:   []uint64{1, 4, 5, 6, 7, 8, 10, 11},
+			res: []uint64{2, 3, 9},
+		},
+		{
+			a:   []uint64{1, 2, 3, 4, 9, 10},
+			b:   []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+			res: []uint64(nil),
+		},
+	}
+
+	for _, c := range cases {
+		a := newListPostings(c.a)
+		b := newListPostings(c.b)
+
+		res, err := ExpandPostings(newRemovedPostings(a, b))
+		testutil.Ok(t, err)
+		testutil.Equals(t, c.res, res)
+	}
+
+}
+
+func TestRemovedPostingsSeek(t *testing.T) {
+	var cases = []struct {
+		a, b []uint64
+
+		seek    uint64
+		success bool
+		res     []uint64
+	}{
+		{
+			a: []uint64{2, 3, 4, 5},
+			b: []uint64{6, 7, 8, 9, 10},
+
+			seek:    1,
+			success: true,
+			res:     []uint64{2, 3, 4, 5},
+		},
+		{
+			a: []uint64{1, 2, 3, 4, 5},
+			b: []uint64{6, 7, 8, 9, 10},
+
+			seek:    2,
+			success: true,
+			res:     []uint64{2, 3, 4, 5},
+		},
+		{
+			a: []uint64{1, 2, 3, 4, 5},
+			b: []uint64{4, 5, 6, 7, 8},
+
+			seek:    9,
+			success: false,
+			res:     nil,
+		},
+		{
+			a: []uint64{1, 2, 3, 4, 9, 10},
+			b: []uint64{1, 4, 5, 6, 7, 8, 10, 11},
+
+			seek:    10,
+			success: false,
+			res:     nil,
+		},
+		{
+			a: []uint64{1, 2, 3, 4, 9, 10},
+			b: []uint64{1, 4, 5, 6, 7, 8, 11},
+
+			seek:    4,
+			success: true,
+			res:     []uint64{9, 10},
+		},
+		{
+			a: []uint64{1, 2, 3, 4, 9, 10},
+			b: []uint64{1, 4, 5, 6, 7, 8, 11},
+
+			seek:    5,
+			success: true,
+			res:     []uint64{9, 10},
+		},
+		{
+			a: []uint64{1, 2, 3, 4, 9, 10},
+			b: []uint64{1, 4, 5, 6, 7, 8, 11},
+
+			seek:    10,
+			success: true,
+			res:     []uint64{10},
+		},
+	}
+
+	for _, c := range cases {
+		a := newListPostings(c.a)
+		b := newListPostings(c.b)
+
+		p := newRemovedPostings(a, b)
+
+		testutil.Equals(t, c.success, p.Seek(c.seek))
+
+		// After Seek(), At() should be called.
+		if c.success {
+			start := p.At()
+			lst, err := ExpandPostings(p)
+			testutil.Ok(t, err)
+
+			lst = append([]uint64{start}, lst...)
+			testutil.Equals(t, c.res, lst)
 		}
 	}
 
@@ -319,12 +460,12 @@ func TestBigEndian(t *testing.T) {
 	t.Run("Iteration", func(t *testing.T) {
 		bep := newBigEndianPostings(beLst)
 		for i := 0; i < num; i++ {
-			require.True(t, bep.Next())
-			require.Equal(t, uint64(ls[i]), bep.At())
+			testutil.Assert(t, bep.Next() == true, "")
+			testutil.Equals(t, uint64(ls[i]), bep.At())
 		}
 
-		require.False(t, bep.Next())
-		require.Nil(t, bep.Err())
+		testutil.Assert(t, bep.Next() == false, "")
+		testutil.Assert(t, bep.Err() == nil, "")
 	})
 
 	t.Run("Seek", func(t *testing.T) {
@@ -368,9 +509,9 @@ func TestBigEndian(t *testing.T) {
 		bep := newBigEndianPostings(beLst)
 
 		for _, v := range table {
-			require.Equal(t, v.found, bep.Seek(uint64(v.seek)))
-			require.Equal(t, uint64(v.val), bep.At())
-			require.Nil(t, bep.Err())
+			testutil.Equals(t, v.found, bep.Seek(uint64(v.seek)))
+			testutil.Equals(t, uint64(v.val), bep.At())
+			testutil.Assert(t, bep.Err() == nil, "")
 		}
 	})
 }
@@ -386,8 +527,8 @@ func TestIntersectWithMerge(t *testing.T) {
 	)
 
 	p := Intersect(a, b)
-	res, err := expandPostings(p)
+	res, err := ExpandPostings(p)
 
-	require.NoError(t, err)
-	require.Equal(t, []uint64{30}, res)
+	testutil.Ok(t, err)
+	testutil.Equals(t, []uint64{30}, res)
 }

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// replicationStrategy decides, given the set of ingesters eligable for a key,
+// replicationStrategy decides, given the set of ingesters eligible for a key,
 // which ingesters you will try and write to and how many failures you will
 // tolerate.
 // - Filters out dead ingesters so the one doesn't even try to write to them.

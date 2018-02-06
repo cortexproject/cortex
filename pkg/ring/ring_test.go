@@ -28,7 +28,8 @@ func BenchmarkRing(b *testing.B) {
 	consul.PutBytes(ConsulKey, ringBytes)
 
 	r, err := New(Config{
-		Mock: consul,
+		Mock:              consul,
+		ReplicationFactor: 3,
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -38,6 +39,6 @@ func BenchmarkRing(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		keys := GenerateTokens(100, nil)
-		r.BatchGet(keys, 3, Write)
+		r.BatchGet(keys, Write)
 	}
 }

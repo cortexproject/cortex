@@ -24,24 +24,33 @@ type mockRing struct {
 	heartbeatTimeout time.Duration
 }
 
-func (r mockRing) Get(key uint32, n int, op ring.Operation) ([]*ring.IngesterDesc, error) {
-	return r.ingesters[:n], nil
+func (r mockRing) Get(key uint32, op ring.Operation) (ring.ReplicationSet, error) {
+	return ring.ReplicationSet{
+		Ingesters: r.ingesters[:3],
+		MaxErrors: 1,
+	}, nil
 }
 
-func (r mockRing) BatchGet(keys []uint32, n int, op ring.Operation) ([][]*ring.IngesterDesc, error) {
-	result := [][]*ring.IngesterDesc{}
+func (r mockRing) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
+	result := []ring.ReplicationSet{}
 	for i := 0; i < len(keys); i++ {
-		result = append(result, r.ingesters[:n])
+		result = append(result, ring.ReplicationSet{
+			Ingesters: r.ingesters[:3],
+			MaxErrors: 1,
+		})
 	}
 	return result, nil
 }
 
-func (r mockRing) GetAll() []*ring.IngesterDesc {
-	return r.ingesters
+func (r mockRing) GetAll() (ring.ReplicationSet, error) {
+	return ring.ReplicationSet{
+		Ingesters: r.ingesters,
+		MaxErrors: 1,
+	}, nil
 }
 
-func (r mockRing) IsHealthy(ingester *ring.IngesterDesc) bool {
-	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.heartbeatTimeout
+func (r mockRing) ReplicationFactor() int {
+	return 3
 }
 
 type mockIngester struct {
@@ -164,7 +173,6 @@ func TestDistributorPush(t *testing.T) {
 			}
 
 			d, err := New(Config{
-				ReplicationFactor:   3,
 				RemoteTimeout:       1 * time.Minute,
 				ClientCleanupPeriod: 1 * time.Minute,
 				IngestionRateLimit:  10000,
@@ -304,7 +312,6 @@ func TestDistributorQuery(t *testing.T) {
 			}
 
 			d, err := New(Config{
-				ReplicationFactor:   3,
 				RemoteTimeout:       1 * time.Minute,
 				ClientCleanupPeriod: 1 * time.Minute,
 				IngestionRateLimit:  10000,

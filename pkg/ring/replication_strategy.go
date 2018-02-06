@@ -1,19 +1,18 @@
-package distributor
+package ring
 
 import (
 	"fmt"
-
-	"github.com/weaveworks/cortex/pkg/ring"
+	"time"
 )
 
-func (d *Distributor) replicationStrategy(ingesters []*ring.IngesterDesc) (
-	minSuccess, maxFailure int, liveIngesters []*ring.IngesterDesc, err error,
+func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
+	minSuccess, maxFailure int, liveIngesters []*IngesterDesc, err error,
 ) {
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
 	// than the replication factor, so we need to account for this.
-	// See comment in ring/ring.go:getInternal.
-	replicationFactor := d.cfg.ReplicationFactor
+	// See comment in ring.go:getInternal.
+	replicationFactor := r.cfg.ReplicationFactor
 	if len(ingesters) > replicationFactor {
 		replicationFactor = len(ingesters)
 	}
@@ -26,9 +25,9 @@ func (d *Distributor) replicationStrategy(ingesters []*ring.IngesterDesc) (
 	// Skip those that have not heartbeated in a while. NB these are still
 	// included in the calculation of minSuccess, so if too many failed ingesters
 	// will cause the whole write to fail.
-	liveIngesters = make([]*ring.IngesterDesc, 0, len(ingesters))
+	liveIngesters = make([]*IngesterDesc, 0, len(ingesters))
 	for _, ingester := range ingesters {
-		if d.ring.IsHealthy(ingester) {
+		if r.IsHealthy(ingester) {
 			liveIngesters = append(liveIngesters, ingester)
 		}
 	}
@@ -42,4 +41,17 @@ func (d *Distributor) replicationStrategy(ingesters []*ring.IngesterDesc) (
 	}
 
 	return
+}
+
+// IsHealthy checks whether an ingester appears to be alive and heartbeating
+func (r *Ring) IsHealthy(ingester *IngesterDesc) bool {
+	if ingester.State != ACTIVE {
+		return false
+	}
+	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.cfg.HeartbeatTimeout
+}
+
+// ReplicationFactor of the ring.
+func (r *Ring) ReplicationFactor() int {
+	return r.cfg.ReplicationFactor
 }

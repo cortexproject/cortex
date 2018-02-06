@@ -1,4 +1,4 @@
-package distributor
+package ring
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/cortex/pkg/ring"
 )
 
 func TestReplicationStrategy(t *testing.T) {
@@ -74,31 +73,25 @@ func TestReplicationStrategy(t *testing.T) {
 			ExpectedError:      "at least 3 live ingesters required, could only find 2",
 		},
 	} {
-		ingesters := []*ring.IngesterDesc{}
+		ingesters := []*IngesterDesc{}
 		for i := 0; i < tc.LiveIngesters; i++ {
-			ingesters = append(ingesters, &ring.IngesterDesc{
+			ingesters = append(ingesters, &IngesterDesc{
 				Timestamp: time.Now().Unix(),
 			})
 		}
 		for i := 0; i < tc.DeadIngesters; i++ {
-			ingesters = append(ingesters, &ring.IngesterDesc{})
+			ingesters = append(ingesters, &IngesterDesc{})
 		}
 
-		r, err := ring.New(ring.Config{
-			Mock:             ring.NewInMemoryKVClient(),
-			HeartbeatTimeout: 100 * time.Second,
+		r, err := New(Config{
+			Mock:              NewInMemoryKVClient(),
+			HeartbeatTimeout:  100 * time.Second,
+			ReplicationFactor: tc.RF,
 		})
 		require.NoError(t, err)
 
-		d := Distributor{
-			cfg: Config{
-				ReplicationFactor: tc.RF,
-			},
-			ring: r,
-		}
-
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			minSuccess, maxFailure, _, err := d.replicationStrategy(ingesters)
+			minSuccess, maxFailure, _, err := r.replicationStrategy(ingesters)
 			assert.Equal(t, tc.ExpectedMinSuccess, minSuccess)
 			assert.Equal(t, tc.ExpectedMaxFailure, maxFailure)
 			if tc.ExpectedError != "" {

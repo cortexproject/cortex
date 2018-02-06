@@ -72,7 +72,6 @@ type Config struct {
 	BillingConfig        billing.Config
 	IngesterClientConfig ingester_client.Config
 
-	ReplicationFactor    int
 	RemoteTimeout        time.Duration
 	ClientCleanupPeriod  time.Duration
 	IngestionRateLimit   float64
@@ -88,7 +87,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.IngesterClientConfig.RegisterFlags(f)
-	flag.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
@@ -98,9 +96,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // New constructs a new Distributor
 func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
-	if 0 > cfg.ReplicationFactor {
-		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
-	}
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = ingester_client.MakeIngesterClient
 	}
@@ -189,7 +184,13 @@ func (d *Distributor) Stop() {
 
 func (d *Distributor) removeStaleIngesterClients() {
 	ingesters := map[string]struct{}{}
-	for _, ing := range d.ring.GetAll() {
+	replicationSet, err := d.ring.GetAll()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error removing stale ingester clients", "err", err)
+		return
+	}
+
+	for _, ing := range replicationSet.Ingesters {
 		ingesters[ing.Addr] = struct{}{}
 	}
 
@@ -270,30 +271,17 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, errIngestionRateLimitExceeded
 	}
 
-	var ingesters [][]*ring.IngesterDesc
-	if err := instrument.TimeRequestHistogram(ctx, "Distributor.Push[ring-lookup]", d.sendDuration, func(context.Context) error {
-		var err error
-		ingesters, err = d.ring.BatchGet(keys, d.cfg.ReplicationFactor, ring.Write)
-		if err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
+	replicationSets, err := d.ring.BatchGet(keys, ring.Write)
+	if err != nil {
 		return nil, err
 	}
 
 	samplesByIngester := map[*ring.IngesterDesc][]*sampleTracker{}
-	for i := range samples {
-		var err error
-		var liveIngesters []*ring.IngesterDesc
-		samples[i].minSuccess, samples[i].maxFailures, liveIngesters, err = d.replicationStrategy(ingesters[i])
-		if err != nil {
-			return nil, err
-		}
-
-		for _, liveIngester := range liveIngesters {
-			sampleForIngester := samplesByIngester[liveIngester]
-			samplesByIngester[liveIngester] = append(sampleForIngester, &samples[i])
+	for i, replicationSet := range replicationSets {
+		samples[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
+		samples[i].maxFailures = replicationSet.MaxErrors
+		for _, ingester := range replicationSet.Ingesters {
+			samplesByIngester[ingester] = append(samplesByIngester[ingester], &samples[i])
 		}
 	}
 
@@ -410,34 +398,28 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 		}
 
 		// Get ingesters by metricName if one exists, otherwise get all ingesters
-		var ingesters []*ring.IngesterDesc
+		var replicationSet ring.ReplicationSet
 		if ok && metricNameMatcher.Type == labels.MatchEqual {
-			ingesters, err = d.ring.Get(tokenFor(userID, []byte(metricNameMatcher.Value)), d.cfg.ReplicationFactor, ring.Read)
-			if err != nil {
-				return promql.ErrStorage(err)
-			}
+			replicationSet, err = d.ring.Get(tokenFor(userID, []byte(metricNameMatcher.Value)), ring.Read)
 		} else {
-			ingesters = d.ring.GetAll()
+			replicationSet, err = d.ring.GetAll()
+		}
+		if err != nil {
+			return promql.ErrStorage(err)
 		}
 
-		matrix, err = d.queryIngesters(ctx, ingesters, d.cfg.ReplicationFactor, req)
+		matrix, err = d.queryIngesters(ctx, replicationSet, req)
 		return promql.ErrStorage(err)
 	})
 	return matrix, err
 }
 
 // Query implements Querier.
-func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.IngesterDesc, replicationFactor int, req *client.QueryRequest) (model.Matrix, error) {
-	// We need a response from a quorum of ingesters, where maxErrs is n/2, where n is the replicationFactor
-	minSuccess, maxErrors, ingesters, err := d.replicationStrategy(ingesters)
-	if err != nil {
-		return nil, err
-	}
-
+func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.ReplicationSet, req *client.QueryRequest) (model.Matrix, error) {
 	// Fetch samples from multiple ingesters
-	errs := make(chan error, len(ingesters))
-	results := make(chan model.Matrix, len(ingesters))
-	for _, ing := range ingesters {
+	errs := make(chan error, len(replicationSet.Ingesters))
+	results := make(chan model.Matrix, len(replicationSet.Ingesters))
+	for _, ing := range replicationSet.Ingesters {
 		go func(ing *ring.IngesterDesc) {
 			result, err := d.queryIngester(ctx, ing, req)
 			if err != nil {
@@ -451,12 +433,13 @@ func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.Inge
 	// Only wait for minSuccessful responses (or maxErrors), and accumulate the samples
 	// by fingerprint, merging them into any existing samples.
 	fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
+	minSuccess := len(replicationSet.Ingesters) - replicationSet.MaxErrors
 	var numErrs, numSuccess int
 	for numSuccess < minSuccess {
 		select {
 		case err := <-errs:
 			numErrs++
-			if numErrs > maxErrors {
+			if numErrs > replicationSet.MaxErrors {
 				return nil, err
 			}
 
@@ -501,9 +484,13 @@ func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc,
 
 // forAllIngesters runs f, in parallel, for all ingesters
 func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+	replicationSet, err := d.ring.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
 	resps, errs := make(chan interface{}), make(chan error)
-	ingesters := d.ring.GetAll()
-	for _, ingester := range ingesters {
+	for _, ingester := range replicationSet.Ingesters {
 		go func(ingester *ring.IngesterDesc) {
 			client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 			if err != nil {
@@ -522,7 +509,7 @@ func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}
 
 	var lastErr error
 	result, numErrs := []interface{}{}, 0
-	for range ingesters {
+	for range replicationSet.Ingesters {
 		select {
 		case resp := <-resps:
 			result = append(result, resp)
@@ -530,9 +517,11 @@ func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}
 			numErrs++
 		}
 	}
-	if numErrs > d.cfg.ReplicationFactor/2 {
+
+	if numErrs > replicationSet.MaxErrors {
 		return nil, lastErr
 	}
+
 	return result, nil
 }
 
@@ -609,8 +598,8 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 		totalStats.NumSeries += resp.(*client.UserStatsResponse).NumSeries
 	}
 
-	totalStats.IngestionRate /= float64(d.cfg.ReplicationFactor)
-	totalStats.NumSeries /= uint64(d.cfg.ReplicationFactor)
+	totalStats.IngestionRate /= float64(d.ring.ReplicationFactor())
+	totalStats.NumSeries /= uint64(d.ring.ReplicationFactor())
 
 	return totalStats, nil
 }

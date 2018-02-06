@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package retrieval
+package scrape
 
 import (
 	"bytes"
@@ -699,7 +699,7 @@ func TestScrapeLoopAppendSampleLimit(t *testing.T) {
 	}
 	value := metric.GetCounter().GetValue()
 	if (value - beforeMetricValue) != 1 {
-		t.Fatal("Unexpected change of sample limit metric: %f", (value - beforeMetricValue))
+		t.Fatalf("Unexpected change of sample limit metric: %f", (value - beforeMetricValue))
 	}
 
 	// And verify that we got the samples that fit under the limit.

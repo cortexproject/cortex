@@ -10,6 +10,10 @@
   name = "github.com/weaveworks/promrus"
   version = "v1.1.0-legacy"
 
+[[constraint]]
+  name = "github.com/prometheus/prometheus"
+  revision = "a730083cbfbb76e05244f82de0bc4146cb5f79ab"
+
 [[override]]
   name = "k8s.io/client-go"
   revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"

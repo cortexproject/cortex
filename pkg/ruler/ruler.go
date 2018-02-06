@@ -120,12 +120,11 @@ type Ruler struct {
 	notifiers    map[string]*rulerNotifier
 }
 
-// rulerNotifier bundles a notifer.Notifier together with an associated
+// rulerNotifier bundles a notifier.Manager together with an associated
 // Alertmanager service discovery manager and handles the lifecycle
 // of both actors.
 type rulerNotifier struct {
-	notifier  *notifier.Notifier
-	sdCtx     context.Context
+	notifier  *notifier.Manager
 	sdCancel  context.CancelFunc
 	sdManager *discovery.Manager
 	wg        sync.WaitGroup
@@ -133,12 +132,11 @@ type rulerNotifier struct {
 }
 
 func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
-	ctx, cancel := context.WithCancel(context.Background())
+	sdCtx, sdCancel := context.WithCancel(context.Background())
 	return &rulerNotifier{
-		notifier:  notifier.New(o, l),
-		sdCtx:     ctx,
-		sdCancel:  cancel,
-		sdManager: discovery.NewManager(l),
+		notifier:  notifier.NewManager(o, l),
+		sdCancel:  sdCancel,
+		sdManager: discovery.NewManager(sdCtx, l),
 		logger:    l,
 	}
 }
@@ -146,7 +144,7 @@ func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
 func (rn *rulerNotifier) run() {
 	rn.wg.Add(2)
 	go func() {
-		if err := rn.sdManager.Run(rn.sdCtx); err != nil {
+		if err := rn.sdManager.Run(); err != nil {
 			level.Error(rn.logger).Log("msg", "error starting notifier discovery manager", "err", err)
 		}
 		rn.wg.Done()
@@ -290,7 +288,7 @@ func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, er
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func sendAlerts(n *notifier.Notifier, externalURL string) rules.NotifyFunc {
+func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
 	return func(ctx native_ctx.Context, expr string, alerts ...*rules.Alert) error {
 		var res []*notifier.Alert
 
@@ -318,7 +316,7 @@ func sendAlerts(n *notifier.Notifier, externalURL string) rules.NotifyFunc {
 	}
 }
 
-func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
+func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 	r.notifiersMtx.Lock()
 	defer r.notifiersMtx.Unlock()
 

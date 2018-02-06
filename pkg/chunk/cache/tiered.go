@@ -4,6 +4,11 @@ import "context"
 
 type tiered []Cache
 
+// NewTiered makes a new tiered cache.
+func NewTiered(caches []Cache) Cache {
+	return tiered(caches)
+}
+
 func (t tiered) StoreChunk(ctx context.Context, key string, buf []byte) error {
 	for _, c := range []Cache(t) {
 		if err := c.StoreChunk(ctx, key, buf); err != nil {

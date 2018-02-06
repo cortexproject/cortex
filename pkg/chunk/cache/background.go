@@ -28,13 +28,14 @@ func init() {
 	prometheus.MustRegister(queueLength)
 }
 
-type backgroundConfig struct {
+// BackgroundConfig is config for a Background Cache.
+type BackgroundConfig struct {
 	WriteBackGoroutines int
 	WriteBackBuffer     int
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *backgroundConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *BackgroundConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.WriteBackGoroutines, "memcache.write-back-goroutines", 10, "How many goroutines to use to write back to memcache.")
 	f.IntVar(&cfg.WriteBackBuffer, "memcache.write-back-buffer", 10000, "How many chunks to buffer for background write back.")
 }
@@ -52,8 +53,8 @@ type backgroundWrite struct {
 	buf []byte
 }
 
-// newBackground returns a new Cache that does stores on background goroutines.
-func newBackground(cfg backgroundConfig, cache Cache) Cache {
+// NewBackground returns a new Cache that does stores on background goroutines.
+func NewBackground(cfg BackgroundConfig, cache Cache) Cache {
 	c := &backgroundCache{
 		Cache:    cache,
 		quit:     make(chan struct{}),

@@ -16,7 +16,7 @@ type Cache interface {
 type Config struct {
 	EnableDiskcache bool
 
-	background     backgroundConfig
+	background     BackgroundConfig
 	memcache       MemcachedConfig
 	memcacheClient MemcachedClientConfig
 	diskcache      DiskcacheConfig
@@ -54,6 +54,6 @@ func New(cfg Config) (Cache, error) {
 		cache = instrument("tiered", cache)
 	}
 
-	cache = newBackground(cfg.background, cache)
+	cache = NewBackground(cfg.background, cache)
 	return cache, nil
 }

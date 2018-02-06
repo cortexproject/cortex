@@ -17,8 +17,8 @@ import (
 type Config struct {
 	StorageClient string
 	chunk.AWSStorageConfig
-	GCPStorageConfig      gcp.Config
-	CasandraStorageConfig cassandra.Config
+	GCPStorageConfig       gcp.Config
+	CassandraStorageConfig cassandra.Config
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -26,7 +26,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "aws", "Which storage client to use (aws, gcp, cassandra, inmemory).")
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
-	cfg.CasandraStorageConfig.RegisterFlags(f)
+	cfg.CassandraStorageConfig.RegisterFlags(f)
 }
 
 // NewStorageClient makes a storage client based on the configuration.
@@ -43,7 +43,7 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageCl
 	case "gcp":
 		return gcp.NewStorageClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":
-		return cassandra.NewStorageClient(cfg.CasandraStorageConfig, schemaCfg)
+		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", cfg.StorageClient)
 	}

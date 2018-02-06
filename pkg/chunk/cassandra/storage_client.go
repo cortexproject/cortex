@@ -19,6 +19,7 @@ const (
 type Config struct {
 	address           string
 	keyspace          string
+	consistency       string
 	replicationFactor int
 }
 
@@ -26,17 +27,23 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.address, "cassandra.address", "", "Address of Cassandra instances.")
 	f.StringVar(&cfg.keyspace, "cassandra.keyspace", "", "Keyspace to use in Cassandra.")
+	f.StringVar(&cfg.consistency, "cassandra.consistency", "QUORUM", "Consistency level for Cassandra.")
 	f.IntVar(&cfg.replicationFactor, "cassandra.replication-factor", 1, "Replication factor to use in Cassandra.")
 }
 
 func (cfg *Config) session() (*gocql.Session, error) {
+	consistency, err := gocql.ParseConsistencyWrapper(cfg.consistency)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := cfg.createKeyspace(); err != nil {
 		return nil, err
 	}
 
 	cluster := gocql.NewCluster(cfg.address)
 	cluster.Keyspace = cfg.keyspace
-	cluster.Consistency = gocql.Quorum
+	cluster.Consistency = consistency
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
 
@@ -136,12 +143,14 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	return scanner.Err()
 }
 
-// readBatch represents a batch of rows read from Cassandre.
+// readBatch represents a batch of rows read from Cassandra.
 type readBatch struct {
 	rangeValue []byte
 	value      []byte
 }
 
+// Len implements chunk.ReadBatch; in Cassandra we 'stream' results back
+// one-by-one, so this always returns 1.
 func (readBatch) Len() int {
 	return 1
 }
@@ -171,6 +180,8 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		}
 		key := chunks[i].ExternalKey()
 		tableName := s.schemaCfg.ChunkTables.TableFor(chunks[i].From)
+
+		// Must provide a range key, even though its not useds - hence 0x00.
 		b.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, 0x00, ?)", tableName), key, buf)
 	}
 

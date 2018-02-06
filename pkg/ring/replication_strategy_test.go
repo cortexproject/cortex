@@ -11,29 +11,27 @@ import (
 
 func TestReplicationStrategy(t *testing.T) {
 	for i, tc := range []struct {
-		RF, LiveIngesters, DeadIngesters       int
-		ExpectedMinSuccess, ExpectedMaxFailure int
-		ExpectedError                          string
+		RF, LiveIngesters, DeadIngesters int
+		ExpectedMaxFailure               int
+		ExpectedError                    string
 	}{
 		// Ensure it works for a single ingester, for local testing.
 		{
 			RF:                 1,
 			LiveIngesters:      1,
-			ExpectedMinSuccess: 1,
+			ExpectedMaxFailure: 0,
 		},
 
 		{
-			RF:                 1,
-			DeadIngesters:      1,
-			ExpectedMinSuccess: 1,
-			ExpectedError:      "at least 1 live ingesters required, could only find 0",
+			RF:            1,
+			DeadIngesters: 1,
+			ExpectedError: "at least 1 live ingesters required, could only find 0",
 		},
 
 		// Ensure it works for the default production config.
 		{
 			RF:                 3,
 			LiveIngesters:      3,
-			ExpectedMinSuccess: 2,
 			ExpectedMaxFailure: 1,
 		},
 
@@ -41,17 +39,14 @@ func TestReplicationStrategy(t *testing.T) {
 			RF:                 3,
 			LiveIngesters:      2,
 			DeadIngesters:      1,
-			ExpectedMinSuccess: 2,
-			ExpectedMaxFailure: 1,
+			ExpectedMaxFailure: 0,
 		},
 
 		{
-			RF:                 3,
-			LiveIngesters:      1,
-			DeadIngesters:      2,
-			ExpectedMinSuccess: 2,
-			ExpectedMaxFailure: 1,
-			ExpectedError:      "at least 2 live ingesters required, could only find 1",
+			RF:            3,
+			LiveIngesters: 1,
+			DeadIngesters: 2,
+			ExpectedError: "at least 2 live ingesters required, could only find 1",
 		},
 
 		// Ensure it works when adding / removing nodes.
@@ -60,17 +55,21 @@ func TestReplicationStrategy(t *testing.T) {
 		{
 			RF:                 3,
 			LiveIngesters:      4,
-			ExpectedMinSuccess: 3,
 			ExpectedMaxFailure: 1,
 		},
 
 		{
 			RF:                 3,
-			LiveIngesters:      2,
-			DeadIngesters:      2,
-			ExpectedMinSuccess: 3,
-			ExpectedMaxFailure: 1,
-			ExpectedError:      "at least 3 live ingesters required, could only find 2",
+			LiveIngesters:      3,
+			DeadIngesters:      1,
+			ExpectedMaxFailure: 0,
+		},
+
+		{
+			RF:            3,
+			LiveIngesters: 2,
+			DeadIngesters: 2,
+			ExpectedError: "at least 3 live ingesters required, could only find 2",
 		},
 	} {
 		ingesters := []*IngesterDesc{}
@@ -91,10 +90,12 @@ func TestReplicationStrategy(t *testing.T) {
 		require.NoError(t, err)
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			minSuccess, maxFailure, _, err := r.replicationStrategy(ingesters)
-			assert.Equal(t, tc.ExpectedMinSuccess, minSuccess)
-			assert.Equal(t, tc.ExpectedMaxFailure, maxFailure)
-			if tc.ExpectedError != "" {
+			liveIngesters, maxFailure, err := r.replicationStrategy(ingesters)
+			if tc.ExpectedError == "" {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.LiveIngesters, len(liveIngesters))
+				assert.Equal(t, tc.ExpectedMaxFailure, maxFailure)
+			} else {
 				assert.EqualError(t, err, tc.ExpectedError)
 			}
 		})

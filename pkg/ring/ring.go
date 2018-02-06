@@ -228,7 +228,7 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 		ingesters = append(ingesters, ingester)
 	}
 
-	_, maxFailure, liveIngesters, err := r.replicationStrategy(ingesters)
+	liveIngesters, maxFailure, err := r.replicationStrategy(ingesters)
 	if err != nil {
 		return ReplicationSet{}, err
 	}

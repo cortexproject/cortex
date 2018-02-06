@@ -6,7 +6,7 @@ import (
 )
 
 func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
-	minSuccess, maxFailure int, liveIngesters []*IngesterDesc, err error,
+	liveIngesters []*IngesterDesc, maxFailure int, err error,
 ) {
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
@@ -16,11 +16,8 @@ func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
 	if len(ingesters) > replicationFactor {
 		replicationFactor = len(ingesters)
 	}
-	minSuccess = (replicationFactor / 2) + 1
+	minSuccess := (replicationFactor / 2) + 1
 	maxFailure = replicationFactor - minSuccess
-	if maxFailure < 0 {
-		maxFailure = 0
-	}
 
 	// Skip those that have not heartbeated in a while. NB these are still
 	// included in the calculation of minSuccess, so if too many failed ingesters
@@ -29,12 +26,13 @@ func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
 	for _, ingester := range ingesters {
 		if r.IsHealthy(ingester) {
 			liveIngesters = append(liveIngesters, ingester)
+		} else {
+			maxFailure--
 		}
 	}
-
 	// This is just a shortcut - if there are not minSuccess available ingesters,
 	// after filtering out dead ones, don't even bother trying.
-	if len(liveIngesters) < minSuccess {
+	if maxFailure < 0 || len(liveIngesters) < minSuccess {
 		err = fmt.Errorf("at least %d live ingesters required, could only find %d",
 			minSuccess, len(liveIngesters))
 		return

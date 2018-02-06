@@ -38,7 +38,10 @@ func instrumentation() []option.ClientOption {
 			)),
 		),
 		option.WithGRPCDialOption(
-			grpc.WithStreamInterceptor(grpcStreamInstrumentation),
+			grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
+				otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+				grpcStreamInstrumentation,
+			)),
 		),
 	}
 }

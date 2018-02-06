@@ -271,10 +271,10 @@
   version = "v1.3.1"
 
 [[projects]]
-  branch = "master"
   name = "github.com/grpc-ecosystem/grpc-opentracing"
   packages = ["go/otgrpc"]
-  revision = "0e7658f8ee99ee5aa683e2a032b8880091b7a055"
+  revision = "ed3ba477b4d621be4baf2a0fbff7b37ad854f3ae"
+  source = "github.com/Fresh-Tracks/grpc-opentracing"
 
 [[projects]]
   name = "github.com/hashicorp/consul"
@@ -725,6 +725,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "28012f846980a8d0923820d79f01a661f156d20b6f1f309f8822e820f0327016"
+  inputs-digest = "c07e2c79b83a2e68320ccd460b29ca95782bab36c2811860e2d66e93f54803a4"
   solver-name = "gps-cdcl"
   solver-version = 1

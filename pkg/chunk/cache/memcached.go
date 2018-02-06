@@ -135,6 +135,7 @@ func (c *Memcached) StoreChunk(ctx context.Context, key string, buf []byte) erro
 	})
 }
 
+// Stop does nothing.
 func (*Memcached) Stop() error {
 	return nil
 }

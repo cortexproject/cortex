@@ -217,7 +217,7 @@ func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 		level.Warn(logger).Log("msg", "error fetching from cache", "err", err)
 	}
 
-	fromCache, missing, err := ProcessCacheResponse(chunks, cacheHits, cacheBufs)
+	fromCache, missing, err := ProcessCacheResponse(filtered, cacheHits, cacheBufs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "error fetching from cache", "err", err)
 	}
@@ -253,17 +253,20 @@ outer:
 	return filteredChunks, nil
 }
 
+// ProcessCacheResponse decodes the chunks coming back from the cache, separating
+// hits and misses.
 func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found []Chunk, missing []Chunk, err error) {
 	ctx := NewDecodeContext()
 
-	for i, j := 0, 0; i < len(chunks) && j < len(keys); {
+	i, j := 0, 0
+	for i < len(chunks) && j < len(keys) {
 		chunkKey := chunks[i].ExternalKey()
 
 		if chunkKey < keys[j] {
 			missing = append(missing, chunks[i])
 			i++
 		} else if chunkKey > keys[j] {
-			// Got a chunk response we shouldn't have
+			level.Debug(util.Logger).Log("msg", "got chunk from cache we didn't ask for")
 			j++
 		} else {
 			chunk := chunks[i]
@@ -275,6 +278,10 @@ func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found [
 			i++
 			j++
 		}
+	}
+
+	for ; i < len(chunks); i++ {
+		missing = append(missing, chunks[i])
 	}
 
 	return

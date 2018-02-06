@@ -34,11 +34,17 @@ var (
 		},
 		HashBuckets: 1024,
 	})
+	cacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "cache_corrupt_chunks_total",
+		Help:      "Total count of corrupt chunks found in memcache.",
+	})
 )
 
 func init() {
 	prometheus.MustRegister(indexEntriesPerChunk)
 	prometheus.MustRegister(rowWrites)
+	prometheus.MustRegister(cacheCorrupt)
 }
 
 // StoreConfig specifies config for a ChunkStore
@@ -76,7 +82,7 @@ func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storage StorageClient) (*
 		return nil, err
 	}
 
-	cache, err := cache.NewBackground(cfg.CacheConfig)
+	cache, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -272,6 +278,7 @@ func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found [
 			chunk := chunks[i]
 			err = chunk.Decode(ctx, bufs[j])
 			if err != nil {
+				cacheCorrupt.Inc()
 				return
 			}
 			found = append(found, chunk)

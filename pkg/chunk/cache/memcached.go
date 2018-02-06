@@ -6,37 +6,11 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
+	instr "github.com/weaveworks/common/instrument"
 )
 
 var (
-	memcacheRequests = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "memcache_requests_total",
-		Help:      "Total count of chunks requested from memcache.",
-	})
-
-	memcacheHits = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "memcache_hits_total",
-		Help:      "Total count of chunks found in memcache.",
-	})
-
-	memcacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "memcache_corrupt_chunks_total",
-		Help:      "Total count of corrupt chunks found in memcache.",
-	})
-
-	memcacheDroppedWriteBack = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "memcache_dropped_write_back",
-		Help:      "Total count of dropped write backs to memcache.",
-	})
-
 	memcacheRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "memcache_request_duration_seconds",
@@ -47,10 +21,6 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(memcacheRequests)
-	prometheus.MustRegister(memcacheHits)
-	prometheus.MustRegister(memcacheCorrupt)
-	prometheus.MustRegister(memcacheDroppedWriteBack)
 	prometheus.MustRegister(memcacheRequestDuration)
 }
 
@@ -95,13 +65,8 @@ func memcacheStatusCode(err error) string {
 
 // FetchChunkData gets chunks from the chunk cache.
 func (c *Memcached) FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
-	sp, ctx := ot.StartSpanFromContext(ctx, "FetchChunkData")
-	defer sp.Finish()
-	sp.LogFields(otlog.Int("chunks requested", len(keys)))
-	memcacheRequests.Add(float64(len(keys)))
-
 	var items map[string]*memcache.Item
-	err = instrument.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+	err = instr.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		var err error
 		items, err = c.memcache.GetMulti(keys)
 		return err
@@ -109,8 +74,6 @@ func (c *Memcached) FetchChunkData(ctx context.Context, keys []string) (found []
 	if err != nil {
 		return
 	}
-	sp.LogFields(otlog.Int("chunks returned", len(items)))
-
 	for _, key := range keys {
 		item, ok := items[key]
 		if ok {
@@ -120,14 +83,12 @@ func (c *Memcached) FetchChunkData(ctx context.Context, keys []string) (found []
 			missed = append(missed, key)
 		}
 	}
-	sp.LogFields(otlog.Int("chunks found", len(found)), otlog.Int("chunks missing", len(keys)-len(found)))
-	memcacheHits.Add(float64(len(found)))
 	return
 }
 
 // StoreChunk serializes and stores a chunk in the chunk cache.
 func (c *Memcached) StoreChunk(ctx context.Context, key string, buf []byte) error {
-	return instrument.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+	return instr.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		item := memcache.Item{
 			Key:        key,
 			Value:      buf,

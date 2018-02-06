@@ -195,27 +195,28 @@ type mergeQuerier struct {
 	metadataOnly bool
 }
 
-func (mq mergeQuerier) Select(matchers ...*labels.Matcher) storage.SeriesSet {
+func (mq mergeQuerier) Select(matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+	// TODO: Update underlying selectors to return errors directly.
 	if mq.metadataOnly {
-		return mq.selectMetadata(matchers...)
+		return mq.selectMetadata(matchers...), nil
 	}
-	return mq.selectSamples(matchers...)
+	return mq.selectSamples(matchers...), nil
 }
 
 func (mq mergeQuerier) selectMetadata(matchers ...*labels.Matcher) storage.SeriesSet {
 	// NB that we don't do this in parallel, as in practice we only have two queriers,
 	// one of which is the chunk store, which doesn't implement this yet.
-	var set storage.SeriesSet
+	seriesSets := make([]storage.SeriesSet, 0, len(mq.queriers))
 	for _, q := range mq.queriers {
 		ms, err := q.MetricsForLabelMatchers(mq.ctx, model.Time(mq.mint), model.Time(mq.maxt), matchers...)
 		if err != nil {
 			return errSeriesSet{err: err}
 		}
 		ss := metricsToSeriesSet(ms)
-		set = storage.DeduplicateSeriesSet(set, ss)
+		seriesSets = append(seriesSets, ss)
 	}
 
-	return set
+	return storage.NewMergeSeriesSet(seriesSets)
 }
 
 func (mq mergeQuerier) selectSamples(matchers ...*labels.Matcher) storage.SeriesSet {

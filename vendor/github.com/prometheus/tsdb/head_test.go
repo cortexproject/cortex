@@ -14,28 +14,23 @@
 package tsdb
 
 import (
-	"io/ioutil"
 	"math/rand"
-	"os"
 	"testing"
-	"unsafe"
 
-	"github.com/pkg/errors"
+	"github.com/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/tsdb/chunks"
+	"github.com/prometheus/tsdb/index"
 	"github.com/prometheus/tsdb/labels"
-
-	promlabels "github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/stretchr/testify/require"
+	"github.com/prometheus/tsdb/testutil"
 )
 
 func BenchmarkCreateSeries(b *testing.B) {
-	lbls, err := readPrometheusLabels("testdata/all.series", b.N)
-	require.NoError(b, err)
+	lbls, err := labels.ReadLabels("testdata/all.series", b.N)
+	testutil.Ok(b, err)
 
 	h, err := NewHead(nil, nil, nil, 10000)
 	if err != nil {
-		require.NoError(b, err)
+		testutil.Ok(b, err)
 	}
 	defer h.Close()
 
@@ -45,44 +40,6 @@ func BenchmarkCreateSeries(b *testing.B) {
 	for _, l := range lbls {
 		h.getOrCreate(l.Hash(), l)
 	}
-}
-
-func readPrometheusLabels(fn string, n int) ([]labels.Labels, error) {
-	f, err := os.Open(fn)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	b, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	p := textparse.New(b)
-	i := 0
-	var mets []labels.Labels
-	hashes := map[uint64]struct{}{}
-
-	for p.Next() && i < n {
-		m := make(labels.Labels, 0, 10)
-		p.Metric((*promlabels.Labels)(unsafe.Pointer(&m)))
-
-		h := m.Hash()
-		if _, ok := hashes[h]; ok {
-			continue
-		}
-		mets = append(mets, m)
-		hashes[h] = struct{}{}
-		i++
-	}
-	if err := p.Err(); err != nil {
-		return nil, err
-	}
-	if i != n {
-		return mets, errors.Errorf("requested %d metrics but found %d", n, i)
-	}
-	return mets, nil
 }
 
 type memoryWAL struct {
@@ -131,40 +88,40 @@ func TestHead_ReadWAL(t *testing.T) {
 	wal := &memoryWAL{entries: entries}
 
 	head, err := NewHead(nil, nil, wal, 1000)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 	defer head.Close()
 
-	require.NoError(t, head.ReadWAL())
-	require.Equal(t, uint64(100), head.lastSeriesID)
+	testutil.Ok(t, head.ReadWAL())
+	testutil.Equals(t, uint64(100), head.lastSeriesID)
 
 	s10 := head.series.getByID(10)
 	s11 := head.series.getByID(11)
 	s50 := head.series.getByID(50)
 	s100 := head.series.getByID(100)
 
-	require.Equal(t, labels.FromStrings("a", "1"), s10.lset)
-	require.Equal(t, labels.FromStrings("a", "2"), s11.lset)
-	require.Equal(t, labels.FromStrings("a", "4"), s50.lset)
-	require.Equal(t, labels.FromStrings("a", "3"), s100.lset)
+	testutil.Equals(t, labels.FromStrings("a", "1"), s10.lset)
+	testutil.Equals(t, labels.FromStrings("a", "2"), s11.lset)
+	testutil.Equals(t, labels.FromStrings("a", "4"), s50.lset)
+	testutil.Equals(t, labels.FromStrings("a", "3"), s100.lset)
 
-	expandChunk := func(c chunks.Iterator) (x []sample) {
+	expandChunk := func(c chunkenc.Iterator) (x []sample) {
 		for c.Next() {
 			t, v := c.At()
 			x = append(x, sample{t: t, v: v})
 		}
-		require.NoError(t, c.Err())
+		testutil.Ok(t, c.Err())
 		return x
 	}
 
-	require.Equal(t, []sample{{100, 2}, {101, 5}}, expandChunk(s10.iterator(0)))
-	require.Equal(t, 0, len(s11.chunks))
-	require.Equal(t, []sample{{101, 6}}, expandChunk(s50.iterator(0)))
-	require.Equal(t, []sample{{100, 3}}, expandChunk(s100.iterator(0)))
+	testutil.Equals(t, []sample{{100, 2}, {101, 5}}, expandChunk(s10.iterator(0)))
+	testutil.Equals(t, 0, len(s11.chunks))
+	testutil.Equals(t, []sample{{101, 6}}, expandChunk(s50.iterator(0)))
+	testutil.Equals(t, []sample{{100, 3}}, expandChunk(s100.iterator(0)))
 }
 
 func TestHead_Truncate(t *testing.T) {
 	h, err := NewHead(nil, nil, nil, 1000)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 	defer h.Close()
 
 	h.initTime(0)
@@ -191,37 +148,37 @@ func TestHead_Truncate(t *testing.T) {
 	s4.chunks = []*memChunk{}
 
 	// Truncation need not be aligned.
-	require.NoError(t, h.Truncate(1))
+	testutil.Ok(t, h.Truncate(1))
 
-	h.Truncate(2000)
+	testutil.Ok(t, h.Truncate(2000))
 
-	require.Equal(t, []*memChunk{
+	testutil.Equals(t, []*memChunk{
 		{minTime: 2000, maxTime: 2999},
 	}, h.series.getByID(s1.ref).chunks)
 
-	require.Equal(t, []*memChunk{
+	testutil.Equals(t, []*memChunk{
 		{minTime: 2000, maxTime: 2999},
 		{minTime: 3000, maxTime: 3999},
 	}, h.series.getByID(s2.ref).chunks)
 
-	require.Nil(t, h.series.getByID(s3.ref))
-	require.Nil(t, h.series.getByID(s4.ref))
+	testutil.Assert(t, h.series.getByID(s3.ref) == nil, "")
+	testutil.Assert(t, h.series.getByID(s4.ref) == nil, "")
 
-	postingsA1, _ := expandPostings(h.postings.get("a", "1"))
-	postingsA2, _ := expandPostings(h.postings.get("a", "2"))
-	postingsB1, _ := expandPostings(h.postings.get("b", "1"))
-	postingsB2, _ := expandPostings(h.postings.get("b", "2"))
-	postingsC1, _ := expandPostings(h.postings.get("c", "1"))
-	postingsAll, _ := expandPostings(h.postings.get("", ""))
+	postingsA1, _ := index.ExpandPostings(h.postings.Get("a", "1"))
+	postingsA2, _ := index.ExpandPostings(h.postings.Get("a", "2"))
+	postingsB1, _ := index.ExpandPostings(h.postings.Get("b", "1"))
+	postingsB2, _ := index.ExpandPostings(h.postings.Get("b", "2"))
+	postingsC1, _ := index.ExpandPostings(h.postings.Get("c", "1"))
+	postingsAll, _ := index.ExpandPostings(h.postings.Get("", ""))
 
-	require.Equal(t, []uint64{s1.ref}, postingsA1)
-	require.Equal(t, []uint64{s2.ref}, postingsA2)
-	require.Equal(t, []uint64{s1.ref, s2.ref}, postingsB1)
-	require.Equal(t, []uint64{s1.ref, s2.ref}, postingsAll)
-	require.Nil(t, postingsB2)
-	require.Nil(t, postingsC1)
+	testutil.Equals(t, []uint64{s1.ref}, postingsA1)
+	testutil.Equals(t, []uint64{s2.ref}, postingsA2)
+	testutil.Equals(t, []uint64{s1.ref, s2.ref}, postingsB1)
+	testutil.Equals(t, []uint64{s1.ref, s2.ref}, postingsAll)
+	testutil.Assert(t, postingsB2 == nil, "")
+	testutil.Assert(t, postingsC1 == nil, "")
 
-	require.Equal(t, map[string]struct{}{
+	testutil.Equals(t, map[string]struct{}{
 		"":  struct{}{}, // from 'all' postings list
 		"a": struct{}{},
 		"b": struct{}{},
@@ -229,7 +186,7 @@ func TestHead_Truncate(t *testing.T) {
 		"2": struct{}{},
 	}, h.symbols)
 
-	require.Equal(t, map[string]stringset{
+	testutil.Equals(t, map[string]stringset{
 		"a": stringset{"1": struct{}{}, "2": struct{}{}},
 		"b": stringset{"1": struct{}{}},
 		"":  stringset{"": struct{}{}},
@@ -243,7 +200,7 @@ func TestMemSeries_truncateChunks(t *testing.T) {
 
 	for i := 0; i < 4000; i += 5 {
 		ok, _ := s.append(int64(i), float64(i))
-		require.True(t, ok, "sample appen failed")
+		testutil.Assert(t, ok == true, "sample append failed")
 	}
 
 	// Check that truncate removes half of the chunks and afterwards
@@ -252,32 +209,32 @@ func TestMemSeries_truncateChunks(t *testing.T) {
 	lastID := s.chunkID(countBefore - 1)
 	lastChunk := s.chunk(lastID)
 
-	require.NotNil(t, s.chunk(0))
-	require.NotNil(t, lastChunk)
+	testutil.Assert(t, s.chunk(0) != nil, "")
+	testutil.Assert(t, lastChunk != nil, "")
 
 	s.truncateChunksBefore(2000)
 
-	require.Equal(t, int64(2000), s.chunks[0].minTime, "unexpected start time of first chunks")
-	require.Nil(t, s.chunk(0), "first chunk not gone")
-	require.Equal(t, countBefore/2, len(s.chunks), "chunks not truncated correctly")
-	require.Equal(t, lastChunk, s.chunk(lastID), "last chunk does not match")
+	testutil.Equals(t, int64(2000), s.chunks[0].minTime)
+	testutil.Assert(t, s.chunk(0) == nil, "first chunks not gone")
+	testutil.Equals(t, countBefore/2, len(s.chunks))
+	testutil.Equals(t, lastChunk, s.chunk(lastID))
 
 	// Validate that the series' sample buffer is applied correctly to the last chunk
 	// after truncation.
 	it1 := s.iterator(s.chunkID(len(s.chunks) - 1))
 	_, ok := it1.(*memSafeIterator)
-	require.True(t, ok, "last chunk not wrapped with sample buffer")
+	testutil.Assert(t, ok == true, "")
 
 	it2 := s.iterator(s.chunkID(len(s.chunks) - 2))
 	_, ok = it2.(*memSafeIterator)
-	require.False(t, ok, "non-last chunk incorrectly wrapped with sample buffer")
+	testutil.Assert(t, ok == false, "non-last chunk incorrectly wrapped with sample buffer")
 }
 
 func TestHeadDeleteSimple(t *testing.T) {
 	numSamples := int64(10)
 
 	head, err := NewHead(nil, nil, nil, 1000)
-	require.NoError(t, err)
+	testutil.Ok(t, err)
 	defer head.Close()
 
 	app := head.Appender()
@@ -288,7 +245,7 @@ func TestHeadDeleteSimple(t *testing.T) {
 		app.Add(labels.Labels{{"a", "b"}}, i, smpls[i])
 	}
 
-	require.NoError(t, app.Commit())
+	testutil.Ok(t, app.Commit())
 	cases := []struct {
 		intervals Intervals
 		remaint   []int64
@@ -318,17 +275,18 @@ func TestHeadDeleteSimple(t *testing.T) {
 Outer:
 	for _, c := range cases {
 		// Reset the tombstones.
-		head.tombstones = newEmptyTombstoneReader()
+		head.tombstones = memTombstones{}
 
 		// Delete the ranges.
 		for _, r := range c.intervals {
-			require.NoError(t, head.Delete(r.Mint, r.Maxt, labels.NewEqualMatcher("a", "b")))
+			testutil.Ok(t, head.Delete(r.Mint, r.Maxt, labels.NewEqualMatcher("a", "b")))
 		}
 
 		// Compare the result.
 		q, err := NewBlockQuerier(head, head.MinTime(), head.MaxTime())
-		require.NoError(t, err)
-		res := q.Select(labels.NewEqualMatcher("a", "b"))
+		testutil.Ok(t, err)
+		res, err := q.Select(labels.NewEqualMatcher("a", "b"))
+		testutil.Ok(t, err)
 
 		expSamples := make([]sample, 0, len(c.remaint))
 		for _, ts := range c.remaint {
@@ -340,13 +298,13 @@ Outer:
 		})
 
 		if len(expSamples) == 0 {
-			require.False(t, res.Next())
+			testutil.Assert(t, res.Next() == false, "")
 			continue
 		}
 
 		for {
 			eok, rok := expss.Next(), res.Next()
-			require.Equal(t, eok, rok, "next")
+			testutil.Equals(t, eok, rok)
 
 			if !eok {
 				continue Outer
@@ -354,13 +312,13 @@ Outer:
 			sexp := expss.At()
 			sres := res.At()
 
-			require.Equal(t, sexp.Labels(), sres.Labels(), "labels")
+			testutil.Equals(t, sexp.Labels(), sres.Labels())
 
 			smplExp, errExp := expandSeriesIterator(sexp.Iterator())
 			smplRes, errRes := expandSeriesIterator(sres.Iterator())
 
-			require.Equal(t, errExp, errRes, "samples error")
-			require.Equal(t, smplExp, smplRes, "samples")
+			testutil.Equals(t, errExp, errRes)
+			testutil.Equals(t, smplExp, smplRes)
 		}
 	}
 }
@@ -380,12 +338,12 @@ Outer:
 // 		app.Add(labels.Labels{{"a", "b"}}, i, smpls[i])
 // 	}
 
-// 	require.NoError(t, app.Commit())
-// 	require.NoError(t, hb.Delete(0, 10000, labels.NewEqualMatcher("a", "b")))
+// 	testutil.Ok(t, app.Commit())
+// 	testutil.Ok(t, hb.Delete(0, 10000, labels.NewEqualMatcher("a", "b")))
 // 	app = hb.Appender()
 // 	_, err := app.Add(labels.Labels{{"a", "b"}}, 11, 1)
-// 	require.NoError(t, err)
-// 	require.NoError(t, app.Commit())
+// 	testutil.Ok(t, err)
+// 	testutil.Ok(t, app.Commit())
 
 // 	q := hb.Querier(0, 100000)
 // 	res := q.Select(labels.NewEqualMatcher("a", "b"))
@@ -394,8 +352,8 @@ Outer:
 // 	exps := res.At()
 // 	it := exps.Iterator()
 // 	ressmpls, err := expandSeriesIterator(it)
-// 	require.NoError(t, err)
-// 	require.Equal(t, []sample{{11, 1}}, ressmpls)
+// 	testutil.Ok(t, err)
+// 	testutil.Equals(t, []sample{{11, 1}}, ressmpls)
 // }
 
 // func TestDelete_e2e(t *testing.T) {
@@ -472,9 +430,9 @@ Outer:
 
 // 			_, err := app.Add(ls, ts, v)
 // 			if ts >= minTime && ts <= maxTime {
-// 				require.NoError(t, err)
+// 				testutil.Ok(t, err)
 // 			} else {
-// 				require.EqualError(t, err, ErrOutOfBounds.Error())
+// 				testutil.EqualsError(t, err, ErrOutOfBounds.Error())
 // 			}
 
 // 			ts += rand.Int63n(timeInterval) + 1
@@ -483,7 +441,7 @@ Outer:
 // 		seriesMap[labels.New(l...).String()] = series
 // 	}
 
-// 	require.NoError(t, app.Commit())
+// 	testutil.Ok(t, app.Commit())
 
 // 	// Delete a time-range from each-selector.
 // 	dels := []struct {
@@ -518,7 +476,7 @@ Outer:
 // 		hb.tombstones = newEmptyTombstoneReader()
 
 // 		for _, r := range del.drange {
-// 			require.NoError(t, hb.Delete(r.Mint, r.Maxt, del.ms...))
+// 			testutil.Ok(t, hb.Delete(r.Mint, r.Maxt, del.ms...))
 // 		}
 
 // 		matched := labels.Slice{}
@@ -569,7 +527,7 @@ Outer:
 // 						}
 // 					}
 // 				}
-// 				require.Equal(t, eok, rok, "next")
+// 				testutil.Equals(t, eok, rok, "next")
 
 // 				if !eok {
 // 					break
@@ -577,13 +535,13 @@ Outer:
 // 				sexp := expSs.At()
 // 				sres := ss.At()
 
-// 				require.Equal(t, sexp.Labels(), sres.Labels(), "labels")
+// 				testutil.Equals(t, sexp.Labels(), sres.Labels(), "labels")
 
 // 				smplExp, errExp := expandSeriesIterator(sexp.Iterator())
 // 				smplRes, errRes := expandSeriesIterator(sres.Iterator())
 
-// 				require.Equal(t, errExp, errRes, "samples error")
-// 				require.Equal(t, smplExp, smplRes, "samples")
+// 				testutil.Equals(t, errExp, errRes, "samples error")
+// 				testutil.Equals(t, smplExp, smplRes, "samples")
 // 			}
 // 		}
 // 	}
@@ -672,35 +630,117 @@ func TestMemSeries_append(t *testing.T) {
 	// on and after it.
 	// New chunk must correctly be cut at 1000.
 	ok, chunkCreated := s.append(998, 1)
-	Assert(t, ok, "append failed")
-	Assert(t, chunkCreated, "first sample created chunk")
+	testutil.Assert(t, ok, "append failed")
+	testutil.Assert(t, chunkCreated, "first sample created chunk")
 
 	ok, chunkCreated = s.append(999, 2)
-	Assert(t, ok, "append failed")
-	Assert(t, !chunkCreated, "second sample should use same chunk")
+	testutil.Assert(t, ok, "append failed")
+	testutil.Assert(t, !chunkCreated, "second sample should use same chunk")
 
 	ok, chunkCreated = s.append(1000, 3)
-	Assert(t, ok, "append failed")
-	Assert(t, ok, "expected new chunk on boundary")
+	testutil.Assert(t, ok, "append failed")
+	testutil.Assert(t, ok, "expected new chunk on boundary")
 
 	ok, chunkCreated = s.append(1001, 4)
-	Assert(t, ok, "append failed")
-	Assert(t, !chunkCreated, "second sample should use same chunk")
+	testutil.Assert(t, ok, "append failed")
+	testutil.Assert(t, !chunkCreated, "second sample should use same chunk")
 
-	Assert(t, s.chunks[0].minTime == 998 && s.chunks[0].maxTime == 999, "wrong chunk range")
-	Assert(t, s.chunks[1].minTime == 1000 && s.chunks[1].maxTime == 1001, "wrong chunk range")
+	testutil.Assert(t, s.chunks[0].minTime == 998 && s.chunks[0].maxTime == 999, "wrong chunk range")
+	testutil.Assert(t, s.chunks[1].minTime == 1000 && s.chunks[1].maxTime == 1001, "wrong chunk range")
 
 	// Fill the range [1000,2000) with many samples. Intermediate chunks should be cut
 	// at approximately 120 samples per chunk.
 	for i := 1; i < 1000; i++ {
 		ok, _ := s.append(1001+int64(i), float64(i))
-		Assert(t, ok, "append failed")
+		testutil.Assert(t, ok, "append failed")
 	}
 
-	Assert(t, len(s.chunks) > 7, "expected intermediate chunks")
+	testutil.Assert(t, len(s.chunks) > 7, "expected intermediate chunks")
 
 	// All chunks but the first and last should now be moderately full.
 	for i, c := range s.chunks[1 : len(s.chunks)-1] {
-		Assert(t, c.chunk.NumSamples() > 100, "unexpected small chunk %d of length %d", i, c.chunk.NumSamples())
+		testutil.Assert(t, c.chunk.NumSamples() > 100, "unexpected small chunk %d of length %d", i, c.chunk.NumSamples())
 	}
+}
+
+func TestGCChunkAccess(t *testing.T) {
+	// Put a chunk, select it. GC it and then access it.
+	h, err := NewHead(nil, nil, NopWAL(), 1000)
+	testutil.Ok(t, err)
+	defer h.Close()
+
+	h.initTime(0)
+
+	s, _ := h.getOrCreate(1, labels.FromStrings("a", "1"))
+	s.chunks = []*memChunk{
+		{minTime: 0, maxTime: 999},
+		{minTime: 1000, maxTime: 1999},
+	}
+
+	idx := h.indexRange(0, 1500)
+	var (
+		lset   labels.Labels
+		chunks []chunks.Meta
+	)
+	testutil.Ok(t, idx.Series(1, &lset, &chunks))
+
+	testutil.Equals(t, labels.Labels{{
+		Name: "a", Value: "1",
+	}}, lset)
+	testutil.Equals(t, 2, len(chunks))
+
+	cr := h.chunksRange(0, 1500)
+	_, err = cr.Chunk(chunks[0].Ref)
+	testutil.Ok(t, err)
+	_, err = cr.Chunk(chunks[1].Ref)
+	testutil.Ok(t, err)
+
+	h.Truncate(1500) // Remove a chunk.
+
+	_, err = cr.Chunk(chunks[0].Ref)
+	testutil.Equals(t, ErrNotFound, err)
+	_, err = cr.Chunk(chunks[1].Ref)
+	testutil.Ok(t, err)
+}
+
+func TestGCSeriesAccess(t *testing.T) {
+	// Put a series, select it. GC it and then access it.
+	h, err := NewHead(nil, nil, NopWAL(), 1000)
+	testutil.Ok(t, err)
+	defer h.Close()
+
+	h.initTime(0)
+
+	s, _ := h.getOrCreate(1, labels.FromStrings("a", "1"))
+	s.chunks = []*memChunk{
+		{minTime: 0, maxTime: 999},
+		{minTime: 1000, maxTime: 1999},
+	}
+
+	idx := h.indexRange(0, 2000)
+	var (
+		lset   labels.Labels
+		chunks []chunks.Meta
+	)
+	testutil.Ok(t, idx.Series(1, &lset, &chunks))
+
+	testutil.Equals(t, labels.Labels{{
+		Name: "a", Value: "1",
+	}}, lset)
+	testutil.Equals(t, 2, len(chunks))
+
+	cr := h.chunksRange(0, 2000)
+	_, err = cr.Chunk(chunks[0].Ref)
+	testutil.Ok(t, err)
+	_, err = cr.Chunk(chunks[1].Ref)
+	testutil.Ok(t, err)
+
+	h.Truncate(2000) // Remove the series.
+
+	testutil.Equals(t, (*memSeries)(nil), h.series.getByID(1))
+
+	_, err = cr.Chunk(chunks[0].Ref)
+	testutil.Equals(t, ErrNotFound, err)
+	_, err = cr.Chunk(chunks[1].Ref)
+	testutil.Equals(t, ErrNotFound, err)
 }

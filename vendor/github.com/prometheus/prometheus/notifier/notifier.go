@@ -16,6 +16,7 @@ package notifier
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -35,7 +36,7 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/discovery"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/util/httputil"
@@ -113,9 +114,8 @@ type Notifier struct {
 	ctx    context.Context
 	cancel func()
 
-	alertmanagers   []*alertmanagerSet
-	cancelDiscovery func()
-	logger          log.Logger
+	alertmanagers map[string]*alertmanagerSet
+	logger        log.Logger
 }
 
 // Options are the configurable parameters of a Handler.
@@ -247,8 +247,7 @@ func (n *Notifier) ApplyConfig(conf *config.Config) error {
 	n.opts.ExternalLabels = conf.GlobalConfig.ExternalLabels
 	n.opts.RelabelConfigs = conf.AlertingConfig.AlertRelabelConfigs
 
-	amSets := []*alertmanagerSet{}
-	ctx, cancel := context.WithCancel(n.ctx)
+	amSets := make(map[string]*alertmanagerSet)
 
 	for _, cfg := range conf.AlertingConfig.AlertmanagerConfigs {
 		ams, err := newAlertmanagerSet(cfg, n.logger)
@@ -258,20 +257,14 @@ func (n *Notifier) ApplyConfig(conf *config.Config) error {
 
 		ams.metrics = n.metrics
 
-		amSets = append(amSets, ams)
+		// The config hash is used for the map lookup identifier.
+		b, err := json.Marshal(cfg)
+		if err != nil {
+			return err
+		}
+		amSets[fmt.Sprintf("%x", md5.Sum(b))] = ams
 	}
 
-	// After all sets were created successfully, start them and cancel the
-	// old ones.
-	for _, ams := range amSets {
-		go ams.ts.Run(ctx)
-		ams.ts.UpdateProviders(discovery.ProvidersFromConfig(ams.cfg.ServiceDiscoveryConfig, n.logger))
-	}
-	if n.cancelDiscovery != nil {
-		n.cancelDiscovery()
-	}
-
-	n.cancelDiscovery = cancel
 	n.alertmanagers = amSets
 
 	return nil
@@ -304,11 +297,14 @@ func (n *Notifier) nextBatch() []*Alert {
 }
 
 // Run dispatches notifications continuously.
-func (n *Notifier) Run() {
+func (n *Notifier) Run(tsets <-chan map[string][]*targetgroup.Group) {
+
 	for {
 		select {
 		case <-n.ctx.Done():
 			return
+		case ts := <-tsets:
+			n.reload(ts)
 		case <-n.more:
 		}
 		alerts := n.nextBatch()
@@ -320,6 +316,20 @@ func (n *Notifier) Run() {
 		if n.queueLen() > 0 {
 			n.setMore()
 		}
+	}
+}
+
+func (n *Notifier) reload(tgs map[string][]*targetgroup.Group) {
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
+
+	for id, tgroup := range tgs {
+		am, ok := n.alertmanagers[id]
+		if !ok {
+			level.Error(n.logger).Log("msg", "couldn't sync alert manager set", "err", fmt.Sprintf("invalid id:%v", id))
+			continue
+		}
+		am.sync(tgroup)
 	}
 }
 
@@ -437,7 +447,7 @@ func (n *Notifier) sendAll(alerts ...*Alert) bool {
 			ctx, cancel := context.WithTimeout(n.ctx, ams.cfg.Timeout)
 			defer cancel()
 
-			go func(am alertmanager) {
+			go func(ams *alertmanagerSet, am alertmanager) {
 				u := am.url().String()
 
 				if err := n.sendOne(ctx, ams.client, u, b); err != nil {
@@ -450,7 +460,7 @@ func (n *Notifier) sendAll(alerts ...*Alert) bool {
 				n.metrics.sent.WithLabelValues(u).Add(float64(len(alerts)))
 
 				wg.Done()
-			}(am)
+			}(ams, am)
 		}
 		ams.mtx.RUnlock()
 	}
@@ -480,7 +490,7 @@ func (n *Notifier) sendOne(ctx context.Context, c *http.Client, url string, b []
 
 // Stop shuts down the notification handler.
 func (n *Notifier) Stop() {
-	level.Info(n.logger).Log("msg", "Stopping notification handler...")
+	level.Info(n.logger).Log("msg", "Stopping notification manager...")
 	n.cancel()
 }
 
@@ -504,7 +514,6 @@ func (a alertmanagerLabels) url() *url.URL {
 // alertmanagerSet contains a set of Alertmanagers discovered via a group of service
 // discovery definitions that have a common configuration on how alerts should be sent.
 type alertmanagerSet struct {
-	ts     *discovery.TargetSet
 	cfg    *config.AlertmanagerConfig
 	client *http.Client
 
@@ -525,14 +534,12 @@ func newAlertmanagerSet(cfg *config.AlertmanagerConfig, logger log.Logger) (*ale
 		cfg:    cfg,
 		logger: logger,
 	}
-	s.ts = discovery.NewTargetSet(s)
-
 	return s, nil
 }
 
-// Sync extracts a deduplicated set of Alertmanager endpoints from a list
+// sync extracts a deduplicated set of Alertmanager endpoints from a list
 // of target groups definitions.
-func (s *alertmanagerSet) Sync(tgs []*config.TargetGroup) {
+func (s *alertmanagerSet) sync(tgs []*targetgroup.Group) {
 	all := []alertmanager{}
 
 	for _, tg := range tgs {
@@ -571,7 +578,7 @@ func postPath(pre string) string {
 
 // alertmanagersFromGroup extracts a list of alertmanagers from a target group and an associcated
 // AlertmanagerConfig.
-func alertmanagerFromGroup(tg *config.TargetGroup, cfg *config.AlertmanagerConfig) ([]alertmanager, error) {
+func alertmanagerFromGroup(tg *targetgroup.Group, cfg *config.AlertmanagerConfig) ([]alertmanager, error) {
 	var res []alertmanager
 
 	for _, tlset := range tg.Targets {

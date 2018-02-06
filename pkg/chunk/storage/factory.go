@@ -63,7 +63,7 @@ func NewTableClient(cfg Config) (chunk.TableClient, error) {
 	case "gcp":
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case "cassandra":
-		return cassandra.NewTableClient(context.Background(), cfg.CasandraStorageConfig)
+		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, inmemory", cfg.StorageClient)
 	}

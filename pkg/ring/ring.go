@@ -212,13 +212,12 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
-		// We do not want to Write to Ingesters that are not ACTIVE, because they are
-		// about to go away, but we do want to write the extra replica somewhere.
-		// So we increase the size of the set of replicas for the key.
-		// This means we have to also increase the
+		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
+		// to write the extra replica somewhere.  So we increase the size of the set
+		// of replicas for the key. This means we have to also increase the
 		// size of the replica set for read, but we can read from Leaving ingesters,
 		// so don't skip it in this case.
-		// NB ingester will be filterer later (by distributor/replication_strategy).
+		// NB dead ingester will be filtered later (by replication_strategy.go).
 		if op == Write && ingester.State != ACTIVE {
 			n++
 		} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {

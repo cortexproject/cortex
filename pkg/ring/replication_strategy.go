@@ -5,13 +5,17 @@ import (
 	"time"
 )
 
+// replicationStrategy decides, given the set of ingesters eligable for a key,
+// which ingesters you will try and write to and how many failures you will
+// tolerate.
+// - Filters out dead ingesters so the one doesn't even try to write to them.
+// - Checks there is enough ingesters for an operation to succeed.
 func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
 	liveIngesters []*IngesterDesc, maxFailure int, err error,
 ) {
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
-	// than the replication factor, so we need to account for this.
-	// See comment in ring.go:getInternal.
+	// than the replication factor, so use the bigger or the two.
 	replicationFactor := r.cfg.ReplicationFactor
 	if len(ingesters) > replicationFactor {
 		replicationFactor = len(ingesters)
@@ -30,6 +34,7 @@ func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
 			maxFailure--
 		}
 	}
+
 	// This is just a shortcut - if there are not minSuccess available ingesters,
 	// after filtering out dead ones, don't even bother trying.
 	if maxFailure < 0 || len(liveIngesters) < minSuccess {

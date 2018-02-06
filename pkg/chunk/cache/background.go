@@ -97,7 +97,10 @@ func (c *backgroundCache) writeBackLoop() {
 
 	for {
 		select {
-		case bgWrite := <-c.bgWrites:
+		case bgWrite, ok := <-c.bgWrites:
+			if !ok {
+				return
+			}
 			queueLength.Dec()
 			err := c.Cache.StoreChunk(context.Background(), bgWrite.key, bgWrite.buf)
 			if err != nil {

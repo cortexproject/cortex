@@ -79,12 +79,14 @@ func (d *Diskcache) Stop() error {
 }
 
 // FetchChunkData get chunks from the cache.
-func (d *Diskcache) FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, err error) {
+func (d *Diskcache) FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	for _, key := range keys {
 		buf, ok := d.fetch(key)
 		if ok {
 			found = append(found, key)
 			bufs = append(bufs, buf)
+		} else {
+			missed = append(missed, key)
 		}
 	}
 	return

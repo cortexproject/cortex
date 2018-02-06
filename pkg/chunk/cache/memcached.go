@@ -94,7 +94,7 @@ func memcacheStatusCode(err error) string {
 }
 
 // FetchChunkData gets chunks from the chunk cache.
-func (c *Memcached) FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, err error) {
+func (c *Memcached) FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "FetchChunkData")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks requested", len(keys)))
@@ -116,6 +116,8 @@ func (c *Memcached) FetchChunkData(ctx context.Context, keys []string) (found []
 		if ok {
 			found = append(found, key)
 			bufs = append(bufs, item.Value)
+		} else {
+			missed = append(missed, key)
 		}
 	}
 	sp.LogFields(otlog.Int("chunks found", len(found)), otlog.Int("chunks missing", len(keys)-len(found)))

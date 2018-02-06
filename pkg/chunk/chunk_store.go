@@ -212,7 +212,7 @@ func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	cacheHits, cacheBufs, err := c.cache.FetchChunkData(ctx, keys)
+	cacheHits, cacheBufs, _, err := c.cache.FetchChunkData(ctx, keys)
 	if err != nil {
 		level.Warn(logger).Log("msg", "error fetching from cache", "err", err)
 	}

@@ -12,7 +12,7 @@ import (
 // Cache byte arrays by key.
 type Cache interface {
 	StoreChunk(ctx context.Context, key string, buf []byte) error
-	FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, err error)
+	FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
 	Stop() error
 }
 
@@ -141,15 +141,37 @@ func (m multiCache) StoreChunk(ctx context.Context, key string, buf []byte) erro
 	return nil
 }
 
-func (m multiCache) FetchChunkData(ctx context.Context, keys []string) ([]string, [][]byte, error) {
+func (m multiCache) FetchChunkData(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+	found := make(map[string][]byte, len(keys))
+	missing := keys
+
 	for _, c := range []Cache(m) {
-		found, bufs, err := c.FetchChunkData(ctx, keys)
+		var (
+			err      error
+			passKeys []string
+			passBufs [][]byte
+		)
+
+		passKeys, passBufs, missing, err = c.FetchChunkData(ctx, missing)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		return found, bufs, nil
+
+		for i, key := range passKeys {
+			found[key] = passBufs[i]
+		}
 	}
-	return nil, nil, nil
+
+	resultKeys := make([]string, 0, len(found))
+	resultBufs := make([][]byte, 0, len(found))
+	for _, key := range keys {
+		if buf, ok := found[key]; ok {
+			resultKeys = append(resultKeys, key)
+			resultBufs = append(resultBufs, buf)
+		}
+	}
+
+	return resultKeys, resultBufs, missing, nil
 }
 
 func (m multiCache) Stop() error {

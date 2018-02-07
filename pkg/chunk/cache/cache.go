@@ -35,18 +35,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func New(cfg Config) (Cache, error) {
 	caches := []Cache{}
 
-	if cfg.memcacheClient.Host != "" {
-		client := newMemcachedClient(cfg.memcacheClient)
-		cache := NewMemcached(cfg.memcache, client)
-		caches = append(caches, instrument("memcache", cache))
-	}
-
 	if cfg.EnableDiskcache {
 		cache, err := NewDiskcache(cfg.diskcache)
 		if err != nil {
 			return nil, err
 		}
 		caches = append(caches, instrument("diskcache", cache))
+	}
+
+	if cfg.memcacheClient.Host != "" {
+		client := newMemcachedClient(cfg.memcacheClient)
+		cache := NewMemcached(cfg.memcache, client)
+		caches = append(caches, instrument("memcache", cache))
 	}
 
 	var cache Cache = tiered(caches)

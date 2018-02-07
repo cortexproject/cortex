@@ -64,7 +64,7 @@ var (
 type Config struct {
 	RingConfig       ring.Config
 	userStatesConfig UserStatesConfig
-
+	clientConfig	client.Config
 	// Config for the ingester lifecycle control
 	ListenPort       *int
 	NumTokens        int
@@ -90,7 +90,7 @@ type Config struct {
 	infName               string
 	id                    string
 	skipUnregister        bool
-	ingesterClientFactory func(addr string, withCompression bool) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, withCompression bool, cfg client.Config) (client.IngesterClient, error)
 	KVClient              ring.KVClient
 }
 
@@ -98,7 +98,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RingConfig.RegisterFlags(f)
 	cfg.userStatesConfig.RegisterFlags(f)
-
+	cfg.clientConfig.RegisterFlags(f)
 	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
 	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
 	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")

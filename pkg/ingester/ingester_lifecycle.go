@@ -359,7 +359,7 @@ func (i *Ingester) transferChunks() error {
 	}
 
 	level.Info(util.Logger).Log("msg", "sending chunks to ingester", "ingester", targetIngester.Addr)
-	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.cfg.SearchPendingFor, false)
+	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, false)
 	if err != nil {
 		return err
 	}

@@ -79,7 +79,7 @@ type Config struct {
 	CompressToIngester  bool
 
 	// for testing
-	ingesterClientFactory func(addr string, timeout time.Duration, withCompression bool) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, withCompression bool) (client.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -224,7 +224,7 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.Ingester
 		return client, nil
 	}
 
-	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.RemoteTimeout, d.cfg.CompressToIngester)
+	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.CompressToIngester)
 	if err != nil {
 		return nil, err
 	}
@@ -347,6 +347,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		done:           make(chan struct{}),
 		err:            make(chan error),
 	}
+	ctx, cancel := context.WithTimeout(ctx, d.cfg.RemoteTimeout)
+	defer cancel() // cancel the timeout to release resources
 	for ingester, samples := range samplesByIngester {
 		go func(ingester *ring.IngesterDesc, samples []*sampleTracker) {
 			d.sendSamples(ctx, ingester, samples, &pushTracker)

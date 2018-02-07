@@ -21,6 +21,7 @@ func (t tiered) StoreChunk(ctx context.Context, key string, buf []byte) error {
 func (t tiered) FetchChunkData(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
 	found := make(map[string][]byte, len(keys))
 	missing := keys
+	previousCaches := make([]Cache, 0, len(t))
 
 	for _, c := range []Cache(t) {
 		var (
@@ -36,7 +37,10 @@ func (t tiered) FetchChunkData(ctx context.Context, keys []string) ([]string, []
 
 		for i, key := range passKeys {
 			found[key] = passBufs[i]
+			tiered(previousCaches).StoreChunk(ctx, key, passBufs[i])
 		}
+
+		previousCaches = append(previousCaches, c)
 	}
 
 	resultKeys := make([]string, 0, len(found))

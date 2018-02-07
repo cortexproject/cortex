@@ -18,17 +18,17 @@ var (
 		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
 	}, []string{"method", "status_code"})
 
-	fetchedKeys = prometheus.NewCounter(prometheus.CounterOpts{
+	fetchedKeys = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "cache_fetched_keys",
 		Help:      "Total count of chunks requested from memcache.",
-	})
+	}, []string{"name"})
 
-	hits = prometheus.NewCounter(prometheus.CounterOpts{
+	hits = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "cache_hits",
 		Help:      "Total count of chunks found in memcache.",
-	})
+	}, []string{"name"})
 )
 
 func init() {
@@ -39,13 +39,16 @@ func init() {
 
 func instrument(name string, cache Cache) Cache {
 	return &instrumentedCache{
-		name:  name,
-		Cache: cache,
+		name:        name,
+		fetchedKeys: fetchedKeys.WithLabelValues(name),
+		hits:        hits.WithLabelValues(name),
+		Cache:       cache,
 	}
 }
 
 type instrumentedCache struct {
-	name string
+	name              string
+	fetchedKeys, hits prometheus.Counter
 	Cache
 }
 
@@ -76,8 +79,8 @@ func (i *instrumentedCache) FetchChunkData(ctx context.Context, keys []string) (
 
 		return err
 	})
-	fetchedKeys.Add(float64(len(keys)))
-	hits.Add(float64(len(found)))
+	i.fetchedKeys.Add(float64(len(keys)))
+	i.hits.Add(float64(len(found)))
 	return found, bufs, missing, err
 }
 

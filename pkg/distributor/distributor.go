@@ -70,6 +70,7 @@ type Distributor struct {
 type Config struct {
 	EnableBilling bool
 	BillingConfig billing.Config
+	IngesterClientConfig ingester_client.Config
 
 	ReplicationFactor   int
 	RemoteTimeout       time.Duration
@@ -79,14 +80,14 @@ type Config struct {
 	CompressToIngester  bool
 
 	// for testing
-	ingesterClientFactory func(addr string, withCompression bool) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, withCompression bool,cfg ingester_client.Config) (client.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	cfg.BillingConfig.RegisterFlags(f)
-
+	cfg.IngesterClientConfig.RegisterFlags(f)
 	flag.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
@@ -224,7 +225,7 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.Ingester
 		return client, nil
 	}
 
-	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.CompressToIngester)
+	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.RemoteTimeout, d.cfg.CompressToIngester,d.cfg.IngesterClientConfig)
 	if err != nil {
 		return nil, err
 	}

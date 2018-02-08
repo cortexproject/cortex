@@ -211,6 +211,12 @@
   version = "v1.6.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/gocql/gocql"
+  packages = [".","internal/lru","internal/murmur","internal/streams"]
+  revision = "697e7c57f99bb127606c4d4f975c2ff4f34eca1c"
+
+[[projects]]
   name = "github.com/gogo/protobuf"
   packages = ["gogoproto","proto","protoc-gen-gogo/descriptor","sortkeys","types"]
   revision = "100ba4e885062801d56799d78530b73b178a78f3"
@@ -275,6 +281,12 @@
   name = "github.com/grpc-ecosystem/grpc-opentracing"
   packages = ["go/otgrpc"]
   revision = "0e7658f8ee99ee5aa683e2a032b8880091b7a055"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hailocab/go-hostpool"
+  packages = ["."]
+  revision = "e80d13ce29ede4452c43dea11e79b9bc8a15b478"
 
 [[projects]]
   name = "github.com/hashicorp/consul"

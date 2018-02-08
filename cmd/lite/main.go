@@ -57,7 +57,6 @@ func main() {
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
-	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
@@ -116,7 +115,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tableManager, err := chunk.NewTableManager(schemaConfig, tableClient)
+	tableManager, err := chunk.NewTableManager(schemaConfig, ingesterConfig.MaxChunkAge, tableClient)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table manager", "err", err)
 		os.Exit(1)

@@ -195,7 +195,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 		level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_rules", len(rules))
 		s.Lock()
 		// if deleted remove from map, otherwise - update map
-		if !config.DeletedAt.IsZero() {
+		if config.IsDeleted() {
 			delete(s.cfgs, userID)
 		} else {
 			s.cfgs[userID] = rules

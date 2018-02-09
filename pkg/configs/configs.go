@@ -100,3 +100,8 @@ type VersionedRulesConfig struct {
 	Config    RulesConfig `json:"config"`
 	DeletedAt time.Time   `json:"deleted_at"`
 }
+
+// IsDeleted tells you if the config is deleted.
+func (vr VersionedRulesConfig) IsDeleted() bool {
+	return !vr.DeletedAt.IsZero()
+}

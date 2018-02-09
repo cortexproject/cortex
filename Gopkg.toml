@@ -25,3 +25,9 @@
 [[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
+
+# Pin to master branch until there is a more recent stable release:
+#   https://github.com/prometheus/client_golang/issues/375
+[[constraint]]
+  name = "github.com/prometheus/client_golang"
+  branch = "master"

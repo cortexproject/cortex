@@ -62,6 +62,7 @@ var (
 
 func init() {
 	prometheus.MustRegister(evalDuration)
+	prometheus.MustRegister(evalLatency)
 	prometheus.MustRegister(rulesProcessed)
 	prometheus.MustRegister(blockedWorkers)
 }

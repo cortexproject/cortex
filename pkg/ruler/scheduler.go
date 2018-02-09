@@ -192,7 +192,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 			level.Warn(util.Logger).Log("msg", "scheduler: invalid Cortex configuration", "user_id", userID, "err", err)
 			continue
 		}
-		level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_rules", len(rules))
+		level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_rules", len(rules), "is_deleted", config.IsDeleted())
 		s.Lock()
 		// if deleted remove from map, otherwise - update map
 		if config.IsDeleted() {

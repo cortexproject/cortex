@@ -64,6 +64,7 @@ func init() {
 	prometheus.MustRegister(evalDuration)
 	prometheus.MustRegister(rulesProcessed)
 	prometheus.MustRegister(blockedWorkers)
+	prometheus.MustRegister(evalLatency)
 }
 
 // Config is the configuration for the recording rules server.

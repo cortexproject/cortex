@@ -679,6 +679,7 @@
   revision = "6ac8c5d890d415025dd5aae7595bcb2a6e7e2fad"
 
 [[projects]]
+  branch = "master"
   name = "github.com/prometheus/prometheus"
   packages = [
     "config",
@@ -721,7 +722,7 @@
     "util/yaml",
     "web/api/v1"
   ]
-  revision = "a730083cbfbb76e05244f82de0bc4146cb5f79ab"
+  revision = "4801573b64b34ea929620e948fc36da006f2f966"
 
 [[projects]]
   branch = "master"
@@ -1187,6 +1188,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "1a7b72b8cd8bbdba3daf41afa0d8aa484a0fcc6fd06a579ee4588265b20e261c"
+  inputs-digest = "bb0be077b34422946e76365d4b249752738b1ca3b93b86049d9b410d2731546f"
   solver-name = "gps-cdcl"
   solver-version = 1

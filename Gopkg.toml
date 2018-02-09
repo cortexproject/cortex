@@ -12,7 +12,7 @@
 
 [[constraint]]
   name = "github.com/prometheus/prometheus"
-  revision = "a730083cbfbb76e05244f82de0bc4146cb5f79ab"
+  branch = "master"
 
 [[override]]
   name = "k8s.io/client-go"

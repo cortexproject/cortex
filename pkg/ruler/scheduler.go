@@ -201,7 +201,9 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 			s.cfgs[userID] = rules
 		}
 		s.Unlock()
-		s.addWorkItem(workItem{userID, rules, now})
+		if !config.IsDeleted() {
+			s.addWorkItem(workItem{userID, rules, now})
+		}
 	}
 	configUpdates.Add(float64(len(cfgs)))
 	s.Lock()

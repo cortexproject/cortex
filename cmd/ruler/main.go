@@ -10,6 +10,7 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/tracing"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/distributor"
@@ -35,6 +36,12 @@ func main() {
 		configStoreConfig ruler.ConfigStoreConfig
 		logLevel          util.LogLevel
 	)
+
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
+	trace := tracing.New(jaegerAgentHost, "ruler")
+	defer trace.Close()
+
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
 		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig, &logLevel)
 	flag.Parse()

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"strconv"
 
 	"google.golang.org/grpc"
 
@@ -47,7 +48,13 @@ func main() {
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
-	trace := tracing.New(jaegerAgentHost, "querier")
+	jaegerSamplerType := os.Getenv("JAEGER_SAMPLER_TYPE")
+	jaegerSamplerParam, _ := strconv.ParseFloat(os.Getenv("JAEGER_SAMPLER_PARAM"), 64)
+	if jaegerSamplerType == "" || jaegerSamplerParam == 0 {
+		jaegerSamplerType = "ratelimiting"
+		jaegerSamplerParam = 10.0
+	}
+	trace := tracing.New(jaegerAgentHost, "querier", jaegerSamplerType, jaegerSamplerParam)
 	defer trace.Close()
 
 	util.InitLogger(logLevel.AllowedLevel)

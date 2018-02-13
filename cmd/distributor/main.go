@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -57,7 +58,13 @@ func main() {
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
-	trace := tracing.New(jaegerAgentHost, "distributor")
+	jaegerSamplerType := os.Getenv("JAEGER_SAMPLER_TYPE")
+	jaegerSamplerParam, _ := strconv.ParseFloat(os.Getenv("JAEGER_SAMPLER_PARAM"), 64)
+	if jaegerSamplerType == "" || jaegerSamplerParam == 0 {
+		jaegerSamplerType = "ratelimiting"
+		jaegerSamplerParam = 10.0
+	}
+	trace := tracing.New(jaegerAgentHost, "distributor", jaegerSamplerType, jaegerSamplerParam)
 	defer trace.Close()
 
 	log.AddHook(promrus.MustNewPrometheusHook())

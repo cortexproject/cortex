@@ -60,10 +60,6 @@ func main() {
 	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
 	jaegerSamplerType := os.Getenv("JAEGER_SAMPLER_TYPE")
 	jaegerSamplerParam, _ := strconv.ParseFloat(os.Getenv("JAEGER_SAMPLER_PARAM"), 64)
-	if jaegerSamplerType == "" || jaegerSamplerParam == 0 {
-		jaegerSamplerType = "ratelimiting"
-		jaegerSamplerParam = 10.0
-	}
 	trace := tracing.New(jaegerAgentHost, "distributor", jaegerSamplerType, jaegerSamplerParam)
 	defer trace.Close()
 

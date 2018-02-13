@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"os"
-	"strconv"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -38,11 +37,7 @@ func main() {
 		logLevel          util.LogLevel
 	)
 
-	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
-	jaegerSamplerType := os.Getenv("JAEGER_SAMPLER_TYPE")
-	jaegerSamplerParam, _ := strconv.ParseFloat(os.Getenv("JAEGER_SAMPLER_PARAM"), 64)
-	trace := tracing.New(jaegerAgentHost, "ruler", jaegerSamplerType, jaegerSamplerParam)
+	trace := tracing.New("ruler")
 	defer trace.Close()
 
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,

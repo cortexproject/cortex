@@ -4,7 +4,6 @@ import (
 	"flag"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -60,11 +59,7 @@ func main() {
 	flag.Parse()
 	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
-	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
-	jaegerSamplerType := os.Getenv("JAEGER_SAMPLER_TYPE")
-	jaegerSamplerParam, _ := strconv.ParseFloat(os.Getenv("JAEGER_SAMPLER_PARAM"), 64)
-	trace := tracing.New(jaegerAgentHost, "lite", jaegerSamplerType, jaegerSamplerParam)
+	trace := tracing.New("lite")
 	defer trace.Close()
 
 	util.InitLogger(logLevel.AllowedLevel)

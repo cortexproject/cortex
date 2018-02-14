@@ -59,9 +59,7 @@ func main() {
 	flag.Parse()
 	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
-	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
-	trace := tracing.New(jaegerAgentHost, "lite")
+	trace := tracing.NewFromEnv("lite")
 	defer trace.Close()
 
 	util.InitLogger(logLevel.AllowedLevel)

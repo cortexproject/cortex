@@ -55,7 +55,9 @@ func main() {
 
 	util.InitLogger(logLevel.AllowedLevel)
 
-	trace := tracing.NewFromEnv("distributor")
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
+	trace := tracing.New(jaegerAgentHost, "distributor")
 	defer trace.Close()
 
 	log.AddHook(promrus.MustNewPrometheusHook())

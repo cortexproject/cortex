@@ -45,7 +45,7 @@ func main() {
 		&chunkStoreConfig, &schemaConfig, &storageConfig, &logLevel)
 	flag.Parse()
 
-	trace := tracing.New("querier")
+	trace := tracing.NewFromEnv("querier")
 	defer trace.Close()
 
 	util.InitLogger(logLevel.AllowedLevel)

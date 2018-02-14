@@ -59,7 +59,7 @@ func main() {
 	flag.Parse()
 	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
-	trace := tracing.New("lite")
+	trace := tracing.NewFromEnv("lite")
 	defer trace.Close()
 
 	util.InitLogger(logLevel.AllowedLevel)

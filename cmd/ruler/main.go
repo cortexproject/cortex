@@ -37,7 +37,7 @@ func main() {
 		logLevel          util.LogLevel
 	)
 
-	trace := tracing.New("ruler")
+	trace := tracing.NewFromEnv("ruler")
 	defer trace.Close()
 
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,

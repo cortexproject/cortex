@@ -55,7 +55,7 @@ func main() {
 
 	util.InitLogger(logLevel.AllowedLevel)
 
-	trace := tracing.New("distributor")
+	trace := tracing.NewFromEnv("distributor")
 	defer trace.Close()
 
 	log.AddHook(promrus.MustNewPrometheusHook())

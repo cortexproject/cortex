@@ -45,7 +45,9 @@ func main() {
 		&chunkStoreConfig, &schemaConfig, &storageConfig, &logLevel)
 	flag.Parse()
 
-	trace := tracing.NewFromEnv("querier")
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
+	trace := tracing.New(jaegerAgentHost, "querier")
 	defer trace.Close()
 
 	util.InitLogger(logLevel.AllowedLevel)

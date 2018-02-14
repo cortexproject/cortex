@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/tsdb"
 
@@ -88,8 +87,7 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
-	queryable := querier.NewQueryable(dist, chunkStore)
-	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
+	queryable, engine := querier.Make(querierConfig, dist, chunkStore)
 	api := v1.NewAPI(
 		engine,
 		queryable,

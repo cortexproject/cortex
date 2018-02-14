@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/tsdb"
 	"google.golang.org/grpc"
@@ -124,8 +123,7 @@ func main() {
 	tableManager.Start()
 	defer tableManager.Stop()
 
-	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
-	queryable := querier.NewQueryable(dist, chunkStore)
+	queryable, engine := querier.Make(querierConfig, dist, chunkStore)
 
 	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
 		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)

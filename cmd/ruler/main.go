@@ -36,6 +36,7 @@ func main() {
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 		configStoreConfig ruler.ConfigStoreConfig
+		querierConfig     querier.Config
 		logLevel          util.LogLevel
 	)
 
@@ -44,7 +45,8 @@ func main() {
 	defer trace.Close()
 
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
-		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig, &logLevel)
+		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig,
+		&querierConfig, &logLevel)
 	flag.Parse()
 
 	util.InitLogger(logLevel.AllowedLevel)
@@ -78,7 +80,7 @@ func main() {
 	prometheus.MustRegister(dist)
 
 	engine := promql.NewEngine(util.Logger, prometheus.DefaultRegisterer, rulerConfig.NumWorkers, rulerConfig.GroupTimeout)
-	queryable := querier.NewQueryable(dist, chunkStore)
+	queryable := querier.NewQueryable(dist, chunkStore, querierConfig.Iterators)
 
 	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
 	if err != nil {

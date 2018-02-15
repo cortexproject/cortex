@@ -43,7 +43,7 @@ func NewRulesAPI(cfg ConfigStoreConfig) (RulesAPI, error) {
 	// All of this falderal is to allow for a smooth transition away from
 	// using the configs server and toward directly connecting to the database.
 	// See https://github.com/weaveworks/cortex/issues/619
-	if cfg.ConfigsAPIURL.URL != nil {
+	if cfg.DBConfig.URI != "" {
 		return configsClient{
 			URL:     cfg.ConfigsAPIURL.URL,
 			Timeout: cfg.ClientTimeout,

@@ -68,8 +68,8 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling bool
-	BillingConfig billing.Config
+	EnableBilling        bool
+	BillingConfig        billing.Config
 	IngesterClientConfig ingester_client.Config
 
 	ReplicationFactor   int
@@ -80,7 +80,7 @@ type Config struct {
 	CompressToIngester  bool
 
 	// for testing
-	ingesterClientFactory func(addr string, withCompression bool,cfg ingester_client.Config) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, withCompression bool, cfg ingester_client.Config) (client.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -225,7 +225,7 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.Ingester
 		return client, nil
 	}
 
-	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.RemoteTimeout, d.cfg.CompressToIngester,d.cfg.IngesterClientConfig)
+	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.CompressToIngester, d.cfg.IngesterClientConfig)
 	if err != nil {
 		return nil, err
 	}

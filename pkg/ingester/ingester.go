@@ -64,7 +64,7 @@ var (
 type Config struct {
 	RingConfig       ring.Config
 	userStatesConfig UserStatesConfig
-	clientConfig	client.Config
+	clientConfig     client.Config
 	// Config for the ingester lifecycle control
 	ListenPort       *int
 	NumTokens        int

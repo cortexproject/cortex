@@ -18,7 +18,7 @@ type closableIngesterClient struct {
 }
 
 // MakeIngesterClient makes a new IngesterClient
-func MakeIngesterClient(addr string, withCompression bool, cfg Config) (IngesterClient, error) {
+func MakeIngesterClient(addr string, cfg Config) (IngesterClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
@@ -27,7 +27,7 @@ func MakeIngesterClient(addr string, withCompression bool, cfg Config) (Ingester
 		)),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize)),
 	}
-	if withCompression {
+	if cfg.CompressToIngester {
 		opts = append(opts, grpc.WithDefaultCallOptions(grpc.UseCompressor("gzip")))
 	}
 	conn, err := grpc.Dial(addr, opts...)
@@ -46,9 +46,12 @@ func (c *closableIngesterClient) Close() error {
 
 type Config struct {
 	MaxRecvMsgSize int
+	CompressToIngester bool
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// We have seen 20MB returns from queries - add a bit of headroom
 	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
+	// moved from distributor pkg, but flag prefix left as-is so existing users do not break.
+	flag.BoolVar(&cfg.CompressToIngester, "distributor.compress-to-ingester", false, "Compress data in calls to ingesters.")
 }

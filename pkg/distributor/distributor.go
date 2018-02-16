@@ -77,10 +77,9 @@ type Config struct {
 	ClientCleanupPeriod time.Duration
 	IngestionRateLimit  float64
 	IngestionBurstSize  int
-	CompressToIngester  bool
 
 	// for testing
-	ingesterClientFactory func(addr string, withCompression bool, cfg ingester_client.Config) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, cfg ingester_client.Config) (client.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -93,7 +92,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
-	flag.BoolVar(&cfg.CompressToIngester, "distributor.compress-to-ingester", false, "Compress data in calls to ingesters.")
 }
 
 // New constructs a new Distributor
@@ -225,7 +223,7 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.Ingester
 		return client, nil
 	}
 
-	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.CompressToIngester, d.cfg.IngesterClientConfig)
+	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.IngesterClientConfig)
 	if err != nil {
 		return nil, err
 	}

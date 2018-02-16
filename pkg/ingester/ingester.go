@@ -90,7 +90,7 @@ type Config struct {
 	infName               string
 	id                    string
 	skipUnregister        bool
-	ingesterClientFactory func(addr string, withCompression bool, cfg client.Config) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
 	KVClient              ring.KVClient
 }
 

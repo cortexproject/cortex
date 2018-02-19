@@ -3,7 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"hash/crc64"
+	"hash/fnv"
 	"math"
 	"sync"
 	"time"
@@ -46,7 +46,6 @@ var (
 		Help:      "Time spent requesting configs.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
-	crc64Table = crc64.MakeTable(crc64.ISO)
 )
 
 func init() {
@@ -182,18 +181,20 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 	return cfgs, nil
 }
 
-func (s *scheduler) evalOffset(userID string) time.Duration {
-	return time.Duration(int64(
-		math.Mod(
-			float64(crc64.Checksum([]byte(userID), crc64Table)),
-			float64(s.evaluationInterval.Nanoseconds()))))
-}
-
 func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.VersionedRulesConfig) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	cycleNanos := float64(s.evaluationInterval.Nanoseconds())
 	nextEvalCycle := time.Unix(0, int64(math.Ceil(float64(now.UnixNano())/cycleNanos)*cycleNanos))
+	hasher := fnv.New64a()
+	evalOffset := func(userID string) time.Duration {
+		hasher.Reset()
+		hasher.Write([]byte(userID))
+		return time.Duration(int64(
+			math.Mod(
+				float64(hasher.Sum64()),
+				cycleNanos)))
+	}
 
 	for userID, config := range cfgs {
 		rules, err := config.Config.Parse()
@@ -215,7 +216,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 		}
 		s.Unlock()
 		if !config.IsDeleted() {
-			evalTime := nextEvalCycle.Add(s.evalOffset(userID))
+			evalTime := nextEvalCycle.Add(evalOffset(userID))
 			s.addWorkItem(workItem{userID, rules, evalTime})
 		}
 	}

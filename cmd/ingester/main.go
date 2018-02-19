@@ -40,7 +40,6 @@ func main() {
 		&schemaConfig, &ingesterConfig, &logLevel)
 	flag.UintVar(&maxStreams, "ingester.max-concurrent-streams", 1000, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")
 	flag.Parse()
-	schemaConfig.MaxChunkAge = ingesterConfig.MaxChunkAge
 
 	util.InitLogger(logLevel.AllowedLevel)
 

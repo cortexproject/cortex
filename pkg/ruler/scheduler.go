@@ -184,16 +184,18 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.VersionedRulesConfig) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
-	cycleNanos := float64(s.evaluationInterval.Nanoseconds())
-	nextEvalCycle := time.Unix(0, int64(math.Ceil(float64(now.UnixNano())/cycleNanos)*cycleNanos))
+	intervalNanos := float64(s.evaluationInterval.Nanoseconds())
+	// Compute the start of the next evaluation cycle
+	nextEvalCycleStart := time.Unix(0, int64(math.Ceil(float64(now.UnixNano())/intervalNanos)*intervalNanos))
 	hasher := fnv.New64a()
-	evalOffset := func(userID string) time.Duration {
+	// Computes the point in the evaluation cycle at which a user's rules are evaluated
+	userEvalOffset := func(userID string) time.Duration {
 		hasher.Reset()
 		hasher.Write([]byte(userID))
 		return time.Duration(int64(
 			math.Mod(
 				float64(hasher.Sum64()),
-				cycleNanos)))
+				intervalNanos)))
 	}
 
 	for userID, config := range cfgs {
@@ -216,7 +218,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 		}
 		s.Unlock()
 		if !config.IsDeleted() {
-			evalTime := nextEvalCycle.Add(evalOffset(userID))
+			evalTime := nextEvalCycleStart.Add(userEvalOffset(userID))
 			s.addWorkItem(workItem{userID, rules, evalTime})
 		}
 	}

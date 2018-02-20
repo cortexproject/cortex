@@ -94,7 +94,7 @@ type Ring struct {
 
 // New creates a new Ring
 func New(cfg Config) (*Ring, error) {
-	if 0 > cfg.ReplicationFactor {
+	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
 
@@ -171,7 +171,7 @@ func (r *Ring) Get(key uint32, op Operation) (ReplicationSet, error) {
 }
 
 // BatchGet returns ReplicationFactor (or more) ingesters which form the replicas
-// for the given key. The order of the result matches the order of the input.
+// for the given keys. The order of the result matches the order of the input.
 func (r *Ring) BatchGet(keys []uint32, op Operation) ([]ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()

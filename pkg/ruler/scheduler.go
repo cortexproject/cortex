@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"hash"
 	"hash/fnv"
 	"math"
 	"sync"
@@ -181,25 +182,27 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 	return cfgs, nil
 }
 
-func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.VersionedRulesConfig) {
-	// TODO: instrument how many configs we have, both valid & invalid.
-	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
+// computeNextEvalTime Computes when a user's rules should be next evaluated, based on how far we are through an evaluation cycle
+func (s *scheduler) computeNextEvalTime(hasher hash.Hash64, now time.Time, userID string) time.Time {
 	intervalNanos := float64(s.evaluationInterval.Nanoseconds())
 	// Compute how far we are into the current evaluation cycle
 	currentEvalCyclePoint := math.Mod(float64(now.UnixNano()), intervalNanos)
+
+	hasher.Reset()
+	hasher.Write([]byte(userID))
+	offset := math.Mod(
+		// We subtract our current point in the cycle to cause the entries
+		// before 'now' to wrap around to the end.
+		// We don't want this to come out negative, so we add the interval to it
+		float64(hasher.Sum64())+intervalNanos-currentEvalCyclePoint,
+		intervalNanos)
+	return now.Add(time.Duration(int64(offset)))
+}
+
+func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.VersionedRulesConfig) {
+	// TODO: instrument how many configs we have, both valid & invalid.
+	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	hasher := fnv.New64a()
-	// Computes when a user's rules should be next evaluated, based on how far we are through an evaluation cycle
-	userNextEvalTime := func(userID string) time.Time {
-		hasher.Reset()
-		hasher.Write([]byte(userID))
-		offset := math.Mod(
-			// We subtract our current point in the cycle to cause the entries
-			// before 'now' to wrap around to the end.
-			// We don't want this to come out negative, so we add the interval to it
-			float64(hasher.Sum64())+intervalNanos-currentEvalCyclePoint,
-			intervalNanos)
-		return now.Add(time.Duration(int64(offset)))
-	}
 
 	for userID, config := range cfgs {
 		rules, err := config.Config.Parse()
@@ -221,7 +224,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 		}
 		s.Unlock()
 		if !config.IsDeleted() {
-			s.addWorkItem(workItem{userID, rules, userNextEvalTime(userID)})
+			s.addWorkItem(workItem{userID, rules, s.computeNextEvalTime(hasher, now, userID)})
 		}
 	}
 	configUpdates.Add(float64(len(cfgs)))

@@ -21,13 +21,13 @@ var (
 	fetchedKeys = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "cache_fetched_keys",
-		Help:      "Total count of chunks requested from memcache.",
+		Help:      "Total count of chunks requested from cache.",
 	}, []string{"name"})
 
 	hits = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "cache_hits",
-		Help:      "Total count of chunks found in memcache.",
+		Help:      "Total count of chunks found in cache.",
 	}, []string{"name"})
 )
 

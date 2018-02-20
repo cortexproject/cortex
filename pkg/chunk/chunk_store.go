@@ -37,7 +37,7 @@ var (
 	cacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "cache_corrupt_chunks_total",
-		Help:      "Total count of corrupt chunks found in memcache.",
+		Help:      "Total count of corrupt chunks found in cache.",
 	})
 )
 
@@ -262,7 +262,7 @@ outer:
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
 // hits and misses.
 func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found []Chunk, missing []Chunk, err error) {
-	ctx := NewDecodeContext()
+	decodeContext := NewDecodeContext()
 
 	i, j := 0, 0
 	for i < len(chunks) && j < len(keys) {
@@ -276,7 +276,7 @@ func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found [
 			j++
 		} else {
 			chunk := chunks[i]
-			err = chunk.Decode(ctx, bufs[j])
+			err = chunk.Decode(decodeContext, bufs[j])
 			if err != nil {
 				cacheCorrupt.Inc()
 				return

@@ -10,7 +10,7 @@ import (
 // tolerate.
 // - Filters out dead ingesters so the one doesn't even try to write to them.
 // - Checks there is enough ingesters for an operation to succeed.
-func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
+func (r *Ring) replicationStrategy(ingesters []*IngesterDesc, op Operation) (
 	liveIngesters []*IngesterDesc, maxFailure int, err error,
 ) {
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
@@ -28,7 +28,7 @@ func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
 	// will cause the whole write to fail.
 	liveIngesters = make([]*IngesterDesc, 0, len(ingesters))
 	for _, ingester := range ingesters {
-		if r.IsHealthy(ingester) {
+		if r.IsHealthy(ingester, op) {
 			liveIngesters = append(liveIngesters, ingester)
 		} else {
 			maxFailure--
@@ -47,8 +47,10 @@ func (r *Ring) replicationStrategy(ingesters []*IngesterDesc) (
 }
 
 // IsHealthy checks whether an ingester appears to be alive and heartbeating
-func (r *Ring) IsHealthy(ingester *IngesterDesc) bool {
-	if ingester.State != ACTIVE {
+func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation) bool {
+	if op == Write && ingester.State != ACTIVE {
+		return false
+	} else if op == Read && ingester.State == JOINING {
 		return false
 	}
 	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.cfg.HeartbeatTimeout

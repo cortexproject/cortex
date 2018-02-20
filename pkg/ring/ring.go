@@ -227,7 +227,7 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 		ingesters = append(ingesters, ingester)
 	}
 
-	liveIngesters, maxFailure, err := r.replicationStrategy(ingesters)
+	liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, op)
 	if err != nil {
 		return ReplicationSet{}, err
 	}
@@ -251,7 +251,7 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 	maxErrors := r.cfg.ReplicationFactor / 2
 
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester) {
+		if !r.IsHealthy(ingester, Read) {
 			maxErrors--
 			continue
 		}
@@ -325,7 +325,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		JOINING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester) {
+		if !r.IsHealthy(ingester, Write) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

@@ -12,6 +12,7 @@ import (
 func TestReplicationStrategy(t *testing.T) {
 	for i, tc := range []struct {
 		RF, LiveIngesters, DeadIngesters int
+		op                               Operation // Will default to READ
 		ExpectedMaxFailure               int
 		ExpectedError                    string
 	}{
@@ -90,7 +91,7 @@ func TestReplicationStrategy(t *testing.T) {
 		require.NoError(t, err)
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			liveIngesters, maxFailure, err := r.replicationStrategy(ingesters)
+			liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, tc.op)
 			if tc.ExpectedError == "" {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.LiveIngesters, len(liveIngesters))

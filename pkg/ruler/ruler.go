@@ -14,6 +14,7 @@ import (
 
 	gklog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -358,6 +359,9 @@ func (r *Ruler) Evaluate(userID string, rs []rules.Rule) {
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(rs))
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
+		if span := opentracing.SpanFromContext(ctx); span != nil {
+			span.SetTag("instance", userID)
+		}
 		g, err := r.newGroup(ctx, userID, rs)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to create rule group", "err", err)

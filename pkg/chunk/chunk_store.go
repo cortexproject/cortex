@@ -8,6 +8,9 @@ import (
 	"sort"
 
 	"github.com/go-kit/kit/log/level"
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -94,6 +97,9 @@ func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 	if err != nil {
 		return err
 	}
+	sp, ctx := ot.StartSpanFromContext(ctx, "chunk_store.Put", ot.Tag{Key: "instance", Value: userID})
+	defer sp.Finish()
+	sp.LogFields(otlog.Int("num chunks", len(chunks)))
 
 	err = c.storage.PutChunks(ctx, chunks)
 	if err != nil {
@@ -151,6 +157,10 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 
 // Get implements ChunkStore
 func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) (model.Matrix, error) {
+	sp, ctx := ot.StartSpanFromContext(ctx, "chunk_store.Get")
+	defer sp.Finish()
+	sp.LogFields(otlog.String("query", fmt.Sprintf("from %v to %v %v", from.Time(), through.Time(), allMatchers)))
+
 	if through < from {
 		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
 	}

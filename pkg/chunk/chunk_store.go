@@ -200,7 +200,7 @@ func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	logger := util.WithContext(ctx, util.Logger)
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
-	if err != nil {
+	if err != nil || len(chunks) == 0 {
 		return nil, err
 	}
 
@@ -261,7 +261,7 @@ func (c *Store) getSeriesMatrix(ctx context.Context, from, through model.Time, a
 		return nil, err
 	}
 	seriesEntries, err := c.lookupEntriesByQueries(ctx, seriesQueries)
-	if err != nil {
+	if err != nil || len(seriesEntries) == 0 {
 		return nil, err
 	}
 

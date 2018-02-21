@@ -14,6 +14,7 @@ import (
 
 	gklog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -29,6 +30,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/distributor"
@@ -37,10 +39,11 @@ import (
 )
 
 var (
-	evalDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+	evalDuration = instrument.NewHistogramCollectorFromOpts(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "group_evaluation_duration_seconds",
 		Help:      "The duration for a rule group to execute.",
+		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 25},
 	})
 	rulesProcessed = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
@@ -61,7 +64,7 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(evalDuration)
+	evalDuration.Register()
 	prometheus.MustRegister(evalLatency)
 	prometheus.MustRegister(rulesProcessed)
 	prometheus.MustRegister(blockedWorkers)
@@ -263,12 +266,8 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	return promConfig, nil
 }
 
-func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, error) {
+func (r *Ruler) newGroup(ctx context.Context, userID string, rs []rules.Rule) (*rules.Group, error) {
 	appendable := &appendableAppender{pusher: r.pusher, ctx: ctx}
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
@@ -354,27 +353,29 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 }
 
 // Evaluate a list of rules in the given context.
-func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
+func (r *Ruler) Evaluate(userID string, rs []rules.Rule) {
+	ctx := user.InjectOrgID(context.Background(), userID)
 	logger := util.WithContext(ctx, util.Logger)
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(rs))
-	start := time.Now()
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
-	g, err := r.newGroup(ctx, rs)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to create rule group", "err", err)
-		return
-	}
-	g.Eval(ctx, start)
+	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
+		if span := opentracing.SpanFromContext(ctx); span != nil {
+			span.SetTag("instance", userID)
+		}
+		g, err := r.newGroup(ctx, userID, rs)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to create rule group", "err", err)
+			return err
+		}
+		g.Eval(ctx, time.Now())
+		return nil
+	})
 	if err := ctx.Err(); err == nil {
 		cancelTimeout() // release resources
 	} else {
 		level.Warn(util.Logger).Log("msg", "context error", "error", err)
 	}
 
-	// The prometheus routines we're calling have their own instrumentation
-	// but, a) it's rule-based, not group-based, b) it's a summary, not a
-	// histogram, so we can't reliably aggregate.
-	evalDuration.Observe(time.Since(start).Seconds())
 	rulesProcessed.Add(float64(len(rs)))
 }
 
@@ -471,8 +472,7 @@ func (w *worker) Run() {
 		}
 		evalLatency.Observe(time.Since(item.scheduled).Seconds())
 		level.Debug(util.Logger).Log("msg", "processing item", "item", item)
-		ctx := user.InjectOrgID(context.Background(), item.userID)
-		w.ruler.Evaluate(ctx, item.rules)
+		w.ruler.Evaluate(item.userID, item.rules)
 		w.scheduler.workItemDone(*item)
 		level.Debug(util.Logger).Log("msg", "item handed back to queue", "item", item)
 	}

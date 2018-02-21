@@ -265,12 +265,8 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	return promConfig, nil
 }
 
-func (r *Ruler) newGroup(ctx context.Context, rs []rules.Rule) (*rules.Group, error) {
+func (r *Ruler) newGroup(ctx context.Context, userID string, rs []rules.Rule) (*rules.Group, error) {
 	appendable := &appendableAppender{pusher: r.pusher, ctx: ctx}
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
@@ -356,12 +352,13 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 }
 
 // Evaluate a list of rules in the given context.
-func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
+func (r *Ruler) Evaluate(userID string, rs []rules.Rule) {
+	ctx := user.InjectOrgID(context.Background(), userID)
 	logger := util.WithContext(ctx, util.Logger)
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(rs))
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
-		g, err := r.newGroup(ctx, rs)
+		g, err := r.newGroup(ctx, userID, rs)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to create rule group", "err", err)
 			return err
@@ -471,8 +468,7 @@ func (w *worker) Run() {
 		}
 		evalLatency.Observe(time.Since(item.scheduled).Seconds())
 		level.Debug(util.Logger).Log("msg", "processing item", "item", item)
-		ctx := user.InjectOrgID(context.Background(), item.userID)
-		w.ruler.Evaluate(ctx, item.rules)
+		w.ruler.Evaluate(item.userID, item.rules)
 		w.scheduler.workItemDone(*item)
 		level.Debug(util.Logger).Log("msg", "item handed back to queue", "item", item)
 	}

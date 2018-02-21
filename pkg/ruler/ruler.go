@@ -29,6 +29,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/distributor"
@@ -37,10 +38,11 @@ import (
 )
 
 var (
-	evalDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+	evalDuration = instrument.NewHistogramCollectorFromOpts(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "group_evaluation_duration_seconds",
 		Help:      "The duration for a rule group to execute.",
+		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 25},
 	})
 	rulesProcessed = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
@@ -61,7 +63,7 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(evalDuration)
+	evalDuration.Register()
 	prometheus.MustRegister(evalLatency)
 	prometheus.MustRegister(rulesProcessed)
 	prometheus.MustRegister(blockedWorkers)
@@ -357,24 +359,22 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Notifier, error) {
 func (r *Ruler) Evaluate(ctx context.Context, rs []rules.Rule) {
 	logger := util.WithContext(ctx, util.Logger)
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(rs))
-	start := time.Now()
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
-	g, err := r.newGroup(ctx, rs)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to create rule group", "err", err)
-		return
-	}
-	g.Eval(ctx, start)
+	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
+		g, err := r.newGroup(ctx, rs)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to create rule group", "err", err)
+			return err
+		}
+		g.Eval(ctx, time.Now())
+		return nil
+	})
 	if err := ctx.Err(); err == nil {
 		cancelTimeout() // release resources
 	} else {
 		level.Warn(util.Logger).Log("msg", "context error", "error", err)
 	}
 
-	// The prometheus routines we're calling have their own instrumentation
-	// but, a) it's rule-based, not group-based, b) it's a summary, not a
-	// histogram, so we can't reliably aggregate.
-	evalDuration.Observe(time.Since(start).Seconds())
 	rulesProcessed.Add(float64(len(rs)))
 }
 

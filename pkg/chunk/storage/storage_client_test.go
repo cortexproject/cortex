@@ -26,7 +26,7 @@ func TestStoreChunks(t *testing.T) {
 			require.NoError(t, err)
 			defer fixture.Teardown()
 
-			tableManager, err := chunk.NewTableManager(schemaConfig, tableClient)
+			tableManager, err := chunk.NewTableManager(schemaConfig, 12*time.Hour, tableClient)
 			require.NoError(t, err)
 
 			err = tableManager.SyncTables(context.Background())

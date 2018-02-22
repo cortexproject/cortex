@@ -88,12 +88,11 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		},
 
 		CreationGracePeriod: gracePeriod,
-		MaxChunkAge:         maxChunkAge,
 	}
 
 	// Check tables are created with autoscale
 	{
-		tableManager, err := chunk.NewTableManager(cfg, client)
+		tableManager, err := chunk.NewTableManager(cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +142,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		cfg.IndexTables.WriteScale.OutCooldown = 200
 		cfg.ChunkTables.WriteScale.TargetValue = 90.0
 
-		tableManager, err := chunk.NewTableManager(cfg, client)
+		tableManager, err := chunk.NewTableManager(cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,7 +192,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		cfg.IndexTables.WriteScale.OutCooldown = 200
 		cfg.ChunkTables.WriteScale.TargetValue = 90.0
 
-		tableManager, err := chunk.NewTableManager(cfg, client)
+		tableManager, err := chunk.NewTableManager(cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -259,7 +258,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		cfg.IndexTables.WriteScale.Enabled = false
 		cfg.ChunkTables.WriteScale.Enabled = false
 
-		tableManager, err := chunk.NewTableManager(cfg, client)
+		tableManager, err := chunk.NewTableManager(cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -372,12 +371,11 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 		},
 
 		CreationGracePeriod: gracePeriod,
-		MaxChunkAge:         maxChunkAge,
 	}
 
 	// Check legacy and latest tables do not autoscale with inactive autoscale enabled.
 	{
-		tableManager, err := chunk.NewTableManager(cfg, client)
+		tableManager, err := chunk.NewTableManager(cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -408,7 +406,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 
 	// Check inactive tables are autoscaled even if there are less than the limit.
 	{
-		tableManager, err := chunk.NewTableManager(cfg, client)
+		tableManager, err := chunk.NewTableManager(cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -465,7 +463,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 
 	// Check inactive tables past the limit do not autoscale but the latest N do.
 	{
-		tableManager, err := chunk.NewTableManager(cfg, client)
+		tableManager, err := chunk.NewTableManager(cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}

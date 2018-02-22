@@ -88,7 +88,9 @@ func (h *hashBucketHistogram) loop() {
 		case <-ticker.C:
 			buckets := h.swapBuckets()
 			for _, v := range buckets.buckets {
-				h.Histogram.Observe(float64(v) * float64(h.opts.HashBuckets) / float64(buckets.ops))
+				if buckets.ops > 0 {
+					h.Histogram.Observe(float64(v) * float64(h.opts.HashBuckets) / float64(buckets.ops))
+				}
 			}
 		case <-h.quit:
 			return

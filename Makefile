@@ -123,7 +123,7 @@ update-gazelle: $(PROTOS_GO)
 	bazel run //:gazelle
 
 update-vendor:
-	dep ensure && dep prune
+	dep ensure
 	git status | grep BUILD.bazel | cut -d' ' -f 5 | xargs git checkout HEAD
 
 bazel: $(PROTOS_GO)

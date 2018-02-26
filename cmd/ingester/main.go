@@ -12,6 +12,7 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/tracing"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/ingester"
@@ -34,6 +35,10 @@ func main() {
 		logLevel         util.LogLevel
 		maxStreams       uint
 	)
+
+	trace := tracing.NewFromEnv("ingester")
+	defer trace.Close()
+
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,

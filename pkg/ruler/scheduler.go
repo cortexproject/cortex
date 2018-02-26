@@ -194,9 +194,6 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 			continue
 		}
 		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_files", len(rulesByFilename), "is_deleted", config.IsDeleted())
-		for k, v := range rulesByFilename {
-			level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and filename", "user_id", userID, "filename", k, "num_rules", len(v))
-		}
 		s.Lock()
 		// if deleted remove from map, otherwise - update map
 		if config.IsDeleted() {
@@ -207,6 +204,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 		s.Unlock()
 		if !config.IsDeleted() {
 			for fn, rules := range rulesByFilename {
+				level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and filename", "user_id", userID, "filename", fn, "num_rules", len(rules))
 				s.addWorkItem(workItem{userID, fn, rules, now})
 			}
 		}
@@ -251,7 +249,7 @@ func (s *scheduler) workItemDone(i workItem) {
 		currentRules = ruleSet[i.filename]
 	}
 	s.Unlock()
-	if !found {
+	if !found || len(currentRules) == 0 {
 		level.Debug(util.Logger).Log("msg", "scheduler: no more work configured for user", "user_id", i.userID)
 		return
 	}

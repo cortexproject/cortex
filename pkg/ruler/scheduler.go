@@ -193,9 +193,9 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 			level.Warn(util.Logger).Log("msg", "scheduler: invalid Cortex configuration", "user_id", userID, "err", err)
 			continue
 		}
-		level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_files", len(rulesByFilename), "is_deleted", config.IsDeleted())
+		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_files", len(rulesByFilename), "is_deleted", config.IsDeleted())
 		for k, v := range rulesByFilename {
-			level.Info(util.Logger).Log("msg", "scheduler: updating rules for user and filename", "user_id", userID, "filename", k, "num_rules", len(v))
+			level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and filename", "user_id", userID, "filename", k, "num_rules", len(v))
 		}
 		s.Lock()
 		// if deleted remove from map, otherwise - update map

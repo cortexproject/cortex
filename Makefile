@@ -53,7 +53,14 @@ build-image/$(UPTODATE): build-image/*
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
+# RM is parameterized to allow CircleCI to run builds, as it
+# currently disallows `docker run --rm`. This value is overridden
+# in circle.yml
 RM := --rm
+# TTY is parameterized to allow Google Cloud Builder to run builds,
+# as it currently disallows TTY devices. This value needs to be overridden
+# in any custom cloudbuild.yaml files
+TTY := --tty
 GO_FLAGS := -ldflags "-extldflags \"-static\" -linkmode=external -s -w" -tags netgo -i
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
@@ -68,7 +75,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 
 $(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
-	$(SUDO) time docker run $(RM) -ti \
+	$(SUDO) time docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
 		$(IMAGE_PREFIX)build-image $@;
@@ -76,7 +83,7 @@ $(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
-	$(SUDO) docker run $(RM) -ti \
+	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
 		-v $(shell pwd)/cmd/configs/migrations:/migrations \

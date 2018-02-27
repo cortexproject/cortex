@@ -5,6 +5,7 @@
   name = "cloud.google.com/go"
   packages = [
     "bigtable",
+    "bigtable/bttest",
     "bigtable/internal/gax",
     "bigtable/internal/option",
     "compute/metadata",
@@ -12,8 +13,8 @@
     "longrunning",
     "longrunning/autogen"
   ]
-  revision = "e11d9d1a1722e191d3d017c08077f2c15189769a"
-  version = "v0.8.0"
+  revision = "767c40d6a2e058483c25fa193e963a22da17236d"
+  version = "v0.18.0"
 
 [[projects]]
   name = "github.com/Azure/azure-sdk-for-go"
@@ -328,6 +329,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/google/btree"
+  packages = ["."]
+  revision = "e89373fe6b4a7413d7acd6da1725b83ef713e6e4"
+
+[[projects]]
+  branch = "master"
   name = "github.com/google/gofuzz"
   packages = ["."]
   revision = "44d81051d367757e1c7c6a5a86423ece9afcf63c"
@@ -589,6 +596,12 @@
   ]
   revision = "6022d4d3ed39632fad842942bda1813a9b4f63c8"
   version = "v0.2.3"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/petar/GoLLRB"
+  packages = ["llrb"]
+  revision = "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
 
 [[projects]]
   branch = "master"
@@ -900,7 +913,7 @@
     "jws",
     "jwt"
   ]
-  revision = "a6bd8cefa1811bd24b86f8902872e4e8225f74c4"
+  revision = "543e37812f10c46c622c9575afd7ad22f22a12ba"
 
 [[projects]]
   branch = "master"
@@ -952,6 +965,7 @@
   branch = "master"
   name = "google.golang.org/api"
   packages = [
+    "cloudresourcemanager/v1",
     "compute/v1",
     "gensupport",
     "googleapi",
@@ -960,9 +974,11 @@
     "internal",
     "iterator",
     "option",
-    "transport"
+    "transport",
+    "transport/grpc",
+    "transport/http"
   ]
-  revision = "fbbaff1827317122a8a0e1b24de25df8417ce87b"
+  revision = "ab90adb3efa287b869ecb698db42f923cc734972"
 
 [[projects]]
   name = "google.golang.org/appengine"
@@ -987,21 +1003,15 @@
   branch = "master"
   name = "google.golang.org/genproto"
   packages = [
-    "googleapis/api",
     "googleapis/api/annotations",
-    "googleapis/api/label",
-    "googleapis/api/metric",
-    "googleapis/api/monitoredres",
-    "googleapis/api/serviceconfig",
     "googleapis/bigtable/admin/v2",
     "googleapis/bigtable/v2",
+    "googleapis/iam/v1",
     "googleapis/longrunning",
     "googleapis/rpc/status",
-    "protobuf/api",
-    "protobuf/ptype",
-    "protobuf/source_context"
+    "protobuf/field_mask"
   ]
-  revision = "d80a6e20e776b0b17a324d0ba1ab50a39c8e8944"
+  revision = "2b5a72b8730b0b16380010cfe5286c42108d88e7"
 
 [[projects]]
   name = "google.golang.org/grpc"
@@ -1188,6 +1198,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "bb0be077b34422946e76365d4b249752738b1ca3b93b86049d9b410d2731546f"
+  inputs-digest = "64ccb3a589c4a999f4c271cbeba54180e7a44eb18a74e52b0d3fcc375e85c660"
   solver-name = "gps-cdcl"
   solver-version = 1

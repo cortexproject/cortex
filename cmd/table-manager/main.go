@@ -38,7 +38,7 @@ func main() {
 		schemaConfig.IndexTables.WriteScale.Enabled ||
 		schemaConfig.ChunkTables.InactiveWriteScale.Enabled ||
 		schemaConfig.IndexTables.InactiveWriteScale.Enabled) &&
-		storageConfig.ApplicationAutoScaling.URL == nil {
+		storageConfig.AWSStorageConfig.ApplicationAutoScaling.URL == nil {
 		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling URL has been provided")
 		os.Exit(1)
 	}

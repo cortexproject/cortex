@@ -264,7 +264,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	return promConfig, nil
 }
 
-func (r *Ruler) newGroup(ctx context.Context, userID string, rs []rules.Rule) (*rules.Group, error) {
+func (r *Ruler) newGroup(ctx context.Context, userID string, item *workItem) (*rules.Group, error) {
 	appendable := &appendableAppender{pusher: r.pusher, ctx: ctx}
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
@@ -280,7 +280,7 @@ func (r *Ruler) newGroup(ctx context.Context, userID string, rs []rules.Rule) (*
 		Registerer:  prometheus.DefaultRegisterer,
 	}
 	delay := 0 * time.Second // Unused, so 0 value is fine.
-	return rules.NewGroup("default", "none", delay, rs, opts), nil
+	return rules.NewGroup(item.filename, "none", delay, item.rules, opts), nil
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.
@@ -351,16 +351,16 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 }
 
 // Evaluate a list of rules in the given context.
-func (r *Ruler) Evaluate(userID string, rs []rules.Rule) {
+func (r *Ruler) Evaluate(userID string, item *workItem) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	logger := util.WithContext(ctx, util.Logger)
-	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(rs))
+	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.rules))
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
 		if span := opentracing.SpanFromContext(ctx); span != nil {
 			span.SetTag("instance", userID)
 		}
-		g, err := r.newGroup(ctx, userID, rs)
+		g, err := r.newGroup(ctx, userID, item)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to create rule group", "err", err)
 			return err
@@ -374,7 +374,7 @@ func (r *Ruler) Evaluate(userID string, rs []rules.Rule) {
 		level.Warn(util.Logger).Log("msg", "context error", "error", err)
 	}
 
-	rulesProcessed.Add(float64(len(rs)))
+	rulesProcessed.Add(float64(len(item.rules)))
 }
 
 // Stop stops the Ruler.
@@ -470,7 +470,7 @@ func (w *worker) Run() {
 		}
 		evalLatency.Observe(time.Since(item.scheduled).Seconds())
 		level.Debug(util.Logger).Log("msg", "processing item", "item", item)
-		w.ruler.Evaluate(item.userID, item.rules)
+		w.ruler.Evaluate(item.userID, item)
 		w.scheduler.workItemDone(*item)
 		level.Debug(util.Logger).Log("msg", "item handed back to queue", "item", item)
 	}

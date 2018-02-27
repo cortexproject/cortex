@@ -66,14 +66,14 @@ func (c RulesConfig) Equal(o RulesConfig) bool {
 // Parse rules from the Cortex configuration.
 //
 // Strongly inspired by `loadGroups` in Prometheus.
-func (c RulesConfig) Parse() ([]rules.Rule, error) {
-	result := []rules.Rule{}
+func (c RulesConfig) Parse() (map[string][]rules.Rule, error) {
+	result := map[string][]rules.Rule{}
 	for fn, content := range c {
 		stmts, err := promql.ParseStmts(content)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
 		}
-
+		ra := []rules.Rule{}
 		for _, stmt := range stmts {
 			var rule rules.Rule
 
@@ -87,8 +87,9 @@ func (c RulesConfig) Parse() ([]rules.Rule, error) {
 			default:
 				return nil, fmt.Errorf("ruler.GetRules: unknown statement type")
 			}
-			result = append(result, rule)
+			ra = append(ra, rule)
 		}
+		result[fn] = ra
 	}
 	return result, nil
 }

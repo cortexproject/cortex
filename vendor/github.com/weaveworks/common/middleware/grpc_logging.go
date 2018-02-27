@@ -18,7 +18,7 @@ var ServerLoggingInterceptor = func(ctx context.Context, req interface{}, info *
 	resp, err := handler(ctx, req)
 	entry := logging.With(ctx).WithFields(log.Fields{"method": info.FullMethod, "duration": time.Since(begin)})
 	if err != nil {
-		entry.WithError(err).Warn(gRPC)
+		entry.WithField("request", req).WithError(err).Warn(gRPC)
 	} else {
 		entry.Debugf("%s (success)", gRPC)
 	}

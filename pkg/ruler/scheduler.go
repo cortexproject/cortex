@@ -250,7 +250,7 @@ func (s *scheduler) workItemDone(i workItem) {
 	}
 	s.Unlock()
 	if !found || len(currentRules) == 0 {
-		level.Debug(util.Logger).Log("msg", "scheduler: no more work configured for user", "user_id", i.userID)
+		level.Debug(util.Logger).Log("msg", "scheduler: stopping item", "user_id", i.userID, "filename", i.filename, "found", found, "len", len(currentRules))
 		return
 	}
 	next := i.Defer(s.evaluationInterval, i.filename, currentRules)

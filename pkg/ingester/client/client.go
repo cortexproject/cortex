@@ -7,8 +7,8 @@ import (
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 
-	"github.com/weaveworks/common/middleware"
 	"flag"
+	"github.com/weaveworks/common/middleware"
 )
 
 type closableIngesterClient struct {
@@ -47,12 +47,14 @@ func (c *closableIngesterClient) Close() error {
 	return c.conn.Close()
 }
 
+// Config is the configuration struct for the ingester client
 type Config struct {
-	MaxRecvMsgSize int
-	CompressToIngester bool
+	MaxRecvMsgSize           int
+	CompressToIngester       bool
 	legacyCompressToIngester bool
 }
 
+// RegisterFlags registers configuration settings used by the ingester client config
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// We have seen 20MB returns from queries - add a bit of headroom
 	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")

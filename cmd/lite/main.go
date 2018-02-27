@@ -59,8 +59,7 @@ func main() {
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
-	trace := tracing.New(jaegerAgentHost, "lite")
+	trace := tracing.NewFromEnv("ingester")
 	defer trace.Close()
 
 	util.InitLogger(logLevel.AllowedLevel)

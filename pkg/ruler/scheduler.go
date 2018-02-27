@@ -57,13 +57,14 @@ func init() {
 
 type workItem struct {
 	userID    string
+	filename  string
 	rules     []rules.Rule
 	scheduled time.Time
 }
 
 // Key implements ScheduledItem
 func (w workItem) Key() string {
-	return w.userID
+	return w.userID + ":" + w.filename
 }
 
 // Scheduled implements ScheduledItem
@@ -72,12 +73,12 @@ func (w workItem) Scheduled() time.Time {
 }
 
 // Defer returns a work item with updated rules, rescheduled to a later time.
-func (w workItem) Defer(interval time.Duration, currentRules []rules.Rule) workItem {
-	return workItem{w.userID, currentRules, w.scheduled.Add(interval)}
+func (w workItem) Defer(interval time.Duration, filename string, currentRules []rules.Rule) workItem {
+	return workItem{w.userID, filename, currentRules, w.scheduled.Add(interval)}
 }
 
 func (w workItem) String() string {
-	return fmt.Sprintf("%s:%d@%s", w.userID, len(w.rules), w.scheduled.Format(timeLogFormat))
+	return fmt.Sprintf("%s:%s:%d@%s", w.userID, w.filename, len(w.rules), w.scheduled.Format(timeLogFormat))
 }
 
 type scheduler struct {
@@ -87,8 +88,8 @@ type scheduler struct {
 
 	pollInterval time.Duration // how often we check for new config
 
-	cfgs         map[string][]rules.Rule // all rules for all users
-	latestConfig configs.ID              // # of last update received from config
+	cfgs         map[string]map[string][]rules.Rule // all rules for all users
+	latestConfig configs.ID                         // # of last update received from config
 	sync.RWMutex
 
 	stop chan struct{}
@@ -102,7 +103,7 @@ func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Durat
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
-		cfgs:               map[string][]rules.Rule{},
+		cfgs:               map[string]map[string][]rules.Rule{},
 
 		stop: make(chan struct{}),
 		done: make(chan struct{}),
@@ -205,7 +206,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	hasher := fnv.New64a()
 
 	for userID, config := range cfgs {
-		rules, err := config.Config.Parse()
+		rulesByFilename, err := config.Config.Parse()
 		if err != nil {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known
@@ -214,17 +215,21 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 			level.Warn(util.Logger).Log("msg", "scheduler: invalid Cortex configuration", "user_id", userID, "err", err)
 			continue
 		}
-		level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_rules", len(rules), "is_deleted", config.IsDeleted())
+		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_files", len(rulesByFilename), "is_deleted", config.IsDeleted())
 		s.Lock()
 		// if deleted remove from map, otherwise - update map
 		if config.IsDeleted() {
 			delete(s.cfgs, userID)
 		} else {
-			s.cfgs[userID] = rules
+			s.cfgs[userID] = rulesByFilename
 		}
 		s.Unlock()
 		if !config.IsDeleted() {
-			s.addWorkItem(workItem{userID, rules, s.computeNextEvalTime(hasher, now, userID)})
+			evalTime := s.computeNextEvalTime(hasher, now, userID)
+			for fn, rules := range rulesByFilename {
+				level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and filename", "user_id", userID, "filename", fn, "num_rules", len(rules))
+				s.addWorkItem(workItem{userID, fn, rules, evalTime})
+			}
 		}
 	}
 	configUpdates.Add(float64(len(cfgs)))
@@ -235,7 +240,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 }
 
 func (s *scheduler) addWorkItem(i workItem) {
-	// The queue is keyed by user ID, so items for existing user IDs will be replaced.
+	// The queue is keyed by userID+filename, so items for existing userID+filename will be replaced.
 	s.q.Enqueue(i)
 	level.Debug(util.Logger).Log("msg", "scheduler: work item added", "item", i)
 }
@@ -261,13 +266,17 @@ func (s *scheduler) nextWorkItem() *workItem {
 // workItemDone marks the given item as being ready to be rescheduled.
 func (s *scheduler) workItemDone(i workItem) {
 	s.Lock()
-	currentRules, found := s.cfgs[i.userID]
+	ruleSet, found := s.cfgs[i.userID]
+	var currentRules []rules.Rule
+	if found {
+		currentRules = ruleSet[i.filename]
+	}
 	s.Unlock()
-	if !found {
+	if !found || len(currentRules) == 0 {
 		level.Debug(util.Logger).Log("msg", "scheduler: no more work configured for user", "user_id", i.userID)
 		return
 	}
-	next := i.Defer(s.evaluationInterval, currentRules)
+	next := i.Defer(s.evaluationInterval, i.filename, currentRules)
 	level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", next.scheduled.Format(timeLogFormat))
 	s.addWorkItem(next)
 }

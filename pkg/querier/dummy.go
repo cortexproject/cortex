@@ -3,14 +3,14 @@ package querier
 import (
 	"net/url"
 
-	"github.com/prometheus/prometheus/retrieval"
+	"github.com/prometheus/prometheus/scrape"
 )
 
 // DummyTargetRetriever implements TargetRetriever.
 type DummyTargetRetriever struct{}
 
 // Targets implements TargetRetriever.
-func (r DummyTargetRetriever) Targets() []*retrieval.Target { return nil }
+func (r DummyTargetRetriever) Targets() []*scrape.Target { return nil }
 
 // DummyAlertmanagerRetriever implements AlertmanagerRetriever.
 type DummyAlertmanagerRetriever struct{}

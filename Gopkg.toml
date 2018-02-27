@@ -10,6 +10,15 @@
   name = "github.com/weaveworks/promrus"
   version = "v1.1.0-legacy"
 
+# Since Cortex is heavily based on Prometheus packages, we want
+# to track upstream master quite closely, without being constrained
+# to the latest Prometheus release. This means we get various bug
+# fixes and features earlier, and makes necessary refactorings upon
+# vendor updates less huge (if updated frequently).
+[[constraint]]
+  name = "github.com/prometheus/prometheus"
+  branch = "master"
+
 [[override]]
   name = "k8s.io/client-go"
   revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"

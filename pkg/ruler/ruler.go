@@ -55,6 +55,11 @@ var (
 		Name:      "blocked_workers",
 		Help:      "How many workers are waiting on an item to be ready.",
 	})
+	workerIdleTime = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "worker_idle_seconds_total",
+		Help:      "How long workers have spent waiting for work.",
+	})
 	evalLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "group_evaluation_latency_seconds",
@@ -68,6 +73,7 @@ func init() {
 	prometheus.MustRegister(evalLatency)
 	prometheus.MustRegister(rulesProcessed)
 	prometheus.MustRegister(blockedWorkers)
+	prometheus.MustRegister(workerIdleTime)
 }
 
 // Config is the configuration for the recording rules server.
@@ -460,15 +466,18 @@ func (w *worker) Run() {
 			return
 		default:
 		}
+		waitStart := time.Now()
 		blockedWorkers.Inc()
 		level.Debug(util.Logger).Log("msg", "waiting for next work item")
 		item := w.scheduler.nextWorkItem()
 		blockedWorkers.Dec()
+		waitElapsed := time.Now().Sub(waitStart)
 		if item == nil {
 			level.Debug(util.Logger).Log("msg", "queue closed and empty; terminating worker")
 			return
 		}
 		evalLatency.Observe(time.Since(item.scheduled).Seconds())
+		workerIdleTime.Add(waitElapsed.Seconds())
 		level.Debug(util.Logger).Log("msg", "processing item", "item", item)
 		w.ruler.Evaluate(item.userID, item)
 		w.scheduler.workItemDone(*item)

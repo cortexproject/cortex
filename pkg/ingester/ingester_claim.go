@@ -95,7 +95,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		}
 
 		i.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-		sentChunks.Add(float64(len(descs)))
+		receivedChunks.Add(float64(len(descs)))
 	}
 
 	if err := i.ClaimTokensFor(fromIngesterID); err != nil {

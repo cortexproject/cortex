@@ -392,8 +392,15 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 	// The use of atomic increments here guarantees only a single sendSamples
 	// goroutine will write to either channel.
 	for i := range sampleTrackers {
+		if err != nil {
+			if atomic.AddInt32(&sampleTrackers[i].failed, 1) > int32(sampleTrackers[i].maxFailures) {
+				if atomic.AddInt32(&pushTracker.samplesFailed, 1) == 1 {
+					pushTracker.err <- err
+				}
+			}
+		}
 		if d.cfg.WaitForAllIngesters {
-			waitForAll(err, sampleTrackers[i], pushTracker)
+			waitForAll(sampleTrackers[i], pushTracker)
 		} else {
 			shortCircuit(err, sampleTrackers[i], pushTracker)
 		}
@@ -401,14 +408,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 }
 
 func shortCircuit(err error, sampleTracker *sampleTracker, pushTracker *pushTracker) {
-	if err != nil {
-		if atomic.AddInt32(&sampleTracker.failed, 1) <= int32(sampleTracker.maxFailures) {
-			return
-		}
-		if atomic.AddInt32(&pushTracker.samplesFailed, 1) == 1 {
-			pushTracker.err <- err
-		}
-	} else {
+	if err == nil {
 		if atomic.AddInt32(&sampleTracker.succeeded, 1) != int32(sampleTracker.minSuccess) {
 			return
 		}
@@ -418,15 +418,7 @@ func shortCircuit(err error, sampleTracker *sampleTracker, pushTracker *pushTrac
 	}
 }
 
-func waitForAll(err error, sampleTracker *sampleTracker, pushTracker *pushTracker) {
-	if err != nil {
-		if atomic.AddInt32(&sampleTracker.failed, 1) > int32(sampleTracker.maxFailures) {
-			if atomic.AddInt32(&pushTracker.samplesFailed, 1) == 1 {
-				pushTracker.err <- err
-			}
-		}
-	}
-
+func waitForAll(sampleTracker *sampleTracker, pushTracker *pushTracker) {
 	if atomic.AddInt32(&sampleTracker.finished, 1) == int32(sampleTracker.total) {
 		if atomic.AddInt32(&pushTracker.samplesPending, -1) == 0 {
 			pushTracker.done <- struct{}{}

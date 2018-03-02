@@ -68,31 +68,30 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling bool
-	BillingConfig billing.Config
+	EnableBilling        bool
+	BillingConfig        billing.Config
+	IngesterClientConfig ingester_client.Config
 
 	ReplicationFactor   int
 	RemoteTimeout       time.Duration
 	ClientCleanupPeriod time.Duration
 	IngestionRateLimit  float64
 	IngestionBurstSize  int
-	CompressToIngester  bool
 
 	// for testing
-	ingesterClientFactory func(addr string, withCompression bool) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, cfg ingester_client.Config) (client.IngesterClient, error)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	cfg.BillingConfig.RegisterFlags(f)
-
+	cfg.IngesterClientConfig.RegisterFlags(f)
 	flag.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
-	flag.BoolVar(&cfg.CompressToIngester, "distributor.compress-to-ingester", false, "Compress data in calls to ingesters.")
 }
 
 // New constructs a new Distributor
@@ -224,7 +223,7 @@ func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.Ingester
 		return client, nil
 	}
 
-	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.CompressToIngester)
+	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.IngesterClientConfig)
 	if err != nil {
 		return nil, err
 	}

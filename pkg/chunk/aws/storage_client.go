@@ -734,6 +734,7 @@ func (a storageClient) putS3Chunk(ctx context.Context, key string, buf []byte) e
 	})
 }
 
+// Slice of values returned; map key is attribute name
 type dynamoDBReadResponse []map[string]*dynamodb.AttributeValue
 
 func (b dynamoDBReadResponse) Len() int {
@@ -752,6 +753,7 @@ func (b dynamoDBReadResponse) Value(i int) []byte {
 	return chunkValue.B
 }
 
+// map key is table name; value is a slice of things to 'put'
 type dynamoDBWriteBatch map[string][]*dynamodb.WriteRequest
 
 func (b dynamoDBWriteBatch) Len() int {
@@ -814,6 +816,7 @@ func (b dynamoDBWriteBatch) String() string {
 	return buf.String()
 }
 
+// map key is table name
 type dynamoDBReadRequest map[string]*dynamodb.KeysAndAttributes
 
 func (b dynamoDBReadRequest) Len() int {

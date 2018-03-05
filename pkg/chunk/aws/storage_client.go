@@ -250,6 +250,9 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 	}
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
+		if valuesLeft < 4 { // protect against logging lots of data
+			level.Info(util.Logger).Log("msg", "DynamoDB BatchWrite values left", "count", valuesLeft, "outstanding", outstanding, "unprocessed", unprocessed)
+		}
 		return fmt.Errorf("failed to write chunk, %d values remaining: %s", valuesLeft, backoff.Err())
 	}
 	return backoff.Err()
@@ -793,6 +796,22 @@ func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, max int) {
 			}
 		}
 	}
+}
+
+func (b dynamoDBWriteBatch) String() string {
+	buf := &bytes.Buffer{}
+	for table, reqs := range b {
+		for _, req := range reqs {
+			item := req.PutRequest.Item
+			hash := ""
+			hashPtr := item[hashKey].S
+			if hashPtr != nil {
+				hash = *hashPtr
+			}
+			fmt.Fprintf(buf, "%s: %s,%.32s,%.32s; ", table, hash, item[rangeKey].B, item[valueKey].B)
+		}
+	}
+	return buf.String()
 }
 
 type dynamoDBReadRequest map[string]*dynamodb.KeysAndAttributes

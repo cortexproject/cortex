@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/go-kit/kit/log/level"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -350,7 +351,14 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	defer cancel() // cancel the timeout to release resources
 	for ingester, samples := range samplesByIngester {
 		go func(ingester *ring.IngesterDesc, samples []*sampleTracker) {
-			d.sendSamples(ctx, ingester, samples, &pushTracker)
+			// Use a background context to make sure all ingesters get samples even if we return early
+			localCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			localCtx = user.InjectOrgID(localCtx, userID)
+			if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				localCtx = opentracing.ContextWithSpan(localCtx, sp)
+			}
+			d.sendSamples(localCtx, ingester, samples, &pushTracker)
 		}(ingester, samples)
 	}
 	select {

@@ -806,11 +806,19 @@ func (b dynamoDBWriteBatch) String() string {
 		for _, req := range reqs {
 			item := req.PutRequest.Item
 			hash := ""
-			hashPtr := item[hashKey].S
-			if hashPtr != nil {
-				hash = *hashPtr
+			if hashAttr, ok := item[hashKey]; ok {
+				if hashAttr.S != nil {
+					hash = *hashAttr.S
+				}
 			}
-			fmt.Fprintf(buf, "%s: %s,%.32s,%.32s; ", table, hash, item[rangeKey].B, item[valueKey].B)
+			var rnge, value []byte
+			if rangeAttr, ok := item[rangeKey]; ok {
+				rnge = rangeAttr.B
+			}
+			if valueAttr, ok := item[valueKey]; ok {
+				value = valueAttr.B
+			}
+			fmt.Fprintf(buf, "%s: %s,%.32s,%.32s; ", table, hash, rnge, value)
 		}
 	}
 	return buf.String()

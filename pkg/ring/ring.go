@@ -291,6 +291,8 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		unhealthy:        0,
 		ACTIVE.String():  0,
 		LEAVING.String(): 0,
+		PENDING.String(): 0,
+		JOINING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
 		if !r.IsHealthy(ingester) {

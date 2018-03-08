@@ -347,12 +347,10 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		done:           make(chan struct{}),
 		err:            make(chan error),
 	}
-	ctx, cancel := context.WithTimeout(ctx, d.cfg.RemoteTimeout)
-	defer cancel() // cancel the timeout to release resources
 	for ingester, samples := range samplesByIngester {
 		go func(ingester *ring.IngesterDesc, samples []*sampleTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
-			localCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
 			defer cancel()
 			localCtx = user.InjectOrgID(localCtx, userID)
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {

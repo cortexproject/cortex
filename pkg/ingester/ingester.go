@@ -495,6 +495,11 @@ func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsReques
 	return response, nil
 }
 
+// Check implements the grpc healthcheck
+func (i *Ingester) Check(ctx old_ctx.Context, req *client.HealthCheckRequest) (*client.HealthCheckResponse, error) {
+	return &client.HealthCheckResponse{Status: client.SERVING}, nil
+}
+
 // Describe implements prometheus.Collector.
 func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- memorySeriesDesc

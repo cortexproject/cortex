@@ -184,16 +184,17 @@ func (d *Distributor) Stop() {
 }
 
 func (d *Distributor) removeStaleIngesterClients() {
-	d.clientsMtx.Lock()
-	defer d.clientsMtx.Unlock()
-
 	ingesters := map[string]struct{}{}
 	for _, ing := range d.ring.GetAll() {
 		ingesters[ing.Addr] = struct{}{}
 	}
 
+	wg := sync.WaitGroup{}
+	d.clientsMtx.Lock()
 	for addr, client := range d.clients {
 		if _, ok := ingesters[addr]; ok {
+			wg.Add(1)
+			go d.healthCheckAndRemoveIngester(addr, client, &wg)
 			continue
 		}
 		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
@@ -201,12 +202,37 @@ func (d *Distributor) removeStaleIngesterClients() {
 
 		// Do the gRPC closing in the background since it might take a while and
 		// we're holding a mutex.
-		go func(addr string, closer io.Closer) {
-			if err := closer.Close(); err != nil {
-				level.Error(util.Logger).Log("msg", "error closing connection to ingester", "ingester", addr, "err", err)
-			}
-		}(addr, client.(io.Closer))
+		go closeClient(addr, client.(io.Closer))
 	}
+
+	// Make sure we are done healthchecking before returning. But want to unlock the mutex first
+	d.clientsMtx.Unlock()
+	wg.Wait()
+}
+
+func closeClient(addr string, closer io.Closer) {
+	if err := closer.Close(); err != nil {
+		level.Error(util.Logger).Log("msg", "error closing connection to ingester", "ingester", addr, "err", err)
+	}
+}
+
+func (d *Distributor) healthCheckAndRemoveIngester(addr string, client client.IngesterClient, wg *sync.WaitGroup) {
+	level.Debug(util.Logger).Log("msg", "healthchecking ingester client", "addr", addr)
+
+	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	ctx = user.InjectOrgID(ctx, "0")
+	resp, err := client.Check(ctx, &ingester_client.HealthCheckRequest{})
+	cancel()
+	if err != nil || resp.Status != ingester_client.SERVING {
+		level.Warn(util.Logger).Log("msg", "removing ingester client failing healthcheck", "addr", addr, "reason", err)
+
+		d.clientsMtx.Lock()
+		delete(d.clients, addr)
+		d.clientsMtx.Unlock()
+
+		go closeClient(addr, client.(io.Closer))
+	}
+	wg.Done()
 }
 
 func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.IngesterClient, error) {

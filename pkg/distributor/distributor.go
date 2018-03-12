@@ -660,6 +660,54 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	return totalStats, nil
 }
 
+// UserStats models ingestion statistics for one user, including the user ID
+type UserIDStats struct {
+	UserID string `json:"userID"`
+	UserStats
+}
+
+// AllUserStats returns statistics about all users.
+// Note it does not divide by the ReplicationFactor like UserStats()
+func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
+	// Add up by user, across all responses from ingesters
+	perUserTotals := make(map[string]UserStats)
+
+	req := &client.UserStatsRequest{}
+	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
+	// Not using d.forAllIngesters(), so we can fail after first error.
+	ingesters := d.ring.GetAll()
+	for _, ingester := range ingesters {
+		client, err := d.getClientFor(ingester)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.AllUserStats(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		for _, u := range resp.Stats {
+			s := perUserTotals[u.UserId]
+			s.IngestionRate += u.Data.IngestionRate
+			s.NumSeries += u.Data.NumSeries
+			perUserTotals[u.UserId] = s
+		}
+	}
+
+	// Turn aggregated map into a slice for return
+	response := make([]UserIDStats, 0, len(perUserTotals))
+	for id, stats := range perUserTotals {
+		response = append(response, UserIDStats{
+			UserID: id,
+			UserStats: UserStats{
+				IngestionRate: stats.IngestionRate,
+				NumSeries:     stats.NumSeries,
+			},
+		})
+	}
+
+	return response, nil
+}
+
 // Describe implements prometheus.Collector.
 func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
 	d.queryDuration.Describe(ch)

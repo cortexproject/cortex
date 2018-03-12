@@ -220,9 +220,9 @@ func (d *Distributor) healthCheckAndRemoveIngester(addr string, client client.In
 	level.Debug(util.Logger).Log("msg", "healthchecking ingester client", "addr", addr)
 
 	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	defer cancel()
 	ctx = user.InjectOrgID(ctx, "0")
 	resp, err := client.Check(ctx, &ingester_client.HealthCheckRequest{})
-	cancel()
 	if err != nil || resp.Status != ingester_client.SERVING {
 		level.Warn(util.Logger).Log("msg", "removing ingester client failing healthcheck", "addr", addr, "reason", err)
 

@@ -278,6 +278,10 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 		tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
 		tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
 
+		if m.cfg.ThroughputUpdatesDisabled {
+			continue
+		}
+
 		if status != dynamodb.TableStatusActive {
 			level.Info(util.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name, "status", status)
 			continue

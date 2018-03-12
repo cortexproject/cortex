@@ -161,7 +161,7 @@ func (m *TableManager) loop() {
 // not and update those that need it.  It is exposed for testing.
 func (m *TableManager) SyncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
-	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", expected)
+	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", len(expected))
 
 	toCreate, toCheckThroughput, err := m.partitionTables(ctx, expected)
 	if err != nil {

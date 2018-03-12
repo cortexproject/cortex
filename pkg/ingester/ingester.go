@@ -11,6 +11,7 @@ import (
 
 	// Needed for gRPC compatibility.
 	old_ctx "golang.org/x/net/context"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -496,8 +497,8 @@ func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsReques
 }
 
 // Check implements the grpc healthcheck
-func (i *Ingester) Check(ctx old_ctx.Context, req *client.HealthCheckRequest) (*client.HealthCheckResponse, error) {
-	return &client.HealthCheckResponse{Status: client.SERVING}, nil
+func (i *Ingester) Check(ctx old_ctx.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
 // Describe implements prometheus.Collector.

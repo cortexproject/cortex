@@ -28,6 +28,7 @@ import (
 	ingester_client "github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 var errIngestionRateLimitExceeded = errors.New("ingestion rate limit exceeded")
@@ -222,8 +223,8 @@ func (d *Distributor) healthCheckAndRemoveIngester(addr string, client client.In
 	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
 	defer cancel()
 	ctx = user.InjectOrgID(ctx, "0")
-	resp, err := client.Check(ctx, &ingester_client.HealthCheckRequest{})
-	if err != nil || resp.Status != ingester_client.SERVING {
+	resp, err := client.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	if err != nil || resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
 		level.Warn(util.Logger).Log("msg", "removing ingester client failing healthcheck", "addr", addr, "reason", err)
 
 		d.clientsMtx.Lock()

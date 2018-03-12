@@ -171,6 +171,7 @@ func (d *Distributor) Run() {
 		select {
 		case <-cleanupClients.C:
 			d.removeStaleIngesterClients()
+			d.healthCheckAndRemoveIngesters()
 		case <-d.quit:
 			close(d.done)
 			return
@@ -185,17 +186,16 @@ func (d *Distributor) Stop() {
 }
 
 func (d *Distributor) removeStaleIngesterClients() {
+	d.clientsMtx.Lock()
+	defer d.clientsMtx.Unlock()
+
 	ingesters := map[string]struct{}{}
 	for _, ing := range d.ring.GetAll() {
 		ingesters[ing.Addr] = struct{}{}
 	}
 
-	wg := sync.WaitGroup{}
-	d.clientsMtx.Lock()
 	for addr, client := range d.clients {
 		if _, ok := ingesters[addr]; ok {
-			wg.Add(1)
-			go d.healthCheckAndRemoveIngester(addr, client, &wg)
 			continue
 		}
 		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
@@ -205,10 +205,6 @@ func (d *Distributor) removeStaleIngesterClients() {
 		// we're holding a mutex.
 		go closeClient(addr, client.(io.Closer))
 	}
-
-	// Make sure we are done healthchecking before returning. But want to unlock the mutex first
-	d.clientsMtx.Unlock()
-	wg.Wait()
 }
 
 func closeClient(addr string, closer io.Closer) {
@@ -217,23 +213,35 @@ func closeClient(addr string, closer io.Closer) {
 	}
 }
 
-func (d *Distributor) healthCheckAndRemoveIngester(addr string, client client.IngesterClient, wg *sync.WaitGroup) {
-	level.Debug(util.Logger).Log("msg", "healthchecking ingester client", "addr", addr)
+func (d *Distributor) healthCheckAndRemoveIngesters() {
+	ingesters := d.ring.GetAll()
+	for _, ingester := range ingesters {
+		d.healthCheckAndRemoveIngester(ingester)
+	}
+}
+
+func (d *Distributor) healthCheckAndRemoveIngester(ingester *ring.IngesterDesc) {
+	client, err := d.getClientFor(ingester)
+	if err != nil {
+		d.removeClientFor(ingester, err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
 	defer cancel()
 	ctx = user.InjectOrgID(ctx, "0")
+
 	resp, err := client.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
 	if err != nil || resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-		level.Warn(util.Logger).Log("msg", "removing ingester client failing healthcheck", "addr", addr, "reason", err)
-
-		d.clientsMtx.Lock()
-		delete(d.clients, addr)
-		d.clientsMtx.Unlock()
-
-		go closeClient(addr, client.(io.Closer))
+		d.removeClientFor(ingester, err)
+		go closeClient(ingester.Addr, client.(io.Closer))
 	}
-	wg.Done()
+}
+
+func (d *Distributor) removeClientFor(ingester *ring.IngesterDesc, err error) {
+	level.Warn(util.Logger).Log("msg", "removing ingester client", "addr", ingester.Addr, "reason", err)
+	d.clientsMtx.Lock()
+	defer d.clientsMtx.Unlock()
+	delete(d.clients, ingester.Addr)
 }
 
 func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.IngesterClient, error) {

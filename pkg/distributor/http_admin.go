@@ -52,9 +52,13 @@ func init() {
 
 type userStatsByTimeseries []UserIDStats
 
-func (s userStatsByTimeseries) Len() int           { return len(s) }
-func (s userStatsByTimeseries) Less(i, j int) bool { return s[i].NumSeries > s[j].NumSeries }
-func (s userStatsByTimeseries) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s userStatsByTimeseries) Len() int      { return len(s) }
+func (s userStatsByTimeseries) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+
+func (s userStatsByTimeseries) Less(i, j int) bool {
+	return s[i].NumSeries > s[j].NumSeries ||
+		(s[i].NumSeries == s[j].NumSeries && s[i].UserID < s[j].UserID)
+}
 
 // AllUserStatsHandler shows stats for all users.
 func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {

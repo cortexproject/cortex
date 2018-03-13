@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/instrument"
@@ -28,7 +29,6 @@ import (
 	ingester_client "github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
-	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 var errIngestionRateLimitExceeded = errors.New("ingestion rate limit exceeded")
@@ -74,11 +74,12 @@ type Config struct {
 	BillingConfig        billing.Config
 	IngesterClientConfig ingester_client.Config
 
-	ReplicationFactor   int
-	RemoteTimeout       time.Duration
-	ClientCleanupPeriod time.Duration
-	IngestionRateLimit  float64
-	IngestionBurstSize  int
+	ReplicationFactor    int
+	RemoteTimeout        time.Duration
+	ClientCleanupPeriod  time.Duration
+	IngestionRateLimit   float64
+	IngestionBurstSize   int
+	HealthCheckIngesters bool
 
 	// for testing
 	ingesterClientFactory func(addr string, cfg ingester_client.Config) (client.IngesterClient, error)
@@ -94,6 +95,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
+	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during the cleanup period.")
 }
 
 // New constructs a new Distributor
@@ -171,7 +173,9 @@ func (d *Distributor) Run() {
 		select {
 		case <-cleanupClients.C:
 			d.removeStaleIngesterClients()
-			d.healthCheckAndRemoveIngesters()
+			if d.cfg.HealthCheckIngesters {
+				d.healthCheckAndRemoveIngesters()
+			}
 		case <-d.quit:
 			close(d.done)
 			return
@@ -223,7 +227,7 @@ func (d *Distributor) healthCheckAndRemoveIngesters() {
 func (d *Distributor) healthCheckAndRemoveIngester(ingester *ring.IngesterDesc) {
 	client, err := d.getClientFor(ingester)
 	if err != nil {
-		d.removeClientFor(ingester, err)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)

@@ -22,7 +22,7 @@ const tpl = `
 		<p>Current time: {{ .Now }}</p>
 		<form action="" method="POST">
 			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
-			<table width="100%" border="1">
+			<table border="1">
 				<thead>
 					<tr>
 						<th>User</th>
@@ -34,8 +34,8 @@ const tpl = `
 					{{ range .Stats }}
 					<tr>
 						<td>{{ .UserID }}</td>
-						<td>{{ .UserStats.NumSeries }}</td>
-						<td>{{ .UserStats.IngestionRate }}</td>
+						<td align='right'>{{ .UserStats.NumSeries }}</td>
+						<td align='right'>{{ printf "%.2f" .UserStats.IngestionRate }}</td>
 					</tr>
 					{{ end }}
 				</tbody>

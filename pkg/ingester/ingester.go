@@ -257,12 +257,14 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		chunkLength: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_length",
 			Help:    "Distribution of stored chunk lengths (when stored).",
-			Buckets: prometheus.ExponentialBuckets(10, 2, 10), // biggest bucket is 10*2^(10-1) = 5120
+			Buckets: prometheus.ExponentialBuckets(5, 2, 11), // biggest bucket is 5*2^(11-1) = 5120
 		}),
 		chunkAge: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_chunk_age_seconds",
-			Help:    "Distribution of chunk ages (when stored).",
-			Buckets: prometheus.ExponentialBuckets(60, 2, 11), // biggest bucket is 60*2^(11-1) = 61440 = 17:04 hrs
+			Name: "cortex_ingester_chunk_age_seconds",
+			Help: "Distribution of chunk ages (when stored).",
+			// with default settings chunks should flush between 5 min and 12 hours
+			// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
+			Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
 		}),
 		memoryChunks: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_memory_chunks",

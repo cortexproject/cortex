@@ -660,7 +660,7 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	return totalStats, nil
 }
 
-// UserStats models ingestion statistics for one user, including the user ID
+// UserIDStats models ingestion statistics for one user, including the user ID
 type UserIDStats struct {
 	UserID string `json:"userID"`
 	UserStats

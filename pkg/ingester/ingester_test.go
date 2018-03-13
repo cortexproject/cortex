@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -130,7 +131,7 @@ func TestIngesterAppend(t *testing.T) {
 	// Append samples.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		_, err = ing.Push(ctx, util.ToWriteRequest(matrixToSamples(testData[userID])))
+		_, err = ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID])))
 		require.NoError(t, err)
 	}
 
@@ -140,13 +141,13 @@ func TestIngesterAppend(t *testing.T) {
 		matcher, err := labels.NewMatcher(labels.MatchRegexp, model.JobLabel, ".+")
 		require.NoError(t, err)
 
-		req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+		req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
 		require.NoError(t, err)
 
 		resp, err := ing.Query(ctx, req)
 		require.NoError(t, err)
 
-		res := util.FromQueryResponse(resp)
+		res := client.FromQueryResponse(resp)
 		sort.Sort(res)
 		assert.Equal(t, testData[userID], res)
 	}
@@ -218,11 +219,11 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
@@ -231,13 +232,13 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
 
-	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	resp, err := ing.Query(ctx, req)
 	require.NoError(t, err)
 
-	res := util.FromQueryResponse(resp)
+	res := client.FromQueryResponse(resp)
 	sort.Sort(res)
 
 	expected := model.Matrix{
@@ -289,11 +290,11 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding series per metric, got %v", err)
 	}
@@ -302,13 +303,13 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
 
-	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	resp, err := ing.Query(ctx, req)
 	require.NoError(t, err)
 
-	res := util.FromQueryResponse(resp)
+	res := client.FromQueryResponse(resp)
 	sort.Sort(res)
 
 	expected := model.Matrix{
@@ -360,11 +361,11 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 	// Append recent sample, expect no error.
 	userID := "1"
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample1}))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 
 	// Append old sample, expect bad request error.
-	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{sample2, sample3}))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected error about old samples not accepted, got %v", err)
 	}
@@ -373,13 +374,13 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
 
-	req, err := util.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	resp, err := ing.Query(ctx, req)
 	require.NoError(t, err)
 
-	res := util.FromQueryResponse(resp)
+	res := client.FromQueryResponse(resp)
 	sort.Sort(res)
 
 	// Expect recent sample including partial but no old sample.

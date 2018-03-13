@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
-	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,7 +19,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/instrument"
@@ -45,12 +43,12 @@ var (
 // Distributor is a storage.SampleAppender and a client.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	cfg        Config
-	ring       ring.ReadRing
-	clientsMtx sync.RWMutex
-	clients    map[string]client.IngesterClient
-	quit       chan struct{}
-	done       chan struct{}
+	cfg         Config
+	ring        ring.ReadRing
+	clientsMtx  sync.RWMutex
+	clientCache *ingester_client.IngesterClientCache
+	quit        chan struct{}
+	done        chan struct{}
 
 	billingClient *billing.Client
 
@@ -119,7 +117,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
-		clients:        map[string]client.IngesterClient{},
+		clientCache:    ingester_client.NewIngesterClientCache(cfg.ingesterClientFactory, cfg.IngesterClientConfig),
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		billingClient:  billingClient,
@@ -190,85 +188,34 @@ func (d *Distributor) Stop() {
 }
 
 func (d *Distributor) removeStaleIngesterClients() {
-	d.clientsMtx.Lock()
-	defer d.clientsMtx.Unlock()
-
 	ingesters := map[string]struct{}{}
 	for _, ing := range d.ring.GetAll() {
 		ingesters[ing.Addr] = struct{}{}
 	}
 
-	for addr, client := range d.clients {
+	for _, addr := range d.clientCache.RegisteredAddresses() {
 		if _, ok := ingesters[addr]; ok {
 			continue
 		}
 		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
-		delete(d.clients, addr)
-
-		// Do the gRPC closing in the background since it might take a while and
-		// we're holding a mutex.
-		go closeClient(addr, client.(io.Closer))
-	}
-}
-
-func closeClient(addr string, closer io.Closer) {
-	if err := closer.Close(); err != nil {
-		level.Error(util.Logger).Log("msg", "error closing connection to ingester", "ingester", addr, "err", err)
+		d.clientCache.RemoveClientFor(addr)
 	}
 }
 
 func (d *Distributor) healthCheckAndRemoveIngesters() {
-	ingesters := d.ring.GetAll()
-	for _, ingester := range ingesters {
-		d.healthCheckAndRemoveIngester(ingester)
+	for _, addr := range d.clientCache.RegisteredAddresses() {
+		client, err := d.clientCache.GetClientFor(addr)
+		if err != nil {
+			// if there is no client, don't need to health check it
+			level.Warn(util.Logger).Log("msg", "could not create client for", "addr", addr)
+			continue
+		}
+		err = ingester_client.HealthCheck(client, d.cfg.RemoteTimeout)
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "removing ingester failing healtcheck", "addr", addr, "reason", err)
+			d.clientCache.RemoveClientFor(addr)
+		}
 	}
-}
-
-func (d *Distributor) healthCheckAndRemoveIngester(ingester *ring.IngesterDesc) {
-	client, err := d.getClientFor(ingester)
-	if err != nil {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
-	defer cancel()
-	ctx = user.InjectOrgID(ctx, "0")
-
-	resp, err := client.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
-	if err != nil || resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-		d.removeClientFor(ingester, err)
-		go closeClient(ingester.Addr, client.(io.Closer))
-	}
-}
-
-func (d *Distributor) removeClientFor(ingester *ring.IngesterDesc, err error) {
-	level.Warn(util.Logger).Log("msg", "removing ingester client", "addr", ingester.Addr, "reason", err)
-	d.clientsMtx.Lock()
-	defer d.clientsMtx.Unlock()
-	delete(d.clients, ingester.Addr)
-}
-
-func (d *Distributor) getClientFor(ingester *ring.IngesterDesc) (client.IngesterClient, error) {
-	d.clientsMtx.RLock()
-	client, ok := d.clients[ingester.Addr]
-	d.clientsMtx.RUnlock()
-	if ok {
-		return client, nil
-	}
-
-	d.clientsMtx.Lock()
-	defer d.clientsMtx.Unlock()
-	client, ok = d.clients[ingester.Addr]
-	if ok {
-		return client, nil
-	}
-
-	client, err := d.cfg.ingesterClientFactory(ingester.Addr, d.cfg.IngesterClientConfig)
-	if err != nil {
-		return nil, err
-	}
-	d.clients[ingester.Addr] = client
-	return client, nil
 }
 
 func tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
@@ -451,7 +398,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 }
 
 func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, samples []*sampleTracker) error {
-	c, err := d.getClientFor(ingester)
+	c, err := d.clientCache.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
@@ -488,7 +435,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 
 		metricNameMatcher, _, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
 
-		req, err := util.ToQueryRequest(from, to, matchers)
+		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {
 			return err
 		}
@@ -568,7 +515,7 @@ func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.Inge
 }
 
 func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc, req *client.QueryRequest) (model.Matrix, error) {
-	client, err := d.getClientFor(ing)
+	client, err := d.clientCache.GetClientFor(ing.Addr)
 	if err != nil {
 		return nil, err
 	}
@@ -580,7 +527,7 @@ func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc,
 		return nil, err
 	}
 
-	return util.FromQueryResponse(resp), nil
+	return ingester_client.FromQueryResponse(resp), nil
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
@@ -589,7 +536,7 @@ func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}
 	ingesters := d.ring.GetAll()
 	for _, ingester := range ingesters {
 		go func(ingester *ring.IngesterDesc) {
-			client, err := d.getClientFor(ingester)
+			client, err := d.clientCache.GetClientFor(ingester.Addr)
 			if err != nil {
 				errs <- err
 				return
@@ -648,7 +595,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 
 // MetricsForLabelMatchers gets the metrics that match said matchers
 func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	req, err := util.ToMetricsForLabelMatchersRequest(from, through, matchers)
+	req, err := ingester_client.ToMetricsForLabelMatchersRequest(from, through, matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -662,7 +609,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 
 	metrics := map[model.Fingerprint]model.Metric{}
 	for _, resp := range resps {
-		ms := util.FromMetricsForLabelMatchersResponse(resp.(*client.MetricsForLabelMatchersResponse))
+		ms := ingester_client.FromMetricsForLabelMatchersResponse(resp.(*client.MetricsForLabelMatchersResponse))
 		for _, m := range ms {
 			metrics[m.Fingerprint()] = m
 		}
@@ -716,7 +663,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	// Not using d.forAllIngesters(), so we can fail after first error.
 	ingesters := d.ring.GetAll()
 	for _, ingester := range ingesters {
-		client, err := d.getClientFor(ingester)
+		client, err := d.clientCache.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err
 		}
@@ -775,6 +722,6 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		numClientsDesc,
 		prometheus.GaugeValue,
-		float64(len(d.clients)),
+		float64(d.clientCache.Count()),
 	)
 }

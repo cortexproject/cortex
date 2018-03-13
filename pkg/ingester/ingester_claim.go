@@ -75,7 +75,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			fromIngesterID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request from ingester", "ingester", fromIngesterID)
 		}
-		metric := util.FromLabelPairs(wireSeries.Labels)
+		metric := client.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {

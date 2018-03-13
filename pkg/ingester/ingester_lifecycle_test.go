@@ -100,7 +100,7 @@ func TestIngesterTransfer(t *testing.T) {
 		}
 	)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing1.Push(ctx, util.ToWriteRequest([]model.Sample{
+	_, err = ing1.Push(ctx, client.ToWriteRequest([]model.Sample{
 		{
 			Metric:    m,
 			Timestamp: ts,
@@ -131,7 +131,7 @@ func TestIngesterTransfer(t *testing.T) {
 	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
 	require.NoError(t, err)
 
-	request, err := util.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*labels.Matcher{matcher})
+	request, err := client.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*labels.Matcher{matcher})
 	require.NoError(t, err)
 
 	response, err := ing2.Query(ctx, request)
@@ -139,7 +139,7 @@ func TestIngesterTransfer(t *testing.T) {
 	assert.Equal(t, &client.QueryResponse{
 		Timeseries: []client.TimeSeries{
 			{
-				Labels: util.ToLabelPairs(m),
+				Labels: client.ToLabelPairs(m),
 				Samples: []client.Sample{
 					{
 						Value:       456,
@@ -286,7 +286,7 @@ func TestIngesterFlush(t *testing.T) {
 		}
 	)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, util.ToWriteRequest([]model.Sample{
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{
 		{
 			Metric:    m,
 			Timestamp: ts,

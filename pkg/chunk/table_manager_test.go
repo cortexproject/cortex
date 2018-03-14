@@ -24,6 +24,10 @@ const (
 	inactiveRead     = 2
 	write            = 200
 	read             = 100
+	autoScaleLastN   = 2
+	autoScaleMin     = 50
+	autoScaleMax     = 500
+	autoScaleTarget  = 80
 )
 
 type mockTableClient struct {
@@ -83,6 +87,19 @@ func tmTest(t *testing.T, client *mockTableClient, tableManager *TableManager, n
 	})
 }
 
+var activeScalingConfig = AutoScalingConfig{
+	Enabled:     true,
+	MinCapacity: autoScaleMin * 2,
+	MaxCapacity: autoScaleMax * 2,
+	TargetValue: autoScaleTarget,
+}
+var inactiveScalingConfig = AutoScalingConfig{
+	Enabled:     true,
+	MinCapacity: autoScaleMin,
+	MaxCapacity: autoScaleMax,
+	TargetValue: autoScaleTarget,
+}
+
 func TestTableManager(t *testing.T) {
 	client := newMockTableClient()
 
@@ -96,6 +113,9 @@ func TestTableManager(t *testing.T) {
 			ProvisionedReadThroughput:  read,
 			InactiveWriteThroughput:    inactiveWrite,
 			InactiveReadThroughput:     inactiveRead,
+			WriteScale:                 activeScalingConfig,
+			InactiveWriteScale:         inactiveScalingConfig,
+			InactiveWriteScaleLastN:    autoScaleLastN,
 		},
 
 		ChunkTables: PeriodicTableConfig{
@@ -120,8 +140,8 @@ func TestTableManager(t *testing.T) {
 		"Initial test",
 		time.Unix(0, 0),
 		[]TableDesc{
-			{Name: "", ProvisionedRead: read, ProvisionedWrite: write},
-			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: "", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
@@ -131,8 +151,8 @@ func TestTableManager(t *testing.T) {
 		"Nothing changed",
 		time.Unix(0, 0),
 		[]TableDesc{
-			{Name: "", ProvisionedRead: read, ProvisionedWrite: write},
-			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: "", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
@@ -142,19 +162,20 @@ func TestTableManager(t *testing.T) {
 		"Move forward by grace period",
 		time.Unix(0, 0).Add(gracePeriod),
 		[]TableDesc{
-			{Name: "", ProvisionedRead: read, ProvisionedWrite: write},
-			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: "", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 
 	// Fast forward max chunk age + grace period, check write throughput on base table has gone
+	// (and we don't put inactive auto-scaling on base table)
 	tmTest(t, client, tableManager,
 		"Move forward by max chunk age + grace period",
 		time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
 		[]TableDesc{
 			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
-			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
@@ -165,8 +186,8 @@ func TestTableManager(t *testing.T) {
 		time.Unix(0, 0).Add(tablePeriod).Add(-gracePeriod),
 		[]TableDesc{
 			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
-			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
-			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
 		},
@@ -178,8 +199,8 @@ func TestTableManager(t *testing.T) {
 		time.Unix(0, 0).Add(tablePeriod).Add(gracePeriod),
 		[]TableDesc{
 			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
-			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
-			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
 		},
@@ -191,8 +212,8 @@ func TestTableManager(t *testing.T) {
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
 		[]TableDesc{
 			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
-			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
-			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
 		},
@@ -204,8 +225,8 @@ func TestTableManager(t *testing.T) {
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
 		[]TableDesc{
 			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
-			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
-			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
 			{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
 		},

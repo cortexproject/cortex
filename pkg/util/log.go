@@ -78,13 +78,17 @@ func NewPrometheusLogger(l log.Logger) (*PrometheusLogger, error) {
 	for _, level := range supportedLevels {
 		counterVec.WithLabelValues(level.String())
 	}
-	// Try to unregister the counter vector, in case already registered for some reason,
-	// e.g. double initialisation/configuration done by mistake by the end-user.
-	prometheus.Unregister(counterVec)
-	// Try to register the counter vector:
 	err := prometheus.Register(counterVec)
+	// If another library already registered the same metric, use it
 	if err != nil {
-		return nil, err
+		ar, ok := err.(prometheus.AlreadyRegisteredError)
+		if !ok {
+			return nil, err
+		}
+		counterVec, ok = ar.ExistingCollector.(*prometheus.CounterVec)
+		if !ok {
+			return nil, err
+		}
 	}
 	return &PrometheusLogger{
 		counterVec: counterVec,

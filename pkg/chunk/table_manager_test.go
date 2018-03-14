@@ -233,6 +233,78 @@ func TestTableManager(t *testing.T) {
 	)
 }
 
+func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
+	client := newMockTableClient()
+
+	cfg := SchemaConfig{
+		UsePeriodicTables: true,
+		IndexTables: PeriodicTableConfig{
+			Prefix: tablePrefix,
+			Period: tablePeriod,
+			From:   util.NewDayValue(model.TimeFromUnix(0)),
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+			InactiveWriteScale:         inactiveScalingConfig,
+			InactiveWriteScaleLastN:    autoScaleLastN,
+		},
+
+		ChunkTables: PeriodicTableConfig{
+			Prefix: chunkTablePrefix,
+			Period: tablePeriod,
+			From:   util.NewDayValue(model.TimeFromUnix(0)),
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+		},
+
+		CreationGracePeriod: gracePeriod,
+	}
+	tableManager, err := NewTableManager(cfg, maxChunkAge, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check at time zero, we have the base table and one weekly table
+	tmTest(t, client, tableManager,
+		"Initial test",
+		time.Unix(0, 0),
+		[]TableDesc{
+			{Name: "", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Fast forward table period + grace period, check we still have provisioned throughput
+	tmTest(t, client, tableManager,
+		"Move forward by table period + grace period",
+		time.Unix(0, 0).Add(tablePeriod).Add(gracePeriod),
+		[]TableDesc{
+			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Fast forward table period + max chunk age + grace period, check we remove provisioned throughput
+	tmTest(t, client, tableManager,
+		"Move forward by table period + max chunk age + grace period",
+		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+		[]TableDesc{
+			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+}
+
 func TestTableManagerTags(t *testing.T) {
 	client := newMockTableClient()
 

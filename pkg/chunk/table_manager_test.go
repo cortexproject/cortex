@@ -71,6 +71,18 @@ func (m *mockTableClient) UpdateTable(_ context.Context, current, expected Table
 	return nil
 }
 
+func tmTest(t *testing.T, client *mockTableClient, tableManager *TableManager, name string, tm time.Time, expected []TableDesc) {
+	t.Run(name, func(t *testing.T) {
+		ctx := context.Background()
+		mtime.NowForce(tm)
+		if err := tableManager.SyncTables(ctx); err != nil {
+			t.Fatal(err)
+		}
+		err := ExpectTables(ctx, client, expected)
+		require.NoError(t, err)
+	})
+}
+
 func TestTableManager(t *testing.T) {
 	client := newMockTableClient()
 
@@ -103,20 +115,8 @@ func TestTableManager(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	test := func(name string, tm time.Time, expected []TableDesc) {
-		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-			mtime.NowForce(tm)
-			if err := tableManager.SyncTables(ctx); err != nil {
-				t.Fatal(err)
-			}
-			err := ExpectTables(ctx, client, expected)
-			require.NoError(t, err)
-		})
-	}
-
 	// Check at time zero, we have the base table and one weekly table
-	test(
+	tmTest(t, client, tableManager,
 		"Initial test",
 		time.Unix(0, 0),
 		[]TableDesc{
@@ -127,7 +127,7 @@ func TestTableManager(t *testing.T) {
 	)
 
 	// Check running twice doesn't change anything
-	test(
+	tmTest(t, client, tableManager,
 		"Nothing changed",
 		time.Unix(0, 0),
 		[]TableDesc{
@@ -138,7 +138,7 @@ func TestTableManager(t *testing.T) {
 	)
 
 	// Fast forward grace period, check we still have write throughput on base table
-	test(
+	tmTest(t, client, tableManager,
 		"Move forward by grace period",
 		time.Unix(0, 0).Add(gracePeriod),
 		[]TableDesc{
@@ -149,7 +149,7 @@ func TestTableManager(t *testing.T) {
 	)
 
 	// Fast forward max chunk age + grace period, check write throughput on base table has gone
-	test(
+	tmTest(t, client, tableManager,
 		"Move forward by max chunk age + grace period",
 		time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
 		[]TableDesc{
@@ -160,7 +160,7 @@ func TestTableManager(t *testing.T) {
 	)
 
 	// Fast forward table period - grace period, check we add another weekly table
-	test(
+	tmTest(t, client, tableManager,
 		"Move forward by table period - grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(-gracePeriod),
 		[]TableDesc{
@@ -173,7 +173,7 @@ func TestTableManager(t *testing.T) {
 	)
 
 	// Fast forward table period + grace period, check we still have provisioned throughput
-	test(
+	tmTest(t, client, tableManager,
 		"Move forward by table period + grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(gracePeriod),
 		[]TableDesc{
@@ -186,7 +186,7 @@ func TestTableManager(t *testing.T) {
 	)
 
 	// Fast forward table period + max chunk age + grace period, check we remove provisioned throughput
-	test(
+	tmTest(t, client, tableManager,
 		"Move forward by table period + max chunk age + grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
 		[]TableDesc{
@@ -199,7 +199,7 @@ func TestTableManager(t *testing.T) {
 	)
 
 	// Check running twice doesn't change anything
-	test(
+	tmTest(t, client, tableManager,
 		"Nothing changed",
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
 		[]TableDesc{

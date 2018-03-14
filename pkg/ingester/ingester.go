@@ -474,6 +474,27 @@ func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) 
 	}, nil
 }
 
+// AllUserStats returns ingestion statistics for all users known to this ingester.
+func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+	users := i.userStates.cp()
+
+	response := &client.UsersStatsResponse{
+		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),
+	}
+	for userID, state := range users {
+		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
+			UserId: userID,
+			Data: &client.UserStatsResponse{
+				IngestionRate: state.ingestedSamples.rate(),
+				NumSeries:     uint64(state.fpToSeries.length()),
+			},
+		})
+	}
+	return response, nil
+}
+
 // Describe implements prometheus.Collector.
 func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- memorySeriesDesc

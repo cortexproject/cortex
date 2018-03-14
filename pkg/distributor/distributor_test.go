@@ -47,6 +47,7 @@ func (r mockRing) IsHealthy(ingester *ring.IngesterDesc) bool {
 type mockIngester struct {
 	client.IngesterClient
 	happy bool
+	stats client.UsersStatsResponse
 }
 
 func (i mockIngester) Push(ctx context.Context, in *client.WriteRequest, opts ...grpc.CallOption) (*client.WriteResponse, error) {
@@ -82,6 +83,10 @@ func (i mockIngester) Query(ctx context.Context, in *client.QueryRequest, opts .
 			},
 		},
 	}, nil
+}
+
+func (i mockIngester) AllUserStats(ctx context.Context, in *client.UserStatsRequest, opts ...grpc.CallOption) (*client.UsersStatsResponse, error) {
+	return &i.stats, nil
 }
 
 func TestDistributorPush(t *testing.T) {

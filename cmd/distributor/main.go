@@ -84,7 +84,9 @@ func main() {
 	}
 	defer server.Shutdown()
 
+	// Administrator functions
 	server.HTTP.Handle("/ring", r)
+	server.HTTP.HandleFunc("/all_user_stats", dist.AllUserStatsHandler)
 
 	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
 		return r.URL.RequestURI()

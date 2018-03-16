@@ -1,0 +1,162 @@
+memo = "94e9415ae281d77a7cf85be310cfdd2ffef75e67d01526858da031618150fd6c"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/armon/go-metrics"
+  packages = ["."]
+  revision = "93f237eba9b0602f3e73710416558854a81d9337"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/beorn7/perks"
+  packages = ["quantile"]
+  revision = "4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9"
+
+[[projects]]
+  name = "github.com/djherbis/buffer"
+  packages = [".","limio","wrapio"]
+  revision = "4972e2bf4a27dbd7c43140c959b85e8c1d2f5536"
+  version = "v1.0"
+
+[[projects]]
+  name = "github.com/djherbis/nio"
+  packages = ["."]
+  revision = "824ca9017eeb2a422fdda7ae9dba05d3ab019dfa"
+  version = "v2.0.3"
+
+[[projects]]
+  name = "github.com/go-kit/kit"
+  packages = ["log","log/level"]
+  revision = "fadad6fffe0466b19df9efd9acde5c9a52df5fa4"
+  version = "v0.4.0"
+
+[[projects]]
+  name = "github.com/go-logfmt/logfmt"
+  packages = ["."]
+  revision = "b41e73ee155f0507715ee349722291f5f5e50a5a"
+  version = "v0.3.0"
+
+[[projects]]
+  name = "github.com/go-stack/stack"
+  packages = ["."]
+  revision = "100eb0c0a9c5b306ca2fb4f165df21d80ada4b82"
+  version = "v1.5.2"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/golang/protobuf"
+  packages = ["proto"]
+  revision = "2bba0603135d7d7f5cb73b2125beeda19c09f4ef"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/google/btree"
+  packages = ["."]
+  revision = "316fb6d3f031ae8f4d457c6c5186b9e3ded70435"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/errwrap"
+  packages = ["."]
+  revision = "7554cd9344cec97297fa6649b055a8c98c2a1e55"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/go-msgpack"
+  packages = ["codec"]
+  revision = "fa3f63826f7c23912c15263591e65d54d080b458"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/go-multierror"
+  packages = ["."]
+  revision = "ed905158d87462226a13fe39ddf685ea65f1c11f"
+
+[[projects]]
+  name = "github.com/hashicorp/go-sockaddr"
+  packages = ["."]
+  revision = "acd314c5781ea706c710d9ea70069fd2e110d61d"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/memberlist"
+  packages = ["."]
+  revision = "022f08198efdd4f4a5eb6645123ad88a20a0afc0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/kr/logfmt"
+  packages = ["."]
+  revision = "b84e30acd515aadc4b783ad4ff83aff3299bdfe0"
+
+[[projects]]
+  name = "github.com/matttproud/golang_protobuf_extensions"
+  packages = ["pbutil"]
+  revision = "3247c84500bff8d9fb6d579d800f20b3e091582c"
+  version = "v1.0.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/miekg/dns"
+  packages = ["."]
+  revision = "6ebcb714d36901126ee2807031543b38c56de963"
+
+[[projects]]
+  name = "github.com/oklog/ulid"
+  packages = ["."]
+  revision = "d311cb43c92434ec4072dfbbda3400741d0a6337"
+  version = "v0.3.0"
+
+[[projects]]
+  name = "github.com/pborman/uuid"
+  packages = ["."]
+  revision = "a97ce2ca70fa5a848076093f05e639a89ca34d06"
+  version = "v1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/petar/GoLLRB"
+  packages = ["llrb"]
+  revision = "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
+
+[[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "3866ebc348c54054262feae422da428fe6cf147d"
+  version = "v0.8.0"
+
+[[projects]]
+  name = "github.com/prometheus/client_golang"
+  packages = ["prometheus","prometheus/promhttp"]
+  revision = "c5b7fccd204277076155f10851dad72b76a49317"
+  version = "v0.8.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/prometheus/client_model"
+  packages = ["go"]
+  revision = "6f3806018612930941127f2a7c6c453ba2c527d2"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/prometheus/common"
+  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","model"]
+  revision = "49fee292b27bfff7f354ee0f64e1bc4850462edf"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/prometheus/procfs"
+  packages = [".","xfs"]
+  revision = "a1dba9ce8baed984a2495b658c82687f8157b98f"
+
+[[projects]]
+  name = "github.com/prometheus/prometheus"
+  packages = ["util/flock"]
+  revision = "bd1182d29f462c39544f94cc822830e1c64cf55b"
+  version = "v1.5.2"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/sean-/seed"
+  packages = ["."]
+  revision = "e2103e2c35297fb7e17febb81e49b312087a2372"

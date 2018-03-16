@@ -24,7 +24,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "aws", "Which storage client to use (aws, gcp, cassandra, inmemory).")
+	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "aws", "Which storage client to use (aws, gcp, gcpv1, cassandra, inmemory).")
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
@@ -41,6 +41,8 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageCl
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return aws.NewStorageClient(cfg.AWSStorageConfig, schemaCfg)
+	case "gcpv1":
+		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp":
 		return gcp.NewStorageClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":

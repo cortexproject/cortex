@@ -21,6 +21,8 @@ const (
 type fixture struct {
 	srv  *bttest.Server
 	name string
+
+	version int
 }
 
 func (f *fixture) Name() string {
@@ -59,12 +61,22 @@ func (f *fixture) Clients() (
 			Prefix: "chunks",
 		},
 	}
-	sClient = &storageClient{
-		schemaCfg: schemaConfig,
-		client:    client,
-	}
 	tClient = &tableClient{
 		client: adminClient,
+	}
+
+	if f.version == 1 {
+		sClient = &storageClientV1{
+			storageClientV2{
+				schemaCfg: schemaConfig,
+				client:    client,
+			},
+		}
+	} else {
+		sClient = &storageClientV2{
+			schemaCfg: schemaConfig,
+			client:    client,
+		}
 	}
 	return
 }
@@ -77,6 +89,11 @@ func (f *fixture) Teardown() error {
 // Fixtures for unit testing GCP storage.
 var Fixtures = []chunk.Fixture{
 	&fixture{
-		name: "GCP",
+		name:    "GCPv2",
+		version: 2,
+	},
+	&fixture{
+		name:    "GCPv1",
+		version: 1,
 	},
 }

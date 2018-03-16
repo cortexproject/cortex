@@ -8,7 +8,7 @@ type StorageClient interface {
 	NewWriteBatch() WriteBatch
 	BatchWrite(context.Context, WriteBatch) error
 
-	// For the read path.
+	// This retrieves the query result in batches and passes it to the callback. The return value of the callback would determine if more data should be retrieved.
 	QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error
 
 	// For storing and retrieving chunks.
@@ -23,7 +23,9 @@ type WriteBatch interface {
 
 // ReadBatch represents the results of a QueryPages.
 type ReadBatch interface {
+	// The total number of entries in this batch.
 	Len() int
+	// The RangeValue key and Value for the index.
 	RangeValue(index int) []byte
 	Value(index int) []byte
 }

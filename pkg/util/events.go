@@ -1,6 +1,3 @@
-// Provide an "event" interface for observability
-
-// Temporary hack implementation to go via logger to stderr
 package util
 
 import (
@@ -9,18 +6,24 @@ import (
 	"github.com/go-kit/kit/log"
 )
 
+// Provide an "event" interface for observability
+
+// Temporary hack implementation to go via logger to stderr
+
 var (
 	// interface{} vars to avoid allocation on every call
 	key   interface{} = "level" // masquerade as a level like debug, warn
 	event interface{} = "event"
 
-	eventLogger log.Logger = log.NewNopLogger()
+	eventLogger = log.NewNopLogger()
 )
 
+// Event is the log-like API for event sampling
 func Event() log.Logger {
 	return eventLogger
 }
 
+// InitEvents initializes event sampling, with the given frequency. Zero=off.
 func InitEvents(freq int) {
 	if freq <= 0 {
 		eventLogger = log.NewNopLogger()

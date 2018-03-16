@@ -20,29 +20,24 @@ Additional help can also be found in the [Weave Cloud documentation](https://www
 
 ## Developing
 
-To build & test, install minikube, and run:
+To build (requires Docker):
+```
+make
+```
 
-    eval $(minikube docker-env)
-    make
-    kubectl create -f ./k8s
+To run the test suite:
+```
+make test
+```
+
+To checkout Cortex in minikube:
+```
+kubectl create -f ./k8s
+```
 
 Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape it itself.  Try it:
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
-
-### Experimental Bazel builds
-
-We also have early support for Bazel builds.  Once you have [installed
-bazel](https://bazel.build/versions/master/docs/install.html), try these commands:
-
-    make bazel-test
-    make bazel
-
-This will require Bazel 0.5.4 or later.
-
-Bazel can be useful for running fast, local, incremental builds and tests.
-Currently [bazel does not support cross-compiling](https://github.com/bazelbuild/rules_go/issues/70)
-so it is not used to produce the final binaries and docker container images.
 
 ### Vendoring
 

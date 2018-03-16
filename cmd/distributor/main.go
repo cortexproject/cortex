@@ -9,7 +9,6 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
@@ -18,7 +17,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/promrus"
 )
 
 func main() {
@@ -59,8 +57,6 @@ func main() {
 	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
 	trace := tracing.New(jaegerAgentHost, "distributor")
 	defer trace.Close()
-
-	log.AddHook(promrus.MustNewPrometheusHook())
 
 	r, err := ring.New(ringConfig)
 	if err != nil {

@@ -72,6 +72,7 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 
 	if flush {
 		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
+		util.Event().Log("msg", "add to flush queue", "userID", userID, "numChunks", len(series.chunkDescs), "firstTime", firstTime, "fp", fp, "series", series.metric)
 		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate})
 	}
 }
@@ -170,8 +171,10 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel() // releases resources if slowOperation completes before timeout elapses
 
+	util.Event().Log("msg", "flush chunks", "userID", userID, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric)
 	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
+		util.Event().Log("msg", "flush error", "userID", userID, "err", err, "fp", fp, "series", series.metric)
 		return err
 	}
 

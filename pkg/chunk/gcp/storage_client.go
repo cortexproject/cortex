@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"context"
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"strings"
@@ -95,10 +96,10 @@ func (b bigtableWriteBatchV2) Add(tableName, hashValue string, rangeValue []byte
 		b.tables[tableName] = rows
 	}
 
-	// TODO the hashValue should actually be hashed - but I have data written in
-	// this format, so we need to do a proper migration.
-	// TODO TODO ^
-	rowKey := hashValue
+	hasher := sha256.New()
+	hasher.Write([]byte(hashValue))
+
+	rowKey := string(hasher.Sum(nil))
 	mutation, ok := rows[rowKey]
 	if !ok {
 		mutation = bigtable.NewMutation()
@@ -150,7 +151,11 @@ func (s *storageClientV2) QueryPages(ctx context.Context, query chunk.IndexQuery
 		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnRangeFilter(columnFamily, string(query.RangeValueStart), "")))
 	}
 
-	r, err := table.ReadRow(ctx, query.HashValue, rOpts...)
+	hasher := sha256.New()
+	hasher.Write([]byte(query.HashValue))
+	hashValue := string(hasher.Sum(nil))
+
+	r, err := table.ReadRow(ctx, hashValue, rOpts...)
 	if err != nil {
 		sp.LogFields(otlog.String("error", err.Error()))
 		return errors.WithStack(err)
@@ -165,7 +170,7 @@ func (s *storageClientV2) QueryPages(ctx context.Context, query chunk.IndexQuery
 		val[i].Column = strings.TrimPrefix(val[i].Column, columnFamily+":")
 		// TODO: Hacky hacky ^
 	}
-	callback(bigtableReadBatchV2(val), true) // TODO: Check true or false.
+	callback(bigtableReadBatchV2(val), true) // TODO: Pass nothing to cb.
 	return nil
 }
 

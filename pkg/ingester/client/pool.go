@@ -1,11 +1,16 @@
 package client
 
 import (
+	fmt "fmt"
 	io "io"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/util"
+	context "golang.org/x/net/context"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 // Factory defines the signature for an ingester client factory
@@ -18,23 +23,30 @@ type IngesterPool struct {
 
 	ingesterClientFactory Factory
 	ingesterClientConfig  Config
+	healthCheckTimeout    time.Duration
 }
 
 // NewIngesterPool creates a new cache
-func NewIngesterPool(factory Factory, config Config) *IngesterPool {
+func NewIngesterPool(factory Factory, config Config, healthCheckTimeout time.Duration) *IngesterPool {
 	return &IngesterPool{
 		clients:               map[string]IngesterClient{},
 		ingesterClientFactory: factory,
 		ingesterClientConfig:  config,
+		healthCheckTimeout:    healthCheckTimeout,
 	}
+}
+
+func (pool *IngesterPool) fromCache(addr string) (IngesterClient, bool) {
+	pool.RLock()
+	defer pool.RUnlock()
+	client, ok := pool.clients[addr]
+	return client, ok
 }
 
 // GetClientFor gets the client for the specified address. If it does not exist it will make a new client
 // at that address
 func (pool *IngesterPool) GetClientFor(addr string) (IngesterClient, error) {
-	pool.RLock()
-	client, ok := pool.clients[addr]
-	pool.RUnlock()
+	client, ok := pool.fromCache(addr)
 	if ok {
 		return client, nil
 	}
@@ -86,4 +98,35 @@ func (pool *IngesterPool) Count() int {
 	pool.RLock()
 	defer pool.RUnlock()
 	return len(pool.clients)
+}
+
+// CleanUnhealthy loops through all ingesters and deletes any that fails a healtcheck.
+func (pool *IngesterPool) CleanUnhealthy() {
+	for _, addr := range pool.RegisteredAddresses() {
+		client, ok := pool.fromCache(addr)
+		// not ok means someone removed a client between the start of this loop and now
+		if ok {
+			err := healthCheck(client, pool.healthCheckTimeout)
+			if err != nil {
+				level.Warn(util.Logger).Log("msg", "removing ingester failing healtcheck", "addr", addr, "reason", err)
+				pool.RemoveClientFor(addr)
+			}
+		}
+	}
+}
+
+// healthCheck will check if the client is still healthy, returning an error if it is not
+func healthCheck(client IngesterClient, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	ctx = user.InjectOrgID(ctx, "0")
+
+	resp, err := client.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	if err != nil {
+		return err
+	}
+	if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+		return fmt.Errorf("Failing healthcheck status: %s", resp.Status)
+	}
+	return nil
 }

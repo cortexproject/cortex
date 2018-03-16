@@ -117,7 +117,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
-		ingesterPool:   ingester_client.NewIngesterPool(cfg.ingesterClientFactory, cfg.IngesterClientConfig),
+		ingesterPool:   ingester_client.NewIngesterPool(cfg.ingesterClientFactory, cfg.IngesterClientConfig, cfg.RemoteTimeout),
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		billingClient:  billingClient,
@@ -172,7 +172,7 @@ func (d *Distributor) Run() {
 		case <-cleanupClients.C:
 			d.removeStaleIngesterClients()
 			if d.cfg.HealthCheckIngesters {
-				d.healthCheckAndRemoveIngesters()
+				d.ingesterPool.CleanUnhealthy()
 			}
 		case <-d.quit:
 			close(d.done)
@@ -199,22 +199,6 @@ func (d *Distributor) removeStaleIngesterClients() {
 		}
 		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
 		d.ingesterPool.RemoveClientFor(addr)
-	}
-}
-
-func (d *Distributor) healthCheckAndRemoveIngesters() {
-	for _, addr := range d.ingesterPool.RegisteredAddresses() {
-		client, err := d.ingesterPool.GetClientFor(addr)
-		if err != nil {
-			// if there is no client, don't need to health check it
-			level.Warn(util.Logger).Log("msg", "could not create client for", "addr", addr)
-			continue
-		}
-		err = ingester_client.HealthCheck(client, d.cfg.RemoteTimeout)
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "removing ingester failing healtcheck", "addr", addr, "reason", err)
-			d.ingesterPool.RemoveClientFor(addr)
-		}
 	}
 }
 

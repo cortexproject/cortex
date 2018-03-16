@@ -61,21 +61,6 @@
   version = "v1.11.0"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/alecthomas/template"
-  packages = [
-    ".",
-    "parse"
-  ]
-  revision = "a0175ee3bccc567396460bf5acd36800cb10c49c"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/alecthomas/units"
-  packages = ["."]
-  revision = "2efee857e7cfd4f3d0138cc3cbb1b4966962b93a"
-
-[[projects]]
   name = "github.com/apache/thrift"
   packages = ["lib/go/thrift"]
   revision = "b2a4d4ae21c789b689dd162deb819665567f481c"
@@ -674,7 +659,6 @@
     "config",
     "expfmt",
     "internal/bitbucket.org/ww/goautoneg",
-    "log",
     "model",
     "promlog",
     "route",
@@ -924,12 +908,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = [
-    "unix",
-    "windows",
-    "windows/registry",
-    "windows/svc/eventlog"
-  ]
+  packages = ["unix"]
   revision = "9f30dcbe5be197894515a338a9bda9253567ea8f"
 
 [[projects]]
@@ -1044,12 +1023,6 @@
   ]
   revision = "7cea4cc846bcf00cbb27595b07da5de875ef7de9"
   version = "v1.9.1"
-
-[[projects]]
-  name = "gopkg.in/alecthomas/kingpin.v2"
-  packages = ["."]
-  revision = "1087e65c9441605df944fb12c33f0fe7072d18ca"
-  version = "v2.2.5"
 
 [[projects]]
   name = "gopkg.in/fsnotify.v1"
@@ -1199,6 +1172,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "266378fab402345b841032ba476ff68df68885c4c41b6acd2f9e403f5806b271"
+  inputs-digest = "e3e836a75de227b79912c367e2bd476ce625e4f633ef3cc51009eff08e48293f"
   solver-name = "gps-cdcl"
   solver-version = 1

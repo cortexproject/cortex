@@ -20,7 +20,7 @@ func TestIngesterCache(t *testing.T) {
 		buildCount++
 		return mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 	}
-	cache := NewIngesterClientCache(factory, Config{})
+	cache := NewIngesterPool(factory, Config{})
 
 	cache.GetClientFor("1")
 	if buildCount != 1 {

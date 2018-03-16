@@ -43,12 +43,12 @@ var (
 // Distributor is a storage.SampleAppender and a client.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	cfg         Config
-	ring        ring.ReadRing
-	clientsMtx  sync.RWMutex
-	clientCache *ingester_client.IngesterClientCache
-	quit        chan struct{}
-	done        chan struct{}
+	cfg          Config
+	ring         ring.ReadRing
+	clientsMtx   sync.RWMutex
+	ingesterPool *ingester_client.IngesterPool
+	quit         chan struct{}
+	done         chan struct{}
 
 	billingClient *billing.Client
 
@@ -93,7 +93,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
-	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during the cleanup period.")
+	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during periodic cleanup.")
 }
 
 // New constructs a new Distributor
@@ -117,7 +117,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
-		clientCache:    ingester_client.NewIngesterClientCache(cfg.ingesterClientFactory, cfg.IngesterClientConfig),
+		ingesterPool:   ingester_client.NewIngesterPool(cfg.ingesterClientFactory, cfg.IngesterClientConfig),
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		billingClient:  billingClient,
@@ -193,18 +193,18 @@ func (d *Distributor) removeStaleIngesterClients() {
 		ingesters[ing.Addr] = struct{}{}
 	}
 
-	for _, addr := range d.clientCache.RegisteredAddresses() {
+	for _, addr := range d.ingesterPool.RegisteredAddresses() {
 		if _, ok := ingesters[addr]; ok {
 			continue
 		}
 		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
-		d.clientCache.RemoveClientFor(addr)
+		d.ingesterPool.RemoveClientFor(addr)
 	}
 }
 
 func (d *Distributor) healthCheckAndRemoveIngesters() {
-	for _, addr := range d.clientCache.RegisteredAddresses() {
-		client, err := d.clientCache.GetClientFor(addr)
+	for _, addr := range d.ingesterPool.RegisteredAddresses() {
+		client, err := d.ingesterPool.GetClientFor(addr)
 		if err != nil {
 			// if there is no client, don't need to health check it
 			level.Warn(util.Logger).Log("msg", "could not create client for", "addr", addr)
@@ -213,7 +213,7 @@ func (d *Distributor) healthCheckAndRemoveIngesters() {
 		err = ingester_client.HealthCheck(client, d.cfg.RemoteTimeout)
 		if err != nil {
 			level.Warn(util.Logger).Log("msg", "removing ingester failing healtcheck", "addr", addr, "reason", err)
-			d.clientCache.RemoveClientFor(addr)
+			d.ingesterPool.RemoveClientFor(addr)
 		}
 	}
 }
@@ -398,7 +398,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 }
 
 func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, samples []*sampleTracker) error {
-	c, err := d.clientCache.GetClientFor(ingester.Addr)
+	c, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
@@ -515,7 +515,7 @@ func (d *Distributor) queryIngesters(ctx context.Context, ingesters []*ring.Inge
 }
 
 func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc, req *client.QueryRequest) (model.Matrix, error) {
-	client, err := d.clientCache.GetClientFor(ing.Addr)
+	client, err := d.ingesterPool.GetClientFor(ing.Addr)
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +536,7 @@ func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}
 	ingesters := d.ring.GetAll()
 	for _, ingester := range ingesters {
 		go func(ingester *ring.IngesterDesc) {
-			client, err := d.clientCache.GetClientFor(ingester.Addr)
+			client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 			if err != nil {
 				errs <- err
 				return
@@ -663,7 +663,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	// Not using d.forAllIngesters(), so we can fail after first error.
 	ingesters := d.ring.GetAll()
 	for _, ingester := range ingesters {
-		client, err := d.clientCache.GetClientFor(ingester.Addr)
+		client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err
 		}
@@ -722,6 +722,6 @@ func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		numClientsDesc,
 		prometheus.GaugeValue,
-		float64(d.clientCache.Count()),
+		float64(d.ingesterPool.Count()),
 	)
 }

@@ -143,8 +143,9 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 	descs := make([]*desc, 0, len(wireChunks))
 	for _, c := range wireChunks {
 		desc := &desc{
-			FirstTime: model.Time(c.StartTimestampMs),
-			LastTime:  model.Time(c.EndTimestampMs),
+			FirstTime:  model.Time(c.StartTimestampMs),
+			LastTime:   model.Time(c.EndTimestampMs),
+			LastUpdate: model.Now(),
 		}
 
 		var err error

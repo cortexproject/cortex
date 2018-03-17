@@ -2,9 +2,9 @@ package gcp
 
 import (
 	"context"
-	"crypto/sha256"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	"cloud.google.com/go/bigtable"
@@ -36,19 +36,20 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 type storageClientV1 struct {
-	storageClientV2
+	storageClientColumnKey
 }
 
-// storageClientV2 implements chunk.storageClientV2 for GCP.
-type storageClientV2 struct {
+// storageClientColumnKey implements chunk.storageClient for GCP.
+type storageClientColumnKey struct {
 	cfg       Config
 	schemaCfg chunk.SchemaConfig
 	client    *bigtable.Client
+	keysFn    keysFn
 }
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
-	return NewStorageClientV2(ctx, cfg, schemaCfg)
+	return NewStorageClientColumnKey(ctx, cfg, schemaCfg)
 }
 
 // NewStorageClientV1 returns a new v1 StorageClient.
@@ -57,60 +58,83 @@ func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaC
 	if err != nil {
 		return nil, err
 	}
+
+	return newStorageClientV1(cfg, client, schemaCfg), nil
+}
+
+func newStorageClientV1(cfg Config, client *bigtable.Client, schemaCfg chunk.SchemaConfig) *storageClientV1 {
 	return &storageClientV1{
-		storageClientV2{
+		storageClientColumnKey{
 			cfg:       cfg,
 			schemaCfg: schemaCfg,
 			client:    client,
+			keysFn: func(hashValue string, rangeValue []byte) (string, string) {
+				// TODO the hashValue should actually be hashed - but I have data written in
+				// this format, so we need to do a proper migration.
+				rowKey := hashValue + separator + string(rangeValue)
+
+				return rowKey, column
+			},
 		},
-	}, nil
+	}
 }
 
-// NewStorageClientV2 returns a new v2 StorageClient.
-func NewStorageClientV2(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
+// NewStorageClientColumnKey returns a new v2 StorageClient.
+func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
 	client, err := bigtable.NewClient(ctx, cfg.project, cfg.instance, instrumentation()...)
 	if err != nil {
 		return nil, err
 	}
-	return &storageClientV2{
+
+	return newStorageClientV1(cfg, client, schemaCfg), nil
+}
+
+func newStorageClientColumnKey(cfg Config, client *bigtable.Client, schemaCfg chunk.SchemaConfig) *storageClientColumnKey {
+	return &storageClientColumnKey{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
 		client:    client,
-	}, nil
-}
-
-func (s *storageClientV2) NewWriteBatch() chunk.WriteBatch {
-	return bigtableWriteBatchV2{
-		tables: map[string]map[string]*bigtable.Mutation{},
+		keysFn: func(hashValue string, rangeValue []byte) (string, string) {
+			// We are hashing the hash value to improve distribution of keys.
+			return hashKey(hashValue), string(rangeValue)
+		},
 	}
 }
 
-type bigtableWriteBatchV2 struct {
-	tables map[string]map[string]*bigtable.Mutation
+func (s *storageClientColumnKey) NewWriteBatch() chunk.WriteBatch {
+	return bigtableWriteBatch{
+		tables: map[string]map[string]*bigtable.Mutation{},
+		keysFn: s.keysFn,
+	}
 }
 
-func (b bigtableWriteBatchV2) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+// keysFn returns the row and column keys for the given hash and range keys.
+type keysFn func(hashValue string, rangeValue []byte) (rowKey, columnKey string)
+
+type bigtableWriteBatch struct {
+	tables map[string]map[string]*bigtable.Mutation
+	keysFn keysFn
+}
+
+func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
 	rows, ok := b.tables[tableName]
 	if !ok {
 		rows = map[string]*bigtable.Mutation{}
 		b.tables[tableName] = rows
 	}
 
-	hasher := sha256.New()
-	hasher.Write([]byte(hashValue))
-
-	rowKey := string(hasher.Sum(nil))
+	rowKey, columnKey := b.keysFn(hashValue, rangeValue)
 	mutation, ok := rows[rowKey]
 	if !ok {
 		mutation = bigtable.NewMutation()
 		rows[rowKey] = mutation
 	}
 
-	mutation.Set(columnFamily, string(rangeValue), 0, value)
+	mutation.Set(columnFamily, columnKey, 0, value)
 }
 
-func (s *storageClientV2) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-	bigtableBatch := batch.(bigtableWriteBatchV2)
+func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+	bigtableBatch := batch.(bigtableWriteBatch)
 
 	for tableName, rows := range bigtableBatch.tables {
 		table := s.client.Open(tableName)
@@ -135,7 +159,7 @@ func (s *storageClientV2) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 	return nil
 }
 
-func (s *storageClientV2) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (s *storageClientColumnKey) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 
@@ -151,9 +175,7 @@ func (s *storageClientV2) QueryPages(ctx context.Context, query chunk.IndexQuery
 		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnRangeFilter(columnFamily, string(query.RangeValueStart), "")))
 	}
 
-	hasher := sha256.New()
-	hasher.Write([]byte(query.HashValue))
-	hashValue := string(hasher.Sum(nil))
+	hashValue := hashKey(query.HashValue)
 
 	r, err := table.ReadRow(ctx, hashValue, rOpts...)
 	if err != nil {
@@ -166,30 +188,34 @@ func (s *storageClientV2) QueryPages(ctx context.Context, query chunk.IndexQuery
 		panic("bad response from bigtable, columnFamily missing")
 	}
 
-	for i := range val {
-		val[i].Column = strings.TrimPrefix(val[i].Column, columnFamily+":")
-		// TODO: Hacky hacky ^
-	}
-	callback(bigtableReadBatchV2(val), true) // TODO: Pass nothing to cb.
+	callback(bigtableReadBatchColumnKey{
+		items:        val,
+		columnPrefix: columnFamily + ":",
+	}, true) // TODO: Pass nothing to cb.
 	return nil
 }
 
-// bigtableReadBatchV2 represents a batch of values read from Bigtable.
-type bigtableReadBatchV2 []bigtable.ReadItem
-
-func (b bigtableReadBatchV2) Len() int {
-	return len(b)
+// bigtableReadBatchColumnKey represents a batch of values read from Bigtable.
+type bigtableReadBatchColumnKey struct {
+	items        []bigtable.ReadItem
+	columnPrefix string
 }
 
-func (b bigtableReadBatchV2) RangeValue(index int) []byte {
-	return []byte(b[index].Column)
+func (b bigtableReadBatchColumnKey) Len() int {
+	return len(b.items)
 }
 
-func (b bigtableReadBatchV2) Value(index int) []byte {
-	return b[index].Value
+func (b bigtableReadBatchColumnKey) RangeValue(index int) []byte {
+	return []byte(
+		strings.TrimPrefix(b.items[index].Column, b.columnPrefix),
+	)
 }
 
-func (s *storageClientV2) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (b bigtableReadBatchColumnKey) Value(index int) []byte {
+	return b.items[index].Value
+}
+
+func (s *storageClientColumnKey) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	keys := map[string][]string{}
 	muts := map[string][]*bigtable.Mutation{}
 
@@ -223,7 +249,7 @@ func (s *storageClientV2) PutChunks(ctx context.Context, chunks []chunk.Chunk) e
 	return nil
 }
 
-func (s *storageClientV2) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
+func (s *storageClientColumnKey) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks requested", len(input)))
@@ -303,61 +329,6 @@ func (s *storageClientV2) GetChunks(ctx context.Context, input []chunk.Chunk) ([
 	return output, nil
 }
 
-func (s *storageClientV1) NewWriteBatch() chunk.WriteBatch {
-	return bigtableWriteBatchV1{
-		tables: map[string]map[string]*bigtable.Mutation{},
-	}
-}
-
-type bigtableWriteBatchV1 struct {
-	tables map[string]map[string]*bigtable.Mutation
-}
-
-func (b bigtableWriteBatchV1) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	rows, ok := b.tables[tableName]
-	if !ok {
-		rows = map[string]*bigtable.Mutation{}
-		b.tables[tableName] = rows
-	}
-
-	// TODO the hashValue should actually be hashed - but I have data written in
-	// this format, so we need to do a proper migration.
-	rowKey := hashValue + separator + string(rangeValue)
-	mutation, ok := rows[rowKey]
-	if !ok {
-		mutation = bigtable.NewMutation()
-		rows[rowKey] = mutation
-	}
-
-	mutation.Set(columnFamily, column, 0, value)
-}
-
-func (s *storageClientV1) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-	bigtableBatch := batch.(bigtableWriteBatchV1)
-
-	for tableName, rows := range bigtableBatch.tables {
-		table := s.client.Open(tableName)
-		rowKeys := make([]string, 0, len(rows))
-		muts := make([]*bigtable.Mutation, 0, len(rows))
-		for rowKey, mut := range rows {
-			rowKeys = append(rowKeys, rowKey)
-			muts = append(muts, mut)
-		}
-
-		errs, err := table.ApplyBulk(ctx, rowKeys, muts)
-		if err != nil {
-			return err
-		}
-		for _, err := range errs {
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 func (s *storageClientV1) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
@@ -410,4 +381,13 @@ func (b bigtableReadBatchV1) Value(index int) []byte {
 		panic("bad response from bigtable")
 	}
 	return cf[0].Value
+}
+
+func hashKey(key string) string {
+	hasher := fnv.New64a()
+	hasher.Write([]byte(key))
+
+	hashedKey := string(hasher.Sum(nil))
+
+	return hashedKey + key // For maintaining uniqueness.
 }

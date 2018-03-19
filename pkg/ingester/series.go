@@ -175,16 +175,18 @@ func (s *memorySeries) setChunks(descs []*desc) error {
 }
 
 type desc struct {
-	C         chunk.Chunk // nil if chunk is evicted.
-	FirstTime model.Time  // Populated at creation. Immutable.
-	LastTime  model.Time  // Populated at creation & on append.
+	C          chunk.Chunk // nil if chunk is evicted.
+	FirstTime  model.Time  // Timestamp of first sample. Populated at creation. Immutable.
+	LastTime   model.Time  // Timestamp of last sample. Populated at creation & on append.
+	LastUpdate model.Time  // This server's local time on last change
 }
 
 func newDesc(c chunk.Chunk, firstTime model.Time, lastTime model.Time) *desc {
 	return &desc{
-		C:         c,
-		FirstTime: firstTime,
-		LastTime:  lastTime,
+		C:          c,
+		FirstTime:  firstTime,
+		LastTime:   lastTime,
+		LastUpdate: model.Now(),
 	}
 }
 
@@ -199,6 +201,7 @@ func (d *desc) add(s model.SamplePair) ([]chunk.Chunk, error) {
 
 	if len(cs) == 1 {
 		d.LastTime = s.Timestamp // sample was added to this chunk
+		d.LastUpdate = model.Now()
 	}
 
 	return cs, nil

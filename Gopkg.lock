@@ -1028,6 +1028,7 @@
     "encoding/gzip",
     "grpclb/grpc_lb_v1/messages",
     "grpclog",
+    "health/grpc_health_v1",
     "internal",
     "keepalive",
     "metadata",
@@ -1198,6 +1199,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "64ccb3a589c4a999f4c271cbeba54180e7a44eb18a74e52b0d3fcc375e85c660"
+  inputs-digest = "266378fab402345b841032ba476ff68df68885c4c41b6acd2f9e403f5806b271"
   solver-name = "gps-cdcl"
   solver-version = 1

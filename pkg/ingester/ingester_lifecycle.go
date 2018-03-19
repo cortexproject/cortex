@@ -384,7 +384,7 @@ func (i *Ingester) transferChunks() error {
 			err = stream.Send(&client.TimeSeriesChunk{
 				FromIngesterId: i.id,
 				UserId:         userID,
-				Labels:         util.ToLabelPairs(pair.series.metric),
+				Labels:         client.ToLabelPairs(pair.series.metric),
 				Chunks:         chunks,
 			})
 			state.fpLocker.Unlock(pair.fp)

@@ -143,7 +143,7 @@ func (q MergeQueryable) RemoteReadHandler(w http.ResponseWriter, r *http.Request
 	errors := make(chan error)
 	for i, qr := range req.Queries {
 		go func(i int, qr *client.QueryRequest) {
-			from, to, matchers, err := util.FromQueryRequest(qr)
+			from, to, matchers, err := client.FromQueryRequest(qr)
 			if err != nil {
 				errors <- err
 				return
@@ -161,7 +161,7 @@ func (q MergeQueryable) RemoteReadHandler(w http.ResponseWriter, r *http.Request
 				return
 			}
 
-			resp.Results[i] = util.ToQueryResponse(matrix)
+			resp.Results[i] = client.ToQueryResponse(matrix)
 			errors <- nil
 		}(i, qr)
 	}

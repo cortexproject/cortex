@@ -11,6 +11,7 @@ import (
 
 	// Needed for gRPC compatibility.
 	old_ctx "golang.org/x/net/context"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -296,7 +297,7 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	var lastPartialErr error
-	samples := util.FromWriteRequest(req)
+	samples := client.FromWriteRequest(req)
 
 samples:
 	for j := range samples {
@@ -365,7 +366,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
-	start, end, matchers, err := util.FromQueryRequest(req)
+	start, end, matchers, err := client.FromQueryRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +376,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		return nil, err
 	}
 
-	return util.ToQueryResponse(matrix), nil
+	return client.ToQueryResponse(matrix), nil
 }
 
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*labels.Matcher) (model.Matrix, error) {
@@ -434,7 +435,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 	}
 
 	// TODO Right now we ignore start and end.
-	_, _, matchersSet, err := util.FromMetricsForLabelMatchersRequest(req)
+	_, _, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -456,7 +457,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 		result = append(result, metric)
 	}
 
-	return util.ToMetricsForLabelMatchersResponse(result), nil
+	return client.ToMetricsForLabelMatchersResponse(result), nil
 }
 
 // UserStats returns ingestion statistics for the current user.
@@ -493,6 +494,11 @@ func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsReques
 		})
 	}
 	return response, nil
+}
+
+// Check implements the grpc healthcheck
+func (i *Ingester) Check(ctx old_ctx.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
 // Describe implements prometheus.Collector.

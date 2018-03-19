@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -52,7 +51,7 @@ func (a *appendableAppender) AddFast(l labels.Labels, ref uint64, t int64, v flo
 }
 
 func (a *appendableAppender) Commit() error {
-	if _, err := a.pusher.Push(a.ctx, util.ToWriteRequest(a.samples)); err != nil {
+	if _, err := a.pusher.Push(a.ctx, client.ToWriteRequest(a.samples)); err != nil {
 		return err
 	}
 	a.samples = nil

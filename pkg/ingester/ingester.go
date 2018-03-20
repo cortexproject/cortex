@@ -94,6 +94,11 @@ type Config struct {
 	KVClient              ring.KVClient
 }
 
+// SetClientConfig sets clientConfig in config
+func (cfg *Config) SetClientConfig(clientConfig client.Config) {
+	cfg.clientConfig = clientConfig
+}
+
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RingConfig.RegisterFlags(f)

@@ -1,14 +1,14 @@
 package client
 
 import (
+	"flag"
+
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing/opentracing-go"
+	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
-
-	"flag"
-	"github.com/weaveworks/common/middleware"
 )
 
 type closableIngesterClient struct {
@@ -56,6 +56,12 @@ type Config struct {
 
 // RegisterFlags registers configuration settings used by the ingester client config
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	// lite uses both ingester.Config and distributor.Config.
+	// Both of them has IngesterClientConfig, so calling RegisterFlags on them triggers panic.
+	// This check ignores second call to RegisterFlags on IngesterClientConfig and then populates it manually with SetClientConfig
+	if flag.Lookup("ingester.client.max-recv-message-size") != nil {
+		return
+	}
 	// We have seen 20MB returns from queries - add a bit of headroom
 	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
 	flag.BoolVar(&cfg.CompressToIngester, "ingester.client.compress-to-ingester", false, "Compress data in calls to ingesters.")

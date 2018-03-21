@@ -862,7 +862,7 @@
     "tracing",
     "user"
   ]
-  revision = "5a97a1460a103f4facd7e5563f6b375287e79c36"
+  revision = "ebab3a78900a09cebce8d0b37f2a69d474796bf4"
 
 [[projects]]
   name = "github.com/weaveworks/mesh"
@@ -1198,6 +1198,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3be1d79b8a4e56f43e210eb24169554fab37f3a087dcb0883078843eb9483714"
+  inputs-digest = "64ccb3a589c4a999f4c271cbeba54180e7a44eb18a74e52b0d3fcc375e85c660"
   solver-name = "gps-cdcl"
   solver-version = 1

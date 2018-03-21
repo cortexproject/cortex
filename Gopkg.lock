@@ -862,7 +862,7 @@
     "tracing",
     "user"
   ]
-  revision = "bf7fd2fdfaa72bc4bf23b057af82aa3c0dbdc40c"
+  revision = "ebab3a78900a09cebce8d0b37f2a69d474796bf4"
 
 [[projects]]
   name = "github.com/weaveworks/mesh"

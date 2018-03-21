@@ -54,8 +54,7 @@ func main() {
 	util.InitLogger(logLevel.AllowedLevel)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	jaegerAgentHost := os.Getenv("JAEGER_AGENT_HOST")
-	trace := tracing.New(jaegerAgentHost, "distributor")
+	trace := tracing.NewFromEnv("distributor")
 	defer trace.Close()
 
 	r, err := ring.New(ringConfig)

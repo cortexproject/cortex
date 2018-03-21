@@ -5,23 +5,23 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"strconv"
 
-	jaeger "github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 )
 
 // New registers Jaeger as the OpenTracing implementation.
 // If jaegerAgentHost is an empty string, tracing is disabled.
-func New(jaegerAgentHost, serviceName string) io.Closer {
-	if jaegerAgentHost != "" {
+func New(agentHost, serviceName, samplerType string, samplerParam float64) io.Closer {
+	if agentHost != "" {
 		cfg := jaegercfg.Configuration{
 			Sampler: &jaegercfg.SamplerConfig{
-				SamplingServerURL: fmt.Sprintf("http://%s:5778/sampling", jaegerAgentHost),
-				Type:              jaeger.SamplerTypeConst,
-				Param:             1,
+				SamplingServerURL: fmt.Sprintf("http://%s:5778/sampling", agentHost),
+				Type:              samplerType,
+				Param:             samplerParam,
 			},
 			Reporter: &jaegercfg.ReporterConfig{
-				LocalAgentHostPort: fmt.Sprintf("%s:6831", jaegerAgentHost),
+				LocalAgentHostPort: fmt.Sprintf("%s:6831", agentHost),
 			},
 		}
 
@@ -33,4 +33,18 @@ func New(jaegerAgentHost, serviceName string) io.Closer {
 		return closer
 	}
 	return ioutil.NopCloser(nil)
+}
+
+// NewFromEnv is a convenience function to allow tracing configuration
+// via environment variables
+func NewFromEnv(serviceName string) io.Closer {
+	agentHost := os.Getenv("JAEGER_AGENT_HOST")
+	samplerType := os.Getenv("JAEGER_SAMPLER_TYPE")
+	samplerParam, _ := strconv.ParseFloat(os.Getenv("JAEGER_SAMPLER_PARAM"), 64)
+	if samplerType == "" || samplerParam == 0 {
+		samplerType = "ratelimiting"
+		samplerParam = 10.0
+	}
+
+	return New(agentHost, serviceName, samplerType, samplerParam)
 }

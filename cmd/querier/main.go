@@ -48,7 +48,6 @@ func main() {
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("querier")
 	defer trace.Close()
-	defer trace.Close()
 
 	util.InitLogger(logLevel.AllowedLevel)
 

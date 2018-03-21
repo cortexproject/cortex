@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
@@ -51,6 +52,7 @@ func init() {
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
 	CacheConfig cache.Config
+	MinChunkAge time.Duration
 
 	// For injecting different schemas in tests.
 	schemaFactory func(cfg SchemaConfig) Schema
@@ -59,6 +61,7 @@ type StoreConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlags(f)
+	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "minimum time between chunk update and being saved to the store")
 }
 
 // Store implements Store
@@ -175,6 +178,11 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
+		return nil, nil
+	}
+
+	if from.After(now.Add(-c.cfg.MinChunkAge)) {
+		// no data relevant to this query will have arrived at the store yet
 		return nil, nil
 	}
 

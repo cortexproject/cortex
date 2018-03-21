@@ -15,7 +15,6 @@ package v1
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -27,8 +26,9 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"unsafe"
 
-	"github.com/prometheus/client_golang/prometheus"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/tsdb"
@@ -83,10 +83,12 @@ func (e *apiError) Error() string {
 
 type targetRetriever interface {
 	Targets() []*scrape.Target
+	DroppedTargets() []*scrape.Target
 }
 
 type alertmanagerRetriever interface {
 	Alertmanagers() []*url.URL
+	DroppedAlertmanagers() []*url.URL
 }
 
 type response struct {
@@ -108,15 +110,16 @@ type apiFunc func(r *http.Request) (interface{}, *apiError)
 // API can register a set of endpoints in a router and handle
 // them using the provided storage and query engine.
 type API struct {
-	Queryable   promql.Queryable
+	Queryable   storage.Queryable
 	QueryEngine *promql.Engine
 
 	targetRetriever       targetRetriever
 	alertmanagerRetriever alertmanagerRetriever
 
-	now    func() time.Time
-	config func() config.Config
-	ready  func(http.HandlerFunc) http.HandlerFunc
+	now      func() time.Time
+	config   func() config.Config
+	flagsMap map[string]string
+	ready    func(http.HandlerFunc) http.HandlerFunc
 
 	db          func() *tsdb.DB
 	enableAdmin bool
@@ -125,10 +128,11 @@ type API struct {
 // NewAPI returns an initialized API type.
 func NewAPI(
 	qe *promql.Engine,
-	q promql.Queryable,
+	q storage.Queryable,
 	tr targetRetriever,
 	ar alertmanagerRetriever,
 	configFunc func() config.Config,
+	flagsMap map[string]string,
 	readyFunc func(http.HandlerFunc) http.HandlerFunc,
 	db func() *tsdb.DB,
 	enableAdmin bool,
@@ -140,6 +144,7 @@ func NewAPI(
 		alertmanagerRetriever: ar,
 		now:         time.Now,
 		config:      configFunc,
+		flagsMap:    flagsMap,
 		ready:       readyFunc,
 		db:          db,
 		enableAdmin: enableAdmin,
@@ -148,7 +153,7 @@ func NewAPI(
 
 // Register the API's endpoints in the given router.
 func (api *API) Register(r *route.Router) {
-	instr := func(name string, f apiFunc) http.HandlerFunc {
+	wrap := func(f apiFunc) http.HandlerFunc {
 		hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			setCORS(w)
 			if data, err := f(r); err != nil {
@@ -159,33 +164,34 @@ func (api *API) Register(r *route.Router) {
 				w.WriteHeader(http.StatusNoContent)
 			}
 		})
-		return api.ready(prometheus.InstrumentHandler(name, httputil.CompressionHandler{
+		return api.ready(httputil.CompressionHandler{
 			Handler: hf,
-		}))
+		}.ServeHTTP)
 	}
 
-	r.Options("/*path", instr("options", api.options))
+	r.Options("/*path", wrap(api.options))
 
-	r.Get("/query", instr("query", api.query))
-	r.Post("/query", instr("query", api.query))
-	r.Get("/query_range", instr("query_range", api.queryRange))
-	r.Post("/query_range", instr("query_range", api.queryRange))
+	r.Get("/query", wrap(api.query))
+	r.Post("/query", wrap(api.query))
+	r.Get("/query_range", wrap(api.queryRange))
+	r.Post("/query_range", wrap(api.queryRange))
 
-	r.Get("/label/:name/values", instr("label_values", api.labelValues))
+	r.Get("/label/:name/values", wrap(api.labelValues))
 
-	r.Get("/series", instr("series", api.series))
-	r.Del("/series", instr("drop_series", api.dropSeries))
+	r.Get("/series", wrap(api.series))
+	r.Del("/series", wrap(api.dropSeries))
 
-	r.Get("/targets", instr("targets", api.targets))
-	r.Get("/alertmanagers", instr("alertmanagers", api.alertmanagers))
+	r.Get("/targets", wrap(api.targets))
+	r.Get("/alertmanagers", wrap(api.alertmanagers))
 
-	r.Get("/status/config", instr("config", api.serveConfig))
-	r.Post("/read", api.ready(prometheus.InstrumentHandler("read", http.HandlerFunc(api.remoteRead))))
+	r.Get("/status/config", wrap(api.serveConfig))
+	r.Get("/status/flags", wrap(api.serveFlags))
+	r.Post("/read", api.ready(http.HandlerFunc(api.remoteRead)))
 
 	// Admin APIs
-	r.Post("/admin/tsdb/delete_series", instr("delete_series", api.deleteSeries))
-	r.Post("/admin/tsdb/clean_tombstones", instr("clean_tombstones", api.cleanTombstones))
-	r.Post("/admin/tsdb/snapshot", instr("snapshot", api.snapshot))
+	r.Post("/admin/tsdb/delete_series", wrap(api.deleteSeries))
+	r.Post("/admin/tsdb/clean_tombstones", wrap(api.cleanTombstones))
+	r.Post("/admin/tsdb/snapshot", wrap(api.snapshot))
 }
 
 type queryData struct {
@@ -222,7 +228,7 @@ func (api *API) query(r *http.Request) (interface{}, *apiError) {
 		defer cancel()
 	}
 
-	qry, err := api.QueryEngine.NewInstantQuery(r.FormValue("query"), ts)
+	qry, err := api.QueryEngine.NewInstantQuery(api.Queryable, r.FormValue("query"), ts)
 	if err != nil {
 		return nil, &apiError{errorBadData, err}
 	}
@@ -296,7 +302,7 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		defer cancel()
 	}
 
-	qry, err := api.QueryEngine.NewRangeQuery(r.FormValue("query"), start, end, step)
+	qry, err := api.QueryEngine.NewRangeQuery(api.Queryable, r.FormValue("query"), start, end, step)
 	if err != nil {
 		return nil, &apiError{errorBadData, err}
 	}
@@ -396,7 +402,7 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 
 	var sets []storage.SeriesSet
 	for _, mset := range matcherSets {
-		s, err := q.Select(mset...)
+		s, err := q.Select(nil, mset...)
 		if err != nil {
 			return nil, &apiError{errorExec, err}
 		}
@@ -433,14 +439,22 @@ type Target struct {
 	Health     scrape.TargetHealth `json:"health"`
 }
 
+// DroppedTarget has the information for one target that was dropped during relabelling.
+type DroppedTarget struct {
+	// Labels before any processing.
+	DiscoveredLabels map[string]string `json:"discoveredLabels"`
+}
+
 // TargetDiscovery has all the active targets.
 type TargetDiscovery struct {
-	ActiveTargets []*Target `json:"activeTargets"`
+	ActiveTargets  []*Target        `json:"activeTargets"`
+	DroppedTargets []*DroppedTarget `json:"droppedTargets"`
 }
 
 func (api *API) targets(r *http.Request) (interface{}, *apiError) {
 	targets := api.targetRetriever.Targets()
-	res := &TargetDiscovery{ActiveTargets: make([]*Target, len(targets))}
+	droppedTargets := api.targetRetriever.DroppedTargets()
+	res := &TargetDiscovery{ActiveTargets: make([]*Target, len(targets)), DroppedTargets: make([]*DroppedTarget, len(droppedTargets))}
 
 	for i, t := range targets {
 		lastErrStr := ""
@@ -459,12 +473,19 @@ func (api *API) targets(r *http.Request) (interface{}, *apiError) {
 		}
 	}
 
+	for i, t := range droppedTargets {
+		res.DroppedTargets[i] = &DroppedTarget{
+			DiscoveredLabels: t.DiscoveredLabels().Map(),
+		}
+	}
+
 	return res, nil
 }
 
 // AlertmanagerDiscovery has all the active Alertmanagers.
 type AlertmanagerDiscovery struct {
-	ActiveAlertmanagers []*AlertmanagerTarget `json:"activeAlertmanagers"`
+	ActiveAlertmanagers  []*AlertmanagerTarget `json:"activeAlertmanagers"`
+	DroppedAlertmanagers []*AlertmanagerTarget `json:"droppedAlertmanagers"`
 }
 
 // AlertmanagerTarget has info on one AM.
@@ -474,12 +495,14 @@ type AlertmanagerTarget struct {
 
 func (api *API) alertmanagers(r *http.Request) (interface{}, *apiError) {
 	urls := api.alertmanagerRetriever.Alertmanagers()
-	ams := &AlertmanagerDiscovery{ActiveAlertmanagers: make([]*AlertmanagerTarget, len(urls))}
-
+	droppedURLS := api.alertmanagerRetriever.DroppedAlertmanagers()
+	ams := &AlertmanagerDiscovery{ActiveAlertmanagers: make([]*AlertmanagerTarget, len(urls)), DroppedAlertmanagers: make([]*AlertmanagerTarget, len(droppedURLS))}
 	for i, url := range urls {
 		ams.ActiveAlertmanagers[i] = &AlertmanagerTarget{URL: url.String()}
 	}
-
+	for i, url := range droppedURLS {
+		ams.DroppedAlertmanagers[i] = &AlertmanagerTarget{URL: url.String()}
+	}
 	return ams, nil
 }
 
@@ -492,6 +515,10 @@ func (api *API) serveConfig(r *http.Request) (interface{}, *apiError) {
 		YAML: api.config().String(),
 	}
 	return cfg, nil
+}
+
+func (api *API) serveFlags(r *http.Request) (interface{}, *apiError) {
+	return api.flagsMap, nil
 }
 
 func (api *API) remoteRead(w http.ResponseWriter, r *http.Request) {
@@ -537,7 +564,7 @@ func (api *API) remoteRead(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		set, err := querier.Select(filteredMatchers...)
+		set, err := querier.Select(nil, filteredMatchers...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -630,6 +657,8 @@ func (api *API) snapshot(r *http.Request) (interface{}, *apiError) {
 	if !api.enableAdmin {
 		return nil, &apiError{errorUnavailable, errors.New("Admin APIs disabled")}
 	}
+	skipHead, _ := strconv.ParseBool(r.FormValue("skip_head"))
+
 	db := api.db()
 	if db == nil {
 		return nil, &apiError{errorUnavailable, errors.New("TSDB not ready")}
@@ -645,7 +674,7 @@ func (api *API) snapshot(r *http.Request) (interface{}, *apiError) {
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return nil, &apiError{errorInternal, fmt.Errorf("create snapshot directory: %s", err)}
 	}
-	if err := db.Snapshot(dir); err != nil {
+	if err := db.Snapshot(dir, !skipHead); err != nil {
 		return nil, &apiError{errorInternal, fmt.Errorf("create snapshot: %s", err)}
 	}
 
@@ -726,6 +755,7 @@ func respond(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	b, err := json.Marshal(&response{
 		Status: statusSuccess,
 		Data:   data,
@@ -754,6 +784,7 @@ func respondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
 	}
 	w.WriteHeader(code)
 
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	b, err := json.Marshal(&response{
 		Status:    statusError,
 		ErrorType: apiErr.typ,
@@ -789,4 +820,42 @@ func parseDuration(s string) (time.Duration, error) {
 		return time.Duration(d), nil
 	}
 	return 0, fmt.Errorf("cannot parse %q to a valid duration", s)
+}
+
+func init() {
+	jsoniter.RegisterTypeEncoderFunc("promql.Point", marshalPointJSON, marshalPointJSONIsEmpty)
+}
+
+func marshalPointJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	p := *((*promql.Point)(ptr))
+	stream.WriteArrayStart()
+	// Write out the timestamp as a float divided by 1000.
+	// This is ~3x faster than converting to a float.
+	t := p.T
+	if t < 0 {
+		stream.WriteRaw(`-`)
+		t = -t
+	}
+	stream.WriteInt64(t / 1000)
+	fraction := t % 1000
+	if fraction != 0 {
+		stream.WriteRaw(`.`)
+		if fraction < 100 {
+			stream.WriteRaw(`0`)
+		}
+		if fraction < 10 {
+			stream.WriteRaw(`0`)
+		}
+		stream.WriteInt64(fraction)
+	}
+	stream.WriteMore()
+	stream.WriteRaw(`"`)
+	stream.WriteFloat64(p.V)
+	stream.WriteRaw(`"`)
+	stream.WriteArrayEnd()
+
+}
+
+func marshalPointJSONIsEmpty(ptr unsafe.Pointer) bool {
+	return false
 }

@@ -27,7 +27,7 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
-			ExcludeRequestInLog: false,
+			ExcludeRequestInLog: true,
 		}
 		chunkStoreConfig chunk.StoreConfig
 		schemaConfig     chunk.SchemaConfig

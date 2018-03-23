@@ -88,7 +88,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI)
+	rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI, false)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing ruler server", "err", err)
 		os.Exit(1)
@@ -106,7 +106,7 @@ func main() {
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/weaveworks/cortex/issues/619
 	if configStoreConfig.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
+		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig, false)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
 			os.Exit(1)

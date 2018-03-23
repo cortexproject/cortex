@@ -10,8 +10,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/config"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/cortex/pkg/configs"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -44,36 +42,6 @@ func (c ConfigsResponse) GetLatestConfigID() configs.ID {
 		}
 	}
 	return latest
-}
-
-// RulesFromConfig gets the rules from the Cortex configuration.
-//
-// Strongly inspired by `loadGroups` in Prometheus.
-func RulesFromConfig(c configs.Config) ([]rules.Rule, error) {
-	result := []rules.Rule{}
-	for fn, content := range c.RulesFiles {
-		stmts, err := promql.ParseStmts(content)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
-		}
-
-		for _, stmt := range stmts {
-			var rule rules.Rule
-
-			switch r := stmt.(type) {
-			case *promql.AlertStmt:
-				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations, util.Logger)
-
-			case *promql.RecordStmt:
-				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)
-
-			default:
-				return nil, fmt.Errorf("ruler.GetRules: unknown statement type")
-			}
-			result = append(result, rule)
-		}
-	}
-	return result, nil
 }
 
 // AlertmanagerConfigFromConfig returns the Alertmanager config from the Cortex configuration.

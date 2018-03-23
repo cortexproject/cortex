@@ -17,22 +17,26 @@ import (
 
 // API implements the configs api.
 type API struct {
-	db db.RulesDB
+	db                  db.RulesDB
+	useLegacyRuleFormat bool
 	http.Handler
 }
 
 // NewAPIFromConfig makes a new API from our database config.
-func NewAPIFromConfig(cfg db.Config) (*API, error) {
+func NewAPIFromConfig(cfg db.Config, useLegacyRuleFormat bool) (*API, error) {
 	db, err := db.NewRulesDB(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return NewAPI(db), nil
+	return NewAPI(db, useLegacyRuleFormat), nil
 }
 
 // NewAPI creates a new API.
-func NewAPI(db db.RulesDB) *API {
-	a := &API{db: db}
+func NewAPI(db db.RulesDB, useLegacyRuleFormat bool) *API {
+	a := &API{
+		db:                  db,
+		useLegacyRuleFormat: useLegacyRuleFormat,
+	}
 	r := mux.NewRouter()
 	a.RegisterRoutes(r)
 	a.Handler = r
@@ -98,11 +102,18 @@ func (a *API) casConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := updateReq.NewConfig.Parse(); err != nil {
+
+	if a.useLegacyRuleFormat {
+		_, err = updateReq.NewConfig.ParseV1()
+	} else {
+		_, err = updateReq.NewConfig.ParseV2()
+	}
+	if err != nil {
 		level.Error(logger).Log("msg", "invalid rules", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return
 	}
+
 	updated, err := a.db.SetRulesConfig(userID, updateReq.OldConfig, updateReq.NewConfig)
 	if err != nil {
 		level.Error(logger).Log("msg", "error storing config", "err", err)

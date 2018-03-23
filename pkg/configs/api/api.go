@@ -14,14 +14,14 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/configs"
-	configs_client "github.com/weaveworks/cortex/pkg/configs/client"
 	"github.com/weaveworks/cortex/pkg/configs/db"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // API implements the configs api.
 type API struct {
-	db db.DB
+	db                  db.DB
+	useLegacyRuleFormat bool
 	http.Handler
 }
 
@@ -120,7 +120,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Invalid Alertmanager config: %v", err), http.StatusBadRequest)
 		return
 	}
-	if err := validateRulesFiles(cfg); err != nil {
+	if err := validateRulesFiles(cfg, a.useLegacyRuleFormat); err != nil {
 		level.Error(logger).Log("msg", "invalid rules", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return
@@ -176,8 +176,13 @@ func validateAlertmanagerConfig(cfg string) error {
 	return nil
 }
 
-func validateRulesFiles(c configs.Config) error {
-	_, err := configs_client.RulesFromConfig(c)
+func validateRulesFiles(c configs.Config, useLegacyRuleFormat bool) (err error) {
+	rc := configs.RulesConfig(c.RulesFiles)
+	if useLegacyRuleFormat {
+		_, err = rc.ParseV1()
+	} else {
+		_, err = rc.ParseV2()
+	}
 	return err
 }
 

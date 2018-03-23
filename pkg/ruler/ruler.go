@@ -286,7 +286,7 @@ func (r *Ruler) newGroup(ctx context.Context, userID string, item *workItem) (*r
 		Registerer:  prometheus.DefaultRegisterer,
 	}
 	delay := 0 * time.Second // Unused, so 0 value is fine.
-	return rules.NewGroup(item.filename, "none", delay, item.rules, opts), nil
+	return rules.NewGroup(item.groupName, "none", delay, item.rules, opts), nil
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.
@@ -400,9 +400,9 @@ type Server struct {
 }
 
 // NewServer makes a new rule processing server.
-func NewServer(cfg Config, ruler *Ruler, rulesAPI RulesAPI) (*Server, error) {
+func NewServer(cfg Config, ruler *Ruler, rulesAPI RulesAPI, useLegacyRulesFormat bool) (*Server, error) {
 	// TODO: Separate configuration for polling interval.
-	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval)
+	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, useLegacyRulesFormat)
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}

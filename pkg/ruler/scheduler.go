@@ -57,14 +57,14 @@ func init() {
 
 type workItem struct {
 	userID    string
-	filename  string
+	groupName string
 	rules     []rules.Rule
 	scheduled time.Time
 }
 
 // Key implements ScheduledItem
 func (w workItem) Key() string {
-	return w.userID + ":" + w.filename
+	return w.userID + ":" + w.groupName
 }
 
 // Scheduled implements ScheduledItem
@@ -73,12 +73,12 @@ func (w workItem) Scheduled() time.Time {
 }
 
 // Defer returns a work item with updated rules, rescheduled to a later time.
-func (w workItem) Defer(interval time.Duration, filename string, currentRules []rules.Rule) workItem {
-	return workItem{w.userID, filename, currentRules, w.scheduled.Add(interval)}
+func (w workItem) Defer(interval time.Duration, groupName string, currentRules []rules.Rule) workItem {
+	return workItem{w.userID, groupName, currentRules, w.scheduled.Add(interval)}
 }
 
 func (w workItem) String() string {
-	return fmt.Sprintf("%s:%s:%d@%s", w.userID, w.filename, len(w.rules), w.scheduled.Format(timeLogFormat))
+	return fmt.Sprintf("%s:%s:%d@%s", w.userID, w.groupName, len(w.rules), w.scheduled.Format(timeLogFormat))
 }
 
 type scheduler struct {
@@ -87,6 +87,8 @@ type scheduler struct {
 	q                  *SchedulingQueue
 
 	pollInterval time.Duration // how often we check for new config
+
+	useLegacyRuleFormat bool // whether to use Prometheus v1 rules format vs. v2
 
 	cfgs         map[string]map[string][]rules.Rule // all rules for all users
 	latestConfig configs.ID                         // # of last update received from config
@@ -97,13 +99,14 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Duration) scheduler {
+func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Duration, useLegacyRuleFormat bool) scheduler {
 	return scheduler{
-		rulesAPI:           rulesAPI,
-		evaluationInterval: evaluationInterval,
-		pollInterval:       pollInterval,
-		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
-		cfgs:               map[string]map[string][]rules.Rule{},
+		rulesAPI:            rulesAPI,
+		evaluationInterval:  evaluationInterval,
+		pollInterval:        pollInterval,
+		useLegacyRuleFormat: useLegacyRuleFormat,
+		q:                   NewSchedulingQueue(clockwork.NewRealClock()),
+		cfgs:                map[string]map[string][]rules.Rule{},
 
 		stop: make(chan struct{}),
 		done: make(chan struct{}),
@@ -206,7 +209,13 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	hasher := fnv.New64a()
 
 	for userID, config := range cfgs {
-		rulesByFilename, err := config.Config.Parse()
+		rulesByGroup := map[string][]rules.Rule{}
+		var err error
+		if s.useLegacyRuleFormat {
+			rulesByGroup, err = config.Config.ParseV1()
+		} else {
+			rulesByGroup, err = config.Config.ParseV2()
+		}
 		if err != nil {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known
@@ -215,20 +224,20 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 			level.Warn(util.Logger).Log("msg", "scheduler: invalid Cortex configuration", "user_id", userID, "err", err)
 			continue
 		}
-		level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_files", len(rulesByFilename), "is_deleted", config.IsDeleted())
+		level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_groups", len(rulesByGroup), "is_deleted", config.IsDeleted())
 		s.Lock()
 		// if deleted remove from map, otherwise - update map
 		if config.IsDeleted() {
 			delete(s.cfgs, userID)
 		} else {
-			s.cfgs[userID] = rulesByFilename
+			s.cfgs[userID] = rulesByGroup
 		}
 		s.Unlock()
 		if !config.IsDeleted() {
 			evalTime := s.computeNextEvalTime(hasher, now, userID)
-			for fn, rules := range rulesByFilename {
-				level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and filename", "user_id", userID, "filename", fn, "num_rules", len(rules))
-				s.addWorkItem(workItem{userID, fn, rules, evalTime})
+			for group, rules := range rulesByGroup {
+				level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", group, "num_rules", len(rules))
+				s.addWorkItem(workItem{userID, group, rules, evalTime})
 			}
 		}
 	}
@@ -240,7 +249,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 }
 
 func (s *scheduler) addWorkItem(i workItem) {
-	// The queue is keyed by userID+filename, so items for existing userID+filename will be replaced.
+	// The queue is keyed by userID+groupName, so items for existing userID+groupName will be replaced.
 	s.q.Enqueue(i)
 	level.Debug(util.Logger).Log("msg", "scheduler: work item added", "item", i)
 }
@@ -269,14 +278,14 @@ func (s *scheduler) workItemDone(i workItem) {
 	ruleSet, found := s.cfgs[i.userID]
 	var currentRules []rules.Rule
 	if found {
-		currentRules = ruleSet[i.filename]
+		currentRules = ruleSet[i.groupName]
 	}
 	s.Unlock()
 	if !found || len(currentRules) == 0 {
-		level.Debug(util.Logger).Log("msg", "scheduler: stopping item", "user_id", i.userID, "filename", i.filename, "found", found, "len", len(currentRules))
+		level.Debug(util.Logger).Log("msg", "scheduler: stopping item", "user_id", i.userID, "group", i.groupName, "found", found, "len", len(currentRules))
 		return
 	}
-	next := i.Defer(s.evaluationInterval, i.filename, currentRules)
+	next := i.Defer(s.evaluationInterval, i.groupName, currentRules)
 	level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", next.scheduled.Format(timeLogFormat))
 	s.addWorkItem(next)
 }

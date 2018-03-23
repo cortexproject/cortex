@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
@@ -118,6 +119,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ruler evaluates rules.
 type Ruler struct {
 	engine        *promql.Engine
+	queryable     storage.Queryable
 	pusher        Pusher
 	alertURL      *url.URL
 	notifierCfg   *config.Config
@@ -196,8 +198,10 @@ func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) (*Ruler, e
 	if err != nil {
 		return nil, err
 	}
+	engine, queryable := querier.NewEngine(d, c, prometheus.DefaultRegisterer, cfg.NumWorkers, cfg.GroupTimeout)
 	return &Ruler{
-		engine:        querier.NewEngine(d, c),
+		engine:        engine,
+		queryable:     queryable,
 		pusher:        d,
 		alertURL:      cfg.ExternalURL.URL,
 		notifierCfg:   ncfg,
@@ -278,7 +282,7 @@ func (r *Ruler) newGroup(ctx context.Context, userID string, item *workItem) (*r
 	}
 	opts := &rules.ManagerOptions{
 		Appendable:  appendable,
-		QueryFunc:   rules.EngineQueryFunc(r.engine),
+		QueryFunc:   rules.EngineQueryFunc(r.engine, r.queryable),
 		Context:     ctx,
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),

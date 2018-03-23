@@ -3,12 +3,15 @@ package querier
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 
@@ -21,9 +24,10 @@ type ChunkStore interface {
 }
 
 // NewEngine creates a new promql.Engine for cortex.
-func NewEngine(distributor Querier, chunkStore ChunkStore) *promql.Engine {
+func NewEngine(distributor Querier, chunkStore ChunkStore, reg prometheus.Registerer, maxConcurrent int, timeout time.Duration) (*promql.Engine, storage.Queryable) {
 	queryable := NewQueryable(distributor, chunkStore, false)
-	return promql.NewEngine(queryable, nil)
+	engine := promql.NewEngine(util.Logger, reg, maxConcurrent, timeout)
+	return engine, queryable
 }
 
 // NewQueryable creates a new Queryable for cortex.
@@ -195,7 +199,7 @@ type mergeQuerier struct {
 	metadataOnly bool
 }
 
-func (mq mergeQuerier) Select(matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (mq mergeQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	// TODO: Update underlying selectors to return errors directly.
 	if mq.metadataOnly {
 		return mq.selectMetadata(matchers...), nil

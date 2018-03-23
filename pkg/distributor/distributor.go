@@ -619,8 +619,11 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.forAllIngesters(), so we can fail after first error.
-	ingesters := d.ring.GetAll()
-	for _, ingester := range ingesters {
+	replicationSet, err := d.ring.GetAll()
+	if err != nil {
+		return nil, err
+	}
+	for _, ingester := range replicationSet.Ingesters {
 		client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err

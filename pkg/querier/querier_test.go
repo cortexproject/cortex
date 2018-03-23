@@ -110,7 +110,7 @@ func TestMergeQuerierSortsMetricLabels(t *testing.T) {
 	}
 	m, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
-	ss, err := mq.Select(m)
+	ss, err := mq.Select(nil, m)
 	require.NoError(t, err)
 	require.NoError(t, ss.Err())
 	ss.Next()

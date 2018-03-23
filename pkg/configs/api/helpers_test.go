@@ -27,7 +27,7 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = api.New(database)
+	app = api.New(database, configs.RuleFormatV2)
 	counter = 0
 }
 

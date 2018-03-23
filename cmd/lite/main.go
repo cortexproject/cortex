@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -57,6 +58,7 @@ func main() {
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
+	fmt.Println("VERSION", rulerConfig.RuleFormatVersion)
 	ingesterConfig.SetClientConfig(distributorConfig.IngesterClientConfig)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
@@ -175,7 +177,7 @@ func main() {
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/weaveworks/cortex/issues/619
 	if configStoreConfig.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
+		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig, rulerConfig.RuleFormatVersion)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
 			os.Exit(1)

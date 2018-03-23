@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -12,6 +15,41 @@ import (
 // An ID is the ID of a single users's Cortex configuration. When a
 // configuration changes, it gets a new ID.
 type ID int
+
+// RuleFormatVersion indicates which Prometheus rule format (v1 vs. v2) to use in parsing.
+type RuleFormatVersion int
+
+const (
+	// RuleFormatV1 is the Prometheus 1.x rule format.
+	RuleFormatV1 RuleFormatVersion = iota
+	// RuleFormatV2 is the Prometheus 2.x rule format.
+	RuleFormatV2 RuleFormatVersion = iota
+)
+
+// String implements flag.Value.
+func (v RuleFormatVersion) String() string {
+	switch v {
+	case RuleFormatV1:
+		return "1"
+	case RuleFormatV2:
+		return "2"
+	default:
+		return "<unknown>"
+	}
+}
+
+// Set implements flag.Value.
+func (v *RuleFormatVersion) Set(s string) error {
+	switch s {
+	case "1":
+		*v = RuleFormatV1
+	case "2":
+		*v = RuleFormatV2
+	default:
+		return fmt.Errorf("invalid rule format version %q", s)
+	}
+	return nil
+}
 
 // A Config is a Cortex configuration for a single user.
 type Config struct {
@@ -63,10 +101,67 @@ func (c RulesConfig) Equal(o RulesConfig) bool {
 	return true
 }
 
-// Parse rules from the Cortex configuration.
+// ParseV2 parses and validates the content of the rule files in a RulesConfig
+// according to the Prometheus 2.x rule format.
 //
-// Strongly inspired by `loadGroups` in Prometheus.
-func (c RulesConfig) Parse() (map[string][]rules.Rule, error) {
+// NOTE: On one hand, we cannot return fully-fledged lists of rules.Group
+// here yet, as creating a rules.Group requires already
+// passing in rules.ManagerOptions options (which in turn require a
+// notifier, appender, etc.), which we do not want to create simply
+// for parsing. On the other hand, we should not return barebones
+// rulefmt.RuleGroup sets here either, as only a fully-converted rules.Rule
+// is able to track alert states over multiple rule evaluations. The caller
+// would otherwise have to ensure to convert the rulefmt.RuleGroup only exactly
+// once, not for every evaluation (or risk losing alert pending states). So
+// it's probably better to just return a set of rules.Rule here.
+func (c RulesConfig) ParseV2() (map[string][]rules.Rule, error) {
+	groups := map[string][]rules.Rule{}
+
+	for fn, content := range c {
+		rgs, errs := rulefmt.Parse([]byte(content))
+		if len(errs) > 0 {
+			return nil, fmt.Errorf("error parsing %s: %v", fn, errs[0])
+		}
+
+		for _, rg := range rgs.Groups {
+			rls := make([]rules.Rule, 0, len(rg.Rules))
+			for _, rl := range rg.Rules {
+				expr, err := promql.ParseExpr(rl.Expr)
+				if err != nil {
+					return nil, err
+				}
+
+				if rl.Alert != "" {
+					rls = append(rls, rules.NewAlertingRule(
+						rl.Alert,
+						expr,
+						time.Duration(rl.For),
+						labels.FromMap(rl.Labels),
+						labels.FromMap(rl.Annotations),
+						log.With(util.Logger, "alert", rl.Alert),
+					))
+					continue
+				}
+				rls = append(rls, rules.NewRecordingRule(
+					rl.Record,
+					expr,
+					labels.FromMap(rl.Labels),
+				))
+			}
+
+			// Group names have to be unique in Prometheus, but only within one rules file.
+			groups[rg.Name+";"+fn] = rls
+		}
+	}
+
+	return groups, nil
+}
+
+// ParseV1 parses and validates the content of the rule files in a RulesConfig
+// according to the Prometheus 1.x rule format.
+//
+// The same comment about rule groups as on ParseV2() applies here.
+func (c RulesConfig) ParseV1() (map[string][]rules.Rule, error) {
 	result := map[string][]rules.Rule{}
 	for fn, content := range c {
 		stmts, err := promql.ParseStmts(content)

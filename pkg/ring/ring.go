@@ -48,6 +48,7 @@ type Operation int
 const (
 	Read Operation = iota
 	Write
+	Reporting // Special value for inquiring about health
 )
 
 type uint32s []uint32
@@ -325,7 +326,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		JOINING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester, Write) {
+		if !r.IsHealthy(ingester, Reporting) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

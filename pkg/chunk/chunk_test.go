@@ -102,6 +102,43 @@ func TestChunkCodec(t *testing.T) {
 	}
 }
 
+func TestChunkCodecCompat(t *testing.T) {
+	for _, c := range []struct {
+		chunk  Chunk
+		data   string
+		length int
+	}{
+		// Binary data encoded with code from commit 864c53a5b82a
+		{
+			chunk:  dummyChunk(model.Time(1521894448000)),
+			data:   "\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\x0e%\xd8\x01{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1521890848,\"through\":1521894448,\"metric\":{\"__name__\":\"foo\",\"bar\":\"baz\",\"toms\":\"code\"},\"encoding\":1}\n\x00\x00\x04\x00\x15\x00\x01\x00\x01\x80[\xfaWb\x01",
+			length: 1211,
+		},
+		{
+			chunk:  benchmarkChunk(model.Time(1521894448000)),
+			data:   "\x00\x00\x02\xf6\xff\x06\x00\x00sNaPpY\x00\xe4\x02\x00(\x8c\x16\x1c\xc1\a\xf0O{\"fingerprint\":2979418513780949645,\"userID\":\"userID\",\"from\":1521890848,\"through\"\r\x15\x0444\x01\x15\xf0Xmetric\":{\"__name__\":\"container_cpu_usage_seconds_total\",\"beta_kubernetes_io_arch\":\"amd64\"R\"\x000instance_type\x01i(3.somesize\"R1\x00,os\":\"linux\",\x1d\x97\x01\xaa\b\":\"\x01<\x00-\x05\f\x10,\"cpu\x01Q\fpu01\x01\xfe4ailure_domain_J\xad\x00\x14region\rE\x14where-\x969\x00\bzon\x11|\r7\xf0\x8bb\",\"id\":\"/kubepods/burstable/pod6e91c467-e4c5-11e7-ace3-0a97ed59c75e/a3c8498918bd6866349fed5a6f8c643b77c91836427fb6327913276ebc6bde28\",\"imag\x01\x9b\x01\xdbDstry/organisation/!(\xf0L@sha256:dca3d877a80008b45d71d7edc4fd2e44c0c8c8e7102ba5cbabec63a374d1d506\",\"in)\xcb$\":\"ip-111-\x01\x038-11.ec2.internaA)\x14job\":\"!\x1a@rnetes-cadvisor\",\x1d\x16\x1c_io_host\x01\xa6BS\x00L\",\"monitor\":\"prod\",\"\r)\x18k8s_somI\a\t\n\x10otherE\x17\x14-5j8s8E\xa6\x1c-system_\x8e\x8c\x01\x04_0\r`\fspac\x01\x8e\x01\xbd\rA\x14\",\"pod2\x81\x02>p\x00@\"},\"encoding\":1}\n\x00\x00\x04\x00\x15\x00\x01\x00\x01\x80[\xfaWb\x01",
+			length: 1786,
+		},
+	} {
+		buf := make([]byte, c.length)
+		copy(buf, c.data)
+
+		// If we wanted to check encoding is still byte-for-byte the same:
+		//check, err := c.chunk.Encode()
+		//require.NoError(t, err)
+		//require.Equal(t, buf, check)
+
+		// Create a blank chunk with the right key and checksum
+		have, err := ParseExternalKey(userID, c.chunk.ExternalKey())
+		require.NoError(t, err)
+
+		decodeContext := NewDecodeContext()
+		err = have.Decode(decodeContext, buf)
+		require.NoError(t, err)
+		require.Equal(t, c.chunk, have)
+	}
+}
+
 func TestParseExternalKey(t *testing.T) {
 	for _, c := range []struct {
 		key   string

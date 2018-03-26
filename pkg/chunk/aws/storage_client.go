@@ -627,8 +627,10 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 				backoff.Wait()
 				continue
 			}else if ok && awsErr.Code() == "ValidationException"{
-				// this write will never work, so just continue on
+				// this write will never work, so the only option is to drop the offending items and continue.
+				// TODO: add more debug options for capturing data/telemetry about the offending items?
 				level.Warn(util.Logger).Log("Data lost while flushing to Dynamo: %v",awsErr)
+				level.Debug(util.Logger).Log("Dropped request details: \n%v",requests)
 				continue
 			}
 

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -147,13 +148,16 @@ func main() {
 	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
 	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
 
-	engine := promql.NewEngine(sampleQueryable, nil)
+	maxConcurrent := 20
+	timeout := 2 * time.Minute
+	engine := promql.NewEngine(util.Logger, nil, maxConcurrent, timeout)
 	api := v1.NewAPI(
 		engine,
 		metadataQueryable,
 		querier.DummyTargetRetriever{},
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },
+		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.

@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"flag"
 	"net/http"
 	"time"
 
@@ -17,6 +18,18 @@ import (
 
 	"github.com/weaveworks/cortex/pkg/util"
 )
+
+// Config contains the configuration require to create a querier
+type Config struct {
+	MaxConcurrent int
+	Timeout       time.Duration
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	flag.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
+	flag.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
+}
 
 // ChunkStore is the interface we need to get chunks
 type ChunkStore interface {

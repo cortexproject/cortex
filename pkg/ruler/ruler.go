@@ -33,9 +33,7 @@ import (
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/distributor"
-	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -193,12 +191,11 @@ func (rn *rulerNotifier) stop() {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
-	engine, queryable := querier.NewEngine(d, c, prometheus.DefaultRegisterer, cfg.NumWorkers, cfg.GroupTimeout)
 	return &Ruler{
 		engine:        engine,
 		queryable:     queryable,

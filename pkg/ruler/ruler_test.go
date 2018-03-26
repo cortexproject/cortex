@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/querier"
 )
 
 func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
@@ -25,7 +26,9 @@ func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
 
 	// TODO: Populate distributor and chunk store arguments to enable
 	// other kinds of tests.
-	ruler, err := NewRuler(cfg, nil, nil)
+
+	engine, queryable := querier.NewEngine(nil, nil, nil, 20, 2*time.Minute)
+	ruler, err := NewRuler(cfg, engine, queryable, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -12,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/tsdb"
 	"google.golang.org/grpc"
@@ -43,6 +41,7 @@ func main() {
 
 		chunkStoreConfig  chunk.StoreConfig
 		distributorConfig distributor.Config
+		querierConfig     querier.Config
 		ingesterConfig    ingester.Config
 		configStoreConfig ruler.ConfigStoreConfig
 		rulerConfig       ruler.Config
@@ -54,7 +53,7 @@ func main() {
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
+	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
@@ -124,13 +123,15 @@ func main() {
 	tableManager.Start()
 	defer tableManager.Stop()
 
+	engine, queryable := querier.NewEngine(dist, chunkStore, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
+
 	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
 		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing ruler config store", "err", err)
 			os.Exit(1)
 		}
-		rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
+		rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)
 			os.Exit(1)
@@ -148,9 +149,6 @@ func main() {
 	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
 	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
 
-	maxConcurrent := 20
-	timeout := 2 * time.Minute
-	engine := promql.NewEngine(util.Logger, nil, maxConcurrent, timeout)
 	api := v1.NewAPI(
 		engine,
 		metadataQueryable,

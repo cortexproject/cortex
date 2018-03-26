@@ -4,7 +4,6 @@ import (
 	"flag"
 	"net/http"
 	"os"
-	"time"
 
 	"google.golang.org/grpc"
 
@@ -37,12 +36,13 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		querierConfig     querier.Config
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 		logLevel          util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
 		&chunkStoreConfig, &schemaConfig, &storageConfig, &logLevel)
 	flag.Parse()
 
@@ -91,9 +91,7 @@ func main() {
 	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
 	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
 
-	maxConcurrent := 20
-	timeout := 2 * time.Minute
-	engine := promql.NewEngine(util.Logger, nil, maxConcurrent, timeout)
+	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
 	api := v1.NewAPI(
 		engine,
 		metadataQueryable,

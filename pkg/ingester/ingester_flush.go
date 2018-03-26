@@ -188,7 +188,6 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric)
 	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
-		util.Event().Log("msg", "flush error", "userID", userID, "err", err, "fp", fp, "series", series.metric)
 		return err
 	}
 

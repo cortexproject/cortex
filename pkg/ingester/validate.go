@@ -1,10 +1,15 @@
-package ingester
+package util
 
 import (
 	"net/http"
 
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
+)
+
+var (
+	maxLabelNameLength  = 1024
+	maxLabelValueLength = 2048
 )
 
 const (

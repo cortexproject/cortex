@@ -214,6 +214,7 @@ func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (mod
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", cfg.MaxSeriesPerMetric, metricName, metric)
 	}
 
+	util.Event().Log("msg", "new series", "userID", u.userID, "fp", fp, "series", metric)
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
 	u.index.add(metric, fp)

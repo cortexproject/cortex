@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -27,10 +28,17 @@ const (
 type ReadRing interface {
 	prometheus.Collector
 
-	Get(key uint32, n int, op Operation) ([]*IngesterDesc, error)
-	BatchGet(keys []uint32, n int, op Operation) ([][]*IngesterDesc, error)
-	GetAll() []*IngesterDesc
-	IsHealthy(*IngesterDesc) bool
+	Get(key uint32, op Operation) (ReplicationSet, error)
+	BatchGet(keys []uint32, op Operation) ([]ReplicationSet, error)
+	GetAll() (ReplicationSet, error)
+	ReplicationFactor() int
+}
+
+// ReplicationSet describes the ingesters to talk to for a given key, and how
+// many errors to tolerate.
+type ReplicationSet struct {
+	Ingesters []*IngesterDesc
+	MaxErrors int
 }
 
 // Operation can be Read or Write
@@ -40,6 +48,7 @@ type Operation int
 const (
 	Read Operation = iota
 	Write
+	Reporting // Special value for inquiring about health
 )
 
 type uint32s []uint32
@@ -49,14 +58,15 @@ func (x uint32s) Less(i, j int) bool { return x[i] < x[j] }
 func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
-var ErrEmptyRing = errors.New("empty circle")
+var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
 	ConsulConfig
-	store            string
-	HeartbeatTimeout time.Duration
-	Mock             KVClient
+	store             string
+	HeartbeatTimeout  time.Duration
+	ReplicationFactor int
+	Mock              KVClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -65,14 +75,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.store, "ring.store", "consul", "Backend storage to use for the ring (consul, inmemory).")
 	f.DurationVar(&cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
+	f.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 }
 
-// Ring holds the information about the members of the consistent hash circle.
+// Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
-	KVClient         KVClient
-	done             chan struct{}
-	quit             context.CancelFunc
-	heartbeatTimeout time.Duration
+	cfg      Config
+	KVClient KVClient
+	done     chan struct{}
+	quit     context.CancelFunc
 
 	mtx      sync.RWMutex
 	ringDesc *Desc
@@ -84,6 +95,10 @@ type Ring struct {
 
 // New creates a new Ring
 func New(cfg Config) (*Ring, error) {
+	if cfg.ReplicationFactor <= 0 {
+		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
+	}
+
 	store := cfg.Mock
 	if store == nil {
 		var err error
@@ -101,10 +116,10 @@ func New(cfg Config) (*Ring, error) {
 	}
 
 	r := &Ring{
-		KVClient:         store,
-		heartbeatTimeout: cfg.HeartbeatTimeout,
-		done:             make(chan struct{}),
-		ringDesc:         &Desc{},
+		cfg:      cfg,
+		KVClient: store,
+		done:     make(chan struct{}),
+		ringDesc: &Desc{},
 		ingesterOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_ingester_ownership_percent",
 			"The percent ownership of the ring by ingester",
@@ -150,38 +165,41 @@ func (r *Ring) loop(ctx context.Context) {
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.
-func (r *Ring) Get(key uint32, n int, op Operation) ([]*IngesterDesc, error) {
+func (r *Ring) Get(key uint32, op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	return r.getInternal(key, n, op)
+	return r.getInternal(key, op)
 }
 
-// BatchGet returns n (or more) ingesters which form the replicas for the given key.
-// The order of the result matches the order of the input.
-func (r *Ring) BatchGet(keys []uint32, n int, op Operation) ([][]*IngesterDesc, error) {
+// BatchGet returns ReplicationFactor (or more) ingesters which form the replicas
+// for the given keys. The order of the result matches the order of the input.
+func (r *Ring) BatchGet(keys []uint32, op Operation) ([]ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	result := make([][]*IngesterDesc, len(keys), len(keys))
+	result := make([]ReplicationSet, len(keys), len(keys))
 	for i, key := range keys {
-		ingesters, err := r.getInternal(key, n, op)
+		rs, err := r.getInternal(key, op)
 		if err != nil {
 			return nil, err
 		}
-		result[i] = ingesters
+		result[i] = rs
 	}
 	return result, nil
 }
 
-func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, error) {
+func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 	if r.ringDesc == nil || len(r.ringDesc.Tokens) == 0 {
-		return nil, ErrEmptyRing
+		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	ingesters := make([]*IngesterDesc, 0, n)
-	distinctHosts := map[string]struct{}{}
-	start := r.search(key)
-	iterations := 0
+	var (
+		n             = r.cfg.ReplicationFactor
+		ingesters     = make([]*IngesterDesc, 0, n)
+		distinctHosts = map[string]struct{}{}
+		start         = r.search(key)
+		iterations    = 0
+	)
 	for i := start; len(distinctHosts) < n && iterations < len(r.ringDesc.Tokens); i++ {
 		iterations++
 		// Wrap i around in the ring.
@@ -195,47 +213,60 @@ func (r *Ring) getInternal(key uint32, n int, op Operation) ([]*IngesterDesc, er
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
-		// Ingesters that are not ACTIVE do not count to the replication limit. We do
-		// not want to Write to them because they are about to go away, but we do
-		// want to write the extra replica somewhere.  So we increase the size of the
-		// set of replicas for the key.  This means we have to also increase the
+		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
+		// to write the extra replica somewhere.  So we increase the size of the set
+		// of replicas for the key. This means we have to also increase the
 		// size of the replica set for read, but we can read from Leaving ingesters,
 		// so don't skip it in this case.
+		// NB dead ingester will be filtered later (by replication_strategy.go).
 		if op == Write && ingester.State != ACTIVE {
 			n++
-			continue
 		} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
 			n++
-			continue
 		}
 
 		ingesters = append(ingesters, ingester)
 	}
-	return ingesters, nil
+
+	liveIngesters, maxFailure, err := r.replicationStrategy(ingesters, op)
+	if err != nil {
+		return ReplicationSet{}, err
+	}
+
+	return ReplicationSet{
+		Ingesters: liveIngesters,
+		MaxErrors: maxFailure,
+	}, nil
 }
 
-// IsHealthy checks whether an ingester appears to be alive and heartbeating
-func (r *Ring) IsHealthy(ingester *IngesterDesc) bool {
-	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.heartbeatTimeout
-}
-
-// GetAll returns all available ingesters in the circle.
-func (r *Ring) GetAll() []*IngesterDesc {
+// GetAll returns all available ingesters in the ring.
+func (r *Ring) GetAll() (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	if r.ringDesc == nil {
-		return nil
+	if r.ringDesc == nil || len(r.ringDesc.Tokens) == 0 {
+		return ReplicationSet{}, ErrEmptyRing
 	}
 
 	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	maxErrors := r.cfg.ReplicationFactor / 2
+
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester) {
+		if !r.IsHealthy(ingester, Read) {
+			maxErrors--
 			continue
 		}
 		ingesters = append(ingesters, ingester)
 	}
-	return ingesters
+
+	if maxErrors < 0 {
+		return ReplicationSet{}, fmt.Errorf("too many failed ingesters")
+	}
+
+	return ReplicationSet{
+		Ingesters: ingesters,
+		MaxErrors: maxErrors,
+	}, nil
 }
 
 func (r *Ring) search(key uint32) int {
@@ -295,7 +326,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		JOINING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester) {
+		if !r.IsHealthy(ingester, Reporting) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

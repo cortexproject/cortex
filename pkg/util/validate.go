@@ -9,7 +9,7 @@ import (
 
 var (
 	maxLabelNameLength  = 1024
-	maxLabelValueLength = 4096
+	maxLabelValueLength = 2048
 )
 
 const (

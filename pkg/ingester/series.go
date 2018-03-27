@@ -12,12 +12,18 @@ import (
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
 
-var discardedSamples = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Name: "cortex_ingester_out_of_order_samples_total",
-		Help: "The total number of samples that were discarded because their timestamps were at or before the last received sample for a series.",
-	},
-	[]string{discardReasonLabel},
+var (
+	discardedSamples = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_ingester_out_of_order_samples_total",
+			Help: "The total number of samples that were discarded because their timestamps were at or before the last received sample for a series.",
+		},
+		[]string{discardReasonLabel},
+	)
+	createdChunks = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_chunks_created_total",
+		Help: "The total number of chunks the ingester has created.",
+	})
 )
 
 func init() {
@@ -77,6 +83,7 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		newHead := newDesc(chunk.New(), v.Timestamp, v.Timestamp)
 		s.chunkDescs = append(s.chunkDescs, newHead)
 		s.headChunkClosed = false
+		createdChunks.Inc()
 	}
 
 	chunks, err := s.head().add(v)
@@ -97,6 +104,7 @@ func (s *memorySeries) add(v model.SamplePair) error {
 				return err
 			}
 			s.chunkDescs = append(s.chunkDescs, newDesc(c, c.FirstTime(), lastTime))
+			createdChunks.Inc()
 		}
 	}
 

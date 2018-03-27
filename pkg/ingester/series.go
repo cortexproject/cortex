@@ -170,7 +170,9 @@ func (s *memorySeries) setChunks(descs []*desc) error {
 	}
 
 	s.chunkDescs = descs
-	s.lastTime = descs[len(descs)-1].LastTime
+	if len(descs) > 0 {
+		s.lastTime = descs[len(descs)-1].LastTime
+	}
 	return nil
 }
 

@@ -2,6 +2,7 @@ package util
 
 import (
 	"os"
+	"sync/atomic"
 
 	"github.com/go-kit/kit/log"
 )
@@ -42,12 +43,12 @@ func newEventLogger(freq int) log.Logger {
 type samplingFilter struct {
 	next  log.Logger
 	freq  int
-	count int
+	count int64
 }
 
 func (e *samplingFilter) Log(keyvals ...interface{}) error {
-	e.count++
-	if e.count%e.freq == 0 {
+	count := atomic.AddInt64(&e.count, 1)
+	if count%int64(e.freq) == 0 {
 		return e.next.Log(keyvals...)
 	}
 	return nil

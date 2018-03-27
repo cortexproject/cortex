@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/golang/snappy"
+	jsoniter "github.com/json-iterator/go"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -181,7 +182,7 @@ func (c *Chunk) ExternalKey() string {
 }
 
 var writerPool = sync.Pool{
-	New: func() interface{} { return snappy.NewWriter(nil) },
+	New: func() interface{} { return snappy.NewBufferedWriter(nil) },
 }
 
 // Encode writes the chunk out to a big write buffer, then calculates the checksum.
@@ -202,9 +203,11 @@ func (c *Chunk) Encode() ([]byte, error) {
 	writer := writerPool.Get().(*snappy.Writer)
 	defer writerPool.Put(writer)
 	writer.Reset(&buf)
+	json := jsoniter.ConfigFastest
 	if err := json.NewEncoder(writer).Encode(c); err != nil {
 		return nil, err
 	}
+	writer.Close()
 
 	// Write the metadata length back at the start of the buffer.
 	binary.BigEndian.PutUint32(metadataLenBytes[:], uint32(buf.Len()))
@@ -247,6 +250,7 @@ func NewDecodeContext() *DecodeContext {
 func (dc *DecodeContext) metric(fingerprint model.Fingerprint, buf []byte) (model.Metric, error) {
 	metric, found := dc.metrics[fingerprint]
 	if !found {
+		json := jsoniter.ConfigFastest
 		err := json.NewDecoder(bytes.NewReader(buf)).Decode(&metric)
 		if err != nil {
 			return nil, errors.Wrap(err, "while parsing chunk metric")
@@ -290,6 +294,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 		N: int64(metadataLen),
 		R: r,
 	})
+	json := jsoniter.ConfigFastest
 	err := json.NewDecoder(decodeContext.reader).Decode(&tempMetadata)
 	if err != nil {
 		return err

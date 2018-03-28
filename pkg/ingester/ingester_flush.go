@@ -132,7 +132,7 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
+		err := i.flushUserSeries(j, op.userID, op.fp, op.immediate)
 		if err != nil {
 			level.Error(util.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
@@ -146,7 +146,7 @@ func (i *Ingester) flushLoop(j int) {
 	}
 }
 
-func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
+func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.Fingerprint, immediate bool) error {
 	if i.preFlushUserSeries != nil {
 		i.preFlushUserSeries()
 	}
@@ -186,7 +186,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel() // releases resources if slowOperation completes before timeout elapses
 
-	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric)
+	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
 	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
 		return err

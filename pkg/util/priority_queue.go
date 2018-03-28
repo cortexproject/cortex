@@ -76,9 +76,9 @@ func (pq *PriorityQueue) DrainAndClose() {
 	pq.cond.Broadcast()
 }
 
-// Enqueue adds an operation to the queue in priority order. If the operation
-// is already on the queue, it will be ignored.
-func (pq *PriorityQueue) Enqueue(op Op) {
+// Enqueue adds an operation to the queue in priority order. Returns
+// true if added; false if the operation was already on the queue.
+func (pq *PriorityQueue) Enqueue(op Op) bool {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
@@ -88,12 +88,13 @@ func (pq *PriorityQueue) Enqueue(op Op) {
 
 	_, enqueued := pq.hit[op.Key()]
 	if enqueued {
-		return
+		return false
 	}
 
 	pq.hit[op.Key()] = struct{}{}
 	heap.Push(&pq.queue, op)
 	pq.cond.Broadcast()
+	return true
 }
 
 // Dequeue will return the op with the highest priority; block if queue is

@@ -82,8 +82,9 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 
 	if flush != noFlush {
 		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric)
-		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate})
+		if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
+			util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
+		}
 	}
 }
 
@@ -131,7 +132,7 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
+		err := i.flushUserSeries(j, op.userID, op.fp, op.immediate)
 		if err != nil {
 			level.Error(util.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
@@ -145,7 +146,7 @@ func (i *Ingester) flushLoop(j int) {
 	}
 }
 
-func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
+func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.Fingerprint, immediate bool) error {
 	if i.preFlushUserSeries != nil {
 		i.preFlushUserSeries()
 	}
@@ -185,10 +186,9 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel() // releases resources if slowOperation completes before timeout elapses
 
-	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric)
+	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
 	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
-		util.Event().Log("msg", "flush error", "userID", userID, "err", err, "fp", fp, "series", series.metric)
 		return err
 	}
 
@@ -220,8 +220,10 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 
 	// Record statistsics only when actual put request did not return error.
 	for _, chunkDesc := range chunkDescs {
-		i.chunkUtilization.Observe(chunkDesc.C.Utilization())
-		i.chunkLength.Observe(float64(chunkDesc.C.Len()))
+		utilization, length := chunkDesc.C.Utilization(), chunkDesc.C.Len()
+		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "utilization", utilization, "length", length, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)
+		i.chunkUtilization.Observe(utilization)
+		i.chunkLength.Observe(float64(length))
 		i.chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
 	}
 

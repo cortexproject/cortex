@@ -73,7 +73,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		// round this loop.
 		if fromIngesterID == "" {
 			fromIngesterID = wireSeries.FromIngesterId
-			level.Info(util.Logger).Log("msg", "processing TransferChunks request from ingester", "ingester", fromIngesterID)
+			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
 		}
 		metric := client.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
@@ -113,10 +113,10 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	// Close the stream last, as this is what tells the "from" ingester that
 	// it's OK to shut down.
 	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
-		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "ingester", fromIngesterID, "err", err)
+		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "from_ingester", fromIngesterID, "err", err)
 		return err
 	}
-	level.Info(util.Logger).Log("msg", "Successfully transferred chunks to ingester", "ingester", fromIngesterID)
+	level.Info(util.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID)
 	return nil
 }
 

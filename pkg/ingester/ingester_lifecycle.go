@@ -375,6 +375,11 @@ func (i *Ingester) transferChunks() error {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
 
+			if len(pair.series.chunkDescs) == 0 { // Nothing to send?
+				state.fpLocker.Unlock(pair.fp)
+				continue
+			}
+
 			chunks, err := toWireChunks(pair.series.chunkDescs)
 			if err != nil {
 				state.fpLocker.Unlock(pair.fp)

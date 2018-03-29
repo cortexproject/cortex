@@ -358,7 +358,7 @@ func (i *Ingester) transferChunks() error {
 		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
 	}
 
-	level.Info(util.Logger).Log("msg", "sending chunks to ingester", "ingester", targetIngester.Addr)
+	level.Info(util.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
 	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.cfg.clientConfig)
 	if err != nil {
 		return err
@@ -406,7 +406,7 @@ func (i *Ingester) transferChunks() error {
 		return err
 	}
 
-	level.Info(util.Logger).Log("msg", "successfully sent chunks to ingester", "ingester", targetIngester.Addr)
+	level.Info(util.Logger).Log("msg", "successfully sent chunks", "to_ingester", targetIngester.Addr)
 	return nil
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -175,6 +176,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	}
 
 	now := model.Now()
+	sp.LogFields(otlog.String("from", from.String()), otlog.String("through", through.String()), otlog.String("now", now.String()))
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
@@ -195,6 +197,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	// Fetch metric name chunks if the matcher is of type equal,
 	metricNameMatcher, matchers, ok := util.ExtractMetricNameMatcherFromMatchers(allMatchers)
 	if ok && metricNameMatcher.Type == labels.MatchEqual {
+		sp.SetTag("metric", metricNameMatcher.Value)
 		return c.getMetricNameMatrix(ctx, from, through, matchers, metricNameMatcher.Value)
 	}
 

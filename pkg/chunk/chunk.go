@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +29,7 @@ const (
 	ErrInvalidChunkID  = errs.Error("invalid chunk ID")
 	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
+	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -210,6 +210,7 @@ func (c *Chunk) Encode() ([]byte, error) {
 	writer.Close()
 
 	// Write the metadata length back at the start of the buffer.
+	// (note this length includes the 4 bytes for the length itself)
 	binary.BigEndian.PutUint32(metadataLenBytes[:], uint32(buf.Len()))
 	copy(buf.Bytes(), metadataLenBytes[:])
 
@@ -251,7 +252,7 @@ func (dc *DecodeContext) metric(fingerprint model.Fingerprint, buf []byte) (mode
 	metric, found := dc.metrics[fingerprint]
 	if !found {
 		json := jsoniter.ConfigFastest
-		err := json.NewDecoder(bytes.NewReader(buf)).Decode(&metric)
+		err := json.Unmarshal(buf, &metric)
 		if err != nil {
 			return nil, errors.Wrap(err, "while parsing chunk metric")
 		}
@@ -290,14 +291,14 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 		Chunk
 		RawMetric json.RawMessage `json:"metric"` // Override to defer parsing
 	}
-	decodeContext.reader.Reset(&io.LimitedReader{
-		N: int64(metadataLen),
-		R: r,
-	})
+	decodeContext.reader.Reset(r)
 	json := jsoniter.ConfigFastest
 	err := json.NewDecoder(decodeContext.reader).Decode(&tempMetadata)
 	if err != nil {
 		return err
+	}
+	if len(input)-r.Len() != int(metadataLen) {
+		return ErrMetadataLength
 	}
 
 	// Next, confirm the chunks matches what we expected.  Easiest way to do this
@@ -333,10 +334,8 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	}
 
 	c.encoded = input
-	return c.Data.Unmarshal(&io.LimitedReader{
-		N: int64(dataLen),
-		R: r,
-	})
+	remainingData := input[len(input)-r.Len():]
+	return c.Data.UnmarshalFromBuf(remainingData[:int(dataLen)])
 }
 
 func chunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {

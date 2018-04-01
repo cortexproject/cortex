@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/aws"
+	"github.com/weaveworks/cortex/pkg/chunk/cassandra"
 	"github.com/weaveworks/cortex/pkg/chunk/gcp"
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
@@ -18,11 +19,15 @@ const (
 	tableName = "table"
 )
 
-var fixtures = append(aws.Fixtures, gcp.Fixtures...)
-
 type storageClientTest func(*testing.T, chunk.StorageClient)
 
 func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
+	fixtures := append(aws.Fixtures, gcp.Fixtures...)
+
+	cassandraFixtures, err := cassandra.Fixtures()
+	require.NoError(t, err)
+	fixtures = append(fixtures, cassandraFixtures...)
+
 	for _, fixture := range fixtures {
 		t.Run(fixture.Name(), func(t *testing.T) {
 			storageClient, tableClient, schemaConfig, err := fixture.Clients()

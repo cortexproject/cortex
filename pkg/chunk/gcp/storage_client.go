@@ -1,6 +1,7 @@
 package gcp
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -116,6 +117,17 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	table := s.client.Open(query.TableName)
 
 	var rowRange bigtable.RowRange
+
+	/* BigTable only seems to support regex match on cell values, so doing it
+	   client side for now
+	readOpts := []bigtable.ReadOption{
+		bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)),
+	}
+	if query.ValueEqual != nil {
+		readOpts = append(readOpts, bigtable.RowFilter(bigtable.ValueFilter(string(query.ValueEqual))))
+	}
+	*/
+
 	if len(query.RangeValuePrefix) > 0 {
 		rowRange = bigtable.PrefixRange(query.HashValue + separator + string(query.RangeValuePrefix))
 	} else if len(query.RangeValueStart) > 0 {
@@ -125,8 +137,11 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	}
 
 	err := table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
-		return callback(bigtableReadBatch(r), false)
-	}, bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)))
+		if query.ValueEqual == nil || bytes.Equal(r[columnFamily][0].Value, query.ValueEqual) {
+			return callback(bigtableReadBatch(r), false)
+		}
+		return true
+	})
 	if err != nil {
 		sp.LogFields(otlog.String("error", err.Error()))
 		return errors.WithStack(err)

@@ -98,7 +98,7 @@ func (s *storageClient) Close() {
 	s.session.Close()
 }
 
-// Cassandra batching isn't really useful in this case, it more to mutliple
+// Cassandra batching isn't really useful in this case, its more to do multiple
 // atomic writes.  Therefore we just do a bunch of writes in parallel.
 type writeBatch struct {
 	entries []chunk.IndexEntry

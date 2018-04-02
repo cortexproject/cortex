@@ -5,7 +5,9 @@ import (
 	"flag"
 	"os"
 
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // GOCQL doesn't provide nice mocks, so we use a real Cassandra instance.
@@ -32,6 +34,7 @@ func (f fixture) Teardown() error {
 	return nil
 }
 
+// Fixtures for unit testing Cassandra integration.
 func Fixtures() ([]chunk.Fixture, error) {
 	addresses := os.Getenv("CASSANDRA_TEST_ADDRESSES")
 	if addresses == "" {
@@ -53,6 +56,8 @@ func Fixtures() ([]chunk.Fixture, error) {
 	if err != nil {
 		return nil, err
 	}
+	schemaConfig.IndexTables.From = util.NewDayValue(model.Now())
+	schemaConfig.ChunkTables.From = util.NewDayValue(model.Now())
 
 	storageClient, err := NewStorageClient(cfg, schemaConfig)
 	if err != nil {

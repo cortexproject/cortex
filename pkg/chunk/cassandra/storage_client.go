@@ -98,43 +98,66 @@ func (s *storageClient) Close() {
 	s.session.Close()
 }
 
+// Cassandra batching isn't really useful in this case, it more to mutliple
+// atomic writes.  Therefore we just do a bunch of writes in parallel.
 type writeBatch struct {
-	b *gocql.Batch
+	entries []chunk.IndexEntry
 }
 
 func (s *storageClient) NewWriteBatch() chunk.WriteBatch {
-	return writeBatch{
-		b: gocql.NewBatch(gocql.UnloggedBatch),
-	}
+	return &writeBatch{}
 }
 
-func (b writeBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	b.b.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)", tableName),
-		hashValue, rangeValue, value)
+func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+	b.entries = append(b.entries, chunk.IndexEntry{
+		TableName:  tableName,
+		HashValue:  hashValue,
+		RangeValue: rangeValue,
+		Value:      value,
+	})
 }
 
 func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
-	cassandraBatch := batch.(writeBatch)
-	err := s.session.ExecuteBatch(cassandraBatch.b.WithContext(ctx))
-	return errors.WithStack(err)
+	b := batch.(*writeBatch)
+
+	for _, entry := range b.entries {
+		err := s.session.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
+			entry.TableName), entry.HashValue, entry.RangeValue, entry.Value).WithContext(ctx).Exec()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	return nil
 }
 
-func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	var q *gocql.Query
-	if len(query.RangeValuePrefix) > 0 {
+
+	switch {
+	case len(query.RangeValuePrefix) > 0 && query.ValueEqual == nil:
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ?",
+			query.TableName), query.HashValue, query.RangeValuePrefix, append(query.RangeValuePrefix, '\xff'))
+
+	case len(query.RangeValuePrefix) > 0 && query.ValueEqual != nil:
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND range < ? AND value = ? ALLOW FILTERING",
+			query.TableName), query.HashValue, query.RangeValuePrefix, append(query.RangeValuePrefix, '\xff'), query.ValueEqual)
+
+	case len(query.RangeValueStart) > 0 && query.ValueEqual == nil:
 		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?",
-			query.TableName), query.HashValue, query.RangeValuePrefix)
-	} else if len(query.RangeValueStart) > 0 {
-		if query.ValueEqual == nil {
-			q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?",
-				query.TableName), query.HashValue, query.RangeValueStart)
-		} else {
-			q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND value = ?",
-				query.TableName), query.HashValue, query.RangeValueStart, query.ValueEqual)
-		}
-	} else {
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ?", query.TableName),
-			query.HashValue)
+			query.TableName), query.HashValue, query.RangeValueStart)
+
+	case len(query.RangeValueStart) > 0 && query.ValueEqual != nil:
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND value = ? ALLOW FILTERING",
+			query.TableName), query.HashValue, query.RangeValueStart, query.ValueEqual)
+
+	case query.ValueEqual == nil:
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ?",
+			query.TableName), query.HashValue)
+
+	case query.ValueEqual != nil:
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? value = ? ALLOW FILTERING",
+			query.TableName), query.HashValue, query.ValueEqual)
 	}
 
 	iter := q.WithContext(ctx).Iter()
@@ -145,7 +168,7 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
 			return errors.WithStack(err)
 		}
-		if callback(b, false) {
+		if !callback(b) {
 			return nil
 		}
 	}
@@ -179,8 +202,6 @@ func (b readBatch) Value(index int) []byte {
 }
 
 func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	b := gocql.NewBatch(gocql.UnloggedBatch).WithContext(ctx)
-
 	for i := range chunks {
 		// Encode the chunk first - checksum is calculated as a side effect.
 		buf, err := chunks[i].Encode()
@@ -191,11 +212,14 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		tableName := s.schemaCfg.ChunkTables.TableFor(chunks[i].From)
 
 		// Must provide a range key, even though its not useds - hence 0x00.
-		b.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, 0x00, ?)", tableName), key, buf)
+		q := s.session.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, 0x00, ?)",
+			tableName), key, buf)
+		if err := q.WithContext(ctx).Exec(); err != nil {
+			return errors.WithStack(err)
+		}
 	}
 
-	err := s.session.ExecuteBatch(b)
-	return errors.WithStack(err)
+	return nil
 }
 
 func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {

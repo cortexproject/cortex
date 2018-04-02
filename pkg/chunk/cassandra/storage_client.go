@@ -116,7 +116,7 @@ func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	return s.session.ExecuteBatch(cassandraBatch.b.WithContext(ctx))
 }
 
-func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	var q *gocql.Query
 	if len(query.RangeValuePrefix) > 0 {
 		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?", query.TableName),
@@ -137,7 +137,7 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
 			return err
 		}
-		if callback(b, false) {
+		if callback(b) {
 			return nil
 		}
 	}

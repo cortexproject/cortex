@@ -85,13 +85,13 @@ func TestIndexBasic(t *testing.T) {
 				HashValue: fmt.Sprintf("hash%d", i),
 			}
 			var have []chunk.IndexEntry
-			err := client.QueryPages(context.Background(), entry, func(read chunk.ReadBatch, lastPage bool) bool {
+			err := client.QueryPages(context.Background(), entry, func(read chunk.ReadBatch) bool {
 				for j := 0; j < read.Len(); j++ {
 					have = append(have, chunk.IndexEntry{
 						RangeValue: read.RangeValue(j),
 					})
 				}
-				return !lastPage
+				return true
 			})
 			require.NoError(t, err)
 			require.Equal(t, []chunk.IndexEntry{
@@ -224,7 +224,7 @@ func TestQueryPages(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				var have []chunk.IndexEntry
-				err = client.QueryPages(context.Background(), tt.query, func(read chunk.ReadBatch, lastPage bool) bool {
+				err = client.QueryPages(context.Background(), tt.query, func(read chunk.ReadBatch) bool {
 					for i := 0; i < read.Len(); i++ {
 						have = append(have, chunk.IndexEntry{
 							TableName:  tt.query.TableName,
@@ -233,7 +233,7 @@ func TestQueryPages(t *testing.T) {
 							Value:      read.Value(i),
 						})
 					}
-					return !lastPage
+					return true
 				})
 				require.NoError(t, err)
 				require.Equal(t, tt.want, have)

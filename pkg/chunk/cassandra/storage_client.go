@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gocql/gocql"
+	"github.com/pkg/errors"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
 )
@@ -35,11 +36,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) session() (*gocql.Session, error) {
 	consistency, err := gocql.ParseConsistencyWrapper(cfg.consistency)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	if err := cfg.createKeyspace(); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	cluster := gocql.NewCluster(strings.Split(cfg.addresses, ",")...)
@@ -58,17 +59,18 @@ func (cfg *Config) createKeyspace() error {
 	cluster.Timeout = 20 * time.Second
 	session, err := cluster.CreateSession()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	defer session.Close()
 
-	return session.Query(fmt.Sprintf(
+	err = session.Query(fmt.Sprintf(
 		`CREATE KEYSPACE IF NOT EXISTS %s
 		 WITH replication = {
 			 'class' : 'SimpleStrategy',
 			 'replication_factor' : %d
 		 }`,
 		cfg.keyspace, cfg.replicationFactor)).Exec()
+	return errors.WithStack(err)
 }
 
 // storageClient implements chunk.storageClient for GCP.
@@ -82,7 +84,7 @@ type storageClient struct {
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
 	session, err := cfg.session()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &storageClient{
@@ -113,17 +115,23 @@ func (b writeBatch) Add(tableName, hashValue string, rangeValue []byte, value []
 
 func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	cassandraBatch := batch.(writeBatch)
-	return s.session.ExecuteBatch(cassandraBatch.b.WithContext(ctx))
+	err := s.session.ExecuteBatch(cassandraBatch.b.WithContext(ctx))
+	return errors.WithStack(err)
 }
 
 func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	var q *gocql.Query
 	if len(query.RangeValuePrefix) > 0 {
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?", query.TableName),
-			query.HashValue, query.RangeValuePrefix)
+		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?",
+			query.TableName), query.HashValue, query.RangeValuePrefix)
 	} else if len(query.RangeValueStart) > 0 {
-		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?", query.TableName),
-			query.HashValue, query.RangeValueStart)
+		if query.ValueEqual == nil {
+			q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ?",
+				query.TableName), query.HashValue, query.RangeValueStart)
+		} else {
+			q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ? AND range >= ? AND value = ?",
+				query.TableName), query.HashValue, query.RangeValueStart, query.ValueEqual)
+		}
 	} else {
 		q = s.session.Query(fmt.Sprintf("SELECT range, value FROM %s WHERE hash = ?", query.TableName),
 			query.HashValue)
@@ -135,13 +143,13 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	for scanner.Next() {
 		var b readBatch
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if callback(b, false) {
 			return nil
 		}
 	}
-	return scanner.Err()
+	return errors.WithStack(scanner.Err())
 }
 
 // readBatch represents a batch of rows read from Cassandra.
@@ -177,7 +185,7 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		// Encode the chunk first - checksum is calculated as a side effect.
 		buf, err := chunks[i].Encode()
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		key := chunks[i].ExternalKey()
 		tableName := s.schemaCfg.ChunkTables.TableFor(chunks[i].From)
@@ -186,7 +194,8 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 		b.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, 0x00, ?)", tableName), key, buf)
 	}
 
-	return s.session.ExecuteBatch(b)
+	err := s.session.ExecuteBatch(b)
+	return errors.WithStack(err)
 }
 
 func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
@@ -223,7 +232,7 @@ func (s *storageClient) getChunk(ctx context.Context, input chunk.Chunk) (chunk.
 	var buf []byte
 	if err := s.session.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), input.ExternalKey()).
 		WithContext(ctx).Scan(&buf); err != nil {
-		return input, err
+		return input, errors.WithStack(err)
 	}
 	decodeContext := chunk.NewDecodeContext()
 	err := input.Decode(decodeContext, buf)

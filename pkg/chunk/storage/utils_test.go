@@ -16,7 +16,7 @@ import (
 
 const (
 	userID    = "userID"
-	tableName = "table"
+	tableName = "test"
 )
 
 type storageClientTest func(*testing.T, chunk.StorageClient)

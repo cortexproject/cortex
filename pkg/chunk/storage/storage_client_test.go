@@ -103,49 +103,49 @@ func TestIndexBasic(t *testing.T) {
 
 var entries = []chunk.IndexEntry{
 	{
-		TableName:  "table",
+		TableName:  tableName,
 		HashValue:  "foo",
 		RangeValue: []byte("bar:1"),
 		Value:      []byte("10"),
 	},
 	{
-		TableName:  "table",
+		TableName:  tableName,
 		HashValue:  "foo",
 		RangeValue: []byte("bar:2"),
 		Value:      []byte("20"),
 	},
 	{
-		TableName:  "table",
+		TableName:  tableName,
 		HashValue:  "foo",
 		RangeValue: []byte("bar:3"),
 		Value:      []byte("30"),
 	},
 	{
-		TableName:  "table",
+		TableName:  tableName,
 		HashValue:  "foo",
 		RangeValue: []byte("baz:1"),
 		Value:      []byte("10"),
 	},
 	{
-		TableName:  "table",
+		TableName:  tableName,
 		HashValue:  "foo",
 		RangeValue: []byte("baz:2"),
 		Value:      []byte("20"),
 	},
 	{
-		TableName:  "table",
+		TableName:  tableName,
 		HashValue:  "flip",
 		RangeValue: []byte("bar:1"),
 		Value:      []byte("abc"),
 	},
 	{
-		TableName:  "table",
+		TableName:  tableName,
 		HashValue:  "flip",
 		RangeValue: []byte("bar:2"),
 		Value:      []byte("abc"),
 	},
 	{
-		TableName:  "table",
+		TableName:  tableName,
 		HashValue:  "flip",
 		RangeValue: []byte("bar:3"),
 		Value:      []byte("abc"),
@@ -171,7 +171,7 @@ func TestQueryPages(t *testing.T) {
 			{
 				"check HashValue only",
 				chunk.IndexQuery{
-					TableName: "table",
+					TableName: tableName,
 					HashValue: "flip",
 				},
 				0,
@@ -180,7 +180,7 @@ func TestQueryPages(t *testing.T) {
 			{
 				"check RangeValueStart",
 				chunk.IndexQuery{
-					TableName:       "table",
+					TableName:       tableName,
 					HashValue:       "foo",
 					RangeValueStart: []byte("bar:2"),
 				},
@@ -190,7 +190,7 @@ func TestQueryPages(t *testing.T) {
 			{
 				"check RangeValuePrefix",
 				chunk.IndexQuery{
-					TableName:        "table",
+					TableName:        tableName,
 					HashValue:        "foo",
 					RangeValuePrefix: []byte("baz:"),
 				},
@@ -200,7 +200,7 @@ func TestQueryPages(t *testing.T) {
 			{
 				"check ValueEqual",
 				chunk.IndexQuery{
-					TableName:        "table",
+					TableName:        tableName,
 					HashValue:        "foo",
 					RangeValuePrefix: []byte("bar"),
 					ValueEqual:       []byte("20"),
@@ -211,7 +211,7 @@ func TestQueryPages(t *testing.T) {
 			{
 				"check retry logic",
 				chunk.IndexQuery{
-					TableName:        "table",
+					TableName:        tableName,
 					HashValue:        "foo",
 					RangeValuePrefix: []byte("bar"),
 					ValueEqual:       []byte("20"),

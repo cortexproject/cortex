@@ -2,6 +2,7 @@ package cassandra
 
 import (
 	"context"
+	"flag"
 	"os"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -39,11 +40,19 @@ func Fixtures() ([]chunk.Fixture, error) {
 
 	cfg := Config{
 		addresses:         addresses,
-		keyspace:          "test-keyspace",
+		keyspace:          "test",
 		consistency:       "QUORUM",
 		replicationFactor: 1,
 	}
+
+	// Get a SchemaConfig with the defaults.
+	flagSet := flag.NewFlagSet("flags", flag.PanicOnError)
 	schemaConfig := chunk.SchemaConfig{}
+	schemaConfig.RegisterFlags(flagSet)
+	err := flagSet.Parse([]string{})
+	if err != nil {
+		return nil, err
+	}
 
 	storageClient, err := NewStorageClient(cfg, schemaConfig)
 	if err != nil {

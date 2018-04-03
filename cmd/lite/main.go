@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"net/http"
 	"os"
 
@@ -58,7 +57,6 @@ func main() {
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
-	fmt.Println("VERSION", rulerConfig.RuleFormatVersion)
 	ingesterConfig.SetClientConfig(distributorConfig.IngesterClientConfig)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing

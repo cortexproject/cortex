@@ -103,15 +103,7 @@ func (a *API) casConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch a.ruleFormatVersion {
-	case configs.RuleFormatV1:
-		_, err = updateReq.NewConfig.ParseV1()
-	case configs.RuleFormatV2:
-		_, err = updateReq.NewConfig.ParseV2()
-	default:
-		panic("unknown rule format")
-	}
-	if err != nil {
+	if _, err = updateReq.NewConfig.Parse(a.ruleFormatVersion); err != nil {
 		level.Error(logger).Log("msg", "invalid rules", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return

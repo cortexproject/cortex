@@ -209,16 +209,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	hasher := fnv.New64a()
 
 	for userID, config := range cfgs {
-		rulesByGroup := map[string][]rules.Rule{}
-		var err error
-		switch s.ruleFormatVersion {
-		case configs.RuleFormatV1:
-			rulesByGroup, err = config.Config.ParseV1()
-		case configs.RuleFormatV2:
-			rulesByGroup, err = config.Config.ParseV2()
-		default:
-			panic("unknown rule format")
-		}
+		rulesByGroup, err := config.Config.Parse(s.ruleFormatVersion)
 		if err != nil {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known

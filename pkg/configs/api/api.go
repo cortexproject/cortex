@@ -179,16 +179,8 @@ func validateAlertmanagerConfig(cfg string) error {
 	return nil
 }
 
-func validateRulesFiles(c configs.Config, rfv configs.RuleFormatVersion) (err error) {
-	rc := configs.RulesConfig(c.RulesFiles)
-	switch rfv {
-	case configs.RuleFormatV1:
-		_, err = rc.ParseV1()
-	case configs.RuleFormatV2:
-		_, err = rc.ParseV2()
-	default:
-		panic("unknown rule format")
-	}
+func validateRulesFiles(c configs.Config, rfv configs.RuleFormatVersion) error {
+	_, err := configs.RulesConfig(c.RulesFiles).Parse(rfv)
 	return err
 }
 

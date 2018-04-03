@@ -101,6 +101,19 @@ func (c RulesConfig) Equal(o RulesConfig) bool {
 	return true
 }
 
+// Parse parses and validates the content of the rule files in a RulesConfig
+// according to the passed rule format version.
+func (c RulesConfig) Parse(v RuleFormatVersion) (map[string][]rules.Rule, error) {
+	switch v {
+	case RuleFormatV1:
+		return c.ParseV1()
+	case RuleFormatV2:
+		return c.ParseV2()
+	default:
+		panic("unknown rule format")
+	}
+}
+
 // ParseV2 parses and validates the content of the rule files in a RulesConfig
 // according to the Prometheus 2.x rule format.
 //

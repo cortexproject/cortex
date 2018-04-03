@@ -175,7 +175,7 @@ func main() {
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/weaveworks/cortex/issues/619
 	if configStoreConfig.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
+		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig, rulerConfig.RuleFormatVersion)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
 			os.Exit(1)

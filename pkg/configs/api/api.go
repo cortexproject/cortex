@@ -14,20 +14,23 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/configs"
-	configs_client "github.com/weaveworks/cortex/pkg/configs/client"
 	"github.com/weaveworks/cortex/pkg/configs/db"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // API implements the configs api.
 type API struct {
-	db db.DB
+	db                db.DB
+	ruleFormatVersion configs.RuleFormatVersion
 	http.Handler
 }
 
 // New creates a new API
-func New(database db.DB) *API {
-	a := &API{db: database}
+func New(database db.DB, rfv configs.RuleFormatVersion) *API {
+	a := &API{
+		db:                database,
+		ruleFormatVersion: rfv,
+	}
 	r := mux.NewRouter()
 	a.RegisterRoutes(r)
 	a.Handler = r
@@ -120,7 +123,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Invalid Alertmanager config: %v", err), http.StatusBadRequest)
 		return
 	}
-	if err := validateRulesFiles(cfg); err != nil {
+	if err := validateRulesFiles(cfg, a.ruleFormatVersion); err != nil {
 		level.Error(logger).Log("msg", "invalid rules", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return
@@ -176,8 +179,8 @@ func validateAlertmanagerConfig(cfg string) error {
 	return nil
 }
 
-func validateRulesFiles(c configs.Config) error {
-	_, err := configs_client.RulesFromConfig(c)
+func validateRulesFiles(c configs.Config, rfv configs.RuleFormatVersion) error {
+	_, err := configs.RulesConfig(c.RulesFiles).Parse(rfv)
 	return err
 }
 

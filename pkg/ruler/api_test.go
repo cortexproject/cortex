@@ -33,7 +33,7 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = NewAPI(database)
+	app = NewAPI(database, configs.RuleFormatV2)
 	counter = 0
 	privateAPI = dbStore{db: database}
 }
@@ -75,9 +75,11 @@ func makeUserID() string {
 }
 
 // makeRulerConfig makes an arbitrary ruler config
-func makeRulerConfig() configs.RulesConfig {
-	return configs.RulesConfig(map[string]string{
-		"filename.rules": makeString(`
+func makeRulerConfig(rfv configs.RuleFormatVersion) configs.RulesConfig {
+	switch rfv {
+	case configs.RuleFormatV1:
+		return configs.RulesConfig(map[string]string{
+			"filename.rules": makeString(`
 # Config no. %d.
 ALERT ScrapeFailed
   IF          up != 1
@@ -89,8 +91,30 @@ ALERT ScrapeFailed
     impact = "We have no monitoring data for {{$labels.job}} - {{$labels.instance}}. At worst, it's completely down. At best, we cannot reliably respond to operational issues.",
     dashboardURL = "$${base_url}/admin/prometheus/targets",
   }
-		`),
-	})
+			`),
+		})
+	case configs.RuleFormatV2:
+		return configs.RulesConfig(map[string]string{
+			"filename.rules": makeString(`
+# Config no. %d.
+groups:
+- name: example
+  rules:
+  - alert: ScrapeFailed
+    expr: 'up != 1'
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Scrape of {{$labels.job}} (pod: {{$labels.instance}}) failed."
+      description: "Prometheus cannot reach the /metrics page on the {{$labels.instance}} pod."
+      impact: "We have no monitoring data for {{$labels.job}} - {{$labels.instance}}. At worst, it's completely down. At best, we cannot reliably respond to operational issues."
+      dashboardURL: "$${base_url}/admin/prometheus/targets"
+      `),
+		})
+	default:
+		panic("unknown rule format")
+	}
 }
 
 // parseVersionedRulesConfig parses a configs.VersionedRulesConfig from JSON.
@@ -146,7 +170,7 @@ func Test_PostConfig_CreatesConfig(t *testing.T) {
 	defer cleanup(t)
 
 	userID := makeUserID()
-	config := makeRulerConfig()
+	config := makeRulerConfig(configs.RuleFormatV2)
 	result := post(t, userID, nil, config)
 	assert.Equal(t, config, result.Config)
 }
@@ -177,27 +201,69 @@ func Test_PostConfig_InvalidNewConfig(t *testing.T) {
 	}
 }
 
-// Posting to a configuration sets it so that you can get it again.
-func Test_PostConfig_UpdatesConfig(t *testing.T) {
+// Posting a v1 rule format configuration sets it so that you can get it again.
+func Test_PostConfig_UpdatesConfig_V1RuleFormat(t *testing.T) {
 	setup(t)
+	app = NewAPI(database, configs.RuleFormatV1)
 	defer cleanup(t)
 
 	userID := makeUserID()
-	config1 := makeRulerConfig()
+	config1 := makeRulerConfig(configs.RuleFormatV1)
 	view1 := post(t, userID, nil, config1)
-	config2 := makeRulerConfig()
+	config2 := makeRulerConfig(configs.RuleFormatV1)
 	view2 := post(t, userID, config1, config2)
 	assert.True(t, view2.ID > view1.ID, "%v > %v", view2.ID, view1.ID)
 	assert.Equal(t, config2, view2.Config)
 }
 
-// Posting an invalid config when there's one already set returns an error and leaves the config as is.
-func Test_PostConfig_InvalidChangedConfig(t *testing.T) {
+// Posting an invalid v1 rule format config when there's one already set returns an error and leaves the config as is.
+func Test_PostConfig_InvalidChangedConfig_V1RuleFormat(t *testing.T) {
+	setup(t)
+	app = NewAPI(database, configs.RuleFormatV1)
+	defer cleanup(t)
+
+	userID := makeUserID()
+	config := makeRulerConfig(configs.RuleFormatV1)
+	post(t, userID, nil, config)
+	invalidConfig := map[string]string{
+		"some.rules": "invalid config",
+	}
+	updateRequest := configUpdateRequest{
+		OldConfig: nil,
+		NewConfig: invalidConfig,
+	}
+	b, err := json.Marshal(updateRequest)
+	require.NoError(t, err)
+	reader := bytes.NewReader(b)
+	{
+		w := requestAsUser(t, app, userID, "POST", endpoint, reader)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	}
+	result := get(t, userID)
+	assert.Equal(t, config, result.Config)
+}
+
+// Posting a v2 rule format configuration sets it so that you can get it again.
+func Test_PostConfig_UpdatesConfig_V2RuleFormat(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
 	userID := makeUserID()
-	config := makeRulerConfig()
+	config1 := makeRulerConfig(configs.RuleFormatV2)
+	view1 := post(t, userID, nil, config1)
+	config2 := makeRulerConfig(configs.RuleFormatV2)
+	view2 := post(t, userID, config1, config2)
+	assert.True(t, view2.ID > view1.ID, "%v > %v", view2.ID, view1.ID)
+	assert.Equal(t, config2, view2.Config)
+}
+
+// Posting an invalid v2 rule format config when there's one already set returns an error and leaves the config as is.
+func Test_PostConfig_InvalidChangedConfig_V2RuleFormat(t *testing.T) {
+	setup(t)
+	defer cleanup(t)
+
+	userID := makeUserID()
+	config := makeRulerConfig(configs.RuleFormatV2)
 	post(t, userID, nil, config)
 	invalidConfig := map[string]string{
 		"some.rules": "invalid config",
@@ -224,8 +290,8 @@ func Test_PostConfig_MultipleUsers(t *testing.T) {
 
 	userID1 := makeUserID()
 	userID2 := makeUserID()
-	config1 := post(t, userID1, nil, makeRulerConfig())
-	config2 := post(t, userID2, nil, makeRulerConfig())
+	config1 := post(t, userID1, nil, makeRulerConfig(configs.RuleFormatV2))
+	config2 := post(t, userID2, nil, makeRulerConfig(configs.RuleFormatV2))
 	foundConfig1 := get(t, userID1)
 	assert.Equal(t, config1, foundConfig1)
 	foundConfig2 := get(t, userID2)
@@ -249,7 +315,7 @@ func Test_GetAllConfigs(t *testing.T) {
 	defer cleanup(t)
 
 	userID := makeUserID()
-	config := makeRulerConfig()
+	config := makeRulerConfig(configs.RuleFormatV2)
 	view := post(t, userID, nil, config)
 
 	found, err := privateAPI.GetConfigs(0)
@@ -266,9 +332,9 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 
 	userID := makeUserID()
 
-	config1 := post(t, userID, nil, makeRulerConfig())
-	config2 := post(t, userID, config1.Config, makeRulerConfig())
-	lastCreated := post(t, userID, config2.Config, makeRulerConfig())
+	config1 := post(t, userID, nil, makeRulerConfig(configs.RuleFormatV2))
+	config2 := post(t, userID, config1.Config, makeRulerConfig(configs.RuleFormatV2))
+	lastCreated := post(t, userID, config2.Config, makeRulerConfig(configs.RuleFormatV2))
 
 	found, err := privateAPI.GetConfigs(0)
 	assert.NoError(t, err, "error getting configs")
@@ -281,10 +347,10 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	post(t, makeUserID(), nil, makeRulerConfig())
-	config2 := post(t, makeUserID(), nil, makeRulerConfig())
+	post(t, makeUserID(), nil, makeRulerConfig(configs.RuleFormatV2))
+	config2 := post(t, makeUserID(), nil, makeRulerConfig(configs.RuleFormatV2))
 	userID3 := makeUserID()
-	config3 := post(t, userID3, nil, makeRulerConfig())
+	config3 := post(t, userID3, nil, makeRulerConfig(configs.RuleFormatV2))
 
 	found, err := privateAPI.GetConfigs(config2.ID)
 	assert.NoError(t, err, "error getting configs")
@@ -302,14 +368,14 @@ func postAlertmanagerConfig(t *testing.T, userID, configFile string) {
 	b, err := json.Marshal(config)
 	require.NoError(t, err)
 	reader := bytes.NewReader(b)
-	configsAPI := api.New(database)
+	configsAPI := api.New(database, configs.RuleFormatV2)
 	w := requestAsUser(t, configsAPI, userID, "POST", "/api/prom/configs/alertmanager", reader)
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
 // getAlertmanagerConfig posts an alertmanager config to the alertmanager configs API.
 func getAlertmanagerConfig(t *testing.T, userID string) string {
-	w := requestAsUser(t, api.New(database), userID, "GET", "/api/prom/configs/alertmanager", nil)
+	w := requestAsUser(t, api.New(database, configs.RuleFormatV2), userID, "GET", "/api/prom/configs/alertmanager", nil)
 	var x configs.View
 	b := w.Body.Bytes()
 	err := json.Unmarshal(b, &x)
@@ -351,7 +417,7 @@ func Test_AlertmanagerConfig_RulerConfigDoesntChangeIt(t *testing.T) {
             - name: noop`)
 	postAlertmanagerConfig(t, userID, alertmanagerConfig)
 
-	rulerConfig := makeRulerConfig()
+	rulerConfig := makeRulerConfig(configs.RuleFormatV2)
 	post(t, userID, nil, rulerConfig)
 
 	newAlertmanagerConfig := getAlertmanagerConfig(t, userID)

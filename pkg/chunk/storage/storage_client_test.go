@@ -37,6 +37,24 @@ func TestStoreChunks(t *testing.T) {
 	}
 }
 
+func TestStoreIndex(t *testing.T) {
+	for _, fixture := range fixtures {
+		t.Run(fixture.Name(), func(t *testing.T) {
+			storageClient, tableClient, schemaConfig, err := fixture.Clients()
+			require.NoError(t, err)
+			defer fixture.Teardown()
+
+			tableManager, err := chunk.NewTableManager(schemaConfig, 12*time.Hour, tableClient)
+			require.NoError(t, err)
+
+			err = tableManager.SyncTables(context.Background())
+			require.NoError(t, err)
+
+			testStorageClientIndex(t, storageClient, tableClient)
+		})
+	}
+}
+
 func testStorageClientChunks(t *testing.T, client chunk.StorageClient) {
 	const batchSize = 50
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -84,6 +102,135 @@ func testStorageClientChunks(t *testing.T, client chunk.StorageClient) {
 		sort.Sort(chunk.ByKey(chunksWeGot))
 		for j := 0; j < len(chunksWeGot); j++ {
 			require.Equal(t, chunksToGet[i].ExternalKey(), chunksWeGot[i].ExternalKey(), strconv.Itoa(i))
+		}
+	}
+}
+
+func testStorageClientIndex(t *testing.T, client chunk.StorageClient, tableClient chunk.TableClient) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	type writeBatch []struct {
+		tableName, hashValue string
+		rangeValue           []byte
+		value                []byte
+	}
+
+	cases := []struct {
+		batch writeBatch
+
+		query []chunk.IndexQuery
+	}{
+		{
+			batch: writeBatch{
+				{
+					tableName:  "t1",
+					hashValue:  "hash1",
+					rangeValue: []byte("range1"),
+					value:      []byte("1"),
+				},
+				{
+					tableName:  "t1",
+					hashValue:  "hash1",
+					rangeValue: []byte("range2"),
+					value:      []byte("2"),
+				},
+				{
+					tableName:  "t1",
+					hashValue:  "hash1",
+					rangeValue: []byte("range3"),
+					value:      []byte("3"),
+				},
+				{
+					tableName:  "t1",
+					hashValue:  "hash1",
+					rangeValue: []byte("bleepboop"),
+					value:      []byte("4"),
+				},
+				{
+					tableName:  "t1",
+					hashValue:  "hash2",
+					rangeValue: []byte("bleepboop"),
+					value:      []byte("5"),
+				},
+			},
+
+			query: []chunk.IndexQuery{
+				{
+					TableName:        "t1",
+					HashValue:        "hash1",
+					RangeValuePrefix: []byte("range"),
+				},
+				{
+					TableName:       "t1",
+					HashValue:       "hash1",
+					RangeValueStart: []byte("range2"),
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		mockSC := chunk.NewMockStorage()
+		require.NoError(t, mockSC.CreateTable(ctx, chunk.TableDesc{
+			Name: c.batch[0].tableName,
+		}))
+		require.NoError(t, tableClient.CreateTable(ctx, chunk.TableDesc{
+			Name:             c.batch[0].tableName,
+			ProvisionedRead:  100000,
+			ProvisionedWrite: 100000,
+		}))
+
+		mockWB := mockSC.NewWriteBatch()
+		actualWB := client.NewWriteBatch()
+
+		for _, b := range c.batch {
+			mockWB.Add(b.tableName, b.hashValue, b.rangeValue, b.value)
+			actualWB.Add(b.tableName, b.hashValue, b.rangeValue, b.value)
+		}
+
+		require.NoError(t, mockSC.BatchWrite(ctx, mockWB))
+		require.NoError(t, client.BatchWrite(ctx, actualWB))
+
+		type readVal struct {
+			rangeValue string
+			value      []byte
+		}
+
+		for _, qry := range c.query {
+			expVals := []readVal{}
+			gotVals := []readVal{}
+
+			err := mockSC.QueryPages(ctx, qry, func(result chunk.ReadBatch, lp bool) bool {
+				for i := 0; i < result.Len(); i++ {
+					expVals = append(expVals, readVal{
+						rangeValue: string(result.RangeValue(i)),
+						value:      result.Value(i),
+					})
+				}
+				return !lp
+			})
+			require.NoError(t, err)
+
+			err = client.QueryPages(ctx, qry, func(result chunk.ReadBatch, lp bool) bool {
+				for i := 0; i < result.Len(); i++ {
+					gotVals = append(gotVals, readVal{
+						rangeValue: string(result.RangeValue(i)),
+						value:      result.Value(i),
+					})
+				}
+				return !lp
+			})
+			require.NoError(t, err)
+
+			sort.Slice(expVals, func(i, j int) bool {
+				return expVals[i].rangeValue < expVals[j].rangeValue
+			})
+			sort.Slice(gotVals, func(i, j int) bool {
+				return gotVals[i].rangeValue < gotVals[j].rangeValue
+			})
+
+			require.Equal(t, expVals, gotVals)
 		}
 	}
 }

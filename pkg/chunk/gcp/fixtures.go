@@ -21,6 +21,8 @@ const (
 type fixture struct {
 	srv  *bttest.Server
 	name string
+
+	columnKeyClient bool
 }
 
 func (f *fixture) Name() string {
@@ -59,12 +61,14 @@ func (f *fixture) Clients() (
 			Prefix: "chunks",
 		},
 	}
-	sClient = &storageClient{
-		schemaCfg: schemaConfig,
-		client:    client,
-	}
 	tClient = &tableClient{
 		client: adminClient,
+	}
+
+	if !f.columnKeyClient {
+		sClient = newStorageClientColumnKey(Config{}, client, schemaConfig)
+	} else {
+		sClient = newStorageClientV1(Config{}, client, schemaConfig)
 	}
 	return
 }
@@ -77,6 +81,10 @@ func (f *fixture) Teardown() error {
 // Fixtures for unit testing GCP storage.
 var Fixtures = []chunk.Fixture{
 	&fixture{
-		name: "GCP",
+		name:            "GCP-ColumnKey",
+		columnKeyClient: true,
+	},
+	&fixture{
+		name: "GCPv1",
 	},
 }

@@ -92,14 +92,15 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) flush
 	if immediate {
 		return reasonImmediate
 	}
-	// Series should be scheduled for flushing if they have more than one chunk
-	if len(series.chunkDescs) > 1 {
-		return reasonMultipleChunksInSeries
-	}
 
-	// Or if the only existing chunk need flushing
+	// Series should be scheduled for flushing if the oldest chunk in the series needs flushing
 	if len(series.chunkDescs) > 0 {
-		return i.shouldFlushChunk(series.chunkDescs[0])
+		reason := i.shouldFlushChunk(series.chunkDescs[0])
+		if reason != noFlush && len(series.chunkDescs) > 1 {
+			// Maintain a distinct reason for reporting purposes
+			reason = reasonMultipleChunksInSeries
+		}
+		return reason
 	}
 
 	return noFlush

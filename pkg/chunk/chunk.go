@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"strconv"
@@ -235,30 +234,14 @@ func (c *Chunk) Encode() ([]byte, error) {
 
 // DecodeContext holds data that can be re-used between decodes of different chunks
 type DecodeContext struct {
-	reader  *snappy.Reader
-	metrics map[model.Fingerprint]model.Metric
+	reader *snappy.Reader
 }
 
 // NewDecodeContext creates a new, blank, DecodeContext
 func NewDecodeContext() *DecodeContext {
 	return &DecodeContext{
-		reader:  snappy.NewReader(nil),
-		metrics: make(map[model.Fingerprint]model.Metric),
+		reader: snappy.NewReader(nil),
 	}
-}
-
-// If we have decoded a chunk with the same fingerprint before, re-use its Metric, otherwise parse it
-func (dc *DecodeContext) metric(fingerprint model.Fingerprint, buf []byte) (model.Metric, error) {
-	metric, found := dc.metrics[fingerprint]
-	if !found {
-		json := jsoniter.ConfigFastest
-		err := json.Unmarshal(buf, &metric)
-		if err != nil {
-			return nil, errors.Wrap(err, "while parsing chunk metric")
-		}
-		dc.metrics[fingerprint] = metric
-	}
-	return metric, nil
 }
 
 // Decode the chunk from the given buffer, and confirm the chunk is the one we
@@ -287,10 +270,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	if err := binary.Read(r, binary.BigEndian, &metadataLen); err != nil {
 		return err
 	}
-	var tempMetadata struct {
-		Chunk
-		RawMetric json.RawMessage `json:"metric"` // Override to defer parsing
-	}
+	var tempMetadata Chunk
 	decodeContext.reader.Reset(r)
 	json := jsoniter.ConfigFastest
 	err := json.NewDecoder(decodeContext.reader).Decode(&tempMetadata)
@@ -306,15 +286,11 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// we don't write the checksum to s3, so we have to copy the checksum in.
 	if c.ChecksumSet {
 		tempMetadata.Checksum, tempMetadata.ChecksumSet = c.Checksum, c.ChecksumSet
-		if !equalByKey(*c, tempMetadata.Chunk) {
+		if !equalByKey(*c, tempMetadata) {
 			return errors.WithStack(ErrWrongMetadata)
 		}
 	}
-	*c = tempMetadata.Chunk
-	c.Metric, err = decodeContext.metric(tempMetadata.Fingerprint, tempMetadata.RawMetric)
-	if err != nil {
-		return err
-	}
+	*c = tempMetadata
 
 	// Older chunks always used DoubleDelta and did not write Encoding
 	// to JSON, so override if it has the zero value (Delta)

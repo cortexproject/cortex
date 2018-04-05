@@ -54,8 +54,8 @@ func (v *RuleFormatVersion) Set(s string) error {
 // A Config is a Cortex configuration for a single user.
 type Config struct {
 	// RulesFiles maps from a rules filename to file contents.
-	RulesFiles         RulesConfig `json:"rules_files"`
-	AlertmanagerConfig string      `json:"alertmanager_config"`
+	RulesConfig        *RulesConfig `json:"rules_config"`
+	AlertmanagerConfig string       `json:"alertmanager_config"`
 }
 
 // View is what's returned from the Weave Cloud configs service
@@ -72,28 +72,34 @@ type View struct {
 
 // GetVersionedRulesConfig specializes the view to just the rules config.
 func (v View) GetVersionedRulesConfig() *VersionedRulesConfig {
-	if v.Config.RulesFiles == nil {
+	if v.Config.RulesConfig == nil { // TODO: does missing JSON field cause nil here? It should.
 		return nil
 	}
 	return &VersionedRulesConfig{
 		ID:        v.ID,
-		Config:    v.Config.RulesFiles,
+		Config:    v.Config.RulesConfig,
 		DeletedAt: v.DeletedAt,
 	}
 }
 
 // RulesConfig are the set of rules files for a particular organization.
-type RulesConfig map[string]string
+type RulesConfig struct {
+	FormatVersion RuleFormatVersion
+	Files         map[string]string
+}
 
 // Equal compares two RulesConfigs for equality.
 //
 // instance Eq RulesConfig
-func (c RulesConfig) Equal(o RulesConfig) bool {
-	if len(o) != len(c) {
+func (c RulesConfig) Equal(o *RulesConfig) bool {
+	if c.FormatVersion != o.FormatVersion {
 		return false
 	}
-	for k, v1 := range c {
-		v2, ok := o[k]
+	if len(o.Files) != len(c.Files) {
+		return false
+	}
+	for k, v1 := range c.Files {
+		v2, ok := o.Files[k]
 		if !ok || v1 != v2 {
 			return false
 		}
@@ -103,18 +109,18 @@ func (c RulesConfig) Equal(o RulesConfig) bool {
 
 // Parse parses and validates the content of the rule files in a RulesConfig
 // according to the passed rule format version.
-func (c RulesConfig) Parse(v RuleFormatVersion) (map[string][]rules.Rule, error) {
-	switch v {
+func (c RulesConfig) Parse() (map[string][]rules.Rule, error) {
+	switch c.FormatVersion {
 	case RuleFormatV1:
-		return c.ParseV1()
+		return c.parseV1()
 	case RuleFormatV2:
-		return c.ParseV2()
+		return c.parseV2()
 	default:
 		panic("unknown rule format")
 	}
 }
 
-// ParseV2 parses and validates the content of the rule files in a RulesConfig
+// parseV2 parses and validates the content of the rule files in a RulesConfig
 // according to the Prometheus 2.x rule format.
 //
 // NOTE: On one hand, we cannot return fully-fledged lists of rules.Group
@@ -127,10 +133,10 @@ func (c RulesConfig) Parse(v RuleFormatVersion) (map[string][]rules.Rule, error)
 // would otherwise have to ensure to convert the rulefmt.RuleGroup only exactly
 // once, not for every evaluation (or risk losing alert pending states). So
 // it's probably better to just return a set of rules.Rule here.
-func (c RulesConfig) ParseV2() (map[string][]rules.Rule, error) {
+func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 	groups := map[string][]rules.Rule{}
 
-	for fn, content := range c {
+	for fn, content := range c.Files {
 		rgs, errs := rulefmt.Parse([]byte(content))
 		if len(errs) > 0 {
 			return nil, fmt.Errorf("error parsing %s: %v", fn, errs[0])
@@ -170,13 +176,13 @@ func (c RulesConfig) ParseV2() (map[string][]rules.Rule, error) {
 	return groups, nil
 }
 
-// ParseV1 parses and validates the content of the rule files in a RulesConfig
+// parseV1 parses and validates the content of the rule files in a RulesConfig
 // according to the Prometheus 1.x rule format.
 //
 // The same comment about rule groups as on ParseV2() applies here.
-func (c RulesConfig) ParseV1() (map[string][]rules.Rule, error) {
+func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 	result := map[string][]rules.Rule{}
-	for fn, content := range c {
+	for fn, content := range c.Files {
 		stmts, err := promql.ParseStmts(content)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
@@ -205,9 +211,9 @@ func (c RulesConfig) ParseV1() (map[string][]rules.Rule, error) {
 // VersionedRulesConfig is a RulesConfig together with a version.
 // `data Versioned a = Versioned { id :: ID , config :: a }`
 type VersionedRulesConfig struct {
-	ID        ID          `json:"id"`
-	Config    RulesConfig `json:"config"`
-	DeletedAt time.Time   `json:"deleted_at"`
+	ID        ID           `json:"id"`
+	Config    *RulesConfig `json:"config"`
+	DeletedAt time.Time    `json:"deleted_at"`
 }
 
 // IsDeleted tells you if the config is deleted.

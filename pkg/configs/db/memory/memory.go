@@ -97,17 +97,17 @@ func (d *DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
 }
 
 // SetRulesConfig sets the rules config for a user.
-func (d *DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
+func (d *DB) SetRulesConfig(userID string, oldConfig, newConfig *configs.RulesConfig) (bool, error) {
 	c, ok := d.cfgs[userID]
 	if !ok {
-		return true, d.SetConfig(userID, configs.Config{RulesFiles: newConfig})
+		return true, d.SetConfig(userID, configs.Config{RulesConfig: newConfig})
 	}
-	if !oldConfig.Equal(c.Config.RulesFiles) {
+	if !oldConfig.Equal(c.Config.RulesConfig) {
 		return false, nil
 	}
 	return true, d.SetConfig(userID, configs.Config{
 		AlertmanagerConfig: c.Config.AlertmanagerConfig,
-		RulesFiles:         newConfig,
+		RulesConfig:        newConfig,
 	})
 }
 

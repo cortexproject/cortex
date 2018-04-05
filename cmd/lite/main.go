@@ -155,7 +155,7 @@ func main() {
 		querier.DummyTargetRetriever{},
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },
-		map[string]string{}, // TODO: include configuration flags
+		nil, // flags to be served via http; we don't need this
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.

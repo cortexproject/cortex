@@ -30,7 +30,6 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
-		querierConfig     querier.Config
 		rulerConfig       ruler.Config
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
@@ -43,7 +42,7 @@ func main() {
 	trace := tracing.NewFromEnv("ruler")
 	defer trace.Close()
 
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
 		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig, &logLevel)
 	flag.Parse()
 
@@ -77,7 +76,7 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	engine, queryable := querier.NewEngine(dist, chunkStore, prometheus.DefaultRegisterer, querierConfig.MaxConcurrent, querierConfig.Timeout)
+	engine, queryable := querier.NewEngine(dist, chunkStore, prometheus.DefaultRegisterer, rulerConfig.NumWorkers, rulerConfig.GroupTimeout)
 	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)

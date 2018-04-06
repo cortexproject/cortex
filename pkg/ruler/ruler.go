@@ -33,7 +33,6 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/configs"
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -82,9 +81,6 @@ type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL
 	ExternalURL util.URLValue
 
-	// Whether to parse rules according to the Prometheus v1 or v2 rule format.
-	RuleFormatVersion configs.RuleFormatVersion
-
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
 	NumWorkers         int
@@ -109,7 +105,6 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
-	f.Var(&cfg.RuleFormatVersion, "ruler.rule-format-version", "Which Prometheus rule format version to use: '1' or '2' (default '1').")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
 	f.IntVar(&cfg.NumWorkers, "ruler.num-workers", 1, "Number of rule evaluator worker routines in this process")
 	f.Var(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "URL of the Alertmanager to send notifications to.")
@@ -407,7 +402,7 @@ type Server struct {
 // NewServer makes a new rule processing server.
 func NewServer(cfg Config, ruler *Ruler, rulesAPI RulesAPI) (*Server, error) {
 	// TODO: Separate configuration for polling interval.
-	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, cfg.RuleFormatVersion)
+	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval)
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}

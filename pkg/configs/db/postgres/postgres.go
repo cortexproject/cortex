@@ -3,6 +3,7 @@ package postgres
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -141,6 +142,9 @@ func (d DB) GetConfig(userID string) (configs.View, error) {
 
 // SetConfig sets a configuration.
 func (d DB) SetConfig(userID string, cfg configs.Config) error {
+	if !cfg.RulesConfig.FormatVersion.IsValid() {
+		return fmt.Errorf("invalid rule format version %v", cfg.RulesConfig.FormatVersion)
+	}
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -189,12 +193,12 @@ func (d DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConf
 		// The supplied oldConfig must match the current config. If no config
 		// exists, then oldConfig must be nil. Otherwise, it must exactly
 		// equal the existing config.
-		if !((err == sql.ErrNoRows && oldConfig == nil) || oldConfig.Equal(current.Config.RulesFiles)) {
+		if !((err == sql.ErrNoRows && oldConfig.Files == nil) || oldConfig.Equal(current.Config.RulesConfig)) {
 			return nil
 		}
 		new := configs.Config{
 			AlertmanagerConfig: current.Config.AlertmanagerConfig,
-			RulesFiles:         newConfig,
+			RulesConfig:        newConfig,
 		}
 		updated = true
 		return d.SetConfig(userID, new)
@@ -205,7 +209,7 @@ func (d DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConf
 // findRulesConfigs helps GetAllRulesConfigs and GetRulesConfigs retrieve the
 // set of all active rules configurations across all our users.
 func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {
-	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'", "deleted_at").
+	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'", "config ->> 'rule_format_version'", "deleted_at").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
 		Where(filter).
@@ -230,12 +234,17 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.Versio
 		var cfg configs.VersionedRulesConfig
 		var userID string
 		var cfgBytes []byte
+		var rfvBytes []byte
 		var deletedAt pq.NullTime
-		err = rows.Scan(&cfg.ID, &userID, &cfgBytes, &deletedAt)
+		err = rows.Scan(&cfg.ID, &userID, &cfgBytes, &rfvBytes, &deletedAt)
 		if err != nil {
 			return nil, err
 		}
-		err = json.Unmarshal(cfgBytes, &cfg.Config)
+		err = json.Unmarshal(cfgBytes, &cfg.Config.Files)
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(rfvBytes, &cfg.Config.FormatVersion)
 		if err != nil {
 			return nil, err
 		}

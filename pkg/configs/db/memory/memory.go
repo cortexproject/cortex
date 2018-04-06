@@ -2,6 +2,7 @@ package memory
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/weaveworks/cortex/pkg/configs"
@@ -32,6 +33,9 @@ func (d *DB) GetConfig(userID string) (configs.View, error) {
 
 // SetConfig sets configuration for a user.
 func (d *DB) SetConfig(userID string, cfg configs.Config) error {
+	if !cfg.RulesConfig.FormatVersion.IsValid() {
+		return fmt.Errorf("invalid rule format version %v", cfg.RulesConfig.FormatVersion)
+	}
 	d.cfgs[userID] = configs.View{Config: cfg, ID: configs.ID(d.id)}
 	d.id++
 	return nil
@@ -100,14 +104,14 @@ func (d *DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
 func (d *DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
 	c, ok := d.cfgs[userID]
 	if !ok {
-		return true, d.SetConfig(userID, configs.Config{RulesFiles: newConfig})
+		return true, d.SetConfig(userID, configs.Config{RulesConfig: newConfig})
 	}
-	if !oldConfig.Equal(c.Config.RulesFiles) {
+	if !oldConfig.Equal(c.Config.RulesConfig) {
 		return false, nil
 	}
 	return true, d.SetConfig(userID, configs.Config{
 		AlertmanagerConfig: c.Config.AlertmanagerConfig,
-		RulesFiles:         newConfig,
+		RulesConfig:        newConfig,
 	})
 }
 

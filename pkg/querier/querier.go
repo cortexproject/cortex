@@ -2,18 +2,34 @@ package querier
 
 import (
 	"context"
+	"flag"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 
 	"github.com/weaveworks/cortex/pkg/util"
 )
+
+// Config contains the configuration require to create a querier
+type Config struct {
+	MaxConcurrent int
+	Timeout       time.Duration
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	flag.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
+	flag.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
+}
 
 // ChunkStore is the interface we need to get chunks
 type ChunkStore interface {
@@ -21,9 +37,10 @@ type ChunkStore interface {
 }
 
 // NewEngine creates a new promql.Engine for cortex.
-func NewEngine(distributor Querier, chunkStore ChunkStore) *promql.Engine {
+func NewEngine(distributor Querier, chunkStore ChunkStore, reg prometheus.Registerer, maxConcurrent int, timeout time.Duration) (*promql.Engine, storage.Queryable) {
 	queryable := NewQueryable(distributor, chunkStore, false)
-	return promql.NewEngine(queryable, nil)
+	engine := promql.NewEngine(util.Logger, reg, maxConcurrent, timeout)
+	return engine, queryable
 }
 
 // NewQueryable creates a new Queryable for cortex.
@@ -195,7 +212,7 @@ type mergeQuerier struct {
 	metadataOnly bool
 }
 
-func (mq mergeQuerier) Select(matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (mq mergeQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	// TODO: Update underlying selectors to return errors directly.
 	if mq.metadataOnly {
 		return mq.selectMetadata(matchers...), nil

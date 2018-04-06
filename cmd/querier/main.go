@@ -36,12 +36,13 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		querierConfig     querier.Config
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 		logLevel          util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
 		&chunkStoreConfig, &schemaConfig, &storageConfig, &logLevel)
 	flag.Parse()
 
@@ -90,13 +91,14 @@ func main() {
 	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
 	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
 
-	engine := promql.NewEngine(sampleQueryable, nil)
+	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
 	api := v1.NewAPI(
 		engine,
 		metadataQueryable,
 		querier.DummyTargetRetriever{},
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },
+		nil, // flags to be served via http; we don't need this
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.

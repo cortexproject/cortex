@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/tsdb"
 	"google.golang.org/grpc"
@@ -42,6 +41,7 @@ func main() {
 
 		chunkStoreConfig  chunk.StoreConfig
 		distributorConfig distributor.Config
+		querierConfig     querier.Config
 		ingesterConfig    ingester.Config
 		configStoreConfig ruler.ConfigStoreConfig
 		rulerConfig       ruler.Config
@@ -53,7 +53,7 @@ func main() {
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
+	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
@@ -123,13 +123,15 @@ func main() {
 	tableManager.Start()
 	defer tableManager.Stop()
 
+	engine, queryable := querier.NewEngine(dist, chunkStore, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
+
 	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
 		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing ruler config store", "err", err)
 			os.Exit(1)
 		}
-		rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
+		rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)
 			os.Exit(1)
@@ -147,13 +149,13 @@ func main() {
 	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
 	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
 
-	engine := promql.NewEngine(sampleQueryable, nil)
 	api := v1.NewAPI(
 		engine,
 		metadataQueryable,
 		querier.DummyTargetRetriever{},
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },
+		nil, // flags to be served via http; we don't need this
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.

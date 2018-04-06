@@ -213,6 +213,7 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
+		// TODO update comment
 		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
 		// to write the extra replica somewhere.  So we increase the size of the set
 		// of replicas for the key. This means we have to also increase the
@@ -220,7 +221,11 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 		// so don't skip it in this case.
 		// NB dead ingester will be filtered later (by replication_strategy.go).
 		if op == Write && ingester.State != ACTIVE {
-			n++
+			if nextIngester := r.ringDesc.Ingesters[token.NextIngester]; token.NextIngester != "" && ingester.State == JOINING {
+				ingester = nextIngester
+			} else {
+				n++
+			}
 		} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
 			n++
 		}

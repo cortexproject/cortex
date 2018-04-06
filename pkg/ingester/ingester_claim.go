@@ -106,13 +106,26 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		return err
 	}
 
+	i.joiningSampleQueueLock.Lock()
 	i.userStatesMtx.Lock()
-	defer i.userStatesMtx.Unlock()
+	i.userStates = userStates
+	i.userStatesMtx.Unlock()
+
+	level.Info(util.Logger).Log("msg", "Importing sample queue")
+	for j := range i.joiningSampleQueue {
+		userSamples := &i.joiningSampleQueue[j]
+		userCtx := user.InjectOrgID(stream.Context(), userSamples.userID)
+		for k := range userSamples.samples {
+			i.append(userCtx, &userSamples.samples[k])
+		}
+	}
+	i.joiningSampleQueue = []userSamples{}
 
 	if err := i.ChangeState(ring.ACTIVE); err != nil {
+		i.joiningSampleQueueLock.Unlock()
 		return err
 	}
-	i.userStates = userStates
+	i.joiningSampleQueueLock.Unlock()
 
 	// Close the stream last, as this is what tells the "from" ingester that
 	// it's OK to shut down.

@@ -81,8 +81,21 @@ func (i *Ingester) ChangeState(state ring.IngesterState) error {
 	return <-err
 }
 
+// PreClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
+func (i *Ingester) PreClaimTokensFor(ingesterID string) error {
+	return i.updateTokensFor(ingesterID, func(ringDesc *ring.Desc) []uint32 {
+		return ringDesc.PreClaimTokens(ingesterID, i.id)
+	})
+}
+
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
 func (i *Ingester) ClaimTokensFor(ingesterID string) error {
+	return i.updateTokensFor(ingesterID, func(ringDesc *ring.Desc) []uint32 {
+		return ringDesc.ClaimTokens(ingesterID, i.id)
+	})
+}
+
+func (i *Ingester) updateTokensFor(ingesterID string, updater func(*ring.Desc) []uint32) error {
 	err := make(chan error)
 
 	i.actorChan <- func() {
@@ -94,7 +107,7 @@ func (i *Ingester) ClaimTokensFor(ingesterID string) error {
 				return nil, false, fmt.Errorf("Cannot claim tokens in an empty ring")
 			}
 
-			tokens = ringDesc.ClaimTokens(ingesterID, i.id)
+			tokens = updater(ringDesc)
 			return ringDesc, true, nil
 		}
 

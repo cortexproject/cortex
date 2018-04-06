@@ -74,6 +74,10 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		if fromIngesterID == "" {
 			fromIngesterID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+
+			if err := i.PreClaimTokensFor(fromIngesterID); err != nil {
+				return err
+			}
 		}
 		metric := client.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)

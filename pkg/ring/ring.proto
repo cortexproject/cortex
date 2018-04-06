@@ -18,6 +18,7 @@ message IngesterDesc {
 message TokenDesc {
 	uint32 token = 1;
 	string ingester = 2;
+	string nextIngester = 3;
 }
 
 enum IngesterState {

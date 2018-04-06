@@ -148,7 +148,7 @@ func newScrapePool(cfg *config.ScrapeConfig, app Appendable, logger log.Logger) 
 		level.Error(logger).Log("msg", "Error creating HTTP client", "err", err)
 	}
 
-	buffers := pool.New(163, 100e6, 3, func(sz int) interface{} { return make([]byte, 0, sz) })
+	buffers := pool.NewBytesPool(163, 100e6, 3)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sp := &scrapePool{
@@ -336,7 +336,7 @@ func (sp *scrapePool) mutateSampleLabels(lset labels.Labels, target *Target) lab
 
 	if sp.config.HonorLabels {
 		for _, l := range target.Labels() {
-			if !lset.Has(l.Name) {
+			if lv := lset.Get(l.Name); lv == "" {
 				lb.Set(l.Name, l.Value)
 			}
 		}
@@ -347,12 +347,6 @@ func (sp *scrapePool) mutateSampleLabels(lset labels.Labels, target *Target) lab
 				lb.Set(model.ExportedLabelPrefix+l.Name, lv)
 			}
 			lb.Set(l.Name, l.Value)
-		}
-	}
-
-	for _, l := range lb.Labels() {
-		if l.Value == "" {
-			lb.Del(l.Name)
 		}
 	}
 
@@ -487,7 +481,7 @@ type scrapeLoop struct {
 	l              log.Logger
 	cache          *scrapeCache
 	lastScrapeSize int
-	buffers        *pool.Pool
+	buffers        *pool.BytesPool
 
 	appender            func() storage.Appender
 	sampleMutator       labelsMutator
@@ -602,7 +596,7 @@ func (c *scrapeCache) forEachStale(f func(labels.Labels) bool) {
 func newScrapeLoop(ctx context.Context,
 	sc scraper,
 	l log.Logger,
-	buffers *pool.Pool,
+	buffers *pool.BytesPool,
 	sampleMutator labelsMutator,
 	reportSampleMutator labelsMutator,
 	appender func() storage.Appender,
@@ -611,7 +605,7 @@ func newScrapeLoop(ctx context.Context,
 		l = log.NewNopLogger()
 	}
 	if buffers == nil {
-		buffers = pool.New(1e3, 1e6, 3, func(sz int) interface{} { return make([]byte, 0, sz) })
+		buffers = pool.NewBytesPool(1e3, 1e6, 3)
 	}
 	sl := &scrapeLoop{
 		scraper:             sc,
@@ -668,8 +662,7 @@ mainLoop:
 				time.Since(last).Seconds(),
 			)
 		}
-
-		b := sl.buffers.Get(sl.lastScrapeSize).([]byte)
+		b := sl.buffers.Get(sl.lastScrapeSize)
 		buf := bytes.NewBuffer(b)
 
 		scrapeErr := sl.scraper.scrape(scrapeCtx, buf)

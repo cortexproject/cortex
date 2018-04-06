@@ -90,11 +90,13 @@ type Manager struct {
 
 // Run starts the background processing
 func (m *Manager) Run() error {
-	for range m.ctx.Done() {
-		m.cancelDiscoverers()
-		return m.ctx.Err()
+	for {
+		select {
+		case <-m.ctx.Done():
+			m.cancelDiscoverers()
+			return m.ctx.Err()
+		}
 	}
-	return nil
 }
 
 // SyncCh returns a read only channel used by all Discoverers to send target updates.

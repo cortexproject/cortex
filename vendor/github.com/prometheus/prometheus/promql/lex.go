@@ -22,7 +22,7 @@ import (
 
 // item represents a token or text string returned from the scanner.
 type item struct {
-	typ ItemType // The type of this item.
+	typ itemType // The type of this item.
 	pos Pos      // The starting position, in bytes, of this item in the input string.
 	val string   // The value of this item.
 }
@@ -50,25 +50,25 @@ func (i item) String() string {
 
 // isOperator returns true if the item corresponds to a arithmetic or set operator.
 // Returns false otherwise.
-func (i ItemType) isOperator() bool { return i > operatorsStart && i < operatorsEnd }
+func (i itemType) isOperator() bool { return i > operatorsStart && i < operatorsEnd }
 
 // isAggregator returns true if the item belongs to the aggregator functions.
 // Returns false otherwise
-func (i ItemType) isAggregator() bool { return i > aggregatorsStart && i < aggregatorsEnd }
+func (i itemType) isAggregator() bool { return i > aggregatorsStart && i < aggregatorsEnd }
 
 // isAggregator returns true if the item is an aggregator that takes a parameter.
 // Returns false otherwise
-func (i ItemType) isAggregatorWithParam() bool {
+func (i itemType) isAggregatorWithParam() bool {
 	return i == itemTopK || i == itemBottomK || i == itemCountValues || i == itemQuantile
 }
 
 // isKeyword returns true if the item corresponds to a keyword.
 // Returns false otherwise.
-func (i ItemType) isKeyword() bool { return i > keywordsStart && i < keywordsEnd }
+func (i itemType) isKeyword() bool { return i > keywordsStart && i < keywordsEnd }
 
 // isCompairsonOperator returns true if the item corresponds to a comparison operator.
 // Returns false otherwise.
-func (i ItemType) isComparisonOperator() bool {
+func (i itemType) isComparisonOperator() bool {
 	switch i {
 	case itemEQL, itemNEQ, itemLTE, itemLSS, itemGTE, itemGTR:
 		return true
@@ -78,7 +78,7 @@ func (i ItemType) isComparisonOperator() bool {
 }
 
 // isSetOperator returns whether the item corresponds to a set operator.
-func (i ItemType) isSetOperator() bool {
+func (i itemType) isSetOperator() bool {
 	switch i {
 	case itemLAND, itemLOR, itemLUnless:
 		return true
@@ -92,7 +92,7 @@ const LowestPrec = 0 // Non-operators.
 // Precedence returns the operator precedence of the binary
 // operator op. If op is not a binary operator, the result
 // is LowestPrec.
-func (i ItemType) precedence() int {
+func (i itemType) precedence() int {
 	switch i {
 	case itemLOR:
 		return 1
@@ -111,7 +111,7 @@ func (i ItemType) precedence() int {
 	}
 }
 
-func (i ItemType) isRightAssociative() bool {
+func (i itemType) isRightAssociative() bool {
 	switch i {
 	case itemPOW:
 		return true
@@ -121,10 +121,10 @@ func (i ItemType) isRightAssociative() bool {
 
 }
 
-type ItemType int
+type itemType int
 
 const (
-	itemError ItemType = iota // Error occurred, value is error message
+	itemError itemType = iota // Error occurred, value is error message
 	itemEOF
 	itemComment
 	itemIdentifier
@@ -198,7 +198,7 @@ const (
 	keywordsEnd
 )
 
-var key = map[string]ItemType{
+var key = map[string]itemType{
 	// Operators.
 	"and":    itemLAND,
 	"or":     itemLOR,
@@ -235,7 +235,7 @@ var key = map[string]ItemType{
 
 // These are the default string representations for common items. It does not
 // imply that those are the only character sequences that can be lexed to such an item.
-var itemTypeStr = map[ItemType]string{
+var itemTypeStr = map[itemType]string{
 	itemLeftParen:    "(",
 	itemRightParen:   ")",
 	itemLeftBrace:    "{",
@@ -274,7 +274,7 @@ func init() {
 	key["nan"] = itemNumber
 }
 
-func (i ItemType) String() string {
+func (i itemType) String() string {
 	if s, ok := itemTypeStr[i]; ok {
 		return s
 	}
@@ -291,7 +291,7 @@ func (i item) desc() string {
 	return fmt.Sprintf("%s %s", i.typ.desc(), i)
 }
 
-func (i ItemType) desc() string {
+func (i itemType) desc() string {
 	switch i {
 	case itemError:
 		return "error"
@@ -366,7 +366,7 @@ func (l *lexer) backup() {
 }
 
 // emit passes an item back to the client.
-func (l *lexer) emit(t ItemType) {
+func (l *lexer) emit(t itemType) {
 	l.items <- item{t, l.start, l.input[l.start:l.pos]}
 	l.start = l.pos
 }

@@ -13,23 +13,17 @@
 
 package pool
 
-import (
-	"fmt"
-	"reflect"
-	"sync"
-)
+import "sync"
 
-// Pool is a bucketed pool for variably sized byte slices.
-type Pool struct {
+// BytesPool is a bucketed pool for variably sized byte slices.
+type BytesPool struct {
 	buckets []sync.Pool
 	sizes   []int
-	// make is the function used to create an empty slice when none exist yet.
-	make func(int) interface{}
 }
 
-// New returns a new Pool with size buckets for minSize to maxSize
+// NewBytesPool returns a new BytesPool with size buckets for minSize to maxSize
 // increasing by the given factor.
-func New(minSize, maxSize int, factor float64, makeFunc func(int) interface{}) *Pool {
+func NewBytesPool(minSize, maxSize int, factor float64) *BytesPool {
 	if minSize < 1 {
 		panic("invalid minimum pool size")
 	}
@@ -46,42 +40,36 @@ func New(minSize, maxSize int, factor float64, makeFunc func(int) interface{}) *
 		sizes = append(sizes, s)
 	}
 
-	p := &Pool{
+	p := &BytesPool{
 		buckets: make([]sync.Pool, len(sizes)),
 		sizes:   sizes,
-		make:    makeFunc,
 	}
 
 	return p
 }
 
 // Get returns a new byte slices that fits the given size.
-func (p *Pool) Get(sz int) interface{} {
+func (p *BytesPool) Get(sz int) []byte {
 	for i, bktSize := range p.sizes {
 		if sz > bktSize {
 			continue
 		}
-		b := p.buckets[i].Get()
-		if b == nil {
-			b = p.make(bktSize)
+		b, ok := p.buckets[i].Get().([]byte)
+		if !ok {
+			b = make([]byte, 0, bktSize)
 		}
 		return b
 	}
-	return p.make(sz)
+	return make([]byte, 0, sz)
 }
 
-// Put adds a slice to the right bucket in the pool.
-func (p *Pool) Put(s interface{}) {
-	slice := reflect.ValueOf(s)
-
-	if slice.Kind() != reflect.Slice {
-		panic(fmt.Sprintf("%+v is not a slice", slice))
-	}
-	for i, size := range p.sizes {
-		if slice.Cap() > size {
+// Put returns a byte slice to the right bucket in the pool.
+func (p *BytesPool) Put(b []byte) {
+	for i, bktSize := range p.sizes {
+		if cap(b) > bktSize {
 			continue
 		}
-		p.buckets[i].Put(slice.Slice(0, 0).Interface())
+		p.buckets[i].Put(b[:0])
 		return
 	}
 }

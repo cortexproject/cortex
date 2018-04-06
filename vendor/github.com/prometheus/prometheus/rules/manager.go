@@ -106,9 +106,9 @@ type QueryFunc func(ctx context.Context, q string, t time.Time) (promql.Vector, 
 // EngineQueryFunc returns a new query function that executes instant queries against
 // the given engine.
 // It converts scaler into vector results.
-func EngineQueryFunc(engine *promql.Engine, q storage.Queryable) QueryFunc {
+func EngineQueryFunc(engine *promql.Engine) QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		q, err := engine.NewInstantQuery(q, qs, t)
+		q, err := engine.NewInstantQuery(qs, t)
 		if err != nil {
 			return nil, err
 		}
@@ -286,12 +286,12 @@ func (g *Group) copyState(from *Group) {
 	ruleMap := make(map[string][]int, len(from.rules))
 
 	for fi, fromRule := range from.rules {
-		l := ruleMap[fromRule.Name()]
+		l, _ := ruleMap[fromRule.Name()]
 		ruleMap[fromRule.Name()] = append(l, fi)
 	}
 
 	for i, rule := range g.rules {
-		indexes := ruleMap[rule.Name()]
+		indexes, _ := ruleMap[rule.Name()]
 		if len(indexes) == 0 {
 			continue
 		}

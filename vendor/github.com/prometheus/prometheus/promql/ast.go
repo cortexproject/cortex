@@ -99,7 +99,7 @@ type Expressions []Expr
 
 // AggregateExpr represents an aggregation operation on a Vector.
 type AggregateExpr struct {
-	Op       ItemType // The used aggregation operation.
+	Op       itemType // The used aggregation operation.
 	Expr     Expr     // The Vector expression over which is aggregated.
 	Param    Expr     // Parameter used by some aggregators.
 	Grouping []string // The labels by which to group the Vector.
@@ -108,7 +108,7 @@ type AggregateExpr struct {
 
 // BinaryExpr represents a binary expression between two child expressions.
 type BinaryExpr struct {
-	Op       ItemType // The operation of the expression.
+	Op       itemType // The operation of the expression.
 	LHS, RHS Expr     // The operands on the respective sides of the operator.
 
 	// The matching behavior for the operation if both operands are Vectors.
@@ -156,7 +156,7 @@ type StringLiteral struct {
 // UnaryExpr represents a unary operation on another expression.
 // Currently unary operations are only supported for Scalars.
 type UnaryExpr struct {
-	Op   ItemType
+	Op   itemType
 	Expr Expr
 }
 
@@ -238,58 +238,56 @@ type VectorMatching struct {
 }
 
 // Visitor allows visiting a Node and its child nodes. The Visit method is
-// invoked for each node with the path leading to the node provided additionally.
-// If the result visitor w is not nil, Walk visits each of the children
-// of node with the visitor w, followed by a call of w.Visit(nil, nil).
+// invoked for each node encountered by Walk. If the result visitor w is not
+// nil, Walk visits each of the children of node with the visitor w, followed
+// by a call of w.Visit(nil).
 type Visitor interface {
-	Visit(node Node, path []Node) (w Visitor)
+	Visit(node Node) (w Visitor)
 }
 
 // Walk traverses an AST in depth-first order: It starts by calling
-// v.Visit(node, path); node must not be nil. If the visitor w returned by
-// v.Visit(node, path) is not nil, Walk is invoked recursively with visitor
+// v.Visit(node); node must not be nil. If the visitor w returned by
+// v.Visit(node) is not nil, Walk is invoked recursively with visitor
 // w for each of the non-nil children of node, followed by a call of
 // w.Visit(nil).
-// As the tree is descended the path of previous nodes is provided.
-func Walk(v Visitor, node Node, path []Node) {
-	if v = v.Visit(node, path); v == nil {
+func Walk(v Visitor, node Node) {
+	if v = v.Visit(node); v == nil {
 		return
 	}
-	path = append(path, node)
 
 	switch n := node.(type) {
 	case Statements:
 		for _, s := range n {
-			Walk(v, s, path)
+			Walk(v, s)
 		}
 	case *AlertStmt:
-		Walk(v, n.Expr, path)
+		Walk(v, n.Expr)
 
 	case *EvalStmt:
-		Walk(v, n.Expr, path)
+		Walk(v, n.Expr)
 
 	case *RecordStmt:
-		Walk(v, n.Expr, path)
+		Walk(v, n.Expr)
 
 	case Expressions:
 		for _, e := range n {
-			Walk(v, e, path)
+			Walk(v, e)
 		}
 	case *AggregateExpr:
-		Walk(v, n.Expr, path)
+		Walk(v, n.Expr)
 
 	case *BinaryExpr:
-		Walk(v, n.LHS, path)
-		Walk(v, n.RHS, path)
+		Walk(v, n.LHS)
+		Walk(v, n.RHS)
 
 	case *Call:
-		Walk(v, n.Args, path)
+		Walk(v, n.Args)
 
 	case *ParenExpr:
-		Walk(v, n.Expr, path)
+		Walk(v, n.Expr)
 
 	case *UnaryExpr:
-		Walk(v, n.Expr, path)
+		Walk(v, n.Expr)
 
 	case *MatrixSelector, *NumberLiteral, *StringLiteral, *VectorSelector:
 		// nothing to do
@@ -298,21 +296,21 @@ func Walk(v Visitor, node Node, path []Node) {
 		panic(fmt.Errorf("promql.Walk: unhandled node type %T", node))
 	}
 
-	v.Visit(nil, nil)
+	v.Visit(nil)
 }
 
-type inspector func(Node, []Node) bool
+type inspector func(Node) bool
 
-func (f inspector) Visit(node Node, path []Node) Visitor {
-	if f(node, path) {
+func (f inspector) Visit(node Node) Visitor {
+	if f(node) {
 		return f
 	}
 	return nil
 }
 
 // Inspect traverses an AST in depth-first order: It starts by calling
-// f(node, path); node must not be nil. If f returns true, Inspect invokes f
+// f(node); node must not be nil. If f returns true, Inspect invokes f
 // for all the non-nil children of node, recursively.
-func Inspect(node Node, f func(Node, []Node) bool) {
-	Walk(inspector(f), node, nil)
+func Inspect(node Node, f func(Node) bool) {
+	Walk(inspector(f), node)
 }

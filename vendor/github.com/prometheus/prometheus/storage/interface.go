@@ -52,19 +52,13 @@ type Queryable interface {
 // Querier provides reading access to time series data.
 type Querier interface {
 	// Select returns a set of series that matches the given label matchers.
-	Select(*SelectParams, ...*labels.Matcher) (SeriesSet, error)
+	Select(...*labels.Matcher) (SeriesSet, error)
 
 	// LabelValues returns all potential values for a label name.
 	LabelValues(name string) ([]string, error)
 
 	// Close releases the resources of the Querier.
 	Close() error
-}
-
-// SelectParams specifies parameters passed to data selections.
-type SelectParams struct {
-	Step int64  // Query step size in milliseconds.
-	Func string // String representation of surrounding function or aggregation.
 }
 
 // QueryableFunc is an adapter to allow the use of ordinary functions as

@@ -26,15 +26,16 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/configs"
 	"github.com/weaveworks/cortex/pkg/distributor"
+	"github.com/weaveworks/cortex/pkg/querier"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -122,7 +123,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ruler evaluates rules.
 type Ruler struct {
 	engine        *promql.Engine
-	queryable     storage.Queryable
 	pusher        Pusher
 	alertURL      *url.URL
 	notifierCfg   *config.Config
@@ -196,14 +196,13 @@ func (rn *rulerNotifier) stop() {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor) (*Ruler, error) {
+func NewRuler(cfg Config, d *distributor.Distributor, c *chunk.Store) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
 	return &Ruler{
-		engine:        engine,
-		queryable:     queryable,
+		engine:        querier.NewEngine(d, c),
 		pusher:        d,
 		alertURL:      cfg.ExternalURL.URL,
 		notifierCfg:   ncfg,
@@ -284,7 +283,7 @@ func (r *Ruler) newGroup(ctx context.Context, userID string, item *workItem) (*r
 	}
 	opts := &rules.ManagerOptions{
 		Appendable:  appendable,
-		QueryFunc:   rules.EngineQueryFunc(r.engine, r.queryable),
+		QueryFunc:   rules.EngineQueryFunc(r.engine),
 		Context:     ctx,
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),

@@ -89,6 +89,7 @@ func (c *XORChunk) Appender() (Appender, error) {
 	}
 
 	a := &xorAppender{
+		c:        c,
 		b:        c.b,
 		t:        it.t,
 		v:        it.val,
@@ -118,6 +119,7 @@ func (c *XORChunk) Iterator() Iterator {
 }
 
 type xorAppender struct {
+	c *XORChunk
 	b *bstream
 
 	t      int64

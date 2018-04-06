@@ -342,7 +342,7 @@ func (i *Ingester) processShutdown() {
 
 		// Close & empty all the flush queues, to unblock waiting workers.
 		for _, flushQueue := range i.flushQueues {
-			flushQueue.DrainAndClose()
+			flushQueue.DiscardAndClose()
 		}
 	}
 

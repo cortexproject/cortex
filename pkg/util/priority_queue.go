@@ -66,8 +66,8 @@ func (pq *PriorityQueue) Close() {
 	pq.cond.Broadcast()
 }
 
-// DrainAndClose closed the queue and removes all the items from it.
-func (pq *PriorityQueue) DrainAndClose() {
+// DiscardAndClose closes the queue and removes all the items from it.
+func (pq *PriorityQueue) DiscardAndClose() {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 	pq.closed = true

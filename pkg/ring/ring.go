@@ -213,20 +213,22 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
-		// TODO update comment
-		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
-		// to write the extra replica somewhere.  So we increase the size of the set
-		// of replicas for the key. This means we have to also increase the
-		// size of the replica set for read, but we can read from Leaving ingesters,
-		// so don't skip it in this case.
+		// We want to only Write to Ingesters that are ACTIVE (or PREPARING_TO_LEAVE), however
+		// we still write to the same number of replicas.  So we increase the size of the set of
+		// replicas for the key.
+		// To match this, we have to also increase the size of the replica set for read, but we
+		// can still read from ingesters which are PREPARING_TO_LEAVE or LEAVING so don't skip it
+		// in this case.
 		// NB dead ingester will be filtered later (by replication_strategy.go).
-		if op == Write && ingester.State != ACTIVE {
-			if nextIngester := r.ringDesc.Ingesters[token.NextIngester]; token.NextIngester != "" && ingester.State == JOINING {
+		if op == Write && !(ingester.State == ACTIVE || ingester.State == PREPARING_TO_LEAVE) {
+			// If a token is being transferred to a new ingester, we can send writes to that ingester instead
+			// where they will be queued until the transfer is complete
+			if nextIngester := r.ringDesc.Ingesters[token.NextIngester]; nextIngester != nil && nextIngester.State == JOINING {
 				ingester = nextIngester
 			} else {
 				n++
 			}
-		} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
+		} else if op == Read && !(ingester.State == ACTIVE || ingester.State == PREPARING_TO_LEAVE || ingester.State == LEAVING) {
 			n++
 		}
 

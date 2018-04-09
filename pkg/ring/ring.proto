@@ -27,4 +27,5 @@ enum IngesterState {
 
 	PENDING = 2;
 	JOINING = 3;
+	PREPARING_TO_LEAVE = 4;
 }

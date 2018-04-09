@@ -198,9 +198,7 @@ loop:
 			break loop
 		}
 	}
-
-	// Mark ourselved as Leaving so no more samples are send to us.
-	i.changeState(ring.LEAVING)
+	i.changeState(ring.PREPARING_TO_LEAVE)
 
 	// Do the transferring / flushing on a background goroutine so we can continue
 	// to heartbeat to consul.
@@ -318,14 +316,16 @@ func (i *Ingester) updateConsul() error {
 }
 
 // changeState updates consul with state transitions for us.  NB this must be
-// called from loop()!  Use ChangeState for calls from outside of loop().
+// called from loop()!
+// Use ChangeState for calls from outside of loop() (unless the loop has shut down)
 func (i *Ingester) changeState(state ring.IngesterState) error {
 	// Only the following state transitions can be triggered externally
 	if !((i.state == ring.PENDING && state == ring.JOINING) || // triggered by TransferChunks at the beginning
 		(i.state == ring.JOINING && state == ring.PENDING) || // triggered by TransferChunks on failure
 		(i.state == ring.JOINING && state == ring.ACTIVE) || // triggered by TransferChunks on success
 		(i.state == ring.PENDING && state == ring.ACTIVE) || // triggered by autoJoin
-		(i.state == ring.ACTIVE && state == ring.LEAVING)) { // triggered by shutdown
+		(i.state == ring.ACTIVE && state == ring.PREPARING_TO_LEAVE) || // triggered by shutdown
+		(i.state == ring.PREPARING_TO_LEAVE && state == ring.LEAVING)) { // triggered by shutdown
 		return fmt.Errorf("Changing ingester state from %v -> %v is disallowed", i.state, state)
 	}
 
@@ -342,6 +342,10 @@ func (i *Ingester) processShutdown() {
 		} else {
 			flushRequired = false
 		}
+	}
+	if i.state != ring.LEAVING {
+		// Mark ourselved as Leaving so no more samples are send to us.
+		i.changeState(ring.LEAVING)
 	}
 
 	if flushRequired {
@@ -411,6 +415,12 @@ func (i *Ingester) transferChunks() error {
 			}
 
 			sentChunks.Add(float64(len(chunks)))
+			if i.state != ring.LEAVING {
+				// Mark ourselved as Leaving so no more samples are send to us.
+				// We wait until we have sent the first item through the stream, so that the remote
+				// side has a chance to mark all the tokens for transfer.
+				i.changeState(ring.LEAVING)
+			}
 		}
 	}
 

@@ -497,14 +497,12 @@ func (a storageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]c
 		in := <-results
 		if in.err != nil {
 			err = in.err // TODO: cancel other sub-queries at this point
-		} else {
-			finalChunks = append(finalChunks, in.chunks...)
 		}
+		finalChunks = append(finalChunks, in.chunks...)
 	}
 	sp.LogFields(otlog.Int("chunks fetched", len(finalChunks)))
 	if err != nil {
 		sp.LogFields(otlog.String("error", err.Error()))
-		return nil, err
 	}
 
 	// Return any chunks we did receive: a partial result may be useful

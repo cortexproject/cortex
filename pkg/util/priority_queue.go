@@ -7,11 +7,12 @@ import (
 
 // PriorityQueue is a priority queue.
 type PriorityQueue struct {
-	lock   sync.Mutex
-	cond   *sync.Cond
-	closed bool
-	hit    map[string]struct{}
-	queue  queue
+	lock    sync.Mutex
+	cond    *sync.Cond
+	closing bool
+	closed  bool
+	hit     map[string]struct{}
+	queue   queue
 }
 
 // Op is an operation on the priority queue.
@@ -57,17 +58,17 @@ func (pq *PriorityQueue) Length() int {
 	return len(pq.queue)
 }
 
-// Close signals that the queue is closed. A closed queue will not accept new
-// items.
+// Close signals that the queue should be closed when it is empty.
+// A closed queue will not accept new items.
 func (pq *PriorityQueue) Close() {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
-	pq.closed = true
+	pq.closing = true
 	pq.cond.Broadcast()
 }
 
-// DrainAndClose closed the queue and removes all the items from it.
-func (pq *PriorityQueue) DrainAndClose() {
+// DiscardAndClose closes the queue and removes all the items from it.
+func (pq *PriorityQueue) DiscardAndClose() {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 	pq.closed = true
@@ -103,11 +104,12 @@ func (pq *PriorityQueue) Dequeue() Op {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
-	for len(pq.queue) == 0 && !pq.closed {
+	for len(pq.queue) == 0 && !(pq.closing || pq.closed) {
 		pq.cond.Wait()
 	}
 
-	if len(pq.queue) == 0 && pq.closed {
+	if len(pq.queue) == 0 && (pq.closing || pq.closed) {
+		pq.closed = true
 		return nil
 	}
 

@@ -318,8 +318,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	if i.state == ring.JOINING {
 		userID, err := user.ExtractOrgID(ctx)
 		if err != nil {
-			// TODO not sure what to do here
-			return &client.WriteResponse{}, nil
+			return nil, err
 		}
 		i.joiningSampleQueueLock.Lock()
 		defer i.joiningSampleQueueLock.Unlock()

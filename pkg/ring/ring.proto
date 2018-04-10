@@ -22,10 +22,32 @@ message TokenDesc {
 }
 
 enum IngesterState {
+	// ACTIVE: The ingester under normal operation
+	// Will be sent read and write requests
 	ACTIVE = 0;
+
+	// LEAVING: End state for ingesters shutting down.
+	// The ingester is shutting down and may be either:
+	// - transferring chunks to another joining ingester, or
+	// - flushing all in-memory chunks to persistent storage
+	// Will only be sent read requests.
 	LEAVING = 1;
 
+	// PENDING: Start state for a new ingester.
+	// The ingester is waiting to join the ring, it will either:
+	// - receive an incoming chunk transfer request from a leaving ingester (-> JOINING)
+	// - after a timeout, create new tokens and join the ring (-> ACTIVE)
+	// Will not be used for reads or writes.
 	PENDING = 2;
+
+	// JOINING: The injester was recently waiting to join the ring (PENDING ->) and is now
+	// handling an incoming chunk transfer request from a leaving ingester and will become active
+	// when transfer completes (-> ACTIVE).
+	// Will be sent write requests for the tokens it is receiving from the leaving ingester
 	JOINING = 3;
+
+	// PREPARING_TO_LEAVE: The ingester is about to shut down, and is looking for a replacement
+	// to receive its in-memory chunks, and will soon leave the ring (-> LEAVING).
+	// Will only be sent write requests
 	PREPARING_TO_LEAVE = 4;
 }

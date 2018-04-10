@@ -116,7 +116,12 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		userSamples := &i.joiningSampleQueue[j]
 		userCtx := user.InjectOrgID(stream.Context(), userSamples.userID)
 		for k := range userSamples.samples {
-			i.append(userCtx, &userSamples.samples[k])
+			sample := &userSamples.samples[k]
+			err := i.append(userCtx, sample)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "Error importing queued sample", "sample", sample, "err", err)
+				// Just continue, so we keep as many samples as possible
+			}
 		}
 	}
 	i.joiningSampleQueue = []userSamples{}

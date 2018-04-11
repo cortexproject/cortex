@@ -68,6 +68,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/armon/go-metrics"
+  packages = ["."]
+  revision = "783273d703149aaeb9897cf58613d5af48861c25"
+
+[[projects]]
+  branch = "master"
   name = "github.com/armon/go-socks5"
   packages = ["."]
   revision = "e75332964ef517daa070d7c38a9466a0d687e0a5"
@@ -391,15 +397,57 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/hashicorp/errwrap"
+  packages = ["."]
+  revision = "7554cd9344cec97297fa6649b055a8c98c2a1e55"
+
+[[projects]]
+  branch = "master"
   name = "github.com/hashicorp/go-cleanhttp"
   packages = ["."]
   revision = "3573b8b52aa7b37b9358d966a898feb387f62437"
 
 [[projects]]
   branch = "master"
+  name = "github.com/hashicorp/go-immutable-radix"
+  packages = ["."]
+  revision = "7f3cd4390caab3250a57f30efdb2a65dd7649ecf"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/go-msgpack"
+  packages = ["codec"]
+  revision = "fa3f63826f7c23912c15263591e65d54d080b458"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/go-multierror"
+  packages = ["."]
+  revision = "b7773ae218740a7be65057fc60b366a49b538a44"
+
+[[projects]]
+  branch = "master"
   name = "github.com/hashicorp/go-rootcerts"
   packages = ["."]
   revision = "6bb64b370b90e7ef1fa532be9e591a81c3493e00"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/go-sockaddr"
+  packages = ["."]
+  revision = "6d291a969b86c4b633730bfc6b8b9d64c3aafed9"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/golang-lru"
+  packages = ["simplelru"]
+  revision = "0fb14efe8c47ae851c0034ed7a448854d3d34cf3"
+
+[[projects]]
+  name = "github.com/hashicorp/memberlist"
+  packages = ["."]
+  revision = "ce8abaa0c60c2d6bee7219f5ddf500e0a1457b28"
+  version = "v0.1.0"
 
 [[projects]]
   name = "github.com/hashicorp/serf"
@@ -640,6 +688,8 @@
   name = "github.com/prometheus/alertmanager"
   packages = [
     "api",
+    "cluster",
+    "cluster/clusterpb",
     "config",
     "dispatch",
     "inhibit",
@@ -656,7 +706,7 @@
     "types",
     "ui"
   ]
-  revision = "fb713f6d8239b57c646cae30f78e8b4b8861a1aa"
+  revision = "acb111e812530bec1ac6d908bc14725793e07cf3"
 
 [[projects]]
   branch = "master"
@@ -769,6 +819,12 @@
   packages = ["."]
   revision = "879c5887cd475cd7864858769793b2ceb0d44feb"
   version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/sean-/seed"
+  packages = ["."]
+  revision = "e2103e2c35297fb7e17febb81e49b312087a2372"
 
 [[projects]]
   branch = "master"
@@ -1190,6 +1246,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9a993b069c652c8a2645ea8807afc6c3430e5034c4f66af7ca55e5ad236a5872"
+  inputs-digest = "e8f47b86db892028fc4e6a52985b01b40a851e1ce3f102947a52e0d540ee3074"
   solver-name = "gps-cdcl"
   solver-version = 1

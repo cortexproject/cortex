@@ -177,14 +177,13 @@ type MultitenantAlertmanagerConfig struct {
 	PollInterval  time.Duration
 	ClientTimeout time.Duration
 
-	MeshListenAddr string
-	MeshHWAddr     string
-	MeshNickname   string
-	MeshPassword   string
-
-	MeshPeerHost            string
-	MeshPeerService         string
-	MeshPeerRefreshInterval time.Duration
+	ClusterListenAddr string
+	ClusterAdvertiseAddr     string
+	ClusterPeers   []string
+	ClusterPeerTimeout time.Duration
+	ClusterGossipInterval time.Duration
+	ClusterPushPullInterval time.Duration
+	ClusterSettleTimeout time.Duration
 
 	FallbackConfigFile string
 	AutoSlackRoot      string
@@ -207,6 +206,14 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.MeshHWAddr, "alertmanager.mesh.hardware-address", mustHardwareAddr(), "MAC address, i.e. Mesh peer ID")
 	flag.StringVar(&cfg.MeshNickname, "alertmanager.mesh.nickname", mustHostname(), "Mesh peer nickname")
 	flag.StringVar(&cfg.MeshPassword, "alertmanager.mesh.password", "", "Password to join the Mesh peer network (empty password disables encryption)")
+
+	flag.StringVar(&cfg.ClusterListenAddr, "alertmanager.cluster.listen-address", "0.0.0.0:9094", "Listen address for cluster.")
+	flag.StringVar(&cfg.ClusterAdvertiseAddr, "alertmanager.cluster.advertise-address", "", "Explicit address to advertise in cluster.").String()
+	flag.StringVar(&cfg.ClusterPeers, "cluster.peer", "Initial peers (may be repeated).").Strings()
+	flag.DurationVar(&cfg.ClusterPeerTimeout, "cluster.peer-timeout", "Time to wait between peers to send notifications.").Default("15s").Duration()
+	flag.DurationVar(&cfg.ClusterGossipInterval, "cluster.gossip-interval", "Interval between sending gossip messages. By lowering this value (more frequent) gossip messages are propagated across the cluster more quickly at the expense of increased bandwidth.").Default(cluster.DefaultGossipInterval.String()).Duration()
+	flag.DurationVar(&cfg.ClusterPushPullInterval, "cluster.pushpull-interval", "Interval for gossip state syncs. Setting this interval lower (more frequent) will increase convergence speeds across larger clusters at the expense of increased bandwidth usage.").Default(cluster.DefaultPushPullInterval.String()).Duration()
+	flag.DurationVar(&cfg.ClusterSettleTimeout, "cluster.settle-timeout", "Maximum time to wait for cluster connections to settle before evaluating notifications.").Default(cluster.DefaultPushPullInterval.String()).Duration()
 
 	flag.StringVar(&cfg.MeshPeerService, "alertmanager.mesh.peer.service", "mesh", "SRV service used to discover peers.")
 	flag.StringVar(&cfg.MeshPeerHost, "alertmanager.mesh.peer.host", "", "Hostname for mesh peers.")

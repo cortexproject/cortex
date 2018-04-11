@@ -8,7 +8,7 @@
 
 [[constraint]]
   name = "github.com/prometheus/alertmanager"
-  revision = "fb713f6d8239b57c646cae30f78e8b4b8861a1aa"
+  revision = "acb111e812530bec1ac6d908bc14725793e07cf3"
 
 # Since Cortex is heavily based on Prometheus packages, we want
 # to track upstream master quite closely, without being constrained

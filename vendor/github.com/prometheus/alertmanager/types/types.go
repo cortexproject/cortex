@@ -25,8 +25,8 @@ type AlertState string
 
 const (
 	AlertStateUnprocessed AlertState = "unprocessed"
-	AlertStateActive                 = "active"
-	AlertStateSuppressed             = "suppressed"
+	AlertStateActive      AlertState = "active"
+	AlertStateSuppressed  AlertState = "suppressed"
 )
 
 // AlertStatus stores the state and values associated with an Alert.
@@ -354,6 +354,12 @@ type Silence struct {
 	now func() time.Time
 
 	Status SilenceStatus `json:"status"`
+}
+
+// Expired return if the silence is expired
+// meaning that both StartsAt and EndsAt are equal
+func (s *Silence) Expired() bool {
+	return s.StartsAt.Equal(s.EndsAt)
 }
 
 type SilenceStatus struct {

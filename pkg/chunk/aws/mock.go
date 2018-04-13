@@ -48,6 +48,13 @@ func newMockDynamoDB(unprocessed int, provisionedErr int) *mockDynamoDBClient {
 	}
 }
 
+func (a storageClient) SetErrorParameters(provisionedErr, errAfter int) {
+	if m, ok := a.DynamoDB.(*mockDynamoDBClient); ok {
+		m.provisionedErr = provisionedErr
+		m.errAfter = errAfter
+	}
+}
+
 func (m *mockDynamoDBClient) createTable(name string) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

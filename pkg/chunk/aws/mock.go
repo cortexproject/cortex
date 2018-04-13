@@ -28,6 +28,7 @@ type mockDynamoDBClient struct {
 	mtx            sync.RWMutex
 	unprocessed    int
 	provisionedErr int
+	errAfter       int
 	tables         map[string]*mockDynamoDBTable
 }
 
@@ -63,7 +64,9 @@ func (m *mockDynamoDBClient) batchWriteItemRequest(_ context.Context, input *dyn
 		UnprocessedItems: map[string][]*dynamodb.WriteRequest{},
 	}
 
-	if m.provisionedErr > 0 {
+	if m.errAfter > 0 {
+		m.errAfter--
+	} else if m.provisionedErr > 0 {
 		m.provisionedErr--
 		return &dynamoDBMockRequest{
 			result: resp,
@@ -122,7 +125,9 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 		UnprocessedKeys: map[string]*dynamodb.KeysAndAttributes{},
 	}
 
-	if m.provisionedErr > 0 {
+	if m.errAfter > 0 {
+		m.errAfter--
+	} else if m.provisionedErr > 0 {
 		m.provisionedErr--
 		return &dynamoDBMockRequest{
 			result: resp,

@@ -41,9 +41,9 @@ func (v RuleFormatVersion) IsValid() bool {
 func (v RuleFormatVersion) MarshalJSON() ([]byte, error) {
 	switch v {
 	case RuleFormatV1:
-		return []byte(`"1"`), nil
+		return json.Marshal("1")
 	case RuleFormatV2:
-		return []byte(`"2"`), nil
+		return json.Marshal("2")
 	default:
 		return nil, fmt.Errorf("unknown rule format version %d", v)
 	}
@@ -51,10 +51,14 @@ func (v RuleFormatVersion) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (v *RuleFormatVersion) UnmarshalJSON(data []byte) error {
-	switch string(data) {
-	case `"1"`:
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "1":
 		*v = RuleFormatV1
-	case `"2"`:
+	case "2":
 		*v = RuleFormatV2
 	default:
 		return fmt.Errorf("unknown rule format version %q", string(data))

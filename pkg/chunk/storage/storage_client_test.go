@@ -23,19 +23,10 @@ func TestChunksBasic(t *testing.T) {
 		// Write a few batches of chunks.
 		written := []string{}
 		for i := 0; i < 50; i++ {
-			chunks := []chunk.Chunk{}
-			for j := 0; j < batchSize; j++ {
-				chunk := dummyChunkFor(model.Now(), model.Metric{
-					model.MetricNameLabel: "foo",
-					"index":               model.LabelValue(strconv.Itoa(i*batchSize + j)),
-				})
-				chunks = append(chunks, chunk)
-				_, err := chunk.Encode() // Need to encode it, side effect calculates crc
-				require.NoError(t, err)
-				written = append(written, chunk.ExternalKey())
-			}
-
-			err := client.PutChunks(ctx, chunks)
+			keys, chunks, err := createChunks(i, batchSize)
+			require.NoError(t, err)
+			written = append(written, keys...)
+			err = client.PutChunks(ctx, chunks)
 			require.NoError(t, err)
 		}
 
@@ -65,4 +56,22 @@ func TestChunksBasic(t *testing.T) {
 			}
 		}
 	})
+}
+
+func createChunks(startIndex, batchSize int) ([]string, []chunk.Chunk, error) {
+	keys := []string{}
+	chunks := []chunk.Chunk{}
+	for j := 0; j < batchSize; j++ {
+		chunk := dummyChunkFor(model.Now(), model.Metric{
+			model.MetricNameLabel: "foo",
+			"index":               model.LabelValue(strconv.Itoa(startIndex*batchSize + j)),
+		})
+		chunks = append(chunks, chunk)
+		_, err := chunk.Encode() // Need to encode it, side effect calculates crc
+		if err != nil {
+			return nil, nil, err
+		}
+		keys = append(keys, chunk.ExternalKey())
+	}
+	return keys, chunks, nil
 }

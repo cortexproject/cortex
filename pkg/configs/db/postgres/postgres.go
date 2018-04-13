@@ -149,6 +149,7 @@ func (d DB) SetConfig(userID string, cfg configs.Config) error {
 	if err != nil {
 		return err
 	}
+
 	_, err = d.Insert("configs").
 		Columns("owner_id", "owner_type", "subsystem", "config").
 		Values(userID, entityType, subsystem, cfgBytes).
@@ -244,9 +245,13 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.Versio
 		if err != nil {
 			return nil, err
 		}
-		err = json.Unmarshal(rfvBytes, &cfg.Config.FormatVersion)
-		if err != nil {
-			return nil, err
+		// Legacy configs don't have a rule format version, in which case this will
+		// be a zero-length (but non-nil) slice.
+		if len(rfvBytes) > 0 {
+			err = json.Unmarshal([]byte(`"`+string(rfvBytes)+`"`), &cfg.Config.FormatVersion)
+			if err != nil {
+				return nil, err
+			}
 		}
 		cfg.DeletedAt = deletedAt.Time
 		cfgs[userID] = cfg

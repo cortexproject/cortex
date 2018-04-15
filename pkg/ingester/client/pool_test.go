@@ -51,7 +51,7 @@ func TestHealthCheck(t *testing.T) {
 
 func TestIngesterCache(t *testing.T) {
 	buildCount := 0
-	factory := func(addr string, _ Config) (IngesterClient, error) {
+	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		if addr == "bad" {
 			return nil, fmt.Errorf("Fail")
 		}
@@ -102,7 +102,7 @@ func TestIngesterCache(t *testing.T) {
 func TestCleanUnhealthy(t *testing.T) {
 	goodAddrs := []string{"good1", "good2"}
 	badAddrs := []string{"bad1", "bad2"}
-	clients := map[string]IngesterClient{}
+	clients := map[string]grpc_health_v1.HealthClient{}
 	for _, addr := range goodAddrs {
 		clients[addr] = mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}
 	}

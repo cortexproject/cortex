@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -109,6 +110,10 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
+		return cfg.ingesterClientFactory(addr, cfg.IngesterClientConfig)
 	}
 
 	d := &Distributor{
@@ -393,7 +398,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 	}
 
 	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", d.sendDuration, func(ctx context.Context) error {
-		_, err := c.Push(ctx, req)
+		_, err := c.(ingester_client.IngesterClient).Push(ctx, req)
 		return err
 	})
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
@@ -494,7 +499,7 @@ func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc,
 		return nil, err
 	}
 
-	resp, err := client.Query(ctx, req)
+	resp, err := client.(ingester_client.IngesterClient).Query(ctx, req)
 	d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
 	if err != nil {
 		d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
@@ -520,7 +525,7 @@ func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}
 				return
 			}
 
-			resp, err := f(client)
+			resp, err := f(client.(ingester_client.IngesterClient))
 			if err != nil {
 				errs <- err
 			} else {
@@ -650,7 +655,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 		if err != nil {
 			return nil, err
 		}
-		resp, err := client.AllUserStats(ctx, req)
+		resp, err := client.(ingester_client.IngesterClient).AllUserStats(ctx, req)
 		if err != nil {
 			return nil, err
 		}

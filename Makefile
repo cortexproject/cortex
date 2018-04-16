@@ -18,7 +18,7 @@ UPTODATE := .uptodate
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/weaveworks/cortex' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Get a list of directories containing Dockerfiles
 DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
@@ -79,15 +79,19 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 
 $(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) time docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
 		$(IMAGE_PREFIX)build-image $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
 	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
 	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
 		-v $(shell pwd)/cmd/configs/migrations:/migrations \
@@ -123,7 +127,7 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS)
+	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
 	go clean ./...
 
 # We currently commit the BUILD files because of a couple of corner cases with

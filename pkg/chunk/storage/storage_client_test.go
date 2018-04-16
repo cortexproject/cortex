@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/testutils"
 )
 
 func TestChunksBasic(t *testing.T) {
@@ -24,7 +24,7 @@ func TestChunksBasic(t *testing.T) {
 		// Write a few batches of chunks.
 		written := []string{}
 		for i := 0; i < 50; i++ {
-			keys, chunks, err := createChunks(i, batchSize)
+			keys, chunks, err := testutils.CreateChunks(i, batchSize)
 			require.NoError(t, err)
 			written = append(written, keys...)
 			err = client.PutChunks(ctx, chunks)
@@ -59,24 +59,6 @@ func TestChunksBasic(t *testing.T) {
 	})
 }
 
-func createChunks(startIndex, batchSize int) ([]string, []chunk.Chunk, error) {
-	keys := []string{}
-	chunks := []chunk.Chunk{}
-	for j := 0; j < batchSize; j++ {
-		chunk := dummyChunkFor(model.Now(), model.Metric{
-			model.MetricNameLabel: "foo",
-			"index":               model.LabelValue(strconv.Itoa(startIndex*batchSize + j)),
-		})
-		chunks = append(chunks, chunk)
-		_, err := chunk.Encode() // Need to encode it, side effect calculates crc
-		if err != nil {
-			return nil, nil, err
-		}
-		keys = append(keys, chunk.ExternalKey())
-	}
-	return keys, chunks, nil
-}
-
 type clientWithErrorParameters interface {
 	SetErrorParameters(provisionedErr, errAfter int)
 }
@@ -98,7 +80,7 @@ func TestChunksPartialError(t *testing.T) {
 			return
 		}
 		ctx := context.Background()
-		_, chunks, err := createChunks(0, 150)
+		_, chunks, err := testutils.CreateChunks(0, 150)
 		require.NoError(t, err)
 		err = client.PutChunks(ctx, chunks)
 		require.NoError(t, err)

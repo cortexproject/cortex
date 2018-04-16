@@ -22,6 +22,7 @@ type Fixture interface {
 	Teardown() error
 }
 
+// Setup a fixture with initial tables
 func Setup(fixture Fixture, tableName string) (chunk.StorageClient, error) {
 	storageClient, tableClient, schemaConfig, err := fixture.Clients()
 	if err != nil {
@@ -44,6 +45,7 @@ func Setup(fixture Fixture, tableName string) (chunk.StorageClient, error) {
 	return storageClient, err
 }
 
+// CreateChunks creates some chunks for testing
 func CreateChunks(startIndex, batchSize int) ([]string, []chunk.Chunk, error) {
 	keys := []string{}
 	chunks := []chunk.Chunk{}

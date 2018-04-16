@@ -19,23 +19,22 @@ func TestChunksPartialError(t *testing.T) {
 	client, err := testutils.Setup(fixture, tableName)
 	require.NoError(t, err)
 
-	// We use some carefully-chosen numbers:
-	// Start with 150 chunks; DynamoDB writes batches in 25s so 6 batches.
-	// We tell the client to error after 7 operations so all writes succeed
-	// and then the 2nd read fails, so we read back only 100 chunks
-	if ep, ok := client.(*storageClient); ok {
-		ep.SetErrorParameters(22, 7)
-	} else {
+	sc, ok := client.(*storageClient)
+	if !ok {
 		t.Error("DynamoDB test client has unexpected type")
 		return
 	}
 	ctx := context.Background()
-	_, chunks, err := testutils.CreateChunks(0, 150)
+	// Create more chunks than we can read in one batch
+	_, chunks, err := testutils.CreateChunks(0, dynamoDBMaxReadBatchSize+50)
 	require.NoError(t, err)
 	err = client.PutChunks(ctx, chunks)
 	require.NoError(t, err)
 
+	// Make the read fail after 1 success, and keep failing until all retries are exhausted
+	sc.SetErrorParameters(999, 1)
+	// Try to read back all the chunks we created, so we should get an error plus the first batch
 	chunksWeGot, err := client.GetChunks(ctx, chunks)
 	require.Error(t, err)
-	require.Equal(t, 100, len(chunksWeGot))
+	require.Equal(t, dynamoDBMaxReadBatchSize, len(chunksWeGot))
 }

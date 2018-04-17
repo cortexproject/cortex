@@ -1,4 +1,4 @@
-FROM golang:1.9.3-stretch
+FROM golang:1.10.1-stretch
 RUN apt-get update && apt-get install -y python-requests python-yaml file jq unzip protobuf-compiler libprotobuf-dev && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN go clean -i net && \
@@ -20,4 +20,5 @@ RUN go get -tags netgo \
 		github.com/gogo/protobuf/gogoproto && \
 	rm -rf /go/pkg /go/src
 COPY build.sh /
+ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]

@@ -88,6 +88,7 @@ configs-integration-test: build-image/$(UPTODATE)
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
 		-v $(shell pwd)/cmd/configs/migrations:/migrations \
+		-e MIGRATIONS_DIR=/migrations \
 		--workdir /go/src/github.com/weaveworks/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
 		$(IMAGE_PREFIX)build-image $@; \

@@ -2,11 +2,13 @@ package ingester
 
 import (
 	"io"
+	"os"
 	"reflect"
 	"runtime"
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,6 +28,10 @@ const (
 	userID    = "1"
 	aLongTime = 60 * time.Second
 )
+
+func init() {
+	util.Logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+}
 
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()
@@ -124,6 +130,20 @@ func TestIngesterTransfer(t *testing.T) {
 		}, nil
 	}
 
+	// Add a sample to check that they are dequeued correctly
+	ing2.joiningSampleQueue = []userSamples{
+		{
+			userID: userID,
+			samples: []model.Sample{
+				{
+					Metric:    m,
+					Value:     model.SampleValue(798),
+					Timestamp: model.TimeFromUnix(124),
+				},
+			},
+		},
+	}
+
 	// Now stop the first ingester
 	ing1.Shutdown()
 
@@ -144,6 +164,10 @@ func TestIngesterTransfer(t *testing.T) {
 					{
 						Value:       456,
 						TimestampMs: 123000,
+					},
+					{
+						Value:       798,
+						TimestampMs: 124000,
 					},
 				},
 			},

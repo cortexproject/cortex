@@ -74,6 +74,10 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		if fromIngesterID == "" {
 			fromIngesterID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+
+			if err := i.PreClaimTokensFor(fromIngesterID); err != nil {
+				return err
+			}
 		}
 		metric := client.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
@@ -102,13 +106,31 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		return err
 	}
 
+	i.joiningSampleQueueLock.Lock()
 	i.userStatesMtx.Lock()
-	defer i.userStatesMtx.Unlock()
+	i.userStates = userStates
+	i.userStatesMtx.Unlock()
+
+	level.Info(util.Logger).Log("msg", "Importing sample queue")
+	for j := range i.joiningSampleQueue {
+		userSamples := &i.joiningSampleQueue[j]
+		userCtx := user.InjectOrgID(stream.Context(), userSamples.userID)
+		for k := range userSamples.samples {
+			sample := &userSamples.samples[k]
+			err := i.append(userCtx, sample)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "Error importing queued sample", "sample", sample, "err", err)
+				// Just continue, so we keep as many samples as possible
+			}
+		}
+	}
+	i.joiningSampleQueue = []userSamples{}
 
 	if err := i.ChangeState(ring.ACTIVE); err != nil {
+		i.joiningSampleQueueLock.Unlock()
 		return err
 	}
-	i.userStates = userStates
+	i.joiningSampleQueueLock.Unlock()
 
 	// Close the stream last, as this is what tells the "from" ingester that
 	// it's OK to shut down.

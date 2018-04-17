@@ -20,6 +20,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	cortex_chunk "github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
@@ -163,6 +164,9 @@ type Ingester struct {
 	startTime time.Time
 	ready     bool
 
+	joiningSampleQueueLock sync.Mutex
+	joiningSampleQueue     []userSamples
+
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
 	flushQueues     []*util.PriorityQueue
@@ -183,6 +187,11 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []cortex_chunk.Chunk) error
+}
+
+type userSamples struct {
+	userID  string
+	samples []model.Sample
 }
 
 // New constructs a new Ingester.
@@ -249,6 +258,8 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		state:     ring.PENDING,
 		startTime: time.Now(),
 
+		joiningSampleQueue: make([]userSamples, 0),
+
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
@@ -304,6 +315,20 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	var lastPartialErr error
 	samples := client.FromWriteRequest(req)
 
+	if i.state == ring.JOINING {
+		userID, err := user.ExtractOrgID(ctx)
+		if err != nil {
+			return nil, err
+		}
+		i.joiningSampleQueueLock.Lock()
+		defer i.joiningSampleQueueLock.Unlock()
+		if i.state == ring.JOINING { // Confirm we are still joining, after we get the lock
+			i.joiningSampleQueue = append(
+				i.joiningSampleQueue,
+				userSamples{userID: userID, samples: samples})
+			return &client.WriteResponse{}, nil
+		}
+	}
 samples:
 	for j := range samples {
 		if err := i.append(ctx, &samples[j]); err != nil {

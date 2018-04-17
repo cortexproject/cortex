@@ -48,7 +48,7 @@ func (r *Ring) replicationStrategy(ingesters []*IngesterDesc, op Operation) (
 
 // IsHealthy checks whether an ingester appears to be alive and heartbeating
 func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation) bool {
-	if op == Write && ingester.State != ACTIVE {
+	if op == Write && !(ingester.State == ACTIVE || ingester.State == PREPARING_TO_LEAVE || ingester.State == JOINING) {
 		return false
 	} else if op == Read && ingester.State == JOINING {
 		return false

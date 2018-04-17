@@ -59,13 +59,27 @@ func (d *Desc) RemoveIngester(id string) {
 	d.Tokens = output
 }
 
+// PreClaimTokens marks all the tokens from one ingester in preparation for transferring them to
+// another, returning the modified tokens.
+func (d *Desc) PreClaimTokens(from, to string) []uint32 {
+	var result []uint32
+	for i := 0; i < len(d.Tokens); i++ {
+		if d.Tokens[i].Ingester == from {
+			d.Tokens[i].NextIngester = to
+			result = append(result, d.Tokens[i].Token)
+		}
+	}
+	return result
+}
+
 // ClaimTokens transfers all the tokens from one ingester to another,
-// returning the claimed token.
+// returning the claimed tokens.
 func (d *Desc) ClaimTokens(from, to string) []uint32 {
 	var result []uint32
 	for i := 0; i < len(d.Tokens); i++ {
 		if d.Tokens[i].Ingester == from {
 			d.Tokens[i].Ingester = to
+			d.Tokens[i].NextIngester = ""
 			result = append(result, d.Tokens[i].Token)
 		}
 	}

@@ -155,8 +155,9 @@ type Ingester struct {
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
-	state  ring.IngesterState
-	tokens []uint32
+	stateMtx sync.Mutex
+	state    ring.IngesterState
+	tokens   []uint32
 
 	// Controls the ready-reporting
 	readyLock sync.Mutex
@@ -297,6 +298,18 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	go i.loop()
 
 	return i, nil
+}
+
+func (i *Ingester) getState() ring.IngesterState {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+	return i.state
+}
+
+func (i *Ingester) setState(state ring.IngesterState) {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+	i.state = state
 }
 
 // Push implements client.IngesterServer

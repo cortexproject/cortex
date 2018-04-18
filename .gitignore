@@ -11,3 +11,4 @@ cmd/lite/lite
 pkg/ingester/client/cortex.pb.go
 pkg/ring/ring.pb.go
 bazel-*
+images/

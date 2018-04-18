@@ -146,12 +146,11 @@ func main() {
 		defer rulerServer.Stop()
 	}
 
-	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
-	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
+	sampleQueryable := querier.NewQueryable(dist, chunkStore)
 
 	api := v1.NewAPI(
 		engine,
-		metadataQueryable,
+		sampleQueryable,
 		querier.DummyTargetRetriever{},
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },

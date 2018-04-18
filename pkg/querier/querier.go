@@ -38,13 +38,13 @@ type ChunkStore interface {
 
 // NewEngine creates a new promql.Engine for cortex.
 func NewEngine(distributor Querier, chunkStore ChunkStore, reg prometheus.Registerer, maxConcurrent int, timeout time.Duration) (*promql.Engine, storage.Queryable) {
-	queryable := NewQueryable(distributor, chunkStore, false)
+	queryable := NewQueryable(distributor, chunkStore)
 	engine := promql.NewEngine(util.Logger, reg, maxConcurrent, timeout)
 	return engine, queryable
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor Querier, chunkStore ChunkStore, mo bool) MergeQueryable {
+func NewQueryable(distributor Querier, chunkStore ChunkStore) MergeQueryable {
 	return MergeQueryable{
 		queriers: []Querier{
 			distributor,
@@ -52,7 +52,6 @@ func NewQueryable(distributor Querier, chunkStore ChunkStore, mo bool) MergeQuer
 				store: chunkStore,
 			},
 		},
-		metadataOnly: mo,
 	}
 }
 
@@ -125,18 +124,16 @@ func mergeMatrices(matrices chan model.Matrix, errors chan error, n int) (model.
 // A MergeQueryable is a storage.Queryable that produces a storage.Querier which merges
 // results from multiple underlying Queriers.
 type MergeQueryable struct {
-	queriers     []Querier
-	metadataOnly bool
+	queriers []Querier
 }
 
 // Querier implements storage.Queryable.
 func (q MergeQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	return mergeQuerier{
-		ctx:          ctx,
-		queriers:     q.queriers,
-		mint:         mint,
-		maxt:         maxt,
-		metadataOnly: q.metadataOnly,
+		ctx:      ctx,
+		queriers: q.queriers,
+		mint:     mint,
+		maxt:     maxt,
 	}, nil
 }
 
@@ -205,16 +202,12 @@ type mergeQuerier struct {
 	queriers []Querier
 	mint     int64
 	maxt     int64
-	// Whether this querier should only load series metadata in Select().
-	// Necessary for remote storage implementations of the storage.Querier
-	// interface because both metadata and bulk data loading happens via
-	// the Select() method.
-	metadataOnly bool
 }
 
-func (mq mergeQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (mq mergeQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	// TODO: Update underlying selectors to return errors directly.
-	if mq.metadataOnly {
+	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation, which needs only metadata
+	if sp == nil {
 		return mq.selectMetadata(matchers...), nil
 	}
 	return mq.selectSamples(matchers...), nil

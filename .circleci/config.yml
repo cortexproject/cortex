@@ -1,5 +1,11 @@
 version: 2
 
+# https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
+defaults: &defaults
+  docker:
+    - image: weaveworks/cortex-build-image:circleci-2.0-3d3c3d3a
+  working_directory: /go/src/github.com/weaveworks/cortex
+
 workflows:
   version: 2
   test-build-deploy:
@@ -17,10 +23,7 @@ workflows:
 
 jobs:
   lint:
-    docker:
-    - image: tomwilkie/cortex-build-image:circleci-2.0-c80dbc66f
-
-    working_directory: /go/src/github.com/weaveworks/cortex
+    <<: *defaults
     steps:
     - checkout
     - run:
@@ -30,10 +33,7 @@ jobs:
           make BUILD_IN_CONTAINER=false lint
 
   test:
-    docker:
-    - image: tomwilkie/cortex-build-image:circleci-2.0-c80dbc66f
-
-    working_directory: /go/src/github.com/weaveworks/cortex
+    <<: *defaults
     steps:
     - checkout
     - run:
@@ -44,7 +44,7 @@ jobs:
 
   integration:
     docker:
-    - image: tomwilkie/cortex-build-image:circleci-2.0-c80dbc66f
+    - image: weaveworks/cortex-build-image:circleci-2.0-3d3c3d3a
     - image: circleci/postgres:9.6.2-alpine
       environment:
         POSTGRES_DB: configs_test
@@ -59,10 +59,7 @@ jobs:
           MIGRATIONS_DIR=$(pwd)/cmd/configs/migrations make BUILD_IN_CONTAINER=false configs-integration-test
 
   build:
-    docker:
-    - image: tomwilkie/cortex-build-image:circleci-2.0-c80dbc66f
-
-    working_directory: /go/src/github.com/weaveworks/cortex
+    <<: *defaults
     steps:
     - checkout
     - setup_remote_docker
@@ -94,10 +91,7 @@ jobs:
         - images/
 
   deploy:
-    docker:
-    - image: tomwilkie/cortex-build-image:circleci-2.0-c80dbc66f
-
-    working_directory: /go/src/github.com/weaveworks/cortex
+    <<: *defaults
     steps:
     - checkout
     - setup_remote_docker

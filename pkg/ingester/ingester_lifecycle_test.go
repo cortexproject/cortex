@@ -88,7 +88,7 @@ func TestIngesterTransfer(t *testing.T) {
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
-		return ing1.state
+		return ing1.getState()
 	})
 
 	// Now write a sample to this ingester
@@ -274,7 +274,7 @@ func TestIngesterFlush(t *testing.T) {
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
-		return ing.state
+		return ing.getState()
 	})
 
 	// Now write a sample to this ingester

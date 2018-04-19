@@ -1,0 +1,124 @@
+version: 2
+
+# https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
+defaults: &defaults
+  docker:
+    - image: weaveworks/cortex-build-image:circleci-2.0-3d3c3d3a
+  working_directory: /go/src/github.com/weaveworks/cortex
+
+workflows:
+  version: 2
+  test-build-deploy:
+    jobs:
+    - lint
+    - test
+    - integration
+    - build
+    - deploy:
+        requires:
+        - build
+        - test
+        - lint
+        - integration
+
+jobs:
+  lint:
+    <<: *defaults
+    steps:
+    - checkout
+    - run:
+        name: Lint
+        command: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false lint
+
+  test:
+    <<: *defaults
+    steps:
+    - checkout
+    - run:
+        name: Test
+        command: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false test
+
+  integration:
+    docker:
+    - image: weaveworks/cortex-build-image:circleci-2.0-3d3c3d3a
+    - image: circleci/postgres:9.6.2-alpine
+      environment:
+        POSTGRES_DB: configs_test
+
+    working_directory: /go/src/github.com/weaveworks/cortex
+    steps:
+    - checkout
+    - run:
+        name: Integration Test
+        command: |
+          touch build-image/.uptodate
+          MIGRATIONS_DIR=$(pwd)/cmd/configs/migrations make BUILD_IN_CONTAINER=false configs-integration-test
+
+  build:
+    <<: *defaults
+    steps:
+    - checkout
+    - setup_remote_docker
+
+    - run:
+        name: Install Docker client
+        command: |
+          set -x
+          VER="17.03.0-ce"
+          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+          mv /tmp/docker/* /usr/bin
+
+    - run:
+        name: Build
+        command: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false
+
+    - run:
+        name: Save Images
+        command: |
+          touch build-image/.uptodate &&
+          make BUILD_IN_CONTAINER=false save-images
+
+    - save_cache:
+        key: v1-cortex-{{ .Branch }}-{{ .Revision }}
+        paths:
+        - images/
+
+  deploy:
+    <<: *defaults
+    steps:
+    - checkout
+    - setup_remote_docker
+
+    - run:
+        name: Install Docker client
+        command: |
+          set -x
+          VER="17.03.0-ce"
+          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+          mv /tmp/docker/* /usr/bin
+
+    - restore_cache:
+        key: v1-cortex-{{ .Branch }}-{{ .Revision }}
+
+    - run:
+        name: Load Images
+        command: |
+          touch build-image/.uptodate &&
+          make BUILD_IN_CONTAINER=false load-images
+
+    - run:
+        name: Deploy
+        command: |
+          docker login -e "$DOCKER_REGISTRY_EMAIL" -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
+          if [ -n "$QUAY_PASSWORD" ]; then
+            docker login -e '.' -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io;
+          fi
+          ./push-images $NOQUAY

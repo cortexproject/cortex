@@ -158,7 +158,7 @@ loop:
 			level.Debug(util.Logger).Log("msg", "JoinAfter expired")
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
-			if i.state == ring.PENDING {
+			if i.getState() == ring.PENDING {
 				level.Info(util.Logger).Log("msg", "auto-joining cluster after timeout")
 				if err := i.autoJoin(); err != nil {
 					level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
@@ -236,15 +236,15 @@ func (i *Ingester) initRing() error {
 		if !ok {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
-			ringDesc.AddIngester(i.id, i.addr, []uint32{}, i.state)
+			ringDesc.AddIngester(i.id, i.addr, []uint32{}, i.getState())
 			return ringDesc, true, nil
 		}
 
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
-		i.state = ingesterDesc.State
+		i.setState(ingesterDesc.State)
 		i.tokens, _ = ringDesc.TokensFor(i.id)
 
-		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.state, "tokens", i.tokens)
+		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.getState(), "tokens", i.tokens)
 		return ringDesc, true, nil
 	})
 }
@@ -266,8 +266,8 @@ func (i *Ingester) autoJoin() error {
 		}
 
 		newTokens := ring.GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
-		i.state = ring.ACTIVE
-		ringDesc.AddIngester(i.id, i.addr, newTokens, i.state)
+		i.setState(ring.ACTIVE)
+		ringDesc.AddIngester(i.id, i.addr, newTokens, i.getState())
 
 		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
@@ -292,10 +292,10 @@ func (i *Ingester) updateConsul() error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
-			ringDesc.AddIngester(i.id, i.addr, i.tokens, i.state)
+			ringDesc.AddIngester(i.id, i.addr, i.tokens, i.getState())
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
-			ingesterDesc.State = i.state
+			ingesterDesc.State = i.getState()
 			ingesterDesc.Addr = i.addr
 			ringDesc.Ingesters[i.id] = ingesterDesc
 		}
@@ -307,17 +307,18 @@ func (i *Ingester) updateConsul() error {
 // changeState updates consul with state transitions for us.  NB this must be
 // called from loop()!  Use ChangeState for calls from outside of loop().
 func (i *Ingester) changeState(state ring.IngesterState) error {
+	currState := i.getState()
 	// Only the following state transitions can be triggered externally
-	if !((i.state == ring.PENDING && state == ring.JOINING) || // triggered by TransferChunks at the beginning
-		(i.state == ring.JOINING && state == ring.PENDING) || // triggered by TransferChunks on failure
-		(i.state == ring.JOINING && state == ring.ACTIVE) || // triggered by TransferChunks on success
-		(i.state == ring.PENDING && state == ring.ACTIVE) || // triggered by autoJoin
-		(i.state == ring.ACTIVE && state == ring.LEAVING)) { // triggered by shutdown
-		return fmt.Errorf("Changing ingester state from %v -> %v is disallowed", i.state, state)
+	if !((currState == ring.PENDING && state == ring.JOINING) || // triggered by TransferChunks at the beginning
+		(currState == ring.JOINING && state == ring.PENDING) || // triggered by TransferChunks on failure
+		(currState == ring.JOINING && state == ring.ACTIVE) || // triggered by TransferChunks on success
+		(currState == ring.PENDING && state == ring.ACTIVE) || // triggered by autoJoin
+		(currState == ring.ACTIVE && state == ring.LEAVING)) { // triggered by shutdown
+		return fmt.Errorf("Changing ingester state from %v -> %v is disallowed", currState, state)
 	}
 
-	level.Info(util.Logger).Log("msg", "changing ingester state from", "old_state", i.state, "new_state", state)
-	i.state = state
+	level.Info(util.Logger).Log("msg", "changing ingester state from", "old_state", currState, "new_state", state)
+	i.setState(state)
 	return i.updateConsul()
 }
 

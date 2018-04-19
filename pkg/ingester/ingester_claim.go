@@ -44,7 +44,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	defer func() {
 		errc := make(chan error)
 		i.actorChan <- func() {
-			if i.state == ring.JOINING {
+			if i.getState() == ring.JOINING {
 				errc <- i.changeState(ring.PENDING)
 			} else {
 				errc <- nil

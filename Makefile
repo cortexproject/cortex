@@ -50,6 +50,7 @@ pkg/ring/ring.pb.go: pkg/ring/ring.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
+configs-integration-test: $(PROTO_GOS)
 
 # And now what goes into each image
 build-image/$(UPTODATE): build-image/*
@@ -95,6 +96,7 @@ configs-integration-test: build-image/$(UPTODATE)
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
 		-v $(shell pwd)/cmd/configs/migrations:/migrations \
+		-e MIGRATIONS_DIR=/migrations \
 		--workdir /go/src/github.com/weaveworks/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
 		$(IMAGE_PREFIX)build-image $@; \
@@ -146,3 +148,18 @@ bazel: $(PROTOS_GO)
 
 bazel-test: $(PROTOS_GO)
 	bazel test //pkg/...
+
+save-images:
+	@mkdir -p images
+	for image_name in $(IMAGE_NAMES); do \
+		if ! echo $$image_name | grep build; then \
+			docker save $$image_name:$(IMAGE_TAG) -o images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+		fi \
+	done
+
+load-images:
+	for image_name in $(IMAGE_NAMES); do \
+		if ! echo $$image_name | grep build; then \
+			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+		fi \
+	done

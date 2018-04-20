@@ -19,6 +19,7 @@
   name = "github.com/prometheus/prometheus"
   branch = "master"
 
+# Similar to prometheus/prometheus, we want to track upstream master.
 [[constraint]]
   name = "github.com/prometheus/tsdb"
   branch = "master"

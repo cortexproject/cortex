@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -26,27 +27,41 @@ const (
 	RuleFormatV2 RuleFormatVersion = iota
 )
 
-// String implements flag.Value.
-func (v RuleFormatVersion) String() string {
+// IsValid returns whether the rules format version is a valid (known) version.
+func (v RuleFormatVersion) IsValid() bool {
 	switch v {
-	case RuleFormatV1:
-		return "1"
-	case RuleFormatV2:
-		return "2"
+	case RuleFormatV1, RuleFormatV2:
+		return true
 	default:
-		return "<unknown>"
+		return false
 	}
 }
 
-// Set implements flag.Value.
-func (v *RuleFormatVersion) Set(s string) error {
+// MarshalJSON implements json.Marshaler.
+func (v RuleFormatVersion) MarshalJSON() ([]byte, error) {
+	switch v {
+	case RuleFormatV1:
+		return json.Marshal("1")
+	case RuleFormatV2:
+		return json.Marshal("2")
+	default:
+		return nil, fmt.Errorf("unknown rule format version %d", v)
+	}
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (v *RuleFormatVersion) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
 	switch s {
 	case "1":
 		*v = RuleFormatV1
 	case "2":
 		*v = RuleFormatV2
 	default:
-		return fmt.Errorf("invalid rule format version %q", s)
+		return fmt.Errorf("unknown rule format version %q", string(data))
 	}
 	return nil
 }
@@ -54,8 +69,44 @@ func (v *RuleFormatVersion) Set(s string) error {
 // A Config is a Cortex configuration for a single user.
 type Config struct {
 	// RulesFiles maps from a rules filename to file contents.
-	RulesFiles         RulesConfig `json:"rules_files"`
-	AlertmanagerConfig string      `json:"alertmanager_config"`
+	RulesConfig        RulesConfig
+	AlertmanagerConfig string
+}
+
+// configCompat is a compatibility struct to support old JSON config blobs
+// saved in the config DB that didn't have a rule format version yet and
+// just had a top-level field for the rule files.
+type configCompat struct {
+	RulesFiles         map[string]string `json:"rules_files"`
+	RuleFormatVersion  RuleFormatVersion `json:"rule_format_version"`
+	AlertmanagerConfig string            `json:"alertmanager_config"`
+}
+
+// MarshalJSON implements json.Marshaler.
+func (c Config) MarshalJSON() ([]byte, error) {
+	compat := &configCompat{
+		RulesFiles:         c.RulesConfig.Files,
+		RuleFormatVersion:  c.RulesConfig.FormatVersion,
+		AlertmanagerConfig: c.AlertmanagerConfig,
+	}
+
+	return json.Marshal(compat)
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (c *Config) UnmarshalJSON(data []byte) error {
+	compat := configCompat{}
+	if err := json.Unmarshal(data, &compat); err != nil {
+		return err
+	}
+	*c = Config{
+		RulesConfig: RulesConfig{
+			Files:         compat.RulesFiles,
+			FormatVersion: compat.RuleFormatVersion,
+		},
+		AlertmanagerConfig: compat.AlertmanagerConfig,
+	}
+	return nil
 }
 
 // View is what's returned from the Weave Cloud configs service
@@ -72,28 +123,34 @@ type View struct {
 
 // GetVersionedRulesConfig specializes the view to just the rules config.
 func (v View) GetVersionedRulesConfig() *VersionedRulesConfig {
-	if v.Config.RulesFiles == nil {
+	if v.Config.RulesConfig.Files == nil {
 		return nil
 	}
 	return &VersionedRulesConfig{
 		ID:        v.ID,
-		Config:    v.Config.RulesFiles,
+		Config:    v.Config.RulesConfig,
 		DeletedAt: v.DeletedAt,
 	}
 }
 
-// RulesConfig are the set of rules files for a particular organization.
-type RulesConfig map[string]string
+// RulesConfig is the rules configuration for a particular organization.
+type RulesConfig struct {
+	FormatVersion RuleFormatVersion `json:"format_version"`
+	Files         map[string]string `json:"files"`
+}
 
 // Equal compares two RulesConfigs for equality.
 //
 // instance Eq RulesConfig
 func (c RulesConfig) Equal(o RulesConfig) bool {
-	if len(o) != len(c) {
+	if c.FormatVersion != o.FormatVersion {
 		return false
 	}
-	for k, v1 := range c {
-		v2, ok := o[k]
+	if len(o.Files) != len(c.Files) {
+		return false
+	}
+	for k, v1 := range c.Files {
+		v2, ok := o.Files[k]
 		if !ok || v1 != v2 {
 			return false
 		}
@@ -103,18 +160,18 @@ func (c RulesConfig) Equal(o RulesConfig) bool {
 
 // Parse parses and validates the content of the rule files in a RulesConfig
 // according to the passed rule format version.
-func (c RulesConfig) Parse(v RuleFormatVersion) (map[string][]rules.Rule, error) {
-	switch v {
+func (c RulesConfig) Parse() (map[string][]rules.Rule, error) {
+	switch c.FormatVersion {
 	case RuleFormatV1:
-		return c.ParseV1()
+		return c.parseV1()
 	case RuleFormatV2:
-		return c.ParseV2()
+		return c.parseV2()
 	default:
-		panic("unknown rule format")
+		return nil, fmt.Errorf("unknown rule format version %v", c.FormatVersion)
 	}
 }
 
-// ParseV2 parses and validates the content of the rule files in a RulesConfig
+// parseV2 parses and validates the content of the rule files in a RulesConfig
 // according to the Prometheus 2.x rule format.
 //
 // NOTE: On one hand, we cannot return fully-fledged lists of rules.Group
@@ -127,10 +184,10 @@ func (c RulesConfig) Parse(v RuleFormatVersion) (map[string][]rules.Rule, error)
 // would otherwise have to ensure to convert the rulefmt.RuleGroup only exactly
 // once, not for every evaluation (or risk losing alert pending states). So
 // it's probably better to just return a set of rules.Rule here.
-func (c RulesConfig) ParseV2() (map[string][]rules.Rule, error) {
+func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 	groups := map[string][]rules.Rule{}
 
-	for fn, content := range c {
+	for fn, content := range c.Files {
 		rgs, errs := rulefmt.Parse([]byte(content))
 		if len(errs) > 0 {
 			return nil, fmt.Errorf("error parsing %s: %v", fn, errs[0])
@@ -170,13 +227,13 @@ func (c RulesConfig) ParseV2() (map[string][]rules.Rule, error) {
 	return groups, nil
 }
 
-// ParseV1 parses and validates the content of the rule files in a RulesConfig
+// parseV1 parses and validates the content of the rule files in a RulesConfig
 // according to the Prometheus 1.x rule format.
 //
 // The same comment about rule groups as on ParseV2() applies here.
-func (c RulesConfig) ParseV1() (map[string][]rules.Rule, error) {
+func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 	result := map[string][]rules.Rule{}
-	for fn, content := range c {
+	for fn, content := range c.Files {
 		stmts, err := promql.ParseStmts(content)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing %s: %s", fn, err)

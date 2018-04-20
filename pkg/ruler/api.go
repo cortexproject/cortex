@@ -17,26 +17,22 @@ import (
 
 // API implements the configs api.
 type API struct {
-	db                db.RulesDB
-	ruleFormatVersion configs.RuleFormatVersion
+	db db.RulesDB
 	http.Handler
 }
 
 // NewAPIFromConfig makes a new API from our database config.
-func NewAPIFromConfig(cfg db.Config, rfv configs.RuleFormatVersion) (*API, error) {
+func NewAPIFromConfig(cfg db.Config) (*API, error) {
 	db, err := db.NewRulesDB(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return NewAPI(db, rfv), nil
+	return NewAPI(db), nil
 }
 
 // NewAPI creates a new API.
-func NewAPI(db db.RulesDB, rfv configs.RuleFormatVersion) *API {
-	a := &API{
-		db:                db,
-		ruleFormatVersion: rfv,
-	}
+func NewAPI(db db.RulesDB) *API {
+	a := &API{db: db}
 	r := mux.NewRouter()
 	a.RegisterRoutes(r)
 	a.Handler = r
@@ -103,7 +99,7 @@ func (a *API) casConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err = updateReq.NewConfig.Parse(a.ruleFormatVersion); err != nil {
+	if _, err = updateReq.NewConfig.Parse(); err != nil {
 		level.Error(logger).Log("msg", "invalid rules", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return

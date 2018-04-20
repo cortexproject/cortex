@@ -27,7 +27,7 @@ var (
 // setup sets up the environment for the tests.
 func setup(t *testing.T) {
 	database = dbtest.Setup(t)
-	app = api.New(database, configs.RuleFormatV2)
+	app = api.New(database)
 	counter = 0
 }
 
@@ -77,7 +77,7 @@ func makeConfig() configs.Config {
 
             receivers:
             - name: noop`),
-		RulesFiles: nil,
+		RulesConfig: configs.RulesConfig{},
 	}
 }
 

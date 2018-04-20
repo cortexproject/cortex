@@ -88,8 +88,6 @@ type scheduler struct {
 
 	pollInterval time.Duration // how often we check for new config
 
-	ruleFormatVersion configs.RuleFormatVersion // which rule format to expect
-
 	cfgs         map[string]map[string][]rules.Rule // all rules for all users
 	latestConfig configs.ID                         // # of last update received from config
 	sync.RWMutex
@@ -99,12 +97,11 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Duration, rfv configs.RuleFormatVersion) scheduler {
+func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Duration) scheduler {
 	return scheduler{
 		rulesAPI:           rulesAPI,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
-		ruleFormatVersion:  rfv,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
 		cfgs:               map[string]map[string][]rules.Rule{},
 
@@ -209,7 +206,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	hasher := fnv.New64a()
 
 	for userID, config := range cfgs {
-		rulesByGroup, err := config.Config.Parse(s.ruleFormatVersion)
+		rulesByGroup, err := config.Config.Parse()
 		if err != nil {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known

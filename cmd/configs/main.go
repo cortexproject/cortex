@@ -9,7 +9,6 @@ import (
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/pkg/configs"
 	"github.com/weaveworks/cortex/pkg/configs/api"
 	"github.com/weaveworks/cortex/pkg/configs/db"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -25,12 +24,10 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		dbConfig          db.Config
-		logLevel          util.LogLevel
-		ruleFormatVersion configs.RuleFormatVersion
+		dbConfig db.Config
+		logLevel util.LogLevel
 	)
 	util.RegisterFlags(&serverConfig, &dbConfig, &logLevel)
-	flag.Var(&ruleFormatVersion, "configs.rule-format-version", "Which Prometheus rule format version to use: '1' or '2' (default '1').")
 	flag.Parse()
 
 	util.InitLogger(logLevel.AllowedLevel)
@@ -42,7 +39,7 @@ func main() {
 	}
 	defer db.Close()
 
-	a := api.New(db, ruleFormatVersion)
+	a := api.New(db)
 
 	server, err := server.New(serverConfig)
 	if err != nil {

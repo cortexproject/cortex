@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -34,13 +33,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // ChunkStore is the interface we need to get chunks
 type ChunkStore interface {
 	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
-}
-
-// NewEngine creates a new promql.Engine for cortex.
-func NewEngine(distributor Querier, chunkStore ChunkStore, reg prometheus.Registerer, maxConcurrent int, timeout time.Duration) (*promql.Engine, storage.Queryable) {
-	queryable := NewQueryable(distributor, chunkStore)
-	engine := promql.NewEngine(util.Logger, reg, maxConcurrent, timeout)
-	return engine, queryable
 }
 
 // NewQueryable creates a new Queryable for cortex.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/promql"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
@@ -77,7 +78,9 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	engine, queryable := querier.NewEngine(dist, chunkStore, prometheus.DefaultRegisterer, querierConfig.MaxConcurrent, querierConfig.Timeout)
+	engine := promql.NewEngine(util.Logger, prometheus.DefaultRegisterer, querierConfig.MaxConcurrent, querierConfig.Timeout)
+	queryable := querier.NewQueryable(dist, chunkStore)
+
 	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)

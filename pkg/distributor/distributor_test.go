@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -232,13 +233,15 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, shardByAllLabels bo
 		replicationFactor: 3,
 	}
 
-	factory := func(addr string, _ client.Config) (client.IngesterClient, error) {
+	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		return ingestersByAddr[addr], nil
 	}
 
 	d, err := New(Config{
-		RemoteTimeout:         1 * time.Minute,
-		ClientCleanupPeriod:   1 * time.Minute,
+		PoolConfig: client.PoolConfig{
+			RemoteTimeout:       1 * time.Minute,
+			ClientCleanupPeriod: 1 * time.Minute,
+		},
 		IngestionRateLimit:    20,
 		IngestionBurstSize:    20,
 		ingesterClientFactory: factory,

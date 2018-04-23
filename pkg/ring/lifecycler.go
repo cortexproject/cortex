@@ -1,29 +1,21 @@
-// Responsible for managing the ingester lifecycle.
-
-package ingester
+package ring
 
 import (
+	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"sort"
+	"sync"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (
-	minReadyDuration        = 1 * time.Minute
-	pendingSearchIterations = 10
+	minReadyDuration = 1 * time.Minute
 )
 
 var (
@@ -37,18 +29,122 @@ func init() {
 	prometheus.MustRegister(consulHeartbeats)
 }
 
-// ReadinessHandler is used to indicate to k8s when the ingesters are ready for
-// the addition removal of another ingester. Returns 204 when the ingester is
-// ready, 500 otherwise.
-func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if i.isReady() {
-		w.WriteHeader(http.StatusNoContent)
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
-	}
+// LifecyclerConfig is the config to build a Lifecycler.
+type LifecyclerConfig struct {
+	KVClient   KVClient
+	RingConfig Config
+
+	// Config for the ingester lifecycle control
+	ListenPort      *int
+	NumTokens       int
+	HeartbeatPeriod time.Duration
+	JoinAfter       time.Duration
+	ClaimOnRollout  bool
+
+	// For testing, you can override the address and ID of this ingester
+	Addr           string
+	InfName        string
+	ID             string
+	SkipUnregister bool
 }
 
-func (i *Ingester) isReady() bool {
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.RingConfig.RegisterFlags(f)
+
+	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
+	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
+	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")
+	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to get hostname", "err", err)
+		os.Exit(1)
+	}
+
+	f.StringVar(&cfg.InfName, "ingester.interface", "eth0", "Name of network interface to read address from.")
+	f.StringVar(&cfg.Addr, "ingester.addr", "", "IP address to register into consul.")
+	f.StringVar(&cfg.ID, "ingester.ID", hostname, "ID to register into consul.")
+}
+
+// FlushTransferer controls the shutdown of an ingester.
+type FlushTransferer interface {
+	StopIncomingRequests()
+	Flush()
+	Transfer() error
+}
+
+// Lifecycler is responsible for managing the lifecycle of entries in the ring.
+type Lifecycler struct {
+	cfg             LifecyclerConfig
+	flushTransferer FlushTransferer
+	KVStore         KVClient
+
+	// Controls the lifecycle of the ingester
+	quit      chan struct{}
+	done      sync.WaitGroup
+	actorChan chan func()
+
+	// These values are initialised at startup, and never change
+	ID   string
+	addr string
+
+	// We need to remember the ingester state just in case consul goes away and comes
+	// back empty.  And it changes during lifecycle of ingester.
+	stateMtx sync.Mutex
+	state    IngesterState
+	tokens   []uint32
+
+	// Controls the ready-reporting
+	readyLock sync.Mutex
+	startTime time.Time
+	ready     bool
+}
+
+// NewLifecycler makes and starts a new Lifecycler.
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Lifecycler, error) {
+	kvstore := cfg.KVClient
+	if kvstore == nil {
+		var err error
+		codec := ProtoCodec{Factory: ProtoDescFactory}
+		kvstore, err = NewConsulClient(cfg.RingConfig.ConsulConfig, codec)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	addr := cfg.Addr
+	if addr == "" {
+		var err error
+		addr, err = util.GetFirstAddressOf(cfg.InfName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	l := &Lifecycler{
+		cfg:             cfg,
+		flushTransferer: flushTransferer,
+		KVStore:         kvstore,
+
+		addr: fmt.Sprintf("%s:%d", addr, *cfg.ListenPort),
+		ID:   cfg.ID,
+
+		quit:      make(chan struct{}),
+		actorChan: make(chan func()),
+
+		state:     PENDING,
+		startTime: time.Now(),
+	}
+	l.done.Add(1)
+	go l.loop()
+	return l, nil
+}
+
+// IsReady is used to rate limit the number of ingesters that can be coming or
+// going at any one time, by only returning true if all ingesters are active.
+func (i *Lifecycler) IsReady() bool {
 	i.readyLock.Lock()
 	defer i.readyLock.Unlock()
 
@@ -62,18 +158,31 @@ func (i *Ingester) isReady() bool {
 		return false
 	}
 
-	ringDesc, err := i.ringKVStore.Get(ring.ConsulKey)
+	ringDesc, err := i.KVStore.Get(ConsulKey)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error talking to consul", "err", err)
 		return false
 	}
 
-	i.ready = i.ready || ringDesc.(*ring.Desc).Ready(i.cfg.RingConfig.HeartbeatTimeout)
+	i.ready = i.ready || ringDesc.(*Desc).Ready(i.cfg.RingConfig.HeartbeatTimeout)
 	return i.ready
 }
 
+// GetState returns the state of this ingester.
+func (i *Lifecycler) GetState() IngesterState {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+	return i.state
+}
+
+func (i *Lifecycler) setState(state IngesterState) {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+	i.state = state
+}
+
 // ChangeState of the ingester, for use off of the loop() goroutine.
-func (i *Ingester) ChangeState(state ring.IngesterState) error {
+func (i *Lifecycler) ChangeState(state IngesterState) error {
 	err := make(chan error)
 	i.actorChan <- func() {
 		err <- i.changeState(state)
@@ -82,23 +191,23 @@ func (i *Ingester) ChangeState(state ring.IngesterState) error {
 }
 
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
-func (i *Ingester) ClaimTokensFor(ingesterID string) error {
+func (i *Lifecycler) ClaimTokensFor(ingesterID string) error {
 	err := make(chan error)
 
 	i.actorChan <- func() {
 		var tokens []uint32
 
 		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
-			ringDesc, ok := in.(*ring.Desc)
+			ringDesc, ok := in.(*Desc)
 			if !ok || ringDesc == nil {
 				return nil, false, fmt.Errorf("Cannot claim tokens in an empty ring")
 			}
 
-			tokens = ringDesc.ClaimTokens(ingesterID, i.id)
+			tokens = ringDesc.ClaimTokens(ingesterID, i.ID)
 			return ringDesc, true, nil
 		}
 
-		if err := i.ringKVStore.CAS(ring.ConsulKey, claimTokens); err != nil {
+		if err := i.KVStore.CAS(ConsulKey, claimTokens); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to write to consul", "err", err)
 		}
 
@@ -109,16 +218,14 @@ func (i *Ingester) ClaimTokensFor(ingesterID string) error {
 	return <-err
 }
 
-// Shutdown stops the ingester.  It will:
+// Shutdown the lifecycle.  It will:
 // - send chunks to another ingester, if it can.
 // - otherwise, flush chunks to the chunk store.
 // - remove config from Consul.
 // - block until we've successfully shutdown.
-func (i *Ingester) Shutdown() {
+func (i *Lifecycler) Shutdown() {
 	// This will prevent us accepting any more samples
-	i.stopLock.Lock()
-	i.stopped = true
-	i.stopLock.Unlock()
+	i.flushTransferer.StopIncomingRequests()
 
 	// closing i.quit triggers loop() to exit, which in turn will trigger
 	// the removal of our tokens etc
@@ -126,7 +233,7 @@ func (i *Ingester) Shutdown() {
 	i.done.Wait()
 }
 
-func (i *Ingester) loop() {
+func (i *Lifecycler) loop() {
 	defer func() {
 		level.Info(util.Logger).Log("msg", "Ingester.loop() exited gracefully")
 		i.done.Done()
@@ -145,12 +252,6 @@ func (i *Ingester) loop() {
 	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTicker.Stop()
 
-	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
-	defer flushTicker.Stop()
-
-	rateUpdateTicker := time.NewTicker(i.cfg.userStatesConfig.RateUpdatePeriod)
-	defer rateUpdateTicker.Stop()
-
 loop:
 	for {
 		select {
@@ -158,7 +259,7 @@ loop:
 			level.Debug(util.Logger).Log("msg", "JoinAfter expired")
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
-			if i.getState() == ring.PENDING {
+			if i.GetState() == PENDING {
 				level.Info(util.Logger).Log("msg", "auto-joining cluster after timeout")
 				if err := i.autoJoin(); err != nil {
 					level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
@@ -172,12 +273,6 @@ loop:
 				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
 			}
 
-		case <-flushTicker.C:
-			i.sweepUsers(false)
-
-		case <-rateUpdateTicker.C:
-			i.userStates.updateRates()
-
 		case f := <-i.actorChan:
 			f()
 
@@ -187,7 +282,7 @@ loop:
 	}
 
 	// Mark ourselved as Leaving so no more samples are send to us.
-	i.changeState(ring.LEAVING)
+	i.changeState(LEAVING)
 
 	// Do the transferring / flushing on a background goroutine so we can continue
 	// to heartbeat to consul.
@@ -211,7 +306,7 @@ heartbeatLoop:
 		}
 	}
 
-	if !i.cfg.skipUnregister {
+	if !i.cfg.SkipUnregister {
 		if err := i.unregister(); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to unregister from consul", "err", err)
 			os.Exit(1)
@@ -223,51 +318,51 @@ heartbeatLoop:
 // initRing is the first thing we do when we start. It:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
-func (i *Ingester) initRing() error {
-	return i.ringKVStore.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *ring.Desc
+func (i *Lifecycler) initRing() error {
+	return i.KVStore.CAS(ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		var ringDesc *Desc
 		if in == nil {
-			ringDesc = ring.NewDesc()
+			ringDesc = NewDesc()
 		} else {
-			ringDesc = in.(*ring.Desc)
+			ringDesc = in.(*Desc)
 		}
 
-		ingesterDesc, ok := ringDesc.Ingesters[i.id]
+		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
-			ringDesc.AddIngester(i.id, i.addr, []uint32{}, i.getState())
+			ringDesc.AddIngester(i.ID, i.addr, []uint32{}, i.GetState())
 			return ringDesc, true, nil
 		}
 
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
 		i.setState(ingesterDesc.State)
-		i.tokens, _ = ringDesc.TokensFor(i.id)
+		i.tokens, _ = ringDesc.TokensFor(i.ID)
 
-		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.getState(), "tokens", i.tokens)
+		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", i.tokens)
 		return ringDesc, true, nil
 	})
 }
 
 // autoJoin selects random tokens & moves state to ACTIVE
-func (i *Ingester) autoJoin() error {
-	return i.ringKVStore.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *ring.Desc
+func (i *Lifecycler) autoJoin() error {
+	return i.KVStore.CAS(ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		var ringDesc *Desc
 		if in == nil {
-			ringDesc = ring.NewDesc()
+			ringDesc = NewDesc()
 		} else {
-			ringDesc = in.(*ring.Desc)
+			ringDesc = in.(*Desc)
 		}
 
 		// At this point, we should not have any tokens, and we should be in PENDING state.
-		myTokens, takenTokens := ringDesc.TokensFor(i.id)
+		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
 		if len(myTokens) > 0 {
 			level.Error(util.Logger).Log("msg", "tokens already exist for this ingester - wasn't expecting any!", "num_tokens", len(myTokens))
 		}
 
-		newTokens := ring.GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
-		i.setState(ring.ACTIVE)
-		ringDesc.AddIngester(i.id, i.addr, newTokens, i.getState())
+		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
+		i.setState(ACTIVE)
+		ringDesc.AddIngester(i.ID, i.addr, newTokens, i.GetState())
 
 		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
@@ -279,25 +374,25 @@ func (i *Ingester) autoJoin() error {
 
 // updateConsul updates our entries in consul, heartbeating and dealing with
 // consul restarts.
-func (i *Ingester) updateConsul() error {
-	return i.ringKVStore.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *ring.Desc
+func (i *Lifecycler) updateConsul() error {
+	return i.KVStore.CAS(ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		var ringDesc *Desc
 		if in == nil {
-			ringDesc = ring.NewDesc()
+			ringDesc = NewDesc()
 		} else {
-			ringDesc = in.(*ring.Desc)
+			ringDesc = in.(*Desc)
 		}
 
-		ingesterDesc, ok := ringDesc.Ingesters[i.id]
+		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
-			ringDesc.AddIngester(i.id, i.addr, i.tokens, i.getState())
+			ringDesc.AddIngester(i.ID, i.addr, i.tokens, i.GetState())
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
-			ingesterDesc.State = i.getState()
+			ingesterDesc.State = i.GetState()
 			ingesterDesc.Addr = i.addr
-			ringDesc.Ingesters[i.id] = ingesterDesc
+			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 
 		return ringDesc, true, nil
@@ -306,14 +401,14 @@ func (i *Ingester) updateConsul() error {
 
 // changeState updates consul with state transitions for us.  NB this must be
 // called from loop()!  Use ChangeState for calls from outside of loop().
-func (i *Ingester) changeState(state ring.IngesterState) error {
-	currState := i.getState()
+func (i *Lifecycler) changeState(state IngesterState) error {
+	currState := i.GetState()
 	// Only the following state transitions can be triggered externally
-	if !((currState == ring.PENDING && state == ring.JOINING) || // triggered by TransferChunks at the beginning
-		(currState == ring.JOINING && state == ring.PENDING) || // triggered by TransferChunks on failure
-		(currState == ring.JOINING && state == ring.ACTIVE) || // triggered by TransferChunks on success
-		(currState == ring.PENDING && state == ring.ACTIVE) || // triggered by autoJoin
-		(currState == ring.ACTIVE && state == ring.LEAVING)) { // triggered by shutdown
+	if !((currState == PENDING && state == JOINING) || // triggered by TransferChunks at the beginning
+		(currState == JOINING && state == PENDING) || // triggered by TransferChunks on failure
+		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
+		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
+		(currState == ACTIVE && state == LEAVING)) { // triggered by shutdown
 		return fmt.Errorf("Changing ingester state from %v -> %v is disallowed", currState, state)
 	}
 
@@ -322,10 +417,10 @@ func (i *Ingester) changeState(state ring.IngesterState) error {
 	return i.updateConsul()
 }
 
-func (i *Ingester) processShutdown() {
+func (i *Lifecycler) processShutdown() {
 	flushRequired := true
 	if i.cfg.ClaimOnRollout {
-		if err := i.transferChunks(); err != nil {
+		if err := i.flushTransferer.Transfer(); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
 		} else {
 			flushRequired = false
@@ -333,131 +428,19 @@ func (i *Ingester) processShutdown() {
 	}
 
 	if flushRequired {
-		i.flushAllChunks()
-
-		// Close the flush queues, to unblock waiting workers.
-		for _, flushQueue := range i.flushQueues {
-			flushQueue.Close()
-		}
-	} else {
-
-		// Close & empty all the flush queues, to unblock waiting workers.
-		for _, flushQueue := range i.flushQueues {
-			flushQueue.DiscardAndClose()
-		}
+		i.flushTransferer.Flush()
 	}
-
-	// Wait for chunks to be flushed.
-	i.flushQueuesDone.Wait()
-}
-
-// transferChunks finds an ingester in PENDING state and transfers our chunks
-// to it.
-func (i *Ingester) transferChunks() error {
-	targetIngester, err := i.findTargetIngester()
-	if err != nil {
-		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
-	}
-
-	level.Info(util.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
-	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.cfg.clientConfig)
-	if err != nil {
-		return err
-	}
-	defer c.(io.Closer).Close()
-
-	ctx := user.InjectOrgID(context.Background(), "-1")
-	stream, err := c.TransferChunks(ctx)
-	if err != nil {
-		return err
-	}
-
-	for userID, state := range i.userStates.cp() {
-		for pair := range state.fpToSeries.iter() {
-			state.fpLocker.Lock(pair.fp)
-
-			if len(pair.series.chunkDescs) == 0 { // Nothing to send?
-				state.fpLocker.Unlock(pair.fp)
-				continue
-			}
-
-			chunks, err := toWireChunks(pair.series.chunkDescs)
-			if err != nil {
-				state.fpLocker.Unlock(pair.fp)
-				return err
-			}
-
-			err = stream.Send(&client.TimeSeriesChunk{
-				FromIngesterId: i.id,
-				UserId:         userID,
-				Labels:         client.ToLabelPairs(pair.series.metric),
-				Chunks:         chunks,
-			})
-			state.fpLocker.Unlock(pair.fp)
-			if err != nil {
-				return err
-			}
-
-			sentChunks.Add(float64(len(chunks)))
-		}
-	}
-
-	_, err = stream.CloseAndRecv()
-	if err != nil {
-		return err
-	}
-
-	level.Info(util.Logger).Log("msg", "successfully sent chunks", "to_ingester", targetIngester.Addr)
-	return nil
-}
-
-// findTargetIngester finds an ingester in PENDING state.
-func (i *Ingester) findTargetIngester() (*ring.IngesterDesc, error) {
-	findIngester := func() (*ring.IngesterDesc, error) {
-		ringDesc, err := i.ringKVStore.Get(ring.ConsulKey)
-		if err != nil {
-			return nil, err
-		}
-
-		ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
-		if len(ingesters) <= 0 {
-			return nil, fmt.Errorf("no pending ingesters")
-		}
-
-		return ingesters[0], nil
-	}
-
-	deadline := time.Now().Add(i.cfg.SearchPendingFor)
-	for {
-		ingester, err := findIngester()
-		if err != nil {
-			level.Debug(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
-			if time.Now().Before(deadline) {
-				time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
-				continue
-			} else {
-				level.Warn(util.Logger).Log("msg", "Could not find pending ingester before deadline", "err", err)
-				return nil, err
-			}
-		}
-		return ingester, nil
-	}
-}
-
-// flushChunks writes all remaining chunks to the chunkStore,
-func (i *Ingester) flushAllChunks() {
-	i.sweepUsers(true)
 }
 
 // unregister removes our entry from consul.
-func (i *Ingester) unregister() error {
-	return i.ringKVStore.CAS(ring.ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+func (i *Lifecycler) unregister() error {
+	return i.KVStore.CAS(ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}
 
-		ringDesc := in.(*ring.Desc)
-		ringDesc.RemoveIngester(i.id)
+		ringDesc := in.(*Desc)
+		ringDesc.RemoveIngester(i.ID)
 		return ringDesc, true, nil
 	})
 }

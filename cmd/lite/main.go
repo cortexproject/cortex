@@ -52,7 +52,7 @@ func main() {
 		unauthenticated bool
 	)
 	// Ingester needs to know our gRPC listen port.
-	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
+	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
@@ -85,13 +85,13 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
-	r, err := ring.New(ingesterConfig.RingConfig)
+	r, err := ring.New(ingesterConfig.LifecyclerConfig.RingConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
 		os.Exit(1)
 	}
 	defer r.Stop()
-	ingesterConfig.KVClient = r.KVClient
+	ingesterConfig.LifecyclerConfig.KVClient = r.KVClient
 
 	dist, err := distributor.New(distributorConfig, r)
 	if err != nil {

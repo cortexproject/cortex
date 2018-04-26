@@ -42,6 +42,7 @@ func main() {
 
 		chunkStoreConfig  chunk.StoreConfig
 		distributorConfig distributor.Config
+		querierConfig     querier.Config
 		ingesterConfig    ingester.Config
 		configStoreConfig ruler.ConfigStoreConfig
 		rulerConfig       ruler.Config
@@ -53,7 +54,7 @@ func main() {
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig,
+	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
@@ -123,13 +124,16 @@ func main() {
 	tableManager.Start()
 	defer tableManager.Stop()
 
+	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
+	queryable := querier.NewQueryable(dist, chunkStore)
+
 	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
 		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing ruler config store", "err", err)
 			os.Exit(1)
 		}
-		rlr, err := ruler.NewRuler(rulerConfig, dist, chunkStore)
+		rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)
 			os.Exit(1)
@@ -144,16 +148,13 @@ func main() {
 		defer rulerServer.Stop()
 	}
 
-	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
-	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
-
-	engine := promql.NewEngine(sampleQueryable, nil)
 	api := v1.NewAPI(
 		engine,
-		metadataQueryable,
+		queryable,
 		querier.DummyTargetRetriever{},
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },
+		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.
@@ -185,7 +186,7 @@ func main() {
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(activeMiddleware.Wrap(promRouter))
-	subrouter.Path("/read").Handler(activeMiddleware.Wrap(http.HandlerFunc(sampleQueryable.RemoteReadHandler)))
+	subrouter.Path("/read").Handler(activeMiddleware.Wrap(http.HandlerFunc(queryable.RemoteReadHandler)))
 	subrouter.Path("/validate_expr").Handler(activeMiddleware.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(activeMiddleware.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 

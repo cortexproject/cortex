@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/querier"
 )
 
 func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
@@ -25,7 +27,10 @@ func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
 
 	// TODO: Populate distributor and chunk store arguments to enable
 	// other kinds of tests.
-	ruler, err := NewRuler(cfg, nil, nil)
+
+	engine := promql.NewEngine(nil, nil, 20, 2*time.Minute)
+	queryable := querier.NewQueryable(nil, nil)
+	ruler, err := NewRuler(cfg, engine, queryable, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,11 @@
   name = "github.com/prometheus/prometheus"
   branch = "master"
 
+# Similar to prometheus/prometheus, we want to track upstream master.
+[[constraint]]
+  name = "github.com/prometheus/tsdb"
+  branch = "master"
+
 [[override]]
   name = "k8s.io/client-go"
   revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"

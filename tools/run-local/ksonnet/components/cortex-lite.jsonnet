@@ -10,16 +10,13 @@ local servicePort = k.core.v1.service.mixin.spec.portsType;
 local targetPort = params.containerPort;
 local labels = { app: params.name };
 
-local appService = service
-                   .new(
+local appService = service.new(
   params.name,
   labels,
   servicePort.new(params.servicePort, targetPort)
-)
-                   .withType(params.type);
+).withType(params.type);
 
-local appDeployment = deployment
-                      .new(
+local appDeployment = deployment.new(
   params.name,
   params.replicas,
   container

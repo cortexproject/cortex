@@ -1,0 +1,18 @@
+apiVersion: 0.1.0
+environments:
+  cortex-lite:
+    destination:
+      namespace: default
+      server: https://192.168.99.100:8443
+    k8sVersion: v1.9.4
+    path: cortex-lite
+kind: ksonnet.io/app
+name: cortex-lite
+registries:
+  incubator:
+    gitVersion:
+      commitSha: 40285d8a14f1ac5787e405e1023cf0c07f6aa28c
+      refSpec: master
+    protocol: github
+    uri: github.com/ksonnet/parts/tree/master/incubator
+version: 0.0.1

@@ -1,6 +1,6 @@
-local env = std.extVar("__ksonnet/environments");
-local params = std.extVar("__ksonnet/params").components["cortex-lite"];
-local k = import "k.libsonnet";
+local env = std.extVar('__ksonnet/environments');
+local params = std.extVar('__ksonnet/params').components['cortex-lite'];
+local k = import 'k.libsonnet';
 local deployment = k.apps.v1beta1.deployment;
 local container = k.apps.v1beta1.deployment.mixin.spec.template.spec.containersType;
 local containerPort = container.portsType;
@@ -9,6 +9,8 @@ local servicePort = k.core.v1.service.mixin.spec.portsType;
 
 local targetPort = params.containerPort;
 local labels = { app: params.name };
+
+local args = [x + '=' + params.cortex_args[x] for x in std.objectFields(params.cortex_args)];
 
 local appService = service.new(
   params.name,
@@ -19,10 +21,10 @@ local appService = service.new(
 local appDeployment = deployment.new(
   params.name,
   params.replicas,
-  container
-  .new(params.name, params.image)
+  container.new(params.name, params.image)
+  .withArgs(args + params.cortex_flags)
   .withPorts(containerPort.new(targetPort))
-  .withImagePullPolicy("Never"),
+  .withImagePullPolicy('Never'),
   labels
 );
 

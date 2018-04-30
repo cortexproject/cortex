@@ -156,11 +156,7 @@ func merge(a, b []model.Fingerprint) []model.Fingerprint {
 			j++
 		}
 	}
-	for ; i < len(a); i++ {
-		result = append(result, a[i])
-	}
-	for ; j < len(b); j++ {
-		result = append(result, b[j])
-	}
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
 	return result
 }

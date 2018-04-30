@@ -5,7 +5,7 @@ if [ -n "${1}" ]; then
 else
   echo "You need to specify a ksonnet environment. If you haven't already:"
   echo "# cd ksonnet/environments"
-  echo "# cp -r default <YOUR_ENV_NAME>"
+  echo "# cp -r cortex_default <YOUR_ENV_NAME>"
   echo "# vi <YOUR_ENV_NAME>/params.libsonnet"
   echo "Then modify the cortex_args object to use appropriate values."
   echo "Note that your new environment will not be accidentally added to source control, no worries."
@@ -75,5 +75,7 @@ echo "Found cortex-lite image in minikube docker: ${CORTEX_LITE_IMG}. Continuing
 
 echo "Applying ksonnet bits to cortex-lite profile..."
 pushd ksonnet > /dev/null
+sed -ie 's/cortex_default/'${KS_ENV}'/g' app.yaml
 ${KS} apply --insecure-skip-tls-verify ${KS_ENV}
+git checkout app.yaml
 popd > /dev/null

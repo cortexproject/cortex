@@ -18,8 +18,7 @@
         '-memcached.service': 'memcached',
         '-server.http-write-timeout': '31s',
         '-server.http-read-timeout': '31s',
-        '-database.uri': 'postgres://configs-db:5432/cortex-configs?sslmode=disable',
-        '-database.migrations': '/migrations',
+        '-database.uri': 'memory://',
       },
       cortex_flags: [
         '-dynamodb.use-periodic-tables',
@@ -49,13 +48,14 @@
       servicePort: 80,
       type: 'ClusterIP',
     },
-    'configs-db': {
-      containerPort: 5432,
-      image: 'postgres:9.6.8',
-      name: 'configs-db',
+    memcached: {
+      containerPort: 11211,
+      image: 'memcached:1.5.4',
+      name: 'memcached',
       replicas: 1,
-      servicePort: 5432,
+      servicePort: 80,
       type: 'ClusterIP',
+      mem: 1024,
     },
   },
 }

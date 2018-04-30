@@ -30,6 +30,12 @@ if [ -z ${MK} ]; then
   exit 1
 fi
 
+${MK} version | grep v0.25.1 > /dev/null
+if [ $? -ne 0 ]; then
+  echo "WARNING: You don't seem to be running minikube v0.25.1. Other versions may work,"
+  echo "but as of 30/04/2018 you're likely to have a bad time."
+fi
+
 KS=$(which ks) > /dev/null 2>&1
 if [ -z "${KS}" ]; then
   echo "Sorry, you need to install ksonnet. Exiting."

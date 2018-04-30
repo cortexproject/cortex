@@ -1,11 +1,5 @@
 apiVersion: 0.1.0
 environments:
-  chowny:
-    destination:
-      namespace: default
-      server: https://192.168.99.100:8443
-    k8sVersion: v1.7.0
-    path: chowny
   default:
     destination:
       namespace: default

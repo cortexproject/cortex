@@ -46,6 +46,7 @@ local appDeployment =
     secret: {
       secretName: 'gcp-key',
     },
-  }]);
+  }])
+  + deployment.mixin.spec.template.spec.withTerminationGracePeriodSeconds(10);
 
 k.core.v1.list.new([GCPKey, appService, appDeployment])

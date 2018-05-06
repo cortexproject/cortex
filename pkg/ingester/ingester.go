@@ -341,7 +341,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 
 	if err := ValidateSample(sample, i.cfg.MaxLengthLabelName, i.cfg.MaxLengthLabelValue); err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
-		return err
+		return nil
 	}
 
 	for ln, lv := range sample.Metric {

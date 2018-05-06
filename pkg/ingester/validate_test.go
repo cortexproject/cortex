@@ -36,12 +36,12 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelValue", "much_shorter_name": "test_value_please_ignore_no_really_nothing_to_see_here"},
-			httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, "much_shorter_name"),
+			httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, "test_value_please_ignore_no_really_nothing_to_see_here"),
 		},
 	} {
 		err := ValidateSample(&model.Sample{
 			Metric: c.metric,
-		},25,25)
+		}, 25, 25)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }

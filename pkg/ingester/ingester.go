@@ -40,6 +40,9 @@ const (
 	DefaultMaxSeriesPerUser = 5000000
 	// DefaultMaxSeriesPerMetric is the maximum number of series in one metric (of a single user).
 	DefaultMaxSeriesPerMetric = 50000
+
+	DefaultMaxLengthLabelName  = 1024
+	DefaultMaxLengthLabelValue = 2048
 )
 
 var (
@@ -82,7 +85,7 @@ type Config struct {
 	RejectOldSamplesMaxAge time.Duration
 
 	// maximum length settings for label names and values
-	MaxLengthLabelName int
+	MaxLengthLabelName  int
 	MaxLengthLabelValue int
 
 	// For testing, you can override the address and ID of this ingester
@@ -117,8 +120,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.RejectOldSamples, "ingester.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "ingester.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 
-	f.IntVar(&cfg.MaxLengthLabelName,"ingester.max-length-label-name", 1024, "Maximum length accepted for label names")
-	f.IntVar(&cfg.MaxLengthLabelValue,"ingester.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
+	f.IntVar(&cfg.MaxLengthLabelName, "ingester.max-length-label-name", 1024, "Maximum length accepted for label names")
+	f.IntVar(&cfg.MaxLengthLabelValue, "ingester.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -193,6 +196,13 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	}
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
+	}
+
+	if cfg.MaxLengthLabelValue <= 0 {
+		cfg.MaxLengthLabelValue = DefaultMaxLengthLabelValue
+	}
+	if cfg.MaxLengthLabelName <= 0 {
+		cfg.MaxLengthLabelName = DefaultMaxLengthLabelName
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
@@ -331,7 +341,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 
 	if err := ValidateSample(sample, i.cfg.MaxLengthLabelName, i.cfg.MaxLengthLabelValue); err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
-		return nil
+		return err
 	}
 
 	for ln, lv := range sample.Metric {

@@ -1,4 +1,4 @@
-package util
+package ingester
 
 import (
 	"net/http"

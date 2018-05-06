@@ -7,11 +7,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 )
 
-var (
-	maxLabelNameLength  = 1024
-	maxLabelValueLength = 2048
-)
-
 const (
 	errMissingMetricName = "sample missing metric name"
 	errInvalidMetricName = "sample invalid metric name: '%s'"
@@ -21,7 +16,7 @@ const (
 )
 
 // ValidateSample returns an err if the sample is invalid
-func ValidateSample(s *model.Sample) error {
+func ValidateSample(s *model.Sample,maxLabelNameLength, maxLabelValueLength int) error {
 	metricName, ok := s.Metric[model.MetricNameLabel]
 	if !ok {
 		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)

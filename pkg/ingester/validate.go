@@ -7,11 +7,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 )
 
-var (
-	maxLabelNameLength  = 1024
-	maxLabelValueLength = 2048
-)
-
 const (
 	errMissingMetricName = "sample missing metric name"
 	errInvalidMetricName = "sample invalid metric name: '%s'"

@@ -28,7 +28,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	flag.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
-	flag.DurationVar(&promql.LookbackDelta, "query.lookback-delta", promql.LookbackDelta, "The delta difference allowed for retrieving metrics during expression evaluations.")
+	flag.DurationVar(&promql.LookbackDelta, "querier.lookback-delta", promql.LookbackDelta, "The delta difference allowed for retrieving metrics during expression evaluations.")
 }
 
 // ChunkStore is the interface we need to get chunks

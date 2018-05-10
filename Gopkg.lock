@@ -737,7 +737,7 @@
     "util/yaml",
     "web/api/v1"
   ]
-  revision = "4801573b64b34ea929620e948fc36da006f2f966"
+  revision = "c47fbcb626acb037d1e0ad11ca923cf3fd3a9bdd"
 
 [[projects]]
   branch = "master"
@@ -750,7 +750,7 @@
     "index",
     "labels"
   ]
-  revision = "467948f3c3f2f6f4ed9881afba27dd3ae24393eb"
+  revision = "195bc0d286b077f5633eb4bda76743620588b2fa"
 
 [[projects]]
   branch = "master"
@@ -1043,10 +1043,10 @@
   version = "v1.9.1"
 
 [[projects]]
-  name = "gopkg.in/fsnotify.v1"
+  name = "gopkg.in/fsnotify/fsnotify.v1"
   packages = ["."]
-  revision = "629574ca2a5df945712d3079857300b5e4da0236"
-  version = "v1.4.2"
+  revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
+  version = "v1.4.7"
 
 [[projects]]
   name = "gopkg.in/inf.v0"
@@ -1190,6 +1190,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9a993b069c652c8a2645ea8807afc6c3430e5034c4f66af7ca55e5ad236a5872"
+  inputs-digest = "fc2b611011b916790e0e1f112a7e0359692b3963b08ca30fbdfc34c37278246c"
   solver-name = "gps-cdcl"
   solver-version = 1

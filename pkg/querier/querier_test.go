@@ -12,6 +12,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
@@ -104,13 +105,13 @@ func TestMergeQuerierSortsMetricLabels(t *testing.T) {
 				},
 			},
 		},
-		mint:         0,
-		maxt:         0,
-		metadataOnly: false,
+		mint: 0,
+		maxt: 0,
 	}
 	m, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
-	ss, err := mq.Select(m)
+	dummyParams := storage.SelectParams{}
+	ss, err := mq.Select(&dummyParams, m)
 	require.NoError(t, err)
 	require.NoError(t, ss.Err())
 	ss.Next()

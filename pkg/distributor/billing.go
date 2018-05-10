@@ -10,6 +10,10 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+func init() {
+	billing.MustRegisterMetrics()
+}
+
 func (d *Distributor) emitBillingRecord(ctx context.Context, buf []byte, samples int64) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {

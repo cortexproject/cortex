@@ -55,9 +55,14 @@ func (i *invertedIndex) lookup(matchers []*labels.Matcher) []model.Fingerprint {
 			return nil
 		}
 		var toIntersect []model.Fingerprint
-		for value, fps := range values {
-			if matcher.Matches(string(value)) {
-				toIntersect = merge(toIntersect, fps)
+		if matcher.Type == labels.MatchEqual {
+			fps := values[model.LabelValue(matcher.Value)]
+			toIntersect = merge(toIntersect, fps)
+		} else {
+			for value, fps := range values {
+				if matcher.Matches(string(value)) {
+					toIntersect = merge(toIntersect, fps)
+				}
 			}
 		}
 		intersection = intersect(intersection, toIntersect)
@@ -151,11 +156,7 @@ func merge(a, b []model.Fingerprint) []model.Fingerprint {
 			j++
 		}
 	}
-	for ; i < len(a); i++ {
-		result = append(result, a[i])
-	}
-	for ; j < len(b); j++ {
-		result = append(result, b[j])
-	}
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
 	return result
 }

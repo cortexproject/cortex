@@ -36,12 +36,13 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		querierConfig     querier.Config
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 		logLevel          util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
 		&chunkStoreConfig, &schemaConfig, &storageConfig, &logLevel)
 	flag.Parse()
 
@@ -87,16 +88,16 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
-	sampleQueryable := querier.NewQueryable(dist, chunkStore, false)
-	metadataQueryable := querier.NewQueryable(dist, chunkStore, true)
+	queryable := querier.NewQueryable(dist, chunkStore)
 
-	engine := promql.NewEngine(sampleQueryable, nil)
+	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
 	api := v1.NewAPI(
 		engine,
-		metadataQueryable,
+		queryable,
 		querier.DummyTargetRetriever{},
 		querier.DummyAlertmanagerRetriever{},
 		func() config.Config { return config.Config{} },
+		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.
@@ -106,7 +107,7 @@ func main() {
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(middleware.AuthenticateUser.Wrap(promRouter))
-	subrouter.Path("/read").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(sampleQueryable.RemoteReadHandler)))
+	subrouter.Path("/read").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(queryable.RemoteReadHandler)))
 	subrouter.Path("/validate_expr").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 

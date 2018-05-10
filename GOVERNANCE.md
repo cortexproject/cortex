@@ -17,7 +17,7 @@ Maintainers can be removed by a 2/3 majority vote.
 
 ## Approving PRs
 
-PRs may be merged after receiving at least two votes.
+PRs may be merged after receiving at least two positive votes. If the PR author is a maintainer, this counts as a vote.
 
 ## Github Project Administration
 

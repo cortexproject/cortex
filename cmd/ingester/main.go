@@ -43,7 +43,7 @@ func main() {
 	defer trace.Close()
 
 	// Ingester needs to know our gRPC listen port.
-	ingesterConfig.ListenPort = &serverConfig.GRPCListenPort
+	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
 		&schemaConfig, &ingesterConfig, &logLevel)
 	flag.UintVar(&maxStreams, "ingester.max-concurrent-streams", 1000, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")

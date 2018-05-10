@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -63,18 +62,14 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	RingConfig       ring.Config
+	LifecyclerConfig ring.LifecyclerConfig
 	userStatesConfig UserStatesConfig
 	clientConfig     client.Config
-	// Config for the ingester lifecycle control
-	ListenPort       *int
-	NumTokens        int
-	HeartbeatPeriod  time.Duration
-	JoinAfter        time.Duration
-	SearchPendingFor time.Duration
-	ClaimOnRollout   bool
 
-	// Config for chunk flushing
+	// Config for transferring chunks.
+	SearchPendingFor time.Duration
+
+	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration
 	MaxChunkIdle      time.Duration
 	FlushOpTimeout    time.Duration
@@ -86,13 +81,8 @@ type Config struct {
 	RejectOldSamples       bool
 	RejectOldSamplesMaxAge time.Duration
 
-	// For testing, you can override the address and ID of this ingester
-	addr                  string
-	infName               string
-	id                    string
-	skipUnregister        bool
+	// For unit testing.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
-	KVClient              ring.KVClient
 }
 
 // SetClientConfig sets clientConfig in config
@@ -102,14 +92,11 @@ func (cfg *Config) SetClientConfig(clientConfig client.Config) {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RingConfig.RegisterFlags(f)
+	cfg.LifecyclerConfig.RegisterFlags(f)
 	cfg.userStatesConfig.RegisterFlags(f)
 	cfg.clientConfig.RegisterFlags(f)
-	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
-	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
-	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")
+
 	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
-	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
 
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
@@ -120,49 +107,22 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.RejectOldSamples, "ingester.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "ingester.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to get hostname", "err", err)
-		os.Exit(1)
-	}
-
-	f.StringVar(&cfg.infName, "ingester.interface", "eth0", "Name of network interface to read address from.")
-	f.StringVar(&cfg.addr, "ingester.addr", "", "IP address to register into consul.")
-	f.StringVar(&cfg.id, "ingester.id", hostname, "ID to register into consul.")
 }
 
-// Ingester deals with "in flight" chunks.
-// Its like MemorySeriesStorage, but simpler.
+// Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
+// MemorySeriesStorage.
 type Ingester struct {
-	cfg         Config
-	chunkStore  ChunkStore
-	ringKVStore ring.KVClient
+	cfg        Config
+	chunkStore ChunkStore
+	lifecycler *ring.Lifecycler
+
+	stopLock sync.RWMutex
+	stopped  bool
+	quit     chan struct{}
+	done     sync.WaitGroup
 
 	userStatesMtx sync.RWMutex
 	userStates    *userStates
-
-	// These values are initialised at startup, and never change
-	id   string
-	addr string
-
-	// Controls the lifecycle of the ingester
-	stopLock  sync.RWMutex
-	stopped   bool
-	quit      chan struct{}
-	done      sync.WaitGroup
-	actorChan chan func()
-
-	// We need to remember the ingester state just in case consul goes away and comes
-	// back empty.  And it changes during lifecycle of ingester.
-	stateMtx sync.Mutex
-	state    ring.IngesterState
-	tokens   []uint32
-
-	// Controls the ready-reporting
-	readyLock sync.Mutex
-	startTime time.Time
-	ready     bool
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -217,39 +177,13 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		return nil, err
 	}
 
-	kvstore := cfg.KVClient
-	if kvstore == nil {
-		var err error
-		codec := ring.ProtoCodec{Factory: ring.ProtoDescFactory}
-		kvstore, err = ring.NewConsulClient(cfg.RingConfig.ConsulConfig, codec)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	addr := cfg.addr
-	if addr == "" {
-		var err error
-		addr, err = util.GetFirstAddressOf(cfg.infName)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	i := &Ingester{
-		cfg:         cfg,
-		ringKVStore: kvstore,
-		chunkStore:  chunkStore,
-		userStates:  newUserStates(&cfg.userStatesConfig),
+		cfg: cfg,
 
-		addr: fmt.Sprintf("%s:%d", addr, *cfg.ListenPort),
-		id:   cfg.id,
+		chunkStore: chunkStore,
+		userStates: newUserStates(&cfg.userStatesConfig),
 
-		quit:      make(chan struct{}),
-		actorChan: make(chan func()),
-		state:     ring.PENDING,
-		startTime: time.Now(),
-
+		quit:        make(chan struct{}),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
@@ -287,8 +221,13 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		}),
 	}
 
-	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
+	var err error
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i)
+	if err != nil {
+		return nil, err
+	}
 
+	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue()
 		go i.flushLoop(j)
@@ -300,16 +239,44 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	return i, nil
 }
 
-func (i *Ingester) getState() ring.IngesterState {
-	i.stateMtx.Lock()
-	defer i.stateMtx.Unlock()
-	return i.state
+func (i *Ingester) loop() {
+	defer i.done.Done()
+
+	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
+	defer flushTicker.Stop()
+
+	rateUpdateTicker := time.NewTicker(i.cfg.userStatesConfig.RateUpdatePeriod)
+	defer rateUpdateTicker.Stop()
+
+	for {
+		select {
+		case <-flushTicker.C:
+			i.sweepUsers(false)
+
+		case <-rateUpdateTicker.C:
+			i.userStates.updateRates()
+
+		case <-i.quit:
+			return
+		}
+	}
 }
 
-func (i *Ingester) setState(state ring.IngesterState) {
-	i.stateMtx.Lock()
-	defer i.stateMtx.Unlock()
-	i.state = state
+// Shutdown beings the process to stop this ingester.
+func (i *Ingester) Shutdown() {
+	// First wait for our flush loop to stop.
+	close(i.quit)
+	i.done.Wait()
+
+	// Next initiate our graceful exit from the ring.
+	i.lifecycler.Shutdown()
+}
+
+// StopIncomingRequests is called during the shutdown process.
+func (i *Ingester) StopIncomingRequests() {
+	i.stopLock.Lock()
+	defer i.stopLock.Unlock()
+	i.stopped = true
 }
 
 // Push implements client.IngesterServer
@@ -517,6 +484,17 @@ func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsReques
 // Check implements the grpc healthcheck
 func (i *Ingester) Check(ctx old_ctx.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+// ReadinessHandler is used to indicate to k8s when the ingesters are ready for
+// the addition removal of another ingester. Returns 204 when the ingester is
+// ready, 500 otherwise.
+func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
+	if i.lifecycler.IsReady() {
+		w.WriteHeader(http.StatusNoContent)
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 // Describe implements prometheus.Collector.

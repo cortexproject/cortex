@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/weaveworks/common/user"
@@ -27,12 +26,6 @@ const (
 	userID    = "1"
 	aLongTime = 60 * time.Second
 )
-
-func init() {
-	al := promlog.AllowedLevel{}
-	al.Set("debug")
-	util.InitLogger(al)
-}
 
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()

@@ -48,8 +48,15 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	// The ingesters state effectively works as a giant mutex around this whole
 	// method, and as such we have to ensure we unlock the mutex.
 	defer func() {
-		if i.lifecycler.GetState() != ring.ACTIVE {
-			// Enter PENDING state (only valid from JOINING)
+		state := i.lifecycler.GetState()
+		if i.lifecycler.GetState() == ring.ACTIVE {
+			return
+		}
+
+		level.Error(util.Logger).Log("msg", "TranferChunks failed, not in ACTIVE state.", "state", state)
+
+		// Enter PENDING state (only valid from JOINING)
+		if i.lifecycler.GetState() == ring.JOINING {
 			if err := i.lifecycler.ChangeState(ring.PENDING); err != nil {
 				level.Error(util.Logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
 				os.Exit(1)

@@ -164,9 +164,9 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 	return descs, nil
 }
 
-// Transfer finds an ingester in PENDING state and transfers our chunks to it.
+// TransferOut finds an ingester in PENDING state and transfers our chunks to it.
 // Called as part of the ingester shutdown process.
-func (i *Ingester) Transfer() error {
+func (i *Ingester) TransferOut() error {
 	targetIngester, err := i.findTargetIngester()
 	if err != nil {
 		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)

@@ -2,11 +2,11 @@ package util
 
 import (
 	"flag"
+	"os"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/promlog"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 )
@@ -16,13 +16,13 @@ import (
 var Logger = log.NewNopLogger()
 
 // InitLogger initializes the global logger according to the allowed log level.
-func InitLogger(level promlog.AllowedLevel) {
-	Logger = MustNewPrometheusLogger(promlog.New(level))
+func InitLogger(level AllowedLevel) {
+	Logger = MustNewPrometheusLogger(level)
 }
 
 // LogLevel supports registering a flag for the desired log level.
 type LogLevel struct {
-	promlog.AllowedLevel
+	AllowedLevel
 }
 
 // RegisterFlags adds the log level flag to the provided flagset.
@@ -69,7 +69,11 @@ var supportedLevels = []level.Value{level.DebugValue(), level.InfoValue(), level
 // NewPrometheusLogger creates a new instance of PrometheusLogger which exposes Prometheus counters for various log levels.
 // Contrarily to MustNewPrometheusLogger, it returns an error to the caller in case of issue.
 // Use NewPrometheusLogger if you want more control. Use MustNewPrometheusLogger if you want a less verbose logger creation.
-func NewPrometheusLogger(l log.Logger) (*PrometheusLogger, error) {
+func NewPrometheusLogger(al AllowedLevel) (log.Logger, error) {
+	// This code copy-pasted from prometheus/common/promlog.New()
+	l := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	l = al.Filter(l)
+
 	counterVec := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "log_messages",
 		Help: "Total number of log messages.",
@@ -90,17 +94,20 @@ func NewPrometheusLogger(l log.Logger) (*PrometheusLogger, error) {
 			return nil, err
 		}
 	}
-	return &PrometheusLogger{
+	l = &PrometheusLogger{
 		counterVec: counterVec,
 		logger:     l,
-	}, nil
+	}
+	// DefaultCaller must be the last wrapper
+	l = log.With(l, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
+	return l, nil
 }
 
 // MustNewPrometheusLogger creates a new instance of PrometheusLogger which exposes Prometheus counters for various log levels.
 // Contrarily to NewPrometheusLogger, it does not return any error to the caller, but panics instead.
 // Use MustNewPrometheusLogger if you want a less verbose logger creation. Use NewPrometheusLogger if you want more control.
-func MustNewPrometheusLogger(l log.Logger) *PrometheusLogger {
-	logger, err := NewPrometheusLogger(l)
+func MustNewPrometheusLogger(al AllowedLevel) log.Logger {
+	logger, err := NewPrometheusLogger(al)
 	if err != nil {
 		panic(err)
 	}

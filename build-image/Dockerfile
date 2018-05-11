@@ -22,3 +22,8 @@ RUN go get -tags netgo \
 COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]
+
+ARG revision
+LABEL org.opencontainers.image.title="build-image" \
+      org.opencontainers.image.source="https://github.com/weaveworks/cortex/tree/master/build-image" \
+      org.opencontainers.image.revision="${revision}"

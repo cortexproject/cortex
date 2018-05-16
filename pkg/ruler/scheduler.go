@@ -56,10 +56,11 @@ func init() {
 }
 
 type workItem struct {
-	userID    string
-	groupName string
-	rules     []rules.Rule
-	scheduled time.Time
+	userID     string
+	groupName  string
+	rules      []rules.Rule
+	scheduled  time.Time
+	generation configs.ID // a monotonically increasing number used to spot out of date work items
 }
 
 // Key implements ScheduledItem
@@ -74,11 +75,16 @@ func (w workItem) Scheduled() time.Time {
 
 // Defer returns a work item with updated rules, rescheduled to a later time.
 func (w workItem) Defer(interval time.Duration, groupName string, currentRules []rules.Rule) workItem {
-	return workItem{w.userID, groupName, currentRules, w.scheduled.Add(interval)}
+	return workItem{w.userID, groupName, currentRules, w.scheduled.Add(interval), w.generation}
 }
 
 func (w workItem) String() string {
 	return fmt.Sprintf("%s:%s:%d@%s", w.userID, w.groupName, len(w.rules), w.scheduled.Format(timeLogFormat))
+}
+
+type userConfig struct {
+	rules      map[string][]rules.Rule
+	generation configs.ID // a monotonically increasing number used to spot out of date work items
 }
 
 type scheduler struct {
@@ -88,8 +94,8 @@ type scheduler struct {
 
 	pollInterval time.Duration // how often we check for new config
 
-	cfgs         map[string]map[string][]rules.Rule // all rules for all users
-	latestConfig configs.ID                         // # of last update received from config
+	cfgs         map[string]userConfig // all rules for all users
+	latestConfig configs.ID            // # of last update received from config
 	sync.RWMutex
 
 	stop chan struct{}
@@ -103,7 +109,7 @@ func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Durat
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
-		cfgs:               map[string]map[string][]rules.Rule{},
+		cfgs:               map[string]userConfig{},
 
 		stop: make(chan struct{}),
 		done: make(chan struct{}),
@@ -204,6 +210,9 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	hasher := fnv.New64a()
+	s.Lock()
+	generation := s.latestConfig
+	s.Unlock()
 
 	for userID, config := range cfgs {
 		rulesByGroup, err := config.Config.Parse()
@@ -222,14 +231,14 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 		if config.IsDeleted() {
 			delete(s.cfgs, userID)
 		} else {
-			s.cfgs[userID] = rulesByGroup
+			s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
 		}
 		s.Unlock()
 		if !config.IsDeleted() {
 			evalTime := s.computeNextEvalTime(hasher, now, userID)
 			for group, rules := range rulesByGroup {
 				level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", group, "num_rules", len(rules))
-				s.addWorkItem(workItem{userID, group, rules, evalTime})
+				s.addWorkItem(workItem{userID, group, rules, evalTime, generation})
 			}
 		}
 	}
@@ -267,13 +276,13 @@ func (s *scheduler) nextWorkItem() *workItem {
 // workItemDone marks the given item as being ready to be rescheduled.
 func (s *scheduler) workItemDone(i workItem) {
 	s.Lock()
-	ruleSet, found := s.cfgs[i.userID]
+	config, found := s.cfgs[i.userID]
 	var currentRules []rules.Rule
 	if found {
-		currentRules = ruleSet[i.groupName]
+		currentRules = config.rules[i.groupName]
 	}
 	s.Unlock()
-	if !found || len(currentRules) == 0 {
+	if !found || len(currentRules) == 0 || i.generation < config.generation {
 		level.Debug(util.Logger).Log("msg", "scheduler: stopping item", "user_id", i.userID, "group", i.groupName, "found", found, "len", len(currentRules))
 		return
 	}

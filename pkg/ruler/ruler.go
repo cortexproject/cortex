@@ -366,6 +366,7 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
 		if span := opentracing.SpanFromContext(ctx); span != nil {
 			span.SetTag("instance", userID)
+			span.SetTag("groupName", item.groupName)
 		}
 		g, err := r.newGroup(ctx, userID, item)
 		if err != nil {

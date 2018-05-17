@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/prometheus/prometheus/rules"
 )
 
 type fakeHasher struct {
@@ -64,4 +66,33 @@ func TestSchedulerComputeNextEvalTime(t *testing.T) {
 		assert.Equal(t, midCycleTime+10, evalTime(midCycleTime, cycleOffset-5))
 		assert.Equal(t, midCycleTime+14, evalTime(midCycleTime, cycleOffset-1))
 	}
+}
+
+func TestSchedulerRulesOverlap(t *testing.T) {
+	s := newScheduler(nil, 15, 15)
+	userID := "bob"
+	groupName := "test"
+	next := time.Now()
+
+	ruleSet := []rules.Rule{
+		nil,
+	}
+	ruleSets := map[string][]rules.Rule{}
+	ruleSets[groupName] = ruleSet
+
+	cfg := userConfig{generation: 1, rules: ruleSets}
+	s.cfgs[userID] = cfg
+	w1 := workItem{userID: userID, groupName: groupName, scheduled: next, generation: cfg.generation}
+	s.workItemDone(w1)
+	item := s.q.Dequeue().(workItem)
+	assert.Equal(t, w1.generation, item.generation)
+
+	w0 := workItem{userID: userID, groupName: groupName, scheduled: next, generation: cfg.generation - 1}
+	s.workItemDone(w1)
+	s.workItemDone(w0)
+	item = s.q.Dequeue().(workItem)
+	assert.Equal(t, w1.generation, item.generation)
+
+	s.q.Close()
+	assert.Equal(t, nil, s.q.Dequeue())
 }

@@ -176,7 +176,7 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 	var cfgs map[string]configs.VersionedRulesConfig
 	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetConfigs", configsRequestDuration, func(_ context.Context) error {
 		var err error
-		cfgs, err = s.rulesAPI.GetConfigs(configID)
+		cfgs, err = s.rulesAPI.GetConfigs(configID) // Warning: this will produce an incorrect result if the configID ever overflows
 		return err
 	})
 	if err != nil {
@@ -283,6 +283,7 @@ func (s *scheduler) workItemDone(i workItem) {
 	}
 	s.Unlock()
 	if !found || len(currentRules) == 0 || i.generation < config.generation {
+		// Warning: this test will produce an incorrect result if the generation ever overflows
 		level.Debug(util.Logger).Log("msg", "scheduler: stopping item", "user_id", i.userID, "group", i.groupName, "found", found, "len", len(currentRules))
 		return
 	}

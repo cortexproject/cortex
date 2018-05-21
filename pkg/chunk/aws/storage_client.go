@@ -249,7 +249,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 				unprocessed.TakeReqs(requests, -1)
 				backoff.Wait()
 				continue
-			} else if ok && awsErr.Code() == "ValidationException" {
+			} else if ok && awsErr.Code() == validationException {
 				// this write will never work, so the only option is to drop the offending items and continue.
 				// TODO: add more debug options for capturing data/telemetry about the offending items?
 				level.Warn(util.Logger).Log("Data lost while flushing to Dynamo: %v", awsErr)
@@ -628,9 +628,9 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 				backoff.Wait()
 				continue
 			} else if ok && awsErr.Code() == validationException {
-				// this write will never work, so the only option is to drop the offending items and continue.
+				// this read will never work, so the only option is to drop the offending request and continue.
 				// TODO: add more debug options for capturing data/telemetry about the offending items?
-				level.Warn(util.Logger).Log("Data lost while flushing to Dynamo: %v", awsErr)
+				level.Warn(util.Logger).Log("Error while fetching data from Dynamo: %v", awsErr)
 				level.Debug(util.Logger).Log("Dropped request details: \n%v", requests)
 				continue
 			}

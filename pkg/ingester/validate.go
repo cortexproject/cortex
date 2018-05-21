@@ -16,7 +16,7 @@ const (
 )
 
 // ValidateSample returns an err if the sample is invalid
-func ValidateSample(s *model.Sample,maxLabelNameLength, maxLabelValueLength int) error {
+func ValidateSample(s *model.Sample, maxLabelNameLength, maxLabelValueLength int) error {
 	metricName, ok := s.Metric[model.MetricNameLabel]
 	if !ok {
 		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)

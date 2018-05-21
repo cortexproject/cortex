@@ -16,7 +16,7 @@ import (
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 	var req client.WriteRequest
-	buf, err := util.ParseProtoRequest(r.Context(), r, &req, compressionType)
+	buf, err := util.ParseProtoReader(r.Context(), r.Body, &req, compressionType)
 	logger := util.WithContext(r.Context(), util.Logger)
 	if err != nil {
 		level.Error(logger).Log("err", err.Error())

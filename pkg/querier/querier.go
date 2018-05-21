@@ -28,6 +28,9 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	flag.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
+	if flag.Lookup("promql.lookback-delta") == nil {
+		flag.DurationVar(&promql.LookbackDelta, "promql.lookback-delta", promql.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
+	}
 }
 
 // ChunkStore is the interface we need to get chunks

@@ -41,8 +41,9 @@ const (
 	DefaultMaxSeriesPerUser = 5000000
 	// DefaultMaxSeriesPerMetric is the maximum number of series in one metric (of a single user).
 	DefaultMaxSeriesPerMetric = 50000
-
-	DefaultMaxLengthLabelName  = 1024
+	// DefaultMaxLengthLabelName is the maximum length a label name can be.
+	DefaultMaxLengthLabelName = 1024
+	// DefaultMaxLengthLabelValue is the maximum length a label value can be.
 	DefaultMaxLengthLabelValue = 2048
 )
 

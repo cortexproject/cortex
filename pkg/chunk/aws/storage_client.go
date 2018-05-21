@@ -45,7 +45,7 @@ const (
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
 	dynamoDBMaxWriteBatchSize = 25
 	dynamoDBMaxReadBatchSize  = 100
-	ValidationException       = "ValidationException"
+	validationException       = "ValidationException"
 )
 
 var (
@@ -627,7 +627,7 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 				unprocessed.TakeReqs(requests, -1)
 				backoff.Wait()
 				continue
-			} else if ok && awsErr.Code() == ValidationException {
+			} else if ok && awsErr.Code() == validationException {
 				// this write will never work, so the only option is to drop the offending items and continue.
 				// TODO: add more debug options for capturing data/telemetry about the offending items?
 				level.Warn(util.Logger).Log("Data lost while flushing to Dynamo: %v", awsErr)

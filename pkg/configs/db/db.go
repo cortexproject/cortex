@@ -3,6 +3,7 @@ package db
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 
 	"github.com/weaveworks/cortex/pkg/configs"
@@ -14,12 +15,14 @@ import (
 type Config struct {
 	URI           string
 	MigrationsDir string
+	PasswordFile  string
 }
 
 // RegisterFlags adds the flags required to configure this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.URI, "database.uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found (for dev you can use memory://)")
 	flag.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
+	flag.StringVar(&cfg.PasswordFile, "database.password-file", "", "File containing password (username goes in URI)")
 }
 
 // RulesDB has ruler-specific DB interfaces.
@@ -60,12 +63,24 @@ func New(cfg Config) (DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(cfg.PasswordFile) != 0 {
+		if u.User == nil {
+			return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
+		}
+		passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
+		if err != nil {
+			return nil, fmt.Errorf("Could not read database password file: %v", err)
+		}
+		u.User = url.UserPassword(u.User.Username(), string(passwordBytes))
+	}
+
 	var d DB
 	switch u.Scheme {
 	case "memory":
-		d, err = memory.New(cfg.URI, cfg.MigrationsDir)
+		d, err = memory.New(u.String(), cfg.MigrationsDir)
 	case "postgres":
-		d, err = postgres.New(cfg.URI, cfg.MigrationsDir)
+		d, err = postgres.New(u.String(), cfg.MigrationsDir)
 	default:
 		return nil, fmt.Errorf("Unknown database type: %s", u.Scheme)
 	}

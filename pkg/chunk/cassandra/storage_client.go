@@ -19,10 +19,11 @@ const (
 
 // Config for a StorageClient
 type Config struct {
-	addresses         string
-	keyspace          string
-	consistency       string
-	replicationFactor int
+	addresses                string
+	keyspace                 string
+	consistency              string
+	replicationFactor        int
+	disableInitialHostLookup bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -31,6 +32,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.keyspace, "cassandra.keyspace", "", "Keyspace to use in Cassandra.")
 	f.StringVar(&cfg.consistency, "cassandra.consistency", "QUORUM", "Consistency level for Cassandra.")
 	f.IntVar(&cfg.replicationFactor, "cassandra.replication-factor", 1, "Replication factor to use in Cassandra.")
+	f.BoolVar(&cfg.disableInitialHostLookup, "cassandra.disable-initial-host-lookup", false, "Instruct the cassandra driver to not attempt to get host info from the system.peers table.")
 }
 
 func (cfg *Config) session() (*gocql.Session, error) {
@@ -48,6 +50,7 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.Consistency = consistency
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
+	cluster.DisableInitialHostLookup = cfg.disableInitialHostLookup
 
 	return cluster.CreateSession()
 }
@@ -57,6 +60,7 @@ func (cfg *Config) createKeyspace() error {
 	cluster := gocql.NewCluster(strings.Split(cfg.addresses, ",")...)
 	cluster.Keyspace = "system"
 	cluster.Timeout = 20 * time.Second
+	cluster.DisableInitialHostLookup = cfg.disableInitialHostLookup
 	session, err := cluster.CreateSession()
 	if err != nil {
 		return errors.WithStack(err)

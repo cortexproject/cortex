@@ -62,6 +62,14 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.Consistency = consistency
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
+
+	cfg.setClusterConfig(cluster)
+
+	return cluster.CreateSession()
+}
+
+// apply config settings to a cassandra ClusterConfig
+func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) {
 	cluster.DisableInitialHostLookup = cfg.disableInitialHostLookup
 
 	if cfg.ssl {
@@ -76,8 +84,6 @@ func (cfg *Config) session() (*gocql.Session, error) {
 			Password: cfg.password,
 		}
 	}
-
-	return cluster.CreateSession()
 }
 
 // createKeyspace will create the desired keyspace if it doesn't exist.
@@ -85,19 +91,9 @@ func (cfg *Config) createKeyspace() error {
 	cluster := gocql.NewCluster(strings.Split(cfg.addresses, ",")...)
 	cluster.Keyspace = "system"
 	cluster.Timeout = 20 * time.Second
-	cluster.DisableInitialHostLookup = cfg.disableInitialHostLookup
-	if cfg.ssl {
-		cluster.SslOpts = &gocql.SslOptions{
-			CaPath:                 cfg.caPath,
-			EnableHostVerification: cfg.hostVerification,
-		}
-	}
-	if cfg.auth {
-		cluster.Authenticator = gocql.PasswordAuthenticator{
-			Username: cfg.username,
-			Password: cfg.password,
-		}
-	}
+
+	cfg.setClusterConfig(cluster)
+
 	session, err := cluster.CreateSession()
 	if err != nil {
 		return errors.WithStack(err)

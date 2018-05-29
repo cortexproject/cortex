@@ -185,7 +185,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 	return nil
 }
 
-func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, status string, err error) {
+func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
 	var tableARN *string
 	err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(ctx context.Context) error {
@@ -206,7 +206,7 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 					}
 				}
 				if out.Table.TableStatus != nil {
-					status = *out.Table.TableStatus
+					isActive = (*out.Table.TableStatus == dynamodb.TableStatusActive)
 				}
 				tableARN = out.Table.TableArn
 			}

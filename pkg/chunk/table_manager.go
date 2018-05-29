@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -253,7 +252,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, expected := range descriptions {
 		level.Info(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
-		current, status, err := m.client.DescribeTable(ctx, expected.Name)
+		current, isActive, err := m.client.DescribeTable(ctx, expected.Name)
 		if err != nil {
 			return err
 		}
@@ -265,8 +264,8 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			continue
 		}
 
-		if status != dynamodb.TableStatusActive {
-			level.Info(util.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name, "status", status)
+		if !isActive {
+			level.Info(util.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name)
 			continue
 		}
 

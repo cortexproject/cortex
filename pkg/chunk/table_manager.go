@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -82,22 +81,6 @@ func (ts Tags) Equals(other Tags) bool {
 	}
 
 	return true
-}
-
-// AWSTags converts ts into a []*dynamodb.Tag.
-func (ts Tags) AWSTags() []*dynamodb.Tag {
-	if ts == nil {
-		return nil
-	}
-
-	var result []*dynamodb.Tag
-	for k, v := range ts {
-		result = append(result, &dynamodb.Tag{
-			Key:   aws.String(k),
-			Value: aws.String(v),
-		})
-	}
-	return result
 }
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables

@@ -104,6 +104,21 @@ func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
 	return table, err
 }
 
+func chunkTagsToDynamoDB(ts chunk.Tags) []*dynamodb.Tag {
+	if ts == nil {
+		return nil
+	}
+
+	var result []*dynamodb.Tag
+	for k, v := range ts {
+		result = append(result, &dynamodb.Tag{
+			Key:   aws.String(k),
+			Value: aws.String(v),
+		})
+	}
+	return result
+}
+
 func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
 	var tableARN *string
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
@@ -155,7 +170,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 		}
 	}
 
-	tags := desc.Tags.AWSTags()
+	tags := chunkTagsToDynamoDB(desc.Tags)
 	if len(tags) > 0 {
 		return d.backoffAndRetry(ctx, func(ctx context.Context) error {
 			return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
@@ -346,7 +361,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 			return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
 				_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
 					ResourceArn: tableARN,
-					Tags:        expected.Tags.AWSTags(),
+					Tags:        chunkTagsToDynamoDB(expected.Tags),
 				})
 				return err
 			})

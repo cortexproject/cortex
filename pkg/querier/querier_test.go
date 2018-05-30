@@ -126,6 +126,24 @@ func TestMergeQuerierSortsMetricLabels(t *testing.T) {
 	}, l)
 }
 
+func TestMergeQuerierEnforcesInvariantMetricName(t *testing.T) {
+	mq := mergeQuerier{
+		cfg: &Config{InvariantMetricName: true},
+		ctx: context.Background(),
+		queriers: []Querier{
+			mockQuerier{},
+		},
+		mint: 0,
+		maxt: 0,
+	}
+
+	m, err := labels.NewMatcher(labels.MatchRegexp, labels.MetricName, "testmetric")
+	require.NoError(t, err)
+	dummyParams := storage.SelectParams{}
+	_, err = mq.Select(&dummyParams, m)
+	require.Error(t, err)
+}
+
 type mockQuerier struct {
 	matrix model.Matrix
 }

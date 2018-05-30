@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -20,12 +21,14 @@ import (
 
 // Config contains the configuration require to create a querier
 type Config struct {
-	MaxConcurrent int
-	Timeout       time.Duration
+	InvariantMetricName bool
+	MaxConcurrent       int
+	Timeout             time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	flag.BoolVar(&cfg.InvariantMetricName, "querier.invariant-metricname", false, "Disable queries that do not include an invariant metricname.")
 	flag.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	flag.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
 	if flag.Lookup("promql.lookback-delta") == nil {
@@ -39,8 +42,9 @@ type ChunkStore interface {
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor Querier, chunkStore ChunkStore) MergeQueryable {
+func NewQueryable(distributor Querier, chunkStore ChunkStore, cfg *Config) MergeQueryable {
 	return MergeQueryable{
+		cfg: cfg,
 		queriers: []Querier{
 			distributor,
 			&chunkQuerier{
@@ -119,12 +123,14 @@ func mergeMatrices(matrices chan model.Matrix, errors chan error, n int) (model.
 // A MergeQueryable is a storage.Queryable that produces a storage.Querier which merges
 // results from multiple underlying Queriers.
 type MergeQueryable struct {
+	cfg      *Config
 	queriers []Querier
 }
 
 // Querier implements storage.Queryable.
 func (q MergeQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	return mergeQuerier{
+		cfg:      q.cfg,
 		ctx:      ctx,
 		queriers: q.queriers,
 		mint:     mint,
@@ -192,7 +198,18 @@ func (q MergeQueryable) RemoteReadHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func hasInvariantName(matchers []*labels.Matcher) bool {
+	for _, matcher := range matchers {
+		if matcher.Type == labels.MatchEqual && matcher.Name == labels.MetricName {
+			return true
+		}
+	}
+
+	return false
+}
+
 type mergeQuerier struct {
+	cfg      *Config
 	ctx      context.Context
 	queriers []Querier
 	mint     int64
@@ -200,6 +217,10 @@ type mergeQuerier struct {
 }
 
 func (mq mergeQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+	if mq.cfg != nil && mq.cfg.InvariantMetricName && !hasInvariantName(matchers) {
+		return nil, fmt.Errorf("query has variant metric name")
+	}
+
 	// TODO: Update underlying selectors to return errors directly.
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation, which needs only metadata
 	if sp == nil {

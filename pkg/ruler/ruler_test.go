@@ -29,7 +29,7 @@ func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
 	// other kinds of tests.
 
 	engine := promql.NewEngine(nil, nil, 20, 2*time.Minute)
-	queryable := querier.NewQueryable(nil, nil)
+	queryable := querier.NewQueryable(nil, nil, nil)
 	ruler, err := NewRuler(cfg, engine, queryable, nil)
 	if err != nil {
 		t.Fatal(err)

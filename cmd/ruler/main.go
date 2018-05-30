@@ -31,6 +31,7 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		querierConfig     querier.Config
 		rulerConfig       ruler.Config
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
@@ -43,7 +44,7 @@ func main() {
 	trace := tracing.NewFromEnv("ruler")
 	defer trace.Close()
 
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
 		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig, &logLevel)
 	flag.Parse()
 
@@ -78,7 +79,7 @@ func main() {
 	prometheus.MustRegister(dist)
 
 	engine := promql.NewEngine(util.Logger, prometheus.DefaultRegisterer, rulerConfig.NumWorkers, rulerConfig.GroupTimeout)
-	queryable := querier.NewQueryable(dist, chunkStore)
+	queryable := querier.NewQueryable(dist, chunkStore, &querierConfig)
 
 	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
 	if err != nil {

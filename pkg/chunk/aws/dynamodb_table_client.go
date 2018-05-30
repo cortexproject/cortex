@@ -42,6 +42,7 @@ type dynamoTableClient struct {
 	ApplicationAutoScaling applicationautoscalingiface.ApplicationAutoScalingAPI
 	limiter                *rate.Limiter
 	backoffConfig          util.BackoffConfig
+	metrics                *metricsData
 }
 
 // NewDynamoDBTableClient makes a new DynamoTableClient.
@@ -60,11 +61,17 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 		applicationAutoScaling = applicationautoscaling.New(session)
 	}
 
+	metrics, err := newMetrics(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	return dynamoTableClient{
 		DynamoDB:               dynamoDB,
 		ApplicationAutoScaling: applicationAutoScaling,
 		limiter:                rate.NewLimiter(rate.Limit(cfg.APILimit), 1),
 		backoffConfig:          cfg.backoffConfig,
+		metrics:                metrics,
 	}, nil
 }
 
@@ -163,7 +170,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 		return err
 	}
 
-	if desc.WriteScale.Enabled {
+	if desc.WriteScale.Enabled && d.ApplicationAutoScaling != nil {
 		err := d.enableAutoScaling(ctx, desc)
 		if err != nil {
 			return err
@@ -305,20 +312,28 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 }
 
 func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
-	var err error
-	if !current.WriteScale.Enabled {
-		if expected.WriteScale.Enabled {
-			err = d.enableAutoScaling(ctx, expected)
-		}
-	} else {
-		if !expected.WriteScale.Enabled {
-			err = d.disableAutoScaling(ctx, expected)
-		} else if current.WriteScale != expected.WriteScale {
-			err = d.enableAutoScaling(ctx, expected)
+	if expected.WriteScale.Enabled && d.metrics != nil {
+		if err := d.metricsAutoScale(ctx, &current, &expected); err != nil {
+			return err
 		}
 	}
-	if err != nil {
-		return err
+
+	if d.ApplicationAutoScaling != nil {
+		var err error
+		if !current.WriteScale.Enabled {
+			if expected.WriteScale.Enabled {
+				err = d.enableAutoScaling(ctx, expected)
+			}
+		} else {
+			if !expected.WriteScale.Enabled {
+				err = d.disableAutoScaling(ctx, expected)
+			} else if current.WriteScale != expected.WriteScale {
+				err = d.enableAutoScaling(ctx, expected)
+			}
+		}
+		if err != nil {
+			return err
+		}
 	}
 
 	if current.ProvisionedRead != expected.ProvisionedRead || current.ProvisionedWrite != expected.ProvisionedWrite {

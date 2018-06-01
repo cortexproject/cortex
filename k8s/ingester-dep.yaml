@@ -49,7 +49,7 @@ spec:
         - -dynamodb.base64-buckets-from=2017-01-17
         - -dynamodb.v4-schema-from=2017-02-05
         - -dynamodb.v5-schema-from=2017-02-22
-        - -dynamodb.v7-schema-from=2017-03-19
+        - -dynamodb.v6-schema-from=2017-03-19
         - -dynamodb.chunk-table.from=2017-04-17
         - -memcached.hostname=memcached.default.svc.cluster.local
         - -memcached.timeout=100ms

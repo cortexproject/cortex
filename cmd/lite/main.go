@@ -125,7 +125,7 @@ func main() {
 	defer tableManager.Stop()
 
 	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
-	queryable := querier.NewQueryable(dist, chunkStore)
+	queryable := querier.NewQueryable(dist, chunkStore, &querierConfig)
 
 	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
 		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)

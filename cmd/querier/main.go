@@ -88,7 +88,7 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
-	queryable := querier.NewQueryable(dist, chunkStore)
+	queryable := querier.NewQueryable(dist, chunkStore, &querierConfig)
 
 	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
 	api := v1.NewAPI(

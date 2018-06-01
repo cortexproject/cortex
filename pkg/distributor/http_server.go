@@ -35,11 +35,14 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := d.Push(r.Context(), &req); err != nil {
-		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			level.Error(logger).Log("msg", "push error", "err", err)
+		level.Error(logger).Log("msg", "push error", "err", err)
+		if err == errIngestionRateLimitExceeded {
+			// Return a 4xx here to have the client discard the data and not retry. If a client
+			// is sending too much data consistently we will unlikely ever catch up otherwise.
+			http.Error(w, err.Error(), http.StatusTooManyRequests)
+		} else if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
 			http.Error(w, string(httpResp.Body), int(httpResp.Code))
 		} else {
-			level.Error(logger).Log("msg", "push error", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return

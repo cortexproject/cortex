@@ -35,11 +35,10 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := d.Push(r.Context(), &req); err != nil {
+		level.Error(logger).Log("msg", "push error", "err", err)
 		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			level.Error(logger).Log("msg", "push error", "err", err)
 			http.Error(w, string(httpResp.Body), int(httpResp.Code))
 		} else {
-			level.Error(logger).Log("msg", "push error", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return

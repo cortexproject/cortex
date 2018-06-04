@@ -2,10 +2,10 @@ package distributor
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,18 +18,17 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 
 	billing "github.com/weaveworks/billing-client"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	ingester_client "github.com/weaveworks/cortex/pkg/ingester/client"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 )
-
-var errIngestionRateLimitExceeded = errors.New("ingestion rate limit exceeded")
 
 var (
 	numClientsDesc = prometheus.NewDesc(
@@ -268,7 +267,9 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	limiter := d.getOrCreateIngestLimiter(userID)
 	if !limiter.AllowN(time.Now(), len(samples)) {
-		return nil, errIngestionRateLimitExceeded
+		// Return a 4xx here to have the client discard the data and not retry. If a client
+		// is sending too much data consistently we will unlikely ever catch up otherwise.
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), len(samples))
 	}
 
 	replicationSets, err := d.ring.BatchGet(keys, ring.Write)

@@ -218,53 +218,57 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	generation := s.latestConfig
 	s.Unlock()
 
-userLoop:
 	for userID, config := range cfgs {
-		rulesByGroup, err := config.Config.Parse()
-		if err != nil {
-			// XXX: This means that if a user has a working configuration and
-			// they submit a broken one, we'll keep processing the last known
-			// working configuration, and they'll never know.
-			// TODO: Provide a way of deleting / cancelling recording rules.
-			level.Warn(util.Logger).Log("msg", "scheduler: invalid Cortex configuration", "user_id", userID, "err", err)
-			continue userLoop
-		}
-
-		level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_groups", len(rulesByGroup), "is_deleted", config.IsDeleted())
-		s.Lock()
-		// if deleted remove from map, otherwise - update map
-		if config.IsDeleted() {
-			delete(s.cfgs, userID)
-		} else {
-			s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
-		}
-		s.Unlock()
-		if !config.IsDeleted() {
-			evalTime := s.computeNextEvalTime(hasher, now, userID)
-			workItems := []workItem{}
-			for group, rules := range rulesByGroup {
-				level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", group, "num_rules", len(rules))
-				g, err := s.groupFn(userID, group, rules)
-				if err != nil {
-					// XXX: similarly to above if a user has a working configuration and
-					// for some reason we cannot create a group for the new one we'll use
-					// the last known working configuration
-					level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", group, "num_rules", len(rules))
-					continue userLoop
-				}
-				workItems = append(workItems, workItem{userID, group, g, evalTime, generation})
-			}
-
-			for _, i := range workItems {
-				s.addWorkItem(i)
-			}
-		}
+		s.addUserConfig(now, hasher, generation, userID, config)
 	}
+
 	configUpdates.Add(float64(len(cfgs)))
 	s.Lock()
 	lenCfgs := len(s.cfgs)
 	s.Unlock()
 	totalConfigs.Set(float64(lenCfgs))
+}
+
+func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation configs.ID, userID string, config configs.VersionedRulesConfig) {
+	rulesByGroup, err := config.Config.Parse()
+	if err != nil {
+		// XXX: This means that if a user has a working configuration and
+		// they submit a broken one, we'll keep processing the last known
+		// working configuration, and they'll never know.
+		// TODO: Provide a way of deleting / cancelling recording rules.
+		level.Warn(util.Logger).Log("msg", "scheduler: invalid Cortex configuration", "user_id", userID, "err", err)
+		return
+	}
+
+	level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_groups", len(rulesByGroup), "is_deleted", config.IsDeleted())
+	s.Lock()
+	// if deleted remove from map, otherwise - update map
+	if config.IsDeleted() {
+		delete(s.cfgs, userID)
+	} else {
+		s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
+	}
+	s.Unlock()
+	if !config.IsDeleted() {
+		evalTime := s.computeNextEvalTime(hasher, now, userID)
+		workItems := []workItem{}
+		for group, rules := range rulesByGroup {
+			level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", group, "num_rules", len(rules))
+			g, err := s.groupFn(userID, group, rules)
+			if err != nil {
+				// XXX: similarly to above if a user has a working configuration and
+				// for some reason we cannot create a group for the new one we'll use
+				// the last known working configuration
+				level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", group, "err", err)
+				return
+			}
+			workItems = append(workItems, workItem{userID, group, g, evalTime, generation})
+		}
+
+		for _, i := range workItems {
+			s.addWorkItem(i)
+		}
+	}
 }
 
 func (s *scheduler) addWorkItem(i workItem) {

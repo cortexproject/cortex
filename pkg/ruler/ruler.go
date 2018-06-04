@@ -378,7 +378,7 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 	if err := ctx.Err(); err == nil {
 		cancelTimeout() // release resources
 	} else {
-		level.Warn(util.Logger).Log("msg", "context error", "error", err)
+		level.Warn(util.Logger).Log("msg", "context error", "user_id", userID, "error", err)
 	}
 
 	rulesProcessed.Add(float64(len(item.group.Rules())))

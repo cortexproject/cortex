@@ -13,3 +13,7 @@ pkg/ingester/client/cortex.pb.go
 pkg/ring/ring.pb.go
 bazel-*
 images/
+!tools/run-local/ksonnet/environments/base.libsonnet
+!tools/run-local/ksonnet/environments/cortex-lite
+tools/run-local/ksonnet/environments/*
+tools/run-local/ksonnet/app.yamle

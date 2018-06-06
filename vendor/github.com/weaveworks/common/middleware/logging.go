@@ -36,7 +36,7 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 		wrapped := newBadResponseLoggingWriter(w, &buf)
 		next.ServeHTTP(wrapped, r)
 		statusCode := wrapped.statusCode
-		if 100 <= statusCode && statusCode < 500 || statusCode == 502 {
+		if 100 <= statusCode && statusCode < 500 || statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable {
 			logWithRequest(r).Debugf("%s %s (%d) %s", r.Method, uri, statusCode, time.Since(begin))
 			if l.LogRequestHeaders && headers != nil {
 				logWithRequest(r).Debugf("Is websocket request: %v\n%s", IsWSHandshakeRequest(r), string(headers))

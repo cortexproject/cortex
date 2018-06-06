@@ -493,7 +493,7 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	if i.lifecycler.IsReady() {
 		w.WriteHeader(http.StatusNoContent)
 	} else {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 }
 

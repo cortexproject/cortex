@@ -56,7 +56,7 @@ func fixturePeriodicTableConfig(prefix string, inactLastN int64, writeScale, ina
 	}
 }
 
-func expectedBaseTable(name string, provisionedRead, provisionedWrite int64) []chunk.TableDesc {
+func baseTable(name string, provisionedRead, provisionedWrite int64) []chunk.TableDesc {
 	return []chunk.TableDesc{
 		{
 			Name:             name,
@@ -66,47 +66,39 @@ func expectedBaseTable(name string, provisionedRead, provisionedWrite int64) []c
 	}
 }
 
-func expectedStaticTables(base, num int, provisionedRead, provisionedWrite int64) []chunk.TableDesc {
-	result := []chunk.TableDesc{}
-	for i := base; i < base+num; i++ {
-		result = append(result,
-			chunk.TableDesc{
-				Name:             tablePrefix + fmt.Sprint(i),
-				ProvisionedRead:  provisionedRead,
-				ProvisionedWrite: provisionedWrite,
-			},
-			chunk.TableDesc{
-				Name:             chunkTablePrefix + fmt.Sprint(i),
-				ProvisionedRead:  provisionedRead,
-				ProvisionedWrite: provisionedWrite,
-			},
-		)
+func staticTable(i int, indexRead, indexWrite, chunkRead, chunkWrite int64) []chunk.TableDesc {
+	return []chunk.TableDesc{
+		{
+			Name:             tablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  indexRead,
+			ProvisionedWrite: indexWrite,
+		},
+		{
+			Name:             chunkTablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  chunkRead,
+			ProvisionedWrite: chunkWrite,
+		},
 	}
-	return result
 }
 
-func expectedAutoscaledTables(base, num int, provisionedRead, provisionedWrite int64, indexOutCooldown int64, chunkTarget float64) []chunk.TableDesc {
+func autoScaledTable(i int, provisionedRead, provisionedWrite int64, indexOutCooldown int64, chunkTarget float64) []chunk.TableDesc {
 	chunkASC, indexASC := fixtureWriteScale(), fixtureWriteScale()
 	indexASC.OutCooldown = indexOutCooldown
 	chunkASC.TargetValue = chunkTarget
-	result := []chunk.TableDesc{}
-	for i := base; i < num+base; i++ {
-		result = append(result,
-			chunk.TableDesc{
-				Name:             tablePrefix + fmt.Sprint(i),
-				ProvisionedRead:  provisionedRead,
-				ProvisionedWrite: provisionedWrite,
-				WriteScale:       indexASC,
-			},
-			chunk.TableDesc{
-				Name:             chunkTablePrefix + fmt.Sprint(i),
-				ProvisionedRead:  provisionedRead,
-				ProvisionedWrite: provisionedWrite,
-				WriteScale:       chunkASC,
-			},
-		)
+	return []chunk.TableDesc{
+		{
+			Name:             tablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  provisionedRead,
+			ProvisionedWrite: provisionedWrite,
+			WriteScale:       indexASC,
+		},
+		{
+			Name:             chunkTablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  provisionedRead,
+			ProvisionedWrite: provisionedWrite,
+			WriteScale:       chunkASC,
+		},
 	}
-	return result
 }
 
 func TestTableManagerAutoScaling(t *testing.T) {
@@ -148,8 +140,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			tableManager,
 			"Create tables",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
-			append(expectedBaseTable("", inactiveRead, inactiveWrite),
-				expectedAutoscaledTables(0, 1, read, write, 100, 80)...),
+			append(baseTable("", inactiveRead, inactiveWrite),
+				autoScaledTable(0, read, write, 100, 80)...),
 		)
 	}
 
@@ -167,8 +159,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
-			append(expectedBaseTable("", inactiveRead, inactiveWrite),
-				expectedAutoscaledTables(0, 1, read, write, 200, 90)...),
+			append(baseTable("", inactiveRead, inactiveWrite),
+				autoScaledTable(0, read, write, 200, 90)...),
 		)
 	}
 
@@ -186,9 +178,9 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
-			append(append(expectedBaseTable("", inactiveRead, inactiveWrite),
-				expectedStaticTables(0, 1, inactiveRead, inactiveWrite)...),
-				expectedAutoscaledTables(1, 1, read, write, 200, 90)...),
+			append(append(baseTable("", inactiveRead, inactiveWrite),
+				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
+				autoScaledTable(1, read, write, 200, 90)...),
 		)
 	}
 
@@ -206,9 +198,9 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
-			append(append(expectedBaseTable("", inactiveRead, inactiveWrite),
-				expectedStaticTables(0, 1, inactiveRead, inactiveWrite)...),
-				expectedStaticTables(1, 1, read, write)...),
+			append(append(baseTable("", inactiveRead, inactiveWrite),
+				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
+				staticTable(1, read, write, read, write)...),
 		)
 	}
 }
@@ -252,8 +244,8 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			tableManager,
 			"Legacy and latest tables",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
-			append(expectedBaseTable("", inactiveRead, inactiveWrite),
-				expectedStaticTables(0, 1, read, write)...),
+			append(baseTable("", inactiveRead, inactiveWrite),
+				staticTable(0, read, write, read, write)...),
 		)
 	}
 
@@ -268,9 +260,9 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			tableManager,
 			"1 week of inactive tables with latest",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
-			append(append(expectedBaseTable("", inactiveRead, inactiveWrite),
-				expectedAutoscaledTables(0, 1, inactiveRead, inactiveWrite, 100, 80)...),
-				expectedStaticTables(1, 1, read, write)...),
+			append(append(baseTable("", inactiveRead, inactiveWrite),
+				autoScaledTable(0, inactiveRead, inactiveWrite, 100, 80)...),
+				staticTable(1, read, write, read, write)...),
 		)
 	}
 
@@ -285,11 +277,11 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			tableManager,
 			"3 weeks of inactive tables with latest",
 			time.Unix(0, 0).Add(tablePeriod*3).Add(maxChunkAge).Add(gracePeriod),
-			append(append(append(append(expectedBaseTable("", inactiveRead, inactiveWrite),
-				expectedStaticTables(0, 1, inactiveRead, inactiveWrite)...),
-				expectedAutoscaledTables(1, 1, inactiveRead, inactiveWrite, 100, 80)...),
-				expectedAutoscaledTables(2, 1, inactiveRead, inactiveWrite, 100, 80)...),
-				expectedStaticTables(3, 1, read, write)...),
+			append(append(append(append(baseTable("", inactiveRead, inactiveWrite),
+				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
+				autoScaledTable(1, inactiveRead, inactiveWrite, 100, 80)...),
+				autoScaledTable(2, inactiveRead, inactiveWrite, 100, 80)...),
+				staticTable(3, read, write, read, write)...),
 		)
 	}
 }

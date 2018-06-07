@@ -30,6 +30,32 @@ const (
 	read             = 100
 )
 
+func fixtureWriteScale() chunk.AutoScalingConfig {
+	return chunk.AutoScalingConfig{
+		Enabled:     true,
+		MinCapacity: 10,
+		MaxCapacity: 20,
+		OutCooldown: 100,
+		InCooldown:  100,
+		TargetValue: 80.0,
+	}
+}
+
+func fixturePeriodicTableConfig(prefix string, inactLastN int64, writeScale, inactWriteScale chunk.AutoScalingConfig) chunk.PeriodicTableConfig {
+	return chunk.PeriodicTableConfig{
+		Prefix: prefix,
+		Period: tablePeriod,
+		From:   util.NewDayValue(model.TimeFromUnix(0)),
+		ProvisionedWriteThroughput: write,
+		ProvisionedReadThroughput:  read,
+		InactiveWriteThroughput:    inactiveWrite,
+		InactiveReadThroughput:     inactiveRead,
+		WriteScale:                 writeScale,
+		InactiveWriteScale:         inactWriteScale,
+		InactiveWriteScaleLastN:    inactLastN,
+	}
+}
+
 func expectedBaseTable(name string, provisionedRead, provisionedWrite int64) []chunk.TableDesc {
 	return []chunk.TableDesc{
 		{
@@ -60,6 +86,9 @@ func expectedStaticTables(base, num int, provisionedRead, provisionedWrite int64
 }
 
 func expectedAutoscaledTables(base, num int, provisionedRead, provisionedWrite int64, indexOutCooldown int64, chunkTarget float64) []chunk.TableDesc {
+	chunkASC, indexASC := fixtureWriteScale(), fixtureWriteScale()
+	indexASC.OutCooldown = indexOutCooldown
+	chunkASC.TargetValue = chunkTarget
 	result := []chunk.TableDesc{}
 	for i := base; i < num+base; i++ {
 		result = append(result,
@@ -67,27 +96,13 @@ func expectedAutoscaledTables(base, num int, provisionedRead, provisionedWrite i
 				Name:             tablePrefix + fmt.Sprint(i),
 				ProvisionedRead:  provisionedRead,
 				ProvisionedWrite: provisionedWrite,
-				WriteScale: chunk.AutoScalingConfig{
-					Enabled:     true,
-					MinCapacity: 10,
-					MaxCapacity: 20,
-					OutCooldown: indexOutCooldown,
-					InCooldown:  100,
-					TargetValue: 80.0,
-				},
+				WriteScale:       indexASC,
 			},
 			chunk.TableDesc{
 				Name:             chunkTablePrefix + fmt.Sprint(i),
 				ProvisionedRead:  provisionedRead,
 				ProvisionedWrite: provisionedWrite,
-				WriteScale: chunk.AutoScalingConfig{
-					Enabled:     true,
-					MinCapacity: 10,
-					MaxCapacity: 20,
-					OutCooldown: 100,
-					InCooldown:  100,
-					TargetValue: chunkTarget,
-				},
+				WriteScale:       chunkASC,
 			},
 		)
 	}
@@ -116,43 +131,9 @@ func TestTableManagerAutoScaling(t *testing.T) {
 	}
 
 	cfg := chunk.SchemaConfig{
-		UsePeriodicTables: true,
-		IndexTables: chunk.PeriodicTableConfig{
-			Prefix: tablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			WriteScale: chunk.AutoScalingConfig{
-				Enabled:     true,
-				MinCapacity: 10,
-				MaxCapacity: 20,
-				OutCooldown: 100,
-				InCooldown:  100,
-				TargetValue: 80.0,
-			},
-		},
-
-		ChunkTables: chunk.PeriodicTableConfig{
-			Prefix: chunkTablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			WriteScale: chunk.AutoScalingConfig{
-				Enabled:     true,
-				MinCapacity: 10,
-				MaxCapacity: 20,
-				OutCooldown: 100,
-				InCooldown:  100,
-				TargetValue: 80.0,
-			},
-		},
-
+		UsePeriodicTables:   true,
+		IndexTables:         fixturePeriodicTableConfig(tablePrefix, 0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
+		ChunkTables:         fixturePeriodicTableConfig(chunkTablePrefix, 0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
 		CreationGracePeriod: gracePeriod,
 	}
 
@@ -254,45 +235,9 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 	}
 
 	cfg := chunk.SchemaConfig{
-		UsePeriodicTables: true,
-		IndexTables: chunk.PeriodicTableConfig{
-			Prefix: tablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			InactiveWriteScale: chunk.AutoScalingConfig{
-				Enabled:     true,
-				MinCapacity: 10,
-				MaxCapacity: 20,
-				OutCooldown: 100,
-				InCooldown:  100,
-				TargetValue: 80.0,
-			},
-			InactiveWriteScaleLastN: 2,
-		},
-
-		ChunkTables: chunk.PeriodicTableConfig{
-			Prefix: chunkTablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			InactiveWriteScale: chunk.AutoScalingConfig{
-				Enabled:     true,
-				MinCapacity: 10,
-				MaxCapacity: 20,
-				OutCooldown: 100,
-				InCooldown:  100,
-				TargetValue: 80.0,
-			},
-			InactiveWriteScaleLastN: 2,
-		},
-
+		UsePeriodicTables:   true,
+		IndexTables:         fixturePeriodicTableConfig(tablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
+		ChunkTables:         fixturePeriodicTableConfig(chunkTablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
 		CreationGracePeriod: gracePeriod,
 	}
 

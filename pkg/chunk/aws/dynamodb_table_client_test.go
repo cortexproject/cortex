@@ -101,25 +101,25 @@ func autoScaledTable(i int, provisionedRead, provisionedWrite int64, indexOutCoo
 	}
 }
 
+func test(t *testing.T, client dynamoTableClient, tableManager *chunk.TableManager, name string, tm time.Time, expected []chunk.TableDesc) {
+	t.Run(name, func(t *testing.T) {
+		ctx := context.Background()
+		mtime.NowForce(tm)
+		defer mtime.NowReset()
+		if err := tableManager.SyncTables(ctx); err != nil {
+			t.Fatal(err)
+		}
+		err := chunk.ExpectTables(ctx, client, expected)
+		require.NoError(t, err)
+	})
+}
+
 func TestTableManagerAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	applicationAutoScaling := newMockApplicationAutoScaling()
 	client := dynamoTableClient{
 		DynamoDB:               dynamoDB,
 		ApplicationAutoScaling: applicationAutoScaling,
-	}
-
-	test := func(tableManager *chunk.TableManager, name string, tm time.Time, expected []chunk.TableDesc) {
-		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-			mtime.NowForce(tm)
-			defer mtime.NowReset()
-			if err := tableManager.SyncTables(ctx); err != nil {
-				t.Fatal(err)
-			}
-			err := chunk.ExpectTables(ctx, client, expected)
-			require.NoError(t, err)
-		})
 	}
 
 	cfg := chunk.SchemaConfig{
@@ -136,7 +136,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Create tables",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
@@ -155,7 +155,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
@@ -174,7 +174,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
@@ -194,7 +194,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
@@ -213,19 +213,6 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 		ApplicationAutoScaling: applicationAutoScaling,
 	}
 
-	test := func(tableManager *chunk.TableManager, name string, tm time.Time, expected []chunk.TableDesc) {
-		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-			mtime.NowForce(tm)
-			defer mtime.NowReset()
-			if err := tableManager.SyncTables(ctx); err != nil {
-				t.Fatal(err)
-			}
-			err := chunk.ExpectTables(ctx, client, expected)
-			require.NoError(t, err)
-		})
-	}
-
 	cfg := chunk.SchemaConfig{
 		UsePeriodicTables:   true,
 		IndexTables:         fixturePeriodicTableConfig(tablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
@@ -240,7 +227,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Legacy and latest tables",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
@@ -256,7 +243,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"1 week of inactive tables with latest",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
@@ -273,7 +260,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"3 weeks of inactive tables with latest",
 			time.Unix(0, 0).Add(tablePeriod*3).Add(maxChunkAge).Add(gracePeriod),

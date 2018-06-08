@@ -353,7 +353,12 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 				return err
 			})
 		}); err != nil {
-			return err
+			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable")
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "LimitExceededException" {
+				level.Warn(util.Logger).Log("msg", "update limit exceeded", "err", err)
+			} else {
+				return err
+			}
 		}
 	}
 

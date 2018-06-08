@@ -19,7 +19,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 
 	client := dynamoTableClient{
 		DynamoDB: dynamoDB,
-		metrics:  &metricsData{promAPI: &mockProm},
+		metrics:  &metricsData{promAPI: &mockProm, queueLengthTarget: 100000},
 	}
 
 	// Set up table-manager config

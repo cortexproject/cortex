@@ -19,19 +19,19 @@ import (
 const (
 	cachePromDataFor       = 30 * time.Second
 	queueObservationPeriod = 2 * time.Minute
-	queueLengthScaledown   = 10000   // consider scaling down if queue smaller than this
-	queueLengthAcceptable  = 100000  // we don't mind queues smaller than this
-	queueLengthMax         = 1000000 // always scale up if queue bigger than this
+	targetScaledown        = 0.1 // consider scaling down if queue smaller than this times target
+	targetMax              = 10  // always scale up if queue bigger than this times target
 	errorFractionScaledown = 0.1
 	scaledown              = 0.9
 	scaleup                = 1.2
 )
 
 type metricsData struct {
-	promAPI      promV1.API
-	lastUpdated  time.Time
-	queueLengths []float64
-	errorRates   map[string]float64
+	queueLengthTarget int64
+	promAPI           promV1.API
+	lastUpdated       time.Time
+	queueLengths      []float64
+	errorRates        map[string]float64
 }
 
 func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expected *chunk.TableDesc) error {
@@ -49,14 +49,14 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 
 	switch {
 	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
-		m.queueLengths[2] < queueLengthScaledown:
+		m.queueLengths[2] < float64(m.queueLengthTarget)*targetScaledown:
 		// No big queue, low errors -> scale down
 		scaleDownWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaledown), "metrics scale-down")
-	case errorRate > 0 && m.queueLengths[2] > queueLengthMax:
+	case errorRate > 0 && m.queueLengths[2] > float64(m.queueLengthTarget)*targetMax:
 		// Too big queue, some errors -> scale up
 		scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics max queue scale-up")
 	case errorRate > 0 &&
-		m.queueLengths[2] > queueLengthAcceptable &&
+		m.queueLengths[2] > float64(m.queueLengthTarget) &&
 		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 		// Growing queue, some errors -> scale up
 		scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics queue growing scale-up")
@@ -93,7 +93,10 @@ func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
 		}
 		promAPI = promV1.NewAPI(client)
 	}
-	return &metricsData{promAPI: promAPI}, nil
+	return &metricsData{
+		promAPI:           promAPI,
+		queueLengthTarget: cfg.MetricsTargetQueueLen,
+	}, nil
 }
 
 func (m *metricsData) update(ctx context.Context) error {

@@ -251,7 +251,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, expected := range descriptions {
-		level.Info(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
+		level.Debug(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
 		current, isActive, err := m.client.DescribeTable(ctx, expected.Name)
 		if err != nil {
 			return err
@@ -274,7 +274,6 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			continue
 		}
 
-		level.Info(util.Logger).Log("msg", "updating provisioned throughput on table", "table", expected.Name, "old_read", current.ProvisionedRead, "old_write", current.ProvisionedWrite, "new_read", expected.ProvisionedRead, "new_write", expected.ProvisionedWrite)
 		err = m.client.UpdateTable(ctx, current, expected)
 		if err != nil {
 			return err

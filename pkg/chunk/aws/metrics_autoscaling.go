@@ -48,14 +48,17 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 	case m.queueLengths[2] < queueLengthScaledown && errorRate < errorFractionScaledown*float64(current.ProvisionedWrite):
 		// No big queue, low errors -> scale down
 		expected.ProvisionedWrite = int64(float64(current.ProvisionedWrite) * scaledown)
+		level.Info(util.Logger).Log("msg", "metrics scale-down", "table", current.Name, "write", expected.ProvisionedWrite)
 	case errorRate > 0 && m.queueLengths[2] > queueLengthMax:
 		// Too big queue, some errors -> scale up
 		expected.ProvisionedWrite = int64(float64(current.ProvisionedWrite) * scaleup)
+		level.Info(util.Logger).Log("msg", "metrics max queue scale-up", "table", current.Name, "write", expected.ProvisionedWrite)
 	case errorRate > 0 &&
 		m.queueLengths[2] > queueLengthAcceptable &&
 		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 		// Growing queue, some errors -> scale up
 		expected.ProvisionedWrite = int64(float64(current.ProvisionedWrite) * scaleup)
+		level.Info(util.Logger).Log("msg", "metrics queue growing scale-up", "table", current.Name, "write", expected.ProvisionedWrite)
 	default:
 		// Nothing much happening - set expected to current
 		expected.ProvisionedWrite = current.ProvisionedWrite

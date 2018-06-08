@@ -322,12 +322,15 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 		var err error
 		if !current.WriteScale.Enabled {
 			if expected.WriteScale.Enabled {
+				level.Info(util.Logger).Log("msg", "enabling autoscaling on table", "table")
 				err = d.enableAutoScaling(ctx, expected)
 			}
 		} else {
 			if !expected.WriteScale.Enabled {
+				level.Info(util.Logger).Log("msg", "disabling autoscaling on table", "table")
 				err = d.disableAutoScaling(ctx, expected)
 			} else if current.WriteScale != expected.WriteScale {
+				level.Info(util.Logger).Log("msg", "enabling autoscaling on table", "table")
 				err = d.enableAutoScaling(ctx, expected)
 			}
 		}
@@ -337,6 +340,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 	}
 
 	if current.ProvisionedRead != expected.ProvisionedRead || current.ProvisionedWrite != expected.ProvisionedWrite {
+		level.Info(util.Logger).Log("msg", "updating provisioned throughput on table", "table", expected.Name, "old_read", current.ProvisionedRead, "old_write", current.ProvisionedWrite, "new_read", expected.ProvisionedRead, "new_write", expected.ProvisionedWrite)
 		if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 			return instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(ctx context.Context) error {
 				_, err := d.DynamoDB.UpdateTableWithContext(ctx, &dynamodb.UpdateTableInput{

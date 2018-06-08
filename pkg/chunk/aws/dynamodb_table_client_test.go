@@ -34,7 +34,7 @@ func fixtureWriteScale() chunk.AutoScalingConfig {
 	return chunk.AutoScalingConfig{
 		Enabled:     true,
 		MinCapacity: 10,
-		MaxCapacity: 300,
+		MaxCapacity: 250,
 		OutCooldown: 100,
 		InCooldown:  100,
 		TargetValue: 80.0,

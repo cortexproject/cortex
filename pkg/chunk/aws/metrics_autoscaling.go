@@ -44,26 +44,44 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 
 	level.Info(util.Logger).Log("msg", "checking metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "errorRate", errorRate)
 
+	// If we don't take explicit action, return the current provision as the expected provision
+	expected.ProvisionedWrite = current.ProvisionedWrite
+
 	switch {
-	case m.queueLengths[2] < queueLengthScaledown && errorRate < errorFractionScaledown*float64(current.ProvisionedWrite):
+	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
+		m.queueLengths[2] < queueLengthScaledown:
 		// No big queue, low errors -> scale down
-		expected.ProvisionedWrite = int64(float64(current.ProvisionedWrite) * scaledown)
-		level.Info(util.Logger).Log("msg", "metrics scale-down", "table", current.Name, "write", expected.ProvisionedWrite)
+		scaleDownWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaledown), "metrics scale-down")
 	case errorRate > 0 && m.queueLengths[2] > queueLengthMax:
 		// Too big queue, some errors -> scale up
-		expected.ProvisionedWrite = int64(float64(current.ProvisionedWrite) * scaleup)
-		level.Info(util.Logger).Log("msg", "metrics max queue scale-up", "table", current.Name, "write", expected.ProvisionedWrite)
+		scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics max queue scale-up")
 	case errorRate > 0 &&
 		m.queueLengths[2] > queueLengthAcceptable &&
 		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 		// Growing queue, some errors -> scale up
-		expected.ProvisionedWrite = int64(float64(current.ProvisionedWrite) * scaleup)
-		level.Info(util.Logger).Log("msg", "metrics queue growing scale-up", "table", current.Name, "write", expected.ProvisionedWrite)
-	default:
-		// Nothing much happening - set expected to current
-		expected.ProvisionedWrite = current.ProvisionedWrite
+		scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics queue growing scale-up")
 	}
 	return nil
+}
+
+func scaleDownWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
+	if newWrite < expected.WriteScale.MinCapacity {
+		newWrite = expected.WriteScale.MinCapacity
+	}
+	if newWrite < current.ProvisionedWrite {
+		level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
+		expected.ProvisionedWrite = newWrite
+	}
+}
+
+func scaleUpWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
+	if newWrite > expected.WriteScale.MaxCapacity {
+		newWrite = expected.WriteScale.MaxCapacity
+	}
+	if newWrite > current.ProvisionedWrite {
+		level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
+		expected.ProvisionedWrite = newWrite
+	}
 }
 
 func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {

@@ -30,7 +30,6 @@ import (
 
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/util/httputil"
 )
 
 const maxErrMsgLen = 256
@@ -52,7 +51,7 @@ type ClientConfig struct {
 
 // NewClient creates a new Client.
 func NewClient(index int, conf *ClientConfig) (*Client, error) {
-	httpClient, err := httputil.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage")
+	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage")
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +69,7 @@ type recoverableError struct {
 }
 
 // Store sends a batch of samples to the HTTP endpoint.
-func (c *Client) Store(req *prompb.WriteRequest) error {
+func (c *Client) Store(ctx context.Context, req *prompb.WriteRequest) error {
 	data, err := proto.Marshal(req)
 	if err != nil {
 		return err
@@ -86,6 +85,7 @@ func (c *Client) Store(req *prompb.WriteRequest) error {
 	httpReq.Header.Add("Content-Encoding", "snappy")
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
 	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+	httpReq = httpReq.WithContext(ctx)
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()

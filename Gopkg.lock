@@ -626,7 +626,7 @@
     "route",
     "version"
   ]
-  revision = "89604d197083d4781071d3c65855d24ecfb0a563"
+  revision = "7600349dcfe1abd18d72d3a1770870d9800a7801"
 
 [[projects]]
   branch = "master"
@@ -678,10 +678,9 @@
     "util/strutil",
     "util/testutil",
     "util/treecache",
-    "util/yaml",
     "web/api/v1"
   ]
-  revision = "c47fbcb626acb037d1e0ad11ca923cf3fd3a9bdd"
+  revision = "25e2d9f152b634d65123ef11342aceb23e66a1a2"
 
 [[projects]]
   branch = "master"
@@ -987,10 +986,10 @@
   version = "v0.9.0"
 
 [[projects]]
-  branch = "v2"
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b"
+  revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
+  version = "v2.2.1"
 
 [[projects]]
   name = "k8s.io/apimachinery"
@@ -1115,7 +1114,8 @@
     "util/cert",
     "util/clock",
     "util/flowcontrol",
-    "util/integer"
+    "util/integer",
+    "util/workqueue"
   ]
   revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"
 

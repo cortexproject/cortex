@@ -19,7 +19,11 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 
 	client := dynamoTableClient{
 		DynamoDB: dynamoDB,
-		metrics:  &metricsData{promAPI: &mockProm, queueLengthTarget: 100000},
+		metrics: &metricsData{
+			promAPI:           &mockProm,
+			queueLengthTarget: 100000,
+			tableLastUpdated:  make(map[string]time.Time),
+		},
 	}
 
 	// Set up table-manager config
@@ -78,6 +82,13 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		startTime.Add(time.Minute*100),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, 225, read, 180)...), // - scale down both tables
+	)
+
+	mockProm.SetResponse(0, 0, 0, 0, 0)
+	test(t, client, tableManager, "in cooldown period",
+		startTime.Add(time.Minute*101),
+		append(baseTable("a", inactiveRead, inactiveWrite),
+			staticTable(0, read, 225, read, 180)...), // - no change; in cooldown period
 	)
 
 	mockProm.SetResponse(0, 0, 0, 0, 0)

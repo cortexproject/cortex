@@ -29,7 +29,8 @@ const (
 type metricsData struct {
 	queueLengthTarget int64
 	promAPI           promV1.API
-	lastUpdated       time.Time
+	promLastQuery     time.Time
+	tableLastUpdated  map[string]time.Time
 	queueLengths      []float64
 	errorRates        map[string]float64
 }
@@ -51,36 +52,48 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
 		m.queueLengths[2] < float64(m.queueLengthTarget)*targetScaledown:
 		// No big queue, low errors -> scale down
-		scaleDownWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaledown), "metrics scale-down")
+		d.scaleDownWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaledown), "metrics scale-down")
 	case errorRate > 0 && m.queueLengths[2] > float64(m.queueLengthTarget)*targetMax:
 		// Too big queue, some errors -> scale up
-		scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics max queue scale-up")
+		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics max queue scale-up")
 	case errorRate > 0 &&
 		m.queueLengths[2] > float64(m.queueLengthTarget) &&
 		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 		// Growing queue, some errors -> scale up
-		scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics queue growing scale-up")
+		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics queue growing scale-up")
 	}
 	return nil
 }
 
-func scaleDownWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
+func (d dynamoTableClient) scaleDownWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
 	if newWrite < expected.WriteScale.MinCapacity {
 		newWrite = expected.WriteScale.MinCapacity
+	}
+	earliest := d.metrics.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.InCooldown) * time.Second)
+	if earliest.After(mtime.Now()) {
+		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", current.Name, "till", earliest)
+		return
 	}
 	if newWrite < current.ProvisionedWrite {
 		level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
 		expected.ProvisionedWrite = newWrite
+		d.metrics.tableLastUpdated[current.Name] = mtime.Now()
 	}
 }
 
-func scaleUpWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
+func (d dynamoTableClient) scaleUpWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
 	if newWrite > expected.WriteScale.MaxCapacity {
 		newWrite = expected.WriteScale.MaxCapacity
+	}
+	earliest := d.metrics.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.OutCooldown) * time.Second)
+	if earliest.After(mtime.Now()) {
+		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", current.Name, "till", earliest)
+		return
 	}
 	if newWrite > current.ProvisionedWrite {
 		level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
 		expected.ProvisionedWrite = newWrite
+		d.metrics.tableLastUpdated[current.Name] = mtime.Now()
 	}
 }
 
@@ -96,14 +109,16 @@ func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
 	return &metricsData{
 		promAPI:           promAPI,
 		queueLengthTarget: cfg.MetricsTargetQueueLen,
+		tableLastUpdated:  make(map[string]time.Time),
 	}, nil
 }
 
 func (m *metricsData) update(ctx context.Context) error {
-	if m.lastUpdated.After(mtime.Now().Add(-cachePromDataFor)) {
+	if m.promLastQuery.After(mtime.Now().Add(-cachePromDataFor)) {
 		return nil
 	}
 
+	m.promLastQuery = mtime.Now()
 	qlMatrix, err := promQuery(ctx, m.promAPI, `sum(cortex_ingester_flush_queue_length)`, queueObservationPeriod, queueObservationPeriod/2)
 	if err != nil {
 		return err
@@ -135,7 +150,6 @@ func (m *metricsData) update(ctx context.Context) error {
 		m.errorRates[string(table)] = float64(s.Values[0].Value)
 	}
 
-	m.lastUpdated = mtime.Now()
 	return nil
 }
 

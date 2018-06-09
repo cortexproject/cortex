@@ -134,23 +134,31 @@ func (m *metricsData) update(ctx context.Context) error {
 		m.queueLengths[i] = float64(v.Value)
 	}
 
+	// fetch write error rate per DynamoDB table
 	deMatrix, err := promQuery(ctx, m.promAPI, `sum(rate(cortex_dynamo_failures_total{error="ProvisionedThroughputExceededException",operation=~".*Write.*"}[1m])) by (table) > 0`, 0, time.Second)
 	if err != nil {
 		return err
 	}
-	m.errorRates = make(map[string]float64)
-	for _, s := range deMatrix {
+	if m.errorRates, err = extractRates(deMatrix); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func extractRates(matrix model.Matrix) (map[string]float64, error) {
+	ret := map[string]float64{}
+	for _, s := range matrix {
 		table, found := s.Metric["table"]
 		if !found {
 			continue
 		}
 		if len(s.Values) != 1 {
-			return errors.Errorf("expected one sample for table %s: %d", table, len(s.Values))
+			return nil, errors.Errorf("expected one sample for table %s: %d", table, len(s.Values))
 		}
-		m.errorRates[string(table)] = float64(s.Values[0].Value)
+		ret[string(table)] = float64(s.Values[0].Value)
 	}
-
-	return nil
+	return ret, nil
 }
 
 func promQuery(ctx context.Context, promAPI promV1.API, query string, duration, step time.Duration) (model.Matrix, error) {

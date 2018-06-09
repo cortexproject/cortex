@@ -26,12 +26,19 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		},
 	}
 
+	indexWriteScale := fixtureWriteScale()
+	chunkWriteScale := fixtureWriteScale()
+	chunkWriteScale.MaxCapacity /= 5
+	chunkWriteScale.MinCapacity /= 5
+	inactiveWriteScale := fixtureWriteScale()
+	inactiveWriteScale.MinCapacity = 1
+
 	// Set up table-manager config
 	cfg := chunk.SchemaConfig{
 		OriginalTableName:   "a",
 		UsePeriodicTables:   true,
-		IndexTables:         fixturePeriodicTableConfig(tablePrefix, 2, fixtureWriteScale(), fixtureWriteScale()),
-		ChunkTables:         fixturePeriodicTableConfig(chunkTablePrefix, 2, fixtureWriteScale(), fixtureWriteScale()),
+		IndexTables:         fixturePeriodicTableConfig(tablePrefix, 2, indexWriteScale, inactiveWriteScale),
+		ChunkTables:         fixturePeriodicTableConfig(chunkTablePrefix, 2, chunkWriteScale, inactiveWriteScale),
 		CreationGracePeriod: gracePeriod,
 	}
 
@@ -49,87 +56,87 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 			staticTable(0, read, write, read, write)...),
 	)
 
-	mockProm.SetResponse(0, 100000, 100000, []int{0, 0})
+	mockProm.SetResponse(0, 100000, 100000, []int{0, 0}, []int{100, 20})
 	test(t, client, tableManager, "Queues but no errors",
 		startTime.Add(time.Minute*10),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, write, read, write)...), // - remain flat
 	)
 
-	mockProm.SetResponse(0, 120000, 100000, []int{100, 200})
+	mockProm.SetResponse(0, 120000, 100000, []int{100, 200}, []int{100, 20})
 	test(t, client, tableManager, "Shrinking queues",
 		startTime.Add(time.Minute*20),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, write, read, write)...), //  - remain flat
 	)
 
-	mockProm.SetResponse(0, 120000, 200000, []int{100, 0})
+	mockProm.SetResponse(0, 120000, 200000, []int{100, 0}, []int{100, 20})
 	test(t, client, tableManager, "Building queues",
 		startTime.Add(time.Minute*30),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, 240, read, write)...), // - scale up index table
 	)
 
-	mockProm.SetResponse(0, 5000000, 5000000, []int{1, 0})
+	mockProm.SetResponse(0, 5000000, 5000000, []int{1, 0}, []int{100, 20})
 	test(t, client, tableManager, "Large queues small errors",
 		startTime.Add(time.Minute*40),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, 250, read, write)...), // - scale up index table
 	)
 
-	mockProm.SetResponse(0, 0, 0, []int{0, 0})
+	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{100, 20})
 	test(t, client, tableManager, "No queues no errors",
 		startTime.Add(time.Minute*100),
 		append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, read, 225, read, 180)...), // - scale down both tables
+			staticTable(0, read, 125, read, 25)...), // - scale down both tables
 	)
 
-	mockProm.SetResponse(0, 0, 0, []int{0, 0})
+	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{50, 10})
 	test(t, client, tableManager, "in cooldown period",
 		startTime.Add(time.Minute*101),
 		append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, read, 225, read, 180)...), // - no change; in cooldown period
+			staticTable(0, read, 125, read, 25)...), // - no change; in cooldown period
 	)
 
-	mockProm.SetResponse(0, 0, 0, []int{0, 0})
+	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{50, 10})
 	test(t, client, tableManager, "No queues no errors",
 		startTime.Add(time.Minute*200),
 		append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, read, 202, read, 162)...), // - scale down both again
+			staticTable(0, read, 100, read, 20)...), // - scale down both again
 	)
 
-	mockProm.SetResponse(0, 0, 0, []int{30, 30, 30, 30})
+	mockProm.SetResponse(0, 0, 0, []int{30, 30, 30, 30}, []int{50, 10, 100, 20})
 	test(t, client, tableManager, "Next week",
 		startTime.Add(tablePeriod),
 		// Nothing much happening - expect table 0 write rates to stay as-is and table 1 to be created with defaults
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, inactiveRead, 202, inactiveRead, 162)...),
+			staticTable(0, inactiveRead, 100, inactiveRead, 20)...),
 			staticTable(1, read, write, read, write)...),
 	)
 
 	// No errors on last week's index table, still some on chunk table
-	mockProm.SetResponse(0, 0, 0, []int{0, 30, 30, 30})
+	mockProm.SetResponse(0, 0, 0, []int{0, 30, 30, 30}, []int{10, 2, 100, 20})
 	test(t, client, tableManager, "Next week plus a bit",
 		startTime.Add(tablePeriod).Add(time.Minute*10),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, inactiveRead, 181, inactiveRead, 162)...), // Scale back last week's index table
+			staticTable(0, inactiveRead, 12, inactiveRead, 20)...), // Scale back last week's index table
 			staticTable(1, read, write, read, write)...),
 	)
 
 	// No errors on last week's tables but some queueing
-	mockProm.SetResponse(20000, 20000, 20000, []int{0, 0, 1, 1})
+	mockProm.SetResponse(20000, 20000, 20000, []int{0, 0, 1, 1}, []int{0, 0, 100, 20})
 	test(t, client, tableManager, "Next week plus a bit",
 		startTime.Add(tablePeriod).Add(time.Minute*20),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, inactiveRead, 181, inactiveRead, 162)...), // no scaling back
+			staticTable(0, inactiveRead, 12, inactiveRead, 20)...), // no scaling back
 			staticTable(1, read, write, read, write)...),
 	)
 
-	mockProm.SetResponse(120000, 130000, 140000, []int{0, 0, 1, 0})
+	mockProm.SetResponse(120000, 130000, 140000, []int{0, 0, 1, 0}, []int{0, 0, 100, 20})
 	test(t, client, tableManager, "next week, queues building, errors on index table",
 		startTime.Add(tablePeriod).Add(time.Minute*30),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, inactiveRead, 181, inactiveRead, 162)...), // no scaling back
+			staticTable(0, inactiveRead, 12, inactiveRead, 20)...), // no scaling back
 			staticTable(1, read, 240, read, write)...), // scale up index table
 	)
 }

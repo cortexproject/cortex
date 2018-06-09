@@ -22,7 +22,6 @@ const (
 	targetScaledown        = 0.1 // consider scaling down if queue smaller than this times target
 	targetMax              = 10  // always scale up if queue bigger than this times target
 	errorFractionScaledown = 0.1
-	scaledown              = 0.9
 	scaleup                = 1.2
 )
 
@@ -33,6 +32,7 @@ type metricsData struct {
 	tableLastUpdated  map[string]time.Time
 	queueLengths      []float64
 	errorRates        map[string]float64
+	usageRates        map[string]float64
 }
 
 func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expected *chunk.TableDesc) error {
@@ -42,8 +42,9 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 	}
 
 	errorRate := m.errorRates[expected.Name]
+	usageRate := m.usageRates[expected.Name]
 
-	level.Info(util.Logger).Log("msg", "checking metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "errorRate", errorRate)
+	level.Info(util.Logger).Log("msg", "checking metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "errorRate", errorRate, "usageRate", usageRate)
 
 	// If we don't take explicit action, return the current provision as the expected provision
 	expected.ProvisionedWrite = current.ProvisionedWrite
@@ -52,7 +53,7 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
 		m.queueLengths[2] < float64(m.queueLengthTarget)*targetScaledown:
 		// No big queue, low errors -> scale down
-		d.scaleDownWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaledown), "metrics scale-down")
+		d.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "metrics scale-down")
 	case errorRate > 0 && m.queueLengths[2] > float64(m.queueLengthTarget)*targetMax:
 		// Too big queue, some errors -> scale up
 		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics max queue scale-up")
@@ -140,6 +141,15 @@ func (m *metricsData) update(ctx context.Context) error {
 		return err
 	}
 	if m.errorRates, err = extractRates(deMatrix); err != nil {
+		return err
+	}
+
+	// fetch write capacity usage over five minutes per DynamoDB table
+	usageMatrix, err := promQuery(ctx, m.promAPI, `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[5m])) by (table) > 0`, 0, time.Second)
+	if err != nil {
+		return err
+	}
+	if m.usageRates, err = extractRates(usageMatrix); err != nil {
 		return err
 	}
 

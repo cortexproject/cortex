@@ -33,7 +33,7 @@ const (
 func fixtureWriteScale() chunk.AutoScalingConfig {
 	return chunk.AutoScalingConfig{
 		Enabled:     true,
-		MinCapacity: 10,
+		MinCapacity: 100,
 		MaxCapacity: 250,
 		OutCooldown: 100,
 		InCooldown:  100,

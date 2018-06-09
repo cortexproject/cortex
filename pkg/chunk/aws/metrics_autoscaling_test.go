@@ -31,7 +31,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	chunkWriteScale.MaxCapacity /= 5
 	chunkWriteScale.MinCapacity /= 5
 	inactiveWriteScale := fixtureWriteScale()
-	inactiveWriteScale.MinCapacity = 1
+	inactiveWriteScale.MinCapacity = 5
 
 	// Set up table-manager config
 	cfg := chunk.SchemaConfig{
@@ -138,6 +138,14 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, inactiveRead, 12, inactiveRead, 20)...), // no scaling back
 			staticTable(1, read, 240, read, write)...), // scale up index table
+	)
+
+	mockProm.SetResponse(140000, 130000, 120000, []int{0, 0, 1, 0}, []int{0, 0, 100, 20})
+	test(t, client, tableManager, "next week, queues shrinking, errors on index table",
+		startTime.Add(tablePeriod).Add(time.Minute*40),
+		append(append(baseTable("a", inactiveRead, inactiveWrite),
+			staticTable(0, inactiveRead, 5, inactiveRead, 5)...), // scale right back
+			staticTable(1, read, 240, read, 25)...), // scale chunk table to usage/80%
 	)
 }
 

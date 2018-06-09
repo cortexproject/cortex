@@ -54,6 +54,10 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 		m.queueLengths[2] < float64(m.queueLengthTarget)*targetScaledown:
 		// No big queue, low errors -> scale down
 		d.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "metrics scale-down")
+	case errorRate == 0 &&
+		m.queueLengths[2] < m.queueLengths[1] && m.queueLengths[1] < m.queueLengths[0]:
+		// zero errors and falling queue -> scale down to current usage
+		d.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "zero errors scale-down")
 	case errorRate > 0 && m.queueLengths[2] > float64(m.queueLengthTarget)*targetMax:
 		// Too big queue, some errors -> scale up
 		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics max queue scale-up")

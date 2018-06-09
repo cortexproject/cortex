@@ -156,11 +156,11 @@ func (m *mockPrometheus) SetResponse(q0, q1, q2 model.SampleValue, errorRates ..
 		for i := 0; i < len(rates)/2; i++ {
 			errorMatrix = append(errorMatrix,
 				&model.SampleStream{
-					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("cortex_%d", i))},
+					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("%s%d", tablePrefix, i))},
 					Values: []model.SamplePair{{Timestamp: 30000, Value: model.SampleValue(rates[i*2])}},
 				},
 				&model.SampleStream{
-					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("chunks_%d", i))},
+					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("%s%d", chunkTablePrefix, i))},
 					Values: []model.SamplePair{{Timestamp: 30000, Value: model.SampleValue(rates[i*2+1])}},
 				})
 		}

@@ -84,25 +84,32 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 			staticTable(0, read, 250, read, write)...), // - scale up index table
 	)
 
-	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{100, 20})
+	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{120, 40})
 	test(t, client, tableManager, "No queues no errors",
 		startTime.Add(time.Minute*100),
 		append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, read, 125, read, 25)...), // - scale down both tables
+			staticTable(0, read, 150, read, 50)...), // - scale down both tables
 	)
 
 	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{50, 10})
 	test(t, client, tableManager, "in cooldown period",
 		startTime.Add(time.Minute*101),
 		append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, read, 125, read, 25)...), // - no change; in cooldown period
+			staticTable(0, read, 150, read, 50)...), // - no change; in cooldown period
 	)
 
-	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{50, 10})
+	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{90, 10})
 	test(t, client, tableManager, "No queues no errors",
 		startTime.Add(time.Minute*200),
 		append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, read, 100, read, 20)...), // - scale down both again
+			staticTable(0, read, 112, read, 20)...), // - scale down both again
+	)
+
+	mockProm.SetResponse(0, 0, 0, []int{0, 0}, []int{50, 10})
+	test(t, client, tableManager, "de minimis change",
+		startTime.Add(time.Minute*220),
+		append(baseTable("a", inactiveRead, inactiveWrite),
+			staticTable(0, read, 112, read, 20)...), // - should see no change
 	)
 
 	mockProm.SetResponse(0, 0, 0, []int{30, 30, 30, 30}, []int{50, 10, 100, 20})
@@ -110,7 +117,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		startTime.Add(tablePeriod),
 		// Nothing much happening - expect table 0 write rates to stay as-is and table 1 to be created with defaults
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
-			staticTable(0, inactiveRead, 100, inactiveRead, 20)...),
+			staticTable(0, inactiveRead, 112, inactiveRead, 20)...),
 			staticTable(1, read, write, read, write)...),
 	)
 

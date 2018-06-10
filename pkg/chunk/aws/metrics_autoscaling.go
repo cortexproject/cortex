@@ -79,11 +79,16 @@ func (d dynamoTableClient) scaleDownWrite(current, expected *chunk.TableDesc, ne
 		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", current.Name, "till", earliest)
 		return
 	}
-	if newWrite < current.ProvisionedWrite {
-		level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
-		expected.ProvisionedWrite = newWrite
-		d.metrics.tableLastUpdated[current.Name] = mtime.Now()
+	// Reject a change that is less than 20% - AWS rate-limits scale-downs so save
+	// our chances until it makes a bigger difference
+	if newWrite > current.ProvisionedWrite*4/5 {
+		level.Info(util.Logger).Log("msg", "rejected de minimis "+msg, "table", current.Name, "current", current.ProvisionedWrite, "proposed", newWrite)
+		return
 	}
+
+	level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
+	expected.ProvisionedWrite = newWrite
+	d.metrics.tableLastUpdated[current.Name] = mtime.Now()
 }
 
 func (d dynamoTableClient) scaleUpWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {

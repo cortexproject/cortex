@@ -129,7 +129,9 @@ func (m *metricsData) update(ctx context.Context) error {
 	}
 
 	m.promLastQuery = mtime.Now()
-	qlMatrix, err := promQuery(ctx, m.promAPI, `sum(cortex_ingester_flush_queue_length)`, queueObservationPeriod, queueObservationPeriod/2)
+	// average the queue length over 2 minutes to avoid aliasing with the 1-minute flush period
+	// TODO: adjust that 2m depending on configuration of the flush period
+	qlMatrix, err := promQuery(ctx, m.promAPI, `sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))`, queueObservationPeriod, queueObservationPeriod/2)
 	if err != nil {
 		return err
 	}
@@ -153,8 +155,9 @@ func (m *metricsData) update(ctx context.Context) error {
 		return err
 	}
 
-	// fetch write capacity usage over five minutes per DynamoDB table
-	usageMatrix, err := promQuery(ctx, m.promAPI, `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[5m])) by (table) > 0`, 0, time.Second)
+	// fetch write capacity usage per DynamoDB table
+	// use the rate over 15 minutes so we take a broad average
+	usageMatrix, err := promQuery(ctx, m.promAPI, `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0`, 0, time.Second)
 	if err != nil {
 		return err
 	}

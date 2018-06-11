@@ -23,6 +23,7 @@ const (
 	targetMax              = 10  // always scale up if queue bigger than this times target
 	errorFractionScaledown = 0.1
 	scaleup                = 1.2
+	minUsageForScaledown   = 100 // only scale down if usage is > this DynamoDB units/sec
 )
 
 type metricsData struct {
@@ -83,6 +84,16 @@ func (d dynamoTableClient) scaleDownWrite(current, expected *chunk.TableDesc, ne
 	// our chances until it makes a bigger difference
 	if newWrite > current.ProvisionedWrite*4/5 {
 		level.Info(util.Logger).Log("msg", "rejected de minimis "+msg, "table", current.Name, "current", current.ProvisionedWrite, "proposed", newWrite)
+		return
+	}
+	// Check that the ingesters seem to be doing some work - don't want to scale down
+	// if all our metrics are returning zero, or all the ingesters have crashed, etc
+	totalUsage := 0.0
+	for _, u := range d.metrics.usageRates {
+		totalUsage += u
+	}
+	if totalUsage < minUsageForScaledown {
+		level.Info(util.Logger).Log("msg", "rejected low usage "+msg, "table", current.Name, "totalUsage", totalUsage)
 		return
 	}
 

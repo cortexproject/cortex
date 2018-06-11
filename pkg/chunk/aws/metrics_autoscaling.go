@@ -75,6 +75,10 @@ func (d dynamoTableClient) scaleDownWrite(current, expected *chunk.TableDesc, ne
 	if newWrite < expected.WriteScale.MinCapacity {
 		newWrite = expected.WriteScale.MinCapacity
 	}
+	// If we're already at or below the requested value, it's not a scale-down.
+	if newWrite >= current.ProvisionedWrite {
+		return
+	}
 	earliest := d.metrics.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.InCooldown) * time.Second)
 	if earliest.After(mtime.Now()) {
 		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", current.Name, "till", earliest)

@@ -6,14 +6,14 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 )
 
-// DummyTargetRetriever implements TargetRetriever.
+// DummyTargetRetriever implements github.com/prometheus/prometheus/web/api/v1.targetRetriever.
 type DummyTargetRetriever struct{}
 
-// Targets implements TargetRetriever.
-func (r DummyTargetRetriever) Targets() []*scrape.Target { return nil }
+// TargetsActive implements targetRetriever.
+func (r DummyTargetRetriever) TargetsActive() []*scrape.Target { return nil }
 
-// DroppedTargets implements TargetRetriever.
-func (r DummyTargetRetriever) DroppedTargets() []*scrape.Target { return nil }
+// TargetsDropped implements targetRetriever.
+func (r DummyTargetRetriever) TargetsDropped() []*scrape.Target { return nil }
 
 // DummyAlertmanagerRetriever implements AlertmanagerRetriever.
 type DummyAlertmanagerRetriever struct{}

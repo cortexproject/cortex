@@ -22,6 +22,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		metrics: &metricsData{
 			promAPI:           &mockProm,
 			queueLengthTarget: 100000,
+			scaleUpFactor:     1.2,
 			tableLastUpdated:  make(map[string]time.Time),
 		},
 	}

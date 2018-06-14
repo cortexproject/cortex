@@ -22,12 +22,12 @@ const (
 	targetScaledown        = 0.1 // consider scaling down if queue smaller than this times target
 	targetMax              = 10  // always scale up if queue bigger than this times target
 	errorFractionScaledown = 0.1
-	scaleup                = 1.2
 	minUsageForScaledown   = 100 // only scale down if usage is > this DynamoDB units/sec
 )
 
 type metricsData struct {
 	queueLengthTarget int64
+	scaleUpFactor     float64
 	promAPI           promV1.API
 	promLastQuery     time.Time
 	tableLastUpdated  map[string]time.Time
@@ -61,12 +61,12 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 		d.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "zero errors scale-down")
 	case errorRate > 0 && m.queueLengths[2] > float64(m.queueLengthTarget)*targetMax:
 		// Too big queue, some errors -> scale up
-		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics max queue scale-up")
+		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*m.scaleUpFactor), "metrics max queue scale-up")
 	case errorRate > 0 &&
 		m.queueLengths[2] > float64(m.queueLengthTarget) &&
 		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 		// Growing queue, some errors -> scale up
-		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*scaleup), "metrics queue growing scale-up")
+		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*m.scaleUpFactor), "metrics queue growing scale-up")
 	}
 	return nil
 }
@@ -134,6 +134,7 @@ func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
 	return &metricsData{
 		promAPI:           promAPI,
 		queueLengthTarget: cfg.MetricsTargetQueueLen,
+		scaleUpFactor:     cfg.MetricsScaleUpFactor,
 		tableLastUpdated:  make(map[string]time.Time),
 	}, nil
 }

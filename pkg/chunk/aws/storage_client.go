@@ -112,6 +112,7 @@ type DynamoDBConfig struct {
 	ApplicationAutoScaling util.URLValue
 	MetricsURL             string
 	MetricsTargetQueueLen  int64
+	MetricsScaleUpFactor   float64
 	ChunkGangSize          int
 	ChunkGetMaxParallelism int
 	backoffConfig          util.BackoffConfig
@@ -125,6 +126,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
 	f.StringVar(&cfg.MetricsURL, "metrics.url", "", "Use metrics-based autoscaling, via this query URL")
 	f.Int64Var(&cfg.MetricsTargetQueueLen, "metrics.target-queue-length", 100000, "Queue length above which we will scale up capacity")
+	f.Float64Var(&cfg.MetricsScaleUpFactor, "metrics.scale-up-factor", 1.3, "Scale up capacity by this multiple")
 	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
 	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
 	f.DurationVar(&cfg.backoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")

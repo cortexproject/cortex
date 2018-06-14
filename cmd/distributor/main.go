@@ -43,6 +43,7 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
+			ExcludeRequestInLog: true,
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config

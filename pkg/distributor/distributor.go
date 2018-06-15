@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -77,6 +78,8 @@ type Config struct {
 	IngestionBurstSize   int
 	HealthCheckIngesters bool
 
+	ShardByMetricName bool
+
 	// for testing
 	ingesterClientFactory func(addr string, cfg ingester_client.Config) (client.IngesterClient, error)
 }
@@ -91,6 +94,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during periodic cleanup.")
+	flag.BoolVar(&cfg.ShardByMetricName, "distributor.shard-by-metric-name", true, "If samples shoud be distributed solely by user and metric name, as opposed to all labels.")
 }
 
 // New constructs a new Distributor
@@ -202,20 +206,38 @@ func (d *Distributor) removeStaleIngesterClients() {
 	}
 }
 
-func tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
+func (d *Distributor) tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
+	if d.cfg.ShardByMetricName {
+		return shardByMetricName(userID, labels)
+	}
+
+	return shardByAllLabels(userID, labels)
+}
+
+func shardByMetricName(userID string, labels []client.LabelPair) (uint32, error) {
 	for _, label := range labels {
 		if label.Name.Equal(labelNameBytes) {
-			return tokenFor(userID, label.Value), nil
+			h := fnv.New32()
+			h.Write([]byte(userID))
+			h.Write(label.Value)
+			return h.Sum32(), nil
 		}
 	}
 	return 0, fmt.Errorf("No metric name label")
 }
 
-func tokenFor(userID string, name []byte) uint32 {
+func shardByAllLabels(userID string, labels []client.LabelPair) (uint32, error) {
 	h := fnv.New32()
 	h.Write([]byte(userID))
-	h.Write(name)
-	return h.Sum32()
+	lastLabelName := []byte{}
+	for _, label := range labels {
+		if bytes.Compare(lastLabelName, label.Name) >= 0 {
+			return 0, fmt.Errorf("Labels not sorted")
+		}
+		h.Write(label.Name)
+		h.Write(label.Value)
+	}
+	return h.Sum32(), nil
 }
 
 type sampleTracker struct {
@@ -247,10 +269,11 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	samples := make([]sampleTracker, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
 	for _, ts := range req.Timeseries {
-		key, err := tokenForLabels(userID, ts.Labels)
+		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
 			return nil, err
 		}
+
 		for _, s := range ts.Samples {
 			keys = append(keys, key)
 			samples = append(samples, sampleTracker{
@@ -386,25 +409,13 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	var matrix model.Matrix
 	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", d.queryDuration, func(ctx context.Context) error {
-		userID, err := user.ExtractOrgID(ctx)
-		if err != nil {
-			return err
-		}
-
-		metricNameMatcher, _, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
-
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {
 			return err
 		}
 
-		// Get ingesters by metricName if one exists, otherwise get all ingesters
-		var replicationSet ring.ReplicationSet
-		if ok && metricNameMatcher.Type == labels.MatchEqual {
-			replicationSet, err = d.ring.Get(tokenFor(userID, []byte(metricNameMatcher.Value)), ring.Read)
-		} else {
-			replicationSet, err = d.ring.GetAll()
-		}
+		// From now on, just query all ingesters.
+		replicationSet, err := d.ring.GetAll()
 		if err != nil {
 			return promql.ErrStorage(err)
 		}

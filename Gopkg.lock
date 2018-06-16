@@ -55,12 +55,6 @@
   revision = "bbf7a2afc14f93e1e0a5c06df524fbd75e5031e5"
 
 [[projects]]
-  name = "github.com/Shopify/sarama"
-  packages = ["."]
-  revision = "0fb560e5f7fbcaee2f75e3c34174320709f69944"
-  version = "v1.11.0"
-
-[[projects]]
   name = "github.com/apache/thrift"
   packages = ["lib/go/thrift"]
   revision = "b2a4d4ae21c789b689dd162deb819665567f481c"
@@ -169,24 +163,6 @@
   ]
   revision = "a25b9ef0c9fe242ac04bb20d3a028442b7d266b6"
   version = "v2.6.1"
-
-[[projects]]
-  name = "github.com/eapache/go-resiliency"
-  packages = ["breaker"]
-  revision = "6800482f2c813e689c88b7ed3282262385011890"
-  version = "v1.0.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/eapache/go-xerial-snappy"
-  packages = ["."]
-  revision = "bb955e01b9346ac19dc29eb16586c90ded99a98c"
-
-[[projects]]
-  name = "github.com/eapache/queue"
-  packages = ["."]
-  revision = "ded5959c0d4e360646dc9e9908cff48666781367"
-  version = "v1.0.2"
 
 [[projects]]
   name = "github.com/emicklei/go-restful"
@@ -438,12 +414,6 @@
   version = "v1.1"
 
 [[projects]]
-  name = "github.com/klauspost/crc32"
-  packages = ["."]
-  revision = "cb6bfca970f6908083f26f39a79009d608efd5cd"
-  version = "v1.1"
-
-[[projects]]
   branch = "master"
   name = "github.com/kr/logfmt"
   packages = ["."]
@@ -588,19 +558,6 @@
   version = "v1.0.1"
 
 [[projects]]
-  name = "github.com/openzipkin/zipkin-go-opentracing"
-  packages = [
-    ".",
-    "_thrift/gen-go/scribe",
-    "_thrift/gen-go/zipkincore",
-    "flag",
-    "types",
-    "wire"
-  ]
-  revision = "6022d4d3ed39632fad842942bda1813a9b4f63c8"
-  version = "v0.2.3"
-
-[[projects]]
   branch = "master"
   name = "github.com/petar/GoLLRB"
   packages = ["llrb"]
@@ -611,18 +568,6 @@
   name = "github.com/philhofer/fwd"
   packages = ["."]
   revision = "98c11a7a6ec829d672b03833c3d69a7fae1ca972"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/pierrec/lz4"
-  packages = ["."]
-  revision = "f5b77fd73d83122495309c0f459b810f83cc291f"
-
-[[projects]]
-  name = "github.com/pierrec/xxHash"
-  packages = ["xxHash32"]
-  revision = "f051bb7f1d1aaf1b5a665d74fb6b0217712c69f7"
-  version = "v0.1.1"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -678,11 +623,10 @@
     "expfmt",
     "internal/bitbucket.org/ww/goautoneg",
     "model",
-    "promlog",
     "route",
     "version"
   ]
-  revision = "89604d197083d4781071d3c65855d24ecfb0a563"
+  revision = "7600349dcfe1abd18d72d3a1770870d9800a7801"
 
 [[projects]]
   branch = "master"
@@ -734,10 +678,9 @@
     "util/strutil",
     "util/testutil",
     "util/treecache",
-    "util/yaml",
     "web/api/v1"
   ]
-  revision = "c47fbcb626acb037d1e0ad11ca923cf3fd3a9bdd"
+  revision = "25e2d9f152b634d65123ef11342aceb23e66a1a2"
 
 [[projects]]
   branch = "master"
@@ -751,12 +694,6 @@
     "labels"
   ]
   revision = "195bc0d286b077f5633eb4bda76743620588b2fa"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/rcrowley/go-metrics"
-  packages = ["."]
-  revision = "1f30fe9094a513ce4c700b9a54458bbb0c96996c"
 
 [[projects]]
   branch = "master"
@@ -834,12 +771,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/weaveworks-experiments/loki"
-  packages = ["pkg/client"]
-  revision = "17ff1516db3dffe25452b4cbf6e6412f303cddea"
-
-[[projects]]
-  branch = "master"
   name = "github.com/weaveworks/billing-client"
   packages = ["."]
   revision = "be0d55e547b147ea1817f037cab9458bf7fc7850"
@@ -864,7 +795,7 @@
     "tracing",
     "user"
   ]
-  revision = "ebab3a78900a09cebce8d0b37f2a69d474796bf4"
+  revision = "b6e3b7fd56106061b1d60ec4da46c0d6770eb111"
 
 [[projects]]
   name = "github.com/weaveworks/mesh"
@@ -1055,10 +986,10 @@
   version = "v0.9.0"
 
 [[projects]]
-  branch = "v2"
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "cd8b52f8269e0feb286dfeef29f8fe4d5b397e0b"
+  revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
+  version = "v2.2.1"
 
 [[projects]]
   name = "k8s.io/apimachinery"
@@ -1183,13 +1114,14 @@
     "util/cert",
     "util/clock",
     "util/flowcontrol",
-    "util/integer"
+    "util/integer",
+    "util/workqueue"
   ]
   revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fc2b611011b916790e0e1f112a7e0359692b3963b08ca30fbdfc34c37278246c"
+  inputs-digest = "dfbcc50df522b353f27b1af1328cc6389e305dd0bdf23e8ea4200d7e9bca9d2b"
   solver-name = "gps-cdcl"
   solver-version = 1

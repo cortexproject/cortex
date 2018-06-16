@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
@@ -150,6 +152,17 @@ func TestDistributorPush(t *testing.T) {
 			ingesters:     []mockIngester{{}, {}, {}},
 			expectedError: fmt.Errorf("Fail"),
 		},
+
+		// A push exceeding burst size should fail
+		{
+			samples: 30,
+			ingesters: []mockIngester{
+				{happy: true},
+				{happy: true},
+				{happy: true},
+			},
+			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 30 samples"),
+		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			ingesterDescs := []*ring.IngesterDesc{}
@@ -173,8 +186,8 @@ func TestDistributorPush(t *testing.T) {
 			d, err := New(Config{
 				RemoteTimeout:       1 * time.Minute,
 				ClientCleanupPeriod: 1 * time.Minute,
-				IngestionRateLimit:  10000,
-				IngestionBurstSize:  10000,
+				IngestionRateLimit:  20,
+				IngestionBurstSize:  20,
 
 				ingesterClientFactory: func(addr string, _ client.Config) (client.IngesterClient, error) {
 					return ingesters[addr], nil

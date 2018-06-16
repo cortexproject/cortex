@@ -18,22 +18,12 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/weaveworks-experiments/loki/pkg/client"
 	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/signals"
 )
-
-func init() {
-	tracer, err := loki.NewTracer()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create tracer: %v", err))
-	} else {
-		opentracing.InitGlobalTracer(tracer)
-	}
-}
 
 // Config for a Server
 type Config struct {
@@ -67,8 +57,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Server wraps a HTTP and gRPC server, and some common initialization.
 //
-// Servers will be automatically instrumented for Prometheus metrics
-// and Loki tracing.  HTTP over gRPC
+// Servers will be automatically instrumented for Prometheus metrics.
 type Server struct {
 	cfg          Config
 	handler      *signals.Handler
@@ -156,7 +145,6 @@ func New(cfg Config) (*Server, error) {
 // RegisterInstrumentation on the given router.
 func RegisterInstrumentation(router *mux.Router) {
 	router.Handle("/metrics", prometheus.Handler())
-	router.Handle("/traces", loki.Handler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 }
 

@@ -85,9 +85,7 @@ type Config struct {
 	RejectOldSamples       bool
 	RejectOldSamplesMaxAge time.Duration
 
-	// maximum length settings for label names and values
-	MaxLengthLabelName  int
-	MaxLengthLabelValue int
+	validationConfig ValidateConfig
 
 	// For testing, you can override the address and ID of this ingester
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
@@ -103,6 +101,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 	cfg.userStatesConfig.RegisterFlags(f)
 	cfg.clientConfig.RegisterFlags(f)
+	cfg.validationConfig.RegisterFlags(f)
 
 	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
 
@@ -116,8 +115,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.RejectOldSamples, "ingester.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "ingester.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 
-	f.IntVar(&cfg.MaxLengthLabelName, "ingester.max-length-label-name", 1024, "Maximum length accepted for label names")
-	f.IntVar(&cfg.MaxLengthLabelValue, "ingester.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -184,11 +181,11 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
-	if cfg.MaxLengthLabelValue <= 0 {
-		cfg.MaxLengthLabelValue = DefaultMaxLengthLabelValue
+	if cfg.validationConfig.MaxLabelNameLength <= 0 {
+		cfg.validationConfig.MaxLabelNameLength = DefaultMaxLengthLabelValue
 	}
-	if cfg.MaxLengthLabelName <= 0 {
-		cfg.MaxLengthLabelName = DefaultMaxLengthLabelName
+	if cfg.validationConfig.MaxLabelValueLength <= 0 {
+		cfg.validationConfig.MaxLabelValueLength = DefaultMaxLengthLabelName
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
@@ -325,7 +322,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is older than the maximum accepted age", sample.Timestamp)
 	}
 
-	if err := ValidateSample(sample, i.cfg.MaxLengthLabelName, i.cfg.MaxLengthLabelValue); err != nil {
+	if err := ValidateSample(sample, i.cfg); err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
 		return nil
 	}

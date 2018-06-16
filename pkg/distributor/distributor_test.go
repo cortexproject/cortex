@@ -273,7 +273,7 @@ func expectedResponse(start, end int) model.Matrix {
 				"sample":   model.LabelValue(fmt.Sprintf("%d", i)),
 			},
 			Values: []model.SamplePair{
-				model.SamplePair{
+				{
 					Value:     model.SampleValue(i),
 					Timestamp: model.Time(i),
 				},

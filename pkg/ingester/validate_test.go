@@ -10,6 +10,8 @@ import (
 )
 
 func TestValidate(t *testing.T) {
+
+	cfg := ValidateConfig{MaxLabelValueLength: 25, MaxLabelNameLength: 25}
 	for _, c := range []struct {
 		metric model.Metric
 		err    error
@@ -41,7 +43,7 @@ func TestValidate(t *testing.T) {
 	} {
 		err := ValidateSample(&model.Sample{
 			Metric: c.metric,
-		}, 25, 25)
+		}, &cfg)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }

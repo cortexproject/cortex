@@ -322,7 +322,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is older than the maximum accepted age", sample.Timestamp)
 	}
 
-	if err := ValidateSample(sample, i.cfg); err != nil {
+	if err := ValidateSample(sample, &i.cfg.validationConfig); err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
 		return nil
 	}

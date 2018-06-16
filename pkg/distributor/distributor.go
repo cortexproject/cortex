@@ -81,7 +81,7 @@ type Config struct {
 	ShardByMetricName bool
 
 	// for testing
-	ingesterClientFactory func(addr string, cfg ingester_client.Config) (client.IngesterClient, error)
+	ingesterClientFactory client.Factory
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

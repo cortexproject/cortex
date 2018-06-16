@@ -19,85 +19,10 @@ import (
 	"github.com/weaveworks/cortex/pkg/ring"
 )
 
-// mockRing doesn't do any consistent hashing, just returns same ingesters for every query.
-type mockRing struct {
-	prometheus.Counter
-	ingesters []*ring.IngesterDesc
-}
-
-func (r mockRing) Get(key uint32, op ring.Operation) (ring.ReplicationSet, error) {
-	return ring.ReplicationSet{
-		Ingesters: r.ingesters[:3],
-		MaxErrors: 1,
-	}, nil
-}
-
-func (r mockRing) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
-	result := []ring.ReplicationSet{}
-	for i := 0; i < len(keys); i++ {
-		result = append(result, ring.ReplicationSet{
-			Ingesters: r.ingesters[:3],
-			MaxErrors: 1,
-		})
-	}
-	return result, nil
-}
-
-func (r mockRing) GetAll() (ring.ReplicationSet, error) {
-	return ring.ReplicationSet{
-		Ingesters: r.ingesters,
-		MaxErrors: 1,
-	}, nil
-}
-
-func (r mockRing) ReplicationFactor() int {
-	return 3
-}
-
-type mockIngester struct {
-	client.IngesterClient
-	happy bool
-	stats client.UsersStatsResponse
-}
-
-func (i mockIngester) Push(ctx context.Context, in *client.WriteRequest, opts ...grpc.CallOption) (*client.WriteResponse, error) {
-	if !i.happy {
-		return nil, fmt.Errorf("Fail")
-	}
-	return &client.WriteResponse{}, nil
-}
-
-func (i mockIngester) Query(ctx context.Context, in *client.QueryRequest, opts ...grpc.CallOption) (*client.QueryResponse, error) {
-	if !i.happy {
-		return nil, fmt.Errorf("Fail")
-	}
-	return &client.QueryResponse{
-		Timeseries: []client.TimeSeries{
-			{
-				Labels: []client.LabelPair{
-					{
-						Name:  []byte("__name__"),
-						Value: []byte("foo"),
-					},
-				},
-				Samples: []client.Sample{
-					{
-						Value:       0,
-						TimestampMs: 0,
-					},
-					{
-						Value:       1,
-						TimestampMs: 1,
-					},
-				},
-			},
-		},
-	}, nil
-}
-
-func (i mockIngester) AllUserStats(ctx context.Context, in *client.UserStatsRequest, opts ...grpc.CallOption) (*client.UsersStatsResponse, error) {
-	return &i.stats, nil
-}
+var (
+	errFail = fmt.Errorf("Fail")
+	success = &client.WriteResponse{}
+)
 
 func TestDistributorPush(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -110,7 +35,7 @@ func TestDistributorPush(t *testing.T) {
 		// A push of no samples shouldn't block or return error, even if ingesters are sad
 		{
 			ingesters:        []mockIngester{{}, {}, {}},
-			expectedResponse: &client.WriteResponse{},
+			expectedResponse: success,
 		},
 
 		// A push to 3 happy ingesters should succeed
@@ -121,7 +46,7 @@ func TestDistributorPush(t *testing.T) {
 				{happy: true},
 				{happy: true},
 			},
-			expectedResponse: &client.WriteResponse{},
+			expectedResponse: success,
 		},
 
 		// A push to 2 happy ingesters should succeed
@@ -132,7 +57,7 @@ func TestDistributorPush(t *testing.T) {
 				{happy: true},
 				{happy: true},
 			},
-			expectedResponse: &client.WriteResponse{},
+			expectedResponse: success,
 		},
 
 		// A push to 1 happy ingesters should fail
@@ -143,14 +68,14 @@ func TestDistributorPush(t *testing.T) {
 				{},
 				{happy: true},
 			},
-			expectedError: fmt.Errorf("Fail"),
+			expectedError: errFail,
 		},
 
 		// A push to 0 happy ingesters should fail
 		{
 			samples:       10,
 			ingesters:     []mockIngester{{}, {}, {}},
-			expectedError: fmt.Errorf("Fail"),
+			expectedError: errFail,
 		},
 
 		// A push exceeding burst size should fail
@@ -165,56 +90,10 @@ func TestDistributorPush(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			ingesterDescs := []*ring.IngesterDesc{}
-			ingesters := map[string]mockIngester{}
-			for i, ingester := range tc.ingesters {
-				addr := fmt.Sprintf("%d", i)
-				ingesterDescs = append(ingesterDescs, &ring.IngesterDesc{
-					Addr:      addr,
-					Timestamp: time.Now().Unix(),
-				})
-				ingesters[addr] = ingester
-			}
-
-			ring := mockRing{
-				Counter: prometheus.NewCounter(prometheus.CounterOpts{
-					Name: "foo",
-				}),
-				ingesters: ingesterDescs,
-			}
-
-			d, err := New(Config{
-				RemoteTimeout:       1 * time.Minute,
-				ClientCleanupPeriod: 1 * time.Minute,
-				IngestionRateLimit:  20,
-				IngestionBurstSize:  20,
-
-				ingesterClientFactory: func(addr string, _ client.Config) (client.IngesterClient, error) {
-					return ingesters[addr], nil
-				},
-			}, ring)
-			if err != nil {
-				t.Fatal(err)
-			}
+			d := prepare(t, tc.ingesters)
 			defer d.Stop()
 
-			request := &client.WriteRequest{}
-			for i := 0; i < tc.samples; i++ {
-				ts := client.TimeSeries{
-					Labels: []client.LabelPair{
-						{Name: []byte("__name__"), Value: []byte("foo")},
-						{Name: []byte("bar"), Value: []byte("baz")},
-						{Name: []byte("sample"), Value: []byte(fmt.Sprintf("%d", i))},
-					},
-				}
-				ts.Samples = []client.Sample{
-					{
-						Value:       float64(i),
-						TimestampMs: int64(i),
-					},
-				}
-				request.Timeseries = append(request.Timeseries, ts)
-			}
+			request := makeWriteRequest(tc.samples)
 			response, err := d.Push(ctx, request)
 			assert.Equal(t, tc.expectedResponse, response, "Wrong response")
 			assert.Equal(t, tc.expectedError, err, "Wrong error")
@@ -238,23 +117,6 @@ func TestDistributorQuery(t *testing.T) {
 	matchers := []*labels.Matcher{
 		nameMatcher,
 		jobMatcher,
-	}
-
-	expectedResponse := func(start, end int) model.Matrix {
-		result := model.Matrix{
-			&model.SampleStream{
-				Metric: model.Metric{"__name__": "foo"},
-			},
-		}
-		for i := start; i < end; i++ {
-			result[0].Values = append(result[0].Values,
-				model.SamplePair{
-					Value:     model.SampleValue(i),
-					Timestamp: model.Time(i),
-				},
-			)
-		}
-		return result
 	}
 
 	for i, tc := range []struct {
@@ -289,7 +151,7 @@ func TestDistributorQuery(t *testing.T) {
 				{happy: false},
 				{happy: true},
 			},
-			expectedError: fmt.Errorf("Fail"),
+			expectedError: errFail,
 		},
 
 		// A query to 0 happy ingesters should succeed
@@ -299,41 +161,11 @@ func TestDistributorQuery(t *testing.T) {
 				{happy: false},
 				{happy: false},
 			},
-			expectedError: fmt.Errorf("Fail"),
+			expectedError: errFail,
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			ingesterDescs := []*ring.IngesterDesc{}
-			ingesters := map[string]mockIngester{}
-			for i, ingester := range tc.ingesters {
-				addr := fmt.Sprintf("%d", i)
-				ingesterDescs = append(ingesterDescs, &ring.IngesterDesc{
-					Addr:      addr,
-					Timestamp: time.Now().Unix(),
-				})
-				ingesters[addr] = ingester
-			}
-
-			ring := mockRing{
-				Counter: prometheus.NewCounter(prometheus.CounterOpts{
-					Name: "foo",
-				}),
-				ingesters: ingesterDescs,
-			}
-
-			d, err := New(Config{
-				RemoteTimeout:       1 * time.Minute,
-				ClientCleanupPeriod: 1 * time.Minute,
-				IngestionRateLimit:  10000,
-				IngestionBurstSize:  10000,
-
-				ingesterClientFactory: func(addr string, _ client.Config) (client.IngesterClient, error) {
-					return ingesters[addr], nil
-				},
-			}, ring)
-			if err != nil {
-				t.Fatal(err)
-			}
+			d := prepare(t, tc.ingesters)
 			defer d.Stop()
 
 			for _, matcher := range matchers {
@@ -343,4 +175,166 @@ func TestDistributorQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func prepare(t *testing.T, ingesters []mockIngester) *Distributor {
+	ingesterDescs := []*ring.IngesterDesc{}
+	ingestersByAddr := map[string]mockIngester{}
+	for i, ingester := range ingesters {
+		addr := fmt.Sprintf("%d", i)
+		ingesterDescs = append(ingesterDescs, &ring.IngesterDesc{
+			Addr:      addr,
+			Timestamp: time.Now().Unix(),
+		})
+		ingestersByAddr[addr] = ingester
+	}
+
+	ring := mockRing{
+		Counter: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foo",
+		}),
+		ingesters:         ingesterDescs,
+		replicationFactor: 3,
+	}
+
+	factory := func(addr string, _ client.Config) (client.IngesterClient, error) {
+		return ingestersByAddr[addr], nil
+	}
+
+	d, err := New(Config{
+		RemoteTimeout:         1 * time.Minute,
+		ClientCleanupPeriod:   1 * time.Minute,
+		IngestionRateLimit:    20,
+		IngestionBurstSize:    20,
+		ingesterClientFactory: factory,
+	}, ring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func makeWriteRequest(samples int) *client.WriteRequest {
+	request := &client.WriteRequest{}
+	for i := 0; i < samples; i++ {
+		ts := client.TimeSeries{
+			Labels: []client.LabelPair{
+				{Name: []byte("__name__"), Value: []byte("foo")},
+				{Name: []byte("bar"), Value: []byte("baz")},
+				{Name: []byte("sample"), Value: []byte(fmt.Sprintf("%d", i))},
+			},
+		}
+		ts.Samples = []client.Sample{
+			{
+				Value:       float64(i),
+				TimestampMs: int64(i),
+			},
+		}
+		request.Timeseries = append(request.Timeseries, ts)
+	}
+	return request
+}
+
+func expectedResponse(start, end int) model.Matrix {
+	result := model.Matrix{
+		&model.SampleStream{
+			Metric: model.Metric{"__name__": "foo"},
+		},
+	}
+	for i := start; i < end; i++ {
+		result[0].Values = append(result[0].Values,
+			model.SamplePair{
+				Value:     model.SampleValue(i),
+				Timestamp: model.Time(i),
+			},
+		)
+	}
+	return result
+}
+
+// mockRing doesn't do virtual nodes, just returns mod(key) + replicationFactor
+// ingesters.
+type mockRing struct {
+	prometheus.Counter
+	ingesters         []*ring.IngesterDesc
+	replicationFactor uint32
+}
+
+func (r mockRing) Get(key uint32, op ring.Operation) (ring.ReplicationSet, error) {
+	result := ring.ReplicationSet{
+		MaxErrors: 1,
+	}
+	for i := uint32(0); i < r.replicationFactor; i++ {
+		n := (key + i) % uint32(len(r.ingesters))
+		result.Ingesters = append(result.Ingesters, r.ingesters[n])
+	}
+	return result, nil
+}
+
+func (r mockRing) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
+	result := []ring.ReplicationSet{}
+	for i := 0; i < len(keys); i++ {
+		rs, err := r.Get(keys[i], op)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, rs)
+	}
+	return result, nil
+}
+
+func (r mockRing) GetAll() (ring.ReplicationSet, error) {
+	return ring.ReplicationSet{
+		Ingesters: r.ingesters,
+		MaxErrors: 1,
+	}, nil
+}
+
+func (r mockRing) ReplicationFactor() int {
+	return int(r.replicationFactor)
+}
+
+type mockIngester struct {
+	client.IngesterClient
+	happy bool
+	stats client.UsersStatsResponse
+}
+
+func (i mockIngester) Push(ctx context.Context, in *client.WriteRequest, opts ...grpc.CallOption) (*client.WriteResponse, error) {
+	if !i.happy {
+		return nil, errFail
+	}
+	return &client.WriteResponse{}, nil
+}
+
+func (i mockIngester) Query(ctx context.Context, in *client.QueryRequest, opts ...grpc.CallOption) (*client.QueryResponse, error) {
+	if !i.happy {
+		return nil, errFail
+	}
+	return &client.QueryResponse{
+		Timeseries: []client.TimeSeries{
+			{
+				Labels: []client.LabelPair{
+					{
+						Name:  []byte("__name__"),
+						Value: []byte("foo"),
+					},
+				},
+				Samples: []client.Sample{
+					{
+						Value:       0,
+						TimestampMs: 0,
+					},
+					{
+						Value:       1,
+						TimestampMs: 1,
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+func (i mockIngester) AllUserStats(ctx context.Context, in *client.UserStatsRequest, opts ...grpc.CallOption) (*client.UsersStatsResponse, error) {
+	return &i.stats, nil
 }

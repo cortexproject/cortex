@@ -91,12 +91,7 @@ type Config struct {
 	MaxLengthLabelValue int
 
 	// For testing, you can override the address and ID of this ingester
-	addr                  string
-	infName               string
-	id                    string
-	skipUnregister        bool
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
-	KVClient              ring.KVClient
 }
 
 // SetClientConfig sets clientConfig in config
@@ -124,16 +119,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&cfg.MaxLengthLabelName, "ingester.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&cfg.MaxLengthLabelValue, "ingester.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to get hostname", "err", err)
-		os.Exit(1)
-	}
-
-	f.StringVar(&cfg.infName, "ingester.interface", "eth0", "Name of network interface to read address from.")
-	f.StringVar(&cfg.addr, "ingester.addr", "", "IP address to register into consul.")
-	f.StringVar(&cfg.id, "ingester.id", hostname, "ID to register into consul.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x

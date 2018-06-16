@@ -23,7 +23,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
-	"os"
 )
 
 const (

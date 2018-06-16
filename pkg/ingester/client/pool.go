@@ -72,7 +72,7 @@ func (p *Pool) loop() {
 	for {
 		select {
 		case <-cleanupClients.C:
-			p.removeStaleIngesterClients()
+			p.removeStaleClients()
 			if p.cfg.HealthCheckIngesters {
 				p.cleanUnhealthy()
 			}
@@ -152,23 +152,23 @@ func (p *Pool) Count() int {
 	return len(p.clients)
 }
 
-func (p *Pool) removeStaleIngesterClients() {
-	ingesters := map[string]struct{}{}
+func (p *Pool) removeStaleClients() {
+	clients := map[string]struct{}{}
 	replicationSet, err := p.ring.GetAll()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error removing stale ingester clients", "err", err)
+		level.Error(util.Logger).Log("msg", "error removing stale clients", "err", err)
 		return
 	}
 
 	for _, ing := range replicationSet.Ingesters {
-		ingesters[ing.Addr] = struct{}{}
+		clients[ing.Addr] = struct{}{}
 	}
 
 	for _, addr := range p.RegisteredAddresses() {
-		if _, ok := ingesters[addr]; ok {
+		if _, ok := clients[addr]; ok {
 			continue
 		}
-		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
+		level.Info(util.Logger).Log("msg", "removing stale client", "addr", addr)
 		p.RemoveClientFor(addr)
 	}
 }

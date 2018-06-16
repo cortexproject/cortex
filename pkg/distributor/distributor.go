@@ -346,10 +346,11 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 }
 
 func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, samples []*sampleTracker) error {
-	c, err := d.ingesterPool.GetClientFor(ingester.Addr)
+	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
+	c := h.(ingester_client.IngesterClient)
 
 	req := &client.WriteRequest{
 		Timeseries: make([]client.TimeSeries, 0, len(samples)),
@@ -362,7 +363,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 	}
 
 	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", d.sendDuration, func(ctx context.Context) error {
-		_, err := c.(ingester_client.IngesterClient).Push(ctx, req)
+		_, err := c.Push(ctx, req)
 		return err
 	})
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()

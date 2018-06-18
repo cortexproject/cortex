@@ -40,6 +40,10 @@ const (
 	DefaultMaxSeriesPerUser = 5000000
 	// DefaultMaxSeriesPerMetric is the maximum number of series in one metric (of a single user).
 	DefaultMaxSeriesPerMetric = 50000
+	// DefaultMaxLengthLabelName is the maximum length a label name can be.
+	DefaultMaxLengthLabelName = 1024
+	// DefaultMaxLengthLabelValue is the maximum length a label value can be.
+	DefaultMaxLengthLabelValue = 2048
 )
 
 var (
@@ -81,7 +85,9 @@ type Config struct {
 	RejectOldSamples       bool
 	RejectOldSamplesMaxAge time.Duration
 
-	// For unit testing.
+	validationConfig ValidateConfig
+
+	// For testing, you can override the address and ID of this ingester
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
 }
 
@@ -95,6 +101,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 	cfg.userStatesConfig.RegisterFlags(f)
 	cfg.clientConfig.RegisterFlags(f)
+	cfg.validationConfig.RegisterFlags(f)
 
 	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
 
@@ -107,6 +114,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.RejectOldSamples, "ingester.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "ingester.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
+
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -171,6 +179,13 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	}
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
+	}
+
+	if cfg.validationConfig.MaxLabelNameLength <= 0 {
+		cfg.validationConfig.MaxLabelNameLength = DefaultMaxLengthLabelValue
+	}
+	if cfg.validationConfig.MaxLabelValueLength <= 0 {
+		cfg.validationConfig.MaxLabelValueLength = DefaultMaxLengthLabelName
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
@@ -307,7 +322,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is older than the maximum accepted age", sample.Timestamp)
 	}
 
-	if err := util.ValidateSample(sample); err != nil {
+	if err := ValidateSample(sample, &i.cfg.validationConfig); err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
 		return nil
 	}

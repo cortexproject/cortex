@@ -56,7 +56,7 @@ func TestIngesterRestart(t *testing.T) {
 	config.LifecyclerConfig.SkipUnregister = true
 
 	{
-		ingester, err := New(config, nil)
+		ingester, err := New(config, 0, nil)
 		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
@@ -67,7 +67,7 @@ func TestIngesterRestart(t *testing.T) {
 	})
 
 	{
-		ingester, err := New(config, nil)
+		ingester, err := New(config, 0, nil)
 		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
@@ -89,7 +89,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.ClaimOnRollout = true
 	cfg1.SearchPendingFor = aLongTime
-	ing1, err := New(cfg1, nil)
+	ing1, err := New(cfg1, 0, nil)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -119,7 +119,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = aLongTime
-	ing2, err := New(cfg2, nil)
+	ing2, err := New(cfg2, 0, nil)
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1

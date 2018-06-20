@@ -77,7 +77,7 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
-	ingester, err := ingester.New(ingesterConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, schemaConfig.CreationGracePeriod, chunkStore)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

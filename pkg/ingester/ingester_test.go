@@ -32,7 +32,7 @@ func newTestStore(t *testing.T, cfg Config) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, 0, store)
 	require.NoError(t, err)
 	return store, ing
 }
@@ -328,6 +328,7 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.RejectOldSamples = true
 	cfg.RejectOldSamplesMaxAge = 24 * time.Hour
+	cfg.CreationGracePeriod = 4 * time.Hour
 
 	_, ing := newTestStore(t, cfg)
 	defer ing.Shutdown()
@@ -348,6 +349,11 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 		Timestamp: now.Add(-25 * time.Hour), // before old sample max age
 		Value:     2,
 	}
+	sample4 := model.Sample{
+		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
+		Timestamp: now.Add(5 * time.Hour), // after table grace period
+		Value:     4,
+	}
 
 	// Append recent sample, expect no error.
 	userID := "1"
@@ -359,6 +365,12 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected error about old samples not accepted, got %v", err)
+	}
+
+	// Append future sample, expect bad request error.
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample4}))
+	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected error about future samples not accepted, got %v", err)
 	}
 
 	// Read samples back via ingester queries.

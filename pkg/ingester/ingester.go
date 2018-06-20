@@ -34,6 +34,7 @@ const (
 	duplicateSample         = "multiple_values_for_timestamp"
 	greaterThanMaxSampleAge = "greater_than_max_sample_age"
 	maxLabelNamesPerSeries  = "max_label_names_per_series"
+	tooFarInFuture          = "too_far_in_future"
 
 	// DefaultConcurrentFlush is the number of series to flush concurrently
 	DefaultConcurrentFlush = 50
@@ -86,6 +87,7 @@ type Config struct {
 	// Config for rejecting old samples.
 	RejectOldSamples       bool
 	RejectOldSamplesMaxAge time.Duration
+	CreationGracePeriod    time.Duration
 
 	validationConfig ValidateConfig
 
@@ -154,7 +156,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
+func New(cfg Config, creationGracePeriod time.Duration, chunkStore ChunkStore) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -185,6 +187,9 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	}
 	if cfg.validationConfig.MaxLabelValueLength <= 0 {
 		cfg.validationConfig.MaxLabelValueLength = DefaultMaxLengthLabelName
+	}
+	if cfg.CreationGracePeriod == 0 {
+		cfg.CreationGracePeriod = creationGracePeriod
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
@@ -319,6 +324,10 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 	if i.cfg.RejectOldSamples && sample.Timestamp < model.Now().Add(-i.cfg.RejectOldSamplesMaxAge) {
 		discardedSamples.WithLabelValues(greaterThanMaxSampleAge).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is older than the maximum accepted age", sample.Timestamp)
+	}
+	if sample.Timestamp > model.Now().Add(i.cfg.CreationGracePeriod) {
+		discardedSamples.WithLabelValues(tooFarInFuture).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is newer than the maximum accepted time", sample.Timestamp)
 	}
 
 	if err := ValidateSample(sample, &i.cfg.validationConfig); err != nil {

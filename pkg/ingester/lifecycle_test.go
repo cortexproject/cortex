@@ -273,12 +273,8 @@ func (i ingesterClientAdapater) Close() error {
 // TestIngesterFlush tries to test that the ingester flushes chunks before
 // removing itself from the ring.
 func TestIngesterFlush(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
-	store := newTestStore()
-
 	// Start the ingester, and get it into ACTIVE state.
-	ing, err := New(cfg, store)
-	require.NoError(t, err)
+	store, ing := newTestStore(t, defaultIngesterTestConfig())
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 		return ing.lifecycler.GetState()
@@ -293,7 +289,7 @@ func TestIngesterFlush(t *testing.T) {
 		}
 	)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{
+	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{
 		{
 			Metric:    m,
 			Timestamp: ts,

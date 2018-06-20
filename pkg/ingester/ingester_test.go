@@ -28,10 +28,13 @@ type testStore struct {
 	chunks map[string][]chunk.Chunk
 }
 
-func newTestStore() *testStore {
-	return &testStore{
+func newTestStore(t *testing.T, cfg Config) (*testStore, *Ingester) {
+	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
+	ing, err := New(cfg, store)
+	require.NoError(t, err)
+	return store, ing
 }
 
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
@@ -115,10 +118,7 @@ func chunksToMatrix(chunks []chunk.Chunk) (model.Matrix, error) {
 }
 
 func TestIngesterAppend(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
-	store := newTestStore()
-	ing, err := New(cfg, store)
-	require.NoError(t, err)
+	store, ing := newTestStore(t, defaultIngesterTestConfig())
 
 	userIDs := []string{"1", "2", "3"}
 
@@ -131,7 +131,7 @@ func TestIngesterAppend(t *testing.T) {
 	// Append samples.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		_, err = ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID])))
+		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID])))
 		require.NoError(t, err)
 	}
 
@@ -163,17 +163,14 @@ func TestIngesterAppend(t *testing.T) {
 }
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
-	store := newTestStore()
-	ing, err := New(cfg, store)
-	require.NoError(t, err)
+	_, ing := newTestStore(t, defaultIngesterTestConfig())
 	defer ing.Shutdown()
 
 	m := model.Metric{
 		model.MetricNameLabel: "testmetric",
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0})
+	err := ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0})
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
@@ -195,9 +192,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 		MaxSeriesPerUser: 1,
 	}
 
-	store := newTestStore()
-	ing, err := New(cfg, store)
-	require.NoError(t, err)
+	_, ing := newTestStore(t, cfg)
 	defer ing.Shutdown()
 
 	userID := "1"
@@ -219,7 +214,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
@@ -266,9 +261,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 		MaxSeriesPerMetric: 1,
 	}
 
-	store := newTestStore()
-	ing, err := New(cfg, store)
-	require.NoError(t, err)
+	_, ing := newTestStore(t, cfg)
 	defer ing.Shutdown()
 
 	userID := "1"
@@ -290,7 +283,7 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
@@ -336,9 +329,7 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 	cfg.RejectOldSamples = true
 	cfg.RejectOldSamplesMaxAge = 24 * time.Hour
 
-	store := newTestStore()
-	ing, err := New(cfg, store)
-	require.NoError(t, err)
+	_, ing := newTestStore(t, cfg)
 	defer ing.Shutdown()
 
 	now := model.Now()
@@ -361,7 +352,7 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 	// Append recent sample, expect no error.
 	userID := "1"
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 
 	// Append old sample, expect bad request error.
@@ -406,10 +397,7 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 func TestIngesterMaxLabelNamesPerSeries(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.validationConfig.MaxLabelNamesPerSeries = 2
-
-	store := newTestStore()
-	ing, err := New(cfg, store)
-	require.NoError(t, err)
+	_, ing := newTestStore(t, cfg)
 	defer ing.Shutdown()
 
 	sample1 := model.Sample{
@@ -431,7 +419,7 @@ func TestIngesterMaxLabelNamesPerSeries(t *testing.T) {
 	// Append recent sample, expect no error.
 	userID := "1"
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
 	require.NoError(t, err)
 
 	// Append old sample, expect bad request error.

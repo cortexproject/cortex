@@ -81,7 +81,7 @@ func NewConsulClient(cfg ConsulConfig, codec Codec) (KVClient, error) {
 		return nil, err
 	}
 	var c KVClient = &consulClient{
-		kv:               client.KV(),
+		kv:               consulMetrics{client.KV()},
 		codec:            codec,
 		longPollDuration: longPollDuration,
 	}

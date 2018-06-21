@@ -15,7 +15,7 @@ import (
 var (
 	discardedSamples = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cortex_ingester_out_of_order_samples_total",
+			Name: "cortex_ingester_discarded_samples_total",
 			Help: "The total number of samples that were discarded.",
 		},
 		[]string{discardReasonLabel},

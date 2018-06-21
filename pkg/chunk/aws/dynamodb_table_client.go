@@ -115,10 +115,6 @@ func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
 }
 
 func chunkTagsToDynamoDB(ts chunk.Tags) []*dynamodb.Tag {
-	if ts == nil {
-		return nil
-	}
-
 	var result []*dynamodb.Tag
 	for k, v := range ts {
 		result = append(result, &dynamodb.Tag{

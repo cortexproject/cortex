@@ -312,7 +312,7 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 
 func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
 	if expected.WriteScale.Enabled && d.metrics != nil {
-		if err := d.metricsAutoScale(ctx, &current, &expected); err != nil {
+		if err := d.metrics.metricsAutoScale(ctx, &current, &expected); err != nil {
 			return err
 		}
 	}

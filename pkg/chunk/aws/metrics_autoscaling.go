@@ -36,8 +36,7 @@ type metricsData struct {
 	usageRates        map[string]float64
 }
 
-func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expected *chunk.TableDesc) error {
-	m := d.metrics
+func (m *metricsData) metricsAutoScale(ctx context.Context, current, expected *chunk.TableDesc) error {
 	if err := m.update(ctx); err != nil {
 		return err
 	}
@@ -54,24 +53,24 @@ func (d dynamoTableClient) metricsAutoScale(ctx context.Context, current, expect
 	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
 		m.queueLengths[2] < float64(m.queueLengthTarget)*targetScaledown:
 		// No big queue, low errors -> scale down
-		d.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "metrics scale-down")
+		m.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "metrics scale-down")
 	case errorRate == 0 &&
 		m.queueLengths[2] < m.queueLengths[1] && m.queueLengths[1] < m.queueLengths[0]:
 		// zero errors and falling queue -> scale down to current usage
-		d.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "zero errors scale-down")
+		m.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "zero errors scale-down")
 	case errorRate > 0 && m.queueLengths[2] > float64(m.queueLengthTarget)*targetMax:
 		// Too big queue, some errors -> scale up
-		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*m.scaleUpFactor), "metrics max queue scale-up")
+		m.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*m.scaleUpFactor), "metrics max queue scale-up")
 	case errorRate > 0 &&
 		m.queueLengths[2] > float64(m.queueLengthTarget) &&
 		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 		// Growing queue, some errors -> scale up
-		d.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*m.scaleUpFactor), "metrics queue growing scale-up")
+		m.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*m.scaleUpFactor), "metrics queue growing scale-up")
 	}
 	return nil
 }
 
-func (d dynamoTableClient) scaleDownWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
+func (m *metricsData) scaleDownWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
 	if newWrite < expected.WriteScale.MinCapacity {
 		newWrite = expected.WriteScale.MinCapacity
 	}
@@ -79,7 +78,7 @@ func (d dynamoTableClient) scaleDownWrite(current, expected *chunk.TableDesc, ne
 	if newWrite >= current.ProvisionedWrite {
 		return
 	}
-	earliest := d.metrics.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.InCooldown) * time.Second)
+	earliest := m.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.InCooldown) * time.Second)
 	if earliest.After(mtime.Now()) {
 		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", current.Name, "till", earliest)
 		return
@@ -93,7 +92,7 @@ func (d dynamoTableClient) scaleDownWrite(current, expected *chunk.TableDesc, ne
 	// Check that the ingesters seem to be doing some work - don't want to scale down
 	// if all our metrics are returning zero, or all the ingesters have crashed, etc
 	totalUsage := 0.0
-	for _, u := range d.metrics.usageRates {
+	for _, u := range m.usageRates {
 		totalUsage += u
 	}
 	if totalUsage < minUsageForScaledown {
@@ -103,14 +102,14 @@ func (d dynamoTableClient) scaleDownWrite(current, expected *chunk.TableDesc, ne
 
 	level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
 	expected.ProvisionedWrite = newWrite
-	d.metrics.tableLastUpdated[current.Name] = mtime.Now()
+	m.tableLastUpdated[current.Name] = mtime.Now()
 }
 
-func (d dynamoTableClient) scaleUpWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
+func (m *metricsData) scaleUpWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
 	if newWrite > expected.WriteScale.MaxCapacity {
 		newWrite = expected.WriteScale.MaxCapacity
 	}
-	earliest := d.metrics.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.OutCooldown) * time.Second)
+	earliest := m.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.OutCooldown) * time.Second)
 	if earliest.After(mtime.Now()) {
 		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", current.Name, "till", earliest)
 		return
@@ -118,7 +117,7 @@ func (d dynamoTableClient) scaleUpWrite(current, expected *chunk.TableDesc, newW
 	if newWrite > current.ProvisionedWrite {
 		level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
 		expected.ProvisionedWrite = newWrite
-		d.metrics.tableLastUpdated[current.Name] = mtime.Now()
+		m.tableLastUpdated[current.Name] = mtime.Now()
 	}
 }
 

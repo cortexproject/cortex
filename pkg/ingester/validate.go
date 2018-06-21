@@ -17,7 +17,7 @@ const (
 	errLabelValueTooLong = "label value too long: '%s'"
 )
 
-// ValidateConfig for validation settings and options.
+// ValidateConfig has config for validation settings and options
 type ValidateConfig struct {
 	// maximum length a label name can be
 	MaxLabelNameLength int

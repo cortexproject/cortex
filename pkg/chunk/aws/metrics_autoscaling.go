@@ -123,16 +123,12 @@ func (d dynamoTableClient) scaleUpWrite(current, expected *chunk.TableDesc, newW
 }
 
 func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
-	var promAPI promV1.API
-	if cfg.MetricsURL != "" {
-		client, err := promApi.NewClient(promApi.Config{Address: cfg.MetricsURL})
-		if err != nil {
-			return nil, err
-		}
-		promAPI = promV1.NewAPI(client)
+	client, err := promApi.NewClient(promApi.Config{Address: cfg.MetricsURL})
+	if err != nil {
+		return nil, err
 	}
 	return &metricsData{
-		promAPI:           promAPI,
+		promAPI:           promV1.NewAPI(client),
 		queueLengthTarget: cfg.MetricsTargetQueueLen,
 		scaleUpFactor:     cfg.MetricsScaleUpFactor,
 		tableLastUpdated:  make(map[string]time.Time),

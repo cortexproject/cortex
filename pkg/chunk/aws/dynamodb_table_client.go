@@ -61,9 +61,12 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 		applicationAutoScaling = applicationautoscaling.New(session)
 	}
 
-	metrics, err := newMetrics(cfg)
-	if err != nil {
-		return nil, err
+	var metrics *metricsData
+	if cfg.MetricsURL != "" {
+		metrics, err = newMetrics(cfg)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return dynamoTableClient{

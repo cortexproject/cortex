@@ -36,7 +36,15 @@ type metricsData struct {
 	usageRates        map[string]float64
 }
 
-func (m *metricsData) metricsAutoScale(ctx context.Context, current, expected *chunk.TableDesc) error {
+func (m *metricsData) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
+	return nil
+}
+
+func (m *metricsData) DescribeTable(ctx context.Context, desc *chunk.TableDesc) error {
+	return nil
+}
+
+func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, expected *chunk.TableDesc) error {
 	if err := m.update(ctx); err != nil {
 		return err
 	}
@@ -70,7 +78,7 @@ func (m *metricsData) metricsAutoScale(ctx context.Context, current, expected *c
 	return nil
 }
 
-func (m *metricsData) scaleDownWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
+func (m *metricsData) scaleDownWrite(current chunk.TableDesc, expected *chunk.TableDesc, newWrite int64, msg string) {
 	if newWrite < expected.WriteScale.MinCapacity {
 		newWrite = expected.WriteScale.MinCapacity
 	}
@@ -105,7 +113,7 @@ func (m *metricsData) scaleDownWrite(current, expected *chunk.TableDesc, newWrit
 	m.tableLastUpdated[current.Name] = mtime.Now()
 }
 
-func (m *metricsData) scaleUpWrite(current, expected *chunk.TableDesc, newWrite int64, msg string) {
+func (m *metricsData) scaleUpWrite(current chunk.TableDesc, expected *chunk.TableDesc, newWrite int64, msg string) {
 	if newWrite > expected.WriteScale.MaxCapacity {
 		newWrite = expected.WriteScale.MaxCapacity
 	}

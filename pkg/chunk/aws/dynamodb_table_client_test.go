@@ -118,8 +118,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	applicationAutoScaling := newMockApplicationAutoScaling()
 	client := dynamoTableClient{
-		DynamoDB:               dynamoDB,
-		ApplicationAutoScaling: applicationAutoScaling,
+		DynamoDB:  dynamoDB,
+		autoscale: &awsAutoscale{ApplicationAutoScaling: applicationAutoScaling},
 	}
 
 	cfg := chunk.SchemaConfig{
@@ -209,8 +209,8 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	applicationAutoScaling := newMockApplicationAutoScaling()
 	client := dynamoTableClient{
-		DynamoDB:               dynamoDB,
-		ApplicationAutoScaling: applicationAutoScaling,
+		DynamoDB:  dynamoDB,
+		autoscale: &awsAutoscale{ApplicationAutoScaling: applicationAutoScaling},
 	}
 
 	cfg := chunk.SchemaConfig{

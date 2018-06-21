@@ -31,7 +31,7 @@ type ValidateConfig struct {
 func (cfg *ValidateConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxLabelNameLength, "ingester.validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&cfg.MaxLabelValueLength, "ingester.validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
-	f.IntVar(&cfg.MaxLabelNamesPerSeries, "ingester.max-label-names-per-series", DefaultMaxLabelNamesPerSeries, "Maximum number of label names per series.")
+	f.IntVar(&cfg.MaxLabelNamesPerSeries, "ingester.max-label-names-per-series", 20, "Maximum number of label names per series.")
 }
 
 // ValidateSample returns an err if the sample is invalid

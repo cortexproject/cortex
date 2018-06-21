@@ -46,8 +46,6 @@ const (
 	DefaultMaxLengthLabelName = 1024
 	// DefaultMaxLengthLabelValue is the maximum length a label value can be.
 	DefaultMaxLengthLabelValue = 2048
-	// DefaultMaxLabelNamesPerSeries is the maximum number of label names in one series.
-	DefaultMaxLabelNamesPerSeries = 64
 )
 
 var (

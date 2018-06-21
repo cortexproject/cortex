@@ -2,7 +2,7 @@
 
 ## Distributor
 
-- `-distributor.shard-by-metric-name`
+- `-distributor.shard-by-metric-name-only`
 
    In the original Cortex design, samples were sharded amongst distributors by the combination of (userid, metric name).  Sharding by metric name was designed to reduce the number of ingesters you need to hit on the read path; the downside was that you could hotspot the write path.
 
@@ -11,3 +11,7 @@
    Set this flag to `false` for the new behaviour.
 
    **Upgrade notes**: As part of the change which introduced this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag (and the disable it later). When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the new stale period all the old series will be flushed, and you should end up with much better load balancing. Reads will always catch all the data from all ingesters from this change onwards.
+
+- `-ingester.max-series-per-metric`
+
+   Limit for the number of series a given metric can have in a single ingester.  When running with `-distributor.shard-by-metric-name-only=true`, this limit will enforce the maximum number of series a metric can have 'globally', but when running with `-distributor.shard-by-metric-name-only=true` the actual limit will be higher, depending on number of ingesters and replication factor.

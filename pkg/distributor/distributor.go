@@ -94,7 +94,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during periodic cleanup.")
-	flag.BoolVar(&cfg.ShardByMetricName, "distributor.shard-by-metric-name", true, "If samples shoud be distributed solely by user and metric name, as opposed to all labels.")
+	flag.BoolVar(&cfg.ShardByMetricName, "distributor.shard-by-metric-name-only", true, "If samples shoud be distributed solely by user and metric name, as opposed to all labels.")
 }
 
 // New constructs a new Distributor

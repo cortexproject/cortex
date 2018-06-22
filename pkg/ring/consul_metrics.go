@@ -48,7 +48,7 @@ func (c consulMetrics) Get(key string, q *consul.QueryOptions) (*consul.KVPair, 
 func (c consulMetrics) List(path string, q *consul.QueryOptions) (consul.KVPairs, *consul.QueryMeta, error) {
 	var kvps consul.KVPairs
 	var meta *consul.QueryMeta
-	err := instrument.TimeRequestHistogram(context.Background(), "Put", consulRequestDuration, func(_ context.Context) error {
+	err := instrument.TimeRequestHistogram(context.Background(), "List", consulRequestDuration, func(_ context.Context) error {
 		var err error
 		kvps, meta, err = c.kv.List(path, q)
 		return err

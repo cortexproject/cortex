@@ -154,7 +154,7 @@ func TestIngesterTransfer(t *testing.T) {
 }
 
 func numTokens(c ring.KVClient, name string) int {
-	ringDesc, err := c.Get(ring.ConsulKey)
+	ringDesc, err := c.Get(context.Background(), ring.ConsulKey)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error reading consul", "err", err)
 		return 0
@@ -310,7 +310,7 @@ func TestIngesterFlush(t *testing.T) {
 	// the ring, the data is in the chunk store.
 	ing.lifecycler.Shutdown()
 	poll(t, 200*time.Millisecond, 0, func() interface{} {
-		r, err := ing.lifecycler.KVStore.Get(ring.ConsulKey)
+		r, err := ing.lifecycler.KVStore.Get(context.Background(), ring.ConsulKey)
 		if err != nil {
 			return -1
 		}

@@ -26,6 +26,7 @@ type ConsulConfig struct {
 	Host              string
 	Prefix            string
 	HTTPClientTimeout time.Duration
+	ConsistentReads   bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -33,6 +34,7 @@ func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Host, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
 	f.StringVar(&cfg.Prefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
 	f.DurationVar(&cfg.HTTPClientTimeout, "consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
+	f.BoolVar(&cfg.ConsistentReads, "consul.consistent-reads", true, "Enable consistent reads to consul.")
 }
 
 // KVClient is a high-level client for Consul, that exposes operations
@@ -63,8 +65,8 @@ type kv interface {
 
 type consulClient struct {
 	kv
-	codec            Codec
-	longPollDuration time.Duration
+	codec Codec
+	cfg   ConsulConfig
 }
 
 // NewConsulClient returns a new ConsulClient.
@@ -82,9 +84,9 @@ func NewConsulClient(cfg ConsulConfig, codec Codec) (KVClient, error) {
 		return nil, err
 	}
 	var c KVClient = &consulClient{
-		kv:               consulMetrics{client.KV()},
-		codec:            codec,
-		longPollDuration: longPollDuration,
+		kv:    consulMetrics{client.KV()},
+		codec: codec,
+		cfg:   cfg,
 	}
 	if cfg.Prefix != "" {
 		c = PrefixClient(c, cfg.Prefix)
@@ -93,9 +95,6 @@ func NewConsulClient(cfg ConsulConfig, codec Codec) (KVClient, error) {
 }
 
 var (
-	queryOptions = &consul.QueryOptions{
-		RequireConsistent: true,
-	}
 	writeOptions = &consul.WriteOptions{}
 
 	// ErrNotFound is returned by ConsulClient.Get.
@@ -144,7 +143,10 @@ func (c *consulClient) cas(ctx context.Context, key string, f CASCallback) error
 		retry   = true
 	)
 	for i := 0; i < retries; i++ {
-		kvp, _, err := c.kv.Get(key, queryOptions.WithContext(ctx))
+		options := &consul.QueryOptions{
+			RequireConsistent: c.cfg.ConsistentReads,
+		}
+		kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting key", "key", key, "err", err)
 			continue
@@ -217,7 +219,7 @@ func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interfac
 		queryOptions := &consul.QueryOptions{
 			RequireConsistent: true,
 			WaitIndex:         index,
-			WaitTime:          c.longPollDuration,
+			WaitTime:          longPollDuration,
 		}
 
 		kvp, meta, err := c.kv.Get(key, queryOptions.WithContext(ctx))
@@ -255,7 +257,10 @@ func (c *consulClient) PutBytes(ctx context.Context, key string, buf []byte) err
 }
 
 func (c *consulClient) Get(ctx context.Context, key string) (interface{}, error) {
-	kvp, _, err := c.kv.Get(key, queryOptions.WithContext(ctx))
+	options := &consul.QueryOptions{
+		RequireConsistent: c.cfg.ConsistentReads,
+	}
+	kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}

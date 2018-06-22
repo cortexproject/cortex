@@ -4,6 +4,7 @@ type Node struct {
 	ID              string
 	Node            string
 	Address         string
+	Datacenter      string
 	TaggedAddresses map[string]string
 	Meta            map[string]string
 	CreateIndex     uint64
@@ -14,12 +15,14 @@ type CatalogService struct {
 	ID                       string
 	Node                     string
 	Address                  string
+	Datacenter               string
 	TaggedAddresses          map[string]string
 	NodeMeta                 map[string]string
 	ServiceID                string
 	ServiceName              string
 	ServiceAddress           string
 	ServiceTags              []string
+	ServiceMeta              map[string]string
 	ServicePort              int
 	ServiceEnableTagOverride bool
 	CreateIndex              uint64
@@ -40,6 +43,7 @@ type CatalogRegistration struct {
 	Datacenter      string
 	Service         *AgentService
 	Check           *AgentCheck
+	SkipNodeUpdate  bool
 }
 
 type CatalogDeregistration struct {

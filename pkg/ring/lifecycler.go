@@ -73,7 +73,7 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 type FlushTransferer interface {
 	StopIncomingRequests()
 	Flush()
-	TransferOut() error
+	TransferOut(ctx context.Context) error
 }
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
@@ -289,7 +289,7 @@ loop:
 	// to heartbeat to consul.
 	done := make(chan struct{})
 	go func() {
-		i.processShutdown()
+		i.processShutdown(context.Background())
 		close(done)
 	}()
 
@@ -418,10 +418,10 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 	return i.updateConsul(ctx)
 }
 
-func (i *Lifecycler) processShutdown() {
+func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := true
 	if i.cfg.ClaimOnRollout {
-		if err := i.flushTransferer.TransferOut(); err != nil {
+		if err := i.flushTransferer.TransferOut(ctx); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
 		} else {
 			flushRequired = false

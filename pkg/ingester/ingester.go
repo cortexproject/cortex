@@ -505,7 +505,7 @@ func (i *Ingester) Check(ctx old_ctx.Context, req *grpc_health_v1.HealthCheckReq
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
 func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if i.lifecycler.IsReady() {
+	if i.lifecycler.IsReady(r.Context()) {
 		w.WriteHeader(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)

@@ -58,7 +58,7 @@ func init() {
 type workItem struct {
 	userID     string
 	groupName  string
-	group      *rules.Group
+	group      *group
 	scheduled  time.Time
 	generation configs.ID // a monotonically increasing number used to spot out of date work items
 }
@@ -87,7 +87,7 @@ type userConfig struct {
 	generation configs.ID // a monotonically increasing number used to spot out of date work items
 }
 
-type groupFactory func(userID string, groupName string, rls []rules.Rule) (*rules.Group, error)
+type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
 
 type scheduler struct {
 	rulesAPI           RulesAPI

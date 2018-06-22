@@ -274,9 +274,8 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	return promConfig, nil
 }
 
-func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*rules.Group, error) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-	appendable := &appendableAppender{pusher: r.pusher, ctx: ctx}
+func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
+	appendable := &appendableAppender{pusher: r.pusher}
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
@@ -290,8 +289,7 @@ func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*ru
 		Logger:      gklog.NewNopLogger(),
 		Registerer:  prometheus.DefaultRegisterer,
 	}
-	delay := 0 * time.Second // Unused, so 0 value is fine.
-	return rules.NewGroup(groupName, "none", delay, rls, opts), nil
+	return newGroup(groupName, rls, appendable, opts), nil
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.

@@ -8,6 +8,7 @@ import (
 )
 
 // group is a wrapper around a prometheus rules.Group, with a mutable appendable
+// appendable stored here will be the same appendable as in promGroup.opts.Appendable
 type group struct {
 	promGroup  *rules.Group
 	appendable *appendableAppender

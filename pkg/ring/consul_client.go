@@ -13,6 +13,7 @@ import (
 	consul "github.com/hashicorp/consul/api"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
 
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -38,10 +39,10 @@ func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
 // such as CAS and Watch which take callbacks.  It also deals with serialisation
 // by having an instance factory passed in to methods and deserialising into that.
 type KVClient interface {
-	CAS(key string, f CASCallback) error
+	CAS(ctx context.Context, key string, f CASCallback) error
 	WatchKey(ctx context.Context, key string, f func(interface{}) bool)
-	Get(key string) (interface{}, error)
-	PutBytes(key string, buf []byte) error
+	Get(ctx context.Context, key string) (interface{}, error)
+	PutBytes(ctx context.Context, key string, buf []byte) error
 }
 
 // CASCallback is the type of the callback to CAS.  If err is nil, out must be non-nil.
@@ -130,14 +131,20 @@ func (p ProtoCodec) Encode(msg interface{}) ([]byte, error) {
 
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
-func (c *consulClient) CAS(key string, f CASCallback) error {
+func (c *consulClient) CAS(ctx context.Context, key string, f CASCallback) error {
+	return instrument.TimeRequestHistogram(ctx, "CAS loop", consulRequestDuration, func(ctx context.Context) error {
+		return c.cas(ctx, key, f)
+	})
+}
+
+func (c *consulClient) cas(ctx context.Context, key string, f CASCallback) error {
 	var (
 		index   = uint64(0)
 		retries = 10
 		retry   = true
 	)
 	for i := 0; i < retries; i++ {
-		kvp, _, err := c.kv.Get(key, queryOptions)
+		kvp, _, err := c.kv.Get(key, queryOptions.WithContext(ctx))
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting key", "key", key, "err", err)
 			continue
@@ -176,7 +183,7 @@ func (c *consulClient) CAS(key string, f CASCallback) error {
 			Key:         key,
 			Value:       bytes,
 			ModifyIndex: index,
-		}, writeOptions)
+		}, writeOptions.WithContext(ctx))
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
 			continue
@@ -207,11 +214,13 @@ func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interfac
 		index   = uint64(0)
 	)
 	for backoff.Ongoing() {
-		kvp, meta, err := c.kv.Get(key, &consul.QueryOptions{
+		queryOptions := &consul.QueryOptions{
 			RequireConsistent: true,
 			WaitIndex:         index,
 			WaitTime:          c.longPollDuration,
-		})
+		}
+
+		kvp, meta, err := c.kv.Get(key, queryOptions.WithContext(ctx))
 		if err != nil || kvp == nil {
 			level.Error(util.Logger).Log("msg", "error getting path", "key", key, "err", err)
 			backoff.Wait()
@@ -237,16 +246,16 @@ func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interfac
 	}
 }
 
-func (c *consulClient) PutBytes(key string, buf []byte) error {
+func (c *consulClient) PutBytes(ctx context.Context, key string, buf []byte) error {
 	_, err := c.kv.Put(&consul.KVPair{
 		Key:   key,
 		Value: buf,
-	}, &consul.WriteOptions{})
+	}, writeOptions.WithContext(ctx))
 	return err
 }
 
-func (c *consulClient) Get(key string) (interface{}, error) {
-	kvp, _, err := c.kv.Get(key, &consul.QueryOptions{})
+func (c *consulClient) Get(ctx context.Context, key string) (interface{}, error) {
+	kvp, _, err := c.kv.Get(key, queryOptions.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -265,8 +274,8 @@ func PrefixClient(client KVClient, prefix string) KVClient {
 
 // CAS atomically modifies a value in a callback. If the value doesn't exist,
 // you'll get 'nil' as an argument to your callback.
-func (c *prefixedConsulClient) CAS(key string, f CASCallback) error {
-	return c.consul.CAS(c.prefix+key, f)
+func (c *prefixedConsulClient) CAS(ctx context.Context, key string, f CASCallback) error {
+	return c.consul.CAS(ctx, c.prefix+key, f)
 }
 
 // WatchKey watches a key.
@@ -275,10 +284,10 @@ func (c *prefixedConsulClient) WatchKey(ctx context.Context, key string, f func(
 }
 
 // PutBytes writes bytes to Consul.
-func (c *prefixedConsulClient) PutBytes(key string, buf []byte) error {
-	return c.consul.PutBytes(c.prefix+key, buf)
+func (c *prefixedConsulClient) PutBytes(ctx context.Context, key string, buf []byte) error {
+	return c.consul.PutBytes(ctx, c.prefix+key, buf)
 }
 
-func (c *prefixedConsulClient) Get(key string) (interface{}, error) {
-	return c.consul.Get(c.prefix + key)
+func (c *prefixedConsulClient) Get(ctx context.Context, key string) (interface{}, error) {
+	return c.consul.Get(ctx, c.prefix+key)
 }

@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -25,7 +26,7 @@ func BenchmarkRing(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	consul.PutBytes(ConsulKey, ringBytes)
+	consul.PutBytes(context.Background(), ConsulKey, ringBytes)
 
 	r, err := New(Config{
 		Mock:              consul,

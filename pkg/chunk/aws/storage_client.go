@@ -262,7 +262,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
 				// to determine if a request was dropped (or not)
 				for tableName := range requests {
-					dynamoDroppedRequests.WithLabelValues(tableName, validationException, "DynamoDB.BatchWriteItem")
+					dynamoDroppedRequests.WithLabelValues(tableName, validationException, "DynamoDB.BatchWriteItem").Inc()
 				}
 				continue
 			}
@@ -644,7 +644,7 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
 				// to determine if a request was dropped (or not)
 				for tableName := range requests {
-					dynamoDroppedRequests.WithLabelValues(tableName, validationException, "DynamoDB.BatchGetItemPages")
+					dynamoDroppedRequests.WithLabelValues(tableName, validationException, "DynamoDB.BatchGetItemPages").Inc()
 				}
 				continue
 			}

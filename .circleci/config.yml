@@ -72,7 +72,9 @@ jobs:
 
     - run:
         name: Build
-        command: make BUILD_IN_CONTAINER=false
+        command: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false
 
     - run:
         name: Save Images

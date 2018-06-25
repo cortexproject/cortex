@@ -33,6 +33,7 @@ const (
 	outOfOrderTimestamp     = "timestamp_out_of_order"
 	duplicateSample         = "multiple_values_for_timestamp"
 	greaterThanMaxSampleAge = "greater_than_max_sample_age"
+	maxLabelNamesPerSeries  = "max_label_names_per_series"
 
 	// DefaultConcurrentFlush is the number of series to flush concurrently
 	DefaultConcurrentFlush = 50
@@ -40,6 +41,7 @@ const (
 	DefaultMaxSeriesPerUser = 5000000
 	// DefaultMaxSeriesPerMetric is the maximum number of series in one metric (of a single user).
 	DefaultMaxSeriesPerMetric = 50000
+
 	// DefaultMaxLengthLabelName is the maximum length a label name can be.
 	DefaultMaxLengthLabelName = 1024
 	// DefaultMaxLengthLabelValue is the maximum length a label value can be.
@@ -81,13 +83,13 @@ type Config struct {
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
-	// Config for rejecting old samples
+	// Config for rejecting old samples.
 	RejectOldSamples       bool
 	RejectOldSamplesMaxAge time.Duration
 
 	validationConfig ValidateConfig
 
-	// For testing, you can override the address and ID of this ingester
+	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
 }
 
@@ -104,17 +106,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.validationConfig.RegisterFlags(f)
 
 	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
-
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 5*time.Minute, "Maximum chunk idle time before flushing.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
-
 	f.BoolVar(&cfg.RejectOldSamples, "ingester.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "ingester.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
-
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -324,7 +323,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 
 	if err := ValidateSample(sample, &i.cfg.validationConfig); err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
-		return nil
+		return err
 	}
 
 	for ln, lv := range sample.Metric {

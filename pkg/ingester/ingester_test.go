@@ -402,3 +402,73 @@ func TestIngesterRejectOldSamples(t *testing.T) {
 
 	assert.Equal(t, expected, res)
 }
+
+func TestIngesterMaxLabelNamesPerSeries(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.validationConfig.MaxLabelNamesPerSeries = 2
+
+	store := newTestStore()
+	ing, err := New(cfg, store)
+	require.NoError(t, err)
+	defer ing.Shutdown()
+
+	sample1 := model.Sample{
+		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
+		Timestamp: 0,
+		Value:     1,
+	}
+	sample2 := model.Sample{
+		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
+		Timestamp: 1,
+		Value:     2,
+	}
+	sample3 := model.Sample{
+		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar", "foo2": "bar2"},
+		Timestamp: 2,
+		Value:     2,
+	}
+
+	// Append recent sample, expect no error.
+	userID := "1"
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
+	require.NoError(t, err)
+
+	// Append old sample, expect bad request error.
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}))
+	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected error about old samples not accepted, got %v", err)
+	}
+
+	// Read samples back via ingester queries.
+	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	require.NoError(t, err)
+
+	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+	require.NoError(t, err)
+
+	resp, err := ing.Query(ctx, req)
+	require.NoError(t, err)
+
+	res := client.FromQueryResponse(resp)
+	sort.Sort(res)
+
+	// Expect recent sample including partial but no old sample.
+	expected := model.Matrix{
+		{
+			Metric: sample1.Metric,
+			Values: []model.SamplePair{
+				{
+					Timestamp: sample1.Timestamp,
+					Value:     sample1.Value,
+				},
+				{
+					Timestamp: sample2.Timestamp,
+					Value:     sample2.Value,
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, expected, res)
+}

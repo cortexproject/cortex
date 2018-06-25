@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"flag"
+
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 )
@@ -22,13 +23,15 @@ type ValidateConfig struct {
 	MaxLabelNameLength int
 	// maximum length a label value can be. This also is the maximum length of a metric name.
 	MaxLabelValueLength int
+	// maximum number of label/value pairs timeseries.
+	MaxLabelNamesPerSeries int
 }
 
 // RegisterFlags registers a set of command line flags for setting options regarding sample validation at ingestion time.
 func (cfg *ValidateConfig) RegisterFlags(f *flag.FlagSet) {
-
 	f.IntVar(&cfg.MaxLabelNameLength, "ingester.validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&cfg.MaxLabelValueLength, "ingester.validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
+	f.IntVar(&cfg.MaxLabelNamesPerSeries, "ingester.max-label-names-per-series", 20, "Maximum number of label names per series.")
 }
 
 // ValidateSample returns an err if the sample is invalid
@@ -40,6 +43,12 @@ func ValidateSample(s *model.Sample, config *ValidateConfig) error {
 
 	if !model.IsValidMetricName(metricName) {
 		return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
+	}
+
+	numLabelNames := len(s.Metric)
+	if numLabelNames > config.MaxLabelNamesPerSeries {
+		discardedSamples.WithLabelValues(maxLabelNamesPerSeries).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, "sample has %d label names which is greater than the accepted maximum of %d", numLabelNames, config.MaxLabelNamesPerSeries)
 	}
 
 	for k, v := range s.Metric {

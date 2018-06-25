@@ -44,6 +44,9 @@ func defaultIngesterTestConfig() Config {
 		FlushCheckPeriod:  99999 * time.Hour,
 		MaxChunkIdle:      99999 * time.Hour,
 		ConcurrentFlushes: 1,
+		validationConfig: ValidateConfig{
+			MaxLabelNamesPerSeries: 64,
+		},
 	}
 }
 

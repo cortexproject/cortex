@@ -107,20 +107,20 @@ configs-integration-test: build-image/$(UPTODATE)
 
 else
 
-$(EXES): build-image/$(UPTODATE)
+$(EXES):
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-%.pb.go: build-image/$(UPTODATE)
+%.pb.go:
 	protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
-lint: build-image/$(UPTODATE)
+lint:
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
-test: build-image/$(UPTODATE)
+test:
 	./tools/test -netgo
 
-shell: build-image/$(UPTODATE)
+shell:
 	bash
 
 configs-integration-test:

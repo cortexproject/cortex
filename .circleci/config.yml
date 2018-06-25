@@ -31,9 +31,7 @@ jobs:
     - checkout
     - run:
         name: Lint
-        command: |
-          touch build-image/.uptodate
-          make BUILD_IN_CONTAINER=false lint
+        command: make BUILD_IN_CONTAINER=false lint
 
   test:
     <<: *defaults
@@ -41,9 +39,7 @@ jobs:
     - checkout
     - run:
         name: Test
-        command: |
-          touch build-image/.uptodate
-          make BUILD_IN_CONTAINER=false test
+        command: make BUILD_IN_CONTAINER=false test
 
   integration:
     docker:
@@ -57,9 +53,7 @@ jobs:
     - checkout
     - run:
         name: Integration Test
-        command: |
-          touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/configs/migrations make BUILD_IN_CONTAINER=false configs-integration-test
+        command: MIGRATIONS_DIR=$(pwd)/cmd/configs/migrations make BUILD_IN_CONTAINER=false configs-integration-test
 
   build:
     <<: *defaults
@@ -78,15 +72,11 @@ jobs:
 
     - run:
         name: Build
-        command: |
-          touch build-image/.uptodate
-          make BUILD_IN_CONTAINER=false
+        command: make BUILD_IN_CONTAINER=false
 
     - run:
         name: Save Images
-        command: |
-          touch build-image/.uptodate &&
-          make BUILD_IN_CONTAINER=false save-images
+        command: make BUILD_IN_CONTAINER=false save-images
 
     - save_cache:
         key: v1-cortex-{{ .Branch }}-{{ .Revision }}
@@ -113,9 +103,7 @@ jobs:
 
     - run:
         name: Load Images
-        command: |
-          touch build-image/.uptodate &&
-          make BUILD_IN_CONTAINER=false load-images
+        command: make BUILD_IN_CONTAINER=false load-images
 
     - run:
         name: Deploy

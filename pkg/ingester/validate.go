@@ -15,6 +15,7 @@ const (
 	errInvalidLabel      = "sample invalid label: '%s'"
 	errLabelNameTooLong  = "label name too long: '%s'"
 	errLabelValueTooLong = "label value too long: '%s'"
+	errTooManyLabels     = "sample for '%s' has %d label names; limit %d"
 )
 
 // ValidateConfig has config for validation settings and options
@@ -48,7 +49,7 @@ func ValidateSample(s *model.Sample, config *ValidateConfig) error {
 	numLabelNames := len(s.Metric)
 	if numLabelNames > config.MaxLabelNamesPerSeries {
 		discardedSamples.WithLabelValues(maxLabelNamesPerSeries).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, "sample has %d label names which is greater than the accepted maximum of %d", numLabelNames, config.MaxLabelNamesPerSeries)
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, metricName, numLabelNames, config.MaxLabelNamesPerSeries)
 	}
 
 	for k, v := range s.Metric {

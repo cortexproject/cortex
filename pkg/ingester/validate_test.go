@@ -29,7 +29,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid", "foo ": "bar"},
-			httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, "foo "),
+			httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, "foo ", "valid"),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid"},
@@ -37,11 +37,11 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelName", "this_is_a_really_really_long_name_that_should_cause_an_error": "test_value_please_ignore"},
-			httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, "this_is_a_really_really_long_name_that_should_cause_an_error"),
+			httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, "this_is_a_really_really_long_name_that_should_cause_an_error", "badLabelName"),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelValue", "much_shorter_name": "test_value_please_ignore_no_really_nothing_to_see_here"},
-			httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, "test_value_please_ignore_no_really_nothing_to_see_here"),
+			httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, "test_value_please_ignore_no_really_nothing_to_see_here", "badLabelValue"),
 		},
 	} {
 		err := ValidateSample(&model.Sample{

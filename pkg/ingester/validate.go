@@ -11,10 +11,10 @@ import (
 
 const (
 	errMissingMetricName = "sample missing metric name"
-	errInvalidMetricName = "sample invalid metric name: '%s'"
-	errInvalidLabel      = "sample invalid label: '%s'"
-	errLabelNameTooLong  = "label name too long: '%s'"
-	errLabelValueTooLong = "label value too long: '%s'"
+	errInvalidMetricName = "sample invalid metric name: %.200q"
+	errInvalidLabel      = "sample invalid label: %.200q metric %.200q"
+	errLabelNameTooLong  = "label name too long: %.200q metric %.200q"
+	errLabelValueTooLong = "label value too long: %.200q metric %.200q"
 	errTooManyLabels     = "sample for '%s' has %d label names; limit %d"
 )
 
@@ -54,13 +54,13 @@ func ValidateSample(s *model.Sample, config *ValidateConfig) error {
 
 	for k, v := range s.Metric {
 		if !k.IsValid() {
-			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, k)
+			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, k, metricName)
 		}
 		if len(k) > config.MaxLabelNameLength {
-			return httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, k)
+			return httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, k, metricName)
 		}
 		if len(v) > config.MaxLabelValueLength {
-			return httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, v)
+			return httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, v, metricName)
 		}
 	}
 	return nil

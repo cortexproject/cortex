@@ -274,8 +274,8 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	return promConfig, nil
 }
 
-func (r *Ruler) newGroup(ctx context.Context, userID string, item *workItem) (*rules.Group, error) {
-	appendable := &appendableAppender{pusher: r.pusher, ctx: ctx}
+func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
+	appendable := &appendableAppender{pusher: r.pusher}
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
@@ -283,14 +283,13 @@ func (r *Ruler) newGroup(ctx context.Context, userID string, item *workItem) (*r
 	opts := &rules.ManagerOptions{
 		Appendable:  appendable,
 		QueryFunc:   rules.EngineQueryFunc(r.engine, r.queryable),
-		Context:     ctx,
+		Context:     context.Background(),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
 		Logger:      gklog.NewNopLogger(),
 		Registerer:  prometheus.DefaultRegisterer,
 	}
-	delay := 0 * time.Second // Unused, so 0 value is fine.
-	return rules.NewGroup(item.groupName, "none", delay, item.rules, opts), nil
+	return newGroup(groupName, rls, appendable, opts), nil
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.
@@ -364,28 +363,23 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 func (r *Ruler) Evaluate(userID string, item *workItem) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	logger := util.WithContext(ctx, util.Logger)
-	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.rules))
+	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
 		if span := opentracing.SpanFromContext(ctx); span != nil {
 			span.SetTag("instance", userID)
 			span.SetTag("groupName", item.groupName)
 		}
-		g, err := r.newGroup(ctx, userID, item)
-		if err != nil {
-			level.Error(logger).Log("msg", "failed to create rule group", "err", err)
-			return err
-		}
-		g.Eval(ctx, time.Now())
+		item.group.Eval(ctx, time.Now())
 		return nil
 	})
 	if err := ctx.Err(); err == nil {
 		cancelTimeout() // release resources
 	} else {
-		level.Warn(util.Logger).Log("msg", "context error", "error", err)
+		level.Warn(logger).Log("msg", "context error", "error", err)
 	}
 
-	rulesProcessed.Add(float64(len(item.rules)))
+	rulesProcessed.Add(float64(len(item.group.Rules())))
 }
 
 // Stop stops the Ruler.
@@ -407,7 +401,7 @@ type Server struct {
 // NewServer makes a new rule processing server.
 func NewServer(cfg Config, ruler *Ruler, rulesAPI RulesAPI) (*Server, error) {
 	// TODO: Separate configuration for polling interval.
-	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval)
+	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}

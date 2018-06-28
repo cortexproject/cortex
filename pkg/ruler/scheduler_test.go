@@ -69,7 +69,7 @@ func TestSchedulerComputeNextEvalTime(t *testing.T) {
 }
 
 func TestSchedulerRulesOverlap(t *testing.T) {
-	s := newScheduler(nil, 15, 15)
+	s := newScheduler(nil, 15, 15, nil)
 	userID := "bob"
 	groupName := "test"
 	next := time.Now()

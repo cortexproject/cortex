@@ -128,8 +128,7 @@ type Ingester struct {
 	quit     chan struct{}
 	done     sync.WaitGroup
 
-	userStatesMtx sync.RWMutex
-	userStates    *userStates
+	userStates *userStates
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -338,8 +337,6 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		return fmt.Errorf("ingester stopping")
 	}
 
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, sample.Metric)
 	if err != nil {
 		return err
@@ -381,8 +378,6 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*labels.Matcher) (model.Matrix, error) {
 	i.queries.Inc()
 
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
@@ -409,8 +404,6 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
@@ -426,8 +419,6 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
@@ -461,8 +452,6 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	state, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
 		return nil, err
@@ -476,8 +465,6 @@ func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) 
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
 func (i *Ingester) AllUserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	users := i.userStates.cp()
 
 	response := &client.UsersStatsResponse{
@@ -527,8 +514,6 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect implements prometheus.Collector.
 func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	numUsers := i.userStates.numUsers()
 	numSeries := i.userStates.numSeries()
 

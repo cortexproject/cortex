@@ -110,9 +110,6 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		return err
 	}
 
-	i.userStatesMtx.Lock()
-	defer i.userStatesMtx.Unlock()
-
 	if err := i.lifecycler.ChangeState(ring.ACTIVE); err != nil {
 		return err
 	}

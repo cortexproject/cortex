@@ -28,6 +28,7 @@ var (
 
 func init() {
 	prometheus.MustRegister(discardedSamples)
+	prometheus.MustRegister(createdChunks)
 }
 
 type memorySeries struct {

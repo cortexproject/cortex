@@ -37,7 +37,6 @@ var (
 		"The current number of ingester clients.",
 		nil, nil,
 	)
-	labelNameBytes = []byte(model.MetricNameLabel)
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -115,7 +114,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
-		ingesterPool:   ingester_client.NewIngesterPool(cfg.ingesterClientFactory, cfg.IngesterClientConfig, cfg.RemoteTimeout),
+		ingesterPool:   ingester_client.NewIngesterPool(cfg.ingesterClientFactory, cfg.IngesterClientConfig, cfg.RemoteTimeout, util.Logger),
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		billingClient:  billingClient,
@@ -208,22 +207,21 @@ func (d *Distributor) removeStaleIngesterClients() {
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
 	if d.cfg.ShardByMetricName {
-		return shardByMetricName(userID, labels)
+		metricName, err := util.ExtractMetricNameFromLabelPairs(labels)
+		if err != nil {
+			return 0, err
+		}
+		return shardByMetricName(userID, metricName), nil
 	}
 
 	return shardByAllLabels(userID, labels)
 }
 
-func shardByMetricName(userID string, labels []client.LabelPair) (uint32, error) {
-	for _, label := range labels {
-		if label.Name.Equal(labelNameBytes) {
-			h := fnv.New32()
-			h.Write([]byte(userID))
-			h.Write(label.Value)
-			return h.Sum32(), nil
-		}
-	}
-	return 0, fmt.Errorf("No metric name label")
+func shardByMetricName(userID string, metricName []byte) uint32 {
+	h := fnv.New32()
+	h.Write([]byte(userID))
+	h.Write(metricName)
+	return h.Sum32()
 }
 
 func shardByAllLabels(userID string, labels []client.LabelPair) (uint32, error) {
@@ -409,13 +407,25 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	var matrix model.Matrix
 	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", d.queryDuration, func(ctx context.Context) error {
+		userID, err := user.ExtractOrgID(ctx)
+		if err != nil {
+			return err
+		}
+
+		metricNameMatcher, _, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
+
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {
 			return err
 		}
 
-		// From now on, just query all ingesters.
-		replicationSet, err := d.ring.GetAll()
+		// Get ingesters by metricName if one exists, otherwise get all ingesters
+		var replicationSet ring.ReplicationSet
+		if d.cfg.ShardByMetricName && ok && metricNameMatcher.Type == labels.MatchEqual {
+			replicationSet, err = d.ring.Get(shardByMetricName(userID, []byte(metricNameMatcher.Value)), ring.Read)
+		} else {
+			replicationSet, err = d.ring.GetAll()
+		}
 		if err != nil {
 			return promql.ErrStorage(err)
 		}

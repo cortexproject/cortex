@@ -125,8 +125,9 @@ func TestDistributorPushQuery(t *testing.T) {
 			// Test with between 0 and numIngesters "happy" ingesters.
 			for happyIngesters := 0; happyIngesters <= numIngesters; happyIngesters++ {
 
-				// Queriers with more than one failed ingester should fail.
-				if numIngesters-happyIngesters > 1 {
+				// When we're not sharding by metric name, queriers with more than one
+				// failed ingester should fail.
+				if !shardByMetricName && numIngesters-happyIngesters > 1 {
 					testcases = append(testcases, testcase{
 						name:              fmt.Sprintf("ExpectFail(shardByMetricName=%v,numIngester=%d,happyIngester=%d)", shardByMetricName, numIngesters, happyIngesters),
 						numIngesters:      numIngesters,
@@ -135,6 +136,13 @@ func TestDistributorPushQuery(t *testing.T) {
 						expectedError:     errFail,
 						shardByMetricName: shardByMetricName,
 					})
+					continue
+				}
+
+				// If we're sharding by metric name and we have failed ingesters, we can't
+				// tell ahead of time if the query will succeed, as we don't know which
+				// ingesters will hold the results for the query.
+				if shardByMetricName && numIngesters-happyIngesters > 1 {
 					continue
 				}
 
@@ -234,7 +242,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, shardByMetricName b
 		IngestionRateLimit:    20,
 		IngestionBurstSize:    20,
 		ingesterClientFactory: factory,
-		ShardByMetricName:     true,
+		ShardByMetricName:     shardByMetricName,
 	}, ring)
 	if err != nil {
 		t.Fatal(err)

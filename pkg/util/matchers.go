@@ -30,6 +30,7 @@ func SplitFiltersAndMatchers(allMatchers []*labels.Matcher) (filters, matchers [
 	return
 }
 
+// ExtractMetricNameFromLabelPairs extracts the metric name for a slice of LabelPairs.
 func ExtractMetricNameFromLabelPairs(labels []client.LabelPair) ([]byte, error) {
 	for _, label := range labels {
 		if label.Name.Equal(labelNameBytes) {

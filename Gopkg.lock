@@ -362,8 +362,8 @@
 [[projects]]
   name = "github.com/hashicorp/consul"
   packages = ["api"]
-  revision = "e9ca44d0a1757ac9aecc6785904a701936c10e4a"
-  version = "v0.8.1"
+  revision = "5174058f0d2bda63fa5198ab96c33d9a909c58ed"
+  version = "v1.1.0"
 
 [[projects]]
   branch = "master"

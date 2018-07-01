@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"math"
@@ -62,7 +63,7 @@ func init() {
 	tmpl = template.Must(template.New("webpage").Parse(tpl))
 }
 
-func (r *Ring) forget(id string) error {
+func (r *Ring) forget(ctx context.Context, id string) error {
 	unregister := func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
@@ -72,13 +73,13 @@ func (r *Ring) forget(id string) error {
 		ringDesc.RemoveIngester(id)
 		return ringDesc, true, nil
 	}
-	return r.KVClient.CAS(ConsulKey, unregister)
+	return r.KVClient.CAS(ctx, ConsulKey, unregister)
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodPost {
 		ingesterID := req.FormValue("forget")
-		if err := r.forget(ingesterID); err != nil {
+		if err := r.forget(req.Context(), ingesterID); err != nil {
 			level.Error(util.WithContext(req.Context(), util.Logger)).Log("msg", "error forgetting ingester", "err", err)
 		}
 

@@ -10,7 +10,7 @@
 
    Set this flag to `false` for the new behaviour.
 
-   **Upgrade notes**: As part of the change which introduced this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag (and the disable it later). When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the new stale period all the old series will be flushed, and you should end up with much better load balancing. Reads will always catch all the data from all ingesters from this change onwards.
+   **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 
 - `-ingester.max-series-per-metric`
 

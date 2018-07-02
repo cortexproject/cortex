@@ -208,6 +208,9 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 
 	// now remove the chunks
 	userState.fpLocker.Lock(fp)
+	for i := 0; i < len(chunks); i++ {
+		series.chunkDescs[i] = nil // erase reference so the chunk can be garbage-collected
+	}
 	series.chunkDescs = series.chunkDescs[len(chunks):]
 	i.memoryChunks.Sub(float64(len(chunks)))
 	if len(series.chunkDescs) == 0 {

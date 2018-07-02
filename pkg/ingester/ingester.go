@@ -19,6 +19,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	cortex_chunk "github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
@@ -390,15 +391,19 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*labels.Matcher) (model.Matrix, error) {
 	i.queries.Inc()
 
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id")
+	}
+	result := model.Matrix{}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, err := i.userStates.getOrCreate(ctx)
-	if err != nil {
-		return nil, err
+	state, ok := i.userStates.get(userID)
+	if !ok {
+		return result, nil
 	}
 
 	queriedSamples := 0
-	result := model.Matrix{}
 	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
 		values, err := series.samplesForRange(from, through)
 		if err != nil {

@@ -102,7 +102,7 @@ func main() {
 	defer dist.Stop()
 	prometheus.MustRegister(dist)
 
-	ingester, err := ingester.New(ingesterConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, schemaConfig.CreationGracePeriod, chunkStore)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

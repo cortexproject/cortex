@@ -34,6 +34,10 @@ var backoffConfig = util.BackoffConfig{
 }
 
 const (
+	// If a config sets the webhook URL to this, it will be rewritten to
+	// a URL derived from Config.AutoWebhookRoot
+	autoWebhookURL = "http://internal.monitor"
+
 	// If a config sets the Slack URL to this, it will be rewritten to
 	// a URL derived from Config.AutoSlackRoot
 	autoSlackURL = "internal://monitor"
@@ -187,6 +191,7 @@ type MultitenantAlertmanagerConfig struct {
 	MeshPeerRefreshInterval time.Duration
 
 	FallbackConfigFile string
+	AutoWebhookRoot    string
 	AutoSlackRoot      string
 }
 
@@ -199,6 +204,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	flag.Var(&cfg.ConfigsAPIURL, "alertmanager.configs.url", "URL of configs API server.")
 	flag.StringVar(&cfg.FallbackConfigFile, "alertmanager.configs.fallback", "", "Filename of fallback config to use if none specified for instance.")
+	flag.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
 	flag.StringVar(&cfg.AutoSlackRoot, "alertmanager.configs.auto-slack-root", "", "Root of URL to generate if config is "+autoSlackURL)
 	flag.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 	flag.DurationVar(&cfg.ClientTimeout, "alertmanager.configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
@@ -397,6 +403,15 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 			for _, s := range r.SlackConfigs {
 				if s.APIURL == autoSlackURL {
 					s.APIURL = amconfig.Secret(am.cfg.AutoSlackRoot + "/" + userID + "/monitor")
+				}
+			}
+		}
+	}
+	if am.cfg.AutoWebhookRoot != "" {
+		for _, r := range amConfig.Receivers {
+			for _, w := range r.WebhookConfigs {
+				if w.URL == autoWebhookURL {
+					w.URL = am.cfg.AutoWebhookRoot + "/" + userID + "/monitor"
 				}
 			}
 		}

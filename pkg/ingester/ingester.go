@@ -423,14 +423,18 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id")
+	}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, err := i.userStates.getOrCreate(ctx)
-	if err != nil {
-		return nil, err
+	resp := &client.LabelValuesResponse{}
+	state, ok := i.userStates.get(userID)
+	if !ok {
+		return resp, nil
 	}
 
-	resp := &client.LabelValuesResponse{}
 	for _, v := range state.index.lookupLabelValues(model.LabelName(req.LabelName)) {
 		resp.LabelValues = append(resp.LabelValues, string(v))
 	}
@@ -440,11 +444,15 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id")
+	}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, err := i.userStates.getOrCreate(ctx)
-	if err != nil {
-		return nil, err
+	state, ok := i.userStates.get(userID)
+	if !ok {
+		return client.ToMetricsForLabelMatchersResponse(nil), nil
 	}
 
 	// TODO Right now we ignore start and end.
@@ -475,11 +483,15 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id")
+	}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, err := i.userStates.getOrCreate(ctx)
-	if err != nil {
-		return nil, err
+	state, ok := i.userStates.get(userID)
+	if !ok {
+		return &client.UserStatsResponse{}, nil
 	}
 
 	return &client.UserStatsResponse{

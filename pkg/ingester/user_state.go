@@ -110,24 +110,6 @@ func (us *userStates) get(userID string) (*userState, bool) {
 	return state, ok
 }
 
-func (us *userStates) getOrCreate(ctx context.Context) (*userState, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no user id")
-	}
-
-	us.mtx.RLock()
-	state, ok := us.states[userID]
-	us.mtx.RUnlock()
-	if ok {
-		return state, nil
-	}
-
-	us.mtx.Lock()
-	defer us.mtx.Unlock()
-	return us.unlockedGetOrCreate(userID), nil
-}
-
 func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric) (*userState, model.Fingerprint, *memorySeries, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {

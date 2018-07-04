@@ -17,8 +17,7 @@ import (
 )
 
 type userStates struct {
-	mtx    sync.RWMutex
-	states map[string]*userState
+	states sync.Map
 	cfg    *UserStatesConfig
 }
 
@@ -50,64 +49,62 @@ func (cfg *UserStatesConfig) RegisterFlags(f *flag.FlagSet) {
 
 func newUserStates(cfg *UserStatesConfig) *userStates {
 	return &userStates{
-		states: map[string]*userState{},
-		cfg:    cfg,
+		cfg: cfg,
 	}
 }
 
 func (us *userStates) cp() map[string]*userState {
-	us.mtx.RLock()
-	defer us.mtx.RUnlock()
-	states := make(map[string]*userState, len(us.states))
-	for id, state := range us.states {
-		states[id] = state
-	}
+	states := make(map[string]*userState, us.numUsers())
+	us.states.Range(func(key, value interface{}) bool {
+		states[key.(string)] = value.(*userState)
+		return true
+	})
 	return states
 }
 
 func (us *userStates) gc() {
-	us.mtx.Lock()
-	defer us.mtx.Unlock()
-
-	for id, state := range us.states {
+	us.states.Range(func(key, value interface{}) bool {
+		state := value.(*userState)
 		if state.fpToSeries.length() == 0 {
-			delete(us.states, id)
+			us.states.Delete(key)
 		}
-	}
+		return true
+	})
 }
 
 func (us *userStates) updateRates() {
-	us.mtx.RLock()
-	defer us.mtx.RUnlock()
-
-	for _, state := range us.states {
+	us.states.Range(func(key, value interface{}) bool {
+		state := value.(*userState)
 		state.ingestedSamples.tick()
-	}
+		return true
+	})
 }
 
 func (us *userStates) numUsers() int {
-	us.mtx.RLock()
-	defer us.mtx.RUnlock()
-
-	return len(us.states)
+	count := 0
+	us.states.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return count
 }
 
 func (us *userStates) numSeries() int {
-	us.mtx.RLock()
-	defer us.mtx.RUnlock()
-
 	numSeries := 0
-	for _, state := range us.states {
+	us.states.Range(func(key, value interface{}) bool {
+		state := value.(*userState)
 		numSeries += state.fpToSeries.length()
-	}
+		return true
+	})
 	return numSeries
 }
 
 func (us *userStates) get(userID string) (*userState, bool) {
-	us.mtx.RLock()
-	state, ok := us.states[userID]
-	us.mtx.RUnlock()
-	return state, ok
+	state, ok := us.states.Load(userID)
+	if !ok {
+		return nil, ok
+	}
+	return state.(*userState), ok
 }
 
 func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric) (*userState, model.Fingerprint, *memorySeries, error) {
@@ -116,37 +113,11 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 		return nil, 0, nil, fmt.Errorf("no user id")
 	}
 
-	var (
-		state  *userState
-		ok     bool
-		fp     model.Fingerprint
-		series *memorySeries
-	)
-
-	us.mtx.RLock()
-	state, ok = us.states[userID]
-	if ok {
-		fp, series, err = state.unlockedGet(metric, us.cfg)
-		if err != nil {
-			us.mtx.RUnlock()
-			return nil, fp, nil, err
-		}
-	}
-	us.mtx.RUnlock()
-	if ok {
-		return state, fp, series, nil
-	}
-
-	us.mtx.Lock()
-	defer us.mtx.Unlock()
-	state = us.unlockedGetOrCreate(userID)
-	fp, series, err = state.unlockedGet(metric, us.cfg)
-	return state, fp, series, err
-}
-
-func (us *userStates) unlockedGetOrCreate(userID string) *userState {
-	state, ok := us.states[userID]
+	state, ok := us.get(userID)
 	if !ok {
+		// Speculatively create a userState object and try to store it
+		// in the map.  Another goroutine may have got there before
+		// us, in which case this userState will be discarded
 		state = &userState{
 			userID:          userID,
 			fpToSeries:      newSeriesMap(),
@@ -156,12 +127,15 @@ func (us *userStates) unlockedGetOrCreate(userID string) *userState {
 			seriesInMetric:  map[model.LabelValue]int{},
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
-		us.states[userID] = state
+		stored, _ := us.states.LoadOrStore(userID, state)
+		state = stored.(*userState)
 	}
-	return state
+
+	fp, series, err := state.getSeries(metric, us.cfg)
+	return state, fp, series, err
 }
 
-func (u *userState) unlockedGet(metric model.Metric, cfg *UserStatesConfig) (model.Fingerprint, *memorySeries, error) {
+func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model.Fingerprint, *memorySeries, error) {
 	rawFP := metric.FastFingerprint()
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)

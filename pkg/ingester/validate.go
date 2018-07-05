@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"net/http"
+	"time"
 
 	"flag"
 
@@ -16,6 +17,8 @@ const (
 	errLabelNameTooLong  = "label name too long: %.200q metric %.200q"
 	errLabelValueTooLong = "label value too long: %.200q metric %.200q"
 	errTooManyLabels     = "sample for '%s' has %d label names; limit %d"
+	errTooOld            = "sample for '%s' has timestamp too old: %v"
+	errTooNew            = "sample for '%s' has timestamp too new: %v"
 )
 
 // ValidateConfig has config for validation settings and options
@@ -26,6 +29,10 @@ type ValidateConfig struct {
 	MaxLabelValueLength int
 	// maximum number of label/value pairs timeseries.
 	MaxLabelNamesPerSeries int
+	// Config for rejecting old samples.
+	RejectOldSamples       bool
+	RejectOldSamplesMaxAge time.Duration
+	CreationGracePeriod    time.Duration
 }
 
 // RegisterFlags registers a set of command line flags for setting options regarding sample validation at ingestion time.
@@ -33,6 +40,8 @@ func (cfg *ValidateConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxLabelNameLength, "ingester.validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&cfg.MaxLabelValueLength, "ingester.validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&cfg.MaxLabelNamesPerSeries, "ingester.max-label-names-per-series", 20, "Maximum number of label names per series.")
+	f.BoolVar(&cfg.RejectOldSamples, "ingester.reject-old-samples", false, "Reject old samples.")
+	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "ingester.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 }
 
 // ValidateSample returns an err if the sample is invalid
@@ -44,6 +53,15 @@ func ValidateSample(s *model.Sample, config *ValidateConfig) error {
 
 	if !model.IsValidMetricName(metricName) {
 		return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
+	}
+
+	if config.RejectOldSamples && s.Timestamp < model.Now().Add(-config.RejectOldSamplesMaxAge) {
+		discardedSamples.WithLabelValues(greaterThanMaxSampleAge).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, metricName, s.Timestamp)
+	}
+	if s.Timestamp > model.Now().Add(config.CreationGracePeriod) {
+		discardedSamples.WithLabelValues(tooFarInFuture).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooNew, metricName, s.Timestamp)
 	}
 
 	numLabelNames := len(s.Metric)

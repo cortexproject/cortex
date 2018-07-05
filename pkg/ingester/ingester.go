@@ -85,11 +85,6 @@ type Config struct {
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
-	// Config for rejecting old samples.
-	RejectOldSamples       bool
-	RejectOldSamplesMaxAge time.Duration
-	CreationGracePeriod    time.Duration
-
 	validationConfig ValidateConfig
 
 	// For testing, you can override the address and ID of this ingester.
@@ -115,8 +110,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
-	f.BoolVar(&cfg.RejectOldSamples, "ingester.reject-old-samples", false, "Reject old samples.")
-	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "ingester.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -189,8 +182,8 @@ func New(cfg Config, creationGracePeriod time.Duration, chunkStore ChunkStore) (
 	if cfg.validationConfig.MaxLabelValueLength <= 0 {
 		cfg.validationConfig.MaxLabelValueLength = DefaultMaxLengthLabelName
 	}
-	if cfg.CreationGracePeriod == 0 {
-		cfg.CreationGracePeriod = creationGracePeriod
+	if cfg.validationConfig.CreationGracePeriod == 0 {
+		cfg.validationConfig.CreationGracePeriod = creationGracePeriod
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
@@ -322,15 +315,6 @@ samples:
 }
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
-	if i.cfg.RejectOldSamples && sample.Timestamp < model.Now().Add(-i.cfg.RejectOldSamplesMaxAge) {
-		discardedSamples.WithLabelValues(greaterThanMaxSampleAge).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is older than the maximum accepted age", sample.Timestamp)
-	}
-	if sample.Timestamp > model.Now().Add(i.cfg.CreationGracePeriod) {
-		discardedSamples.WithLabelValues(tooFarInFuture).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, "sample with timestamp %v is newer than the maximum accepted time", sample.Timestamp)
-	}
-
 	if err := ValidateSample(sample, &i.cfg.validationConfig); err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
 		return err

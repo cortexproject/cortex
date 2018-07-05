@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/weaveworks/cortex/pkg/ring"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -26,6 +27,14 @@ func (i mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheckR
 
 func (i mockIngester) Close() error {
 	return nil
+}
+
+type mockReadRing struct {
+	ring.ReadRing
+}
+
+func (mockReadRing) GetAll() (ring.ReplicationSet, error) {
+	return ring.ReplicationSet{}, nil
 }
 
 func TestHealthCheck(t *testing.T) {
@@ -51,14 +60,19 @@ func TestHealthCheck(t *testing.T) {
 
 func TestIngesterCache(t *testing.T) {
 	buildCount := 0
-	factory := func(addr string, _ Config) (IngesterClient, error) {
+	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		if addr == "bad" {
 			return nil, fmt.Errorf("Fail")
 		}
 		buildCount++
 		return mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 	}
-	pool := NewIngesterPool(factory, Config{}, 50*time.Millisecond, log.NewNopLogger())
+
+	pool := NewPool(PoolConfig{
+		RemoteTimeout:       50 * time.Millisecond,
+		ClientCleanupPeriod: 10 * time.Second,
+	}, mockReadRing{}, factory, log.NewNopLogger())
+	defer pool.Stop()
 
 	pool.GetClientFor("1")
 	if buildCount != 1 {
@@ -102,18 +116,18 @@ func TestIngesterCache(t *testing.T) {
 func TestCleanUnhealthy(t *testing.T) {
 	goodAddrs := []string{"good1", "good2"}
 	badAddrs := []string{"bad1", "bad2"}
-	clients := map[string]IngesterClient{}
+	clients := map[string]grpc_health_v1.HealthClient{}
 	for _, addr := range goodAddrs {
 		clients[addr] = mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}
 	}
 	for _, addr := range badAddrs {
 		clients[addr] = mockIngester{happy: false, status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}
 	}
-	pool := &IngesterPool{
+	pool := &Pool{
 		clients: clients,
 		logger:  log.NewNopLogger(),
 	}
-	pool.CleanUnhealthy()
+	pool.cleanUnhealthy()
 	for _, addr := range badAddrs {
 		if _, ok := pool.clients[addr]; ok {
 			t.Errorf("Found bad ingester after clean: %s\n", addr)

@@ -83,9 +83,9 @@ func TestDistributorPush(t *testing.T) {
 			expectedError:  httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 30 samples"),
 		},
 	} {
-		for _, shardByMetricName := range []bool{true, false} {
-			t.Run(fmt.Sprintf("[%d](shardByMetricName=%v)", i, shardByMetricName), func(t *testing.T) {
-				d := prepare(t, tc.numIngesters, tc.happyIngesters, shardByMetricName)
+		for _, shardByAllLabels := range []bool{true, false} {
+			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
+				d := prepare(t, tc.numIngesters, tc.happyIngesters, shardByAllLabels)
 				defer d.Stop()
 
 				request := makeWriteRequest(tc.samples)
@@ -102,14 +102,14 @@ func TestDistributorPushQuery(t *testing.T) {
 	barMatcher := mustEqualMatcher("bar", "baz")
 
 	type testcase struct {
-		name              string
-		numIngesters      int
-		happyIngesters    int
-		samples           int
-		matchers          []*labels.Matcher
-		expectedResponse  model.Matrix
-		expectedError     error
-		shardByMetricName bool
+		name             string
+		numIngesters     int
+		happyIngesters   int
+		samples          int
+		matchers         []*labels.Matcher
+		expectedResponse model.Matrix
+		expectedError    error
+		shardByAllLabels bool
 	}
 
 	// We'll programatically build the test cases now, as we want complete
@@ -117,7 +117,7 @@ func TestDistributorPushQuery(t *testing.T) {
 	testcases := []testcase{}
 
 	// Run every test in both sharding modes.
-	for _, shardByMetricName := range []bool{true, false} {
+	for _, shardByAllLabels := range []bool{true, false} {
 
 		// Test with between 3 and 10 ingesters.
 		for numIngesters := 3; numIngesters < 10; numIngesters++ {
@@ -127,14 +127,14 @@ func TestDistributorPushQuery(t *testing.T) {
 
 				// When we're not sharding by metric name, queriers with more than one
 				// failed ingester should fail.
-				if !shardByMetricName && numIngesters-happyIngesters > 1 {
+				if shardByAllLabels && numIngesters-happyIngesters > 1 {
 					testcases = append(testcases, testcase{
-						name:              fmt.Sprintf("ExpectFail(shardByMetricName=%v,numIngester=%d,happyIngester=%d)", shardByMetricName, numIngesters, happyIngesters),
-						numIngesters:      numIngesters,
-						happyIngesters:    happyIngesters,
-						matchers:          []*labels.Matcher{nameMatcher, barMatcher},
-						expectedError:     errFail,
-						shardByMetricName: shardByMetricName,
+						name:             fmt.Sprintf("ExpectFail(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
+						numIngesters:     numIngesters,
+						happyIngesters:   happyIngesters,
+						matchers:         []*labels.Matcher{nameMatcher, barMatcher},
+						expectedError:    errFail,
+						shardByAllLabels: shardByAllLabels,
 					})
 					continue
 				}
@@ -142,42 +142,42 @@ func TestDistributorPushQuery(t *testing.T) {
 				// If we're sharding by metric name and we have failed ingesters, we can't
 				// tell ahead of time if the query will succeed, as we don't know which
 				// ingesters will hold the results for the query.
-				if shardByMetricName && numIngesters-happyIngesters > 1 {
+				if !shardByAllLabels && numIngesters-happyIngesters > 1 {
 					continue
 				}
 
 				// Reading all the samples back should succeed.
 				testcases = append(testcases, testcase{
-					name:              fmt.Sprintf("ReadAll(shardByMetricName=%v,numIngester=%d,happyIngester=%d)", shardByMetricName, numIngesters, happyIngesters),
-					numIngesters:      numIngesters,
-					happyIngesters:    happyIngesters,
-					samples:           10,
-					matchers:          []*labels.Matcher{nameMatcher, barMatcher},
-					expectedResponse:  expectedResponse(0, 10),
-					shardByMetricName: shardByMetricName,
+					name:             fmt.Sprintf("ReadAll(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
+					numIngesters:     numIngesters,
+					happyIngesters:   happyIngesters,
+					samples:          10,
+					matchers:         []*labels.Matcher{nameMatcher, barMatcher},
+					expectedResponse: expectedResponse(0, 10),
+					shardByAllLabels: shardByAllLabels,
 				})
 
 				// As should reading none of the samples back.
 				testcases = append(testcases, testcase{
-					name:              fmt.Sprintf("ReadNone(shardByMetricName=%v,numIngester=%d,happyIngester=%d)", shardByMetricName, numIngesters, happyIngesters),
-					numIngesters:      numIngesters,
-					happyIngesters:    happyIngesters,
-					samples:           10,
-					matchers:          []*labels.Matcher{nameMatcher, mustEqualMatcher("not", "found")},
-					expectedResponse:  expectedResponse(0, 0),
-					shardByMetricName: shardByMetricName,
+					name:             fmt.Sprintf("ReadNone(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
+					numIngesters:     numIngesters,
+					happyIngesters:   happyIngesters,
+					samples:          10,
+					matchers:         []*labels.Matcher{nameMatcher, mustEqualMatcher("not", "found")},
+					expectedResponse: expectedResponse(0, 0),
+					shardByAllLabels: shardByAllLabels,
 				})
 
 				// And reading each sample individually.
 				for i := 0; i < 10; i++ {
 					testcases = append(testcases, testcase{
-						name:              fmt.Sprintf("ReadOne(shardByMetricName=%v, sample=%d,numIngester=%d,happyIngester=%d)", shardByMetricName, i, numIngesters, happyIngesters),
-						numIngesters:      numIngesters,
-						happyIngesters:    happyIngesters,
-						samples:           10,
-						matchers:          []*labels.Matcher{nameMatcher, mustEqualMatcher("sample", strconv.Itoa(i))},
-						expectedResponse:  expectedResponse(i, i+1),
-						shardByMetricName: shardByMetricName,
+						name:             fmt.Sprintf("ReadOne(shardByAllLabels=%v, sample=%d,numIngester=%d,happyIngester=%d)", shardByAllLabels, i, numIngesters, happyIngesters),
+						numIngesters:     numIngesters,
+						happyIngesters:   happyIngesters,
+						samples:          10,
+						matchers:         []*labels.Matcher{nameMatcher, mustEqualMatcher("sample", strconv.Itoa(i))},
+						expectedResponse: expectedResponse(i, i+1),
+						shardByAllLabels: shardByAllLabels,
 					})
 				}
 			}
@@ -186,7 +186,7 @@ func TestDistributorPushQuery(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := prepare(t, tc.numIngesters, tc.happyIngesters, tc.shardByMetricName)
+			d := prepare(t, tc.numIngesters, tc.happyIngesters, tc.shardByAllLabels)
 			defer d.Stop()
 
 			request := makeWriteRequest(tc.samples)
@@ -202,7 +202,7 @@ func TestDistributorPushQuery(t *testing.T) {
 	}
 }
 
-func prepare(t *testing.T, numIngesters, happyIngesters int, shardByMetricName bool) *Distributor {
+func prepare(t *testing.T, numIngesters, happyIngesters int, shardByAllLabels bool) *Distributor {
 	ingesters := []mockIngester{}
 	for i := 0; i < happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
@@ -242,7 +242,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, shardByMetricName b
 		IngestionRateLimit:    20,
 		IngestionBurstSize:    20,
 		ingesterClientFactory: factory,
-		ShardByMetricName:     shardByMetricName,
+		ShardByAllLabels:      shardByAllLabels,
 	}, ring)
 	if err != nil {
 		t.Fatal(err)

@@ -77,7 +77,7 @@ type Config struct {
 	IngestionBurstSize   int
 	HealthCheckIngesters bool
 
-	ShardByMetricName bool
+	ShardByAllLabels bool
 
 	// for testing
 	ingesterClientFactory client.Factory
@@ -93,7 +93,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during periodic cleanup.")
-	flag.BoolVar(&cfg.ShardByMetricName, "distributor.shard-by-metric-name-only", true, "If samples shoud be distributed solely by user and metric name, as opposed to all labels.")
+	flag.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
 // New constructs a new Distributor
@@ -206,15 +206,15 @@ func (d *Distributor) removeStaleIngesterClients() {
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
-	if d.cfg.ShardByMetricName {
-		metricName, err := util.ExtractMetricNameFromLabelPairs(labels)
-		if err != nil {
-			return 0, err
-		}
-		return shardByMetricName(userID, metricName), nil
+	if d.cfg.ShardByAllLabels {
+		return shardByAllLabels(userID, labels)
 	}
 
-	return shardByAllLabels(userID, labels)
+	metricName, err := util.ExtractMetricNameFromLabelPairs(labels)
+	if err != nil {
+		return 0, err
+	}
+	return shardByMetricName(userID, metricName), nil
 }
 
 func shardByMetricName(userID string, metricName []byte) uint32 {
@@ -421,7 +421,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 
 		// Get ingesters by metricName if one exists, otherwise get all ingesters
 		var replicationSet ring.ReplicationSet
-		if d.cfg.ShardByMetricName && ok && metricNameMatcher.Type == labels.MatchEqual {
+		if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
 			replicationSet, err = d.ring.Get(shardByMetricName(userID, []byte(metricNameMatcher.Value)), ring.Read)
 		} else {
 			replicationSet, err = d.ring.GetAll()

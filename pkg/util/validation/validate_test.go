@@ -1,4 +1,4 @@
-package ingester
+package validation
 
 import (
 	"net/http"
@@ -7,14 +7,17 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
-func TestValidate(t *testing.T) {
-	cfg := ValidateConfig{
-		MaxLabelValueLength:    25,
-		MaxLabelNameLength:     25,
-		MaxLabelNamesPerSeries: 64,
-	}
+func TestValidateLabels(t *testing.T) {
+	var cfg Config
+	util.DefaultValues(&cfg)
+	cfg.MaxLabelValueLength = 25
+	cfg.MaxLabelNameLength = 25
+	cfg.MaxLabelNamesPerSeries = 64
+
 	for _, c := range []struct {
 		metric model.Metric
 		err    error
@@ -44,9 +47,8 @@ func TestValidate(t *testing.T) {
 			httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, "test_value_please_ignore_no_really_nothing_to_see_here", "badLabelValue"),
 		},
 	} {
-		err := ValidateSample(&model.Sample{
-			Metric: c.metric,
-		}, &cfg)
+
+		err := cfg.ValidateLabels(client.ToLabelPairs(c.metric))
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }

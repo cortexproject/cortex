@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (
@@ -237,16 +238,14 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, shardByAllLabels bo
 		return ingestersByAddr[addr], nil
 	}
 
-	d, err := New(Config{
-		PoolConfig: client.PoolConfig{
-			RemoteTimeout:       1 * time.Minute,
-			ClientCleanupPeriod: 1 * time.Minute,
-		},
-		IngestionRateLimit:    20,
-		IngestionBurstSize:    20,
-		ingesterClientFactory: factory,
-		ShardByAllLabels:      shardByAllLabels,
-	}, ring)
+	var cfg Config
+	util.DefaultValues(&cfg)
+	cfg.IngestionRateLimit = 20
+	cfg.IngestionBurstSize = 20
+	cfg.ingesterClientFactory = factory
+	cfg.ShardByAllLabels = shardByAllLabels
+
+	d, err := New(cfg, ring)
 	if err != nil {
 		t.Fatal(err)
 	}

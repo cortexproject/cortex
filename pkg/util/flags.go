@@ -22,6 +22,15 @@ func RegisterFlags(rs ...Registerer) {
 	}
 }
 
+// DefaultValues intiates a set of configs (Registerers) with their defaults.
+func DefaultValues(rs ...Registerer) {
+	fs := flag.NewFlagSet("", flag.PanicOnError)
+	for _, r := range rs {
+		r.RegisterFlags(fs)
+	}
+	fs.Parse([]string{})
+}
+
 // DayValue is a model.Time that can be used as a flag.
 // NB it only parses days!
 type DayValue struct {

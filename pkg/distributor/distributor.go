@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -36,7 +37,6 @@ var (
 		"The current number of ingester clients.",
 		nil, nil,
 	)
-	labelNameBytes = []byte(model.MetricNameLabel)
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -77,8 +77,10 @@ type Config struct {
 	IngestionBurstSize   int
 	HealthCheckIngesters bool
 
+	ShardByAllLabels bool
+
 	// for testing
-	ingesterClientFactory func(addr string, cfg ingester_client.Config) (client.IngesterClient, error)
+	ingesterClientFactory client.Factory
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -91,6 +93,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during periodic cleanup.")
+	flag.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
 // New constructs a new Distributor
@@ -111,7 +114,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
-		ingesterPool:   ingester_client.NewIngesterPool(cfg.ingesterClientFactory, cfg.IngesterClientConfig, cfg.RemoteTimeout),
+		ingesterPool:   ingester_client.NewIngesterPool(cfg.ingesterClientFactory, cfg.IngesterClientConfig, cfg.RemoteTimeout, util.Logger),
 		quit:           make(chan struct{}),
 		done:           make(chan struct{}),
 		billingClient:  billingClient,
@@ -202,20 +205,37 @@ func (d *Distributor) removeStaleIngesterClients() {
 	}
 }
 
-func tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
-	for _, label := range labels {
-		if label.Name.Equal(labelNameBytes) {
-			return tokenFor(userID, label.Value), nil
-		}
+func (d *Distributor) tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
+	if d.cfg.ShardByAllLabels {
+		return shardByAllLabels(userID, labels)
 	}
-	return 0, fmt.Errorf("No metric name label")
+
+	metricName, err := util.ExtractMetricNameFromLabelPairs(labels)
+	if err != nil {
+		return 0, err
+	}
+	return shardByMetricName(userID, metricName), nil
 }
 
-func tokenFor(userID string, name []byte) uint32 {
+func shardByMetricName(userID string, metricName []byte) uint32 {
 	h := fnv.New32()
 	h.Write([]byte(userID))
-	h.Write(name)
+	h.Write(metricName)
 	return h.Sum32()
+}
+
+func shardByAllLabels(userID string, labels []client.LabelPair) (uint32, error) {
+	h := fnv.New32()
+	h.Write([]byte(userID))
+	lastLabelName := []byte{}
+	for _, label := range labels {
+		if bytes.Compare(lastLabelName, label.Name) >= 0 {
+			return 0, fmt.Errorf("Labels not sorted")
+		}
+		h.Write(label.Name)
+		h.Write(label.Value)
+	}
+	return h.Sum32(), nil
 }
 
 type sampleTracker struct {
@@ -247,10 +267,11 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	samples := make([]sampleTracker, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
 	for _, ts := range req.Timeseries {
-		key, err := tokenForLabels(userID, ts.Labels)
+		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
 			return nil, err
 		}
+
 		for _, s := range ts.Samples {
 			keys = append(keys, key)
 			samples = append(samples, sampleTracker{
@@ -400,8 +421,8 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 
 		// Get ingesters by metricName if one exists, otherwise get all ingesters
 		var replicationSet ring.ReplicationSet
-		if ok && metricNameMatcher.Type == labels.MatchEqual {
-			replicationSet, err = d.ring.Get(tokenFor(userID, []byte(metricNameMatcher.Value)), ring.Read)
+		if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
+			replicationSet, err = d.ring.Get(shardByMetricName(userID, []byte(metricNameMatcher.Value)), ring.Read)
 		} else {
 			replicationSet, err = d.ring.GetAll()
 		}

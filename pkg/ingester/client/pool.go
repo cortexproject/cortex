@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/util"
 	context "golang.org/x/net/context"
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -24,15 +24,17 @@ type IngesterPool struct {
 	ingesterClientFactory Factory
 	ingesterClientConfig  Config
 	healthCheckTimeout    time.Duration
+	logger                log.Logger
 }
 
 // NewIngesterPool creates a new cache
-func NewIngesterPool(factory Factory, config Config, healthCheckTimeout time.Duration) *IngesterPool {
+func NewIngesterPool(factory Factory, config Config, healthCheckTimeout time.Duration, logger log.Logger) *IngesterPool {
 	return &IngesterPool{
 		clients:               map[string]IngesterClient{},
 		ingesterClientFactory: factory,
 		ingesterClientConfig:  config,
 		healthCheckTimeout:    healthCheckTimeout,
+		logger:                logger,
 	}
 }
 
@@ -76,7 +78,7 @@ func (pool *IngesterPool) RemoveClientFor(addr string) {
 		// Close in the background since this operation may take awhile and we have a mutex
 		go func(addr string, closer io.Closer) {
 			if err := closer.Close(); err != nil {
-				level.Error(util.Logger).Log("msg", "error closing connection to ingester", "ingester", addr, "err", err)
+				level.Error(pool.logger).Log("msg", "error closing connection to ingester", "ingester", addr, "err", err)
 			}
 		}(addr, client.(io.Closer))
 	}
@@ -108,7 +110,7 @@ func (pool *IngesterPool) CleanUnhealthy() {
 		if ok {
 			err := healthCheck(client, pool.healthCheckTimeout)
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "removing ingester failing healtcheck", "addr", addr, "reason", err)
+				level.Warn(pool.logger).Log("msg", "removing ingester failing healtcheck", "addr", addr, "reason", err)
 				pool.RemoveClientFor(addr)
 			}
 		}

@@ -5,6 +5,11 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
+)
+
+var (
+	labelNameBytes = []byte(model.MetricNameLabel)
 )
 
 // SplitFiltersAndMatchers splits empty matchers off, which are treated as filters, see #220
@@ -23,6 +28,16 @@ func SplitFiltersAndMatchers(allMatchers []*labels.Matcher) (filters, matchers [
 		}
 	}
 	return
+}
+
+// ExtractMetricNameFromLabelPairs extracts the metric name for a slice of LabelPairs.
+func ExtractMetricNameFromLabelPairs(labels []client.LabelPair) ([]byte, error) {
+	for _, label := range labels {
+		if label.Name.Equal(labelNameBytes) {
+			return label.Value, nil
+		}
+	}
+	return nil, fmt.Errorf("No metric name label")
 }
 
 // ExtractMetricNameFromMetric extract the metric name from a model.Metric

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -57,7 +58,7 @@ func TestIngesterCache(t *testing.T) {
 		buildCount++
 		return mockIngester{happy: true, status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 	}
-	pool := NewIngesterPool(factory, Config{}, 50*time.Millisecond)
+	pool := NewIngesterPool(factory, Config{}, 50*time.Millisecond, log.NewNopLogger())
 
 	pool.GetClientFor("1")
 	if buildCount != 1 {
@@ -110,6 +111,7 @@ func TestCleanUnhealthy(t *testing.T) {
 	}
 	pool := &IngesterPool{
 		clients: clients,
+		logger:  log.NewNopLogger(),
 	}
 	pool.CleanUnhealthy()
 	for _, addr := range badAddrs {

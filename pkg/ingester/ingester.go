@@ -19,7 +19,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	cortex_chunk "github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
@@ -391,15 +390,13 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*labels.Matcher) (model.Matrix, error) {
 	i.queries.Inc()
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no user id")
-	}
 	result := model.Matrix{}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, ok := i.userStates.get(userID)
-	if !ok {
+	state, ok, err := i.userStates.getViaContext(ctx)
+	if err != nil {
+		return nil, err
+	} else if !ok {
 		return result, nil
 	}
 
@@ -423,15 +420,13 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no user id")
-	}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	resp := &client.LabelValuesResponse{}
-	state, ok := i.userStates.get(userID)
-	if !ok {
+	state, ok, err := i.userStates.getViaContext(ctx)
+	if err != nil {
+		return nil, err
+	} else if !ok {
 		return resp, nil
 	}
 
@@ -444,14 +439,12 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no user id")
-	}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, ok := i.userStates.get(userID)
-	if !ok {
+	state, ok, err := i.userStates.getViaContext(ctx)
+	if err != nil {
+		return nil, err
+	} else if !ok {
 		return client.ToMetricsForLabelMatchersResponse(nil), nil
 	}
 
@@ -483,14 +476,12 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx old_ctx.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no user id")
-	}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, ok := i.userStates.get(userID)
-	if !ok {
+	state, ok, err := i.userStates.getViaContext(ctx)
+	if err != nil {
+		return nil, err
+	} else if !ok {
 		return &client.UserStatsResponse{}, nil
 	}
 

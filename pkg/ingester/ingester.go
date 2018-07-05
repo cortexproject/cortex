@@ -422,14 +422,14 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	resp := &client.LabelValuesResponse{}
 	state, ok, err := i.userStates.getViaContext(ctx)
 	if err != nil {
 		return nil, err
 	} else if !ok {
-		return resp, nil
+		return &client.LabelValuesResponse{}, nil
 	}
 
+	resp := &client.LabelValuesResponse{}
 	for _, v := range state.index.lookupLabelValues(model.LabelName(req.LabelName)) {
 		resp.LabelValues = append(resp.LabelValues, string(v))
 	}

@@ -54,7 +54,7 @@ func newUserStates(cfg *UserStatesConfig) *userStates {
 }
 
 func (us *userStates) cp() map[string]*userState {
-	states := make(map[string]*userState, us.numUsers())
+	states := map[string]*userState{}
 	us.states.Range(func(key, value interface{}) bool {
 		states[key.(string)] = value.(*userState)
 		return true

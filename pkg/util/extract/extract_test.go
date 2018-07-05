@@ -1,4 +1,4 @@
-package util
+package extract
 
 import (
 	"reflect"
@@ -77,7 +77,7 @@ func TestExtractMetricNameMatcherFromMatchers(t *testing.T) {
 		matchersCopy := make([]*labels.Matcher, len(tc.matchers))
 		copy(matchersCopy, tc.matchers)
 
-		nameMatcher, outMatchers, ok := ExtractMetricNameMatcherFromMatchers(tc.matchers)
+		nameMatcher, outMatchers, ok := MetricNameMatcherFromMatchers(tc.matchers)
 
 		if !reflect.DeepEqual(tc.matchers, matchersCopy) {
 			t.Fatalf("%d. Matchers got mutated; want %v, got %v", i, matchersCopy, tc.matchers)

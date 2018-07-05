@@ -29,6 +29,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
 var (
@@ -37,7 +38,6 @@ var (
 		"The current number of ingester clients.",
 		nil, nil,
 	)
-	labelNameBytes = []byte(model.MetricNameLabel)
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -170,20 +170,11 @@ func (d *Distributor) tokenForLabels(userID string, labels []client.LabelPair) (
 		return shardByAllLabels(userID, labels)
 	}
 
-	metricName, err := extractMetricNameFromLabelPairs(labels)
+	metricName, err := extract.MetricNameFromLabelPairs(labels)
 	if err != nil {
 		return 0, err
 	}
 	return shardByMetricName(userID, metricName), nil
-}
-
-func extractMetricNameFromLabelPairs(labels []client.LabelPair) ([]byte, error) {
-	for _, label := range labels {
-		if label.Name.Equal(labelNameBytes) {
-			return label.Value, nil
-		}
-	}
-	return nil, fmt.Errorf("No metric name label")
 }
 
 func shardByMetricName(userID string, metricName []byte) uint32 {
@@ -382,7 +373,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		metricNameMatcher, _, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
+		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
 
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {

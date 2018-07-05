@@ -14,6 +14,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
 type userStates struct {
@@ -168,7 +169,7 @@ func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", cfg.MaxSeriesPerUser)
 	}
 
-	metricName, err := util.ExtractMetricNameFromMetric(metric)
+	metricName, err := extract.MetricNameFromMetric(metric)
 	if err != nil {
 		u.fpLocker.Unlock(fp)
 		return fp, nil, err
@@ -201,7 +202,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
 	u.fpToSeries.del(fp)
 	u.index.delete(metric, fp)
 
-	metricName, err := util.ExtractMetricNameFromMetric(metric)
+	metricName, err := extract.MetricNameFromMetric(metric)
 	if err != nil {
 		// Series without a metric name should never be able to make it into
 		// the ingester's memory storage.

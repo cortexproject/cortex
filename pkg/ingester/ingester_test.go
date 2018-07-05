@@ -326,9 +326,9 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 func TestIngesterRejectOldSamples(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
-	cfg.RejectOldSamples = true
-	cfg.RejectOldSamplesMaxAge = 24 * time.Hour
-	cfg.CreationGracePeriod = 4 * time.Hour
+	cfg.validationConfig.RejectOldSamples = true
+	cfg.validationConfig.RejectOldSamplesMaxAge = 24 * time.Hour
+	cfg.validationConfig.CreationGracePeriod = 4 * time.Hour
 
 	_, ing := newTestStore(t, cfg)
 	defer ing.Shutdown()

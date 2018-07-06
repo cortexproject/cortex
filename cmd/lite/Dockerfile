@@ -1,5 +1,6 @@
-FROM       quay.io/prometheus/busybox:latest
+FROM       alpine:3.8
 COPY       lite /bin/cortex
+RUN        apk add --no-cache ca-certificates
 EXPOSE     80
 ENTRYPOINT [ "/bin/cortex" ]
 

@@ -1,5 +1,6 @@
-FROM       quay.io/prometheus/busybox:latest
+FROM       alpine:3.8
 COPY       distributor /bin/distributor
+RUN        apk add --no-cache ca-certificates
 EXPOSE     80
 ENTRYPOINT [ "/bin/distributor" ]
 

@@ -1,7 +1,8 @@
-FROM       quay.io/prometheus/busybox:latest
-WORKDIR /
-COPY configs /bin/configs
-COPY migrations /migrations/
+FROM       alpine:3.8
+WORKDIR    /
+COPY       configs /bin/configs
+COPY       migrations /migrations/
+RUN        apk add --no-cache ca-certificates
 ENTRYPOINT [ "/bin/configs" ]
 
 ARG revision

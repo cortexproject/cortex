@@ -2,6 +2,7 @@ package kuberesolver
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
@@ -66,7 +67,8 @@ func (r *kubeResolver) watch(target string, stopCh <-chan struct{}, resultCh cha
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		return fmt.Errorf("invalid response code %d", resp.StatusCode)
+		rbody, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("invalid response code %d: %s", resp.StatusCode, rbody)
 	}
 	sw := newStreamWatcher(resp.Body)
 	for {

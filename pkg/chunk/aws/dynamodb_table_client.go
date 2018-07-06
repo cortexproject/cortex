@@ -17,7 +17,7 @@ import (
 
 // Pluggable auto-scaler implementation
 type autoscale interface {
-	CreateTable(ctx context.Context, desc chunk.TableDesc) error
+	PostCreateTable(ctx context.Context, desc chunk.TableDesc) error
 	// This whole interface is very similar to chunk.TableClient, but
 	// DescribeTable needs to mutate desc
 	DescribeTable(ctx context.Context, desc *chunk.TableDesc) error
@@ -165,7 +165,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 	}
 
 	if d.autoscale != nil {
-		err := d.autoscale.CreateTable(ctx, desc)
+		err := d.autoscale.PostCreateTable(ctx, desc)
 		if err != nil {
 			return err
 		}

@@ -36,7 +36,20 @@ type metricsData struct {
 	usageRates        map[string]float64
 }
 
-func (m *metricsData) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
+func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
+	client, err := promApi.NewClient(promApi.Config{Address: cfg.MetricsURL})
+	if err != nil {
+		return nil, err
+	}
+	return &metricsData{
+		promAPI:           promV1.NewAPI(client),
+		queueLengthTarget: cfg.MetricsTargetQueueLen,
+		scaleUpFactor:     cfg.MetricsScaleUpFactor,
+		tableLastUpdated:  make(map[string]time.Time),
+	}, nil
+}
+
+func (m *metricsData) PostCreateTable(ctx context.Context, desc chunk.TableDesc) error {
 	return nil
 }
 
@@ -127,19 +140,6 @@ func (m *metricsData) scaleUpWrite(current chunk.TableDesc, expected *chunk.Tabl
 		expected.ProvisionedWrite = newWrite
 		m.tableLastUpdated[current.Name] = mtime.Now()
 	}
-}
-
-func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
-	client, err := promApi.NewClient(promApi.Config{Address: cfg.MetricsURL})
-	if err != nil {
-		return nil, err
-	}
-	return &metricsData{
-		promAPI:           promV1.NewAPI(client),
-		queueLengthTarget: cfg.MetricsTargetQueueLen,
-		scaleUpFactor:     cfg.MetricsScaleUpFactor,
-		tableLastUpdated:  make(map[string]time.Time),
-	}, nil
 }
 
 func (m *metricsData) update(ctx context.Context) error {

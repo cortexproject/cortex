@@ -49,7 +49,7 @@ func newAWSAutoscale(cfg DynamoDBConfig, callManager callManager) (*awsAutoscale
 	}, nil
 }
 
-func (a *awsAutoscale) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
+func (a *awsAutoscale) PostCreateTable(ctx context.Context, desc chunk.TableDesc) error {
 	if desc.WriteScale.Enabled {
 		return a.enableAutoScaling(ctx, desc)
 	}

@@ -25,12 +25,11 @@ func main() {
 			},
 		}
 		dbConfig db.Config
-		logLevel util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &dbConfig, &logLevel)
+	util.RegisterFlags(&serverConfig, &dbConfig)
 	flag.Parse()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	db, err := db.New(dbConfig)
 	if err != nil {

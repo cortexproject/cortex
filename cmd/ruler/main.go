@@ -36,7 +36,6 @@ func main() {
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 		configStoreConfig ruler.ConfigStoreConfig
-		logLevel          util.LogLevel
 	)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
@@ -44,10 +43,10 @@ func main() {
 	defer trace.Close()
 
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
-		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig, &logLevel)
+		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig)
 	flag.Parse()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
 	if err != nil {

@@ -48,14 +48,13 @@ func main() {
 		rulerConfig       ruler.Config
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
-		logLevel          util.LogLevel
 
 		unauthenticated bool
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
-		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
+		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 	ingesterConfig.SetClientConfig(distributorConfig.IngesterClientConfig)
@@ -64,7 +63,7 @@ func main() {
 	trace := tracing.NewFromEnv("ingester")
 	defer trace.Close()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	server, err := server.New(serverConfig)
 	if err != nil {

@@ -35,12 +35,11 @@ func main() {
 			},
 		}
 		alertmanagerConfig alertmanager.MultitenantAlertmanagerConfig
-		logLevel           util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &alertmanagerConfig, &logLevel)
+	util.RegisterFlags(&serverConfig, &alertmanagerConfig)
 	flag.Parse()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	multiAM, err := alertmanager.NewMultitenantAlertmanager(&alertmanagerConfig)
 	if err != nil {

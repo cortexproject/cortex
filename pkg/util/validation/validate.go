@@ -30,13 +30,6 @@ const (
 	tooFarInFuture          = "too_far_in_future"
 )
 
-const (
-	// DefaultMaxLengthLabelName is the maximum length a label name can be.
-	DefaultMaxLengthLabelName = 1024
-	// DefaultMaxLengthLabelValue is the maximum length a label value can be.
-	DefaultMaxLengthLabelValue = 2048
-)
-
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
 var DiscardedSamples = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
@@ -69,8 +62,8 @@ type Config struct {
 
 // RegisterFlags registers a set of command line flags for setting options regarding sample validation at ingestion time.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxLabelNameLength, "validation.max-length-label-name", DefaultMaxLengthLabelName, "Maximum length accepted for label names")
-	f.IntVar(&cfg.MaxLabelValueLength, "validation.max-length-label-value", DefaultMaxLengthLabelValue, "Maximum length accepted for label value. This setting also applies to the metric name")
+	f.IntVar(&cfg.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
+	f.IntVar(&cfg.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&cfg.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 20, "Maximum number of label names per series.")
 	f.BoolVar(&cfg.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")

@@ -225,6 +225,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 
+	var lastPartialErr error
+
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
@@ -238,14 +240,16 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 		if err := d.cfg.validationConfig.ValidateLabels(ts.Labels); err != nil {
 			level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
-			return nil, err
+			lastPartialErr = err
+			continue
 		}
 
 		metricName, _ := extract.MetricNameFromLabelPairs(ts.Labels)
 		for _, s := range ts.Samples {
 			if err := d.cfg.validationConfig.ValidateSample(metricName, s); err != nil {
 				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
-				return nil, err
+				lastPartialErr = err
+				continue
 			}
 
 			keys = append(keys, key)
@@ -258,7 +262,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	d.receivedSamples.Add(float64(len(samples)))
 
 	if len(samples) == 0 {
-		return &client.WriteResponse{}, nil
+		return &client.WriteResponse{}, lastPartialErr
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
@@ -303,7 +307,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	case err := <-pushTracker.err:
 		return nil, err
 	case <-pushTracker.done:
-		return &client.WriteResponse{}, nil
+		return &client.WriteResponse{}, lastPartialErr
 	}
 }
 

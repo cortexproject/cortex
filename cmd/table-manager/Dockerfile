@@ -1,6 +1,6 @@
 FROM       alpine:3.8
-COPY       table-manager /bin/table-manager
 RUN        apk add --no-cache ca-certificates
+COPY       table-manager /bin/table-manager
 EXPOSE     9094
 ENTRYPOINT [ "/bin/table-manager" ]
 

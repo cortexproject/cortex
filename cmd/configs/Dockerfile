@@ -1,8 +1,8 @@
 FROM       alpine:3.8
 WORKDIR    /
+RUN        apk add --no-cache ca-certificates
 COPY       configs /bin/configs
 COPY       migrations /migrations/
-RUN        apk add --no-cache ca-certificates
 ENTRYPOINT [ "/bin/configs" ]
 
 ARG revision

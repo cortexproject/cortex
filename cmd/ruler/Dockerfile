@@ -1,6 +1,6 @@
 FROM       alpine:3.8
-COPY       ruler /bin/ruler
 RUN        apk add --no-cache ca-certificates
+COPY       ruler /bin/ruler
 EXPOSE     80
 ENTRYPOINT [ "/bin/ruler" ]
 

@@ -1,6 +1,6 @@
 FROM       alpine:3.8
-COPY       lite /bin/cortex
 RUN        apk add --no-cache ca-certificates
+COPY       lite /bin/cortex
 EXPOSE     80
 ENTRYPOINT [ "/bin/cortex" ]
 

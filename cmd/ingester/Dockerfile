@@ -1,6 +1,6 @@
 FROM       alpine:3.8
-COPY       ingester /bin/ingester
 RUN        apk add --no-cache ca-certificates
+COPY       ingester /bin/ingester
 EXPOSE     80
 ENTRYPOINT [ "/bin/ingester" ]
 

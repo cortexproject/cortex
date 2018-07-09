@@ -1,6 +1,6 @@
 FROM       alpine:3.8
-COPY       distributor /bin/distributor
 RUN        apk add --no-cache ca-certificates
+COPY       distributor /bin/distributor
 EXPOSE     80
 ENTRYPOINT [ "/bin/distributor" ]
 

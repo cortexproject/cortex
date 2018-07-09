@@ -1,6 +1,6 @@
 FROM       alpine:3.8
-COPY       querier /bin/querier
 RUN        apk add --no-cache ca-certificates
+COPY       querier /bin/querier
 EXPOSE     80
 ENTRYPOINT [ "/bin/querier" ]
 

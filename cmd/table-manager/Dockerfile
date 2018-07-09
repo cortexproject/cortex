@@ -1,4 +1,5 @@
-FROM       quay.io/prometheus/busybox:latest
+FROM       alpine:3.8
+RUN        apk add --no-cache ca-certificates
 COPY       table-manager /bin/table-manager
 EXPOSE     9094
 ENTRYPOINT [ "/bin/table-manager" ]

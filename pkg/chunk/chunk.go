@@ -319,7 +319,8 @@ func equalByKey(a, b Chunk) bool {
 		a.From == b.From && a.Through == b.Through && a.Checksum == b.Checksum
 }
 
-func chunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
+// ChunksToMatrix converts a set of chunks to a model.Matrix.
+func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "chunksToMatrix")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks", len(chunks)))

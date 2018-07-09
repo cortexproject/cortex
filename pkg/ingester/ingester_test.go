@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"sync"
@@ -18,7 +19,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 type testStore struct {
@@ -86,36 +86,6 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 	return samples
 }
 
-// chunksToMatrix converts a slice of chunks into a model.Matrix.
-func chunksToMatrix(chunks []chunk.Chunk) (model.Matrix, error) {
-	// Group chunks by series, sort and dedupe samples.
-	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
-	for _, c := range chunks {
-		fp := c.Metric.Fingerprint()
-		ss, ok := sampleStreams[fp]
-		if !ok {
-			ss = &model.SampleStream{
-				Metric: c.Metric,
-			}
-			sampleStreams[fp] = ss
-		}
-
-		samples, err := c.Samples(c.From, c.Through)
-		if err != nil {
-			return nil, err
-		}
-
-		ss.Values = util.MergeSampleSets(ss.Values, samples)
-	}
-
-	matrix := make(model.Matrix, 0, len(sampleStreams))
-	for _, ss := range sampleStreams {
-		matrix = append(matrix, ss)
-	}
-
-	return matrix, nil
-}
-
 func TestIngesterAppend(t *testing.T) {
 	store, ing := newTestStore(t, defaultIngesterTestConfig())
 
@@ -154,7 +124,7 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via chunk store.
 	ing.Shutdown()
 	for _, userID := range userIDs {
-		res, err := chunksToMatrix(store.chunks[userID])
+		res, err := chunk.ChunksToMatrix(context.Background(), store.chunks[userID], model.Time(0), model.Time(math.MaxInt64))
 		require.NoError(t, err)
 		sort.Sort(res)
 		assert.Equal(t, testData[userID], res)

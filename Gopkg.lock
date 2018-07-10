@@ -680,7 +680,7 @@
     "util/treecache",
     "web/api/v1"
   ]
-  revision = "25e2d9f152b634d65123ef11342aceb23e66a1a2"
+  revision = "504acf4a0aec394fa7993dc2fe5744ef59f97b2c"
 
 [[projects]]
   branch = "master"

@@ -12,7 +12,6 @@ import (
 	old_ctx "golang.org/x/net/context"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -130,13 +129,14 @@ type Ingester struct {
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
 
-	ingestedSamples  prometheus.Counter
-	chunkUtilization prometheus.Histogram
-	chunkLength      prometheus.Histogram
-	chunkAge         prometheus.Histogram
-	queries          prometheus.Counter
-	queriedSamples   prometheus.Counter
-	memoryChunks     prometheus.Gauge
+	ingestedSamples     prometheus.Counter
+	ingestedSamplesFail prometheus.Counter
+	chunkUtilization    prometheus.Histogram
+	chunkLength         prometheus.Histogram
+	chunkAge            prometheus.Histogram
+	queries             prometheus.Counter
+	queriedSamples      prometheus.Counter
+	memoryChunks        prometheus.Gauge
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -187,6 +187,10 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_total",
 			Help: "The total number of samples ingested.",
+		}),
+		ingestedSamplesFail: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_samples_failures_total",
+			Help: "The total number of samples that errored on ingestion.",
 		}),
 		chunkUtilization: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_utilization",
@@ -282,18 +286,22 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	var lastPartialErr error
 	samples := client.FromWriteRequest(req)
 
-samples:
 	for j := range samples {
-		if err := i.append(ctx, &samples[j]); err != nil {
-			if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-				switch httpResp.Code {
-				case http.StatusBadRequest, http.StatusTooManyRequests:
-					lastPartialErr = err
-					continue samples
-				}
-			}
-			return nil, err
+		err := i.append(ctx, &samples[j])
+		if err == nil {
+			continue
 		}
+
+		i.ingestedSamplesFail.Inc()
+		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
+			switch httpResp.Code {
+			case http.StatusBadRequest, http.StatusTooManyRequests:
+				lastPartialErr = err
+				continue
+			}
+		}
+
+		return nil, err
 	}
 
 	return &client.WriteResponse{}, lastPartialErr

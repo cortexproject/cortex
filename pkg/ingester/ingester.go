@@ -12,6 +12,8 @@ import (
 	old_ctx "golang.org/x/net/context"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/go-kit/kit/log/level"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -507,6 +509,10 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect implements prometheus.Collector.
 func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
+	sp := opentracing.StartSpan("HTTP - Metrics")
+	defer sp.Finish()
+
+	seriesSpan := opentracing.StartSpan("count_series", opentracing.ChildOf(sp.Context()))
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	numUsers := i.userStates.numUsers()
@@ -522,16 +528,21 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 		prometheus.GaugeValue,
 		float64(numUsers),
 	)
+	seriesSpan.Finish()
 
+	flushQueueSpan := opentracing.StartSpan("flush_queue", opentracing.ChildOf(sp.Context()))
 	flushQueueLength := 0
 	for _, flushQueue := range i.flushQueues {
 		flushQueueLength += flushQueue.Length()
 	}
+
 	ch <- prometheus.MustNewConstMetric(
 		flushQueueLengthDesc,
 		prometheus.GaugeValue,
 		float64(flushQueueLength),
 	)
+	flushQueueSpan.Finish()
+
 	ch <- i.ingestedSamples
 	ch <- i.chunkUtilization
 	ch <- i.chunkLength

@@ -455,12 +455,16 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 	}
 
 	// Receive chunkSets from all matchers
-	var chunkIDSets [][]string
+	var chunkIDs []string
 	var lastErr error
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingChunkIDs:
-			chunkIDSets = append(chunkIDSets, incoming)
+			if chunkIDs == nil {
+				chunkIDs = incoming
+			} else {
+				chunkIDs = intersectStrings(chunkIDs, incoming)
+			}
 		case err := <-incomingErrors:
 			lastErr = err
 		}
@@ -469,9 +473,7 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 		return nil, lastErr
 	}
 
-	// Merge entries in order because we wish to keep label series together consecutively
-	chunkIDs := nWayIntersectStrings(chunkIDSets)
-	level.Debug(logger).Log("func", "ChunkStore.lookupChunksByMetricName", "msg", "post intersection", "entries", len(chunkIDs))
+	level.Debug(log).Log("msg", "post intersection", "entries", len(chunkIDs))
 
 	// Convert IndexEntry's into chunks
 	return c.convertChunkIDsToChunks(ctx, chunkIDs)
@@ -543,6 +545,7 @@ func (c *Store) parseIndexEntries(ctx context.Context, entries []IndexEntry, mat
 		result = append(result, chunkKey)
 	}
 
+	// Return ids sorted and deduped because they will be merged with other sets.
 	sort.Strings(result)
 	result = uniqueStrings(result)
 	return result, nil

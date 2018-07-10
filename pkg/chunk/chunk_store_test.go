@@ -21,12 +21,6 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-func init() {
-	var al util.AllowedLevel
-	al.Set("debug")
-	util.InitLogger(al)
-}
-
 // newTestStore creates a new Store for testing.
 func newTestChunkStore(t *testing.T, cfg StoreConfig) *Store {
 	storage := NewMockStorage()

@@ -22,23 +22,28 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+type schemaFactory func(cfg SchemaConfig) Schema
+type storeFactory func(StoreConfig, Schema, StorageClient) (Store, error)
+
 var schemas = []struct {
 	name              string
-	fn                func(cfg SchemaConfig) Schema
+	schemaFn          schemaFactory
+	storeFn           storeFactory
 	requireMetricName bool
 }{
-	{"v1 schema", v1Schema, true},
-	{"v2 schema", v2Schema, true},
-	{"v3 schema", v3Schema, true},
-	{"v4 schema", v4Schema, true},
-	{"v5 schema", v5Schema, true},
-	{"v6 schema", v6Schema, true},
-	{"v7 schema", v7Schema, true},
-	{"v8 schema", v8Schema, false},
+	{"v1 schema", v1Schema, newStore, true},
+	{"v2 schema", v2Schema, newStore, true},
+	{"v3 schema", v3Schema, newStore, true},
+	{"v4 schema", v4Schema, newStore, true},
+	{"v5 schema", v5Schema, newStore, true},
+	{"v6 schema", v6Schema, newStore, true},
+	{"v7 schema", v7Schema, newStore, true},
+	{"v8 schema", v8Schema, newStore, false},
+	{"v9 schema", v9Schema, newSeriesStore, true},
 }
 
 // newTestStore creates a new Store for testing.
-func newTestChunkStore(t *testing.T, schemaFn func(SchemaConfig) Schema) *store {
+func newTestChunkStore(t *testing.T, schemaFactory schemaFactory, storeFactory storeFactory) Store {
 	var (
 		storeCfg  StoreConfig
 		schemaCfg SchemaConfig
@@ -52,7 +57,7 @@ func newTestChunkStore(t *testing.T, schemaFn func(SchemaConfig) Schema) *store 
 	err = tableManager.SyncTables(context.Background())
 	require.NoError(t, err)
 
-	store, err := newStore(storeCfg, schemaFn(schemaCfg), storage)
+	store, err := storeFactory(storeCfg, schemaFactory(schemaCfg), storage)
 	require.NoError(t, err)
 	return store
 }
@@ -201,7 +206,7 @@ func TestChunkStore_Get(t *testing.T) {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				t.Log("========= Running query", tc.query, "with schema", schema.name)
-				store := newTestChunkStore(t, schema.fn)
+				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
 
 				if err := store.Put(ctx, []Chunk{
 					fooChunk1,
@@ -231,8 +236,6 @@ func TestChunkStore_Get(t *testing.T) {
 
 				sort.Sort(ByFingerprint(matrix1))
 				if !reflect.DeepEqual(tc.expect, matrix1) {
-					t.Fatalf("jml\nstart = %#v\nnow = %#v\nfooChunk1 = %#v\nfooChunk2 = %#v\nbarChunk1 = %#v\nbarChunk2 = %#v\n",
-						now.Add(-time.Hour), now, fooChunk1, fooChunk2, barChunk1, barChunk2)
 					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix1))
 				}
 
@@ -264,7 +267,6 @@ func TestChunkStore_Get(t *testing.T) {
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
-	metricName := "foo"
 	chunk1 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
 		"bar":  "baz",
@@ -278,65 +280,61 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	})
 
 	for _, tc := range []struct {
-		query    string
-		expect   []Chunk
-		matchers []*labels.Matcher
+		query  string
+		expect []Chunk
 	}{
 		{
 			`foo`,
 			[]Chunk{chunk1, chunk2},
-			[]*labels.Matcher{},
 		},
 		{
 			`foo{flip=""}`,
 			[]Chunk{chunk2},
-			[]*labels.Matcher{mustNewLabelMatcher(labels.MatchEqual, "flip", "")},
 		},
 		{
 			`foo{bar="baz"}`,
 			[]Chunk{chunk1},
-			[]*labels.Matcher{mustNewLabelMatcher(labels.MatchEqual, "bar", "baz")},
 		},
 		{
 			`foo{bar="beep"}`,
 			[]Chunk{chunk2},
-			[]*labels.Matcher{mustNewLabelMatcher(labels.MatchEqual, "bar", "beep")},
 		},
 		{
 			`foo{toms="code"}`,
 			[]Chunk{chunk1, chunk2},
-			[]*labels.Matcher{mustNewLabelMatcher(labels.MatchEqual, "toms", "code")},
 		},
 		{
 			`foo{bar!="baz"}`,
 			[]Chunk{chunk2},
-			[]*labels.Matcher{mustNewLabelMatcher(labels.MatchNotEqual, "bar", "baz")},
 		},
 		{
 			`foo{bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
-			[]*labels.Matcher{mustNewLabelMatcher(labels.MatchRegexp, "bar", "beep|baz")},
 		},
 		{
 			`foo{toms="code", bar=~"beep|baz"}`,
 			[]Chunk{chunk1, chunk2},
-			[]*labels.Matcher{mustNewLabelMatcher(labels.MatchEqual, "toms", "code"), mustNewLabelMatcher(labels.MatchRegexp, "bar", "beep|baz")},
 		},
 		{
 			`foo{toms="code", bar="baz"}`,
-			[]Chunk{chunk1}, []*labels.Matcher{mustNewLabelMatcher(labels.MatchEqual, "toms", "code"), mustNewLabelMatcher(labels.MatchEqual, "bar", "baz")},
+			[]Chunk{chunk1},
 		},
 	} {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				t.Log("========= Running query", tc.query, "with schema", schema.name)
-				store := newTestChunkStore(t, schema.fn)
+				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
 
 				if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
 					t.Fatal(err)
 				}
 
-				chunks, err := store.getMetricNameChunks(ctx, now.Add(-time.Hour), now, tc.matchers, metricName)
+				matchers, err := promql.ParseMetricSelector(tc.query)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
 				require.NoError(t, err)
 
 				if !reflect.DeepEqual(tc.expect, chunks) {
@@ -360,7 +358,7 @@ func TestChunkStoreRandom(t *testing.T) {
 
 	for _, schema := range schemas {
 		t.Run(schema.name, func(t *testing.T) {
-			store := newTestChunkStore(t, schema.fn)
+			store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
 
 			// put 100 chunks from 0 to 99
 			const chunkLen = 13 * 3600 // in seconds
@@ -395,10 +393,11 @@ func TestChunkStoreRandom(t *testing.T) {
 				startTime := model.TimeFromUnix(start)
 				endTime := model.TimeFromUnix(end)
 
-				metricNameLabel := mustNewLabelMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
-				matchers := []*labels.Matcher{mustNewLabelMatcher(labels.MatchEqual, "bar", "baz")}
-				chunks, err := store.getMetricNameChunks(ctx, startTime, endTime,
-					matchers, metricNameLabel.Value)
+				matchers := []*labels.Matcher{
+					mustNewLabelMatcher(labels.MatchEqual, model.MetricNameLabel, "foo"),
+					mustNewLabelMatcher(labels.MatchEqual, "bar", "baz"),
+				}
+				chunks, err := store.Get(ctx, startTime, endTime, matchers...)
 				require.NoError(t, err)
 
 				// We need to check that each chunk is in the time range
@@ -422,7 +421,7 @@ func TestChunkStoreRandom(t *testing.T) {
 func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
 	ctx := user.InjectOrgID(context.Background(), userID)
-	store := newTestChunkStore(t, v6Schema)
+	store := newTestChunkStore(t, v6Schema, newStore)
 
 	// Put 24 chunks 1hr chunks in the store
 	const chunkLen = 60 // in seconds
@@ -456,14 +455,12 @@ func TestChunkStoreLeastRead(t *testing.T) {
 
 		startTime := model.TimeFromUnix(start)
 		endTime := model.TimeFromUnix(end)
+		matchers := []*labels.Matcher{
+			mustNewLabelMatcher(labels.MatchEqual, model.MetricNameLabel, "foo"),
+			mustNewLabelMatcher(labels.MatchEqual, "bar", "baz"),
+		}
 
-		metricNameLabel := mustNewLabelMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
-		matchers := []*labels.Matcher{mustNewLabelMatcher(labels.MatchEqual, "bar", "baz")}
-
-		chunks, err := store.getMetricNameChunks(ctx, startTime, endTime,
-			matchers,
-			metricNameLabel.Value,
-		)
+		chunks, err := store.Get(ctx, startTime, endTime, matchers...)
 		if err != nil {
 			t.Fatal(t, err)
 		}

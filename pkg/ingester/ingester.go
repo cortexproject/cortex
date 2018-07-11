@@ -12,7 +12,6 @@ import (
 	old_ctx "golang.org/x/net/context"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -26,15 +25,11 @@ import (
 )
 
 const (
-	ingesterSubsystem  = "ingester"
-	discardReasonLabel = "reason"
+	ingesterSubsystem = "ingester"
 
 	// Reasons to discard samples.
-	outOfOrderTimestamp     = "timestamp_out_of_order"
-	duplicateSample         = "multiple_values_for_timestamp"
-	greaterThanMaxSampleAge = "greater_than_max_sample_age"
-	maxLabelNamesPerSeries  = "max_label_names_per_series"
-	tooFarInFuture          = "too_far_in_future"
+	outOfOrderTimestamp = "timestamp_out_of_order"
+	duplicateSample     = "multiple_values_for_timestamp"
 
 	// DefaultConcurrentFlush is the number of series to flush concurrently
 	DefaultConcurrentFlush = 50
@@ -42,11 +37,6 @@ const (
 	DefaultMaxSeriesPerUser = 5000000
 	// DefaultMaxSeriesPerMetric is the maximum number of series in one metric (of a single user).
 	DefaultMaxSeriesPerMetric = 50000
-
-	// DefaultMaxLengthLabelName is the maximum length a label name can be.
-	DefaultMaxLengthLabelName = 1024
-	// DefaultMaxLengthLabelValue is the maximum length a label value can be.
-	DefaultMaxLengthLabelValue = 2048
 )
 
 var (
@@ -84,8 +74,6 @@ type Config struct {
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
-	validationConfig ValidateConfig
-
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
 }
@@ -100,7 +88,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 	cfg.userStatesConfig.RegisterFlags(f)
 	cfg.clientConfig.RegisterFlags(f)
-	cfg.validationConfig.RegisterFlags(f)
 
 	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
@@ -109,6 +96,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
+
+	// DEPRECATED, no-op
+	f.Bool("ingester.reject-old-samples", false, "DEPRECATED. Reject old samples.")
+	f.Duration("ingester.reject-old-samples.max-age", 0, "DEPRECATED. Maximum accepted sample age before rejecting.")
+	f.Int("ingester.validation.max-length-label-name", 0, "DEPRECATED. Maximum length accepted for label names.")
+	f.Int("ingester.validation.max-length-label-value", 0, "DEPRECATED. Maximum length accepted for label value. This setting also applies to the metric name.")
+	f.Int("ingester.max-label-names-per-series", 0, "DEPRECATED. Maximum number of label names per series.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -149,7 +143,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, creationGracePeriod time.Duration, chunkStore ChunkStore) (*Ingester, error) {
+func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 	if cfg.FlushCheckPeriod == 0 {
 		cfg.FlushCheckPeriod = 1 * time.Minute
 	}
@@ -173,16 +167,6 @@ func New(cfg Config, creationGracePeriod time.Duration, chunkStore ChunkStore) (
 	}
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
-	}
-
-	if cfg.validationConfig.MaxLabelNameLength <= 0 {
-		cfg.validationConfig.MaxLabelNameLength = DefaultMaxLengthLabelValue
-	}
-	if cfg.validationConfig.MaxLabelValueLength <= 0 {
-		cfg.validationConfig.MaxLabelValueLength = DefaultMaxLengthLabelName
-	}
-	if cfg.validationConfig.CreationGracePeriod == 0 {
-		cfg.validationConfig.CreationGracePeriod = creationGracePeriod
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
@@ -314,11 +298,6 @@ samples:
 }
 
 func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
-	if err := ValidateSample(sample, &i.cfg.validationConfig); err != nil {
-		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
-		return err
-	}
-
 	for ln, lv := range sample.Metric {
 		if len(lv) == 0 {
 			delete(sample.Metric, ln)

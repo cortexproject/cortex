@@ -10,16 +10,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
+	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 var (
-	discardedSamples = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "cortex_ingester_discarded_samples_total",
-			Help: "The total number of samples that were discarded.",
-		},
-		[]string{discardReasonLabel},
-	)
 	createdChunks = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_chunks_created_total",
 		Help: "The total number of chunks the ingester has created.",
@@ -27,7 +21,6 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(discardedSamples)
 	prometheus.MustRegister(createdChunks)
 }
 
@@ -72,11 +65,11 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		return nil
 	}
 	if v.Timestamp == s.lastTime {
-		discardedSamples.WithLabelValues(duplicateSample).Inc()
+		validation.DiscardedSamples.WithLabelValues(duplicateSample).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, "sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value)
 	}
 	if v.Timestamp < s.lastTime {
-		discardedSamples.WithLabelValues(outOfOrderTimestamp).Inc()
+		validation.DiscardedSamples.WithLabelValues(outOfOrderTimestamp).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, "sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp) // Caused by the caller.
 	}
 

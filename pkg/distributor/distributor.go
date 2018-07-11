@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -29,6 +30,8 @@ import (
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/extract"
+	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 var (
@@ -37,7 +40,6 @@ var (
 		"The current number of ingester clients.",
 		nil, nil,
 	)
-	labelNameBytes = []byte(model.MetricNameLabel)
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -70,6 +72,7 @@ type Config struct {
 	BillingConfig        billing.Config
 	IngesterClientConfig ingester_client.Config
 	PoolConfig           ingester_client.PoolConfig
+	validationConfig     validation.Config
 
 	RemoteTimeout      time.Duration
 	IngestionRateLimit float64
@@ -86,6 +89,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.IngesterClientConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
+	cfg.validationConfig.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
@@ -170,20 +174,11 @@ func (d *Distributor) tokenForLabels(userID string, labels []client.LabelPair) (
 		return shardByAllLabels(userID, labels)
 	}
 
-	metricName, err := extractMetricNameFromLabelPairs(labels)
+	metricName, err := extract.MetricNameFromLabelPairs(labels)
 	if err != nil {
 		return 0, err
 	}
 	return shardByMetricName(userID, metricName), nil
-}
-
-func extractMetricNameFromLabelPairs(labels []client.LabelPair) ([]byte, error) {
-	for _, label := range labels {
-		if label.Name.Equal(labelNameBytes) {
-			return label.Value, nil
-		}
-	}
-	return nil, fmt.Errorf("No metric name label")
 }
 
 func shardByMetricName(userID string, metricName []byte) uint32 {
@@ -230,6 +225,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 
+	var lastPartialErr error
+
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
@@ -241,7 +238,20 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			return nil, err
 		}
 
+		if err := d.cfg.validationConfig.ValidateLabels(ts.Labels); err != nil {
+			level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
+			lastPartialErr = err
+			continue
+		}
+
+		metricName, _ := extract.MetricNameFromLabelPairs(ts.Labels)
 		for _, s := range ts.Samples {
+			if err := d.cfg.validationConfig.ValidateSample(metricName, s); err != nil {
+				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
+				lastPartialErr = err
+				continue
+			}
+
 			keys = append(keys, key)
 			samples = append(samples, sampleTracker{
 				labels: ts.Labels,
@@ -252,7 +262,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	d.receivedSamples.Add(float64(len(samples)))
 
 	if len(samples) == 0 {
-		return &client.WriteResponse{}, nil
+		return &client.WriteResponse{}, lastPartialErr
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
@@ -297,7 +307,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	case err := <-pushTracker.err:
 		return nil, err
 	case <-pushTracker.done:
-		return &client.WriteResponse{}, nil
+		return &client.WriteResponse{}, lastPartialErr
 	}
 }
 
@@ -382,7 +392,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		metricNameMatcher, _, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
+		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
 
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {

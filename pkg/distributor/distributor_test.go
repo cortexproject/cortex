@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -418,4 +419,67 @@ outer:
 		return false
 	}
 	return true
+}
+
+func TestDistributorValidation(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	now := model.Now()
+	future, past := now.Add(5*time.Hour), now.Add(-25*time.Hour)
+
+	for i, tc := range []struct {
+		samples []model.Sample
+		err     error
+	}{
+		// Test validation passes.
+		{
+			samples: []model.Sample{{
+				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
+				Timestamp: now,
+				Value:     1,
+			}},
+		},
+
+		// Test validation fails for very old samples.
+		{
+			samples: []model.Sample{{
+				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
+				Timestamp: past,
+				Value:     2,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has timestamp too old: %d", past),
+		},
+
+		// Test validation fails for samples from the future.
+		{
+			samples: []model.Sample{{
+				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
+				Timestamp: future,
+				Value:     4,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has timestamp too new: %d", future),
+		},
+
+		// Test maximum labels names per series.
+		{
+			samples: []model.Sample{{
+				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar", "foo2": "bar2"},
+				Timestamp: now,
+				Value:     2,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has 3 label names; limit 2"),
+		},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			d := prepare(t, 3, 3, true)
+			defer d.Stop()
+
+			d.cfg.validationConfig.CreationGracePeriod = 2 * time.Hour
+			d.cfg.validationConfig.RejectOldSamples = true
+			d.cfg.validationConfig.RejectOldSamplesMaxAge = 24 * time.Hour
+			d.cfg.validationConfig.MaxLabelNamesPerSeries = 2
+
+			_, err := d.Push(ctx, client.ToWriteRequest(tc.samples))
+			require.Equal(t, tc.err, err)
+		})
+	}
 }

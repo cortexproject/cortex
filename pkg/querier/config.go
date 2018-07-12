@@ -4,8 +4,10 @@ import (
 	"flag"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -29,6 +31,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Make builds a queryable and promql engine.
 func Make(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Queryable, *promql.Engine) {
 	queryable := NewQueryable(distributor, chunkStore, cfg.Iterators)
-	engine := promql.NewEngine(util.Logger, nil, cfg.MaxConcurrent, cfg.Timeout)
+	engine := promql.NewEngine(util.Logger, prometheus.DefaultRegisterer, cfg.MaxConcurrent, cfg.Timeout)
 	return queryable, engine
 }

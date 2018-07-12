@@ -15,28 +15,26 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 	"github.com/weaveworks/cortex/pkg/util/wire"
 )
 
 func TestRemoteReadHandler(t *testing.T) {
-	q := MergeQueryable{
-		queriers: []Querier{
-			mockQuerier{
-				matrix: model.Matrix{
-					{
-						Metric: model.Metric{"foo": "bar"},
-						Values: []model.SamplePair{
-							{Timestamp: 0, Value: 0},
-							{Timestamp: 1, Value: 1},
-							{Timestamp: 2, Value: 2},
-							{Timestamp: 3, Value: 3},
-						},
+	q := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return mockQuerier{
+			matrix: model.Matrix{
+				{
+					Metric: model.Metric{"foo": "bar"},
+					Values: []model.SamplePair{
+						{Timestamp: 0, Value: 0},
+						{Timestamp: 1, Value: 1},
+						{Timestamp: 2, Value: 2},
+						{Timestamp: 3, Value: 3},
 					},
 				},
 			},
-		},
-	}
+		}, nil
+	})
+	handler := RemoteReadHandler(q)
 
 	requestBody, err := proto.Marshal(&client.ReadRequest{
 		Queries: []*client.QueryRequest{
@@ -50,7 +48,7 @@ func TestRemoteReadHandler(t *testing.T) {
 	request.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
 
 	recorder := httptest.NewRecorder()
-	q.RemoteReadHandler(recorder, request)
+	handler.ServeHTTP(recorder, request)
 
 	require.Equal(t, 200, recorder.Result().StatusCode)
 	responseBody, err := ioutil.ReadAll(recorder.Result().Body)
@@ -86,58 +84,18 @@ func TestRemoteReadHandler(t *testing.T) {
 	require.Equal(t, expected, response)
 }
 
-func TestMergeQuerierSortsMetricLabels(t *testing.T) {
-	mq := mergeQuerier{
-		ctx: context.Background(),
-		queriers: []Querier{
-			mockQuerier{
-				matrix: model.Matrix{
-					{
-						Metric: model.Metric{
-							model.MetricNameLabel: "testmetric",
-							"e": "f",
-							"a": "b",
-							"g": "h",
-							"c": "d",
-						},
-						Values: []model.SamplePair{{Timestamp: 0, Value: 0}},
-					},
-				},
-			},
-		},
-		mint: 0,
-		maxt: 0,
-	}
-	m, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
-	require.NoError(t, err)
-	dummyParams := storage.SelectParams{}
-	ss, err := mq.Select(&dummyParams, m)
-	require.NoError(t, err)
-	require.NoError(t, ss.Err())
-	ss.Next()
-	require.NoError(t, ss.Err())
-	l := ss.At().Labels()
-	require.Equal(t, labels.Labels{
-		{Name: string(model.MetricNameLabel), Value: "testmetric"},
-		{Name: "a", Value: "b"},
-		{Name: "c", Value: "d"},
-		{Name: "e", Value: "f"},
-		{Name: "g", Value: "h"},
-	}, l)
-}
-
 type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	return m.matrix, nil
+func (m mockQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+	return matrixToSeriesSet(m.matrix), nil
 }
 
-func (mockQuerier) LabelValuesForLabelName(context.Context, model.LabelName) (model.LabelValues, error) {
+func (m mockQuerier) LabelValues(name string) ([]string, error) {
 	return nil, nil
 }
 
-func (mockQuerier) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matcherSets ...*labels.Matcher) ([]metric.Metric, error) {
-	return nil, nil
+func (mockQuerier) Close() error {
+	return nil
 }

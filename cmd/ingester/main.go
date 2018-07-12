@@ -33,7 +33,6 @@ func main() {
 		schemaConfig     chunk.SchemaConfig
 		storageConfig    storage.Config
 		ingesterConfig   ingester.Config
-		logLevel         util.LogLevel
 		eventSampleRate  int
 		maxStreams       uint
 	)
@@ -45,12 +44,12 @@ func main() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
-		&schemaConfig, &ingesterConfig, &logLevel)
+		&schemaConfig, &ingesterConfig)
 	flag.UintVar(&maxStreams, "ingester.max-concurrent-streams", 1000, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.Parse()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 	util.InitEvents(eventSampleRate)
 
 	if maxStreams > 0 {
@@ -70,7 +69,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
+	chunkStore, err := chunk.NewCompositeStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

@@ -27,12 +27,11 @@ func main() {
 		ingesterConfig ingester.Config
 		storageConfig  storage.Config
 		schemaConfig   chunk.SchemaConfig
-		logLevel       util.LogLevel
 	)
-	util.RegisterFlags(&ingesterConfig, &serverConfig, &storageConfig, &schemaConfig, &logLevel)
+	util.RegisterFlags(&ingesterConfig, &serverConfig, &storageConfig, &schemaConfig)
 	flag.Parse()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	if (schemaConfig.ChunkTables.WriteScale.Enabled ||
 		schemaConfig.IndexTables.WriteScale.Enabled ||

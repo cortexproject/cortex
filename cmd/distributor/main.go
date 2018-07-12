@@ -47,12 +47,11 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
-		logLevel          util.LogLevel
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &logLevel)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig)
 	flag.Parse()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("distributor")

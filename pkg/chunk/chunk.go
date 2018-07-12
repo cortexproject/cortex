@@ -319,36 +319,31 @@ func equalByKey(a, b Chunk) bool {
 		a.From == b.From && a.Through == b.Through && a.Checksum == b.Checksum
 }
 
-func chunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
+// ChunksToMatrix converts a set of chunks to a model.Matrix.
+func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "chunksToMatrix")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks", len(chunks)))
 
 	// Group chunks by series, sort and dedupe samples.
-	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
+	metrics := map[model.Fingerprint]model.Metric{}
+	samples := map[model.Fingerprint][][]model.SamplePair{}
 	for _, c := range chunks {
-		ss, ok := sampleStreams[c.Fingerprint]
-		if !ok {
-			ss = &model.SampleStream{
-				Metric: c.Metric,
-			}
-			sampleStreams[c.Fingerprint] = ss
-		}
-
-		samples, err := c.Samples(from, through)
+		ss, err := c.Samples(from, through)
 		if err != nil {
 			return nil, err
 		}
 
-		ss.Values = util.MergeSampleSets(ss.Values, samples)
+		metrics[c.Fingerprint] = c.Metric
+		samples[c.Fingerprint] = append(samples[c.Fingerprint], ss)
 	}
-	sp.LogFields(otlog.Int("sample streams", len(sampleStreams)))
+	sp.LogFields(otlog.Int("sample streams", len(samples)))
 
-	matrix := make(model.Matrix, 0, len(sampleStreams))
-	for _, ss := range sampleStreams {
+	matrix := make(model.Matrix, 0, len(samples))
+	for fp, ss := range samples {
 		matrix = append(matrix, &model.SampleStream{
-			Metric: ss.Metric,
-			Values: ss.Values,
+			Metric: metrics[fp],
+			Values: util.MergeNSampleSets(ss...),
 		})
 	}
 

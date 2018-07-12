@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/tsdb"
 
@@ -40,17 +39,16 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
-		logLevel          util.LogLevel
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
-		&chunkStoreConfig, &schemaConfig, &storageConfig, &logLevel)
+		&chunkStoreConfig, &schemaConfig, &storageConfig)
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("querier")
 	defer trace.Close()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	r, err := ring.New(ringConfig)
 	if err != nil {
@@ -81,16 +79,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
+	chunkStore, err := chunk.NewCompositeStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
 	}
 	defer chunkStore.Stop()
 
-	queryable := querier.NewQueryable(dist, chunkStore)
-
-	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
+	queryable, engine := querier.Make(querierConfig, dist, chunkStore)
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -107,7 +103,7 @@ func main() {
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(middleware.AuthenticateUser.Wrap(promRouter))
-	subrouter.Path("/read").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(queryable.RemoteReadHandler)))
+	subrouter.Path("/read").Handler(middleware.AuthenticateUser.Wrap(querier.RemoteReadHandler(queryable)))
 	subrouter.Path("/validate_expr").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 

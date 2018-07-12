@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/tsdb"
 	"google.golang.org/grpc"
@@ -48,14 +47,13 @@ func main() {
 		rulerConfig       ruler.Config
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
-		logLevel          util.LogLevel
 
 		unauthenticated bool
 	)
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
-		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig, &logLevel)
+		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 	ingesterConfig.SetClientConfig(distributorConfig.IngesterClientConfig)
@@ -64,7 +62,7 @@ func main() {
 	trace := tracing.NewFromEnv("ingester")
 	defer trace.Close()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	server, err := server.New(serverConfig)
 	if err != nil {
@@ -79,7 +77,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
+	chunkStore, err := chunk.NewCompositeStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
@@ -124,8 +122,7 @@ func main() {
 	tableManager.Start()
 	defer tableManager.Stop()
 
-	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
-	queryable := querier.NewQueryable(dist, chunkStore)
+	queryable, engine := querier.Make(querierConfig, dist, chunkStore)
 
 	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
 		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
@@ -186,7 +183,7 @@ func main() {
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(activeMiddleware.Wrap(promRouter))
-	subrouter.Path("/read").Handler(activeMiddleware.Wrap(http.HandlerFunc(queryable.RemoteReadHandler)))
+	subrouter.Path("/read").Handler(activeMiddleware.Wrap(querier.RemoteReadHandler(queryable)))
 	subrouter.Path("/validate_expr").Handler(activeMiddleware.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(activeMiddleware.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 

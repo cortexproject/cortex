@@ -351,7 +351,7 @@
   branch = "master"
   name = "github.com/grpc-ecosystem/grpc-opentracing"
   packages = ["go/otgrpc"]
-  revision = "0e7658f8ee99ee5aa683e2a032b8880091b7a055"
+  revision = "8e809c8a86450a29b90dcc9efbf062d0fe6d9746"
 
 [[projects]]
   branch = "master"
@@ -554,8 +554,8 @@
     "ext",
     "log"
   ]
-  revision = "6edb48674bd9467b8e91fda004f2bd7202d60ce4"
-  version = "v1.0.1"
+  revision = "1949ddbfd147afd4d964a9f00b24eb291e0e7c38"
+  version = "v1.0.2"
 
 [[projects]]
   branch = "master"
@@ -680,7 +680,7 @@
     "util/treecache",
     "web/api/v1"
   ]
-  revision = "25e2d9f152b634d65123ef11342aceb23e66a1a2"
+  revision = "504acf4a0aec394fa7993dc2fe5744ef59f97b2c"
 
 [[projects]]
   branch = "master"
@@ -708,10 +708,10 @@
   version = "v1.1.0"
 
 [[projects]]
-  branch = "master"
   name = "github.com/sercand/kuberesolver"
   packages = ["."]
-  revision = "2f561e34ecb6206fcad82f0c5842379188d8db40"
+  revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
+  version = "v1.0.0"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"
@@ -776,7 +776,7 @@
   revision = "be0d55e547b147ea1817f037cab9458bf7fc7850"
 
 [[projects]]
-  branch = "master"
+  branch = "logging"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -795,7 +795,8 @@
     "tracing",
     "user"
   ]
-  revision = "b6e3b7fd56106061b1d60ec4da46c0d6770eb111"
+  revision = "061519e3f19e6384aedbf83488b6f98f18b9610b"
+  source = "github.com/tomwilkie/weaveworks-common"
 
 [[projects]]
   name = "github.com/weaveworks/mesh"
@@ -1122,6 +1123,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "dfbcc50df522b353f27b1af1328cc6389e305dd0bdf23e8ea4200d7e9bca9d2b"
+  inputs-digest = "374aacd909431b9d5c2ac19c4a78c3ce136221d5ae4794078a16bb6fa78eb630"
   solver-name = "gps-cdcl"
   solver-version = 1

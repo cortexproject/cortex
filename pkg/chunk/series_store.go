@@ -53,7 +53,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	if !ok || metricNameMatcher.Type != labels.MatchEqual {
 		return nil, fmt.Errorf("query must contain metric name")
 	}
-	log.Span.SetTag("metric", metricNameMatcher.Value)
+	level.Debug(log).Log("metric", metricNameMatcher.Value)
 
 	// Fetch the series IDs from the index, based on non-empty matchers from
 	// the query.
@@ -99,7 +99,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, metricName string, matchers []*labels.Matcher) ([]string, error) {
-	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupChunksByMetricName")
+	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
 	log.Finish()
 
 	// Just get series for metric if there are no matchers
@@ -145,7 +145,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, metricName string, matcher *labels.Matcher) ([]string, error) {
-	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupChunksByMetricName")
+	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupSeriesByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
 	defer log.Span.Finish()
 
 	userID, err := user.ExtractOrgID(ctx)
@@ -164,19 +164,19 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("queries", len(queries), "matcher", matcher)
+	level.Debug(log).Log("queries", len(queries))
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("entries", len(entries), "matcher", matcher)
+	level.Debug(log).Log("entries", len(entries))
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("ids", len(ids), "matcher", matcher)
+	level.Debug(log).Log("ids", len(ids))
 
 	return ids, nil
 }

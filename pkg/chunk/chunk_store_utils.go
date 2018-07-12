@@ -48,12 +48,16 @@ type spanLogger struct {
 	ot.Span
 }
 
-func newSpanLogger(ctx context.Context, method string) (*spanLogger, context.Context) {
+func newSpanLogger(ctx context.Context, method string, kvps ...interface{}) (*spanLogger, context.Context) {
 	span, ctx := ot.StartSpanFromContext(ctx, "ChunkStore.Get")
-	return &spanLogger{
+	logger := &spanLogger{
 		Logger: log.With(util.WithContext(ctx, util.Logger), "method", method),
 		Span:   span,
-	}, ctx
+	}
+	if len(kvps) > 0 {
+		logger.Log(kvps...)
+	}
+	return logger, ctx
 }
 
 func (s *spanLogger) Log(kvps ...interface{}) error {

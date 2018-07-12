@@ -455,7 +455,6 @@ func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, mat
 		}
 
 		if matcher != nil && !matcher.Matches(string(labelValue)) {
-			level.Debug(util.WithContext(ctx, util.Logger)).Log("msg", "dropping chunk for non-matching label", "label", labelValue)
 			continue
 		}
 		result = append(result, chunkKey)

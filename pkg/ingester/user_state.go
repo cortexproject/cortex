@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"golang.org/x/net/context"
@@ -16,6 +17,22 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/cortex/pkg/util/extract"
 )
+
+var (
+	memSeriesCreatedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_memory_series_created_total",
+		Help: "The total number of series that were created per user.",
+	}, []string{"user"})
+	memSeriesRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_memory_series_removed_total",
+		Help: "The total number of series that were removed per user.",
+	}, []string{"user"})
+)
+
+func init() {
+	prometheus.MustRegister(memSeriesCreatedTotal)
+	prometheus.MustRegister(memSeriesRemovedTotal)
+}
 
 type userStates struct {
 	states sync.Map
@@ -181,9 +198,12 @@ func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model
 	}
 
 	util.Event().Log("msg", "new series", "userID", u.userID, "fp", fp, "series", metric)
+	memSeriesCreatedTotal.WithLabelValues(u.userID).Inc()
+
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
 	u.index.add(metric, fp)
+
 	return fp, series, nil
 }
 
@@ -216,6 +236,8 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
 	if u.seriesInMetric[metricName] == 0 {
 		delete(u.seriesInMetric, metricName)
 	}
+
+	memSeriesRemovedTotal.WithLabelValues(u.userID).Inc()
 }
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.

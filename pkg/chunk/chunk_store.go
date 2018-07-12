@@ -57,9 +57,6 @@ type StoreConfig struct {
 
 	MinChunkAge     time.Duration
 	QueryChunkLimit int
-
-	// For injecting different schemas in tests.
-	schemaFactory func(cfg SchemaConfig) Schema
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -69,8 +66,8 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.QueryChunkLimit, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 }
 
-// Store implements Store
-type Store struct {
+// store implements Store
+type store struct {
 	cfg StoreConfig
 
 	storage StorageClient
@@ -78,25 +75,13 @@ type Store struct {
 	schema  Schema
 }
 
-// NewStore makes a new ChunkStore
-func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storage StorageClient) (*Store, error) {
-	var schema Schema
-	var err error
-	if cfg.schemaFactory == nil {
-		schema, err = newCompositeSchema(schemaCfg)
-	} else {
-		schema = cfg.schemaFactory(schemaCfg)
-	}
-	if err != nil {
-		return nil, err
-	}
-
+func newStore(cfg StoreConfig, schema Schema, storage StorageClient) (*store, error) {
 	cache, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Store{
+	return &store{
 		cfg:     cfg,
 		storage: storage,
 		schema:  schema,
@@ -105,12 +90,12 @@ func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storage StorageClient) (*
 }
 
 // Stop any background goroutines (ie in the cache.)
-func (c *Store) Stop() {
+func (c *store) Stop() {
 	c.cache.Stop()
 }
 
 // Put implements ChunkStore
-func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
+func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
@@ -125,7 +110,7 @@ func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 	return c.updateIndex(ctx, userID, chunks)
 }
 
-func (c *Store) updateIndex(ctx context.Context, userID string, chunks []Chunk) error {
+func (c *store) updateIndex(ctx context.Context, userID string, chunks []Chunk) error {
 	writeReqs, err := c.calculateDynamoWrites(userID, chunks)
 	if err != nil {
 		return err
@@ -136,7 +121,7 @@ func (c *Store) updateIndex(ctx context.Context, userID string, chunks []Chunk) 
 
 // calculateDynamoWrites creates a set of batched WriteRequests to dynamo for all
 // the chunks it is given.
-func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch, error) {
+func (c *store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch, error) {
 	seenIndexEntries := map[string]struct{}{}
 
 	writeReqs := c.storage.NewWriteBatch()
@@ -195,7 +180,7 @@ func (s *spanLogger) Log(kvps ...interface{}) error {
 }
 
 // Get implements ChunkStore
-func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
+func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.Get")
 	defer log.Span.Finish()
 
@@ -234,7 +219,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	return c.getSeriesChunks(ctx, from, through, matchers, metricNameMatcher)
 }
 
-func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
+func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.getMetricNameChunks")
 	defer log.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "matchers", len(allMatchers))
@@ -338,7 +323,7 @@ func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found [
 	return
 }
 
-func (c *Store) getSeriesChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricNameMatcher *labels.Matcher) ([]Chunk, error) {
+func (c *store) getSeriesChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricNameMatcher *labels.Matcher) ([]Chunk, error) {
 	// Get all series from the index
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -402,7 +387,7 @@ outer:
 	return chunks, nil
 }
 
-func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
+func (c *store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupChunksByMetricName")
 	defer log.Finish()
 
@@ -497,7 +482,7 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 	return c.convertChunkIDsToChunks(ctx, chunkIDs)
 }
 
-func (c *Store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
 	incomingEntries := make(chan []IndexEntry)
 	incomingErrors := make(chan error)
 	for _, query := range queries {
@@ -526,7 +511,7 @@ func (c *Store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 	return entries, lastErr
 }
 
-func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]IndexEntry, error) {
+func (c *store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]IndexEntry, error) {
 	var entries []IndexEntry
 
 	if err := c.storage.QueryPages(ctx, query, func(resp ReadBatch) (shouldContinue bool) {
@@ -547,7 +532,7 @@ func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]I
 	return entries, nil
 }
 
-func (c *Store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
 	result := make([]string, 0, len(entries))
 
 	for _, entry := range entries {
@@ -569,7 +554,7 @@ func (c *Store) parseIndexEntries(ctx context.Context, entries []IndexEntry, mat
 	return result, nil
 }
 
-func (c *Store) convertChunkIDsToChunks(ctx context.Context, chunkIDs []string) ([]Chunk, error) {
+func (c *store) convertChunkIDsToChunks(ctx context.Context, chunkIDs []string) ([]Chunk, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -587,7 +572,7 @@ func (c *Store) convertChunkIDsToChunks(ctx context.Context, chunkIDs []string) 
 	return chunkSet, nil
 }
 
-func (c *Store) writeBackCache(ctx context.Context, chunks []Chunk) error {
+func (c *store) writeBackCache(ctx context.Context, chunks []Chunk) error {
 	for i := range chunks {
 		encoded, err := chunks[i].Encode()
 		if err != nil {

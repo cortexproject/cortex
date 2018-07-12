@@ -169,6 +169,7 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 	return writeReqs, nil
 }
 
+// spanLogger unifies tracing and logging, to reduce repetition.
 type spanLogger struct {
 	log.Logger
 	ot.Span

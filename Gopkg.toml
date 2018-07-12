@@ -3,6 +3,11 @@
   go-tests = true
 
 [[constraint]]
+  name = "github.com/weaveworks/common"
+  branch = "logging"
+  source = "github.com/tomwilkie/weaveworks-common"
+
+[[constraint]]
   name = "github.com/aws/aws-sdk-go"
   version = "v1.10.8"
 

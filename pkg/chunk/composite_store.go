@@ -118,7 +118,7 @@ func NewCompositeStore(cfg StoreConfig, schemaCfg SchemaConfig, storage StorageC
 
 func (c compositeStore) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
-		err := c.forStores(chunk.From, chunk.From, func(_, _ model.Time, store Store) error {
+		err := c.forStores(chunk.From, chunk.Through, func(_, _ model.Time, store Store) error {
 			return store.Put(ctx, []Chunk{chunk})
 		})
 		if err != nil {

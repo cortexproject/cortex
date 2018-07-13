@@ -1,4 +1,4 @@
-package date
+package version
 
 // Copyright 2017 Microsoft Corporation
 //
@@ -15,11 +15,23 @@ package date
 //  limitations under the License.
 
 import (
-	"strings"
-	"time"
+	"fmt"
+	"runtime"
 )
 
-// ParseTime to parse Time string to specified format.
-func ParseTime(format string, t string) (d time.Time, err error) {
-	return time.Parse(format, strings.ToUpper(t))
+// Number contains the semantic version of this SDK.
+const Number = "v10.14.0"
+
+var (
+	userAgent = fmt.Sprintf("Go/%s (%s-%s) go-autorest/%s",
+		runtime.Version(),
+		runtime.GOARCH,
+		runtime.GOOS,
+		Number,
+	)
+)
+
+// UserAgent returns a string containing the Go version, system archityecture and OS, and the go-autorest version.
+func UserAgent() string {
+	return userAgent
 }

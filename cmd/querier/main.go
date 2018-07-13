@@ -97,6 +97,7 @@ func main() {
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.
+		util.Logger,
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)

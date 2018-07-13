@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/tsdb"
 	"google.golang.org/grpc"
@@ -124,8 +123,7 @@ func main() {
 	tableManager.Start()
 	defer tableManager.Stop()
 
-	engine := promql.NewEngine(util.Logger, nil, querierConfig.MaxConcurrent, querierConfig.Timeout)
-	queryable := querier.NewQueryable(dist, chunkStore)
+	queryable, engine := querier.Make(querierConfig, dist, chunkStore)
 
 	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
 		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
@@ -186,7 +184,7 @@ func main() {
 
 	subrouter := server.HTTP.PathPrefix("/api/prom").Subrouter()
 	subrouter.PathPrefix("/api/v1").Handler(activeMiddleware.Wrap(promRouter))
-	subrouter.Path("/read").Handler(activeMiddleware.Wrap(http.HandlerFunc(queryable.RemoteReadHandler)))
+	subrouter.Path("/read").Handler(activeMiddleware.Wrap(querier.RemoteReadHandler(queryable)))
 	subrouter.Path("/validate_expr").Handler(activeMiddleware.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(activeMiddleware.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
 

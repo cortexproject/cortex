@@ -48,13 +48,21 @@ type concreteSeriesSet struct {
 	series []storage.Series
 }
 
+func newConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
+	sort.Sort(byLabels(series))
+	return &concreteSeriesSet{
+		cur:    -1,
+		series: series,
+	}
+}
+
 func (c *concreteSeriesSet) Next() bool {
 	c.cur++
-	return c.cur-1 < len(c.series)
+	return c.cur < len(c.series)
 }
 
 func (c *concreteSeriesSet) At() storage.Series {
-	return c.series[c.cur-1]
+	return c.series[c.cur]
 }
 
 func (c *concreteSeriesSet) Err() error {
@@ -109,19 +117,6 @@ func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
 
-func metricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
-	series := make([]storage.Series, 0, len(ms))
-	for _, m := range ms {
-		series = append(series, &concreteSeries{
-			labels:  metricToLabels(m.Metric),
-			samples: nil,
-		})
-	}
-	return &concreteSeriesSet{
-		series: series,
-	}
-}
-
 func matrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(m))
 	for _, ss := range m {
@@ -130,9 +125,18 @@ func matrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 			samples: ss.Values,
 		})
 	}
-	return &concreteSeriesSet{
-		series: series,
+	return newConcreteSeriesSet(series)
+}
+
+func metricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
+	series := make([]storage.Series, 0, len(ms))
+	for _, m := range ms {
+		series = append(series, &concreteSeries{
+			labels:  metricToLabels(m.Metric),
+			samples: nil,
+		})
 	}
+	return newConcreteSeriesSet(series)
 }
 
 func metricToLabels(m model.Metric) labels.Labels {
@@ -148,3 +152,17 @@ func metricToLabels(m model.Metric) labels.Labels {
 	sort.Sort(ls)
 	return ls
 }
+
+func labelsToMetric(ls labels.Labels) model.Metric {
+	m := make(model.Metric, len(ls))
+	for _, l := range ls {
+		m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+	}
+	return m
+}
+
+type byLabels []storage.Series
+
+func (b byLabels) Len() int           { return len(b) }
+func (b byLabels) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b byLabels) Less(i, j int) bool { return labels.Compare(b[i].Labels(), b[j].Labels()) < 0 }

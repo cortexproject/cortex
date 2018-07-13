@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"io"
+	"math"
 	"reflect"
 	"runtime"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -314,7 +316,7 @@ func TestIngesterFlush(t *testing.T) {
 	})
 
 	// And check the store has the chunk
-	res, err := chunksToMatrix(store.chunks[userID])
+	res, err := chunk.ChunksToMatrix(context.Background(), store.chunks[userID], model.Time(0), model.Time(math.MaxInt64))
 	require.NoError(t, err)
 	assert.Equal(t, model.Matrix{
 		&model.SampleStream{

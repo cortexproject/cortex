@@ -327,7 +327,7 @@ func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Tim
 
 	// Group chunks by series, sort and dedupe samples.
 	metrics := map[model.Fingerprint]model.Metric{}
-	samples := map[model.Fingerprint][][]model.SamplePair{}
+	samplesBySeries := map[model.Fingerprint][][]model.SamplePair{}
 	for _, c := range chunks {
 		ss, err := c.Samples(from, through)
 		if err != nil {
@@ -335,12 +335,12 @@ func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Tim
 		}
 
 		metrics[c.Fingerprint] = c.Metric
-		samples[c.Fingerprint] = append(samples[c.Fingerprint], ss)
+		samplesBySeries[c.Fingerprint] = append(samplesBySeries[c.Fingerprint], ss)
 	}
-	sp.LogFields(otlog.Int("sample streams", len(samples)))
+	sp.LogFields(otlog.Int("series", len(samplesBySeries)))
 
-	matrix := make(model.Matrix, 0, len(samples))
-	for fp, ss := range samples {
+	matrix := make(model.Matrix, 0, len(samplesBySeries))
+	for fp, ss := range samplesBySeries {
 		matrix = append(matrix, &model.SampleStream{
 			Metric: metrics[fp],
 			Values: util.MergeNSampleSets(ss...),

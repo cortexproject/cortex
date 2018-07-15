@@ -180,6 +180,9 @@ func (r *Runner) runRandomTest() {
 	start := r.cfg.MinTime.Time.Add(time.Duration(rand.Int63n(int64(now.Sub(r.cfg.MinTime.Time)))))
 	duration := r.cfg.testQueryMinSize +
 		time.Duration(rand.Int63n(int64(r.cfg.testQueryMaxSize)-int64(r.cfg.testQueryMinSize)))
+	if start.Add(duration).After(now) {
+		duration = now.Sub(start)
+	}
 
 	var pairs []model.SamplePair
 	err := instrument.TimeRequestHistogram(context.Background(), "Prometheus.Query", prometheusRequestDuration, func(ctx context.Context) error {

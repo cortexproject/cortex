@@ -65,6 +65,7 @@ type RunnerConfig struct {
 	MinTime          TimeValue
 	extraSelectors   string
 	ScrapeInterval   time.Duration
+	samplesEpsilon   float64
 }
 
 // RegisterFlags does what it says.
@@ -83,6 +84,7 @@ func (cfg *RunnerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.extraSelectors, "extra-selectors", "", "Extra selectors to be included in queries, eg to identify different instances of this job.")
 	f.DurationVar(&cfg.ScrapeInterval, "scrape-interval", 15*time.Second, "Expected scrape interval.")
+	f.Float64Var(&cfg.samplesEpsilon, "test-samples-epsilon", 0.1, "Amount that the number of samples are allowed to be off by")
 }
 
 // Runner runs a bunch of test cases, periodically checking their value.
@@ -202,7 +204,7 @@ func (r *Runner) runRandomTest() {
 	}
 
 	expectedNumSamples := int(duration / r.cfg.ScrapeInterval)
-	if len(pairs) != expectedNumSamples {
+	if !epsilonCorrect(float64(len(pairs)), float64(expectedNumSamples), r.cfg.samplesEpsilon) {
 		log.Errorf("Expected %d samples, got %d", len(pairs), expectedNumSamples)
 		failures = true
 	}
@@ -224,9 +226,12 @@ func (r *Runner) timeEpsilonCorrect(f func(time.Time) float64, pair model.Sample
 }
 
 func (r *Runner) valueEpsilonCorrect(f func(time.Time) float64, pair model.SamplePair) bool {
-	expected := f(pair.Timestamp.Time())
-	delta := math.Abs((float64(pair.Value) - expected) / expected)
-	return delta < r.cfg.testEpsilon
+	return epsilonCorrect(float64(pair.Value), f(pair.Timestamp.Time()), r.cfg.testEpsilon)
+}
+
+func epsilonCorrect(actual, expected, epsilon float64) bool {
+	delta := math.Abs((actual - expected) / expected)
+	return delta < epsilon
 }
 
 func maxDuration(a, b time.Duration) time.Duration {

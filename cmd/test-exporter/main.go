@@ -13,8 +13,7 @@ import (
 )
 
 var (
-	scrapeInterval = flag.Duration("scrape-interval", 15*time.Second, "Expected scrape interval")
-	unixStart      = time.Unix(0, 0)
+	unixStart = time.Unix(0, 0)
 )
 
 func main() {
@@ -43,7 +42,7 @@ func main() {
 	}))
 
 	runner.Add(test.NewSimpleTestCase("sine_wave", func(t time.Time) float64 {
-		degrees := t.Sub(unixStart).Seconds() * (float64(*scrapeInterval) / float64(time.Second))
+		degrees := t.Sub(unixStart).Seconds() * (float64(runnerConfig.ScrapeInterval) / float64(time.Second))
 		radians := (degrees * math.Pi) / 180.
 		return math.Sin(radians)
 	}))

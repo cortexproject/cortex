@@ -64,6 +64,7 @@ type RunnerConfig struct {
 	userID           string
 	MinTime          TimeValue
 	extraSelectors   string
+	ScrapeInterval   time.Duration
 }
 
 // RegisterFlags does what it says.
@@ -81,6 +82,7 @@ func (cfg *RunnerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.MinTime, "test-query-start", "Minimum start date for queries")
 
 	f.StringVar(&cfg.extraSelectors, "extra-selectors", "", "Extra selectors to be included in queries, eg to identify different instances of this job.")
+	f.DurationVar(&cfg.ScrapeInterval, "scrape-interval", 15*time.Second, "Expected scrape interval.")
 }
 
 // Runner runs a bunch of test cases, periodically checking their value.
@@ -198,6 +200,13 @@ func (r *Runner) runRandomTest() {
 			log.Errorf("Wrong value: %f !~ %f", tc.ExpectedValueAt(pair.Timestamp.Time()), pair.Value)
 		}
 	}
+
+	expectedNumSamples := int(duration / r.cfg.ScrapeInterval)
+	if len(pairs) != expectedNumSamples {
+		log.Errorf("Expected %d samples, got %d", len(pairs), expectedNumSamples)
+		failures = true
+	}
+
 	if failures {
 		testcaseResult.WithLabelValues(fail).Inc()
 	} else {

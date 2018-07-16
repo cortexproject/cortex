@@ -8,10 +8,12 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
-	api "github.com/prometheus/client_golang/api/prometheus"
+	"github.com/prometheus/client_golang/api"
+	"github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
+	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
@@ -94,7 +96,7 @@ type Runner struct {
 	cases  []Case
 	quit   chan struct{}
 	wg     sync.WaitGroup
-	client api.QueryAPI
+	client v1.API
 }
 
 // NewRunner makes a new Runner.
@@ -103,11 +105,12 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 		Address: cfg.prometheusAddr,
 	}
 	if cfg.userID != "" {
-		apiCfg.Middleware = func(r *http.Request) {
-			user.InjectIntoHTTPRequest(user.Inject(context.Background(), cfg.userID), r)
-		}
+		apiCfg.RoundTripper = promhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.userID), req)
+			return http.DefaultTransport.RoundTrip(req)
+		})
 	}
-	client, err := api.New(apiCfg)
+	client, err := api.NewClient(apiCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +118,7 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 	tc := &Runner{
 		cfg:    cfg,
 		quit:   make(chan struct{}),
-		client: api.NewQueryAPI(client),
+		client: v1.NewAPI(client),
 	}
 	tc.wg.Add(1)
 	go tc.verifyLoop()

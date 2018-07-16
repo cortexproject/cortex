@@ -5,8 +5,8 @@ import (
 	"math"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/prometheus/client_golang/prometheus"
+	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/server"
 
 	"github.com/weaveworks-experiments/prometheus-benchmarks/pkg/test"

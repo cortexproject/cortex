@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
-	api "github.com/prometheus/client_golang/api/prometheus"
+	"github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -45,7 +45,7 @@ func (tc *simpleTestCase) ExpectedValueAt(t time.Time) float64 {
 	return tc.expectedValueAt(t)
 }
 
-func (tc *simpleTestCase) Query(ctx context.Context, client api.QueryAPI, selectors string, start time.Time, duration time.Duration) ([]model.SamplePair, error) {
+func (tc *simpleTestCase) Query(ctx context.Context, client v1.API, selectors string, start time.Time, duration time.Duration) ([]model.SamplePair, error) {
 	metricName := prometheus.BuildFQName(namespace, subsystem, tc.name)
 	query := fmt.Sprintf("%s{%s}[%dm]", metricName, selectors, duration/time.Minute)
 	log.Println(query, "@", start)

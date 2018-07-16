@@ -18,7 +18,7 @@ func TestHeapCache(t *testing.T) {
 	require.Len(t, c.entries, 10)
 
 	for i := 0; i < 10; i++ {
-		value, ok := c.get(strconv.Itoa(i))
+		value, _, ok := c.get(strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i, value.(int))
 	}
@@ -31,11 +31,11 @@ func TestHeapCache(t *testing.T) {
 	require.Len(t, c.entries, 10)
 
 	for i := 0; i < 5; i++ {
-		_, ok := c.get(strconv.Itoa(i))
+		_, _, ok := c.get(strconv.Itoa(i))
 		require.False(t, ok)
 	}
 	for i := 5; i < 15; i++ {
-		value, ok := c.get(strconv.Itoa(i))
+		value, _, ok := c.get(strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i, value.(int))
 	}
@@ -48,7 +48,7 @@ func TestHeapCache(t *testing.T) {
 	require.Len(t, c.entries, 10)
 
 	for i := 5; i < 15; i++ {
-		value, ok := c.get(strconv.Itoa(i))
+		value, _, ok := c.get(strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i*2, value.(int))
 	}

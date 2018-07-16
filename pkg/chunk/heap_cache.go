@@ -59,6 +59,10 @@ func (c *heapCache) Pop() interface{} {
 }
 
 func (c *heapCache) put(key string, value interface{}) {
+	if c.size == 0 {
+		return
+	}
+
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -84,7 +88,11 @@ func (c *heapCache) put(key string, value interface{}) {
 	})
 }
 
-func (c *heapCache) get(key string) (value interface{}, ok bool) {
+func (c *heapCache) get(key string) (value interface{}, updated time.Time, ok bool) {
+	if c.size == 0 {
+		return
+	}
+
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
@@ -92,6 +100,7 @@ func (c *heapCache) get(key string) (value interface{}, ok bool) {
 	index, ok = c.index[key]
 	if ok {
 		value = c.entries[index].value
+		updated = c.entries[index].updated
 	}
 	return
 }

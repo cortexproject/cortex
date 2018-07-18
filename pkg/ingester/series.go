@@ -2,15 +2,13 @@ package ingester
 
 import (
 	"fmt"
-	"net/http"
 	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
+
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
-	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 var (
@@ -41,6 +39,15 @@ type memorySeries struct {
 	lastSampleValue    model.SampleValue
 }
 
+type memorySeriesError struct {
+	message   string
+	errorType string
+}
+
+func (error *memorySeriesError) Error() string {
+	return error.message
+}
+
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
 func newMemorySeries(m model.Metric) *memorySeries {
@@ -65,12 +72,16 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		return nil
 	}
 	if v.Timestamp == s.lastTime {
-		validation.DiscardedSamples.WithLabelValues(duplicateSample).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, "sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value)
+		return &memorySeriesError{
+			message:   fmt.Sprintf("sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value),
+			errorType: "new-value-for-timestamp",
+		}
 	}
 	if v.Timestamp < s.lastTime {
-		validation.DiscardedSamples.WithLabelValues(outOfOrderTimestamp).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, "sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp) // Caused by the caller.
+		return &memorySeriesError{
+			message:   fmt.Sprintf("sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp),
+			errorType: "sample-out-of-order",
+		}
 	}
 
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {

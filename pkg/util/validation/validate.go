@@ -28,6 +28,9 @@ const (
 	greaterThanMaxSampleAge = "greater_than_max_sample_age"
 	maxLabelNamesPerSeries  = "max_label_names_per_series"
 	tooFarInFuture          = "too_far_in_future"
+	invalidLabel            = "label_invalid"
+	labelNameTooLong        = "label_name_too_long"
+	labelValueTooLong       = "label_value_too_long"
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -103,14 +106,25 @@ func (cfg *Config) ValidateLabels(userID string, ls []client.LabelPair) error {
 	}
 
 	for _, l := range ls {
+		var errTemplate string
+		var reason string
+		var cause interface{}
 		if !model.LabelName(l.Name).IsValid() {
-			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, l.Name, metricName)
+			reason = invalidLabel
+			errTemplate = errInvalidLabel
+			cause = l.Name
+		} else if len(l.Name) > cfg.MaxLabelNameLength {
+			reason = labelNameTooLong
+			errTemplate = errLabelNameTooLong
+			cause = l.Name
+		} else if len(l.Value) > cfg.MaxLabelValueLength {
+			reason = labelValueTooLong
+			errTemplate = errLabelValueTooLong
+			cause = l.Value
 		}
-		if len(l.Name) > cfg.MaxLabelNameLength {
-			return httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, l.Name, metricName)
-		}
-		if len(l.Value) > cfg.MaxLabelValueLength {
-			return httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, l.Value, metricName)
+		if errTemplate != "" {
+			DiscardedSamples.WithLabelValues(reason, userID).Inc()
+			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, metricName)
 		}
 	}
 	return nil

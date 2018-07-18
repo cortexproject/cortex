@@ -36,7 +36,7 @@ var DiscardedSamples = prometheus.NewCounterVec(
 		Name: "cortex_discarded_samples_total",
 		Help: "The total number of samples that were discarded.",
 	},
-	[]string{discardReasonLabel},
+	[]string{discardReasonLabel, "userID"},
 )
 
 func init() {
@@ -71,14 +71,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // ValidateSample returns an err if the sample is invalid.
-func (cfg *Config) ValidateSample(metricName []byte, s client.Sample) error {
+func (cfg *Config) ValidateSample(userID string, metricName []byte, s client.Sample) error {
 	if cfg.RejectOldSamples && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge) {
-		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge).Inc()
+		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, metricName, model.Time(s.TimestampMs))
 	}
 
 	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod) {
-		DiscardedSamples.WithLabelValues(tooFarInFuture).Inc()
+		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooNew, metricName, model.Time(s.TimestampMs))
 	}
 
@@ -86,7 +86,7 @@ func (cfg *Config) ValidateSample(metricName []byte, s client.Sample) error {
 }
 
 // ValidateLabels returns an err if the labels are invalid.
-func (cfg *Config) ValidateLabels(ls []client.LabelPair) error {
+func (cfg *Config) ValidateLabels(userID string, ls []client.LabelPair) error {
 	metricName, err := extract.MetricNameFromLabelPairs(ls)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
@@ -98,7 +98,7 @@ func (cfg *Config) ValidateLabels(ls []client.LabelPair) error {
 
 	numLabelNames := len(ls)
 	if numLabelNames > cfg.MaxLabelNamesPerSeries {
-		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries).Inc()
+		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, metricName, numLabelNames, cfg.MaxLabelNamesPerSeries)
 	}
 

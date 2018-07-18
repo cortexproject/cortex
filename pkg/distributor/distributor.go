@@ -14,7 +14,6 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -238,16 +237,14 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			return nil, err
 		}
 
-		if err := d.cfg.validationConfig.ValidateLabels(ts.Labels); err != nil {
-			level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
+		if err := d.cfg.validationConfig.ValidateLabels(userID, ts.Labels); err != nil {
 			lastPartialErr = err
 			continue
 		}
 
 		metricName, _ := extract.MetricNameFromLabelPairs(ts.Labels)
 		for _, s := range ts.Samples {
-			if err := d.cfg.validationConfig.ValidateSample(metricName, s); err != nil {
-				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error validating sample", "err", err)
+			if err := d.cfg.validationConfig.ValidateSample(userID, metricName, s); err != nil {
 				lastPartialErr = err
 				continue
 			}

@@ -19,8 +19,8 @@ const (
 	errMissingMetricName = "sample missing metric name"
 	errInvalidMetricName = "sample invalid metric name: %.200q"
 	errInvalidLabel      = "sample invalid label: %.200q metric %.200q"
-	errLabelNameTooLong  = "label name too long: %.200q metric %.200q"
-	errLabelValueTooLong = "label value too long: %.200q metric %.200q"
+	errLabelNameTooLong  = "label name too long (%d): %.200q metric %.200q"
+	errLabelValueTooLong = "label value too long (%d): %.200q metric %.200q"
 	errTooManyLabels     = "sample for '%s' has %d label names; limit %d"
 	errTooOld            = "sample for '%s' has timestamp too old: %d"
 	errTooNew            = "sample for '%s' has timestamp too new: %d"
@@ -107,10 +107,10 @@ func (cfg *Config) ValidateLabels(ls []client.LabelPair) error {
 			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, l.Name, metricName)
 		}
 		if len(l.Name) > cfg.MaxLabelNameLength {
-			return httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, l.Name, metricName)
+			return httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, len(l.Name), l.Name, metricName)
 		}
 		if len(l.Value) > cfg.MaxLabelValueLength {
-			return httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, l.Value, metricName)
+			return httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, len(l.Value), l.Value, metricName)
 		}
 	}
 	return nil

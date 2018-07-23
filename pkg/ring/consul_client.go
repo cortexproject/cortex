@@ -25,6 +25,7 @@ const (
 type ConsulConfig struct {
 	Host              string
 	Prefix            string
+	ACLToken          string
 	HTTPClientTimeout time.Duration
 	ConsistentReads   bool
 }
@@ -33,6 +34,7 @@ type ConsulConfig struct {
 func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Host, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
 	f.StringVar(&cfg.Prefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
+	f.StringVar(&cfg.ACLToken, "consul.acltoken", "", "ACL Token used to interact with Consul.")
 	f.DurationVar(&cfg.HTTPClientTimeout, "consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
 	f.BoolVar(&cfg.ConsistentReads, "consul.consistent-reads", true, "Enable consistent reads to consul.")
 }
@@ -73,6 +75,7 @@ type consulClient struct {
 func NewConsulClient(cfg ConsulConfig, codec Codec) (KVClient, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
+		Token:   cfg.ACLToken,
 		Scheme:  "http",
 		HttpClient: &http.Client{
 			Transport: cleanhttp.DefaultPooledTransport(),

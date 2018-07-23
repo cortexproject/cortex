@@ -44,6 +44,7 @@ type LifecyclerConfig struct {
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string
+	Port           int
 	InfName        string
 	ID             string
 	SkipUnregister bool
@@ -66,6 +67,7 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.InfName, "ingester.interface", "eth0", "Name of network interface to read address from.")
 	f.StringVar(&cfg.Addr, "ingester.addr", "", "IP address to register into consul.")
+	f.IntVar(&cfg.Port, "ingester.port", 9095, "port to register into consul.")
 	f.StringVar(&cfg.ID, "ingester.ID", hostname, "ID to register into consul.")
 }
 
@@ -129,7 +131,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 		flushTransferer: flushTransferer,
 		KVStore:         kvstore,
 
-		addr: fmt.Sprintf("%s:%d", addr, *cfg.ListenPort),
+		addr: fmt.Sprintf("%s:%d", addr, cfg.Port),
 		ID:   cfg.ID,
 
 		quit:      make(chan struct{}),

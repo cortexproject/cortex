@@ -5,46 +5,37 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"strconv"
 
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 )
 
-// New registers Jaeger as the OpenTracing implementation.
-// If jaegerAgentHost is an empty string, tracing is disabled.
-func New(agentHost, serviceName, samplerType string, samplerParam float64) io.Closer {
-	if agentHost != "" {
-		cfg := jaegercfg.Configuration{
-			Sampler: &jaegercfg.SamplerConfig{
-				SamplingServerURL: fmt.Sprintf("http://%s:5778/sampling", agentHost),
-				Type:              samplerType,
-				Param:             samplerParam,
-			},
-			Reporter: &jaegercfg.ReporterConfig{
-				LocalAgentHostPort: fmt.Sprintf("%s:6831", agentHost),
-			},
-		}
-
-		closer, err := cfg.InitGlobalTracer(serviceName)
-		if err != nil {
-			fmt.Printf("Could not initialize jaeger tracer: %s\n", err.Error())
-			os.Exit(1)
-		}
-		return closer
+// installJaeger registers Jaeger as the OpenTracing implementation.
+func installJaeger(serviceName string, cfg *jaegercfg.Configuration) io.Closer {
+	closer, err := cfg.InitGlobalTracer(serviceName)
+	if err != nil {
+		fmt.Printf("Could not initialize jaeger tracer: %s\n", err.Error())
+		os.Exit(1)
 	}
-	return ioutil.NopCloser(nil)
+	return closer
 }
 
 // NewFromEnv is a convenience function to allow tracing configuration
 // via environment variables
+//
+// Tracing will be enabled if one (or more) of the following environment variables is used to configure trace reporting:
+// - JAEGER_AGENT_HOST
+// - JAEGER_SAMPLER_MANAGER_HOST_PORT
 func NewFromEnv(serviceName string) io.Closer {
-	agentHost := os.Getenv("JAEGER_AGENT_HOST")
-	samplerType := os.Getenv("JAEGER_SAMPLER_TYPE")
-	samplerParam, _ := strconv.ParseFloat(os.Getenv("JAEGER_SAMPLER_PARAM"), 64)
-	if samplerType == "" || samplerParam == 0 {
-		samplerType = "ratelimiting"
-		samplerParam = 10.0
+	cfg, err := jaegercfg.FromEnv()
+	if err != nil {
+		fmt.Printf("Could not load jaeger tracer configuration: %s\n", err.Error())
+		os.Exit(1)
 	}
 
-	return New(agentHost, serviceName, samplerType, samplerParam)
+	if cfg.Sampler.SamplingServerURL == "" && cfg.Reporter.LocalAgentHostPort == "" {
+		fmt.Printf("Jaeger tracer disabled: No trace report agent or config server specified\n")
+		return ioutil.NopCloser(nil)
+	}
+
+	return installJaeger(serviceName, cfg)
 }

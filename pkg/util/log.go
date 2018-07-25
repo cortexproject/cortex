@@ -1,38 +1,88 @@
 package util
 
 import (
-	"flag"
 	"os"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 )
 
-// Logger is a shared go-kit logger.
-// TODO: Change all components to take a non-global logger via their constructors.
-var Logger = log.NewNopLogger()
+var (
+	// Logger is a shared go-kit logger.
+	// TODO: Change all components to take a non-global logger via their constructors.
+	Logger = log.NewNopLogger()
 
-// InitLogger initializes the global logger according to the allowed log level.
-func InitLogger(level AllowedLevel) {
-	Logger = MustNewPrometheusLogger(level)
+	logMessages = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "log_messages_total",
+		Help: "Total number of log messages.",
+	}, []string{"level"})
+
+	supportedLevels = []level.Value{
+		level.DebugValue(),
+		level.InfoValue(),
+		level.WarnValue(),
+		level.ErrorValue(),
+	}
+)
+
+func init() {
+	prometheus.MustRegister(logMessages)
 }
 
-// LogLevel supports registering a flag for the desired log level.
-type LogLevel struct {
-	AllowedLevel
+// InitLogger initialises the global gokit logger (util.Logger) and overrides the
+// default logger for the server.
+func InitLogger(cfg *server.Config) {
+	l, err := NewPrometheusLogger(cfg.LogLevel)
+	if err != nil {
+		panic(err)
+	}
+
+	Logger = l
+	cfg.Log = logging.GoKit(l)
 }
 
-// RegisterFlags adds the log level flag to the provided flagset.
-func (l *LogLevel) RegisterFlags(f *flag.FlagSet) {
-	l.Set("info")
-	f.Var(
-		&l.AllowedLevel,
-		"log.level",
-		"Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal]",
-	)
+// PrometheusLogger exposes Prometheus counters for each of go-kit's log levels.
+type PrometheusLogger struct {
+	logger log.Logger
+}
+
+// NewPrometheusLogger creates a new instance of PrometheusLogger which exposes
+// Prometheus counters for various log levels.
+func NewPrometheusLogger(l logging.Level) (log.Logger, error) {
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger = level.NewFilter(logger, l.Gokit)
+
+	// Initialise counters for all supported levels:
+	for _, level := range supportedLevels {
+		logMessages.WithLabelValues(level.String())
+	}
+
+	logger = &PrometheusLogger{
+		logger: logger,
+	}
+
+	// DefaultCaller must be the last wrapper
+	logger = log.With(logger, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
+	return logger, nil
+}
+
+// Log increments the appropriate Prometheus counter depending on the log level.
+func (pl *PrometheusLogger) Log(kv ...interface{}) error {
+	pl.logger.Log(kv...)
+	l := "unknown"
+	for i := 1; i < len(kv); i += 2 {
+		if v, ok := kv[i].(level.Value); ok {
+			l = v.String()
+			break
+		}
+	}
+	logMessages.WithLabelValues(l).Inc()
+	return nil
 }
 
 // WithContext returns a Logger that has information about the current user in
@@ -56,74 +106,4 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 func WithUserID(userID string, l log.Logger) log.Logger {
 	// See note in WithContext.
 	return log.With(l, "org_id", userID)
-}
-
-// PrometheusLogger exposes Prometheus counters for each of go-kit's log levels.
-type PrometheusLogger struct {
-	counterVec *prometheus.CounterVec
-	logger     log.Logger
-}
-
-var supportedLevels = []level.Value{level.DebugValue(), level.InfoValue(), level.WarnValue(), level.ErrorValue()}
-
-// NewPrometheusLogger creates a new instance of PrometheusLogger which exposes Prometheus counters for various log levels.
-// Contrarily to MustNewPrometheusLogger, it returns an error to the caller in case of issue.
-// Use NewPrometheusLogger if you want more control. Use MustNewPrometheusLogger if you want a less verbose logger creation.
-func NewPrometheusLogger(al AllowedLevel) (log.Logger, error) {
-	// This code copy-pasted from prometheus/common/promlog.New()
-	l := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
-	l = al.Filter(l)
-
-	counterVec := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "log_messages",
-		Help: "Total number of log messages.",
-	}, []string{"level"})
-	// Initialise counters for all supported levels:
-	for _, level := range supportedLevels {
-		counterVec.WithLabelValues(level.String())
-	}
-	err := prometheus.Register(counterVec)
-	// If another library already registered the same metric, use it
-	if err != nil {
-		ar, ok := err.(prometheus.AlreadyRegisteredError)
-		if !ok {
-			return nil, err
-		}
-		counterVec, ok = ar.ExistingCollector.(*prometheus.CounterVec)
-		if !ok {
-			return nil, err
-		}
-	}
-	l = &PrometheusLogger{
-		counterVec: counterVec,
-		logger:     l,
-	}
-	// DefaultCaller must be the last wrapper
-	l = log.With(l, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
-	return l, nil
-}
-
-// MustNewPrometheusLogger creates a new instance of PrometheusLogger which exposes Prometheus counters for various log levels.
-// Contrarily to NewPrometheusLogger, it does not return any error to the caller, but panics instead.
-// Use MustNewPrometheusLogger if you want a less verbose logger creation. Use NewPrometheusLogger if you want more control.
-func MustNewPrometheusLogger(al AllowedLevel) log.Logger {
-	logger, err := NewPrometheusLogger(al)
-	if err != nil {
-		panic(err)
-	}
-	return logger
-}
-
-// Log increments the appropriate Prometheus counter depending on the log level.
-func (pl *PrometheusLogger) Log(kv ...interface{}) error {
-	pl.logger.Log(kv...)
-	l := "unknown"
-	for i := 1; i < len(kv); i += 2 {
-		if v, ok := kv[i].(level.Value); ok {
-			l = v.String()
-			break
-		}
-	}
-	pl.counterVec.WithLabelValues(l).Inc()
-	return nil
 }

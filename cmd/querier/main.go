@@ -39,17 +39,16 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
-		logLevel          util.LogLevel
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
-		&chunkStoreConfig, &schemaConfig, &storageConfig, &logLevel)
+		&chunkStoreConfig, &schemaConfig, &storageConfig)
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("querier")
 	defer trace.Close()
 
-	util.InitLogger(logLevel.AllowedLevel)
+	util.InitLogger(&serverConfig)
 
 	r, err := ring.New(ringConfig)
 	if err != nil {

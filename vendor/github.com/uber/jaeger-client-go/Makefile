@@ -1,7 +1,7 @@
 PROJECT_ROOT=github.com/uber/jaeger-client-go
-PACKAGES := $(shell glide novendor | grep -v ./thrift-gen/...)
+PACKAGES := $(shell glide novendor | grep -v -e ./thrift-gen/... -e ./thrift/...)
 # all .go files that don't exist in hidden directories
-ALL_SRC := $(shell find . -name "*.go" | grep -v -e vendor -e thrift-gen \
+ALL_SRC := $(shell find . -name "*.go" | grep -v -e vendor -e thrift-gen -e ./thrift/ \
         -e ".*/\..*" \
         -e ".*/_.*" \
         -e ".*/mocks.*")
@@ -49,13 +49,18 @@ lint:
 	@$(foreach pkg, $(PACKAGES), $(GOLINT) $(pkg) | grep -v crossdock/thrift >> $(LINT_LOG) || true;)
 	@[ ! -s "$(LINT_LOG)" ] || (echo "Lint Failures" | cat - $(LINT_LOG) && false)
 	@$(GOFMT) -e -s -l $(ALL_SRC) > $(FMT_LOG)
-	@[ ! -s "$(FMT_LOG)" ] || (echo "Go Fmt Failures, run 'make fmt'" | cat - $(FMT_LOG) && false)
+	./scripts/updateLicenses.sh >> $(FMT_LOG)
+	@[ ! -s "$(FMT_LOG)" ] || (echo "go fmt or license check failures, run 'make fmt'" | cat - $(FMT_LOG) && false)
 
 
 .PHONY: install
 install:
 	glide --version || go get github.com/Masterminds/glide
+ifeq ($(USE_DEP),true)
+	dep ensure
+else
 	glide install
+endif
 
 
 .PHONY: cover
@@ -73,13 +78,18 @@ test-examples:
 # TODO at the moment we're not generating tchan_*.go files
 thrift: idl-submodule thrift-image
 	$(THRIFT) -o /data --gen go:$(THRIFT_GO_ARGS) --out /data/$(THRIFT_GEN_DIR) /data/idl/thrift/agent.thrift
-	sed -i '' 's|"zipkincore"|"$(PROJECT_ROOT)/thrift-gen/zipkincore"|g' $(THRIFT_GEN_DIR)/agent/*.go
 	$(THRIFT) -o /data --gen go:$(THRIFT_GO_ARGS) --out /data/$(THRIFT_GEN_DIR) /data/idl/thrift/sampling.thrift
 	$(THRIFT) -o /data --gen go:$(THRIFT_GO_ARGS) --out /data/$(THRIFT_GEN_DIR) /data/idl/thrift/jaeger.thrift
 	$(THRIFT) -o /data --gen go:$(THRIFT_GO_ARGS) --out /data/$(THRIFT_GEN_DIR) /data/idl/thrift/zipkincore.thrift
-	rm -rf thrift-gen/*/*-remote
+	$(THRIFT) -o /data --gen go:$(THRIFT_GO_ARGS) --out /data/$(THRIFT_GEN_DIR) /data/idl/thrift/baggage.thrift
 	$(THRIFT) -o /data --gen go:$(THRIFT_GO_ARGS) --out /data/crossdock/thrift/ /data/idl/thrift/crossdock/tracetest.thrift
+	sed -i '' 's|"zipkincore"|"$(PROJECT_ROOT)/thrift-gen/zipkincore"|g' $(THRIFT_GEN_DIR)/agent/*.go
+	sed -i '' 's|"jaeger"|"$(PROJECT_ROOT)/thrift-gen/jaeger"|g' $(THRIFT_GEN_DIR)/agent/*.go
+	sed -i '' 's|"github.com/apache/thrift/lib/go/thrift"|"github.com/uber/jaeger-client-go/thrift"|g' \
+		$(THRIFT_GEN_DIR)/*/*.go crossdock/thrift/tracetest/*.go
+	rm -rf thrift-gen/*/*-remote
 	rm -rf crossdock/thrift/*/*-remote
+	rm -rf thrift-gen/jaeger/collector.go
 
 idl-submodule:
 	git submodule init
@@ -88,16 +98,20 @@ idl-submodule:
 thrift-image:
 	$(THRIFT) -version
 
-.PHONY: install_ci
-install_ci: install
+.PHONY: install-dep-ci
+install-dep-ci:
+	- curl -L -s https://github.com/golang/dep/releases/download/v0.3.2/dep-linux-amd64 -o $$GOPATH/bin/dep
+	- chmod +x $$GOPATH/bin/dep
+
+.PHONY: install-ci
+install-ci: install-dep-ci install
 	go get github.com/wadey/gocovmerge
 	go get github.com/mattn/goveralls
 	go get golang.org/x/tools/cmd/cover
 	go get github.com/golang/lint/golint
 
-
-.PHONY: test_ci
-test_ci:
+.PHONY: test-ci
+test-ci:
 	@./scripts/cover.sh $(shell go list $(PACKAGES))
 	make lint
 

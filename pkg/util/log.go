@@ -54,7 +54,6 @@ type PrometheusLogger struct {
 // NewPrometheusLogger creates a new instance of PrometheusLogger which exposes
 // Prometheus counters for various log levels.
 func NewPrometheusLogger(l logging.Level) (log.Logger, error) {
-	// This code copy-pasted from prometheus/common/promlog.New()
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	logger = level.NewFilter(logger, l.Gokit)
 

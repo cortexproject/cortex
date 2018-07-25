@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package cortex;
 
-option go_package = "client";
+option go_package = "github.com/weaveworks/cortex/pkg/ingester/client";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google.golang.org/grpc/health/grpc_health_v1/health.proto";

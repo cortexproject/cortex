@@ -1,12 +1,31 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+
+proto_library(
+    name = "cortex_proto",
+    srcs = ["cortex.proto"],
+    deps = ["@internal_gogo_proto_repository//github.com/gogo/protobuf/gogoproto"],
+    visibility = ["//visibility:public"],
+)
+
+go_proto_library(
+    name = "cortex_go_proto",
+    proto = ":cortex_proto",
+    importpath = "github.com/weaveworks/cortex/pkg/ingester/client",
+    compiler = "//tools/bazel-rules:gogo_grpc",
+    deps = [
+        "//pkg/util/wire:go_default_library",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 go_library(
     name = "go_default_library",
     srcs = [
         "client.go",
-        "cortex.pb.go",
         "dep.go",
     ],
+    embed = [":cortex_go_proto"],
     importpath = "github.com/weaveworks/cortex/pkg/ingester/client",
     visibility = ["//visibility:public"],
     deps = [

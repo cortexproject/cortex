@@ -69,7 +69,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
+	chunkStore, err := chunk.NewCompositeStore(chunkStoreConfig, schemaConfig, storageClient)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

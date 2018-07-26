@@ -98,7 +98,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer dist.Stop()
-	prometheus.MustRegister(dist)
 
 	ingester, err := ingester.New(ingesterConfig, chunkStore)
 	if err != nil {

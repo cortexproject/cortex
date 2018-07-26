@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/middleware"
@@ -70,7 +69,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer dist.Stop()
-	prometheus.MustRegister(dist)
 
 	server, err := server.New(serverConfig)
 	if err != nil {

@@ -73,6 +73,11 @@ var (
 		Name:      "distributor_ingester_query_failures_total",
 		Help:      "The total number of failed queries sent to ingesters.",
 	}, []string{"ingester"})
+	replicationFactor = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "distributor_replication_factor",
+		Help:      "The configure replication factor.",
+	})
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -139,6 +144,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 		}
 	}
 
+	replicationFactor.Set(float64(ring.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
 	d := &Distributor{

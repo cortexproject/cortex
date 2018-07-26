@@ -133,23 +133,6 @@ clean:
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
 	go clean ./...
 
-# We currently commit the BUILD files because of a couple of corner cases with
-# gazelle - https://github.com/bazelbuild/rules_go/issues/422
-# and https://github.com/bazelbuild/rules_go/issues/423.  If you ever regenerate
-# the BUILD files, watch out for the rules in vendor/golang.org/x/crypto/curve25519
-update-gazelle: $(PROTOS_GO)
-	bazel run //:gazelle
-
-update-vendor:
-	dep ensure
-	git status | grep BUILD.bazel | cut -d' ' -f 5 | xargs git checkout HEAD
-
-bazel: $(PROTOS_GO)
-	bazel build //cmd/...
-
-bazel-test: $(PROTOS_GO)
-	bazel test //pkg/...
-
 save-images:
 	@mkdir -p images
 	for image_name in $(IMAGE_NAMES); do \

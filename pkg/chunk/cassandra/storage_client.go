@@ -35,7 +35,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.addresses, "cassandra.addresses", "", "Comma-separated addresses of Cassandra instances.")
+	f.StringVar(&cfg.addresses, "cassandra.addresses", "", "Comma-separated hostnames or ips of Cassandra instances.")
 	f.IntVar(&cfg.port, "cassandra.port", 9042, "Port that Cassandra is running on")
 	f.StringVar(&cfg.keyspace, "cassandra.keyspace", "", "Keyspace to use in Cassandra.")
 	f.StringVar(&cfg.consistency, "cassandra.consistency", "QUORUM", "Consistency level for Cassandra.")

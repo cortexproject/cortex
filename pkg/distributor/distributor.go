@@ -76,7 +76,7 @@ var (
 	replicationFactor = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "distributor_replication_factor",
-		Help:      "The configure replication factor.",
+		Help:      "The configured replication factor.",
 	})
 )
 

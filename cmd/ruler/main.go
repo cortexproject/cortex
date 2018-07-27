@@ -76,7 +76,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer dist.Stop()
-	prometheus.MustRegister(dist)
 
 	engine := promql.NewEngine(util.Logger, prometheus.DefaultRegisterer, rulerConfig.NumWorkers, rulerConfig.GroupTimeout)
 	queryable := querier.NewQueryable(dist, chunkStore, querierConfig.Iterators)

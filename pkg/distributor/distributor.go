@@ -17,6 +17,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -35,11 +36,48 @@ import (
 )
 
 var (
-	numClientsDesc = prometheus.NewDesc(
-		"cortex_distributor_ingester_clients",
-		"The current number of ingester clients.",
-		nil, nil,
-	)
+	queryDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "distributor_query_duration_seconds",
+		Help:      "Time spent executing expression queries.",
+		Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
+	}, []string{"method", "status_code"})
+	receivedSamples = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_received_samples_total",
+		Help:      "The total number of received samples.",
+	})
+	sendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "distributor_send_duration_seconds",
+		Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
+		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
+	}, []string{"method", "status_code"})
+	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_ingester_appends_total",
+		Help:      "The total number of batch appends sent to ingesters.",
+	}, []string{"ingester"})
+	ingesterAppendFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_ingester_append_failures_total",
+		Help:      "The total number of failed batch appends sent to ingesters.",
+	}, []string{"ingester"})
+	ingesterQueries = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_ingester_queries_total",
+		Help:      "The total number of queries sent to ingesters.",
+	}, []string{"ingester"})
+	ingesterQueryFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_ingester_query_failures_total",
+		Help:      "The total number of failed queries sent to ingesters.",
+	}, []string{"ingester"})
+	replicationFactor = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "distributor_replication_factor",
+		Help:      "The configured replication factor.",
+	})
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -47,7 +85,6 @@ var (
 type Distributor struct {
 	cfg          Config
 	ring         ring.ReadRing
-	clientsMtx   sync.RWMutex
 	ingesterPool *ingester_client.Pool
 
 	billingClient *billing.Client
@@ -55,14 +92,6 @@ type Distributor struct {
 	// Per-user rate limiters.
 	ingestLimitersMtx sync.Mutex
 	ingestLimiters    map[string]*rate.Limiter
-
-	queryDuration          *prometheus.HistogramVec
-	receivedSamples        prometheus.Counter
-	sendDuration           *prometheus.HistogramVec
-	ingesterAppends        *prometheus.CounterVec
-	ingesterAppendFailures *prometheus.CounterVec
-	ingesterQueries        *prometheus.CounterVec
-	ingesterQueryFailures  *prometheus.CounterVec
 }
 
 // Config contains the configuration require to
@@ -115,6 +144,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 		}
 	}
 
+	replicationFactor.Set(float64(ring.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
 	d := &Distributor{
@@ -123,43 +153,6 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 		ingesterPool:   ingester_client.NewPool(cfg.PoolConfig, ring, cfg.ingesterClientFactory, util.Logger),
 		billingClient:  billingClient,
 		ingestLimiters: map[string]*rate.Limiter{},
-		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "distributor_query_duration_seconds",
-			Help:      "Time spent executing expression queries.",
-			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
-		}, []string{"method", "status_code"}),
-		receivedSamples: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_received_samples_total",
-			Help:      "The total number of received samples.",
-		}),
-		sendDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "distributor_send_duration_seconds",
-			Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
-			Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
-		}, []string{"method", "status_code"}),
-		ingesterAppends: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_appends_total",
-			Help:      "The total number of batch appends sent to ingesters.",
-		}, []string{"ingester"}),
-		ingesterAppendFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_append_failures_total",
-			Help:      "The total number of failed batch appends sent to ingesters.",
-		}, []string{"ingester"}),
-		ingesterQueries: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_queries_total",
-			Help:      "The total number of queries sent to ingesters.",
-		}, []string{"ingester"}),
-		ingesterQueryFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_query_failures_total",
-			Help:      "The total number of failed queries sent to ingesters.",
-		}, []string{"ingester"}),
 	}
 	return d, nil
 }
@@ -259,7 +252,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			})
 		}
 	}
-	d.receivedSamples.Add(float64(len(samples)))
+	receivedSamples.Add(float64(len(samples)))
 
 	if len(samples) == 0 {
 		return &client.WriteResponse{}, lastPartialErr
@@ -372,13 +365,13 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 		})
 	}
 
-	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", d.sendDuration, func(ctx context.Context) error {
+	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", sendDuration, func(ctx context.Context) error {
 		_, err := c.Push(ctx, req)
 		return err
 	})
-	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
+	ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
-		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
 }
@@ -386,7 +379,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 // Query implements Querier.
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	var matrix model.Matrix
-	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", d.queryDuration, func(ctx context.Context) error {
+	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", queryDuration, func(ctx context.Context) error {
 		userID, err := user.ExtractOrgID(ctx)
 		if err != nil {
 			return err
@@ -475,9 +468,9 @@ func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc,
 	}
 
 	resp, err := client.(ingester_client.IngesterClient).Query(ctx, req)
-	d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
+	ingesterQueries.WithLabelValues(ing.Addr).Inc()
 	if err != nil {
-		d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+		ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 		return nil, err
 	}
 
@@ -655,36 +648,4 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	}
 
 	return response, nil
-}
-
-// Describe implements prometheus.Collector.
-func (d *Distributor) Describe(ch chan<- *prometheus.Desc) {
-	d.queryDuration.Describe(ch)
-	ch <- d.receivedSamples.Desc()
-	d.sendDuration.Describe(ch)
-	d.ring.Describe(ch)
-	ch <- numClientsDesc
-	d.ingesterAppends.Describe(ch)
-	d.ingesterAppendFailures.Describe(ch)
-	d.ingesterQueries.Describe(ch)
-	d.ingesterQueryFailures.Describe(ch)
-}
-
-// Collect implements prometheus.Collector.
-func (d *Distributor) Collect(ch chan<- prometheus.Metric) {
-	d.queryDuration.Collect(ch)
-	ch <- d.receivedSamples
-	d.sendDuration.Collect(ch)
-	d.ring.Collect(ch)
-	d.ingesterAppends.Collect(ch)
-	d.ingesterAppendFailures.Collect(ch)
-	d.ingesterQueries.Collect(ch)
-	d.ingesterQueryFailures.Collect(ch)
-	d.clientsMtx.RLock()
-	defer d.clientsMtx.RUnlock()
-	ch <- prometheus.MustNewConstMetric(
-		numClientsDesc,
-		prometheus.GaugeValue,
-		float64(d.ingesterPool.Count()),
-	)
 }

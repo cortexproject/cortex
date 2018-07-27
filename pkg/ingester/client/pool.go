@@ -1,20 +1,29 @@
 package client
 
 import (
+	"context"
 	"flag"
-	fmt "fmt"
-	io "io"
+	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
-	context "golang.org/x/net/context"
-	"google.golang.org/grpc/health/grpc_health_v1"
 )
+
+var clients = promauto.NewGauge(prometheus.GaugeOpts{
+	Namespace: "cortex",
+	Name:      "distributor_ingester_clients",
+	Help:      "The current number of ingester clients.",
+})
 
 // Factory defines the signature for an ingester client factory.
 type Factory func(addr string) (grpc_health_v1.HealthClient, error)
@@ -115,6 +124,7 @@ func (p *Pool) GetClientFor(addr string) (grpc_health_v1.HealthClient, error) {
 		return nil, err
 	}
 	p.clients[addr] = client
+	clients.Add(1)
 	return client, nil
 }
 
@@ -125,6 +135,7 @@ func (p *Pool) RemoveClientFor(addr string) {
 	client, ok := p.clients[addr]
 	if ok {
 		delete(p.clients, addr)
+		clients.Add(-1)
 		// Close in the background since this operation may take awhile and we have a mutex
 		go func(addr string, closer io.Closer) {
 			if err := closer.Close(); err != nil {

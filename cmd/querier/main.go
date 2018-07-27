@@ -8,7 +8,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/web/api/v1"
@@ -63,7 +62,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer dist.Stop()
-	prometheus.MustRegister(dist)
 
 	server, err := server.New(serverConfig)
 	if err != nil {

@@ -20,6 +20,7 @@ const tpl = `
 	<body>
 		<h1>Cortex Ingester Stats</h1>
 		<p>Current time: {{ .Now }}</p>
+		<p><b>NB stats do not account for replication factor, which is currently set to {{ .ReplicationFactor }}</b></p>
 		<form action="" method="POST">
 			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
 			<table border="1">
@@ -79,11 +80,13 @@ func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := tmpl.Execute(w, struct {
-		Now   time.Time
-		Stats []UserIDStats
+		Now               time.Time
+		Stats             []UserIDStats
+		ReplicationFactor int
 	}{
-		Now:   time.Now(),
-		Stats: stats,
+		Now:               time.Now(),
+		Stats:             stats,
+		ReplicationFactor: d.ring.ReplicationFactor(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

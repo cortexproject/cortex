@@ -256,11 +256,13 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, shardByAllLabels bo
 func makeWriteRequest(samples int) *client.WriteRequest {
 	request := &client.WriteRequest{}
 	for i := 0; i < samples; i++ {
-		ts := client.TimeSeries{
-			Labels: []client.LabelPair{
-				{Name: []byte("__name__"), Value: []byte("foo")},
-				{Name: []byte("bar"), Value: []byte("baz")},
-				{Name: []byte("sample"), Value: []byte(fmt.Sprintf("%d", i))},
+		ts := client.PreallocTimeseries{
+			TimeSeries: client.TimeSeries{
+				Labels: []client.LabelPair{
+					{Name: []byte("__name__"), Value: []byte("foo")},
+					{Name: []byte("bar"), Value: []byte("baz")},
+					{Name: []byte("sample"), Value: []byte(fmt.Sprintf("%d", i))},
+				},
 			},
 		}
 		ts.Samples = []client.Sample{
@@ -349,7 +351,7 @@ type mockIngester struct {
 	client.IngesterClient
 	happy      bool
 	stats      client.UsersStatsResponse
-	timeseries map[uint32]*client.TimeSeries
+	timeseries map[uint32]*client.PreallocTimeseries
 }
 
 func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts ...grpc.CallOption) (*client.WriteResponse, error) {
@@ -361,7 +363,7 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 	}
 
 	if i.timeseries == nil {
-		i.timeseries = map[uint32]*client.TimeSeries{}
+		i.timeseries = map[uint32]*client.PreallocTimeseries{}
 	}
 
 	orgid, err := user.ExtractOrgID(ctx)
@@ -398,7 +400,7 @@ func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts
 	response := client.QueryResponse{}
 	for _, ts := range i.timeseries {
 		if match(ts.Labels, matchers) {
-			response.Timeseries = append(response.Timeseries, *ts)
+			response.Timeseries = append(response.Timeseries, ts.TimeSeries)
 		}
 	}
 	return &response, nil

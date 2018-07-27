@@ -356,12 +356,14 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 	c := h.(ingester_client.IngesterClient)
 
 	req := &client.WriteRequest{
-		Timeseries: make([]client.TimeSeries, 0, len(samples)),
+		Timeseries: make([]client.PreallocTimeseries, 0, len(samples)),
 	}
 	for _, s := range samples {
-		req.Timeseries = append(req.Timeseries, client.TimeSeries{
-			Labels:  s.labels,
-			Samples: []client.Sample{s.sample},
+		req.Timeseries = append(req.Timeseries, client.PreallocTimeseries{
+			TimeSeries: client.TimeSeries{
+				Labels:  s.labels,
+				Samples: []client.Sample{s.sample},
+			},
 		})
 	}
 

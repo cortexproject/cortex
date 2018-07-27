@@ -24,7 +24,7 @@ service Ingester {
 }
 
 message WriteRequest {
-  repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false];
+  repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "PreallocTimeseries"];
 }
 
 message WriteResponse {}

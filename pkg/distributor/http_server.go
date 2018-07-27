@@ -12,10 +12,15 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
+// Default number of samples Prometheus will send per batch.
+const maxSeries = 100
+
 // PushHandler is a http.Handler which accepts WriteRequests.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 	var req client.WriteRequest
+	// Preallocate Timeseries array to reduce allocations in Unmarshall.
+	req.Timeseries = make([]client.PreallocTimeseries, 0, maxSeries)
 	buf, err := util.ParseProtoReader(r.Context(), r.Body, &req, compressionType)
 	logger := util.WithContext(r.Context(), util.Logger)
 	if err != nil {

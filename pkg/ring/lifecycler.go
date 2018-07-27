@@ -66,8 +66,8 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	f.StringVar(&cfg.InfName, "ingester.interface", "eth0", "Name of network interface to read address from.")
-	f.StringVar(&cfg.Addr, "ingester.addr", "", "IP address to register into consul.")
-	f.IntVar(&cfg.Port, "ingester.port", 9095, "port to register into consul.")
+	f.StringVar(&cfg.Addr, "ingester.addr", "", "IP address to advertise in consul.")
+	f.IntVar(&cfg.Port, "ingester.port", 9095, "port to advertise in consul.")
 	f.StringVar(&cfg.ID, "ingester.ID", hostname, "ID to register into consul.")
 }
 

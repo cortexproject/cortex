@@ -43,11 +43,11 @@ http://192.168.99.100:30080/api/prom/api/v1/query?query=up
 
 We use `dep` to vendor dependencies.  To fetch a new dependency, run:
 
-    make update-vendor
+    dep ensure
 
 To update dependencies, run
 
-    dep ensure --update && make update-vendor
+    dep ensure --update
 
 ## Further reading
 

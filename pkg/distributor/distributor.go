@@ -197,7 +197,7 @@ func shardByAllLabels(userID string, labels []client.LabelPair) (uint32, error) 
 
 type sampleTracker struct {
 	labels      []client.LabelPair
-	sample      client.Sample
+	samples     []client.Sample
 	minSuccess  int
 	maxFailures int
 	succeeded   int32
@@ -205,10 +205,10 @@ type sampleTracker struct {
 }
 
 type pushTracker struct {
-	samplesPending int32
-	samplesFailed  int32
-	done           chan struct{}
-	err            chan error
+	rpcsPending int32
+	rpcsFailed  int32
+	done        chan struct{}
+	err         chan error
 }
 
 // Push implements client.IngesterServer
@@ -220,11 +220,10 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	var lastPartialErr error
 
-	// First we flatten out the request into a list of samples.
-	// We use the heuristic of 1 sample per TS to size the array.
-	// We also work out the hash value at the same time.
-	samples := make([]sampleTracker, 0, len(req.Timeseries))
+	// Build slice of sampleTrackers, one per timeseries.
+	sampleTrackers := make([]sampleTracker, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
+	numSamples := 0
 	for _, ts := range req.Timeseries {
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
@@ -244,25 +243,26 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				lastPartialErr = err
 				continue
 			}
-
-			keys = append(keys, key)
-			samples = append(samples, sampleTracker{
-				labels: ts.Labels,
-				sample: s,
-			})
 		}
-	}
-	receivedSamples.WithLabelValues(userID).Add(float64(len(samples)))
 
-	if len(samples) == 0 {
+		keys = append(keys, key)
+		sampleTrackers = append(sampleTrackers, sampleTracker{
+			labels:  ts.Labels,
+			samples: ts.Samples,
+		})
+		numSamples += len(ts.Samples)
+	}
+	receivedSamples.WithLabelValues(userID).Add(float64(numSamples))
+
+	if len(sampleTrackers) == 0 {
 		return &client.WriteResponse{}, lastPartialErr
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
-	if !limiter.AllowN(time.Now(), len(samples)) {
+	if !limiter.AllowN(time.Now(), numSamples) {
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), len(samples))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), numSamples)
 	}
 
 	replicationSets, err := d.ring.BatchGet(keys, ring.Write)
@@ -272,20 +272,20 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	samplesByIngester := map[*ring.IngesterDesc][]*sampleTracker{}
 	for i, replicationSet := range replicationSets {
-		samples[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
-		samples[i].maxFailures = replicationSet.MaxErrors
+		sampleTrackers[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
+		sampleTrackers[i].maxFailures = replicationSet.MaxErrors
 		for _, ingester := range replicationSet.Ingesters {
-			samplesByIngester[ingester] = append(samplesByIngester[ingester], &samples[i])
+			samplesByIngester[ingester] = append(samplesByIngester[ingester], &sampleTrackers[i])
 		}
 	}
 
 	pushTracker := pushTracker{
-		samplesPending: int32(len(samples)),
-		done:           make(chan struct{}),
-		err:            make(chan error),
+		rpcsPending: int32(len(sampleTrackers)),
+		done:        make(chan struct{}),
+		err:         make(chan error),
 	}
-	for ingester, samples := range samplesByIngester {
-		go func(ingester *ring.IngesterDesc, samples []*sampleTracker) {
+	for ingester, sampleTrackers := range samplesByIngester {
+		go func(ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
 			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
 			defer cancel()
@@ -293,8 +293,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
-			d.sendSamples(localCtx, ingester, samples, &pushTracker)
-		}(ingester, samples)
+			d.sendSamples(localCtx, ingester, sampleTrackers, &pushTracker)
+		}(ingester, sampleTrackers)
 	}
 	select {
 	case err := <-pushTracker.err:
@@ -334,14 +334,14 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 			if atomic.AddInt32(&sampleTrackers[i].failed, 1) <= int32(sampleTrackers[i].maxFailures) {
 				continue
 			}
-			if atomic.AddInt32(&pushTracker.samplesFailed, 1) == 1 {
+			if atomic.AddInt32(&pushTracker.rpcsFailed, 1) == 1 {
 				pushTracker.err <- err
 			}
 		} else {
 			if atomic.AddInt32(&sampleTrackers[i].succeeded, 1) != int32(sampleTrackers[i].minSuccess) {
 				continue
 			}
-			if atomic.AddInt32(&pushTracker.samplesPending, -1) == 0 {
+			if atomic.AddInt32(&pushTracker.rpcsPending, -1) == 0 {
 				pushTracker.done <- struct{}{}
 			}
 		}
@@ -355,22 +355,16 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 	}
 	c := h.(ingester_client.IngesterClient)
 
-	req := &client.WriteRequest{
-		Timeseries: make([]client.PreallocTimeseries, 0, len(samples)),
+	req := client.WriteRequest{
+		Timeseries: make([]client.PreallocTimeseries, len(samples)),
 	}
-	for _, s := range samples {
-		req.Timeseries = append(req.Timeseries, client.PreallocTimeseries{
-			TimeSeries: client.TimeSeries{
-				Labels:  s.labels,
-				Samples: []client.Sample{s.sample},
-			},
-		})
+	for i, s := range samples {
+		req.Timeseries[i].Labels = s.labels
+		req.Timeseries[i].Samples = s.samples
 	}
 
-	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", sendDuration, func(ctx context.Context) error {
-		_, err := c.Push(ctx, req)
-		return err
-	})
+	_, err = c.Push(ctx, &req)
+
 	ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
 		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()

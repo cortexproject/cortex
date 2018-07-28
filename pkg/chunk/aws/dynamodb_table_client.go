@@ -55,7 +55,7 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 		}
 	}
 
-	if cfg.MetricsURL != "" {
+	if cfg.Metrics.URL != "" {
 		autoscale, err = newMetrics(cfg)
 		if err != nil {
 			return nil, err

@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"time"
 
@@ -25,27 +26,39 @@ const (
 	minUsageForScaledown   = 100 // only scale down if usage is > this DynamoDB units/sec
 )
 
+// MetricsAutoScalingConfig holds parameters to configure how it works
+type MetricsAutoScalingConfig struct {
+	URL            string  // URL to contact Prometheus store on
+	TargetQueueLen int64   // Queue length above which we will scale up capacity
+	ScaleUpFactor  float64 // Scale up capacity by this multiple
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *MetricsAutoScalingConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&cfg.URL, "metrics.url", "", "Use metrics-based autoscaling, via this query URL")
+	f.Int64Var(&cfg.TargetQueueLen, "metrics.target-queue-length", 100000, "Queue length above which we will scale up capacity")
+	f.Float64Var(&cfg.ScaleUpFactor, "metrics.scale-up-factor", 1.3, "Scale up capacity by this multiple")
+}
+
 type metricsData struct {
-	queueLengthTarget int64
-	scaleUpFactor     float64
-	promAPI           promV1.API
-	promLastQuery     time.Time
-	tableLastUpdated  map[string]time.Time
-	queueLengths      []float64
-	errorRates        map[string]float64
-	usageRates        map[string]float64
+	cfg              MetricsAutoScalingConfig
+	promAPI          promV1.API
+	promLastQuery    time.Time
+	tableLastUpdated map[string]time.Time
+	queueLengths     []float64
+	errorRates       map[string]float64
+	usageRates       map[string]float64
 }
 
 func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
-	client, err := promApi.NewClient(promApi.Config{Address: cfg.MetricsURL})
+	client, err := promApi.NewClient(promApi.Config{Address: cfg.Metrics.URL})
 	if err != nil {
 		return nil, err
 	}
 	return &metricsData{
-		promAPI:           promV1.NewAPI(client),
-		queueLengthTarget: cfg.MetricsTargetQueueLen,
-		scaleUpFactor:     cfg.MetricsScaleUpFactor,
-		tableLastUpdated:  make(map[string]time.Time),
+		promAPI:          promV1.NewAPI(client),
+		cfg:              cfg.Metrics,
+		tableLastUpdated: make(map[string]time.Time),
 	}, nil
 }
 
@@ -72,18 +85,18 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 
 	switch {
 	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
-		m.queueLengths[2] < float64(m.queueLengthTarget)*targetScaledown:
+		m.queueLengths[2] < float64(m.cfg.TargetQueueLen)*targetScaledown:
 		// No big queue, low errors -> scale down
 		m.scaleDownWrite(current, expected, m.computeScaleDown(current, *expected), "metrics scale-down")
 	case errorRate == 0 &&
 		m.queueLengths[2] < m.queueLengths[1] && m.queueLengths[1] < m.queueLengths[0]:
 		// zero errors and falling queue -> scale down to current usage
 		m.scaleDownWrite(current, expected, m.computeScaleDown(current, *expected), "zero errors scale-down")
-	case errorRate > 0 && m.queueLengths[2] > float64(m.queueLengthTarget)*targetMax:
+	case errorRate > 0 && m.queueLengths[2] > float64(m.cfg.TargetQueueLen)*targetMax:
 		// Too big queue, some errors -> scale up
 		m.scaleUpWrite(current, expected, m.computeScaleUp(current, *expected), "metrics max queue scale-up")
 	case errorRate > 0 &&
-		m.queueLengths[2] > float64(m.queueLengthTarget) &&
+		m.queueLengths[2] > float64(m.cfg.TargetQueueLen) &&
 		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 		// Growing queue, some errors -> scale up
 		m.scaleUpWrite(current, expected, m.computeScaleUp(current, *expected), "metrics queue growing scale-up")
@@ -97,7 +110,7 @@ func (m metricsData) computeScaleDown(current, expected chunk.TableDesc) int64 {
 }
 
 func (m metricsData) computeScaleUp(current, expected chunk.TableDesc) int64 {
-	scaleUp := int64(float64(current.ProvisionedWrite) * m.scaleUpFactor)
+	scaleUp := int64(float64(current.ProvisionedWrite) * m.cfg.ScaleUpFactor)
 	// Scale up minimum of 10% of max capacity, to avoid futzing around at low levels
 	minIncrement := expected.WriteScale.MaxCapacity / 10
 	if scaleUp < current.ProvisionedWrite+minIncrement {

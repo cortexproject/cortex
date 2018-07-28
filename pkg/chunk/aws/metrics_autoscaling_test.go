@@ -20,10 +20,12 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	client := dynamoTableClient{
 		DynamoDB: dynamoDB,
 		autoscale: &metricsData{
-			promAPI:           &mockProm,
-			queueLengthTarget: 100000,
-			scaleUpFactor:     1.2,
-			tableLastUpdated:  make(map[string]time.Time),
+			promAPI: &mockProm,
+			cfg: MetricsAutoScalingConfig{
+				TargetQueueLen: 100000,
+				ScaleUpFactor:  1.2,
+			},
+			tableLastUpdated: make(map[string]time.Time),
 		},
 	}
 

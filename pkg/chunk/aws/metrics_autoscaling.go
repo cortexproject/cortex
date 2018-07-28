@@ -24,13 +24,25 @@ const (
 	targetMax              = 10  // always scale up if queue bigger than this times target
 	errorFractionScaledown = 0.1
 	minUsageForScaledown   = 100 // only scale down if usage is > this DynamoDB units/sec
+
+	// fetch Ingester queue length
+	// average the queue length over 2 minutes to avoid aliasing with the 1-minute flush period
+	defaultQueueLenQuery = `sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))`
+	// fetch write error rate per DynamoDB table
+	defaultErrorRateQuery = `sum(rate(cortex_dynamo_failures_total{error="ProvisionedThroughputExceededException",operation=~".*Write.*"}[1m])) by (table) > 0`
+	// fetch write capacity usage per DynamoDB table
+	// use the rate over 15 minutes so we take a broad average
+	defaultUsageQuery = `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0`
 )
 
 // MetricsAutoScalingConfig holds parameters to configure how it works
 type MetricsAutoScalingConfig struct {
-	URL            string  // URL to contact Prometheus store on
-	TargetQueueLen int64   // Queue length above which we will scale up capacity
-	ScaleUpFactor  float64 // Scale up capacity by this multiple
+	URL              string  // URL to contact Prometheus store on
+	TargetQueueLen   int64   // Queue length above which we will scale up capacity
+	ScaleUpFactor    float64 // Scale up capacity by this multiple
+	QueueLengthQuery string  // Promql query to fetch ingester queue length
+	ErrorRateQuery   string  // Promql query to fetch error rates per table
+	UsageQuery       string  // Promql query to fetch write capacity usage per table
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -38,6 +50,9 @@ func (cfg *MetricsAutoScalingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.URL, "metrics.url", "", "Use metrics-based autoscaling, via this query URL")
 	f.Int64Var(&cfg.TargetQueueLen, "metrics.target-queue-length", 100000, "Queue length above which we will scale up capacity")
 	f.Float64Var(&cfg.ScaleUpFactor, "metrics.scale-up-factor", 1.3, "Scale up capacity by this multiple")
+	f.StringVar(&cfg.QueueLengthQuery, "metrics.queue-length-query", defaultQueueLenQuery, "query to fetch ingester queue length")
+	f.StringVar(&cfg.ErrorRateQuery, "metrics.error-rate-query", defaultErrorRateQuery, "query to fetch error rates per table")
+	f.StringVar(&cfg.UsageQuery, "metrics.usage-query", defaultUsageQuery, "query to fetch write capacity usage per table")
 }
 
 type metricsData struct {
@@ -176,9 +191,7 @@ func (m *metricsData) update(ctx context.Context) error {
 	}
 
 	m.promLastQuery = mtime.Now()
-	// average the queue length over 2 minutes to avoid aliasing with the 1-minute flush period
-	// TODO: adjust that 2m depending on configuration of the flush period
-	qlMatrix, err := promQuery(ctx, m.promAPI, `sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))`, queueObservationPeriod, queueObservationPeriod/2)
+	qlMatrix, err := promQuery(ctx, m.promAPI, m.cfg.QueueLengthQuery, queueObservationPeriod, queueObservationPeriod/2)
 	if err != nil {
 		return err
 	}
@@ -193,8 +206,7 @@ func (m *metricsData) update(ctx context.Context) error {
 		m.queueLengths[i] = float64(v.Value)
 	}
 
-	// fetch write error rate per DynamoDB table
-	deMatrix, err := promQuery(ctx, m.promAPI, `sum(rate(cortex_dynamo_failures_total{error="ProvisionedThroughputExceededException",operation=~".*Write.*"}[1m])) by (table) > 0`, 0, time.Second)
+	deMatrix, err := promQuery(ctx, m.promAPI, m.cfg.ErrorRateQuery, 0, time.Second)
 	if err != nil {
 		return err
 	}
@@ -202,9 +214,7 @@ func (m *metricsData) update(ctx context.Context) error {
 		return err
 	}
 
-	// fetch write capacity usage per DynamoDB table
-	// use the rate over 15 minutes so we take a broad average
-	usageMatrix, err := promQuery(ctx, m.promAPI, `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0`, 0, time.Second)
+	usageMatrix, err := promQuery(ctx, m.promAPI, m.cfg.UsageQuery, 0, time.Second)
 	if err != nil {
 		return err
 	}

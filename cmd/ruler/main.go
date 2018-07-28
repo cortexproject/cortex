@@ -68,6 +68,7 @@ func main() {
 		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
 		os.Exit(1)
 	}
+	prometheus.MustRegister(r)
 	defer r.Stop()
 
 	dist, err := distributor.New(distributorConfig, r)

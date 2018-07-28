@@ -74,21 +74,36 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
 		m.queueLengths[2] < float64(m.queueLengthTarget)*targetScaledown:
 		// No big queue, low errors -> scale down
-		m.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "metrics scale-down")
+		m.scaleDownWrite(current, expected, m.computeScaleDown(current, *expected), "metrics scale-down")
 	case errorRate == 0 &&
 		m.queueLengths[2] < m.queueLengths[1] && m.queueLengths[1] < m.queueLengths[0]:
 		// zero errors and falling queue -> scale down to current usage
-		m.scaleDownWrite(current, expected, int64(usageRate*100.0/expected.WriteScale.TargetValue), "zero errors scale-down")
+		m.scaleDownWrite(current, expected, m.computeScaleDown(current, *expected), "zero errors scale-down")
 	case errorRate > 0 && m.queueLengths[2] > float64(m.queueLengthTarget)*targetMax:
 		// Too big queue, some errors -> scale up
-		m.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*m.scaleUpFactor), "metrics max queue scale-up")
+		m.scaleUpWrite(current, expected, m.computeScaleUp(current, *expected), "metrics max queue scale-up")
 	case errorRate > 0 &&
 		m.queueLengths[2] > float64(m.queueLengthTarget) &&
 		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 		// Growing queue, some errors -> scale up
-		m.scaleUpWrite(current, expected, int64(float64(current.ProvisionedWrite)*m.scaleUpFactor), "metrics queue growing scale-up")
+		m.scaleUpWrite(current, expected, m.computeScaleUp(current, *expected), "metrics queue growing scale-up")
 	}
 	return nil
+}
+
+func (m metricsData) computeScaleDown(current, expected chunk.TableDesc) int64 {
+	usageRate := m.usageRates[expected.Name]
+	return int64(usageRate * 100.0 / expected.WriteScale.TargetValue)
+}
+
+func (m metricsData) computeScaleUp(current, expected chunk.TableDesc) int64 {
+	scaleUp := int64(float64(current.ProvisionedWrite) * m.scaleUpFactor)
+	// Scale up minimum of 10% of max capacity, to avoid futzing around at low levels
+	minIncrement := expected.WriteScale.MaxCapacity / 10
+	if scaleUp < current.ProvisionedWrite+minIncrement {
+		scaleUp = current.ProvisionedWrite + minIncrement
+	}
+	return scaleUp
 }
 
 func (m *metricsData) scaleDownWrite(current chunk.TableDesc, expected *chunk.TableDesc, newWrite int64, msg string) {

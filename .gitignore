@@ -3,6 +3,7 @@ cmd/configs/configs
 cmd/distributor/distributor
 cmd/ingester/ingester
 cmd/querier/querier
+cmd/query-frontend/query-frontend
 cmd/ruler/ruler
 cmd/table-manager/table-manager
 cmd/lite/lite
@@ -10,5 +11,6 @@ cmd/lite/lite
 .pkg
 .cache
 pkg/ingester/client/cortex.pb.go
+pkg/querier/frontend/frontend.pb.go
 pkg/ring/ring.pb.go
 images/

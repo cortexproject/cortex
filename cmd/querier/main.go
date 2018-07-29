@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/tsdb"
 
+	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
@@ -21,6 +22,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/chunk/storage"
 	"github.com/weaveworks/cortex/pkg/distributor"
 	"github.com/weaveworks/cortex/pkg/querier"
+	"github.com/weaveworks/cortex/pkg/querier/frontend"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -39,9 +41,10 @@ func main() {
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
+		workerConfig      frontend.WorkerConfig
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
-		&chunkStoreConfig, &schemaConfig, &storageConfig)
+		&chunkStoreConfig, &schemaConfig, &storageConfig, &workerConfig)
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
@@ -85,6 +88,13 @@ func main() {
 		os.Exit(1)
 	}
 	defer chunkStore.Stop()
+
+	worker, err := frontend.NewWorker(workerConfig, httpgrpc_server.NewServer(server.HTTP), util.Logger)
+	if err != nil {
+		level.Error(util.Logger).Log("err", err)
+		os.Exit(1)
+	}
+	defer worker.Stop()
 
 	queryable, engine := querier.Make(querierConfig, dist, chunkStore)
 	api := v1.NewAPI(

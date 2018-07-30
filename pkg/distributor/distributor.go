@@ -42,11 +42,11 @@ var (
 		Help:      "Time spent executing expression queries.",
 		Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
 	}, []string{"method", "status_code"})
-	receivedSamples = promauto.NewCounter(prometheus.CounterOpts{
+	receivedSamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_received_samples_total",
 		Help:      "The total number of received samples.",
-	})
+	}, []string{"user"})
 	sendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "distributor_send_duration_seconds",
@@ -252,7 +252,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			})
 		}
 	}
-	receivedSamples.Add(float64(len(samples)))
+	receivedSamples.WithLabelValues(userID).Add(float64(len(samples)))
 
 	if len(samples) == 0 {
 		return &client.WriteResponse{}, lastPartialErr

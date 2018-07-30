@@ -39,7 +39,7 @@ var DiscardedSamples = prometheus.NewCounterVec(
 		Name: "cortex_discarded_samples_total",
 		Help: "The total number of samples that were discarded.",
 	},
-	[]string{discardReasonLabel, "userID"},
+	[]string{discardReasonLabel, "user"},
 )
 
 func init() {

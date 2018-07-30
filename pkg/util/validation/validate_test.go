@@ -13,6 +13,7 @@ import (
 
 func TestValidateLabels(t *testing.T) {
 	var cfg Config
+	userID := "testUser"
 	util.DefaultValues(&cfg)
 	cfg.MaxLabelValueLength = 25
 	cfg.MaxLabelNameLength = 25
@@ -48,7 +49,7 @@ func TestValidateLabels(t *testing.T) {
 		},
 	} {
 
-		err := cfg.ValidateLabels(client.ToLabelPairs(c.metric))
+		err := cfg.ValidateLabels(userID, client.ToLabelPairs(c.metric))
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }

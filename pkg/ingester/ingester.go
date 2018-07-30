@@ -23,6 +23,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 const (
@@ -335,6 +336,11 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		Value:     sample.Value,
 		Timestamp: sample.Timestamp,
 	}); err != nil {
+		if mse, ok := err.(*memorySeriesError); ok {
+			validation.DiscardedSamples.WithLabelValues(mse.errorType, state.userID).Inc()
+			// Use a dumb string template to avoid the message being parsed as a template
+			err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
+		}
 		return err
 	}
 

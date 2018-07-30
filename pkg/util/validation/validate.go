@@ -28,6 +28,9 @@ const (
 	greaterThanMaxSampleAge = "greater_than_max_sample_age"
 	maxLabelNamesPerSeries  = "max_label_names_per_series"
 	tooFarInFuture          = "too_far_in_future"
+	invalidLabel            = "label_invalid"
+	labelNameTooLong        = "label_name_too_long"
+	labelValueTooLong       = "label_value_too_long"
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -36,7 +39,7 @@ var DiscardedSamples = prometheus.NewCounterVec(
 		Name: "cortex_discarded_samples_total",
 		Help: "The total number of samples that were discarded.",
 	},
-	[]string{discardReasonLabel},
+	[]string{discardReasonLabel, "user"},
 )
 
 func init() {
@@ -71,14 +74,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // ValidateSample returns an err if the sample is invalid.
-func (cfg *Config) ValidateSample(metricName []byte, s client.Sample) error {
+func (cfg *Config) ValidateSample(userID string, metricName []byte, s client.Sample) error {
 	if cfg.RejectOldSamples && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge) {
-		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge).Inc()
+		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, metricName, model.Time(s.TimestampMs))
 	}
 
 	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod) {
-		DiscardedSamples.WithLabelValues(tooFarInFuture).Inc()
+		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooNew, metricName, model.Time(s.TimestampMs))
 	}
 
@@ -86,7 +89,7 @@ func (cfg *Config) ValidateSample(metricName []byte, s client.Sample) error {
 }
 
 // ValidateLabels returns an err if the labels are invalid.
-func (cfg *Config) ValidateLabels(ls []client.LabelPair) error {
+func (cfg *Config) ValidateLabels(userID string, ls []client.LabelPair) error {
 	metricName, err := extract.MetricNameFromLabelPairs(ls)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
@@ -98,19 +101,30 @@ func (cfg *Config) ValidateLabels(ls []client.LabelPair) error {
 
 	numLabelNames := len(ls)
 	if numLabelNames > cfg.MaxLabelNamesPerSeries {
-		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries).Inc()
+		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, metricName, numLabelNames, cfg.MaxLabelNamesPerSeries)
 	}
 
 	for _, l := range ls {
+		var errTemplate string
+		var reason string
+		var cause interface{}
 		if !model.LabelName(l.Name).IsValid() {
-			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, l.Name, metricName)
+			reason = invalidLabel
+			errTemplate = errInvalidLabel
+			cause = l.Name
+		} else if len(l.Name) > cfg.MaxLabelNameLength {
+			reason = labelNameTooLong
+			errTemplate = errLabelNameTooLong
+			cause = l.Name
+		} else if len(l.Value) > cfg.MaxLabelValueLength {
+			reason = labelValueTooLong
+			errTemplate = errLabelValueTooLong
+			cause = l.Value
 		}
-		if len(l.Name) > cfg.MaxLabelNameLength {
-			return httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, l.Name, metricName)
-		}
-		if len(l.Value) > cfg.MaxLabelValueLength {
-			return httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, l.Value, metricName)
+		if errTemplate != "" {
+			DiscardedSamples.WithLabelValues(reason, userID).Inc()
+			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, metricName)
 		}
 	}
 	return nil

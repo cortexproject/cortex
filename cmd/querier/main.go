@@ -89,6 +89,7 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
+	// TODO this avoids our middleware for logging and latecy collection.
 	worker, err := frontend.NewWorker(workerConfig, httpgrpc_server.NewServer(server.HTTP), util.Logger)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)

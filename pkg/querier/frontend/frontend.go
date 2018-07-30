@@ -5,15 +5,36 @@ import (
 	"math/rand"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 )
 
 var (
+	queueDutation = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "query_frontend_queue_duration_seconds",
+		Help:      "Time spend by requests queued.",
+		Buckets:   prometheus.DefBuckets,
+	})
+	retries = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "query_frontend_retries",
+		Help:      "Number of times a request is retried.",
+		Buckets:   []float64{0, 1, 2, 3, 4, 5},
+	})
+	queueLength = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "query_frontend_queue_length",
+		Help:      "Number of queries in the queue.",
+	})
+
 	errServerClosing  = httpgrpc.Errorf(http.StatusTeapot, "server closing down")
 	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 	errCanceled       = httpgrpc.Errorf(http.StatusInternalServerError, "context cancelled")
@@ -44,9 +65,10 @@ type Frontend struct {
 }
 
 type request struct {
-	request  *httpgrpc.HTTPRequest
-	err      chan error
-	response chan *httpgrpc.HTTPResponse
+	enqueueTime time.Time
+	request     *httpgrpc.HTTPRequest
+	err         chan error
+	response    chan *httpgrpc.HTTPResponse
 }
 
 // New creates a new frontend.
@@ -103,7 +125,7 @@ func (f *Frontend) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	var lastErr error
-	for retries := 0; retries < f.cfg.MaxRetries; retries++ {
+	for tries := 0; tries < f.cfg.MaxRetries; tries++ {
 		if err := f.queueRequest(userID, request); err != nil {
 			return err
 		}
@@ -117,12 +139,13 @@ func (f *Frontend) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 
 		case resp = <-request.response:
 		case lastErr = <-request.err:
-			level.Error(f.log).Log("msg", "error processing request", "try", retries, "err", lastErr)
+			level.Error(f.log).Log("msg", "error processing request", "try", tries, "err", lastErr)
 			resp, _ = httpgrpc.HTTPResponseFromError(lastErr)
 		}
 
 		// Only fail is we get a valid HTTP non-500; otherwise retry.
 		if resp != nil && resp.Code/100 != 5 {
+			retries.Observe(float64(tries))
 			server.WriteResponse(w, resp)
 			return nil
 		}
@@ -158,6 +181,8 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 }
 
 func (f *Frontend) queueRequest(userID string, req *request) error {
+	req.enqueueTime = time.Now()
+
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
@@ -173,6 +198,7 @@ func (f *Frontend) queueRequest(userID string, req *request) error {
 
 	select {
 	case queue <- req:
+		queueLength.Add(1)
 		f.cond.Signal()
 		return nil
 	default:
@@ -205,6 +231,9 @@ func (f *Frontend) getNextRequest() *request {
 		if len(queue) == 0 {
 			delete(f.queues, userID)
 		}
+
+		queueDutation.Observe(time.Now().Sub(request.enqueueTime).Seconds())
+		queueLength.Add(-1)
 		return request
 	}
 

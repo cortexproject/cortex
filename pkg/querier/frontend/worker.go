@@ -12,12 +12,12 @@ import (
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing/opentracing-go"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/httpgrpc/server"
-	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/naming"
 
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/httpgrpc/server"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -38,7 +38,7 @@ type WorkerConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service.")
-	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 1, "Number of simultaneous queries to process.")
+	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
 }
 
@@ -66,6 +66,7 @@ func (noopWorker) Stop() {}
 // NewWorker creates a new Worker.
 func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (Worker, error) {
 	if cfg.Address == "" {
+		level.Info(log).Log("msg", "no address specified, not starting worker")
 		return noopWorker{}, nil
 	}
 
@@ -113,15 +114,23 @@ func (w *worker) watchDNSLoop() {
 		}
 	}()
 
-	for updates, err := w.watcher.Next(); err != nil; {
+	for {
+		updates, err := w.watcher.Next()
+		if err != nil {
+			level.Error(w.log).Log("msg", "error from DNS watcher", "err", err)
+			return
+		}
+
 		for _, update := range updates {
 			switch update.Op {
 			case naming.Add:
+				level.Debug(w.log).Log("msg", "adding connection", "addr", update.Addr)
 				ctx, cancel := context.WithCancel(w.ctx)
 				cancels[update.Addr] = cancel
 				w.runMany(ctx, update.Addr)
 
 			case naming.Delete:
+				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)
 				if cancel, ok := cancels[update.Addr]; ok {
 					cancel()
 				}
@@ -134,17 +143,17 @@ func (w *worker) watchDNSLoop() {
 }
 
 // runMany starts N runOne loops for a given address.
-func (w *worker) runMany(ctx context.Context, address string) error {
+func (w *worker) runMany(ctx context.Context, address string) {
 	client, err := connect(address)
 	if err != nil {
-		return err
+		level.Error(w.log).Log("msg", "error connecting", "addr", address, "err", err)
+		return
 	}
 
 	w.wg.Add(w.cfg.Parallelism)
 	for i := 0; i < w.cfg.Parallelism; i++ {
 		go w.runOne(ctx, client)
 	}
-	return nil
 }
 
 // runOne loops, trying to establish a stream to the frontend to begin

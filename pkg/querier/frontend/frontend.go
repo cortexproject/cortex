@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"context"
 	"flag"
 	"math/rand"
 	"net/http"
@@ -139,16 +140,18 @@ func (f *Frontend) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 
 		case resp = <-request.response:
 		case lastErr = <-request.err:
-			level.Error(f.log).Log("msg", "error processing request", "try", tries, "err", lastErr)
 			resp, _ = httpgrpc.HTTPResponseFromError(lastErr)
 		}
 
-		// Only fail is we get a valid HTTP non-500; otherwise retry.
-		if resp != nil && resp.Code/100 != 5 {
-			retries.Observe(float64(tries))
-			server.WriteResponse(w, resp)
-			return nil
+		// Only retry is we get a HTTP 500 or non-HTTP error.
+		if resp == nil || resp.Code/100 == 5 {
+			level.Error(f.log).Log("msg", "error processing request", "try", tries, "err", lastErr, "resp", resp)
+			continue
 		}
+
+		retries.Observe(float64(tries))
+		server.WriteResponse(w, resp)
+		return nil
 	}
 
 	return lastErr
@@ -156,11 +159,19 @@ func (f *Frontend) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
+
+	// If this request is canceled, ping the condition to unblock. This is done
+	// once, here (instead of in getNextRequest) as we expect calls to Process to
+	// process many requests.
+	go func() {
+		<-server.Context().Done()
+		f.cond.Broadcast()
+	}()
+
 	for {
-		request := f.getNextRequest()
-		if request == nil {
-			// Occurs when server is shutting down.
-			return nil
+		request, err := f.getNextRequest(server.Context())
+		if err != nil {
+			return err
 		}
 
 		if err := server.Send(&ProcessRequest{
@@ -208,16 +219,20 @@ func (f *Frontend) queueRequest(userID string, req *request) error {
 
 // getQueue picks a random queue and takes the next request off of it, so we
 // faily process users queries.  Will block if there are no requests.
-func (f *Frontend) getNextRequest() *request {
+func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	for len(f.queues) == 0 && !f.closed {
+	for len(f.queues) == 0 && !f.closed && ctx.Err() == nil {
 		f.cond.Wait()
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if f.closed {
-		return nil
+		return nil, errServerClosing
 	}
 
 	i, n := 0, rand.Intn(len(f.queues))
@@ -234,7 +249,7 @@ func (f *Frontend) getNextRequest() *request {
 
 		queueDutation.Observe(time.Now().Sub(request.enqueueTime).Seconds())
 		queueLength.Add(-1)
-		return request
+		return request, nil
 	}
 
 	panic("should never happen")

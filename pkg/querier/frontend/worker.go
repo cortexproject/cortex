@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/naming"
 
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -29,73 +30,138 @@ var (
 
 // WorkerConfig is config for a worker.
 type WorkerConfig struct {
-	Address     string
-	Parallelism int
+	Address           string
+	Parallelism       int
+	DNSLookupDuration time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, "querier.frontend-address", "", "")
-	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 1, "")
+	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service.")
+	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 1, "Number of simultaneous queries to process.")
+	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
 }
 
 // Worker is the counter-part to the frontend, actually processing requests.
-type Worker struct {
+type Worker interface {
+	Stop()
+}
+
+type worker struct {
 	cfg    WorkerConfig
 	log    log.Logger
 	server *server.Server
 
-	client FrontendClient
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ctx     context.Context
+	cancel  context.CancelFunc
+	watcher naming.Watcher
+	wg      sync.WaitGroup
 }
 
+type noopWorker struct {
+}
+
+func (noopWorker) Stop() {}
+
 // NewWorker creates a new Worker.
-func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (*Worker, error) {
-	client, err := connect(cfg.Address)
+func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (Worker, error) {
+	if cfg.Address == "" {
+		return noopWorker{}, nil
+	}
+
+	resolver, err := naming.NewDNSResolverWithFreq(cfg.DNSLookupDuration)
+	if err != nil {
+		return nil, err
+	}
+
+	watcher, err := resolver.Resolve(cfg.Address)
 	if err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	worker := &Worker{
+
+	w := &worker{
 		cfg:    cfg,
 		log:    log,
 		server: server,
 
-		client: client,
-		ctx:    ctx,
-		cancel: cancel,
+		ctx:     ctx,
+		cancel:  cancel,
+		watcher: watcher,
 	}
-	worker.wg.Add(cfg.Parallelism)
-	for i := 0; i < cfg.Parallelism; i++ {
-		go worker.run()
-	}
-	return worker, nil
+	w.wg.Add(1)
+	go w.watchDNSLoop()
+	return w, nil
 }
 
 // Stop the worker.
-func (w *Worker) Stop() {
+func (w *worker) Stop() {
+	w.watcher.Close()
 	w.cancel()
 	w.wg.Wait()
 }
 
-// Run infinitely loops, trying to establish a connection to the frontend to
-// begin request processing.
-func (w *Worker) run() {
+// watchDNSLoop watches for changes in DNS and starts or stops workers.
+func (w *worker) watchDNSLoop() {
 	defer w.wg.Done()
 
-	backoff := util.NewBackoff(w.ctx, backoffConfig)
+	cancels := map[string]context.CancelFunc{}
+	defer func() {
+		for _, cancel := range cancels {
+			cancel()
+		}
+	}()
+
+	for updates, err := w.watcher.Next(); err != nil; {
+		for _, update := range updates {
+			switch update.Op {
+			case naming.Add:
+				ctx, cancel := context.WithCancel(w.ctx)
+				cancels[update.Addr] = cancel
+				w.runMany(ctx, update.Addr)
+
+			case naming.Delete:
+				if cancel, ok := cancels[update.Addr]; ok {
+					cancel()
+				}
+
+			default:
+				panic("unknown op")
+			}
+		}
+	}
+}
+
+// runMany starts N runOne loops for a given address.
+func (w *worker) runMany(ctx context.Context, address string) error {
+	client, err := connect(address)
+	if err != nil {
+		return err
+	}
+
+	w.wg.Add(w.cfg.Parallelism)
+	for i := 0; i < w.cfg.Parallelism; i++ {
+		go w.runOne(ctx, client)
+	}
+	return nil
+}
+
+// runOne loops, trying to establish a stream to the frontend to begin
+// request processing.
+func (w *worker) runOne(ctx context.Context, client FrontendClient) {
+	defer w.wg.Done()
+
+	backoff := util.NewBackoff(ctx, backoffConfig)
 	for backoff.Ongoing() {
-		c, err := w.client.Process(w.ctx)
+		c, err := client.Process(ctx)
 		if err != nil {
 			level.Error(w.log).Log("msg", "error contacting frontend", "err", err)
 			backoff.Wait()
 			continue
 		}
 
-		if err := w.loop(w.ctx, c); err != nil {
+		if err := w.process(ctx, c); err != nil {
 			level.Error(w.log).Log("msg", "error processing requests", "err", err)
 			backoff.Wait()
 			continue
@@ -105,22 +171,8 @@ func (w *Worker) run() {
 	}
 }
 
-func connect(address string) (FrontendClient, error) {
-	conn, err := grpc.Dial(
-		address,
-		grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-			middleware.ClientUserHeaderInterceptor,
-		)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	return NewFrontendClient(conn), nil
-}
-
-func (w *Worker) loop(ctx context.Context, c Frontend_ProcessClient) error {
+// process loops processing requests on an established stream.
+func (w *worker) process(ctx context.Context, c Frontend_ProcessClient) error {
 	for {
 		request, err := c.Recv()
 		if err != nil {
@@ -145,4 +197,19 @@ func (w *Worker) loop(ctx context.Context, c Frontend_ProcessClient) error {
 			return err
 		}
 	}
+}
+
+func connect(address string) (FrontendClient, error) {
+	conn, err := grpc.Dial(
+		address,
+		grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.ClientUserHeaderInterceptor,
+		)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return NewFrontendClient(conn), nil
 }

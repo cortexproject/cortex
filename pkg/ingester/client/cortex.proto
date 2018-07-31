@@ -13,6 +13,8 @@ option (gogoproto.unmarshaler_all) = true;
 service Ingester {
   rpc Push(WriteRequest) returns (WriteResponse) {};
   rpc Query(QueryRequest) returns (QueryResponse) {};
+  rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
+
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
   rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
   rpc AllUserStats(UserStatsRequest) returns (UsersStatsResponse) {};
@@ -50,6 +52,13 @@ message QueryRequest {
 
 message QueryResponse {
   repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false];
+}
+
+
+// QueryStreamResponse represents all the chunks for a given timeseries.
+message QueryStreamResponse {
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false];
+  repeated Chunk chunks = 2 [(gogoproto.nullable) = false];
 }
 
 message LabelValuesRequest {

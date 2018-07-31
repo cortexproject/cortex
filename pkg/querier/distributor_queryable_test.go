@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
 
@@ -56,11 +57,12 @@ type mockDistributor struct {
 func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	return m.m, nil
 }
-
+func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]*client.QueryStreamResponse, error) {
+	return nil, nil
+}
 func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
 	return nil, nil
 }
-
 func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, nil
 }

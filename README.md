@@ -35,6 +35,10 @@ To checkout Cortex in minikube:
 kubectl create -f ./k8s
 ```
 
+(these manifests use `latest` tags, i.e. this will work if you have
+just built the images and they are available on the node(s) in your
+Kubernetes cluster)
+
 Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape it itself.  Try it:
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up

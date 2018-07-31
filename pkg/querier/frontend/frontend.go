@@ -49,8 +49,8 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "")
-	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "")
+	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
+	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyon this, the downstream error is returned.")
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries

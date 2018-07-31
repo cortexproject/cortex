@@ -61,7 +61,6 @@ type Frontend struct {
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
-	closed bool
 	queues map[string]chan *request
 }
 
@@ -87,15 +86,8 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 func (f *Frontend) Close() {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
-
-	f.closed = true
-	f.cond.Broadcast()
-
-	for _, queue := range f.queues {
-		close(queue)
-		for request := range queue {
-			request.err <- errServerClosing
-		}
+	for len(f.queues) > 0 {
+		f.cond.Wait()
 	}
 }
 
@@ -197,10 +189,6 @@ func (f *Frontend) queueRequest(userID string, req *request) error {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	if f.closed {
-		return errServerClosing
-	}
-
 	queue, ok := f.queues[userID]
 	if !ok {
 		queue = make(chan *request, f.cfg.MaxOutstandingPerTenant)
@@ -210,7 +198,7 @@ func (f *Frontend) queueRequest(userID string, req *request) error {
 	select {
 	case queue <- req:
 		queueLength.Add(1)
-		f.cond.Signal()
+		f.cond.Broadcast()
 		return nil
 	default:
 		return errTooManyRequest
@@ -223,16 +211,12 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 
-	for len(f.queues) == 0 && !f.closed && ctx.Err() == nil {
+	for len(f.queues) == 0 && ctx.Err() == nil {
 		f.cond.Wait()
 	}
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-
-	if f.closed {
-		return nil, errServerClosing
 	}
 
 	i, n := 0, rand.Intn(len(f.queues))
@@ -246,6 +230,9 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 		if len(queue) == 0 {
 			delete(f.queues, userID)
 		}
+
+		// Tell close() we've processed a request.
+		f.cond.Broadcast()
 
 		queueDutation.Observe(time.Now().Sub(request.enqueueTime).Seconds())
 		queueLength.Add(-1)

@@ -11,21 +11,27 @@ import (
 	"github.com/weaveworks/cortex/pkg/chunk"
 )
 
-func newIterChunkQueryable(store ChunkStore) storage.Queryable {
-	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return &iterChunkQuerier{
-			store: store,
-			ctx:   ctx,
-			mint:  mint,
-			maxt:  maxt,
-		}, nil
-	})
+type chunkIteratorFunc func([]chunk.Chunk) storage.SeriesIterator
+
+func newIterChunkQueryable(chunkIteratorFunc chunkIteratorFunc) func(store ChunkStore) storage.Queryable {
+	return func(store ChunkStore) storage.Queryable {
+		return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+			return &iterChunkQuerier{
+				store:             store,
+				chunkIteratorFunc: chunkIteratorFunc,
+				ctx:               ctx,
+				mint:              mint,
+				maxt:              maxt,
+			}, nil
+		})
+	}
 }
 
 type iterChunkQuerier struct {
-	store      ChunkStore
-	ctx        context.Context
-	mint, maxt int64
+	store             ChunkStore
+	chunkIteratorFunc chunkIteratorFunc
+	ctx               context.Context
+	mint, maxt        int64
 }
 
 func (q *iterChunkQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
@@ -43,8 +49,9 @@ func (q *iterChunkQuerier) Select(_ *storage.SelectParams, matchers ...*labels.M
 	series := make([]storage.Series, 0, len(chunksBySeries))
 	for i := range chunksBySeries {
 		series = append(series, &chunkSeries{
-			labels: metricToLabels(chunksBySeries[i][0].Metric),
-			chunks: chunksBySeries[i],
+			labels:            metricToLabels(chunksBySeries[i][0].Metric),
+			chunks:            chunksBySeries[i],
+			chunkIteratorFunc: q.chunkIteratorFunc,
 		})
 	}
 
@@ -60,8 +67,9 @@ func (q *iterChunkQuerier) Close() error {
 }
 
 type chunkSeries struct {
-	labels labels.Labels
-	chunks []chunk.Chunk
+	labels            labels.Labels
+	chunks            []chunk.Chunk
+	chunkIteratorFunc chunkIteratorFunc
 }
 
 func (s *chunkSeries) Labels() labels.Labels {
@@ -70,5 +78,5 @@ func (s *chunkSeries) Labels() labels.Labels {
 
 // Iterator returns a new iterator of the data of the series.
 func (s *chunkSeries) Iterator() storage.SeriesIterator {
-	return newChunkMergeIteratorV2(s.chunks)
+	return s.chunkIteratorFunc(s.chunks)
 }

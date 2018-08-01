@@ -50,7 +50,7 @@ func TestChunkMergeIterator(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			iter := newChunkMergeIteratorV2(tc.chunks)
+			iter := newChunkMergeIterator(tc.chunks)
 			for i := tc.mint; i < tc.maxt; i++ {
 				require.True(t, iter.Next())
 				ts, s := iter.At()
@@ -64,7 +64,7 @@ func TestChunkMergeIterator(t *testing.T) {
 }
 
 func TestChunkMergeIteratorSeek(t *testing.T) {
-	iter := newChunkMergeIteratorV2([]chunk.Chunk{
+	iter := newChunkMergeIterator([]chunk.Chunk{
 		mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.Varbit),
 		mkChunk(t, 50, 150, 1*time.Millisecond, promchunk.Varbit),
 		mkChunk(t, 100, 200, 1*time.Millisecond, promchunk.Varbit),

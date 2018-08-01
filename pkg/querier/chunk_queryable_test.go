@@ -40,7 +40,7 @@ var (
 		f    func(ChunkStore) storage.Queryable
 	}{
 		{"matrixes", newChunkQueryable},
-		{"iterators", newIterChunkQueryable},
+		{"iterators", newIterChunkQueryable(newChunkMergeIterator)},
 	}
 
 	encodings = []struct {

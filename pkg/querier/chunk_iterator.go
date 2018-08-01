@@ -32,20 +32,24 @@ func (i *chunkIterator) Seek(t int64) bool {
 }
 
 func (i *chunkIterator) AtTime() int64 {
-	if !i.cacheValid {
-		v := i.it.Value()
-		i.cachedTime, i.cachedValue = int64(v.Timestamp), float64(v.Value)
-		i.cacheValid = true
+	if i.cacheValid {
+		return i.cachedTime
 	}
+
+	v := i.it.Value()
+	i.cachedTime, i.cachedValue = int64(v.Timestamp), float64(v.Value)
+	i.cacheValid = true
 	return i.cachedTime
 }
 
 func (i *chunkIterator) At() (int64, float64) {
-	if !i.cacheValid {
-		v := i.it.Value()
-		i.cachedTime, i.cachedValue = int64(v.Timestamp), float64(v.Value)
-		i.cacheValid = true
+	if i.cacheValid {
+		return i.cachedTime, i.cachedValue
 	}
+
+	v := i.it.Value()
+	i.cachedTime, i.cachedValue = int64(v.Timestamp), float64(v.Value)
+	i.cacheValid = true
 	return i.cachedTime, i.cachedValue
 }
 

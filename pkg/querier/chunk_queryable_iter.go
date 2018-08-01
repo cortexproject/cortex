@@ -70,5 +70,5 @@ func (s *chunkSeries) Labels() labels.Labels {
 
 // Iterator returns a new iterator of the data of the series.
 func (s *chunkSeries) Iterator() storage.SeriesIterator {
-	return newChunkMergeIterator(s.chunks)
+	return newChunkMergeIteratorV2(s.chunks)
 }

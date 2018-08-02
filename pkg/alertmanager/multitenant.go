@@ -6,21 +6,19 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/alertmanager/cluster"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/mesh"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	configs_client "github.com/cortexproject/cortex/pkg/configs/client"
@@ -49,36 +47,18 @@ const (
 	<head><title>Cortex Alertmanager Status</title></head>
 	<body>
 		<h1>Cortex Alertmanager Status</h1>
-		<h2>Mesh router</h2>
+		<h2>Node</h2>
 		<dl>
-			<dt>Protocol</dt>
-			<dd>{{.Protocol}}
-			{{if eq .ProtocolMinVersion .ProtocolMaxVersion}}
-			{{.ProtocolMaxVersion}}
-			{{else}}
-			{{.ProtocolMinVersion}}..{{.ProtocolMaxVersion}}
-			{{end}}
-			</dd>
-
-			<dt>Name</dt><dd>{{.Name}} ({{.NickName}})</dd>
-			<dt>Encryption</dt><dd>{{state .Encryption}}</dd>
-			<dt>PeerDiscovery</dt><dd>{{state .PeerDiscovery}}</dd>
-
-			<dt>Targets</dt><dd>{{ with .Targets }}
-			<ul>{{ range . }}<li>{{ . }}</li>{{ end }}</ul>
-			{{ else }}No targets{{ end }}
-			</dd>
-
-			<dt>Connections</dt><dd>{{len .Connections}}{{with connectionCounts .Connections}} ({{.}}){{end}}</dd>
-			<dt>Peers</dt><dd>{{len .Peers}}{{with peerConnectionCounts .Peers}} (with {{.}} connections){{end}}</dd>
-			<dt>TrustedSubnets</dt><dd>{{.TrustedSubnets}}</dd>
+			<dt>Name</dt><dd>{{.self.Name}}</dd>
+			<dt>Addr</dt><dd>{{.self.Addr}}</dd>
+			<dt>Port</dt><dd>{{.self.Port}}</dd>
 		</dl>
-		<h3>Peers</h3>
-		{{ with .Peers }}
+		<h3>Members</h3>
+		{{ with .members }}
 		<table>
-		<tr><th>Name</th><th>NickName</th><th>UID</th><th>ShortID</th><th>Version</th><th>Established connections</th><th>Pending connections</th></tr>
+		<tr><th>Name</th><th>Addr</th></tr>
 		{{ range . }}
-		<tr><td>{{ .Name }}</td><td>{{ .NickName }}</td><td>{{ .ShortID }}</td><td>{{ .Version }}</td><td>{{ . | establishedCount }}</td><td>{{ . | pendingCount }}</td></tr>
+		<tr><td>{{ .Name }}</td><td>{{ .Addr }}</td></tr>
 		{{ end }}
 		</table>
 		{{ else }}
@@ -95,62 +75,18 @@ var (
 		Name:      "alertmanager_configs_total",
 		Help:      "How many configs the multitenant alertmanager knows about.",
 	})
-	totalPeers = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "mesh_peers",
-		Help:      "Number of peers the multitenant alertmanager knows about",
-	})
 	statusTemplate      *template.Template
 	allConnectionStates = []string{"established", "pending", "retrying", "failed", "connecting"}
 )
 
 func init() {
 	prometheus.MustRegister(totalConfigs)
-	prometheus.MustRegister(totalPeers)
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
 		"state": func(enabled bool) string {
 			if enabled {
 				return "enabled"
 			}
 			return "disabled"
-		},
-		"connectionCounts": func(conns []mesh.LocalConnectionStatus) string {
-			cs := map[string]int{}
-			for _, conn := range conns {
-				cs[conn.State]++
-			}
-			return counts(cs, allConnectionStates)
-		},
-		"peerConnectionCounts": func(peers []mesh.PeerStatus) string {
-			cs := map[string]int{}
-			for _, peer := range peers {
-				for _, conn := range peer.Connections {
-					if conn.Established {
-						cs["established"]++
-					} else {
-						cs["pending"]++
-					}
-				}
-			}
-			return counts(cs, []string{"established", "pending"})
-		},
-		"establishedCount": func(peer mesh.PeerStatus) string {
-			count := 0
-			for _, conn := range peer.Connections {
-				if conn.Established {
-					count++
-				}
-			}
-			return fmt.Sprintf("%d", count)
-		},
-		"pendingCount": func(peer mesh.PeerStatus) string {
-			count := 0
-			for _, conn := range peer.Connections {
-				if !conn.Established {
-					count++
-				}
-			}
-			return fmt.Sprintf("%d", count)
 		},
 	}).Parse(statusPage))
 }
@@ -173,19 +109,24 @@ type MultitenantAlertmanagerConfig struct {
 	ExternalURL  flagext.URLValue
 	PollInterval time.Duration
 
-	MeshListenAddr string
-	MeshHWAddr     string
-	MeshNickname   string
-	MeshPassword   string
-
-	MeshPeerHost            string
-	MeshPeerService         string
-	MeshPeerRefreshInterval time.Duration
+	clusterBindAddr      string
+	clusterAdvertiseAddr string
+	peers                flagext.StringSlice
+	peerTimeout          time.Duration
+	gossipInterval       time.Duration
+	pushPullInterval     time.Duration
+	tcpTimeout           time.Duration
+	probeTimeout         time.Duration
+	probeInterval        time.Duration
+	reconnectInterval    time.Duration
+	peerReconnectTimeout time.Duration
 
 	FallbackConfigFile string
 	AutoWebhookRoot    string
 	AutoSlackRoot      string
 }
+
+const defaultClusterAddr = "0.0.0.0:9094"
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -199,14 +140,18 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.AutoSlackRoot, "alertmanager.configs.auto-slack-root", "", "Root of URL to generate if config is "+autoSlackURL)
 	flag.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 
-	flag.StringVar(&cfg.MeshListenAddr, "alertmanager.mesh.listen-address", net.JoinHostPort("0.0.0.0", strconv.Itoa(mesh.Port)), "Mesh listen address")
-	flag.StringVar(&cfg.MeshHWAddr, "alertmanager.mesh.hardware-address", mustHardwareAddr(), "MAC address, i.e. Mesh peer ID")
-	flag.StringVar(&cfg.MeshNickname, "alertmanager.mesh.nickname", mustHostname(), "Mesh peer nickname")
-	flag.StringVar(&cfg.MeshPassword, "alertmanager.mesh.password", "", "Password to join the Mesh peer network (empty password disables encryption)")
+	flag.StringVar(&cfg.clusterBindAddr, "cluster.listen-address", defaultClusterAddr, "Listen address for cluster.")
+	flag.StringVar(&cfg.clusterAdvertiseAddr, "cluster.advertise-address", "", "Explicit address to advertise in cluster.")
+	flag.Var(&cfg.peers, "cluster.peer", "Initial peers (may be repeated).")
+	flag.DurationVar(&cfg.peerTimeout, "cluster.peer-timeout", time.Second*15, "Time to wait between peers to send notifications.")
+	flag.DurationVar(&cfg.gossipInterval, "cluster.gossip-interval", cluster.DefaultGossipInterval, "Interval between sending gossip messages. By lowering this value (more frequent) gossip messages are propagated across the cluster more quickly at the expense of increased bandwidth.")
+	flag.DurationVar(&cfg.pushPullInterval, "cluster.pushpull-interval", cluster.DefaultPushPullInterval, "Interval for gossip state syncs. Setting this interval lower (more frequent) will increase convergence speeds across larger clusters at the expense of increased bandwidth usage.")
+	flag.DurationVar(&cfg.tcpTimeout, "cluster.tcp-timeout", cluster.DefaultTcpTimeout, "Timeout for establishing a stream connection with a remote node for a full state sync, and for stream read and write operations.")
+	flag.DurationVar(&cfg.probeTimeout, "cluster.probe-timeout", cluster.DefaultProbeTimeout, "Timeout to wait for an ack from a probed node before assuming it is unhealthy. This should be set to 99-percentile of RTT (round-trip time) on your network.")
+	flag.DurationVar(&cfg.probeInterval, "cluster.probe-interval", cluster.DefaultProbeInterval, "Interval between random node probes. Setting this lower (more frequent) will cause the cluster to detect failed nodes more quickly at the expense of increased bandwidth usage.")
+	flag.DurationVar(&cfg.reconnectInterval, "cluster.reconnect-interval", cluster.DefaultReconnectInterval, "Interval between attempting to reconnect to lost peers.")
+	flag.DurationVar(&cfg.peerReconnectTimeout, "cluster.reconnect-timeout", cluster.DefaultReconnectTimeout, "Length of time to attempt to reconnect to a lost peer.")
 
-	flag.StringVar(&cfg.MeshPeerService, "alertmanager.mesh.peer.service", "mesh", "SRV service used to discover peers.")
-	flag.StringVar(&cfg.MeshPeerHost, "alertmanager.mesh.peer.host", "", "Hostname for mesh peers.")
-	flag.DurationVar(&cfg.MeshPeerRefreshInterval, "alertmanager.mesh.peer.refresh-interval", 1*time.Minute, "Period with which to poll DNS for mesh peers.")
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -230,8 +175,7 @@ type MultitenantAlertmanager struct {
 	latestConfig configs.ID
 	latestMutex  sync.RWMutex
 
-	meshRouter   *gossipFactory
-	srvDiscovery *srvDiscovery
+	peer *cluster.Peer
 
 	stop chan struct{}
 	done chan struct{}
@@ -249,9 +193,6 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 		return nil, err
 	}
 
-	mrouter := initMesh(cfg.MeshListenAddr, cfg.MeshHWAddr, cfg.MeshNickname, cfg.MeshPassword)
-	mrouter.Start()
-
 	var fallbackConfig []byte
 	if cfg.FallbackConfigFile != "" {
 		fallbackConfig, err = ioutil.ReadFile(cfg.FallbackConfigFile)
@@ -264,15 +205,39 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 		}
 	}
 
-	gf := newGossipFactory(mrouter)
+	var peer *cluster.Peer
+	if cfg.clusterBindAddr != "" {
+		peer, err = cluster.Create(
+			log.With(util.Logger, "component", "cluster"),
+			prometheus.DefaultRegisterer,
+			cfg.clusterBindAddr,
+			cfg.clusterAdvertiseAddr,
+			cfg.peers,
+			true,
+			cfg.pushPullInterval,
+			cfg.gossipInterval,
+			cfg.tcpTimeout,
+			cfg.probeTimeout,
+			cfg.probeInterval,
+		)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to initialize gossip mesh", "err", err)
+			os.Exit(1)
+		}
+		err = peer.Join(cfg.reconnectInterval, cfg.peerReconnectTimeout)
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "unable to join gossip mesh", "err", err)
+		}
+		go peer.Settle(context.Background(), cfg.gossipInterval*10)
+	}
+
 	am := &MultitenantAlertmanager{
 		cfg:            cfg,
 		configsAPI:     configsAPI,
 		fallbackConfig: string(fallbackConfig),
 		cfgs:           map[string]configs.Config{},
 		alertmanagers:  map[string]*Alertmanager{},
-		meshRouter:     &gf,
-		srvDiscovery:   newSRVDiscovery(cfg.MeshPeerService, cfg.MeshPeerHost, cfg.MeshPeerRefreshInterval),
+		peer:           peer,
 		stop:           make(chan struct{}),
 		done:           make(chan struct{}),
 	}
@@ -288,18 +253,6 @@ func (am *MultitenantAlertmanager) Run() {
 	ticker := time.NewTicker(am.cfg.PollInterval)
 	for {
 		select {
-		case addrs := <-am.srvDiscovery.addresses:
-			var peers []string
-			for _, srv := range addrs {
-				peers = append(peers, net.JoinHostPort(srv.Target, strconv.FormatUint(uint64(srv.Port), 10)))
-			}
-			sort.Strings(peers)
-			level.Info(util.Logger).Log("msg", "updating alertmanager peers", "old", am.meshRouter.getPeers(), "new", peers)
-			errs := am.meshRouter.ConnectionMaker.InitiateConnections(peers, true)
-			for _, err := range errs {
-				level.Error(util.Logger).Log("err", err)
-			}
-			totalPeers.Set(float64(len(peers)))
 		case now := <-ticker.C:
 			err := am.updateConfigs(now)
 			if err != nil {
@@ -314,7 +267,6 @@ func (am *MultitenantAlertmanager) Run() {
 
 // Stop stops the MultitenantAlertmanager.
 func (am *MultitenantAlertmanager) Stop() {
-	am.srvDiscovery.Stop()
 	close(am.stop)
 	<-am.done
 	am.alertmanagersMtx.Lock()
@@ -322,7 +274,7 @@ func (am *MultitenantAlertmanager) Stop() {
 		am.Stop()
 	}
 	am.alertmanagersMtx.Unlock()
-	am.meshRouter.Stop()
+	am.peer.Leave(am.cfg.peerTimeout)
 	level.Debug(util.Logger).Log("msg", "MultitenantAlertmanager stopped")
 }
 
@@ -519,7 +471,8 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
 		Logger:      util.Logger,
-		MeshRouter:  am.meshRouter,
+		Peer:        am.peer,
+		PeerTimeout: am.cfg.peerTimeout,
 		Retention:   am.cfg.Retention,
 		ExternalURL: am.cfg.ExternalURL.URL,
 	})
@@ -565,8 +518,7 @@ type StatusHandler struct {
 
 // ServeHTTP serves the status of the alertmanager.
 func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	meshStatus := mesh.NewStatus(s.am.meshRouter.Router)
-	err := statusTemplate.Execute(w, meshStatus)
+	err := statusTemplate.Execute(w, s.am.peer.Info())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/alertmanager/api"
+	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
 	"github.com/prometheus/alertmanager/inhibit"
@@ -24,7 +25,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/mesh"
 )
 
 const notificationLogMaintenancePeriod = 15 * time.Minute
@@ -35,7 +35,8 @@ type Config struct {
 	// Used to persist notification logs and silences on disk.
 	DataDir     string
 	Logger      log.Logger
-	MeshRouter  gossipRouter
+	Peer        *cluster.Peer
+	PeerTimeout time.Duration
 	Retention   time.Duration
 	ExternalURL *url.URL
 }
@@ -45,7 +46,7 @@ type Alertmanager struct {
 	cfg        *Config
 	api        *api.API
 	logger     log.Logger
-	nflog      nflog.Log
+	nflog      *nflog.Log
 	silences   *silence.Silences
 	marker     types.Marker
 	alerts     *mem.Alerts
@@ -68,9 +69,6 @@ func New(cfg *Config) (*Alertmanager, error) {
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
 	var err error
 	am.nflog, err = nflog.New(
-		nflog.WithMesh(func(g mesh.Gossiper) mesh.Gossip {
-			return cfg.MeshRouter.newGossip(nflogID, g)
-		}),
 		nflog.WithRetention(cfg.Retention),
 		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
 		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
@@ -86,21 +84,24 @@ func New(cfg *Config) (*Alertmanager, error) {
 
 	am.marker = types.NewMarker()
 
+	// TODO(cortex): Build a registry that can merge metrics from multiple users.
+	// For now, these metrics are ignored, as we can't register the same
+	// metric twice with a single registry.
+	localRegistry := prometheus.NewRegistry()
+
 	silencesID := fmt.Sprintf("silences:%s", cfg.UserID)
 	am.silences, err = silence.New(silence.Options{
 		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
 		Retention:    cfg.Retention,
 		Logger:       log.With(am.logger, "component", "silences"),
-		// TODO(cortex): Build a registry that can merge metrics from multiple users.
-		// For now, these metrics are ignored, as we can't register the same
-		// metric twice with a single registry.
-		Metrics: prometheus.NewRegistry(),
-		Gossip: func(g mesh.Gossiper) mesh.Gossip {
-			return cfg.MeshRouter.newGossip(silencesID, g)
-		},
+		Metrics:      localRegistry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create silences: %v", err)
+	}
+	if cfg.Peer != nil {
+		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, localRegistry)
+		am.silences.SetBroadcast(c.Broadcast)
 	}
 
 	am.wg.Add(1)
@@ -122,7 +123,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 			return am.dispatcher.Groups(matchers)
 		},
 		marker.Status,
-		nil, // Passing a nil mesh router since we don't show mesh router information in Cortex anyway.
+		cfg.Peer,
 		log.With(am.logger, "component", "api"),
 	)
 
@@ -130,7 +131,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 
 	webReload := make(chan chan error)
 	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload, log.With(am.logger, "component", "ui"))
-	am.api.Register(am.router.WithPrefix(path.Join(am.cfg.ExternalURL.Path, "/api")))
+	am.api.Register(am.router.WithPrefix(path.Join(am.cfg.ExternalURL.Path, "/api/v1")))
 
 	go func() {
 		for {
@@ -146,6 +147,14 @@ func New(cfg *Config) (*Alertmanager, error) {
 	}()
 
 	return am, nil
+}
+
+// clusterWait returns a function that inspects the current peer state and returns
+// a duration of one base timeout for each peer with a higher ID than ourselves.
+func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
+	return func() time.Duration {
+		return time.Duration(p.Position()) * timeout
+	}
 }
 
 // ApplyConfig applies a new configuration to an Alertmanager.
@@ -178,7 +187,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 
 	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, log.With(am.logger, "component", "inhibitor"))
 
-	waitFunc := meshWait(am.cfg.MeshRouter, 5*time.Second)
+	waitFunc := clusterWait(am.cfg.Peer, am.cfg.PeerTimeout)
 	timeoutFunc := func(d time.Duration) time.Duration {
 		if d < notify.MinTimeout {
 			d = notify.MinTimeout
@@ -194,6 +203,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		am.silences,
 		am.nflog,
 		am.marker,
+		am.cfg.Peer,
 		log.With(am.logger, "component", "pipeline"),
 	)
 	am.dispatcher = dispatch.NewDispatcher(

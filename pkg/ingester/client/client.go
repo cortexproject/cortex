@@ -6,10 +6,21 @@ import (
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing/opentracing-go"
-	"github.com/weaveworks/common/middleware"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
+
+	"github.com/weaveworks/common/middleware"
+	cortex_middleware "github.com/weaveworks/cortex/pkg/util/middleware"
 )
+
+var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Namespace: "cortex",
+	Name:      "ingester_client_request_duration_seconds",
+	Help:      "Time spent doing Ingester requests.",
+	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 6),
+}, []string{"operation", "status_code"})
 
 type closableIngesterClient struct {
 	IngesterClient
@@ -23,6 +34,11 @@ func MakeIngesterClient(addr string, cfg Config) (IngesterClient, error) {
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
+			cortex_middleware.PrometheusGRPCUnaryInstrumentation(ingesterClientRequestDuration),
+		)),
+		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
 		)),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize)),
 	}

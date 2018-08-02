@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
 	"github.com/weaveworks/cortex/pkg/distributor"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -47,8 +48,9 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		preallocConfig    client.PreallocConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &preallocConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)

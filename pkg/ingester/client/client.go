@@ -69,7 +69,7 @@ type Config struct {
 	legacyCompressToIngester bool
 }
 
-// RegisterFlags registers configuration settings used by the ingester client config
+// RegisterFlags registers configuration settings used by the ingester client config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// lite uses both ingester.Config and distributor.Config.
 	// Both of them has IngesterClientConfig, so calling RegisterFlags on them triggers panic.

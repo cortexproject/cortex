@@ -26,16 +26,18 @@ func FromWriteRequest(req *WriteRequest) []model.Sample {
 // ToWriteRequest converts an array of samples into a WriteRequest proto.
 func ToWriteRequest(samples []model.Sample) *WriteRequest {
 	req := &WriteRequest{
-		Timeseries: make([]TimeSeries, 0, len(samples)),
+		Timeseries: make([]PreallocTimeseries, 0, len(samples)),
 	}
 
 	for _, s := range samples {
-		ts := TimeSeries{
-			Labels: ToLabelPairs(s.Metric),
-			Samples: []Sample{
-				{
-					Value:       float64(s.Value),
-					TimestampMs: int64(s.Timestamp),
+		ts := PreallocTimeseries{
+			TimeSeries: TimeSeries{
+				Labels: ToLabelPairs(s.Metric),
+				Samples: []Sample{
+					{
+						Value:       float64(s.Value),
+						TimestampMs: int64(s.Timestamp),
+					},
 				},
 			},
 		}

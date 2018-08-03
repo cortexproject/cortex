@@ -33,6 +33,7 @@ func main() {
 		schemaConfig     chunk.SchemaConfig
 		storageConfig    storage.Config
 		ingesterConfig   ingester.Config
+		preallocConfig   client.PreallocConfig
 		eventSampleRate  int
 		maxStreams       uint
 	)
@@ -44,7 +45,7 @@ func main() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
-		&schemaConfig, &ingesterConfig)
+		&schemaConfig, &ingesterConfig, &preallocConfig)
 	flag.UintVar(&maxStreams, "ingester.max-concurrent-streams", 1000, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.Parse()

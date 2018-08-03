@@ -20,10 +20,14 @@ Additional help can also be found in the [Weave Cloud documentation](https://www
 
 ## Developing
 
-To build (requires Docker):
+To build:
 ```
 make
 ```
+
+(By default the build runs in a Docker container, using an image built
+with all the tools required. The source code is mounted from where you
+run `make` into the build container as a Docker volume.)
 
 To run the test suite:
 ```

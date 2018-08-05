@@ -21,11 +21,18 @@ import (
 const (
 	userID          = "userID"
 	fp              = 1
-	chunkOffset     = 6 * time.Minute
+	chunkOffset     = 1 * time.Hour
 	chunkLength     = 3 * time.Hour
 	sampleRate      = 15 * time.Second
 	samplesPerChunk = chunkLength / sampleRate
 )
+
+type query struct {
+	query    string
+	labels   labels.Labels
+	samples  func(from, through time.Time, step time.Duration) int
+	expected func(t int64) (int64, float64)
+}
 
 var (
 	queryables = []struct {
@@ -43,16 +50,44 @@ var (
 		{"DoubleDelta", promchunk.DoubleDelta},
 		{"Varbit", promchunk.Varbit},
 	}
+
+	queries = []query{
+		{
+			query: "foo",
+			labels: labels.Labels{
+				labels.Label{"__name__", "foo"},
+			},
+			samples: func(from, through time.Time, step time.Duration) int {
+				return int(through.Sub(from)/step) + 1
+			},
+			expected: func(t int64) (int64, float64) {
+				return t, float64(t)
+			},
+		},
+
+		{
+			query:  "rate(foo[1m])",
+			labels: labels.Labels{},
+			samples: func(from, through time.Time, step time.Duration) int {
+				return int(through.Sub(from) / step)
+			},
+			expected: func(t int64) (int64, float64) {
+				return t + int64((sampleRate*4)/time.Millisecond), 1000.0
+			},
+		},
+	}
 )
 
 func TestChunkQueryable(t *testing.T) {
-	for _, q := range queryables {
+	for _, queryable := range queryables {
 		for _, encoding := range encodings {
-			t.Run(fmt.Sprintf("%s/%s", q.name, encoding.name), func(t *testing.T) {
-				store, from := makeMockChunkStore(t, 24*30, encoding.e)
-				queryable := q.f(store)
-				testQuery(t, queryable, from)
-			})
+			for _, query := range queries {
+				t.Run(fmt.Sprintf("%s/%s/%s", queryable.name, encoding.name, query.query), func(t *testing.T) {
+					store, from := makeMockChunkStore(t, 24*30, encoding.e)
+					queryable := queryable.f(store)
+					testQuery(t, queryable, from, query)
+				})
+			}
 		}
 	}
 }
@@ -96,24 +131,25 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
 }
 
-func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time) *promql.Result {
+func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), sampleRate*4
 	engine := promql.NewEngine(util.Logger, nil, 10, 1*time.Minute)
-	query, err := engine.NewRangeQuery(queryable, "rate(foo[1m])", from, through, step)
+	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
 	require.NoError(t, err)
 
 	r := query.Exec(context.Background())
 	m, err := r.Matrix()
 	require.NoError(t, err)
-	require.Len(t, m, 1)
 
+	require.Len(t, m, 1)
 	series := m[0]
-	assert.Equal(t, labels.Labels{}, series.Metric)
-	assert.Equal(t, int(through.Sub(from)/step), len(series.Points))
-	ts := int64(step / time.Millisecond)
+	assert.Equal(t, q.labels, series.Metric)
+	assert.Equal(t, q.samples(from, through, step), len(series.Points))
+	var ts int64
 	for _, point := range series.Points {
-		assert.Equal(t, ts, point.T)
-		assert.Equal(t, 1000.0, point.V)
+		expectedTime, expectedValue := q.expected(ts)
+		assert.Equal(t, expectedTime, point.T)
+		assert.Equal(t, expectedValue, point.V)
 		ts += int64(step / time.Millisecond)
 	}
 	return r

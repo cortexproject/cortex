@@ -258,6 +258,9 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*Multitenan
 
 	mrouter.Start()
 
+	if cfg.ConfigsAPIURL.URL == nil {
+		return nil, fmt.Errorf("Must specify --alertmanager.configs.url")
+	}
 	configsAPI := configs_client.AlertManagerConfigsAPI{
 		URL:     cfg.ConfigsAPIURL.URL,
 		Timeout: cfg.ClientTimeout,

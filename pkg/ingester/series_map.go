@@ -2,9 +2,28 @@ package ingester
 
 import (
 	"sync"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 )
+
+const seriesMapShards = 128
+
+// seriesMap maps fingerprints to memory series. All its methods are
+// goroutine-safe. A seriesMap is effectively is a goroutine-safe version of
+// map[model.Fingerprint]*memorySeries.
+type seriesMap struct {
+	size   int32
+	shards []shard
+}
+
+type shard struct {
+	mtx sync.Mutex
+	m   map[model.Fingerprint]*memorySeries
+	// Align this struct.
+	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(map[model.Fingerprint]*memorySeries{})]byte
+}
 
 // fingerprintSeriesPair pairs a fingerprint with a memorySeries pointer.
 type fingerprintSeriesPair struct {
@@ -12,57 +31,48 @@ type fingerprintSeriesPair struct {
 	series *memorySeries
 }
 
-// seriesMap maps fingerprints to memory series. All its methods are
-// goroutine-safe. A seriesMap is effectively is a goroutine-safe version of
-// map[model.Fingerprint]*memorySeries.
-type seriesMap struct {
-	mtx sync.RWMutex
-	m   map[model.Fingerprint]*memorySeries
-}
-
 // newSeriesMap returns a newly allocated empty seriesMap. To create a seriesMap
 // based on a prefilled map, use an explicit initializer.
 func newSeriesMap() *seriesMap {
-	return &seriesMap{m: make(map[model.Fingerprint]*memorySeries)}
-}
-
-// length returns the number of mappings in the seriesMap.
-func (sm *seriesMap) length() int {
-	sm.mtx.RLock()
-	defer sm.mtx.RUnlock()
-
-	return len(sm.m)
+	shards := make([]shard, seriesMapShards)
+	for i := 0; i < seriesMapShards; i++ {
+		shards[i].m = map[model.Fingerprint]*memorySeries{}
+	}
+	return &seriesMap{
+		shards: shards,
+	}
 }
 
 // get returns a memorySeries for a fingerprint. Return values have the same
 // semantics as the native Go map.
-func (sm *seriesMap) get(fp model.Fingerprint) (s *memorySeries, ok bool) {
-	sm.mtx.RLock()
-	s, ok = sm.m[fp]
-	// Note that the RUnlock is not done via defer for performance reasons.
-	// TODO(beorn7): Once https://github.com/golang/go/issues/14939 is
-	// fixed, revert to the usual defer idiom.
-	sm.mtx.RUnlock()
-	return
+func (sm *seriesMap) get(fp model.Fingerprint) (*memorySeries, bool) {
+	shard := &sm.shards[hashFP(fp)%seriesMapShards]
+	shard.mtx.Lock()
+	ms, ok := shard.m[fp]
+	shard.mtx.Unlock()
+	return ms, ok
 }
 
 // put adds a mapping to the seriesMap. It panics if s == nil.
 func (sm *seriesMap) put(fp model.Fingerprint, s *memorySeries) {
-	sm.mtx.Lock()
-	defer sm.mtx.Unlock()
+	shard := &sm.shards[hashFP(fp)%seriesMapShards]
+	shard.mtx.Lock()
+	_, ok := shard.m[fp]
+	shard.m[fp] = s
+	shard.mtx.Unlock()
 
-	if s == nil {
-		panic("tried to add nil pointer to seriesMap")
+	if !ok {
+		atomic.AddInt32(&sm.size, 1)
 	}
-	sm.m[fp] = s
 }
 
 // del removes a mapping from the series Map.
 func (sm *seriesMap) del(fp model.Fingerprint) {
-	sm.mtx.Lock()
-	defer sm.mtx.Unlock()
-
-	delete(sm.m, fp)
+	shard := &sm.shards[hashFP(fp)%seriesMapShards]
+	shard.mtx.Lock()
+	delete(shard.m, fp)
+	shard.mtx.Unlock()
+	atomic.AddInt32(&sm.size, -1)
 }
 
 // iter returns a channel that produces all mappings in the seriesMap. The
@@ -75,14 +85,20 @@ func (sm *seriesMap) del(fp model.Fingerprint) {
 func (sm *seriesMap) iter() <-chan fingerprintSeriesPair {
 	ch := make(chan fingerprintSeriesPair)
 	go func() {
-		sm.mtx.RLock()
-		for fp, s := range sm.m {
-			sm.mtx.RUnlock()
-			ch <- fingerprintSeriesPair{fp, s}
-			sm.mtx.RLock()
+		for i := range sm.shards {
+			sm.shards[i].mtx.Lock()
+			for fp, ms := range sm.shards[i].m {
+				sm.shards[i].mtx.Unlock()
+				ch <- fingerprintSeriesPair{fp, ms}
+				sm.shards[i].mtx.Lock()
+			}
+			sm.shards[i].mtx.Unlock()
 		}
-		sm.mtx.RUnlock()
 		close(ch)
 	}()
 	return ch
+}
+
+func (sm *seriesMap) length() int {
+	return int(atomic.LoadInt32(&sm.size))
 }

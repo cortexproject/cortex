@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/segmentio/fasthash/fnv1a"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -52,8 +53,14 @@ type userState struct {
 	index           *invertedIndex
 	ingestedSamples *ewmaRate
 
-	seriesInMetricMtx sync.Mutex
-	seriesInMetric    map[model.LabelValue]int
+	seriesInMetric []metricCounterShard
+}
+
+const metricCounterShards = 128
+
+type metricCounterShard struct {
+	mtx sync.Mutex
+	m   map[model.LabelValue]int
 }
 
 func newUserStates(limits *validation.Overrides, cfg Config) *userStates {
@@ -115,6 +122,14 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 
 	state, ok := us.get(userID)
 	if !ok {
+
+		seriesInMetric := make([]metricCounterShard, 0, metricCounterShards)
+		for i := 0; i < metricCounterShards; i++ {
+			seriesInMetric = append(seriesInMetric, metricCounterShard{
+				m: map[model.LabelValue]int{},
+			})
+		}
+
 		// Speculatively create a userState object and try to store it
 		// in the map.  Another goroutine may have got there before
 		// us, in which case this userState will be discarded
@@ -122,10 +137,10 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 			userID:          userID,
 			limits:          us.limits,
 			fpToSeries:      newSeriesMap(),
-			fpLocker:        newFingerprintLocker(16),
+			fpLocker:        newFingerprintLocker(16 * 1024),
 			index:           newInvertedIndex(),
 			ingestedSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			seriesInMetric:  map[model.LabelValue]int{},
+			seriesInMetric:  seriesInMetric,
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		stored, ok := us.states.LoadOrStore(userID, state)
@@ -186,13 +201,14 @@ func (u *userState) getSeries(metric model.Metric) (model.Fingerprint, *memorySe
 }
 
 func (u *userState) canAddSeriesFor(metric model.LabelValue) bool {
-	u.seriesInMetricMtx.Lock()
-	defer u.seriesInMetricMtx.Unlock()
+	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
+	shard.mtx.Lock()
+	defer shard.mtx.Unlock()
 
-	if u.seriesInMetric[metric] >= u.limits.MaxSeriesPerMetric(u.userID) {
+	if shard.m[metric] >= u.limits.MaxSeriesPerMetric(u.userID) {
 		return false
 	}
-	u.seriesInMetric[metric]++
+	shard.m[metric]++
 	return true
 }
 
@@ -207,12 +223,13 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
 		panic(err)
 	}
 
-	u.seriesInMetricMtx.Lock()
-	defer u.seriesInMetricMtx.Unlock()
+	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
+	shard.mtx.Lock()
+	defer shard.mtx.Unlock()
 
-	u.seriesInMetric[metricName]--
-	if u.seriesInMetric[metricName] == 0 {
-		delete(u.seriesInMetric, metricName)
+	shard.m[metricName]--
+	if shard.m[metricName] == 0 {
+		delete(shard.m, metricName)
 	}
 
 	memSeriesRemovedTotal.WithLabelValues(u.userID).Inc()

@@ -343,6 +343,11 @@ func (am *MultitenantAlertmanager) Stop() {
 func (am *MultitenantAlertmanager) loadAllConfigs() map[string]configs.View {
 	backoff := util.NewBackoff(context.Background(), backoffConfig)
 	for {
+		select {
+		case <-am.stop:
+			return nil
+		default:
+		}
 		cfgs, err := am.poll()
 		if err == nil {
 			level.Debug(util.Logger).Log("msg", "MultitenantAlertmanager: initial configuration load", "num_configs", len(cfgs))

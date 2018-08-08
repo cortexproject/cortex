@@ -1,6 +1,6 @@
 <p align="center"><img src="imgs/logo.png" alt="Weave Cortex Logo"></p>
 
-# Open source, horizontally scalable Prometheus as a service
+# Open source, horizontally scalable, multi-tenant Prometheus as a service
 
 [![Circle CI](https://circleci.com/gh/weaveworks/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/weaveworks/cortex/tree/master)
 [![GoDoc](https://godoc.org/github.com/weaveworks/cortex?status.svg)](https://godoc.org/github.com/weaveworks/cortex)
@@ -8,7 +8,14 @@
 
 Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works).
 
-It provides horizontally scalable, long term storage for [Prometheus](https://prometheus.io) metrics when used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination, and a horizontally scalable, Prometheus-compatible query API.
+It provides horizontally scalable, multi-tenant, long term storage for
+[Prometheus](https://prometheus.io) metrics when used as a [remote
+write](https://prometheus.io/docs/operating/configuration/#remote_write)
+destination, and a horizontally scalable, Prometheus-compatible query
+API.
+
+Multi-tenant means it handles metrics from multiple independent
+Prometheus sources, keeping them separate.
 
 To use Cortex, sign up for [Weave Cloud](https://cloud.weave.works) and follow the instructions there.
 

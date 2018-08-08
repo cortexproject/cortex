@@ -480,7 +480,7 @@ func TestDistributorValidation(t *testing.T) {
 			d.limits.Defaults.RejectOldSamplesMaxAge = 24 * time.Hour
 			d.limits.Defaults.MaxLabelNamesPerSeries = 2
 
-			_, err := d.Push(ctx, client.ToWriteRequest(tc.samples))
+			_, err := d.Push(ctx, client.ToWriteRequest(tc.samples, client.API))
 			require.Equal(t, tc.err, err)
 		})
 	}

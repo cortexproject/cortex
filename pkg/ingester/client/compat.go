@@ -24,9 +24,10 @@ func FromWriteRequest(req *WriteRequest) []model.Sample {
 }
 
 // ToWriteRequest converts an array of samples into a WriteRequest proto.
-func ToWriteRequest(samples []model.Sample) *WriteRequest {
+func ToWriteRequest(samples []model.Sample, source WriteRequest_SourceEnum) *WriteRequest {
 	req := &WriteRequest{
 		Timeseries: make([]PreallocTimeseries, 0, len(samples)),
+		Source:     source,
 	}
 
 	for _, s := range samples {

@@ -23,33 +23,7 @@ type chunkMergeIterator struct {
 }
 
 func newChunkMergeIterator(cs []chunk.Chunk) storage.SeriesIterator {
-	chunks := make([]*chunkIterator, len(cs))
-	for i := range cs {
-		chunks[i] = &chunkIterator{
-			Chunk: cs[i],
-			it:    cs[i].Data.NewIterator(),
-		}
-	}
-	sort.Sort(byFrom(chunks))
-
-	// Build a list of lists of non-overlapping chunks.
-	chunkLists := [][]*chunkIterator{}
-outer:
-	for _, chunk := range chunks {
-		for i, chunkList := range chunkLists {
-			if chunkList[len(chunkList)-1].Through.Before(chunk.From) {
-				chunkLists[i] = append(chunkLists[i], chunk)
-				continue outer
-			}
-		}
-		chunkLists = append(chunkLists, []*chunkIterator{chunk})
-	}
-
-	its := make([]*nonOverlappingIterator, 0, len(chunkLists))
-	for _, chunkList := range chunkLists {
-		its = append(its, newNonOverlappingIterator(chunkList))
-	}
-
+	its := buildIterators(cs)
 	c := &chunkMergeIterator{
 		currTime: -1,
 		its:      its,
@@ -69,6 +43,36 @@ outer:
 
 	heap.Init(&c.h)
 	return c
+}
+
+// Build a list of lists of non-overlapping chunk iterators.
+func buildIterators(cs []chunk.Chunk) []*nonOverlappingIterator {
+	chunks := make([]*chunkIterator, len(cs))
+	for i := range cs {
+		chunks[i] = &chunkIterator{
+			Chunk: cs[i],
+			it:    cs[i].Data.NewIterator(),
+		}
+	}
+	sort.Sort(byFrom(chunks))
+
+	chunkLists := [][]*chunkIterator{}
+outer:
+	for _, chunk := range chunks {
+		for i, chunkList := range chunkLists {
+			if chunkList[len(chunkList)-1].Through.Before(chunk.From) {
+				chunkLists[i] = append(chunkLists[i], chunk)
+				continue outer
+			}
+		}
+		chunkLists = append(chunkLists, []*chunkIterator{chunk})
+	}
+
+	its := make([]*nonOverlappingIterator, 0, len(chunkLists))
+	for _, chunkList := range chunkLists {
+		its = append(its, newNonOverlappingIterator(chunkList))
+	}
+	return its
 }
 
 func (c *chunkMergeIterator) Seek(t int64) bool {

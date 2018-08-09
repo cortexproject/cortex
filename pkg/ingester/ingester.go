@@ -76,6 +76,10 @@ type Config struct {
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
+	// Config for queries.
+	MaxSeriesPerQuery  int
+	MaxSamplesPerQuery int
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
 }
@@ -98,6 +102,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
+	f.IntVar(&cfg.MaxSeriesPerQuery, "ingester.max-series-per-query", 10000, "The maximum number of series that a query can return.")
+	f.IntVar(&cfg.MaxSamplesPerQuery, "ingester.max-samples-per-query", 100000, "The maximum number of samples that a query can return.")
 
 	// DEPRECATED, no-op
 	f.Bool("ingester.reject-old-samples", false, "DEPRECATED. Reject old samples.")
@@ -136,7 +142,8 @@ type Ingester struct {
 	chunkLength         prometheus.Histogram
 	chunkAge            prometheus.Histogram
 	queries             prometheus.Counter
-	queriedSamples      prometheus.Counter
+	queriedSamples      prometheus.Histogram
+	queriedSeries       prometheus.Histogram
 	memoryChunks        prometheus.Gauge
 }
 
@@ -218,9 +225,15 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 			Name: "cortex_ingester_queries_total",
 			Help: "The total number of queries the ingester has handled.",
 		}),
-		queriedSamples: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_queried_samples_total",
-			Help: "The total number of samples returned from queries.",
+		queriedSamples: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_queried_samples",
+			Help:    "The total number of samples returned from queries.",
+			Buckets: prometheus.DefBuckets,
+		}),
+		queriedSeries: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_queried_series",
+			Help:    "The total number of series returned from queries.",
+			Buckets: prometheus.DefBuckets,
 		}),
 	}
 
@@ -380,20 +393,28 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 	}
 
 	queriedSamples := 0
-	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
+	queriedSeries := 0
+	err = state.forSeriesMatching(matchers, i.cfg.MaxSeriesPerQuery, func(_ model.Fingerprint, series *memorySeries) error {
+		queriedSeries++
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
+		}
+
+		queriedSamples += len(values)
+		if queriedSamples > i.cfg.MaxSamplesPerQuery {
+			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", i.cfg.MaxSamplesPerQuery)
 		}
 
 		result = append(result, &model.SampleStream{
 			Metric: series.metric,
 			Values: values,
 		})
-		queriedSamples += len(values)
+
 		return nil
 	})
-	i.queriedSamples.Add(float64(queriedSamples))
+	i.queriedSamples.Observe(float64(queriedSamples))
+	i.queriedSeries.Observe(float64(queriedSeries))
 	return result, err
 }
 
@@ -435,7 +456,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 	metrics := map[model.Fingerprint]model.Metric{}
 	for _, matchers := range matchersSet {
-		if err := state.forSeriesMatching(matchers, func(fp model.Fingerprint, series *memorySeries) error {
+		if err := state.forSeriesMatching(matchers, i.cfg.MaxSeriesPerQuery, func(fp model.Fingerprint, series *memorySeries) error {
 			if _, ok := metrics[fp]; !ok {
 				metrics[fp] = series.metric
 			}
@@ -518,6 +539,7 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- i.chunkAge.Desc()
 	ch <- i.queries.Desc()
 	ch <- i.queriedSamples.Desc()
+	ch <- i.queriedSeries.Desc()
 	ch <- i.memoryChunks.Desc()
 }
 
@@ -563,5 +585,6 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 	ch <- i.chunkAge
 	ch <- i.queries
 	ch <- i.queriedSamples
+	ch <- i.queriedSeries
 	ch <- i.memoryChunks
 }

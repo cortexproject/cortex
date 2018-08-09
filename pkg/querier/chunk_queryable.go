@@ -20,7 +20,7 @@ func NewQueryable(distributor Distributor, chunkStore ChunkStore, iterators bool
 	dq := newDistributorQueryable(distributor)
 	cq := newChunkQueryable(chunkStore)
 	if iterators {
-		cq = newIterChunkQueryable(chunkStore)
+		cq = newIterChunkQueryable(newChunkMergeIterator)(chunkStore)
 	}
 
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {

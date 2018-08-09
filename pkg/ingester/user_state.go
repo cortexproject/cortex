@@ -242,9 +242,12 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.
 // Deals with locking and the quirks of zero-length matcher values.
-func (u *userState) forSeriesMatching(allMatchers []*labels.Matcher, callback func(model.Fingerprint, *memorySeries) error) error {
+func (u *userState) forSeriesMatching(allMatchers []*labels.Matcher, maxSeries int, callback func(model.Fingerprint, *memorySeries) error) error {
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	fps := u.index.lookup(matchers)
+	if len(fps) > maxSeries {
+		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
+	}
 
 	// fps is sorted, lock them in order to prevent deadlocks
 outer:

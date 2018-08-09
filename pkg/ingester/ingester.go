@@ -141,8 +141,8 @@ type Ingester struct {
 	chunkLength         prometheus.Histogram
 	chunkAge            prometheus.Histogram
 	queries             prometheus.Counter
-	queriedSamples      prometheus.Counter
-	queriedSeries       prometheus.Counter
+	queriedSamples      prometheus.Histogram
+	queriedSeries       prometheus.Histogram
 	memoryChunks        prometheus.Gauge
 }
 
@@ -224,13 +224,15 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 			Name: "cortex_ingester_queries_total",
 			Help: "The total number of queries the ingester has handled.",
 		}),
-		queriedSamples: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_queried_samples_total",
-			Help: "The total number of samples returned from queries.",
+		queriedSamples: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_queried_samples",
+			Help:    "The total number of samples returned from queries.",
+			Buckets: prometheus.DefBuckets,
 		}),
-		queriedSeries: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_queried_series_total",
-			Help: "The total number of series returned from queries.",
+		queriedSeries: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_queried_series",
+			Help:    "The total number of series returned from queries.",
+			Buckets: prometheus.DefBuckets,
 		}),
 	}
 
@@ -405,8 +407,8 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 		return nil
 	})
-	i.queriedSamples.Add(float64(queriedSamples))
-	i.queriedSeries.Add(float64(queriedSeries))
+	i.queriedSamples.Observe(float64(queriedSamples))
+	i.queriedSeries.Observe(float64(queriedSeries))
 	return result, err
 }
 

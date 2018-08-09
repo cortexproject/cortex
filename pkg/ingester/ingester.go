@@ -102,7 +102,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
 	f.IntVar(&cfg.MaxSeriesPerQuery, "ingester.max-series-per-query", 10000, "The maximum number of series that a query can return.")
-	f.IntVar(&cfg.MaxSeriesPerQuery, "ingester.max-samples-per-query", 100000, "The maximum number of samples that a query can return.")
+	f.IntVar(&cfg.MaxSamplesPerQuery, "ingester.max-samples-per-query", 100000, "The maximum number of samples that a query can return.")
 
 	// DEPRECATED, no-op
 	f.Bool("ingester.reject-old-samples", false, "DEPRECATED. Reject old samples.")
@@ -395,7 +395,7 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 		queriedSamples += len(values)
 		if queriedSamples > i.cfg.MaxSamplesPerQuery {
-			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query")
+			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", i.cfg.MaxSamplesPerQuery)
 		}
 
 		result = append(result, &model.SampleStream{
@@ -448,7 +448,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 	metrics := map[model.Fingerprint]model.Metric{}
 	for _, matchers := range matchersSet {
-		if err := state.forSeriesMatching(matchers, func(fp model.Fingerprint, series *memorySeries) error {
+		if err := state.forSeriesMatching(matchers, i.cfg.MaxSeriesPerQuery, func(fp model.Fingerprint, series *memorySeries) error {
 			if _, ok := metrics[fp]; !ok {
 				metrics[fp] = series.metric
 			}

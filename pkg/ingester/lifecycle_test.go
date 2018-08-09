@@ -31,22 +31,17 @@ const (
 
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()
-	return Config{
-		LifecyclerConfig: ring.LifecyclerConfig{
-			KVClient: consul,
-
-			NumTokens:       1,
-			HeartbeatPeriod: 5 * time.Second,
-			ListenPort:      func(i int) *int { return &i }(0),
-
-			Addr: "localhost",
-			ID:   "localhost",
-		},
-
-		FlushCheckPeriod:  99999 * time.Hour,
-		MaxChunkIdle:      99999 * time.Hour,
-		ConcurrentFlushes: 1,
-	}
+	cfg := Config{}
+	util.DefaultValues(&cfg)
+	cfg.FlushCheckPeriod = 99999 * time.Hour
+	cfg.MaxChunkIdle = 99999 * time.Hour
+	cfg.ConcurrentFlushes = 1
+	cfg.LifecyclerConfig.KVClient = consul
+	cfg.LifecyclerConfig.NumTokens = 1
+	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
+	cfg.LifecyclerConfig.Addr = "localhost"
+	cfg.LifecyclerConfig.ID = "localhost"
+	return cfg
 }
 
 // TestIngesterRestart tests a restarting ingester doesn't keep adding more tokens.

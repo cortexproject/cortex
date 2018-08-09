@@ -531,6 +531,7 @@ func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
 	ch <- i.chunkAge.Desc()
 	ch <- i.queries.Desc()
 	ch <- i.queriedSamples.Desc()
+	ch <- i.queriedSeries.Desc()
 	ch <- i.memoryChunks.Desc()
 }
 
@@ -576,5 +577,6 @@ func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
 	ch <- i.chunkAge
 	ch <- i.queries
 	ch <- i.queriedSamples
+	ch <- i.queriedSeries
 	ch <- i.memoryChunks
 }

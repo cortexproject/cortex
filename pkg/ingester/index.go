@@ -57,40 +57,43 @@ func (ii *invertedIndex) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 	}
 
 	result := []model.Fingerprint{}
-
-outer:
 	for i := range ii.shards {
-		ii.shards[i].mtx.RLock()
-
-		// per-shard intersection is initially nil, which is a special case.
-		var intersection []model.Fingerprint
-		for _, matcher := range matchers {
-			values, ok := ii.shards[i].idx[model.LabelName(matcher.Name)]
-			if !ok {
-				continue outer
-			}
-			var toIntersect []model.Fingerprint
-			if matcher.Type == labels.MatchEqual {
-				fps := values[model.LabelValue(matcher.Value)]
-				toIntersect = merge(toIntersect, fps)
-			} else {
-				for value, fps := range values {
-					if matcher.Matches(string(value)) {
-						toIntersect = merge(toIntersect, fps)
-					}
-				}
-			}
-			intersection = intersect(intersection, toIntersect)
-			if len(intersection) == 0 {
-				continue outer
-			}
-		}
-
-		ii.shards[i].mtx.RUnlock()
-		result = append(result, intersection...)
+		fps := ii.shards[i].lookup(matchers)
+		result = append(result, fps...)
 	}
 
 	sort.Sort(fingerprints(result))
+	return result
+}
+
+func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint {
+	shard.mtx.RLock()
+	defer shard.mtx.RUnlock()
+
+	// per-shard intersection is initially nil, which is a special case.
+	var result []model.Fingerprint
+	for _, matcher := range matchers {
+		values, ok := shard.idx[model.LabelName(matcher.Name)]
+		if !ok {
+			return nil
+		}
+		var toIntersect []model.Fingerprint
+		if matcher.Type == labels.MatchEqual {
+			fps := values[model.LabelValue(matcher.Value)]
+			toIntersect = merge(toIntersect, fps)
+		} else {
+			for value, fps := range values {
+				if matcher.Matches(string(value)) {
+					toIntersect = merge(toIntersect, fps)
+				}
+			}
+		}
+		result = intersect(result, toIntersect)
+		if len(result) == 0 {
+			return nil
+		}
+	}
+
 	return result
 }
 
@@ -98,22 +101,29 @@ func (ii *invertedIndex) lookupLabelValues(name model.LabelName) model.LabelValu
 	results := make([]model.LabelValues, 0, indexShards)
 
 	for i := range ii.shards {
-		ii.shards[i].mtx.RLock()
-		values, ok := ii.shards[i].idx[name]
-		if !ok {
-			continue
-		}
-		shardResult := make(model.LabelValues, 0, len(values))
-		for val := range values {
-			shardResult = append(shardResult, val)
-		}
-		ii.shards[i].mtx.RUnlock()
-
-		sort.Sort(labelValues(shardResult))
+		shardResult := ii.shards[i].lookupLabelValues(name)
 		results = append(results, shardResult)
 	}
 
 	return mergeLabelValueLists(results)
+}
+
+func (shard *indexShard) lookupLabelValues(name model.LabelName) model.LabelValues {
+	shard.mtx.RLock()
+	defer shard.mtx.RUnlock()
+
+	values, ok := shard.idx[name]
+	if !ok {
+		return nil
+	}
+
+	results := make(model.LabelValues, 0, len(values))
+	for val := range values {
+		results = append(results, val)
+	}
+
+	sort.Sort(labelValues(results))
+	return results
 }
 
 func (ii *invertedIndex) delete(metric model.Metric, fp model.Fingerprint) {

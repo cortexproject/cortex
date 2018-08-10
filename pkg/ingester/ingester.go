@@ -27,18 +27,9 @@ import (
 )
 
 const (
-	ingesterSubsystem = "ingester"
-
 	// Reasons to discard samples.
 	outOfOrderTimestamp = "timestamp_out_of_order"
 	duplicateSample     = "multiple_values_for_timestamp"
-
-	// DefaultConcurrentFlush is the number of series to flush concurrently
-	DefaultConcurrentFlush = 50
-	// DefaultMaxSeriesPerUser is the maximum number of series allowed per user.
-	DefaultMaxSeriesPerUser = 5000000
-	// DefaultMaxSeriesPerMetric is the maximum number of series in one metric (of a single user).
-	DefaultMaxSeriesPerMetric = 50000
 )
 
 var (
@@ -111,7 +102,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 5*time.Minute, "Maximum chunk idle time before flushing.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
-	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", DefaultConcurrentFlush, "Number of concurrent goroutines flushing to dynamodb.")
+	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
 	f.IntVar(&cfg.MaxSeriesPerQuery, "ingester.max-series-per-query", 10000, "The maximum number of series that a query can return.")
 	f.IntVar(&cfg.MaxSamplesPerQuery, "ingester.max-samples-per-query", 100000, "The maximum number of samples that a query can return.")
@@ -155,27 +146,6 @@ type ChunkStore interface {
 
 // New constructs a new Ingester.
 func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
-	if cfg.FlushCheckPeriod == 0 {
-		cfg.FlushCheckPeriod = 1 * time.Minute
-	}
-	if cfg.MaxChunkIdle == 0 {
-		cfg.MaxChunkIdle = 1 * time.Hour
-	}
-	if cfg.ConcurrentFlushes <= 0 {
-		cfg.ConcurrentFlushes = DefaultConcurrentFlush
-	}
-	if cfg.ChunkEncoding == "" {
-		cfg.ChunkEncoding = "1"
-	}
-	if cfg.userStatesConfig.RateUpdatePeriod == 0 {
-		cfg.userStatesConfig.RateUpdatePeriod = 15 * time.Second
-	}
-	if cfg.userStatesConfig.MaxSeriesPerUser <= 0 {
-		cfg.userStatesConfig.MaxSeriesPerUser = DefaultMaxSeriesPerUser
-	}
-	if cfg.userStatesConfig.MaxSeriesPerMetric <= 0 {
-		cfg.userStatesConfig.MaxSeriesPerMetric = DefaultMaxSeriesPerMetric
-	}
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}

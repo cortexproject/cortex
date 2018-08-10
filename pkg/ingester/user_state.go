@@ -65,8 +65,8 @@ type UserStatesConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *UserStatesConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-	f.IntVar(&cfg.MaxSeriesPerUser, "ingester.max-series-per-user", DefaultMaxSeriesPerUser, "Maximum number of active series per user.")
-	f.IntVar(&cfg.MaxSeriesPerMetric, "ingester.max-series-per-metric", DefaultMaxSeriesPerMetric, "Maximum number of active series per metric name.")
+	f.IntVar(&cfg.MaxSeriesPerUser, "ingester.max-series-per-user", 5000000, "Maximum number of active series per user.")
+	f.IntVar(&cfg.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
 }
 
 func newUserStates(cfg *UserStatesConfig) *userStates {

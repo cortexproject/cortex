@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/weaveworks/common/user"
@@ -19,6 +20,30 @@ const (
 	// Backoff for retrying 'immediate' flushes. Only counts for queue
 	// position, not wallclock time.
 	flushBackoff = 1 * time.Second
+)
+
+var (
+	chunkUtilization = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "cortex_ingester_chunk_utilization",
+		Help:    "Distribution of stored chunk utilization (when stored).",
+		Buckets: prometheus.LinearBuckets(0, 0.2, 6),
+	})
+	chunkLength = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "cortex_ingester_chunk_length",
+		Help:    "Distribution of stored chunk lengths (when stored).",
+		Buckets: prometheus.ExponentialBuckets(5, 2, 11), // biggest bucket is 5*2^(11-1) = 5120
+	})
+	chunkAge = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "cortex_ingester_chunk_age_seconds",
+		Help: "Distribution of chunk ages (when stored).",
+		// with default settings chunks should flush between 5 min and 12 hours
+		// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
+		Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
+	})
+	memoryChunks = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_memory_chunks",
+		Help: "The total number of chunks in memory.",
+	})
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -212,7 +237,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 		series.chunkDescs[i] = nil // erase reference so the chunk can be garbage-collected
 	}
 	series.chunkDescs = series.chunkDescs[len(chunks):]
-	i.memoryChunks.Sub(float64(len(chunks)))
+	memoryChunks.Sub(float64(len(chunks)))
 	if len(series.chunkDescs) == 0 {
 		userState.removeSeries(fp, series.metric)
 	}
@@ -239,9 +264,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 	for _, chunkDesc := range chunkDescs {
 		utilization, length := chunkDesc.C.Utilization(), chunkDesc.C.Len()
 		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "utilization", utilization, "length", length, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)
-		i.chunkUtilization.Observe(utilization)
-		i.chunkLength.Observe(float64(length))
-		i.chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
+		chunkUtilization.Observe(utilization)
+		chunkLength.Observe(float64(length))
+		chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
 	}
 
 	return nil

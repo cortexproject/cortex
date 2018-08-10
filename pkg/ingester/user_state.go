@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"golang.org/x/net/context"
@@ -19,20 +20,23 @@ import (
 )
 
 var (
-	memSeriesCreatedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	memSeries = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_memory_series",
+		Help: "The current number of series in memory.",
+	})
+	memUsers = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_memory_users",
+		Help: "The current number of users in memory.",
+	})
+	memSeriesCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ingester_memory_series_created_total",
 		Help: "The total number of series that were created per user.",
 	}, []string{"user"})
-	memSeriesRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	memSeriesRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ingester_memory_series_removed_total",
 		Help: "The total number of series that were removed per user.",
 	}, []string{"user"})
 )
-
-func init() {
-	prometheus.MustRegister(memSeriesCreatedTotal)
-	prometheus.MustRegister(memSeriesRemovedTotal)
-}
 
 type userStates struct {
 	states sync.Map
@@ -98,25 +102,6 @@ func (us *userStates) updateRates() {
 	})
 }
 
-func (us *userStates) numUsers() int {
-	count := 0
-	us.states.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return count
-}
-
-func (us *userStates) numSeries() int {
-	numSeries := 0
-	us.states.Range(func(key, value interface{}) bool {
-		state := value.(*userState)
-		numSeries += state.fpToSeries.length()
-		return true
-	})
-	return numSeries
-}
-
 func (us *userStates) get(userID string) (*userState, bool) {
 	state, ok := us.states.Load(userID)
 	if !ok {
@@ -154,7 +139,10 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 			seriesInMetric:  map[model.LabelValue]int{},
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
-		stored, _ := us.states.LoadOrStore(userID, state)
+		stored, ok := us.states.LoadOrStore(userID, state)
+		if !ok {
+			memUsers.Inc()
+		}
 		state = stored.(*userState)
 	}
 
@@ -199,6 +187,7 @@ func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model
 
 	util.Event().Log("msg", "new series", "userID", u.userID, "fp", fp, "series", metric)
 	memSeriesCreatedTotal.WithLabelValues(u.userID).Inc()
+	memSeries.Inc()
 
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
@@ -238,6 +227,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
 	}
 
 	memSeriesRemovedTotal.WithLabelValues(u.userID).Inc()
+	memSeries.Dec()
 }
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.

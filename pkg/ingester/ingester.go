@@ -12,8 +12,8 @@ import (
 	old_ctx "golang.org/x/net/context"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
@@ -42,21 +42,32 @@ const (
 )
 
 var (
-	memorySeriesDesc = prometheus.NewDesc(
-		"cortex_ingester_memory_series",
-		"The current number of series in memory.",
-		nil, nil,
-	)
-	memoryUsersDesc = prometheus.NewDesc(
-		"cortex_ingester_memory_users",
-		"The current number of users in memory.",
-		nil, nil,
-	)
-	flushQueueLengthDesc = prometheus.NewDesc(
-		"cortex_ingester_flush_queue_length",
-		"The total number of series pending in the flush queue.",
-		nil, nil,
-	)
+	flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_flush_queue_length",
+		Help: "The total number of series pending in the flush queue.",
+	})
+	ingestedSamples = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_ingested_samples_total",
+		Help: "The total number of samples ingested.",
+	})
+	ingestedSamplesFail = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_ingested_samples_failures_total",
+		Help: "The total number of samples that errored on ingestion.",
+	})
+	queries = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_queries_total",
+		Help: "The total number of queries the ingester has handled.",
+	})
+	queriedSamples = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "cortex_ingester_queried_samples",
+		Help:    "The total number of samples returned from queries.",
+		Buckets: prometheus.DefBuckets,
+	})
+	queriedSeries = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "cortex_ingester_queried_series",
+		Help:    "The total number of series returned from queries.",
+		Buckets: prometheus.DefBuckets,
+	})
 )
 
 // Config for an Ingester.
@@ -135,16 +146,6 @@ type Ingester struct {
 
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
-
-	ingestedSamples     prometheus.Counter
-	ingestedSamplesFail prometheus.Counter
-	chunkUtilization    prometheus.Histogram
-	chunkLength         prometheus.Histogram
-	chunkAge            prometheus.Histogram
-	queries             prometheus.Counter
-	queriedSamples      prometheus.Histogram
-	queriedSeries       prometheus.Histogram
-	memoryChunks        prometheus.Gauge
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -191,50 +192,6 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 
 		quit:        make(chan struct{}),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
-
-		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_ingested_samples_total",
-			Help: "The total number of samples ingested.",
-		}),
-		ingestedSamplesFail: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_ingested_samples_failures_total",
-			Help: "The total number of samples that errored on ingestion.",
-		}),
-		chunkUtilization: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_chunk_utilization",
-			Help:    "Distribution of stored chunk utilization (when stored).",
-			Buckets: prometheus.LinearBuckets(0, 0.2, 6),
-		}),
-		chunkLength: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_chunk_length",
-			Help:    "Distribution of stored chunk lengths (when stored).",
-			Buckets: prometheus.ExponentialBuckets(5, 2, 11), // biggest bucket is 5*2^(11-1) = 5120
-		}),
-		chunkAge: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name: "cortex_ingester_chunk_age_seconds",
-			Help: "Distribution of chunk ages (when stored).",
-			// with default settings chunks should flush between 5 min and 12 hours
-			// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
-			Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
-		}),
-		memoryChunks: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_ingester_memory_chunks",
-			Help: "The total number of chunks in memory.",
-		}),
-		queries: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_queries_total",
-			Help: "The total number of queries the ingester has handled.",
-		}),
-		queriedSamples: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_queried_samples",
-			Help:    "The total number of samples returned from queries.",
-			Buckets: prometheus.DefBuckets,
-		}),
-		queriedSeries: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_queried_series",
-			Help:    "The total number of series returned from queries.",
-			Buckets: prometheus.DefBuckets,
-		}),
 	}
 
 	var err error
@@ -245,7 +202,7 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue()
+		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
 		go i.flushLoop(j)
 	}
 
@@ -306,7 +263,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 			continue
 		}
 
-		i.ingestedSamplesFail.Inc()
+		ingestedSamplesFail.Inc()
 		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
 			switch httpResp.Code {
 			case http.StatusBadRequest, http.StatusTooManyRequests:
@@ -357,8 +314,8 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample) error {
 		return err
 	}
 
-	i.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-	i.ingestedSamples.Inc()
+	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+	ingestedSamples.Inc()
 	state.ingestedSamples.inc()
 
 	return err
@@ -380,7 +337,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 }
 
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*labels.Matcher) (model.Matrix, error) {
-	i.queries.Inc()
+	queries.Inc()
 
 	result := model.Matrix{}
 	i.userStatesMtx.RLock()
@@ -392,17 +349,17 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 		return result, nil
 	}
 
-	queriedSamples := 0
-	queriedSeries := 0
+	numSamples := 0
+	numSeries := 0
 	err = state.forSeriesMatching(matchers, i.cfg.MaxSeriesPerQuery, func(_ model.Fingerprint, series *memorySeries) error {
-		queriedSeries++
+		numSeries++
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
 		}
 
-		queriedSamples += len(values)
-		if queriedSamples > i.cfg.MaxSamplesPerQuery {
+		numSamples += len(values)
+		if numSamples > i.cfg.MaxSamplesPerQuery {
 			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", i.cfg.MaxSamplesPerQuery)
 		}
 
@@ -413,8 +370,8 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 		return nil
 	})
-	i.queriedSamples.Observe(float64(queriedSamples))
-	i.queriedSeries.Observe(float64(queriedSeries))
+	queriedSamples.Observe(float64(numSamples))
+	queriedSeries.Observe(float64(numSeries))
 	return result, err
 }
 
@@ -526,65 +483,4 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-}
-
-// Describe implements prometheus.Collector.
-func (i *Ingester) Describe(ch chan<- *prometheus.Desc) {
-	ch <- memorySeriesDesc
-	ch <- memoryUsersDesc
-	ch <- flushQueueLengthDesc
-	ch <- i.ingestedSamples.Desc()
-	ch <- i.chunkUtilization.Desc()
-	ch <- i.chunkLength.Desc()
-	ch <- i.chunkAge.Desc()
-	ch <- i.queries.Desc()
-	ch <- i.queriedSamples.Desc()
-	ch <- i.queriedSeries.Desc()
-	ch <- i.memoryChunks.Desc()
-}
-
-// Collect implements prometheus.Collector.
-func (i *Ingester) Collect(ch chan<- prometheus.Metric) {
-	sp := opentracing.StartSpan("HTTP - Metrics")
-	defer sp.Finish()
-
-	seriesSpan := opentracing.StartSpan("count_series", opentracing.ChildOf(sp.Context()))
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
-	numUsers := i.userStates.numUsers()
-	numSeries := i.userStates.numSeries()
-
-	ch <- prometheus.MustNewConstMetric(
-		memorySeriesDesc,
-		prometheus.GaugeValue,
-		float64(numSeries),
-	)
-	ch <- prometheus.MustNewConstMetric(
-		memoryUsersDesc,
-		prometheus.GaugeValue,
-		float64(numUsers),
-	)
-	seriesSpan.Finish()
-
-	flushQueueSpan := opentracing.StartSpan("flush_queue", opentracing.ChildOf(sp.Context()))
-	flushQueueLength := 0
-	for _, flushQueue := range i.flushQueues {
-		flushQueueLength += flushQueue.Length()
-	}
-
-	ch <- prometheus.MustNewConstMetric(
-		flushQueueLengthDesc,
-		prometheus.GaugeValue,
-		float64(flushQueueLength),
-	)
-	flushQueueSpan.Finish()
-
-	ch <- i.ingestedSamples
-	ch <- i.chunkUtilization
-	ch <- i.chunkLength
-	ch <- i.chunkAge
-	ch <- i.queries
-	ch <- i.queriedSamples
-	ch <- i.queriedSeries
-	ch <- i.memoryChunks
 }

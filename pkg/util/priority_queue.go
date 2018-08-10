@@ -3,6 +3,8 @@ package util
 import (
 	"container/heap"
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // PriorityQueue is a priority queue.
@@ -13,6 +15,7 @@ type PriorityQueue struct {
 	closed  bool
 	hit     map[string]struct{}
 	queue   queue
+	length  prometheus.Gauge
 }
 
 // Op is an operation on the priority queue.
@@ -42,9 +45,10 @@ func (q *queue) Pop() interface{} {
 }
 
 // NewPriorityQueue makes a new priority queue.
-func NewPriorityQueue() *PriorityQueue {
+func NewPriorityQueue(length prometheus.Gauge) *PriorityQueue {
 	pq := &PriorityQueue{
-		hit: map[string]struct{}{},
+		hit:    map[string]struct{}{},
+		length: length,
 	}
 	pq.cond = sync.NewCond(&pq.lock)
 	heap.Init(&pq.queue)
@@ -95,6 +99,7 @@ func (pq *PriorityQueue) Enqueue(op Op) bool {
 	pq.hit[op.Key()] = struct{}{}
 	heap.Push(&pq.queue, op)
 	pq.cond.Broadcast()
+	pq.length.Inc()
 	return true
 }
 
@@ -115,5 +120,6 @@ func (pq *PriorityQueue) Dequeue() Op {
 
 	op := heap.Pop(&pq.queue).(Op)
 	delete(pq.hit, op.Key())
+	pq.length.Dec()
 	return op
 }

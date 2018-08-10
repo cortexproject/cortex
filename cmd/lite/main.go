@@ -105,7 +105,6 @@ func main() {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
 	}
-	prometheus.MustRegister(ingester)
 	defer ingester.Shutdown()
 
 	tableClient, err := storage.NewTableClient(storageConfig)

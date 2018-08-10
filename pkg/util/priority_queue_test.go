@@ -6,8 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
+
+var testLengthMetric = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "test_length",
+	Help: "test",
+})
 
 type simpleItem int64
 
@@ -34,7 +40,7 @@ func (r richItem) Key() string {
 }
 
 func TestPriorityQueueBasic(t *testing.T) {
-	queue := NewPriorityQueue()
+	queue := NewPriorityQueue(testLengthMetric)
 	assert.Equal(t, 0, queue.Length(), "Expected length = 0")
 
 	queue.Enqueue(simpleItem(1))
@@ -49,7 +55,7 @@ func TestPriorityQueueBasic(t *testing.T) {
 }
 
 func TestPriorityQueuePriorities(t *testing.T) {
-	queue := NewPriorityQueue()
+	queue := NewPriorityQueue(testLengthMetric)
 	queue.Enqueue(simpleItem(1))
 	queue.Enqueue(simpleItem(2))
 
@@ -61,7 +67,7 @@ func TestPriorityQueuePriorities(t *testing.T) {
 }
 
 func TestPriorityQueuePriorities2(t *testing.T) {
-	queue := NewPriorityQueue()
+	queue := NewPriorityQueue(testLengthMetric)
 	queue.Enqueue(simpleItem(2))
 	queue.Enqueue(simpleItem(1))
 
@@ -73,7 +79,7 @@ func TestPriorityQueuePriorities2(t *testing.T) {
 }
 
 func TestPriorityQueueWait(t *testing.T) {
-	queue := NewPriorityQueue()
+	queue := NewPriorityQueue(testLengthMetric)
 
 	done := make(chan struct{})
 	go func() {

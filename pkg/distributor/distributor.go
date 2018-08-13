@@ -238,17 +238,19 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		metricName, _ := extract.MetricNameFromLabelPairs(ts.Labels)
+		samples := make([]client.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
 			if err := d.limits.ValidateSample(userID, metricName, s); err != nil {
 				lastPartialErr = err
 				continue
 			}
+			samples = append(samples, s)
 		}
 
 		keys = append(keys, key)
 		sampleTrackers = append(sampleTrackers, sampleTracker{
 			labels:  ts.Labels,
-			samples: ts.Samples,
+			samples: samples,
 		})
 		numSamples += len(ts.Samples)
 	}

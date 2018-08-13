@@ -241,8 +241,8 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, shardByAllLabels bo
 
 	var cfg Config
 	util.DefaultValues(&cfg)
-	cfg.IngestionRateLimit = 20
-	cfg.IngestionBurstSize = 20
+	cfg.limits.IngestionRate = 20
+	cfg.limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory
 	cfg.ShardByAllLabels = shardByAllLabels
 
@@ -475,10 +475,10 @@ func TestDistributorValidation(t *testing.T) {
 			d := prepare(t, 3, 3, true)
 			defer d.Stop()
 
-			d.cfg.validationConfig.CreationGracePeriod = 2 * time.Hour
-			d.cfg.validationConfig.RejectOldSamples = true
-			d.cfg.validationConfig.RejectOldSamplesMaxAge = 24 * time.Hour
-			d.cfg.validationConfig.MaxLabelNamesPerSeries = 2
+			d.limits.Defaults.CreationGracePeriod = 2 * time.Hour
+			d.limits.Defaults.RejectOldSamples = true
+			d.limits.Defaults.RejectOldSamplesMaxAge = 24 * time.Hour
+			d.limits.Defaults.MaxLabelNamesPerSeries = 2
 
 			_, err := d.Push(ctx, client.ToWriteRequest(tc.samples))
 			require.Equal(t, tc.err, err)

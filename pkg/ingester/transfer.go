@@ -64,7 +64,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		}
 	}()
 
-	userStates := newUserStates(&i.cfg.userStatesConfig)
+	userStates := newUserStates(i.limits, i.cfg)
 	fromIngesterID := ""
 
 	for {

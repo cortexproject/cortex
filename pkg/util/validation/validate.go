@@ -2,9 +2,6 @@ package validation
 
 import (
 	"net/http"
-	"time"
-
-	"flag"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -46,41 +43,14 @@ func init() {
 	prometheus.MustRegister(DiscardedSamples)
 }
 
-// Config for validation settings and options.
-type Config struct {
-	// maximum length a label name can be
-	MaxLabelNameLength int
-
-	// maximum length a label value can be. This also is the maximum length of a metric name.
-	MaxLabelValueLength int
-
-	// maximum number of label/value pairs timeseries.
-	MaxLabelNamesPerSeries int
-
-	// Config for rejecting old samples.
-	RejectOldSamples       bool
-	RejectOldSamplesMaxAge time.Duration
-	CreationGracePeriod    time.Duration
-}
-
-// RegisterFlags registers a set of command line flags for setting options regarding sample validation at ingestion time.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
-	f.IntVar(&cfg.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
-	f.IntVar(&cfg.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
-	f.BoolVar(&cfg.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
-	f.DurationVar(&cfg.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
-	f.DurationVar(&cfg.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
-}
-
 // ValidateSample returns an err if the sample is invalid.
-func (cfg *Config) ValidateSample(userID string, metricName []byte, s client.Sample) error {
-	if cfg.RejectOldSamples && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge) {
+func (cfg *Overrides) ValidateSample(userID string, metricName []byte, s client.Sample) error {
+	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, metricName, model.Time(s.TimestampMs))
 	}
 
-	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod) {
+	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod(userID)) {
 		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooNew, metricName, model.Time(s.TimestampMs))
 	}
@@ -89,7 +59,7 @@ func (cfg *Config) ValidateSample(userID string, metricName []byte, s client.Sam
 }
 
 // ValidateLabels returns an err if the labels are invalid.
-func (cfg *Config) ValidateLabels(userID string, ls []client.LabelPair) error {
+func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelPair) error {
 	metricName, err := extract.MetricNameFromLabelPairs(ls)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
@@ -100,11 +70,13 @@ func (cfg *Config) ValidateLabels(userID string, ls []client.LabelPair) error {
 	}
 
 	numLabelNames := len(ls)
-	if numLabelNames > cfg.MaxLabelNamesPerSeries {
+	if numLabelNames > cfg.MaxLabelNamesPerSeries(userID) {
 		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, metricName, numLabelNames, cfg.MaxLabelNamesPerSeries)
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, metricName, numLabelNames, cfg.MaxLabelNamesPerSeries(userID))
 	}
 
+	maxLabelNameLength := cfg.MaxLabelNameLength(userID)
+	maxLabelValueLength := cfg.MaxLabelValueLength(userID)
 	for _, l := range ls {
 		var errTemplate string
 		var reason string
@@ -113,11 +85,11 @@ func (cfg *Config) ValidateLabels(userID string, ls []client.LabelPair) error {
 			reason = invalidLabel
 			errTemplate = errInvalidLabel
 			cause = l.Name
-		} else if len(l.Name) > cfg.MaxLabelNameLength {
+		} else if len(l.Name) > maxLabelNameLength {
 			reason = labelNameTooLong
 			errTemplate = errLabelNameTooLong
 			cause = l.Name
-		} else if len(l.Value) > cfg.MaxLabelValueLength {
+		} else if len(l.Value) > maxLabelValueLength {
 			reason = labelValueTooLong
 			errTemplate = errLabelValueTooLong
 			cause = l.Value

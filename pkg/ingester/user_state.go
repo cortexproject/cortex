@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"golang.org/x/net/context"
@@ -19,20 +20,23 @@ import (
 )
 
 var (
-	memSeriesCreatedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	memSeries = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_memory_series",
+		Help: "The current number of series in memory.",
+	})
+	memUsers = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_memory_users",
+		Help: "The current number of users in memory.",
+	})
+	memSeriesCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ingester_memory_series_created_total",
 		Help: "The total number of series that were created per user.",
 	}, []string{"user"})
-	memSeriesRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	memSeriesRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ingester_memory_series_removed_total",
 		Help: "The total number of series that were removed per user.",
 	}, []string{"user"})
 )
-
-func init() {
-	prometheus.MustRegister(memSeriesCreatedTotal)
-	prometheus.MustRegister(memSeriesRemovedTotal)
-}
 
 type userStates struct {
 	states sync.Map
@@ -61,8 +65,8 @@ type UserStatesConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *UserStatesConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-	f.IntVar(&cfg.MaxSeriesPerUser, "ingester.max-series-per-user", DefaultMaxSeriesPerUser, "Maximum number of active series per user.")
-	f.IntVar(&cfg.MaxSeriesPerMetric, "ingester.max-series-per-metric", DefaultMaxSeriesPerMetric, "Maximum number of active series per metric name.")
+	f.IntVar(&cfg.MaxSeriesPerUser, "ingester.max-series-per-user", 5000000, "Maximum number of active series per user.")
+	f.IntVar(&cfg.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
 }
 
 func newUserStates(cfg *UserStatesConfig) *userStates {
@@ -96,25 +100,6 @@ func (us *userStates) updateRates() {
 		state.ingestedSamples.tick()
 		return true
 	})
-}
-
-func (us *userStates) numUsers() int {
-	count := 0
-	us.states.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return count
-}
-
-func (us *userStates) numSeries() int {
-	numSeries := 0
-	us.states.Range(func(key, value interface{}) bool {
-		state := value.(*userState)
-		numSeries += state.fpToSeries.length()
-		return true
-	})
-	return numSeries
 }
 
 func (us *userStates) get(userID string) (*userState, bool) {
@@ -154,7 +139,10 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 			seriesInMetric:  map[model.LabelValue]int{},
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
-		stored, _ := us.states.LoadOrStore(userID, state)
+		stored, ok := us.states.LoadOrStore(userID, state)
+		if !ok {
+			memUsers.Inc()
+		}
 		state = stored.(*userState)
 	}
 
@@ -199,6 +187,7 @@ func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model
 
 	util.Event().Log("msg", "new series", "userID", u.userID, "fp", fp, "series", metric)
 	memSeriesCreatedTotal.WithLabelValues(u.userID).Inc()
+	memSeries.Inc()
 
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
@@ -238,6 +227,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
 	}
 
 	memSeriesRemovedTotal.WithLabelValues(u.userID).Inc()
+	memSeries.Dec()
 }
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.

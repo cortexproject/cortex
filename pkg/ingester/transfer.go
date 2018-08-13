@@ -102,7 +102,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			return err
 		}
 
-		i.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+		memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 		receivedChunks.Add(float64(len(descs)))
 	}
 

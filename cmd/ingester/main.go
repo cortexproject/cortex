@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 
@@ -82,7 +81,6 @@ func main() {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
 	}
-	prometheus.MustRegister(ingester)
 	defer ingester.Shutdown()
 
 	client.RegisterIngesterServer(server.GRPC, ingester)

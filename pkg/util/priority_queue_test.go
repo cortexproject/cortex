@@ -34,7 +34,7 @@ func (r richItem) Key() string {
 }
 
 func TestPriorityQueueBasic(t *testing.T) {
-	queue := NewPriorityQueue()
+	queue := NewPriorityQueue(nil)
 	assert.Equal(t, 0, queue.Length(), "Expected length = 0")
 
 	queue.Enqueue(simpleItem(1))
@@ -49,7 +49,7 @@ func TestPriorityQueueBasic(t *testing.T) {
 }
 
 func TestPriorityQueuePriorities(t *testing.T) {
-	queue := NewPriorityQueue()
+	queue := NewPriorityQueue(nil)
 	queue.Enqueue(simpleItem(1))
 	queue.Enqueue(simpleItem(2))
 
@@ -61,7 +61,7 @@ func TestPriorityQueuePriorities(t *testing.T) {
 }
 
 func TestPriorityQueuePriorities2(t *testing.T) {
-	queue := NewPriorityQueue()
+	queue := NewPriorityQueue(nil)
 	queue.Enqueue(simpleItem(2))
 	queue.Enqueue(simpleItem(1))
 
@@ -73,7 +73,7 @@ func TestPriorityQueuePriorities2(t *testing.T) {
 }
 
 func TestPriorityQueueWait(t *testing.T) {
-	queue := NewPriorityQueue()
+	queue := NewPriorityQueue(nil)
 
 	done := make(chan struct{})
 	go func() {

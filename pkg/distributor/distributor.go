@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	rate_limited = "rate_limited"
+	rateLimited = "rate_limited"
 )
 
 var (
@@ -268,7 +268,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	if !limiter.AllowN(time.Now(), numSamples) {
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
-		validation.DiscardedSamples.WithLabelValues(rate_limited, userID).Add(float64(numSamples))
+		validation.DiscardedSamples.WithLabelValues(rateLimited, userID).Add(float64(numSamples))
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), numSamples)
 	}
 

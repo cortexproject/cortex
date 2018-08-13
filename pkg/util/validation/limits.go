@@ -48,7 +48,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
-	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Minute, "Period with this to reload the overrides.")
+	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with this to reload the overrides.")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

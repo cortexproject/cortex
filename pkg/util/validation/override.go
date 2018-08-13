@@ -30,6 +30,7 @@ type Overrides struct {
 // NewOverrides makes a new Overrides.
 func NewOverrides(defaults Limits) (*Overrides, error) {
 	if defaults.PerTenantOverrideConfig == "" {
+		level.Info(util.Logger).Log("msg", "per-tenant overides disabled")
 		return &Overrides{
 			Defaults:  defaults,
 			overrides: map[string]Limits{},
@@ -53,7 +54,7 @@ func NewOverrides(defaults Limits) (*Overrides, error) {
 }
 
 func (o *Overrides) loop() {
-	ticker := time.NewTimer(o.Defaults.PerTenantOverridePeriod)
+	ticker := time.NewTicker(o.Defaults.PerTenantOverridePeriod)
 	defer ticker.Stop()
 
 	for {
@@ -62,7 +63,7 @@ func (o *Overrides) loop() {
 			overrides, err := loadOverrides(o.Defaults.PerTenantOverrideConfig)
 			if err != nil {
 				overridesReloadSuccess.Set(0)
-				level.Error(util.Logger).Log("msg", "failed to reload overrrides", "err", err)
+				level.Error(util.Logger).Log("msg", "failed to reload overrides", "err", err)
 				continue
 			}
 			overridesReloadSuccess.Set(1)

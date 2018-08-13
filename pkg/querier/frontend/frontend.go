@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	queueDutation = promauto.NewHistogram(prometheus.HistogramOpts{
+	queueDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "query_frontend_queue_duration_seconds",
 		Help:      "Time spend by requests queued.",
@@ -234,7 +234,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 		// Tell close() we've processed a request.
 		f.cond.Broadcast()
 
-		queueDutation.Observe(time.Now().Sub(request.enqueueTime).Seconds())
+		queueDuration.Observe(time.Now().Sub(request.enqueueTime).Seconds())
 		queueLength.Add(-1)
 		return request, nil
 	}

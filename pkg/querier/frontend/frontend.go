@@ -206,7 +206,7 @@ func (f *Frontend) queueRequest(userID string, req *request) error {
 }
 
 // getQueue picks a random queue and takes the next request off of it, so we
-// faily process users queries.  Will block if there are no requests.
+// fairly process users queries.  Will block if there are no requests.
 func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()

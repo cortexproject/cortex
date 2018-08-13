@@ -19,6 +19,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	cortex_chunk "github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
@@ -64,8 +65,8 @@ var (
 // Config for an Ingester.
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig
-	userStatesConfig UserStatesConfig
 	clientConfig     client.Config
+	limits           validation.Limits
 
 	// Config for transferring chunks.
 	SearchPendingFor time.Duration
@@ -78,9 +79,7 @@ type Config struct {
 	ConcurrentFlushes int
 	ChunkEncoding     string
 
-	// Config for queries.
-	MaxSeriesPerQuery  int
-	MaxSamplesPerQuery int
+	RateUpdatePeriod time.Duration
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
@@ -94,8 +93,8 @@ func (cfg *Config) SetClientConfig(clientConfig client.Config) {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
-	cfg.userStatesConfig.RegisterFlags(f)
 	cfg.clientConfig.RegisterFlags(f)
+	cfg.limits.RegisterFlags(f)
 
 	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
@@ -104,8 +103,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", "1", "Encoding version to use for chunks.")
-	f.IntVar(&cfg.MaxSeriesPerQuery, "ingester.max-series-per-query", 10000, "The maximum number of series that a query can return.")
-	f.IntVar(&cfg.MaxSamplesPerQuery, "ingester.max-samples-per-query", 100000, "The maximum number of samples that a query can return.")
+	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 
 	// DEPRECATED, no-op
 	f.Bool("ingester.reject-old-samples", false, "DEPRECATED. Reject old samples.")
@@ -121,6 +119,7 @@ type Ingester struct {
 	cfg        Config
 	chunkStore ChunkStore
 	lifecycler *ring.Lifecycler
+	limits     *validation.Overrides
 
 	stopLock sync.RWMutex
 	stopped  bool
@@ -154,17 +153,22 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		return nil, err
 	}
 
+	limits, err := validation.NewOverrides(cfg.limits)
+	if err != nil {
+		return nil, err
+	}
+
 	i := &Ingester{
 		cfg: cfg,
 
+		limits:     limits,
 		chunkStore: chunkStore,
-		userStates: newUserStates(&cfg.userStatesConfig),
+		userStates: newUserStates(limits, cfg),
 
 		quit:        make(chan struct{}),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 	}
 
-	var err error
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i)
 	if err != nil {
 		return nil, err
@@ -188,7 +192,7 @@ func (i *Ingester) loop() {
 	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
 	defer flushTicker.Stop()
 
-	rateUpdateTicker := time.NewTicker(i.cfg.userStatesConfig.RateUpdatePeriod)
+	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
 	for {
@@ -207,6 +211,8 @@ func (i *Ingester) loop() {
 
 // Shutdown beings the process to stop this ingester.
 func (i *Ingester) Shutdown() {
+	i.limits.Stop()
+
 	// First wait for our flush loop to stop.
 	close(i.quit)
 	i.done.Wait()
@@ -309,6 +315,11 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*labels.Matcher) (model.Matrix, error) {
 	queries.Inc()
 
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	result := model.Matrix{}
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
@@ -321,7 +332,8 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 
 	numSamples := 0
 	numSeries := 0
-	err = state.forSeriesMatching(matchers, i.cfg.MaxSeriesPerQuery, func(_ model.Fingerprint, series *memorySeries) error {
+	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
+	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
 		numSeries++
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
@@ -329,8 +341,8 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 		}
 
 		numSamples += len(values)
-		if numSamples > i.cfg.MaxSamplesPerQuery {
-			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", i.cfg.MaxSamplesPerQuery)
+		if numSamples > maxSamplesPerQuery {
+			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
 		}
 
 		result = append(result, &model.SampleStream{
@@ -383,7 +395,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 	metrics := map[model.Fingerprint]model.Metric{}
 	for _, matchers := range matchersSet {
-		if err := state.forSeriesMatching(matchers, i.cfg.MaxSeriesPerQuery, func(fp model.Fingerprint, series *memorySeries) error {
+		if err := state.forSeriesMatching(matchers, func(fp model.Fingerprint, series *memorySeries) error {
 			if _, ok := metrics[fp]; !ok {
 				metrics[fp] = series.metric
 			}

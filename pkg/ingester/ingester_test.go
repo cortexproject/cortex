@@ -163,7 +163,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 
 func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
-	cfg.userStatesConfig.MaxSeriesPerUser = 1
+	cfg.limits.MaxSeriesPerUser = 1
 
 	_, ing := newTestStore(t, cfg)
 	defer ing.Shutdown()
@@ -230,7 +230,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
-	cfg.userStatesConfig.MaxSeriesPerMetric = 1
+	cfg.limits.MaxSeriesPerMetric = 1
 
 	_, ing := newTestStore(t, cfg)
 	defer ing.Shutdown()

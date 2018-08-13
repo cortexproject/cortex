@@ -1,11 +1,9 @@
 package ingester
 
 import (
-	"flag"
 	"fmt"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -17,6 +15,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/cortex/pkg/util/extract"
+	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 var (
@@ -40,10 +39,12 @@ var (
 
 type userStates struct {
 	states sync.Map
-	cfg    *UserStatesConfig
+	limits *validation.Overrides
+	cfg    Config
 }
 
 type userState struct {
+	limits          *validation.Overrides
 	userID          string
 	fpLocker        *fingerprintLocker
 	fpToSeries      *seriesMap
@@ -55,23 +56,10 @@ type userState struct {
 	seriesInMetric    map[model.LabelValue]int
 }
 
-// UserStatesConfig configures userStates properties.
-type UserStatesConfig struct {
-	RateUpdatePeriod   time.Duration
-	MaxSeriesPerUser   int
-	MaxSeriesPerMetric int
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *UserStatesConfig) RegisterFlags(f *flag.FlagSet) {
-	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-	f.IntVar(&cfg.MaxSeriesPerUser, "ingester.max-series-per-user", 5000000, "Maximum number of active series per user.")
-	f.IntVar(&cfg.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
-}
-
-func newUserStates(cfg *UserStatesConfig) *userStates {
+func newUserStates(limits *validation.Overrides, cfg Config) *userStates {
 	return &userStates{
-		cfg: cfg,
+		limits: limits,
+		cfg:    cfg,
 	}
 }
 
@@ -132,6 +120,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 		// us, in which case this userState will be discarded
 		state = &userState{
 			userID:          userID,
+			limits:          us.limits,
 			fpToSeries:      newSeriesMap(),
 			fpLocker:        newFingerprintLocker(16),
 			index:           newInvertedIndex(),
@@ -146,11 +135,11 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 		state = stored.(*userState)
 	}
 
-	fp, series, err := state.getSeries(metric, us.cfg)
+	fp, series, err := state.getSeries(metric)
 	return state, fp, series, err
 }
 
-func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model.Fingerprint, *memorySeries, error) {
+func (u *userState) getSeries(metric model.Metric) (model.Fingerprint, *memorySeries, error) {
 	rawFP := metric.FastFingerprint()
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -169,9 +158,9 @@ func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model
 	// all proceed to add a new series. This is likely not worth addressing,
 	// as this should happen rarely (all samples from one push are added
 	// serially), and the overshoot in allowed series would be minimal.
-	if u.fpToSeries.length() >= cfg.MaxSeriesPerUser {
+	if u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
 		u.fpLocker.Unlock(fp)
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", cfg.MaxSeriesPerUser)
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
 
 	metricName, err := extract.MetricNameFromMetric(metric)
@@ -180,9 +169,9 @@ func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model
 		return fp, nil, err
 	}
 
-	if !u.canAddSeriesFor(metricName, cfg) {
+	if !u.canAddSeriesFor(metricName) {
 		u.fpLocker.Unlock(fp)
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", cfg.MaxSeriesPerMetric, metricName, metric)
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}
 
 	util.Event().Log("msg", "new series", "userID", u.userID, "fp", fp, "series", metric)
@@ -196,11 +185,11 @@ func (u *userState) getSeries(metric model.Metric, cfg *UserStatesConfig) (model
 	return fp, series, nil
 }
 
-func (u *userState) canAddSeriesFor(metric model.LabelValue, cfg *UserStatesConfig) bool {
+func (u *userState) canAddSeriesFor(metric model.LabelValue) bool {
 	u.seriesInMetricMtx.Lock()
 	defer u.seriesInMetricMtx.Unlock()
 
-	if u.seriesInMetric[metric] >= cfg.MaxSeriesPerMetric {
+	if u.seriesInMetric[metric] >= u.limits.MaxSeriesPerMetric(u.userID) {
 		return false
 	}
 	u.seriesInMetric[metric]++
@@ -232,10 +221,10 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.
 // Deals with locking and the quirks of zero-length matcher values.
-func (u *userState) forSeriesMatching(allMatchers []*labels.Matcher, maxSeries int, callback func(model.Fingerprint, *memorySeries) error) error {
+func (u *userState) forSeriesMatching(allMatchers []*labels.Matcher, callback func(model.Fingerprint, *memorySeries) error) error {
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	fps := u.index.lookup(matchers)
-	if len(fps) > maxSeries {
+	if len(fps) > u.limits.MaxSeriesPerQuery(u.userID) {
 		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
 	}
 

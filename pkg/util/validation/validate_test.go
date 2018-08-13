@@ -6,18 +6,22 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func TestValidateLabels(t *testing.T) {
-	var cfg Config
+	var cfg Limits
 	userID := "testUser"
 	util.DefaultValues(&cfg)
 	cfg.MaxLabelValueLength = 25
 	cfg.MaxLabelNameLength = 25
 	cfg.MaxLabelNamesPerSeries = 64
+	overrides, err := NewOverrides(cfg)
+	require.NoError(t, err)
 
 	for _, c := range []struct {
 		metric model.Metric
@@ -49,7 +53,7 @@ func TestValidateLabels(t *testing.T) {
 		},
 	} {
 
-		err := cfg.ValidateLabels(userID, client.ToLabelPairs(c.metric))
+		err := overrides.ValidateLabels(userID, client.ToLabelPairs(c.metric))
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }

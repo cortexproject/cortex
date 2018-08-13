@@ -34,6 +34,10 @@ import (
 	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
+const (
+	rateLimited = "rate_limited"
+)
+
 var (
 	queryDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
@@ -82,10 +86,10 @@ var (
 // Distributor is a storage.SampleAppender and a client.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
-	cfg          Config
-	ring         ring.ReadRing
-	ingesterPool *ingester_client.Pool
-
+	cfg           Config
+	ring          ring.ReadRing
+	ingesterPool  *ingester_client.Pool
+	limits        *validation.Overrides
 	billingClient *billing.Client
 
 	// Per-user rate limiters.
@@ -100,11 +104,9 @@ type Config struct {
 	BillingConfig        billing.Config
 	IngesterClientConfig ingester_client.Config
 	PoolConfig           ingester_client.PoolConfig
-	validationConfig     validation.Config
+	limits               validation.Limits
 
-	RemoteTimeout      time.Duration
-	IngestionRateLimit float64
-	IngestionBurstSize int
+	RemoteTimeout time.Duration
 
 	ShardByAllLabels bool
 
@@ -117,12 +119,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.IngesterClientConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
-	cfg.validationConfig.RegisterFlags(f)
+	cfg.limits.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
-	f.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
-	f.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
@@ -143,6 +143,11 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 		}
 	}
 
+	limits, err := validation.NewOverrides(cfg.limits)
+	if err != nil {
+		return nil, err
+	}
+
 	replicationFactor.Set(float64(ring.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
@@ -151,6 +156,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 		ring:           ring,
 		ingesterPool:   ingester_client.NewPool(cfg.PoolConfig, ring, cfg.ingesterClientFactory, util.Logger),
 		billingClient:  billingClient,
+		limits:         limits,
 		ingestLimiters: map[string]*rate.Limiter{},
 	}
 	return d, nil
@@ -158,6 +164,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 
 // Stop stops the distributor's maintenance loop.
 func (d *Distributor) Stop() {
+	d.limits.Stop()
 	d.ingesterPool.Stop()
 }
 
@@ -229,23 +236,25 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			return nil, err
 		}
 
-		if err := d.cfg.validationConfig.ValidateLabels(userID, ts.Labels); err != nil {
+		if err := d.limits.ValidateLabels(userID, ts.Labels); err != nil {
 			lastPartialErr = err
 			continue
 		}
 
 		metricName, _ := extract.MetricNameFromLabelPairs(ts.Labels)
+		samples := make([]client.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
-			if err := d.cfg.validationConfig.ValidateSample(userID, metricName, s); err != nil {
+			if err := d.limits.ValidateSample(userID, metricName, s); err != nil {
 				lastPartialErr = err
 				continue
 			}
+			samples = append(samples, s)
 		}
 
 		keys = append(keys, key)
 		sampleTrackers = append(sampleTrackers, sampleTracker{
 			labels:  ts.Labels,
-			samples: ts.Samples,
+			samples: samples,
 		})
 		numSamples += len(ts.Samples)
 	}
@@ -259,6 +268,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	if !limiter.AllowN(time.Now(), numSamples) {
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
+		validation.DiscardedSamples.WithLabelValues(rateLimited, userID).Add(float64(numSamples))
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), numSamples)
 	}
 
@@ -309,7 +319,7 @@ func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
 		return limiter
 	}
 
-	limiter := rate.NewLimiter(rate.Limit(d.cfg.IngestionRateLimit), d.cfg.IngestionBurstSize)
+	limiter := rate.NewLimiter(rate.Limit(d.limits.IngestionRate(userID)), d.limits.IngestionBurstSize(userID))
 	d.ingestLimiters[userID] = limiter
 	return limiter
 }

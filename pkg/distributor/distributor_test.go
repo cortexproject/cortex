@@ -473,6 +473,10 @@ type stream struct {
 	results []*client.QueryStreamResponse
 }
 
+func (*stream) CloseSend() error {
+	return nil
+}
+
 func (s *stream) Recv() (*client.QueryStreamResponse, error) {
 	if s.i >= len(s.results) {
 		return nil, io.EOF

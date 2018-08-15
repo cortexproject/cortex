@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -50,11 +51,14 @@ func (q *ingesterStreamingQuerier) Select(_ *storage.SelectParams, matchers ...*
 			return nil, promql.ErrStorage(err)
 		}
 
-		serieses = append(serieses, &chunkSeries{
-			labels:            fromLabelPairs(result.Labels),
+		ls := fromLabelPairs(result.Labels)
+		sort.Sort(ls)
+		series := &chunkSeries{
+			labels:            ls,
 			chunks:            chunks,
 			chunkIteratorFunc: q.chunkIteratorFunc,
-		})
+		}
+		serieses = append(serieses, series)
 	}
 
 	return newConcreteSeriesSet(serieses), nil

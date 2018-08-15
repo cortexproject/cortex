@@ -123,11 +123,6 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 
 // queryIngesterStream queries the ingesters using the new streaming API.
 func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *client.QueryRequest) ([]*client.QueryStreamResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	// Fetch samples from multiple ingesters
 	results, err := replicationSet.Do(ctx, func(ing *ring.IngesterDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
@@ -141,6 +136,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 			return nil, err
 		}
+		defer stream.CloseSend()
 
 		var result []*ingester_client.QueryStreamResponse
 		for {
@@ -158,29 +154,32 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		return nil, err
 	}
 
-	hashToSeries := map[uint32]*ingester_client.QueryStreamResponse{}
+	hashToSeries := map[model.Fingerprint]ingester_client.QueryStreamResponse{}
 	for _, result := range results {
-		for i := range result.([]*ingester_client.QueryStreamResponse) {
-			response := result.([]*ingester_client.QueryStreamResponse)[i]
-
-			hash, err := shardByAllLabels(userID, response.Labels)
-			if err != nil {
-				return nil, err
-			}
-
-			series, ok := hashToSeries[hash]
-			if !ok {
-				hashToSeries[hash] = response
-				continue
-			}
-
-			series.Chunks = append(series.Chunks, response.Chunks...)
+		for _, series := range result.([]*ingester_client.QueryStreamResponse) {
+			hash := ingester_client.FromLabelPairs(series.Labels).FastFingerprint()
+			existing := hashToSeries[hash]
+			existing.Labels = series.Labels
+			existing.Chunks = append(existing.Chunks, series.Chunks...)
+			hashToSeries[hash] = existing
 		}
 	}
 	result := make([]*client.QueryStreamResponse, 0, len(hashToSeries))
-	for _, series := range hashToSeries {
-		result = append(result, series)
+	for hash := range hashToSeries {
+		series := hashToSeries[hash]
+		result = append(result, &series)
 	}
 
 	return result, nil
+}
+
+func fromLabelPairs(in []client.LabelPair) labels.Labels {
+	out := make(labels.Labels, 0, len(in))
+	for _, pair := range in {
+		out = append(out, labels.Label{
+			Name:  string(pair.Name),
+			Value: string(pair.Value),
+		})
+	}
+	return out
 }

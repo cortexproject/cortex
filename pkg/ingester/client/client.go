@@ -38,6 +38,7 @@ func MakeIngesterClient(addr string, cfg Config) (IngesterClient, error) {
 		)),
 		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
 			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.StreamClientUserHeaderInterceptor,
 			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
 		)),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize)),

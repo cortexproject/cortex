@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -21,8 +22,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
 )
 
 var (
@@ -201,6 +204,13 @@ func TestDistributorPushQuery(t *testing.T) {
 			sort.Sort(response)
 			assert.Equal(t, tc.expectedResponse, response)
 			assert.Equal(t, tc.expectedError, err)
+
+			streams, err := d.QueryStream(ctx, 0, 10, tc.matchers...)
+			assert.Equal(t, tc.expectedError, err)
+
+			response, err = chunkcompat.StreamsToMatrix(0, 10, streams)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expectedResponse.String(), response.String())
 		})
 	}
 }
@@ -404,6 +414,72 @@ func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts
 		}
 	}
 	return &response, nil
+}
+
+func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest, opts ...grpc.CallOption) (client.Ingester_QueryStreamClient, error) {
+	i.Lock()
+	defer i.Unlock()
+
+	if !i.happy {
+		return nil, errFail
+	}
+
+	_, _, matchers, err := client.FromQueryRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	results := []*client.QueryStreamResponse{}
+	for _, ts := range i.timeseries {
+		if !match(ts.Labels, matchers) {
+			continue
+		}
+
+		c := chunk.New()
+		for _, sample := range ts.Samples {
+			cs, err := c.Add(model.SamplePair{
+				Timestamp: model.Time(sample.TimestampMs),
+				Value:     model.SampleValue(sample.Value),
+			})
+			if err != nil {
+				panic(err)
+			}
+			c = cs[0]
+		}
+
+		chunk := client.Chunk{
+			//StartTimestampMs: int64(),
+			//EndTimestampMs:   int64(d.LastTime),
+			Encoding: int32(c.Encoding()),
+			Data:     make([]byte, chunk.ChunkLen, chunk.ChunkLen),
+		}
+		if err := c.MarshalToBuf(chunk.Data); err != nil {
+			panic(err)
+		}
+
+		results = append(results, &client.QueryStreamResponse{
+			Labels: ts.Labels,
+			Chunks: []client.Chunk{chunk},
+		})
+	}
+	return &stream{
+		results: results,
+	}, nil
+}
+
+type stream struct {
+	grpc.ClientStream
+	i       int
+	results []*client.QueryStreamResponse
+}
+
+func (s *stream) Recv() (*client.QueryStreamResponse, error) {
+	if s.i >= len(s.results) {
+		return nil, io.EOF
+	}
+	result := s.results[s.i]
+	s.i++
+	return result, nil
 }
 
 func (i *mockIngester) AllUserStats(ctx context.Context, in *client.UserStatsRequest, opts ...grpc.CallOption) (*client.UsersStatsResponse, error) {

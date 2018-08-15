@@ -26,6 +26,17 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
+			GRPCStreamMiddleware: []grpc.StreamServerInterceptor{
+				func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+					// Don't check auth header on TransferChunks, as we weren't originally
+					// sending it and this could cause transfers to fail on update.
+					if info.FullMethod == "/cortex.Ingester/TransferChunks" {
+						return handler(srv, ss)
+					}
+
+					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+				},
+			},
 			ExcludeRequestInLog: true,
 		}
 		chunkStoreConfig chunk.StoreConfig

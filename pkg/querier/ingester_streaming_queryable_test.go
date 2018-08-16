@@ -14,7 +14,7 @@ import (
 
 func TestIngesterStreaming(t *testing.T) {
 	d := &mockDistributor{
-		r: []*client.QueryStreamResponse{
+		r: []client.TimeSeriesChunk{
 			{
 				Labels: []client.LabelPair{
 					{Name: wire.Bytes("bar"), Value: wire.Bytes("baz")},

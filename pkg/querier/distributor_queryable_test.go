@@ -52,13 +52,13 @@ func TestDistributorQuerier(t *testing.T) {
 
 type mockDistributor struct {
 	m model.Matrix
-	r []*client.QueryStreamResponse
+	r []client.TimeSeriesChunk
 }
 
 func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	return m.m, nil
 }
-func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]*client.QueryStreamResponse, error) {
+func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error) {
 	return m.r, nil
 }
 func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {

@@ -205,10 +205,10 @@ func TestDistributorPushQuery(t *testing.T) {
 			assert.Equal(t, tc.expectedResponse, response)
 			assert.Equal(t, tc.expectedError, err)
 
-			streams, err := d.QueryStream(ctx, 0, 10, tc.matchers...)
+			series, err := d.QueryStream(ctx, 0, 10, tc.matchers...)
 			assert.Equal(t, tc.expectedError, err)
 
-			response, err = chunkcompat.StreamsToMatrix(0, 10, streams)
+			response, err = chunkcompat.SeriesChunksToMatrix(0, 10, series)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedResponse.String(), response.String())
 		})
@@ -458,8 +458,12 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 		}
 
 		results = append(results, &client.QueryStreamResponse{
-			Labels: ts.Labels,
-			Chunks: []client.Chunk{chunk},
+			Timeseries: []client.TimeSeriesChunk{
+				{
+					Labels: ts.Labels,
+					Chunks: []client.Chunk{chunk},
+				},
+			},
 		})
 	}
 	return &stream{

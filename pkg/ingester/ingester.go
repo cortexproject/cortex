@@ -30,6 +30,9 @@ const (
 	// Reasons to discard samples.
 	outOfOrderTimestamp = "timestamp_out_of_order"
 	duplicateSample     = "multiple_values_for_timestamp"
+
+	// Number of timeseries to return in each batch of a QueryStream.
+	queryStreamBatchSize = 10
 )
 
 var (
@@ -379,22 +382,48 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	}
 
 	numSeries, numChunks := 0, 0
+	batch := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 	// We'd really like to series series in label order, not FP order, so we
 	// can iteratively merge them with entries coming from the chunk store.  But
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
 	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
 		numSeries++
-		chunks, err := toWireChunks(series.chunkDescs)
+		chunks := make([]*desc, 0, len(series.chunkDescs))
+		for _, chunk := range series.chunkDescs {
+			if !(chunk.FirstTime.After(model.Time(req.EndTimestampMs)) || chunk.LastTime.Before(model.Time(req.StartTimestampMs))) {
+				chunks = append(chunks, chunk)
+			}
+		}
+
+		wireChunks, err := toWireChunks(chunks)
 		if err != nil {
 			return err
 		}
-		numChunks += len(chunks)
-		return stream.Send(&client.QueryStreamResponse{
+
+		numChunks += len(wireChunks)
+		batch = append(batch, client.TimeSeriesChunk{
 			Labels: client.ToLabelPairs(series.metric),
-			Chunks: chunks,
+			Chunks: wireChunks,
 		})
+
+		if len(batch) >= queryStreamBatchSize {
+			err = stream.Send(&client.QueryStreamResponse{
+				Timeseries: batch,
+			})
+			batch = batch[:0]
+		}
+		return err
 	})
+	if err != nil {
+		return err
+	}
+
+	if len(batch) >= queryStreamBatchSize {
+		err = stream.Send(&client.QueryStreamResponse{
+			Timeseries: batch,
+		})
+	}
 	queriedSeries.Observe(float64(numSeries))
 	queriedChunks.Observe(float64(numChunks))
 	return err

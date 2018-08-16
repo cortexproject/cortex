@@ -8,15 +8,29 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
-// StreamsToMatrix converts slice of QueryStreamResponse to a model.Matrix.
-func StreamsToMatrix(from, through model.Time, response []*client.QueryStreamResponse) (model.Matrix, error) {
-	if response == nil {
+// StreamsToMatrix converts a slice of QueryStreamResponse to a model.Matrix.
+func StreamsToMatrix(from, through model.Time, responses []*client.QueryStreamResponse) (model.Matrix, error) {
+	result := model.Matrix{}
+	for _, response := range responses {
+		series, err := SeriesChunksToMatrix(from, through, response.Timeseries)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, series...)
+	}
+	return result, nil
+}
+
+// SeriesChunksToMatrix converts slice of []client.TimeSeriesChunk to a model.Matrix.
+func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeriesChunk) (model.Matrix, error) {
+	if serieses == nil {
 		return nil, nil
 	}
 
 	result := model.Matrix{}
-	for _, stream := range response {
-		chunks, err := FromChunks("", stream.Chunks)
+	for _, series := range serieses {
+		chunks, err := FromChunks("", series.Chunks)
 		if err != nil {
 			return nil, err
 		}
@@ -31,7 +45,7 @@ func StreamsToMatrix(from, through model.Time, response []*client.QueryStreamRes
 		}
 
 		result = append(result, &model.SampleStream{
-			Metric: client.FromLabelPairs(stream.Labels),
+			Metric: client.FromLabelPairs(series.Labels),
 			Values: samples,
 		})
 	}

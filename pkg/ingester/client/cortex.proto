@@ -54,11 +54,9 @@ message QueryResponse {
   repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false];
 }
 
-
-// QueryStreamResponse represents all the chunks for a given timeseries.
+// QueryStreamResponse contains a batch of timeseries chunks.
 message QueryStreamResponse {
-  repeated LabelPair labels = 1 [(gogoproto.nullable) = false];
-  repeated Chunk chunks = 2 [(gogoproto.nullable) = false];
+  repeated TimeSeriesChunk timeseries = 1 [(gogoproto.nullable) = false];
 }
 
 message LabelValuesRequest {

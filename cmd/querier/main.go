@@ -98,6 +98,7 @@ func main() {
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.
 		util.Logger,
+		querier.DummyRulesRetriever{},
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)

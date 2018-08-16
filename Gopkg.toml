@@ -6,6 +6,17 @@
   name = "github.com/aws/aws-sdk-go"
   version = "v1.10.8"
 
+# Need an override on jaeger-lib as it has a ^0.8.0 contraint on client_golang.
+[[override]]
+  name = "github.com/uber/jaeger-lib"
+  version = ">=v1.5.0"
+
+# Pin to master branch until there is a more recent stable release:
+#   https://github.com/prometheus/client_golang/issues/375
+[[override]]
+  name = "github.com/prometheus/client_golang"
+  branch = "master"
+
 [[constraint]]
   name = "github.com/prometheus/alertmanager"
   revision = "fb713f6d8239b57c646cae30f78e8b4b8861a1aa"
@@ -26,11 +37,11 @@
 
 [[override]]
   name = "k8s.io/client-go"
-  revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"
+  revision = "7d04d0e2a0a1a4d4a1cd6baa432a2301492e4e65"
 
 [[override]]
   name = "k8s.io/apimachinery"
-  revision = "75b8dd260ef0469d96d578705a87cffd0e09dab8"
+  revision = "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
 
 [[override]]
   name = "github.com/Azure/azure-sdk-for-go"
@@ -39,9 +50,3 @@
 [[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
-
-# Pin to master branch until there is a more recent stable release:
-#   https://github.com/prometheus/client_golang/issues/375
-[[constraint]]
-  name = "github.com/prometheus/client_golang"
-  branch = "master"

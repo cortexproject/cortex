@@ -16,7 +16,7 @@ type group struct {
 
 func newGroup(name string, rls []rules.Rule, appendable *appendableAppender, opts *rules.ManagerOptions) *group {
 	delay := 0 * time.Second // Unused, so 0 value is fine.
-	promGroup := rules.NewGroup(name, "none", delay, rls, opts)
+	promGroup := rules.NewGroup(name, "none", delay, rls, false, opts)
 	return &group{promGroup, appendable}
 }
 

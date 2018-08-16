@@ -297,7 +297,7 @@ func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*gr
 //
 // Copied from Prometheus's main.go.
 func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
-	return func(ctx native_ctx.Context, expr string, alerts ...*rules.Alert) error {
+	return func(ctx native_ctx.Context, expr string, alerts ...*rules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
@@ -320,7 +320,6 @@ func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
 		if len(alerts) > 0 {
 			n.Send(res...)
 		}
-		return nil
 	}
 }
 

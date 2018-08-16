@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
+	"github.com/weaveworks/cortex/pkg/util/wire"
 )
 
 type testStore struct {
@@ -27,7 +29,7 @@ type testStore struct {
 	chunks map[string][]chunk.Chunk
 }
 
-func newTestStore(t *testing.T, cfg Config) (*testStore, *Ingester) {
+func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
@@ -293,4 +295,55 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	assert.Equal(t, expected, res)
+}
+
+func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
+	for i := 1; i <= 32; i++ {
+		b.Run(strconv.Itoa(i), func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				benchmarkIngesterSeriesCreationLocking(b, i)
+			}
+		})
+	}
+}
+
+func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
+	cfg := defaultIngesterTestConfig()
+	_, ing := newTestStore(b, cfg)
+	defer ing.Shutdown()
+
+	var (
+		wg     sync.WaitGroup
+		series = int(1e4)
+		ctx    = context.Background()
+	)
+	wg.Add(parallelism)
+	ctx = user.InjectOrgID(ctx, "1")
+	for i := 0; i < parallelism; i++ {
+		seriesPerGoroutine := series / parallelism
+		go func(from, through int) {
+			defer wg.Done()
+
+			for j := from; j < through; j++ {
+				_, err := ing.Push(ctx, &client.WriteRequest{
+					Timeseries: []client.PreallocTimeseries{
+						{
+							TimeSeries: client.TimeSeries{
+								Labels: []client.LabelPair{
+									{Name: wire.Bytes("__name__"), Value: wire.Bytes(fmt.Sprintf("metric_%d", j))},
+								},
+								Samples: []client.Sample{
+									{TimestampMs: int64(j), Value: float64(j)},
+								},
+							},
+						},
+					},
+				})
+				require.NoError(b, err)
+			}
+
+		}(i*seriesPerGoroutine, (i+1)*seriesPerGoroutine)
+	}
+
+	wg.Wait()
 }

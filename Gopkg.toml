@@ -37,11 +37,11 @@
 
 [[override]]
   name = "k8s.io/client-go"
-  revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"
+  revision = "7d04d0e2a0a1a4d4a1cd6baa432a2301492e4e65"
 
 [[override]]
   name = "k8s.io/apimachinery"
-  revision = "75b8dd260ef0469d96d578705a87cffd0e09dab8"
+  revision = "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
 
 [[override]]
   name = "github.com/Azure/azure-sdk-for-go"

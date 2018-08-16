@@ -419,7 +419,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
-	if len(batch) >= queryStreamBatchSize {
+	if len(batch) > 0 {
 		err = stream.Send(&client.QueryStreamResponse{
 			Timeseries: batch,
 		})

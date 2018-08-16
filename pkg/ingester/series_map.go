@@ -53,7 +53,7 @@ func (sm *seriesMap) get(fp model.Fingerprint) (*memorySeries, bool) {
 	return ms, ok
 }
 
-// put adds a mapping to the seriesMap. It panics if s == nil.
+// put adds a mapping to the seriesMap.
 func (sm *seriesMap) put(fp model.Fingerprint, s *memorySeries) {
 	shard := &sm.shards[hashFP(fp)%seriesMapShards]
 	shard.mtx.Lock()
@@ -70,9 +70,12 @@ func (sm *seriesMap) put(fp model.Fingerprint, s *memorySeries) {
 func (sm *seriesMap) del(fp model.Fingerprint) {
 	shard := &sm.shards[hashFP(fp)%seriesMapShards]
 	shard.mtx.Lock()
+	_, ok := shard.m[fp]
 	delete(shard.m, fp)
 	shard.mtx.Unlock()
-	atomic.AddInt32(&sm.size, -1)
+	if ok {
+		atomic.AddInt32(&sm.size, -1)
+	}
 }
 
 // iter returns a channel that produces all mappings in the seriesMap. The

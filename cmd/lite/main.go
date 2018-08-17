@@ -71,13 +71,14 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	storageClient, err := storage.NewStorageClient(storageConfig, schemaConfig)
+	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
 		os.Exit(1)
 	}
+	schemaOpts := chunk.SchemaOpts(chunkStoreConfig, schemaConfig)
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageClient)
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, schemaOpts, storageOpts)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

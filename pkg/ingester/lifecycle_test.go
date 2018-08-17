@@ -82,7 +82,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.ID = "ingester1"
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.ClaimOnRollout = true
-	cfg1.SearchPendingFor = aLongTime
+	cfg1.SearchPendingFor = 0 * time.Second
 	ing1, err := New(cfg1, nil)
 	require.NoError(t, err)
 

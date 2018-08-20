@@ -24,10 +24,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
-const (
-	userID    = "1"
-	aLongTime = 60 * time.Second
-)
+const userID = "1"
 
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()
@@ -75,14 +72,13 @@ func TestIngesterRestart(t *testing.T) {
 }
 
 func TestIngesterTransfer(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
-
 	// Start the first ingester, and get it into ACTIVE state.
-	cfg1 := cfg
+	cfg1 := defaultIngesterTestConfig()
 	cfg1.LifecyclerConfig.ID = "ingester1"
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.ClaimOnRollout = true
-	cfg1.SearchPendingFor = 0 * time.Second
+	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
+	cfg1.SearchPendingFor = 1 * time.Second
 	ing1, err := New(cfg1, nil)
 	require.NoError(t, err)
 
@@ -109,10 +105,11 @@ func TestIngesterTransfer(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a second ingester, but let it go into PENDING
-	cfg2 := cfg
+	cfg2 := defaultIngesterTestConfig()
+	cfg2.LifecyclerConfig.KVClient = cfg1.LifecyclerConfig.KVClient
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
-	cfg2.LifecyclerConfig.JoinAfter = aLongTime
+	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing2, err := New(cfg2, nil)
 	require.NoError(t, err)
 
@@ -123,8 +120,11 @@ func TestIngesterTransfer(t *testing.T) {
 		}, nil
 	}
 
-	// Now stop the first ingester
+	// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
 	ing1.Shutdown()
+	poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
+		return ing2.lifecycler.GetState()
+	})
 
 	// And check the second ingester has the sample
 	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")

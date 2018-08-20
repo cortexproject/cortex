@@ -14,7 +14,7 @@ type PreallocConfig struct{}
 
 // RegisterFlags registers configuration settings.
 func (PreallocConfig) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&expectedTimeseries, "ingester-client.expecter-timeseries", expectedTimeseries, "Expected number of timeseries per request, use for preallocations.")
+	f.IntVar(&expectedTimeseries, "ingester-client.expected-timeseries", expectedTimeseries, "Expected number of timeseries per request, use for preallocations.")
 	f.IntVar(&expectedLabels, "ingester-client.expected-labels", expectedLabels, "Expected number of labels per timeseries, used for preallocations.")
 	f.IntVar(&expectedSamplesPerSeries, "ingester-client.expected-samples-per-series", expectedSamplesPerSeries, "Expected number of samples per timeseries, used for preallocations.")
 }

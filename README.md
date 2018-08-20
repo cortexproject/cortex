@@ -27,10 +27,14 @@ Additional help can also be found in the [Weave Cloud documentation](https://www
 
 ## Developing
 
-To build (requires Docker):
+To build:
 ```
 make
 ```
+
+(By default the build runs in a Docker container, using an image built
+with all the tools required. The source code is mounted from where you
+run `make` into the build container as a Docker volume.)
 
 To run the test suite:
 ```
@@ -41,6 +45,10 @@ To checkout Cortex in minikube:
 ```
 kubectl create -f ./k8s
 ```
+
+(these manifests use `latest` tags, i.e. this will work if you have
+just built the images and they are available on the node(s) in your
+Kubernetes cluster)
 
 Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape it itself.  Try it:
 

@@ -51,7 +51,7 @@ func (a *appendableAppender) AddFast(l labels.Labels, ref uint64, t int64, v flo
 }
 
 func (a *appendableAppender) Commit() error {
-	_, err := a.pusher.Push(a.ctx, client.ToWriteRequest(a.samples))
+	_, err := a.pusher.Push(a.ctx, client.ToWriteRequest(a.samples, client.RULE))
 	a.samples = nil
 	return err
 }

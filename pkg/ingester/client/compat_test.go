@@ -24,7 +24,7 @@ func TestWriteRequest(t *testing.T) {
 		})
 	}
 
-	have := FromWriteRequest(ToWriteRequest(want))
+	have := FromWriteRequest(ToWriteRequest(want, API))
 
 	if !reflect.DeepEqual(want, have) {
 		t.Fatalf(test.Diff(want, have))

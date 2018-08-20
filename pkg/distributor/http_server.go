@@ -16,6 +16,7 @@ import (
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	compressionType := util.CompressionTypeFor(r.Header.Get("X-Prometheus-Remote-Write-Version"))
 	var req client.PreallocWriteRequest
+	req.Source = client.API
 	buf, err := util.ParseProtoReader(r.Context(), r.Body, &req, compressionType)
 	logger := util.WithContext(r.Context(), util.Logger)
 	if err != nil {
@@ -47,8 +48,10 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 // UserStats models ingestion statistics for one user.
 type UserStats struct {
-	IngestionRate float64 `json:"ingestionRate"`
-	NumSeries     uint64  `json:"numSeries"`
+	IngestionRate     float64 `json:"ingestionRate"`
+	NumSeries         uint64  `json:"numSeries"`
+	APIIngestionRate  float64 `json:"APIIngestionRate"`
+	RuleIngestionRate float64 `json:"RuleIngestionRate"`
 }
 
 // UserStatsHandler handles user stats to the Distributor.

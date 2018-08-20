@@ -102,7 +102,7 @@ func TestIngesterAppend(t *testing.T) {
 	// Append samples.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID])))
+		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID]), client.API))
 		require.NoError(t, err)
 	}
 
@@ -141,22 +141,22 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 		model.MetricNameLabel: "testmetric",
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0})
+	err := ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0}, client.API)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0})
+	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0}, client.API)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 0, Value: 0})
+	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 0, Value: 0}, client.API)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 1})
+	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 1}, client.API)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
@@ -189,11 +189,11 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}, client.API))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}, client.API))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
@@ -256,11 +256,11 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}, client.API))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}, client.API))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding series per metric, got %v", err)
 	}

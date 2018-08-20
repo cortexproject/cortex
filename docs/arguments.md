@@ -12,10 +12,6 @@
 
    **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 
-- `-ingester.max-series-per-metric`
-
-   Limit for the number of series a given metric can have in a single ingester.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of series a metric can have 'globally', but when running with `-distributor.shard-by-all-labels=true` the actual limit will be higher, depending on number of ingesters and replication factor.
-
 ## Ingester, Distributor & Querier limits.
 
 Cortex implements various limits on the requests it can process, in order to prevent a single tenant overwhelming the cluster.  There are various default global limits which apply to all tenants which can be set on the command line.  These limits can also be overridden on a per-tenant basis, using a configuration file.  Specify the filename for the override configuration file using the `-limits.per-user-override-config=<filename>` flag.  The override file will be re-read every 10 seconds by default - this can also be controlled using the `-limits.per-user-override-period=10s` flag.
@@ -60,9 +56,9 @@ Valid fields are (with their corresponding flags for default values):
 - `max_series_per_user` / `-ingester.max-series-per-user`
 - `max_series_per_metric` / `-ingester.max-series-per-metric`
 
-  Limits on the total number of active series a user is allowed, and number of series a user is allowed with the same metric name.  An active series is a series to which a sample has been written in the last `-ingester.max-chunk-idle` duration, which defaults to 5 minutes.
+  Enforced by the ingesters; limits the number of active series a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of series a metric can have 'globally', as all series for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
 
-  Enforced by the ingesters; actual limits will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
+  An active series is a series to which a sample has been written in the last `-ingester.max-chunk-idle` duration, which defaults to 5 minutes.
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
 - `max_samples_per_query` / `-ingester.max-samples-per-query`

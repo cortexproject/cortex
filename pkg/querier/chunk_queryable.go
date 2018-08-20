@@ -35,7 +35,7 @@ func NewQueryable(distributor Distributor, chunkStore ChunkStore, iterators bool
 		}
 
 		return querier{
-			Querier:     storage.NewMergeQuerier([]storage.Querier{dqr, cqr}),
+			queriers:    []storage.Querier{dqr, cqr},
 			distributor: distributor,
 			ctx:         ctx,
 			mint:        mint,
@@ -45,25 +45,62 @@ func NewQueryable(distributor Distributor, chunkStore ChunkStore, iterators bool
 }
 
 type querier struct {
-	storage.Querier
+	queriers []storage.Querier
 
 	distributor Distributor
 	ctx         context.Context
 	mint, maxt  int64
 }
 
+// Select implements storage.Querier.
 func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata.
-	if sp != nil {
-		return q.Querier.Select(sp, matchers...)
+	if sp == nil {
+		return q.metadataQuery(matchers...)
 	}
 
+	sets := make(chan storage.SeriesSet, len(q.queriers))
+	errs := make(chan error, len(q.queriers))
+	for _, querier := range q.queriers {
+		go func(querier storage.Querier) {
+			set, err := querier.Select(sp, matchers...)
+			if err != nil {
+				errs <- err
+			} else {
+				sets <- set
+			}
+		}(querier)
+	}
+
+	result := []storage.SeriesSet{}
+	for range q.queriers {
+		select {
+		case err := <-errs:
+			return nil, err
+		case set := <-sets:
+			result = append(result, set)
+		}
+	}
+
+	return storage.NewMergeSeriesSet(result), nil
+}
+
+// LabelsValue implements storage.Querier.
+func (q querier) LabelValues(name string) ([]string, error) {
+	return q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
+}
+
+func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	ms, err := q.distributor.MetricsForLabelMatchers(q.ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 	if err != nil {
 		return nil, err
 	}
 	return metricsToSeriesSet(ms), nil
+}
+
+func (querier) Close() error {
+	return nil
 }
 
 func newChunkQueryable(store ChunkStore) storage.Queryable {

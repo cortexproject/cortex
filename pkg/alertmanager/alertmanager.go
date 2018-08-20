@@ -129,8 +129,12 @@ func New(cfg *Config) (*Alertmanager, error) {
 	am.router = route.New()
 
 	webReload := make(chan chan error)
-	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload, log.With(am.logger, "component", "ui"))
-	am.api.Register(am.router.WithPrefix(path.Join(am.cfg.ExternalURL.Path, "/api")))
+	externalPath := "/api/prom/alertmanager"
+	if am.cfg.ExternalURL != nil {
+		externalPath = am.cfg.ExternalURL.Path
+	}
+	ui.Register(am.router.WithPrefix(externalPath), webReload, log.With(am.logger, "component", "ui"))
+	am.api.Register(am.router.WithPrefix(path.Join(externalPath, "/api")))
 
 	go func() {
 		for {

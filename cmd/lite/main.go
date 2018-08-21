@@ -71,7 +71,7 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
+	storageOpts, err := storage.Clients(storageConfig, schemaConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
 		os.Exit(1)

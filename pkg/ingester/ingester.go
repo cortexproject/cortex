@@ -53,8 +53,8 @@ var (
 	queriedSamples = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "cortex_ingester_queried_samples",
 		Help: "The total number of samples returned from queries.",
-		// Could easily return 1m samples per query - 10*(8^9) = 1.3m.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 9),
+		// Could easily return 10m samples per query - 80*(8^9) = 10.7m.
+		Buckets: prometheus.ExponentialBuckets(80, 8, 9),
 	})
 	queriedSeries = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "cortex_ingester_queried_series",

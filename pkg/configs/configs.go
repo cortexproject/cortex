@@ -208,7 +208,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						time.Duration(rl.For),
 						labels.FromMap(rl.Labels),
 						labels.FromMap(rl.Annotations),
-						false,
+						true,
 						log.With(util.Logger, "alert", rl.Alert),
 					))
 					continue
@@ -245,7 +245,7 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 
 			switch r := stmt.(type) {
 			case *promql.AlertStmt:
-				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations, false, util.Logger)
+				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations, true, util.Logger)
 
 			case *promql.RecordStmt:
 				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)

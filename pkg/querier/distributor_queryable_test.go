@@ -56,9 +56,11 @@ type mockDistributor struct {
 func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	return m.m, nil
 }
-func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelName) (model.LabelValues, error) {
+
+func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
 	return nil, nil
 }
+
 func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, nil
 }

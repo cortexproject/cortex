@@ -66,6 +66,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 
 	userStates := newUserStates(i.limits, i.cfg)
 	fromIngesterID := ""
+	seriesReceived := 0
 
 	for {
 		wireSeries, err := stream.Recv()
@@ -102,8 +103,19 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			return err
 		}
 
+		seriesReceived++
 		memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 		receivedChunks.Add(float64(len(descs)))
+	}
+
+	if fromIngesterID == "" {
+		level.Error(util.Logger).Log("msg", "received TransferChunks request with no from ingester ID")
+		return fmt.Errorf("no ingester id")
+	}
+
+	if seriesReceived == 0 {
+		level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
+		return fmt.Errorf("no series")
 	}
 
 	if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {

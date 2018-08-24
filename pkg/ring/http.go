@@ -98,7 +98,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	sort.Strings(ingesterIDs)
 
 	ingesters := []interface{}{}
-	tokens, owned := countTokens(r.ringDesc.Tokens)
+	tokens, owned := countTokens(r.ringDesc)
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
 		timestamp := time.Unix(ing.Timestamp, 0)

@@ -109,7 +109,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	}
 
 	if fromIngesterID == "" {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no from ingester ID")
+		level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
 		return fmt.Errorf("no ingester id")
 	}
 

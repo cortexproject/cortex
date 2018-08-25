@@ -21,7 +21,9 @@ const (
 
 func TestChunkIter(t *testing.T) {
 	chunk := mkChunk(t, 0, 100)
-	testIter(t, 0, 100, newBatchIteratorAdapter(newChunkIterator(chunk)))
+	iter := &chunkIterator{}
+	iter.reset(chunk)
+	testIter(t, 0, 100, newBatchIteratorAdapter(iter))
 }
 
 func mkChunk(t require.TestingT, from model.Time, points int) chunk.Chunk {

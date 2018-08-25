@@ -318,9 +318,25 @@ type Iterator interface {
 	// of the find... methods). It returns model.ZeroSamplePair before any of
 	// those methods were called.
 	Value() model.SamplePair
+	// Batchey mcBatchFace.
+	Batch() Batch
 	// Returns the last error encountered. In general, an error signals data
 	// corruption in the chunk and requires quarantining.
 	Err() error
+}
+
+// Number is samples per batch; this was choose by benchmarking all sizes from
+// 1 to 128; 51 samples happens to also be a whole number of cache lines -
+// 51*16 + 16 / 64 = 13.
+const BatchSize = 51
+
+// batch is a sort set of (timestamp, value) pairs.  They are intended to be
+// small, and passed by value.
+type Batch struct {
+	Timestamps [BatchSize]int64
+	Values     [BatchSize]float64
+	Index      int
+	Length     int
 }
 
 // RangeValues is a utility function that retrieves all values within the given
@@ -489,6 +505,22 @@ func (it *indexAccessingChunkIterator) FindAtOrAfter(t model.Time) bool {
 // value implements Iterator.
 func (it *indexAccessingChunkIterator) Value() model.SamplePair {
 	return it.lastValue
+}
+
+func (it *indexAccessingChunkIterator) Batch() Batch {
+	var batch Batch
+	j := 0
+	it.pos++
+	for j < BatchSize && it.pos < it.len {
+		batch.Timestamps[j] = int64(it.acc.timestampAtIndex(it.pos))
+		batch.Values[j] = float64(it.acc.sampleValueAtIndex(it.pos))
+		it.pos++
+		j++
+	}
+	it.pos--
+	batch.Index = 0
+	batch.Length = j
+	return batch
 }
 
 // err implements Iterator.

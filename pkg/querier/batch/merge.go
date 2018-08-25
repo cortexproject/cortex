@@ -5,13 +5,21 @@ import (
 	"sort"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
+	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
 type batchMergeIterator struct {
 	its []*nonOverlappingIterator
 	h   batchIteratorHeap
 
-	batches []batch
+	// Store the current sorted batchStream
+	batches batchStream
+
+	// For the next set of batches we'll collect, and buffers to merge them in.
+	nextBatches    batchStream
+	nextBatchesBuf batchStream
+	batchesBuf     batchStream
+
 	currErr error
 }
 
@@ -25,6 +33,12 @@ func newBatchMergeIterator(cs []chunk.Chunk) *batchMergeIterator {
 	c := &batchMergeIterator{
 		its: its,
 		h:   make(batchIteratorHeap, 0, len(its)),
+
+		// TODO its 2x # iterators guaranteed to be enough?
+		batches:        make(batchStream, 0, len(its)*2),
+		nextBatches:    make(batchStream, 0, len(its)*2),
+		nextBatchesBuf: make(batchStream, 0, len(its)*2),
+		batchesBuf:     make(batchStream, 0, len(its)*2),
 	}
 
 	for _, iter := range c.its {
@@ -64,9 +78,10 @@ func (c *batchMergeIterator) Seek(t int64) bool {
 }
 
 func (c *batchMergeIterator) Next() bool {
-	// pop the last built batch
+	// Pop the last built batch in a way that doesn't extend the slice.
 	if len(c.batches) > 0 {
-		c.batches = c.batches[1:]
+		copy(c.batches, c.batches[1:])
+		c.batches = c.batches[:len(c.batches)-1]
 	}
 
 	c.buildNextBatch()
@@ -74,18 +89,27 @@ func (c *batchMergeIterator) Next() bool {
 }
 
 func (c *batchMergeIterator) buildNextBatch() {
-	unique := 0
+	// Must always consider #iters * batchsize samples, to ensure
+	// we have the opportunity to dedupe samples without missing any.
+	required := len(c.h) * promchunk.BatchSize
 	for i := range c.batches {
-		unique += c.batches[i].length
-	}
-	required := (((len(c.h) * batchSize) - unique) / batchSize) + 1
-	if required <= 0 {
-		return
+		required -= c.batches[i].Length - c.batches[i].Index
 	}
 
-	batches := make([]batch, 0, len(c.h))
-	for len(batches) < required && len(c.h) > 0 {
-		batches = append(batches, c.h[0].Batch())
+	c.nextBatches = c.nextBatches[:0]
+	for required > 0 && len(c.h) > 0 {
+		// Optimisation: if we have at least one batches, and the next batch starts
+		// after the last batch we have, we have no overlaps and can break early.
+		// if len(c.batches) > 0 {
+		// 	last := &c.batches[len(c.batches)-1]
+		// 	if last.timestamps[last.length-1] < c.h[0].AtTime() {
+		// 		break
+		// 	}
+		// }
+
+		b := c.h[0].Batch()
+		required -= b.Length
+		c.nextBatches = append(c.nextBatches, b)
 		if c.h[0].Next() {
 			heap.Fix(&c.h, 0)
 		} else {
@@ -93,17 +117,19 @@ func (c *batchMergeIterator) buildNextBatch() {
 		}
 	}
 
-	merged := make([]batch, len(batches))
-	merged = mergeBatches(batches, merged)
-	output := make([]batch, len(c.batches)+len(merged))
-	c.batches = mergeStreams(c.batches, merged, output[:0])
+	if len(c.nextBatches) > 0 {
+		c.nextBatchesBuf = mergeBatches(c.nextBatches, c.nextBatchesBuf[:len(c.nextBatches)])
+		c.batchesBuf = mergeStreams(c.batches, c.nextBatchesBuf, c.batchesBuf)
+		copy(c.batches[:len(c.batchesBuf)], c.batchesBuf)
+		c.batches = c.batches[:len(c.batchesBuf)]
+	}
 }
 
 func (c *batchMergeIterator) AtTime() int64 {
-	return c.batches[0].timestamps[0]
+	return c.batches[0].Timestamps[0]
 }
 
-func (c *batchMergeIterator) Batch() batch {
+func (c *batchMergeIterator) Batch() promchunk.Batch {
 	return c.batches[0]
 }
 
@@ -147,7 +173,9 @@ outer:
 				continue outer
 			}
 		}
-		css = append(css, []chunk.Chunk{c})
+		cs := make([]chunk.Chunk, 0, len(cs)/(len(css)+1))
+		cs = append(cs, c)
+		css = append(css, cs)
 	}
 
 	return css

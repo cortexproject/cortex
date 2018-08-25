@@ -2,23 +2,22 @@ package batch
 
 import (
 	"github.com/prometheus/common/model"
-	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
-
 	"github.com/weaveworks/cortex/pkg/chunk"
+	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
 // chunkIterator implement batchIterator over a chunk.
 type chunkIterator struct {
 	chunk chunk.Chunk
 	it    promchunk.Iterator
-	batch batch
+	batch promchunk.Batch
 }
 
-func newChunkIterator(chunk chunk.Chunk) *chunkIterator {
-	return &chunkIterator{
-		chunk: chunk,
-		it:    chunk.Data.NewIterator(),
-	}
+func (i *chunkIterator) reset(chunk chunk.Chunk) {
+	i.chunk = chunk
+	i.it = chunk.Data.NewIterator()
+	i.batch.Length = 0
+	i.batch.Index = 0
 }
 
 // Seek advances the iterator forward to the value at or after
@@ -40,25 +39,18 @@ func (i *chunkIterator) Seek(t int64) bool {
 
 func (i *chunkIterator) Next() bool {
 	i.buildNextBatch()
-	return i.batch.length > 0
+	return i.batch.Length > 0
 }
 
 func (i *chunkIterator) buildNextBatch() {
-	j := 0
-	for ; j < batchSize && i.it.Scan(); j++ {
-		v := i.it.Value()
-		i.batch.timestamps[j] = int64(v.Timestamp)
-		i.batch.values[j] = float64(v.Value)
-	}
-	i.batch.index = 0
-	i.batch.length = j
+	i.batch = i.it.Batch()
 }
 
 func (i *chunkIterator) AtTime() int64 {
-	return i.batch.timestamps[0]
+	return i.batch.Timestamps[0]
 }
 
-func (i *chunkIterator) Batch() batch {
+func (i *chunkIterator) Batch() promchunk.Batch {
 	return i.batch
 }
 

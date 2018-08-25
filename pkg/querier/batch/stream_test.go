@@ -5,41 +5,42 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
 func TestStream(t *testing.T) {
 	for i, tc := range []struct {
-		input  []batch
+		input  []promchunk.Batch
 		output batchStream
 	}{
 		{
-			input:  []batch{mkBatch(0)},
-			output: []batch{mkBatch(0)},
+			input:  []promchunk.Batch{mkBatch(0)},
+			output: []promchunk.Batch{mkBatch(0)},
 		},
 
 		{
-			input:  []batch{mkBatch(0), mkBatch(0)},
-			output: []batch{mkBatch(0)},
+			input:  []promchunk.Batch{mkBatch(0), mkBatch(0)},
+			output: []promchunk.Batch{mkBatch(0)},
 		},
 
 		{
-			input:  []batch{mkBatch(0), mkBatch(batchSize)},
-			output: []batch{mkBatch(0), mkBatch(batchSize)},
+			input:  []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
+			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
 		},
 
 		{
-			input:  []batch{mkBatch(0), mkBatch(batchSize), mkBatch(0), mkBatch(batchSize)},
-			output: []batch{mkBatch(0), mkBatch(batchSize)},
+			input:  []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize), mkBatch(0), mkBatch(promchunk.BatchSize)},
+			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
 		},
 
 		{
-			input:  []batch{mkBatch(0), mkBatch(batchSize / 2), mkBatch(batchSize)},
-			output: []batch{mkBatch(0), mkBatch(batchSize)},
+			input:  []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize / 2), mkBatch(promchunk.BatchSize)},
+			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
 		},
 
 		{
-			input:  []batch{mkBatch(0), mkBatch(batchSize / 2), mkBatch(batchSize), mkBatch(3 * batchSize / 2), mkBatch(2 * batchSize)},
-			output: []batch{mkBatch(0), mkBatch(batchSize), mkBatch(2 * batchSize)},
+			input:  []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize / 2), mkBatch(promchunk.BatchSize), mkBatch(3 * promchunk.BatchSize / 2), mkBatch(2 * promchunk.BatchSize)},
+			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize), mkBatch(2 * promchunk.BatchSize)},
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
@@ -50,12 +51,12 @@ func TestStream(t *testing.T) {
 	}
 }
 
-func mkBatch(from int64) batch {
-	var result batch
-	for i := int64(0); i < batchSize; i++ {
-		result.timestamps[i] = from + i
-		result.values[i] = float64(from + i)
+func mkBatch(from int64) promchunk.Batch {
+	var result promchunk.Batch
+	for i := int64(0); i < promchunk.BatchSize; i++ {
+		result.Timestamps[i] = from + i
+		result.Values[i] = float64(from + i)
 	}
-	result.length = batchSize
+	result.Length = promchunk.BatchSize
 	return result
 }

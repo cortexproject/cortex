@@ -50,22 +50,22 @@ var (
 		e    promchunk.Encoding
 	}{
 		{"DoubleDelta", promchunk.DoubleDelta},
-		//		{"Varbit", promchunk.Varbit},
+		{"Varbit", promchunk.Varbit},
 	}
 
 	queries = []query{
-		//		{
-		//			query: "foo",
-		//			labels: labels.Labels{
-		//				labels.Label{"__name__", "foo"},
-		//			},
-		//			samples: func(from, through time.Time, step time.Duration) int {
-		//				return int(through.Sub(from)/step) + 1
-		//			},
-		//			expected: func(t int64) (int64, float64) {
-		//				return t, float64(t)
-		//			},
-		//		},
+		{
+			query: "foo",
+			labels: labels.Labels{
+				labels.Label{"__name__", "foo"},
+			},
+			samples: func(from, through time.Time, step time.Duration) int {
+				return int(through.Sub(from)/step) + 1
+			},
+			expected: func(t int64) (int64, float64) {
+				return t, float64(t)
+			},
+		},
 
 		{
 			query:  "rate(foo[1m])",

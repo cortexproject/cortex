@@ -12,8 +12,8 @@ func TestNonOverlappingIter(t *testing.T) {
 	for i := int64(0); i < 100; i++ {
 		cs = append(cs, mkChunk(t, model.TimeFromUnix(i*10), 10))
 	}
-	testIter(t, 10*100, newBatchIteratorAdapter(newNonOverlappingIterator(cs)))
-	testSeek(t, 10*100, newBatchIteratorAdapter(newNonOverlappingIterator(cs)))
+	testIter(t, 10*100, newIteratorAdapter(newNonOverlappingIterator(cs)))
+	testSeek(t, 10*100, newIteratorAdapter(newNonOverlappingIterator(cs)))
 }
 
 func TestNonOverlappingIterSparse(t *testing.T) {
@@ -25,6 +25,6 @@ func TestNonOverlappingIterSparse(t *testing.T) {
 		mkChunk(t, model.TimeFromUnix(95), 1),
 		mkChunk(t, model.TimeFromUnix(96), 4),
 	}
-	testIter(t, 100, newBatchIteratorAdapter(newNonOverlappingIterator(cs)))
-	testSeek(t, 100, newBatchIteratorAdapter(newNonOverlappingIterator(cs)))
+	testIter(t, 100, newIteratorAdapter(newNonOverlappingIterator(cs)))
+	testSeek(t, 100, newIteratorAdapter(newNonOverlappingIterator(cs)))
 }

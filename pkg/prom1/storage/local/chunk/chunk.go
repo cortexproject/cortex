@@ -318,7 +318,8 @@ type Iterator interface {
 	// of the find... methods). It returns model.ZeroSamplePair before any of
 	// those methods were called.
 	Value() model.SamplePair
-	// Batchey mcBatchFace.
+	// Returns a batch of samples; NB not idempotent!  Should only be called
+	// once per Scan/FindAtOrBefore.
 	Batch() Batch
 	// Returns the last error encountered. In general, an error signals data
 	// corruption in the chunk and requires quarantining.

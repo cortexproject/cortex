@@ -5,9 +5,12 @@ import (
 )
 
 // batchStream deals with iteratoring through multiple, non-overlapping batches,
-// and building new slices of non-overlapping batches.
+// and building new slices of non-overlapping batches.  Designed to be used
+// without allocations.
 type batchStream []promchunk.Batch
 
+// append, reset, hasNext, next, atTime etc are all inlined in go1.11.
+// append isn't a pointer receiver as that was causing bs to escape to the heap.
 func (bs batchStream) append(t int64, v float64) batchStream {
 	l := len(bs)
 	if l == 0 || bs[l-1].Index == promchunk.BatchSize {
@@ -51,7 +54,8 @@ func (bs *batchStream) at() (int64, float64) {
 // mergeBatches assumes the contents of batches are overlapping and unstorted.
 // Merge them together into a sorted, non-overlapping stream in result.
 // Caller must guarantee result is big enough.  Return value will always be a
-// slice pointing to the same underly array as result.
+// slice pointing to the same underly array as result, allowing mergeBatches
+// to call itself recursively.
 func mergeBatches(batches batchStream, result batchStream) batchStream {
 	switch len(batches) {
 	case 0:
@@ -77,7 +81,6 @@ func mergeBatches(batches batchStream, result batchStream) batchStream {
 func mergeStreams(left, right batchStream, result batchStream) batchStream {
 	result.reset()
 	result = result[:0]
-
 	for left.hasNext() && right.hasNext() {
 		t1, t2 := left.atTime(), right.atTime()
 		if t1 < t2 {

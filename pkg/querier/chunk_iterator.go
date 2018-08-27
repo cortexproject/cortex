@@ -2,17 +2,9 @@ package querier
 
 import (
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
-
-func NewChunkIterator(c chunk.Chunk) storage.SeriesIterator {
-	return &chunkIterator{
-		Chunk: c,
-		it:    c.Data.NewIterator(),
-	}
-}
 
 type chunkIterator struct {
 	chunk.Chunk

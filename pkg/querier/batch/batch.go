@@ -6,8 +6,8 @@ import (
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
-// batchIterator iterate over batches.
-type batchIterator interface {
+// iterator iterates over batches.
+type iterator interface {
 	// Seek to the batch at (or after) time t.
 	Seek(t int64) bool
 
@@ -28,24 +28,24 @@ type batchIterator interface {
 
 // NewChunkMergeIterator returns a storage.SeriesIterator that merges chunks together.
 func NewChunkMergeIterator(chunks []chunk.Chunk) storage.SeriesIterator {
-	iter := newBatchMergeIterator(chunks)
-	return newBatchIteratorAdapter(iter)
+	iter := newMergeIterator(chunks)
+	return newIteratorAdapter(iter)
 }
 
-// batchIteratorAdapter turns a batchIterator into a storage.SeriesIterator.
-type batchIteratorAdapter struct {
+// iteratorAdapter turns a batchIterator into a storage.SeriesIterator.
+type iteratorAdapter struct {
 	curr       promchunk.Batch
-	underlying batchIterator
+	underlying iterator
 }
 
-func newBatchIteratorAdapter(underlying batchIterator) storage.SeriesIterator {
-	return &batchIteratorAdapter{
+func newIteratorAdapter(underlying iterator) storage.SeriesIterator {
+	return &iteratorAdapter{
 		underlying: underlying,
 	}
 }
 
 // Seek implements storage.SeriesIterator.
-func (a *batchIteratorAdapter) Seek(t int64) bool {
+func (a *iteratorAdapter) Seek(t int64) bool {
 	a.curr.Length = -1
 	if a.underlying.Seek(t) {
 		a.curr = a.underlying.Batch()
@@ -55,7 +55,7 @@ func (a *batchIteratorAdapter) Seek(t int64) bool {
 }
 
 // Next implements storage.SeriesIterator.
-func (a *batchIteratorAdapter) Next() bool {
+func (a *iteratorAdapter) Next() bool {
 	a.curr.Index++
 	for a.curr.Index >= a.curr.Length && a.underlying.Next() {
 		a.curr = a.underlying.Batch()
@@ -64,11 +64,11 @@ func (a *batchIteratorAdapter) Next() bool {
 }
 
 // At implements storage.SeriesIterator.
-func (a *batchIteratorAdapter) At() (int64, float64) {
+func (a *iteratorAdapter) At() (int64, float64) {
 	return a.curr.Timestamps[a.curr.Index], a.curr.Values[a.curr.Index]
 }
 
 // Err implements storage.SeriesIterator.
-func (a *batchIteratorAdapter) Err() error {
+func (a *iteratorAdapter) Err() error {
 	return nil
 }

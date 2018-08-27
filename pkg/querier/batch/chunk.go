@@ -6,7 +6,8 @@ import (
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
-// chunkIterator implement batchIterator over a chunk.
+// chunkIterator implement batchIterator over a chunk.  Its is designed to be
+// reused by calling reset() with a fresh chunk.
 type chunkIterator struct {
 	chunk chunk.Chunk
 	it    promchunk.Iterator

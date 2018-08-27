@@ -13,7 +13,7 @@ func TestMergeIter(t *testing.T) {
 	chunk3 := mkChunk(t, model.TimeFromUnix(50), 100)
 	chunk4 := mkChunk(t, model.TimeFromUnix(75), 100)
 	chunk5 := mkChunk(t, model.TimeFromUnix(100), 100)
-	iter := newBatchMergeIterator([]chunk.Chunk{chunk1, chunk2, chunk3, chunk4, chunk5})
-	testIter(t, 200, newBatchIteratorAdapter(iter))
-	testSeek(t, 200, newBatchIteratorAdapter(iter))
+	iter := newMergeIterator([]chunk.Chunk{chunk1, chunk2, chunk3, chunk4, chunk5})
+	testIter(t, 200, newIteratorAdapter(iter))
+	testSeek(t, 200, newIteratorAdapter(iter))
 }

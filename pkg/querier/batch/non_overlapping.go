@@ -1,6 +1,8 @@
 package batch
 
 import (
+	"fmt"
+
 	"github.com/weaveworks/cortex/pkg/chunk"
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
@@ -28,12 +30,20 @@ func newNonOverlappingIterator(chunks []chunk.Chunk) *nonOverlappingIterator {
 }
 
 func (it *nonOverlappingIterator) Seek(t int64) bool {
+	//fmt.Println("SEEK", t, it.curr)
+
+	// Seek only ever goes forward in PromQL; but as we consume more than one
+	// batch, we may have gone too far.  Therefore rewind by bufferBatches.
+	it.curr -= bufferBatches
+	if it.curr < 0 {
+		it.curr = 0
+	}
+	it.iter.reset(it.chunks[it.curr])
 	it.input = it.input[:0]
-	it.curr = 0
-	it.iter.reset(it.chunks[0])
 
 	for ; it.curr < len(it.chunks); it.next() {
 		if it.iter.Seek(t) {
+			//fmt.Println("  seeked", it.curr)
 			return it.buildNextBatch()
 		} else if it.iter.Err() != nil {
 			return false
@@ -62,6 +72,8 @@ func (it *nonOverlappingIterator) Next() bool {
 }
 
 func (it *nonOverlappingIterator) buildNextBatch() bool {
+	//fmt.Println("  buildNextBatch")
+
 	// When this function is called the iterator has already been next'd.
 	// We need to leave the iterator un-next'd, so it can be next'd or seek'd again.
 
@@ -75,6 +87,7 @@ func (it *nonOverlappingIterator) buildNextBatch() bool {
 
 	for required > 0 && it.curr < len(it.chunks) {
 		batch := it.iter.Batch()
+		//print(batch)
 		required -= batch.Length
 		it.input = append(it.input, batch)
 
@@ -104,7 +117,12 @@ func (it *nonOverlappingIterator) buildNextBatch() bool {
 	return len(it.input) > 0
 }
 
+func print(batch promchunk.Batch) {
+	fmt.Println("  ", batch.Values, batch.Index, batch.Length)
+}
+
 func (it *nonOverlappingIterator) next() {
+	//fmt.Println("  next")
 	it.curr++
 	if it.curr < len(it.chunks) {
 		it.iter.reset(it.chunks[it.curr])

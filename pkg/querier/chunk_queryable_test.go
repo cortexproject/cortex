@@ -32,6 +32,7 @@ type query struct {
 	labels   labels.Labels
 	samples  func(from, through time.Time, step time.Duration) int
 	expected func(t int64) (int64, float64)
+	step     time.Duration
 }
 
 var (
@@ -53,8 +54,25 @@ var (
 	}
 
 	queries = []query{
+		// Windowed rates with small step;  This will cause BufferedIterator to read
+		// all the samples.
+		{
+			query:  "rate(foo[1m])",
+			step:   sampleRate * 4,
+			labels: labels.Labels{},
+			samples: func(from, through time.Time, step time.Duration) int {
+				return int(through.Sub(from) / step)
+			},
+			expected: func(t int64) (int64, float64) {
+				return t + int64((sampleRate*4)/time.Millisecond), 1000.0
+			},
+		},
+
+		// Very simple single-point gets, with low step.  Performance should be
+		// similar to above.
 		{
 			query: "foo",
+			step:  sampleRate * 4,
 			labels: labels.Labels{
 				labels.Label{"__name__", "foo"},
 			},
@@ -66,14 +84,31 @@ var (
 			},
 		},
 
+		// Rates with large step; excersise everything.
 		{
 			query:  "rate(foo[1m])",
+			step:   sampleRate * 4 * 10,
 			labels: labels.Labels{},
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from) / step)
 			},
 			expected: func(t int64) (int64, float64) {
-				return t + int64((sampleRate*4)/time.Millisecond), 1000.0
+				return t + int64((sampleRate*4)/time.Millisecond)*10, 1000.0
+			},
+		},
+
+		// Single points gets with large step; excersise Seek performance.
+		{
+			query: "foo",
+			step:  sampleRate * 4 * 10,
+			labels: labels.Labels{
+				labels.Label{"__name__", "foo"},
+			},
+			samples: func(from, through time.Time, step time.Duration) int {
+				return int(through.Sub(from)/step) + 1
+			},
+			expected: func(t int64) (int64, float64) {
+				return t, float64(t)
 			},
 		},
 	}
@@ -83,7 +118,7 @@ func TestChunkQueryable(t *testing.T) {
 	for _, queryable := range queryables {
 		for _, encoding := range encodings {
 			for _, query := range queries {
-				t.Run(fmt.Sprintf("%s/%s/%s", queryable.name, encoding.name, query.query), func(t *testing.T) {
+				t.Run(fmt.Sprintf("%s/%s/%s (%s step)", queryable.name, encoding.name, query.query, query.step), func(t *testing.T) {
 					store, from := makeMockChunkStore(t, 24*15, encoding.e)
 					queryable := queryable.f(store)
 					testQuery(t, queryable, from, query)
@@ -133,7 +168,7 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 }
 
 func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, q query) *promql.Result {
-	from, through, step := time.Unix(0, 0), end.Time(), sampleRate*4
+	from, through, step := time.Unix(0, 0), end.Time(), q.step
 	engine := promql.NewEngine(util.Logger, nil, 10, 1*time.Minute)
 	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
 	require.NoError(t, err)
@@ -149,8 +184,8 @@ func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, 
 	var ts int64
 	for _, point := range series.Points {
 		expectedTime, expectedValue := q.expected(ts)
-		require.Equal(t, expectedTime, point.T)
-		require.Equal(t, expectedValue, point.V)
+		require.EqualValues(t, expectedTime, point.T)
+		require.EqualValues(t, expectedValue, point.V)
 		ts += int64(step / time.Millisecond)
 	}
 	return r

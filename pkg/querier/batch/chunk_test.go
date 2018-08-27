@@ -69,7 +69,7 @@ func testSeek(t require.TestingT, points int64, iter storage.SeriesIterator) {
 		require.EqualValues(t, v, float64(ets))
 		require.NoError(t, iter.Err())
 
-		for j := i + 1; j < points; j++ {
+		for j := i + 1; j < i+points/10; j++ {
 			ets := j * int64(step/time.Millisecond)
 			require.True(t, iter.Next())
 			ts, v := iter.At()

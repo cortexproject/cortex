@@ -96,17 +96,12 @@ func (c *mergeIterator) buildNextBatch() {
 		required -= c.batches[i].Length - c.batches[i].Index
 	}
 
+	//fmt.Println("----")
+	//c.batches.Print()
+	//fmt.Println(required)
+
 	c.nextBatches = c.nextBatches[:0]
 	for required > 0 && len(c.h) > 0 {
-		// Optimisation: if we have at least one batches, and the next batch starts
-		// after the last batch we have, we have no overlaps and can break early.
-		if len(c.nextBatches) > 0 {
-			last := &c.nextBatches[len(c.nextBatches)-1]
-			if last.Timestamps[last.Length-1] < c.h[0].AtTime() {
-				break
-			}
-		}
-
 		b := c.h[0].Batch()
 		required -= b.Length
 		c.nextBatches = append(c.nextBatches, b)
@@ -118,11 +113,15 @@ func (c *mergeIterator) buildNextBatch() {
 	}
 
 	if len(c.nextBatches) > 0 {
+		//c.nextBatches.Print()
+
 		c.nextBatchesBuf = mergeBatches(c.nextBatches, c.nextBatchesBuf[:len(c.nextBatches)])
 		c.batchesBuf = mergeStreams(c.batches, c.nextBatchesBuf, c.batchesBuf)
 		copy(c.batches[:len(c.batchesBuf)], c.batchesBuf)
 		c.batches = c.batches[:len(c.batchesBuf)]
 	}
+
+	//c.batches.Print()
 }
 
 func (c *mergeIterator) AtTime() int64 {

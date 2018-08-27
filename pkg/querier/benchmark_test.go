@@ -10,10 +10,10 @@ import (
 var result *promql.Result
 
 func BenchmarkChunkQueryable(b *testing.B) {
-	for _, queryable := range queryables {
+	for _, query := range queries {
 		for _, encoding := range encodings {
-			for _, query := range queries {
-				b.Run(fmt.Sprintf("%s/%s/%s", queryable.name, encoding.name, query.query), func(b *testing.B) {
+			for _, queryable := range queryables {
+				b.Run(fmt.Sprintf("%s/step_%s/%s/%s/", query.query, query.step, encoding.name, queryable.name), func(b *testing.B) {
 					store, from := makeMockChunkStore(b, 24*30, encoding.e)
 					b.ResetTimer()
 

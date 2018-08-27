@@ -1,6 +1,8 @@
 package batch
 
 import (
+	"fmt"
+
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
@@ -8,6 +10,14 @@ import (
 // and building new slices of non-overlapping batches.  Designed to be used
 // without allocations.
 type batchStream []promchunk.Batch
+
+func (bs batchStream) Print() {
+	fmt.Println("[")
+	for _, b := range bs {
+		print(b)
+	}
+	fmt.Println("]")
+}
 
 // append, reset, hasNext, next, atTime etc are all inlined in go1.11.
 // append isn't a pointer receiver as that was causing bs to escape to the heap.

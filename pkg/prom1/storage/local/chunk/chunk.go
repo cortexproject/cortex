@@ -325,22 +325,17 @@ type Iterator interface {
 	Err() error
 }
 
-// Number is samples per batch; this was choose by benchmarking all sizes from
-// 1 to 128; 51 samples happens to also be a whole number of cache lines -
-// 51*16 + 16 / 64 = 13.
-const BatchSize = 51
+// BatchSize is samples per batch; this was choose by benchmarking all sizes from
+// 1 to 128.
+const BatchSize = 48
 
-// batch is a sort set of (timestamp, value) pairs.  They are intended to be
+// Batch is a sorted set of (timestamp, value) pairs.  They are intended to be
 // small, and passed by value.
 type Batch struct {
 	Timestamps [BatchSize]int64
 	Values     [BatchSize]float64
 	Index      int
 	Length     int
-}
-
-func (b Batch) Print() {
-	fmt.Println("  ", b.Values, b.Index, b.Length)
 }
 
 // RangeValues is a utility function that retrieves all values within the given

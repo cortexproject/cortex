@@ -170,7 +170,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	stream, err := client.TransferChunks(context.Background())
 	require.NoError(t, err)
 	_, err = stream.CloseAndRecv()
-	require.NotNil(t, err)
+	require.Error(t, err)
 
 	// Check the ingester is still waiting.
 	require.Equal(t, ring.PENDING, ing.lifecycler.GetState())

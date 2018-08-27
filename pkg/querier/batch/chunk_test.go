@@ -23,7 +23,8 @@ func TestChunkIter(t *testing.T) {
 	chunk := mkChunk(t, 0, 100)
 	iter := &chunkIterator{}
 	iter.reset(chunk)
-	testIter(t, 0, 100, newBatchIteratorAdapter(iter))
+	testIter(t, 100, newBatchIteratorAdapter(iter))
+	testSeek(t, 100, newBatchIteratorAdapter(iter))
 }
 
 func mkChunk(t require.TestingT, from model.Time, points int) chunk.Chunk {
@@ -46,8 +47,8 @@ func mkChunk(t require.TestingT, from model.Time, points int) chunk.Chunk {
 	return chunk.NewChunk(userID, fp, metric, pc, model.Time(0), ts)
 }
 
-func testIter(t require.TestingT, from model.Time, points int, iter storage.SeriesIterator) {
-	ets := from
+func testIter(t require.TestingT, points int, iter storage.SeriesIterator) {
+	ets := model.TimeFromUnix(0)
 	for i := 0; i < points; i++ {
 		require.True(t, iter.Next())
 		ts, v := iter.At()
@@ -56,4 +57,25 @@ func testIter(t require.TestingT, from model.Time, points int, iter storage.Seri
 		ets = ets.Add(step)
 	}
 	require.False(t, iter.Next())
+}
+
+func testSeek(t require.TestingT, points int64, iter storage.SeriesIterator) {
+	for i := int64(0); i < points; i += points / 10 {
+		ets := i * int64(step/time.Millisecond)
+
+		require.True(t, iter.Seek(ets))
+		ts, v := iter.At()
+		require.EqualValues(t, ets, ts)
+		require.EqualValues(t, v, float64(ets))
+		require.NoError(t, iter.Err())
+
+		for j := i + 1; j < points; j++ {
+			ets := j * int64(step/time.Millisecond)
+			require.True(t, iter.Next())
+			ts, v := iter.At()
+			require.EqualValues(t, ets, ts)
+			require.EqualValues(t, float64(ets), v)
+			require.NoError(t, iter.Err())
+		}
+	}
 }

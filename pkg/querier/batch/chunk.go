@@ -29,21 +29,19 @@ func (i *chunkIterator) Seek(t int64) bool {
 		return false
 	}
 
-	// TODO this will call next twice.
-	next := i.it.FindAtOrAfter(model.Time(t))
-	if next {
-		i.buildNextBatch()
+	if i.it.FindAtOrAfter(model.Time(t)) {
+		i.batch = i.it.Batch()
+		return i.batch.Length > 0
 	}
-	return next
+	return false
 }
 
 func (i *chunkIterator) Next() bool {
-	i.buildNextBatch()
-	return i.batch.Length > 0
-}
-
-func (i *chunkIterator) buildNextBatch() {
-	i.batch = i.it.Batch()
+	if i.it.Scan() {
+		i.batch = i.it.Batch()
+		return i.batch.Length > 0
+	}
+	return false
 }
 
 func (i *chunkIterator) AtTime() int64 {

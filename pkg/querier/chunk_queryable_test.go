@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -145,14 +144,14 @@ func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, 
 
 	require.Len(t, m, 1)
 	series := m[0]
-	assert.Equal(t, q.labels, series.Metric)
-	//assert.Equal(t, q.samples(from, through, step), len(series.Points))
-	//var ts int64
-	//for _, point := range series.Points {
-	//	expectedTime, expectedValue := q.expected(ts)
-	//	//assert.Equal(t, expectedTime, point.T)
-	//	//assert.Equal(t, expectedValue, point.V)
-	//	ts += int64(step / time.Millisecond)
-	//}
+	require.Equal(t, q.labels, series.Metric)
+	require.Equal(t, q.samples(from, through, step), len(series.Points))
+	var ts int64
+	for _, point := range series.Points {
+		expectedTime, expectedValue := q.expected(ts)
+		require.Equal(t, expectedTime, point.T)
+		require.Equal(t, expectedValue, point.V)
+		ts += int64(step / time.Millisecond)
+	}
 	return r
 }

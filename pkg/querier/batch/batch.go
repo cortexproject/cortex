@@ -8,10 +8,21 @@ import (
 
 // batchIterator iterate over batches.
 type batchIterator interface {
+	// Seek to the batch at (or after) time t.
 	Seek(t int64) bool
+
+	// Next moves to the next batch.
 	Next() bool
+
+	// AtTime returns the start time of the next batch.  Must only be called after
+	// Seek or Next have returned true.
 	AtTime() int64
+
+	// Batch returns the current batch.  Must only be called after Seek or Next
+	// have returned true.  Must return a full batch if possible; if a partial
+	// batch is returned, subsequent Next calls must return false.
 	Batch() promchunk.Batch
+
 	Err() error
 }
 
@@ -36,17 +47,19 @@ func newBatchIteratorAdapter(underlying batchIterator) storage.SeriesIterator {
 // Seek implements storage.SeriesIterator.
 func (a *batchIteratorAdapter) Seek(t int64) bool {
 	a.curr.Length = -1
-	return a.underlying.Seek(t)
+	if a.underlying.Seek(t) {
+		a.curr = a.underlying.Batch()
+		return a.curr.Index < a.curr.Length
+	}
+	return false
 }
 
 // Next implements storage.SeriesIterator.
 func (a *batchIteratorAdapter) Next() bool {
 	a.curr.Index++
-
 	for a.curr.Index >= a.curr.Length && a.underlying.Next() {
 		a.curr = a.underlying.Batch()
 	}
-
 	return a.curr.Index < a.curr.Length
 }
 

@@ -339,6 +339,10 @@ type Batch struct {
 	Length     int
 }
 
+func (b Batch) Print() {
+	fmt.Println("  ", b.Values, b.Index, b.Length)
+}
+
 // RangeValues is a utility function that retrieves all values within the given
 // range from an Iterator.
 func RangeValues(it Iterator, in metric.Interval) ([]model.SamplePair, error) {
@@ -510,7 +514,6 @@ func (it *indexAccessingChunkIterator) Value() model.SamplePair {
 func (it *indexAccessingChunkIterator) Batch() Batch {
 	var batch Batch
 	j := 0
-	it.pos++
 	for j < BatchSize && it.pos < it.len {
 		batch.Timestamps[j] = int64(it.acc.timestampAtIndex(it.pos))
 		batch.Values[j] = float64(it.acc.sampleValueAtIndex(it.pos))

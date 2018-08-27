@@ -1090,10 +1090,13 @@ func (it *varbitChunkIterator) Value() model.SamplePair {
 func (it *varbitChunkIterator) Batch() Batch {
 	var batch Batch
 	j := 0
-	for j < BatchSize && it.Scan() {
+	for j < BatchSize {
 		batch.Timestamps[j] = int64(it.t)
 		batch.Values[j] = float64(it.v)
 		j++
+		if j < BatchSize && !it.Scan() {
+			break
+		}
 	}
 	batch.Index = 0
 	batch.Length = j

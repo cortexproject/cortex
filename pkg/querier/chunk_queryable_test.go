@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ var (
 		name string
 		e    promchunk.Encoding
 	}{
-		{"DoubleDelta", promchunk.DoubleDelta},
+		//{"DoubleDelta", promchunk.DoubleDelta},
 		{"Varbit", promchunk.Varbit},
 	}
 
@@ -182,10 +183,10 @@ func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, 
 	require.Equal(t, q.labels, series.Metric)
 	require.Equal(t, q.samples(from, through, step), len(series.Points))
 	var ts int64
-	for _, point := range series.Points {
+	for i, point := range series.Points {
 		expectedTime, expectedValue := q.expected(ts)
-		require.EqualValues(t, expectedTime, point.T)
-		require.EqualValues(t, expectedValue, point.V)
+		require.Equal(t, expectedTime, point.T, strconv.Itoa(i))
+		require.Equal(t, expectedValue, point.V, strconv.Itoa(i))
 		ts += int64(step / time.Millisecond)
 	}
 	return r

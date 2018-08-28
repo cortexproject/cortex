@@ -42,7 +42,7 @@ func newMergeIterator(cs []chunk.Chunk) *mergeIterator {
 	}
 
 	for _, iter := range c.its {
-		if iter.Next() {
+		if iter.Next(1) {
 			c.h = append(c.h, iter)
 			continue
 		}
@@ -56,12 +56,12 @@ func newMergeIterator(cs []chunk.Chunk) *mergeIterator {
 	return c
 }
 
-func (c *mergeIterator) Seek(t int64) bool {
+func (c *mergeIterator) Seek(t int64, size int) bool {
 	c.h = c.h[:0]
 	c.batches = c.batches[:0]
 
 	for _, iter := range c.its {
-		if iter.Seek(t) {
+		if iter.Seek(t, size) {
 			c.h = append(c.h, iter)
 			continue
 		}
@@ -73,55 +73,47 @@ func (c *mergeIterator) Seek(t int64) bool {
 	}
 
 	heap.Init(&c.h)
-	c.buildNextBatch()
-	return len(c.batches) > 0
+	return c.buildNextBatch(size)
 }
 
-func (c *mergeIterator) Next() bool {
+func (c *mergeIterator) Next(size int) bool {
 	// Pop the last built batch in a way that doesn't extend the slice.
 	if len(c.batches) > 0 {
 		copy(c.batches, c.batches[1:])
 		c.batches = c.batches[:len(c.batches)-1]
 	}
 
-	c.buildNextBatch()
-	return len(c.batches) > 0
+	return c.buildNextBatch(size)
 }
 
-func (c *mergeIterator) buildNextBatch() {
-	// Must always consider #iters * batchsize samples, to ensure
-	// we have the opportunity to dedupe samples without missing any.
-	required := len(c.h) * promchunk.BatchSize
-	for i := range c.batches {
-		required -= c.batches[i].Length - c.batches[i].Index
-	}
+func (c *mergeIterator) nextBatchEndTime() int64 {
+	batch := &c.batches[0]
+	return batch.Timestamps[batch.Length-1]
+}
 
-	//fmt.Println("----")
-	//c.batches.Print()
-	//fmt.Println(required)
+func (c *mergeIterator) buildNextBatch(size int) bool {
+	// All we need to do is get enough batches that our first batch's last entry
+	// is before all iterators next entry.
+	// And all whilst dynamically increasing batch size.
 
-	c.nextBatches = c.nextBatches[:0]
-	for required > 0 && len(c.h) > 0 {
+	for len(c.h) > 0 && (len(c.batches) == 0 || c.nextBatchEndTime() >= c.h[0].AtTime()) {
+
 		b := c.h[0].Batch()
-		required -= b.Length
+
+		c.nextBatches = c.nextBatches[:0]
 		c.nextBatches = append(c.nextBatches, b)
-		if c.h[0].Next() {
+		c.nextBatchesBuf = mergeStreams(c.batches, c.nextBatches, c.nextBatchesBuf, size)
+		copy(c.batches[:len(c.nextBatchesBuf)], c.nextBatchesBuf)
+		c.batches = c.batches[:len(c.nextBatchesBuf)]
+
+		if c.h[0].Next(size) {
 			heap.Fix(&c.h, 0)
 		} else {
 			heap.Pop(&c.h)
 		}
 	}
 
-	if len(c.nextBatches) > 0 {
-		//c.nextBatches.Print()
-
-		c.nextBatchesBuf = mergeBatches(c.nextBatches, c.nextBatchesBuf[:len(c.nextBatches)])
-		c.batchesBuf = mergeStreams(c.batches, c.nextBatchesBuf, c.batchesBuf)
-		copy(c.batches[:len(c.batchesBuf)], c.batchesBuf)
-		c.batches = c.batches[:len(c.batchesBuf)]
-	}
-
-	//c.batches.Print()
+	return len(c.batches) > 0
 }
 
 func (c *mergeIterator) AtTime() int64 {

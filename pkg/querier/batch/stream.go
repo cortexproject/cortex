@@ -1,8 +1,6 @@
 package batch
 
 import (
-	"fmt"
-
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
@@ -11,19 +9,11 @@ import (
 // without allocations.
 type batchStream []promchunk.Batch
 
-func (bs batchStream) Print() {
-	fmt.Println("[")
-	for _, b := range bs {
-		print(b)
-	}
-	fmt.Println("]")
-}
-
 // append, reset, hasNext, next, atTime etc are all inlined in go1.11.
 // append isn't a pointer receiver as that was causing bs to escape to the heap.
-func (bs batchStream) append(t int64, v float64) batchStream {
+func (bs batchStream) append(t int64, v float64, size int) batchStream {
 	l := len(bs)
-	if l == 0 || bs[l-1].Index == promchunk.BatchSize {
+	if l == 0 || bs[l-1].Index == size {
 		bs = append(bs, promchunk.Batch{})
 		l++
 	}
@@ -74,13 +64,13 @@ func mergeBatches(batches batchStream, result batchStream) batchStream {
 		copy(result[:1], batches)
 		return result[:1]
 	case 2:
-		return mergeStreams(batches[0:1], batches[1:2], result)
+		return mergeStreams(batches[0:1], batches[1:2], result, promchunk.BatchSize)
 	default:
 		n := len(batches) / 2
 		left := mergeBatches(batches[n:], result[n:])
 		right := mergeBatches(batches[:n], result[:n])
 
-		batches = mergeStreams(left, right, batches)
+		batches = mergeStreams(left, right, batches, promchunk.BatchSize)
 		result = result[:len(batches)]
 		copy(result, batches)
 
@@ -88,28 +78,33 @@ func mergeBatches(batches batchStream, result batchStream) batchStream {
 	}
 }
 
-func mergeStreams(left, right batchStream, result batchStream) batchStream {
+func mergeStreams(left, right batchStream, result batchStream, size int) batchStream {
 	result.reset()
 	result = result[:0]
 	for left.hasNext() && right.hasNext() {
 		t1, t2 := left.atTime(), right.atTime()
 		if t1 < t2 {
-			result = result.append(left.at())
+			t, v := left.at()
+			result = result.append(t, v, size)
 			left.next()
 		} else if t1 > t2 {
-			result = result.append(right.at())
+			t, v := right.at()
+			result = result.append(t, v, size)
 			right.next()
 		} else {
-			result = result.append(left.at())
+			t, v := left.at()
+			result = result.append(t, v, size)
 			left.next()
 			right.next()
 		}
 	}
 	for ; left.hasNext(); left.next() {
-		result = result.append(left.at())
+		t, v := left.at()
+		result = result.append(t, v, size)
 	}
 	for ; right.hasNext(); right.next() {
-		result = result.append(right.at())
+		t, v := right.at()
+		result = result.append(t, v, size)
 	}
 	result.reset()
 	return result

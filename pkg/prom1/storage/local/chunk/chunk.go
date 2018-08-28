@@ -318,9 +318,9 @@ type Iterator interface {
 	// of the find... methods). It returns model.ZeroSamplePair before any of
 	// those methods were called.
 	Value() model.SamplePair
-	// Returns a batch of samples; NB not idempotent!  Should only be called
+	// Returns a batch of the provisded size; NB not idempotent!  Should only be called
 	// once per Scan/FindAtOrBefore.
-	Batch() Batch
+	Batch(size int) Batch
 	// Returns the last error encountered. In general, an error signals data
 	// corruption in the chunk and requires quarantining.
 	Err() error
@@ -507,15 +507,17 @@ func (it *indexAccessingChunkIterator) Value() model.SamplePair {
 	return it.lastValue
 }
 
-func (it *indexAccessingChunkIterator) Batch() Batch {
+func (it *indexAccessingChunkIterator) Batch(size int) Batch {
 	var batch Batch
 	j := 0
-	for j < BatchSize && it.pos < it.len {
+	for j < size && it.pos < it.len {
 		batch.Timestamps[j] = int64(it.acc.timestampAtIndex(it.pos))
 		batch.Values[j] = float64(it.acc.sampleValueAtIndex(it.pos))
 		it.pos++
 		j++
 	}
+	// Interface contract is that you call Scan before calling Batch; therefore
+	// without this decrement, you'd end up skipping samples.
 	it.pos--
 	batch.Index = 0
 	batch.Length = j

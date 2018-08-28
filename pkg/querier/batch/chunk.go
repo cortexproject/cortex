@@ -23,7 +23,7 @@ func (i *chunkIterator) reset(chunk chunk.Chunk) {
 
 // Seek advances the iterator forward to the value at or after
 // the given timestamp.
-func (i *chunkIterator) Seek(t int64) bool {
+func (i *chunkIterator) Seek(t int64, size int) bool {
 	// We assume seeks only care about a specific window; if this chunk doesn't
 	// contain samples in that window, we can shortcut.
 	if int64(i.chunk.Through) < t {
@@ -31,15 +31,15 @@ func (i *chunkIterator) Seek(t int64) bool {
 	}
 
 	if i.it.FindAtOrAfter(model.Time(t)) {
-		i.batch = i.it.Batch()
+		i.batch = i.it.Batch(size)
 		return i.batch.Length > 0
 	}
 	return false
 }
 
-func (i *chunkIterator) Next() bool {
+func (i *chunkIterator) Next(size int) bool {
 	if i.it.Scan() {
-		i.batch = i.it.Batch()
+		i.batch = i.it.Batch(size)
 		return i.batch.Length > 0
 	}
 	return false

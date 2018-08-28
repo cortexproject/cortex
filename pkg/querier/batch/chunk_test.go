@@ -50,7 +50,7 @@ func mkChunk(t require.TestingT, from model.Time, points int) chunk.Chunk {
 func testIter(t require.TestingT, points int, iter storage.SeriesIterator) {
 	ets := model.TimeFromUnix(0)
 	for i := 0; i < points; i++ {
-		require.True(t, iter.Next())
+		require.True(t, iter.Next(), strconv.Itoa(i))
 		ts, v := iter.At()
 		require.EqualValues(t, int64(ets), ts, strconv.Itoa(i))
 		require.EqualValues(t, float64(ets), v, strconv.Itoa(i))
@@ -59,9 +59,9 @@ func testIter(t require.TestingT, points int, iter storage.SeriesIterator) {
 	require.False(t, iter.Next())
 }
 
-func testSeek(t require.TestingT, points int64, iter storage.SeriesIterator) {
-	for i := int64(0); i < points; i += points / 10 {
-		ets := i * int64(step/time.Millisecond)
+func testSeek(t require.TestingT, points int, iter storage.SeriesIterator) {
+	for i := 0; i < points; i += points / 10 {
+		ets := int64(i * int(step/time.Millisecond))
 
 		require.True(t, iter.Seek(ets))
 		ts, v := iter.At()
@@ -70,7 +70,7 @@ func testSeek(t require.TestingT, points int64, iter storage.SeriesIterator) {
 		require.NoError(t, iter.Err())
 
 		for j := i + 1; j < i+points/10; j++ {
-			ets := j * int64(step/time.Millisecond)
+			ets := int64(j * int(step/time.Millisecond))
 			require.True(t, iter.Next())
 			ts, v := iter.At()
 			require.EqualValues(t, ets, ts)

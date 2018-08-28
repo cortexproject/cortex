@@ -17,6 +17,11 @@ type Log struct {
 
 // logWithRequest information from the request and context as fields.
 func (l Log) logWithRequest(r *http.Request) logging.Interface {
+	traceID, ok := ExtractTraceID(r.Context())
+	if ok {
+		l.Log = l.Log.WithField("traceID", traceID)
+	}
+
 	return user.LogWith(r.Context(), l.Log)
 }
 

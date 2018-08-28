@@ -918,7 +918,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:51733e0105994029b3c8386da549def50d733d13938d93fbf870f03ff8c8acad"
+  digest = "1:7e52f72864ff1d884dbee16153715d71510a3be1b715b313dcf416d5bc9bbe61"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -938,7 +938,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "1a7a6b3820595d7682b7284682b733733005c57e"
+  revision = "6a85bf520acfc70202792d295429ffcf10de9e53"
 
 [[projects]]
   digest = "1:efac30de93ca1ff38050f46dc34f1338ebc8778de488f919f79ad9e6188719d3"

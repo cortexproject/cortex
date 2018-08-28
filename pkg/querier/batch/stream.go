@@ -1,6 +1,8 @@
 package batch
 
 import (
+	"fmt"
+
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
@@ -8,6 +10,14 @@ import (
 // and building new slices of non-overlapping batches.  Designed to be used
 // without allocations.
 type batchStream []promchunk.Batch
+
+func (bs batchStream) print() {
+	fmt.Println("[")
+	for _, b := range bs {
+		print(b)
+	}
+	fmt.Println("]")
+}
 
 // append, reset, hasNext, next, atTime etc are all inlined in go1.11.
 // append isn't a pointer receiver as that was causing bs to escape to the heap.
@@ -56,7 +66,7 @@ func (bs *batchStream) at() (int64, float64) {
 // Caller must guarantee result is big enough.  Return value will always be a
 // slice pointing to the same underly array as result, allowing mergeBatches
 // to call itself recursively.
-func mergeBatches(batches batchStream, result batchStream) batchStream {
+func mergeBatches(batches batchStream, result batchStream, size int) batchStream {
 	switch len(batches) {
 	case 0:
 		return nil
@@ -64,13 +74,13 @@ func mergeBatches(batches batchStream, result batchStream) batchStream {
 		copy(result[:1], batches)
 		return result[:1]
 	case 2:
-		return mergeStreams(batches[0:1], batches[1:2], result, promchunk.BatchSize)
+		return mergeStreams(batches[0:1], batches[1:2], result, size)
 	default:
 		n := len(batches) / 2
-		left := mergeBatches(batches[n:], result[n:])
-		right := mergeBatches(batches[:n], result[:n])
+		left := mergeBatches(batches[n:], result[n:], size)
+		right := mergeBatches(batches[:n], result[:n], size)
 
-		batches = mergeStreams(left, right, batches, promchunk.BatchSize)
+		batches = mergeStreams(left, right, batches, size)
 		result = result[:len(batches)]
 		copy(result, batches)
 
@@ -107,5 +117,39 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 		result = result.append(t, v, size)
 	}
 	result.reset()
+	return result
+}
+
+func mergeBatchTimes(a, b promchunk.Batch, size int) promchunk.Batch {
+	i, j, k := 0, 0, 0
+	var result promchunk.Batch
+	for i < a.Length && j < b.Length && k < size {
+		t1, t2 := a.Timestamps[i], b.Timestamps[j]
+		if t1 < t2 {
+			result.Timestamps[k] = t1
+			i++
+			k++
+		} else if t1 > t2 {
+			result.Timestamps[k] = t2
+			j++
+			k++
+		} else {
+			result.Timestamps[k] = t2
+			i++
+			j++
+			k++
+		}
+	}
+	for i < a.Length && k < size {
+		result.Timestamps[k] = a.Timestamps[i]
+		i++
+		k++
+	}
+	for j < b.Length && k < size {
+		result.Timestamps[k] = b.Timestamps[j]
+		j++
+		k++
+	}
+	result.Length = k
 	return result
 }

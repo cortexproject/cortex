@@ -1,6 +1,8 @@
 package batch
 
 import (
+	"fmt"
+
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
@@ -23,6 +25,10 @@ type iterator interface {
 	Batch() promchunk.Batch
 
 	Err() error
+}
+
+func print(b promchunk.Batch) {
+	fmt.Println("  ", b.Timestamps, b.Index, b.Length)
 }
 
 // NewChunkMergeIterator returns a storage.SeriesIterator that merges chunks together.
@@ -63,10 +69,10 @@ func (a *iteratorAdapter) Next() bool {
 	a.curr.Index++
 	for a.curr.Index >= a.curr.Length && a.underlying.Next(a.batchSize) {
 		a.curr = a.underlying.Batch()
-	}
-	a.batchSize = a.batchSize * 2
-	if a.batchSize > promchunk.BatchSize {
-		a.batchSize = promchunk.BatchSize
+		a.batchSize = a.batchSize * 2
+		if a.batchSize > promchunk.BatchSize {
+			a.batchSize = promchunk.BatchSize
+		}
 	}
 	return a.curr.Index < a.curr.Length
 }

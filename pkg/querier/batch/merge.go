@@ -15,10 +15,8 @@ type mergeIterator struct {
 	// Store the current sorted batchStream
 	batches batchStream
 
-	// For the next set of batches we'll collect, and buffers to merge them in.
-	nextBatches    batchStream
-	nextBatchesBuf batchStream
-	batchesBuf     batchStream
+	// Buffers to merge in.
+	batchesBuf batchStream
 
 	currErr error
 }
@@ -34,11 +32,12 @@ func newMergeIterator(cs []chunk.Chunk) *mergeIterator {
 		its: its,
 		h:   make(iteratorHeap, 0, len(its)),
 
-		// TODO its 2x # iterators guaranteed to be enough?
-		batches:        make(batchStream, 0, len(its)*2),
-		nextBatches:    make(batchStream, 0, len(its)*2),
-		nextBatchesBuf: make(batchStream, 0, len(its)*2),
-		batchesBuf:     make(batchStream, 0, len(its)*2),
+		// Is 2x # iterators guaranteed to be enough?
+		// Yes: if we've popped two batches of each iterators, we're guaranteed
+		// that the last entry in the first of the resulting merged batches is smaller
+		// than any remaining iterator.
+		batches:    make(batchStream, 0, len(its)*2),
+		batchesBuf: make(batchStream, 0, len(its)*2),
 	}
 
 	for _, iter := range c.its {
@@ -94,17 +93,14 @@ func (c *mergeIterator) nextBatchEndTime() int64 {
 func (c *mergeIterator) buildNextBatch(size int) bool {
 	// All we need to do is get enough batches that our first batch's last entry
 	// is before all iterators next entry.
-	// And all whilst dynamically increasing batch size.
+	var nextBatchArr [1]promchunk.Batch
+	nextBatch := nextBatchArr[:]
 
 	for len(c.h) > 0 && (len(c.batches) == 0 || c.nextBatchEndTime() >= c.h[0].AtTime()) {
-
-		b := c.h[0].Batch()
-
-		c.nextBatches = c.nextBatches[:0]
-		c.nextBatches = append(c.nextBatches, b)
-		c.nextBatchesBuf = mergeStreams(c.batches, c.nextBatches, c.nextBatchesBuf, size)
-		copy(c.batches[:len(c.nextBatchesBuf)], c.nextBatchesBuf)
-		c.batches = c.batches[:len(c.nextBatchesBuf)]
+		nextBatch[0] = c.h[0].Batch()
+		c.batchesBuf = mergeStreams(c.batches, nextBatch, c.batchesBuf, size)
+		copy(c.batches[:len(c.batchesBuf)], c.batchesBuf)
+		c.batches = c.batches[:len(c.batchesBuf)]
 
 		if c.h[0].Next(size) {
 			heap.Fix(&c.h, 0)

@@ -150,13 +150,38 @@ func TestIngesterTransfer(t *testing.T) {
 	}, response)
 }
 
+func TestIngesterBadTransfer(t *testing.T) {
+	// Start ingester in PENDING.
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.ID = "ingester1"
+	cfg.LifecyclerConfig.Addr = "ingester1"
+	cfg.LifecyclerConfig.ClaimOnRollout = true
+	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
+	cfg.SearchPendingFor = 1 * time.Second
+	ing, err := New(cfg, nil)
+	require.NoError(t, err)
+
+	poll(t, 100*time.Millisecond, ring.PENDING, func() interface{} {
+		return ing.lifecycler.GetState()
+	})
+
+	// Now transfer 0 series to this ingester, ensure it errors.
+	client := ingesterClientAdapater{ingester: ing}
+	stream, err := client.TransferChunks(context.Background())
+	require.NoError(t, err)
+	_, err = stream.CloseAndRecv()
+	require.Error(t, err)
+
+	// Check the ingester is still waiting.
+	require.Equal(t, ring.PENDING, ing.lifecycler.GetState())
+}
+
 func numTokens(c ring.KVClient, name string) int {
 	ringDesc, err := c.Get(context.Background(), ring.ConsulKey)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error reading consul", "err", err)
 		return 0
 	}
-
 	count := 0
 	for _, token := range ringDesc.(*ring.Desc).Tokens {
 		if token.Ingester == name {

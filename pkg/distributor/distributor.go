@@ -524,7 +524,7 @@ func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
-func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) (model.LabelValues, error) {
+func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) ([]string, error) {
 	req := &client.LabelValuesRequest{
 		LabelName: string(labelName),
 	}
@@ -535,14 +535,14 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 		return nil, err
 	}
 
-	valueSet := map[model.LabelValue]struct{}{}
+	valueSet := map[string]struct{}{}
 	for _, resp := range resps {
 		for _, v := range resp.(*client.LabelValuesResponse).LabelValues {
-			valueSet[model.LabelValue(v)] = struct{}{}
+			valueSet[v] = struct{}{}
 		}
 	}
 
-	values := make(model.LabelValues, 0, len(valueSet))
+	values := make([]string, 0, len(valueSet))
 	for v := range valueSet {
 		values = append(values, v)
 	}

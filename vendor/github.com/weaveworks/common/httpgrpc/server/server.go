@@ -143,6 +143,7 @@ func NewClient(address string) (*Client, error) {
 	}, nil
 }
 
+// HTTPRequest wraps an ordinary HTTPRequest with a gRPC one
 func HTTPRequest(r *http.Request) (*httpgrpc.HTTPRequest, error) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -156,6 +157,7 @@ func HTTPRequest(r *http.Request) (*httpgrpc.HTTPRequest, error) {
 	}, nil
 }
 
+// WriteResponse converts an httpgrpc response to an HTTP one
 func WriteResponse(w http.ResponseWriter, resp *httpgrpc.HTTPResponse) error {
 	toHeader(resp.Headers, w.Header())
 	w.WriteHeader(int(resp.Code))
@@ -163,6 +165,7 @@ func WriteResponse(w http.ResponseWriter, resp *httpgrpc.HTTPResponse) error {
 	return err
 }
 
+// WriteError converts an httpgrpc error to an HTTP one
 func WriteError(w http.ResponseWriter, err error) {
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {

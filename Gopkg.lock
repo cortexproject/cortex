@@ -830,6 +830,14 @@
   version = "v1.1.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:c59d82fe02e030fcbd31e71534e2c72028e50ef14eaa3fbe26b077fdf82daa6e"
+  name = "github.com/segmentio/fasthash"
+  packages = ["fnv1a"]
+  pruneopts = "UT"
+  revision = "a72b379d632eab4b49e4f4b2c765cfebf0a74796"
+
+[[projects]]
   digest = "1:8e79da55d2a6a92374cc7ca5ce1a7739fe0a13ca04b6f8c806a50f1873138eff"
   name = "github.com/sercand/kuberesolver"
   packages = ["."]
@@ -910,7 +918,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:5fb4b51835377c63ba87d8c6120d6c7c87ee7ea31a0883bf028f4caefca411f7"
+  digest = "1:a3d33cb49d37fae16881f4b7ba60c55c9d99237695f912b158b6b773e1a333f8"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -930,7 +938,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "54b7e30527f846e1515fb5a85d0ff5674f05a267"
+  revision = "80ff0769bb38e575cd85a64a4575a2ca1ef5ada5"
 
 [[projects]]
   digest = "1:efac30de93ca1ff38050f46dc34f1338ebc8778de488f919f79ad9e6188719d3"
@@ -1381,12 +1389,14 @@
     "github.com/prometheus/prometheus/web/api/v1",
     "github.com/prometheus/tsdb",
     "github.com/prometheus/tsdb/fileutil",
+    "github.com/segmentio/fasthash/fnv1a",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/weaveworks/billing-client",
     "github.com/weaveworks/common/aws",
     "github.com/weaveworks/common/errors",
     "github.com/weaveworks/common/httpgrpc",
+    "github.com/weaveworks/common/httpgrpc/server",
     "github.com/weaveworks/common/instrument",
     "github.com/weaveworks/common/logging",
     "github.com/weaveworks/common/mflag",
@@ -1408,6 +1418,7 @@
     "google.golang.org/grpc/encoding/gzip",
     "google.golang.org/grpc/health/grpc_health_v1",
     "google.golang.org/grpc/metadata",
+    "google.golang.org/grpc/naming",
     "google.golang.org/grpc/status",
     "gopkg.in/yaml.v2",
   ]

@@ -1,8 +1,11 @@
 package frontend
 
 import (
+	"bytes"
 	"context"
 	"flag"
+	"io"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -10,6 +13,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
@@ -56,8 +61,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
 // for requests which failed.
 type Frontend struct {
-	cfg Config
-	log log.Logger
+	cfg    Config
+	log    log.Logger
+	tracer nethttp.Transport
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
@@ -78,6 +84,7 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 		log:    log,
 		queues: map[string]chan *request{},
 	}
+	f.tracer.RoundTripper = f
 	f.cond = sync.NewCond(&f.mtx)
 	return f, nil
 }
@@ -93,21 +100,34 @@ func (f *Frontend) Close() {
 
 // ServeHTTP serves HTTP requests.
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if err := f.serveHTTP(w, r); err != nil {
+	r, ht := nethttp.TraceRequest(opentracing.GlobalTracer(), r)
+	defer ht.Finish()
+
+	resp, err := f.tracer.RoundTrip(r)
+	if err != nil {
 		server.WriteError(w, err)
+		return
 	}
+
+	hs := w.Header()
+	for h, vs := range resp.Header {
+		hs[h] = vs
+	}
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
-func (f *Frontend) serveHTTP(w http.ResponseWriter, r *http.Request) error {
+// RoundTrip implement http.Transport.
+func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 	ctx := r.Context()
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req, err := server.HTTPRequest(r)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	request := &request{
@@ -120,7 +140,7 @@ func (f *Frontend) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 	var lastErr error
 	for tries := 0; tries < f.cfg.MaxRetries; tries++ {
 		if err := f.queueRequest(userID, request); err != nil {
-			return err
+			return nil, err
 		}
 
 		var resp *httpgrpc.HTTPResponse
@@ -128,7 +148,7 @@ func (f *Frontend) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 		case <-ctx.Done():
 			// TODO propagate cancellation.
 			//request.Cancel()
-			return errCanceled
+			return nil, errCanceled
 
 		case resp = <-request.response:
 		case lastErr = <-request.err:
@@ -142,11 +162,19 @@ func (f *Frontend) serveHTTP(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		retries.Observe(float64(tries))
-		server.WriteResponse(w, resp)
-		return nil
+
+		httpResp := &http.Response{
+			StatusCode: int(resp.Code),
+			Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
+			Header:     http.Header{},
+		}
+		for _, h := range resp.Headers {
+			httpResp.Header[h.Key] = h.Values
+		}
+		return httpResp, nil
 	}
 
-	return lastErr
+	return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Query failed after %d retries", f.cfg.MaxRetries)
 }
 
 // Process allows backends to pull requests from the frontend.

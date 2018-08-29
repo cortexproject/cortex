@@ -19,11 +19,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	ingester_client "github.com/weaveworks/cortex/pkg/ingester/client"
@@ -379,148 +377,21 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 	return err
 }
 
-// Query implements Querier.
-func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	var matrix model.Matrix
-	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", queryDuration, func(ctx context.Context) error {
-		userID, err := user.ExtractOrgID(ctx)
-		if err != nil {
-			return err
-		}
-
-		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
-
-		req, err := ingester_client.ToQueryRequest(from, to, matchers)
-		if err != nil {
-			return err
-		}
-
-		// Get ingesters by metricName if one exists, otherwise get all ingesters
-		var replicationSet ring.ReplicationSet
-		if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
-			replicationSet, err = d.ring.Get(shardByMetricName(userID, []byte(metricNameMatcher.Value)), ring.Read)
-		} else {
-			replicationSet, err = d.ring.GetAll()
-		}
-		if err != nil {
-			return promql.ErrStorage(err)
-		}
-
-		matrix, err = d.queryIngesters(ctx, replicationSet, req)
-		return promql.ErrStorage(err)
-	})
-	return matrix, err
-}
-
-// Query implements Querier.
-func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.ReplicationSet, req *client.QueryRequest) (model.Matrix, error) {
-	// Fetch samples from multiple ingesters
-	errs := make(chan error, len(replicationSet.Ingesters))
-	results := make(chan model.Matrix, len(replicationSet.Ingesters))
-	for _, ing := range replicationSet.Ingesters {
-		go func(ing *ring.IngesterDesc) {
-			result, err := d.queryIngester(ctx, ing, req)
-			if err != nil {
-				errs <- err
-			} else {
-				results <- result
-			}
-		}(ing)
-	}
-
-	// Only wait for minSuccessful responses (or maxErrors), and accumulate the samples
-	// by fingerprint, merging them into any existing samples.
-	fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
-	minSuccess := len(replicationSet.Ingesters) - replicationSet.MaxErrors
-	var numErrs, numSuccess int
-	for numSuccess < minSuccess {
-		select {
-		case err := <-errs:
-			numErrs++
-			if numErrs > replicationSet.MaxErrors {
-				return nil, err
-			}
-
-		case result := <-results:
-			numSuccess++
-			for _, ss := range result {
-				fp := ss.Metric.Fingerprint()
-				mss, ok := fpToSampleStream[fp]
-				if !ok {
-					mss = &model.SampleStream{
-						Metric: ss.Metric,
-					}
-					fpToSampleStream[fp] = mss
-				}
-				mss.Values = util.MergeSampleSets(mss.Values, ss.Values)
-			}
-		}
-	}
-
-	result := model.Matrix{}
-	for _, ss := range fpToSampleStream {
-		result = append(result, ss)
-	}
-	return result, nil
-}
-
-func (d *Distributor) queryIngester(ctx context.Context, ing *ring.IngesterDesc, req *client.QueryRequest) (model.Matrix, error) {
-	client, err := d.ingesterPool.GetClientFor(ing.Addr)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.(ingester_client.IngesterClient).Query(ctx, req)
-	ingesterQueries.WithLabelValues(ing.Addr).Inc()
-	if err != nil {
-		ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
-		return nil, err
-	}
-
-	return ingester_client.FromQueryResponse(resp), nil
-}
-
 // forAllIngesters runs f, in parallel, for all ingesters
-func (d *Distributor) forAllIngesters(f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+func (d *Distributor) forAllIngesters(ctx context.Context, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
 	replicationSet, err := d.ring.GetAll()
 	if err != nil {
 		return nil, err
 	}
 
-	resps, errs := make(chan interface{}), make(chan error)
-	for _, ingester := range replicationSet.Ingesters {
-		go func(ingester *ring.IngesterDesc) {
-			client, err := d.ingesterPool.GetClientFor(ingester.Addr)
-			if err != nil {
-				errs <- err
-				return
-			}
-
-			resp, err := f(client.(ingester_client.IngesterClient))
-			if err != nil {
-				errs <- err
-			} else {
-				resps <- resp
-			}
-		}(ingester)
-	}
-
-	var lastErr error
-	result, numErrs := []interface{}{}, 0
-	for range replicationSet.Ingesters {
-		select {
-		case resp := <-resps:
-			result = append(result, resp)
-		case lastErr = <-errs:
-			numErrs++
+	return replicationSet.Do(ctx, func(ing *ring.IngesterDesc) (interface{}, error) {
+		client, err := d.ingesterPool.GetClientFor(ing.Addr)
+		if err != nil {
+			return nil, err
 		}
-	}
 
-	if numErrs > replicationSet.MaxErrors {
-		return nil, lastErr
-	}
-
-	return result, nil
+		return f(client.(ingester_client.IngesterClient))
+	})
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
@@ -528,7 +399,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 	req := &client.LabelValuesRequest{
 		LabelName: string(labelName),
 	}
-	resps, err := d.forAllIngesters(func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.forAllIngesters(ctx, func(client client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
 	})
 	if err != nil {
@@ -556,7 +427,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 		return nil, err
 	}
 
-	resps, err := d.forAllIngesters(func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.forAllIngesters(ctx, func(client client.IngesterClient) (interface{}, error) {
 		return client.MetricsForLabelMatchers(ctx, req)
 	})
 	if err != nil {
@@ -583,7 +454,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	req := &client.UserStatsRequest{}
-	resps, err := d.forAllIngesters(func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.forAllIngesters(ctx, func(client client.IngesterClient) (interface{}, error) {
 		return client.UserStats(ctx, req)
 	})
 	if err != nil {

@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	net_context "golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -20,6 +22,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
+	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
 	"github.com/weaveworks/cortex/pkg/util/wire"
 )
 
@@ -121,6 +124,16 @@ func TestIngesterAppend(t *testing.T) {
 		res := client.FromQueryResponse(resp)
 		sort.Sort(res)
 		assert.Equal(t, testData[userID], res)
+
+		s := stream{
+			ctx: ctx,
+		}
+		err = ing.QueryStream(req, &s)
+		require.NoError(t, err)
+
+		res, err = chunkcompat.StreamsToMatrix(model.Earliest, model.Latest, s.responses)
+		require.NoError(t, err)
+		assert.Equal(t, testData[userID].String(), res.String())
 	}
 
 	// Read samples back via chunk store.
@@ -131,6 +144,21 @@ func TestIngesterAppend(t *testing.T) {
 		sort.Sort(res)
 		assert.Equal(t, testData[userID], res)
 	}
+}
+
+type stream struct {
+	grpc.ServerStream
+	ctx       context.Context
+	responses []*client.QueryStreamResponse
+}
+
+func (s *stream) Context() net_context.Context {
+	return s.ctx
+}
+
+func (s *stream) Send(response *client.QueryStreamResponse) error {
+	s.responses = append(s.responses, response)
+	return nil
 }
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {

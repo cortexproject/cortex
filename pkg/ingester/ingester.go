@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -31,6 +30,9 @@ const (
 	// Reasons to discard samples.
 	outOfOrderTimestamp = "timestamp_out_of_order"
 	duplicateSample     = "multiple_values_for_timestamp"
+
+	// Number of timeseries to return in each batch of a QueryStream.
+	queryStreamBatchSize = 10
 )
 
 var (
@@ -61,6 +63,12 @@ var (
 		Help: "The total number of series returned from queries.",
 		// A reasonable upper bound is around 100k - 10*(8^8) = 167k.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 8),
+	})
+	queriedChunks = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "cortex_ingester_queried_chunks",
+		Help: "The total number of chunks returned from queries.",
+		// A small number of chunks per series - 10*(4^8) = 655k.
+		Buckets: prometheus.DefBuckets,
 	})
 )
 
@@ -308,39 +316,29 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample, source clie
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
-	start, end, matchers, err := client.FromQueryRequest(req)
-	if err != nil {
-		return nil, err
-	}
-
-	matrix, err := i.query(ctx, start, end, matchers)
-	if err != nil {
-		return nil, err
-	}
-
-	return client.ToQueryResponse(matrix), nil
-}
-
-func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers []*labels.Matcher) (model.Matrix, error) {
-	queries.Inc()
-
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result := model.Matrix{}
+	from, through, matchers, err := client.FromQueryRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	queries.Inc()
+
 	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	state, ok, err := i.userStates.getViaContext(ctx)
+	i.userStatesMtx.RUnlock()
 	if err != nil {
 		return nil, err
 	} else if !ok {
-		return result, nil
+		return &client.QueryResponse{}, nil
 	}
 
-	numSamples := 0
-	numSeries := 0
+	result := model.Matrix{}
+	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
 	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
 		numSeries++
@@ -358,12 +356,77 @@ func (i *Ingester) query(ctx context.Context, from, through model.Time, matchers
 			Metric: series.metric,
 			Values: values,
 		})
-
 		return nil
 	})
-	queriedSamples.Observe(float64(numSamples))
 	queriedSeries.Observe(float64(numSeries))
-	return result, err
+	queriedSamples.Observe(float64(numSamples))
+	return client.ToQueryResponse(result), err
+}
+
+// QueryStream implements service.IngesterServer
+func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	_, _, matchers, err := client.FromQueryRequest(req)
+	if err != nil {
+		return err
+	}
+
+	queries.Inc()
+
+	i.userStatesMtx.RLock()
+	state, ok, err := i.userStates.getViaContext(stream.Context())
+	i.userStatesMtx.RUnlock()
+	if err != nil {
+		return err
+	} else if !ok {
+		return nil
+	}
+
+	numSeries, numChunks := 0, 0
+	batch := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
+	// We'd really like to have series in label order, not FP order, so we
+	// can iteratively merge them with entries coming from the chunk store.  But
+	// that would involve locking all the series & sorting, so until we have
+	// a better solution in the ingesters I'd rather take the hit in the queriers.
+	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
+		numSeries++
+		chunks := make([]*desc, 0, len(series.chunkDescs))
+		for _, chunk := range series.chunkDescs {
+			if !(chunk.FirstTime.After(model.Time(req.EndTimestampMs)) || chunk.LastTime.Before(model.Time(req.StartTimestampMs))) {
+				chunks = append(chunks, chunk)
+			}
+		}
+
+		wireChunks, err := toWireChunks(chunks)
+		if err != nil {
+			return err
+		}
+
+		numChunks += len(wireChunks)
+		batch = append(batch, client.TimeSeriesChunk{
+			Labels: client.ToLabelPairs(series.metric),
+			Chunks: wireChunks,
+		})
+
+		if len(batch) >= queryStreamBatchSize {
+			err = stream.Send(&client.QueryStreamResponse{
+				Timeseries: batch,
+			})
+			batch = batch[:0]
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	if len(batch) > 0 {
+		err = stream.Send(&client.QueryStreamResponse{
+			Timeseries: batch,
+		})
+	}
+	queriedSeries.Observe(float64(numSeries))
+	queriedChunks.Observe(float64(numChunks))
+	return err
 }
 
 // LabelValues returns all label values that are associated with a given label name.

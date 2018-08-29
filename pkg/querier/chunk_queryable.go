@@ -16,13 +16,7 @@ type ChunkStore interface {
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor Distributor, chunkStore ChunkStore, iterators bool) storage.Queryable {
-	dq := newDistributorQueryable(distributor)
-	cq := newChunkQueryable(chunkStore)
-	if iterators {
-		cq = newIterChunkQueryable(newChunkMergeIterator)(chunkStore)
-	}
-
+func NewQueryable(dq, cq storage.Queryable, distributor Distributor) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		dqr, err := dq.Querier(ctx, mint, maxt)
 		if err != nil {

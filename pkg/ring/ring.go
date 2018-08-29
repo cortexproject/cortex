@@ -34,13 +34,6 @@ type ReadRing interface {
 	ReplicationFactor() int
 }
 
-// ReplicationSet describes the ingesters to talk to for a given key, and how
-// many errors to tolerate.
-type ReplicationSet struct {
-	Ingesters []*IngesterDesc
-	MaxErrors int
-}
-
 // Operation can be Read or Write
 type Operation int
 

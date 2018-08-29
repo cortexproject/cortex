@@ -97,7 +97,7 @@ func main() {
 	}
 	defer worker.Stop()
 
-	queryable, engine := querier.Make(querierConfig, dist, chunkStore)
+	queryable, engine := querier.New(querierConfig, dist, chunkStore)
 	api := v1.NewAPI(
 		engine,
 		queryable,

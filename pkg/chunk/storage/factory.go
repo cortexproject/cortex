@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/aws"
 	"github.com/weaveworks/cortex/pkg/chunk/cassandra"
@@ -37,8 +39,31 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
 }
 
-// NewStorageClient makes a storage client based on the configuration.
-func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (client chunk.StorageClient, err error) {
+// Opts makes the storage clients based on the configuration.
+func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
+	opts := []chunk.StorageOpt{}
+	client, err := newStorageClient(cfg, schemaCfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating storage client")
+	}
+
+	opts = append(opts, chunk.StorageOpt{From: model.Time(0), Client: client})
+	if cfg.StorageClient == "gcp" && schemaCfg.BigtableColumnKeyFrom.IsSet() {
+		client, err = gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+		if err != nil {
+			return nil, errors.Wrap(err, "error creating storage client")
+		}
+
+		opts = append(opts, chunk.StorageOpt{
+			From:   schemaCfg.BigtableColumnKeyFrom.Time,
+			Client: newCachingStorageClient(client, cfg.IndexCacheSize, cfg.IndexCacheValidity),
+		})
+	}
+
+	return opts, nil
+}
+
+func newStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (client chunk.StorageClient, err error) {
 	switch cfg.StorageClient {
 	case "inmemory":
 		client, err = chunk.NewMockStorage(), nil

@@ -173,14 +173,3 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 
 	return result, nil
 }
-
-func fromLabelPairs(in []client.LabelPair) labels.Labels {
-	out := make(labels.Labels, 0, len(in))
-	for _, pair := range in {
-		out = append(out, labels.Label{
-			Name:  string(pair.Name),
-			Value: string(pair.Value),
-		})
-	}
-	return out
-}

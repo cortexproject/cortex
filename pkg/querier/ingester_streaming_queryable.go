@@ -51,7 +51,7 @@ func (q *ingesterStreamingQuerier) Select(_ *storage.SelectParams, matchers ...*
 			return nil, promql.ErrStorage(err)
 		}
 
-		ls := fromLabelPairs(result.Labels)
+		ls := client.FromLabelPairsToLabels(result.Labels)
 		sort.Sort(ls)
 		series := &chunkSeries{
 			labels:            ls,
@@ -62,15 +62,4 @@ func (q *ingesterStreamingQuerier) Select(_ *storage.SelectParams, matchers ...*
 	}
 
 	return newConcreteSeriesSet(serieses), nil
-}
-
-func fromLabelPairs(in []client.LabelPair) labels.Labels {
-	out := make(labels.Labels, 0, len(in))
-	for _, pair := range in {
-		out = append(out, labels.Label{
-			Name:  string(pair.Name),
-			Value: string(pair.Value),
-		})
-	}
-	return out
 }

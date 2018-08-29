@@ -448,8 +448,6 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 		}
 
 		chunk := client.Chunk{
-			//StartTimestampMs: int64(),
-			//EndTimestampMs:   int64(d.LastTime),
 			Encoding: int32(c.Encoding()),
 			Data:     make([]byte, chunk.ChunkLen, chunk.ChunkLen),
 		}

@@ -232,3 +232,15 @@ func FromLabelPairs(labelPairs []LabelPair) model.Metric {
 	}
 	return metric
 }
+
+// FromLabelPairsToLabels unpack a []LabelPair to a labels.Labels
+func FromLabelPairsToLabels(labelPairs []LabelPair) labels.Labels {
+	ls := make(labels.Labels, 0, len(labelPairs))
+	for _, l := range labelPairs {
+		ls = append(ls, labels.Label{
+			Name:  string(l.Name),
+			Value: string(l.Value),
+		})
+	}
+	return ls
+}

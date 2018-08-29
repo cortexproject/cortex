@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/weaveworks/cortex/pkg/querier/batch"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -16,6 +17,7 @@ type Config struct {
 	MaxConcurrent     int
 	Timeout           time.Duration
 	Iterators         bool
+	BatchIterators    bool
 	IngesterStreaming bool
 }
 
@@ -27,6 +29,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		f.DurationVar(&promql.LookbackDelta, "promql.lookback-delta", promql.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	}
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
+	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", false, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
+
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
 }
 
@@ -40,7 +44,9 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 	}
 
 	var cq storage.Queryable
-	if cfg.Iterators {
+	if cfg.BatchIterators {
+		cq = newIterChunkQueryable(batch.NewChunkMergeIterator)(chunkStore)
+	} else if cfg.Iterators {
 		cq = newIterChunkQueryable(newChunkMergeIterator)(chunkStore)
 	} else {
 		cq = newChunkQueryable(chunkStore)

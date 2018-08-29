@@ -38,7 +38,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 // QueryStream multiple ingesters via the streaming interface and returns big ol' set of chunks.
 func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error) {
 	var result []client.TimeSeriesChunk
-	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", queryDuration, func(ctx context.Context) error {
+	err := instrument.TimeRequestHistogram(ctx, "Distributor.QueryStream", queryDuration, func(ctx context.Context) error {
 		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
 		if err != nil {
 			return promql.ErrStorage(err)
@@ -129,9 +129,9 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		if err != nil {
 			return nil, err
 		}
+		ingesterQueries.WithLabelValues(ing.Addr).Inc()
 
 		stream, err := client.(ingester_client.IngesterClient).QueryStream(ctx, req)
-		ingesterQueries.WithLabelValues(ing.Addr).Inc()
 		if err != nil {
 			ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 			return nil, err
@@ -167,8 +167,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		}
 	}
 	result := make([]client.TimeSeriesChunk, 0, len(hashToSeries))
-	for hash := range hashToSeries {
-		series := hashToSeries[hash]
+	for _, series := range hashToSeries {
 		result = append(result, series)
 	}
 

@@ -383,7 +383,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	numSeries, numChunks := 0, 0
 	batch := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
-	// We'd really like to series series in label order, not FP order, so we
+	// We'd really like to have series in label order, not FP order, so we
 	// can iteratively merge them with entries coming from the chunk store.  But
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.

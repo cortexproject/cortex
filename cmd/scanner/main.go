@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/go-kit/kit/log/level"
@@ -24,12 +25,20 @@ import (
 )
 
 type scanner struct {
-	week      int
-	segments  int
-	tableName string
-	address   string
+	week            int
+	segments        int
+	deleters        int
+	deleteBatchSize int
+	tableName       string
+	address         string
 
 	dynamoDB *dynamodb.DynamoDB
+
+	// Readers send items on this chan to be deleted
+	delete chan map[string]*dynamodb.AttributeValue
+	retry  chan map[string]*dynamodb.AttributeValue
+	// Deleters read batches of items from this chan
+	batched chan []*dynamodb.WriteRequest
 }
 
 var (
@@ -48,6 +57,8 @@ func main() {
 	util.RegisterFlags(&storageConfig, &schemaConfig)
 	flag.IntVar(&scanner.week, "week", 0, "Week number to scan, e.g. 2497 (0 means current week)")
 	flag.IntVar(&scanner.segments, "segments", 1, "Number of segments to run in parallel")
+	flag.IntVar(&scanner.deleters, "deleters", 1, "Number of deleters to run in parallel")
+	flag.IntVar(&scanner.deleteBatchSize, "delete-batch-size", 25, "Number of delete requests to batch up")
 	flag.StringVar(&scanner.address, "address", "localhost:6060", "Address to listen on, for profiling, etc.")
 	flag.StringVar(&loglevel, "log-level", "info", "Debug level: debug, info, warning, error")
 	flag.IntVar(&pagesPerDot, "pages-per-dot", 10, "Print a dot per N pages in DynamoDB (0 to disable)")
@@ -72,33 +83,64 @@ func main() {
 	session := session.New(config)
 	scanner.dynamoDB = dynamodb.New(session)
 
-	var group sync.WaitGroup
-	group.Add(scanner.segments)
+	scanner.tableName = fmt.Sprintf("%s%d", schemaConfig.ChunkTables.Prefix, scanner.week)
+	fmt.Printf("table %s\n", scanner.tableName)
+
+	// Unbuffered chan so we can tell when batcher has received all items
+	scanner.delete = make(chan map[string]*dynamodb.AttributeValue)
+	scanner.retry = make(chan map[string]*dynamodb.AttributeValue, 100)
+	scanner.batched = make(chan []*dynamodb.WriteRequest)
+
+	var deleteGroup sync.WaitGroup
+	deleteGroup.Add(1 + scanner.deleters)
+	var pending sync.WaitGroup
+	go func() {
+		scanner.batcher(&pending)
+		deleteGroup.Done()
+	}()
+	for i := 0; i < scanner.deleters; i++ {
+		go func() {
+			scanner.deleteLoop(&pending)
+			deleteGroup.Done()
+		}()
+	}
+
+	var readerGroup sync.WaitGroup
+	readerGroup.Add(scanner.segments)
 	totals := newSummary()
 	var totalsMutex sync.Mutex
 
-	scanner.tableName = fmt.Sprintf("%s%d", schemaConfig.ChunkTables.Prefix, scanner.week)
-	fmt.Printf("table %s\n", scanner.tableName)
 	for segment := 0; segment < scanner.segments; segment++ {
 		go func(segment int) {
 			handler := newHandler()
+			handler.requests = scanner.delete
 			err := scanner.segmentScan(segment, handler)
 			checkFatal(err)
 			totalsMutex.Lock()
 			totals.accumulate(handler.summary)
 			totalsMutex.Unlock()
-			group.Done()
+			readerGroup.Done()
 		}(segment)
 	}
-	group.Wait()
+	// Wait until all reader segments have finished
+	readerGroup.Wait()
+	// Ensure that batcher has received all items so it won't call Add() any more
+	scanner.delete <- nil
+	// Wait for pending items to be sent to DynamoDB
+	pending.Wait()
+	// Close chans to signal deleter(s) and batcher to terminate
+	close(scanner.batched)
+	close(scanner.retry)
+	deleteGroup.Wait()
+
 	fmt.Printf("\n")
 	totals.print()
 }
 
-func (sc scanner) segmentScan(segment int, handler handler) error {
+func (sc *scanner) segmentScan(segment int, handler handler) error {
 	input := &dynamodb.ScanInput{
 		TableName:            aws.String(sc.tableName),
-		ProjectionExpression: aws.String(hashKey),
+		ProjectionExpression: aws.String(hashKey + "," + rangeKey),
 		Segment:              aws.Int64(int64(segment)),
 		TotalSegments:        aws.Int64(int64(sc.segments)),
 		//ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
@@ -114,15 +156,7 @@ func (sc scanner) segmentScan(segment int, handler handler) error {
 	if err != nil {
 		return err
 	}
-
-	delete := &dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]*dynamodb.WriteRequest{
-			sc.tableName: handler.requests,
-		},
-	}
-	_ = delete
-	//_, err = dynamoDB.BatchWriteItem(delete)
-	return err
+	return nil
 }
 
 /* TODO: delete v8 schema rows for all instances */
@@ -158,7 +192,7 @@ func (s summary) print() {
 type handler struct {
 	pages    int
 	orgs     map[int]struct{}
-	requests []*dynamodb.WriteRequest
+	requests chan map[string]*dynamodb.AttributeValue
 	summary
 }
 
@@ -169,32 +203,19 @@ func newHandler() handler {
 	}
 }
 
-func (h *handler) reset() {
-	h.requests = nil
-	h.counts = map[int]int{}
-}
-
 func (h *handler) handlePage(page *dynamodb.ScanOutput, lastPage bool) bool {
 	h.pages++
 	if pagesPerDot > 0 && h.pages%pagesPerDot == 0 {
 		fmt.Printf(".")
 	}
 	for _, m := range page.Items {
-		hashVal := m[hashKey].S
-		org := orgFromHash(hashVal)
-		if org <= 0 { // unrecognized format
+		org := orgFromHash(m[hashKey].S)
+		if org <= 0 {
 			continue
 		}
 		h.counts[org]++
 		if _, found := h.orgs[org]; found {
-			fmt.Printf("%s\n", *hashVal)
-			h.requests = append(h.requests, &dynamodb.WriteRequest{
-				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: map[string]*dynamodb.AttributeValue{
-						hashKey: {S: hashVal},
-					},
-				},
-			})
+			h.requests <- m // Send attributes to the chan
 		}
 	}
 	return true
@@ -223,5 +244,91 @@ func checkFatal(err error) {
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "fatal error", "err", err)
 		os.Exit(1)
+	}
+}
+
+func throttled(err error) bool {
+	awsErr, ok := err.(awserr.Error)
+	return ok && (awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException)
+}
+
+func (sc *scanner) deleteLoop(pending *sync.WaitGroup) {
+	for {
+		batch, ok := <-sc.batched
+		if !ok {
+			return
+		}
+		level.Debug(util.Logger).Log("msg", "about to delete", "num_requests", len(batch))
+		ret, err := sc.dynamoDB.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]*dynamodb.WriteRequest{
+				sc.tableName: batch,
+			},
+		})
+		if err != nil {
+			if throttled(err) {
+				// Send the whole request back into the batcher
+				for _, item := range batch {
+					sc.retry <- item.DeleteRequest.Key
+				}
+			} else {
+				level.Error(util.Logger).Log("msg", "unable to delete", "err", err)
+				pending.Add(-len(batch))
+			}
+			continue
+		}
+		count := 0
+		// Send unprocessed items back into the batcher
+		for _, items := range ret.UnprocessedItems {
+			count += len(items)
+			for _, item := range items {
+				sc.retry <- item.DeleteRequest.Key
+			}
+		}
+		pending.Add(-(len(batch) - count))
+	}
+}
+
+// Receive individual requests, and batch them up into groups to send to DynamoDB
+func (sc *scanner) batcher(pending *sync.WaitGroup) {
+	finished := false
+	var requests []*dynamodb.WriteRequest
+	for {
+		// We will allow in new data if the queue isn't too long
+		var in chan map[string]*dynamodb.AttributeValue
+		if len(requests) < 1000 {
+			in = sc.delete
+		}
+		// We will send out a batch if the queue is big enough, or if we're finishing
+		var out chan []*dynamodb.WriteRequest
+		outlen := len(requests)
+		if len(requests) >= sc.deleteBatchSize {
+			out = sc.batched
+			outlen = sc.deleteBatchSize
+		} else if finished && len(requests) > 0 {
+			out = sc.batched
+		}
+		var keyMap map[string]*dynamodb.AttributeValue
+		var ok bool
+		select {
+		case keyMap = <-in:
+			if keyMap == nil { // Nil used as interlock to know we received all previous values
+				finished = true
+			} else {
+				pending.Add(1)
+			}
+		case keyMap, ok = <-sc.retry:
+			if !ok {
+				return
+			}
+		case out <- requests[:outlen]:
+			requests = requests[outlen:]
+		}
+		if keyMap != nil {
+			requests = append(requests, &dynamodb.WriteRequest{
+				DeleteRequest: &dynamodb.DeleteRequest{
+					Key: keyMap,
+				},
+			})
+		}
 	}
 }

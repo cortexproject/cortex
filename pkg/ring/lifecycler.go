@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -20,15 +21,19 @@ const (
 )
 
 var (
-	consulHeartbeats = prometheus.NewCounter(prometheus.CounterOpts{
+	consulHeartbeats = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_consul_heartbeats_total",
 		Help: "The total number of heartbeats sent to consul.",
 	})
+	tokensOwned = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_ring_tokens_owned",
+		Help: "The number of tokens owned in the ring.",
+	})
+	tokensToOwn = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_ingester_ring_tokens_to_own",
+		Help: "The number of tokens to own in the ring.",
+	})
 )
-
-func init() {
-	prometheus.MustRegister(consulHeartbeats)
-}
 
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
@@ -144,6 +149,9 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 		state:     PENDING,
 		startTime: time.Now(),
 	}
+
+	tokensToOwn.Set(float64(cfg.NumTokens))
+
 	l.done.Add(1)
 	go l.loop()
 	return l, nil
@@ -197,6 +205,20 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error
 	return <-err
 }
 
+func (i *Lifecycler) getTokens() []uint32 {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+	return i.tokens
+}
+
+func (i *Lifecycler) setTokens(tokens []uint32) {
+	tokensOwned.Set(float64(len(tokens)))
+
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+	i.tokens = tokens
+}
+
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
 func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) error {
 	err := make(chan error)
@@ -218,7 +240,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 			level.Error(util.Logger).Log("msg", "Failed to write to consul", "err", err)
 		}
 
-		i.tokens = tokens
+		i.setTokens(tokens)
 		err <- nil
 	}
 
@@ -344,9 +366,10 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
 		i.setState(ingesterDesc.State)
-		i.tokens, _ = ringDesc.TokensFor(i.ID)
+		tokens, _ := ringDesc.TokensFor(i.ID)
+		i.setTokens(tokens)
 
-		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", i.tokens)
+		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", tokens)
 		return ringDesc, true, nil
 	})
 }
@@ -373,7 +396,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 
 		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
-		i.tokens = tokens
+		i.setTokens(tokens)
 
 		return ringDesc, true, nil
 	})
@@ -394,7 +417,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
-			ringDesc.AddIngester(i.ID, i.addr, i.tokens, i.GetState())
+			ringDesc.AddIngester(i.ID, i.addr, i.getTokens(), i.GetState())
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()

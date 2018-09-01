@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"time"
 )
 
 // ReplicationSet describes the ingesters to talk to for a given key, and how
@@ -13,23 +14,37 @@ type ReplicationSet struct {
 
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise.
-func (r ReplicationSet) Do(ctx context.Context, f func(*IngesterDesc) (interface{}, error)) ([]interface{}, error) {
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*IngesterDesc) (interface{}, error)) ([]interface{}, error) {
 	errs := make(chan error, len(r.Ingesters))
 	resultsChan := make(chan interface{}, len(r.Ingesters))
+	minSuccess := len(r.Ingesters) - r.MaxErrors
+	done := make(chan struct{})
+	forceStart := make(chan struct{}, r.MaxErrors)
+	defer func() {
+		close(done)
+	}()
 
-	for _, ing := range r.Ingesters {
-		go func(ing *IngesterDesc) {
+	for i, ing := range r.Ingesters {
+		go func(i int, ing *IngesterDesc) {
+			// wait to send extra requests
+			if i >= minSuccess && delay > 0 {
+				select {
+				case <-done:
+					return
+				case <-forceStart:
+				case <-time.After(delay):
+				}
+			}
 			result, err := f(ing)
 			if err != nil {
 				errs <- err
 			} else {
 				resultsChan <- result
 			}
-		}(ing)
+		}(i, ing)
 	}
 
 	var (
-		minSuccess = len(r.Ingesters) - r.MaxErrors
 		numErrs    int
 		numSuccess int
 		results    = make([]interface{}, 0, len(r.Ingesters))
@@ -41,6 +56,8 @@ func (r ReplicationSet) Do(ctx context.Context, f func(*IngesterDesc) (interface
 			if numErrs > r.MaxErrors {
 				return nil, err
 			}
+			// force one of the delayed requests to start
+			forceStart <- struct{}{}
 
 		case result := <-resultsChan:
 			numSuccess++

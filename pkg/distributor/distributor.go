@@ -104,7 +104,8 @@ type Config struct {
 	PoolConfig           ingester_client.PoolConfig
 	limits               validation.Limits
 
-	RemoteTimeout time.Duration
+	RemoteTimeout   time.Duration
+	ExtraQueryDelay time.Duration
 
 	ShardByAllLabels bool
 
@@ -121,6 +122,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
+	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 50*time.Millisecond, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
@@ -384,7 +386,7 @@ func (d *Distributor) forAllIngesters(ctx context.Context, f func(client.Ingeste
 		return nil, err
 	}
 
-	return replicationSet.Do(ctx, func(ing *ring.IngesterDesc) (interface{}, error) {
+	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ing *ring.IngesterDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err

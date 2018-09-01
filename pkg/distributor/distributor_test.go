@@ -91,7 +91,7 @@ func TestDistributorPush(t *testing.T) {
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
-				d := prepare(t, tc.numIngesters, tc.happyIngesters, shardByAllLabels)
+				d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels)
 				defer d.Stop()
 
 				request := makeWriteRequest(tc.samples)
@@ -192,7 +192,7 @@ func TestDistributorPushQuery(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := prepare(t, tc.numIngesters, tc.happyIngesters, tc.shardByAllLabels)
+			d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels)
 			defer d.Stop()
 
 			request := makeWriteRequest(tc.samples)
@@ -215,15 +215,39 @@ func TestDistributorPushQuery(t *testing.T) {
 	}
 }
 
-func prepare(t *testing.T, numIngesters, happyIngesters int, shardByAllLabels bool) *Distributor {
+func TestSlowQueries(t *testing.T) {
+	nameMatcher := mustEqualMatcher("__name__", "foo")
+	nIngesters := 3
+	for _, shardByAllLabels := range []bool{true, false} {
+		for happy := 0; happy <= nIngesters; happy++ {
+			var expectedErr error
+			if nIngesters-happy > 1 {
+				expectedErr = errFail
+			}
+			d := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels)
+			defer d.Stop()
+
+			_, err := d.Query(ctx, 0, 10, nameMatcher)
+			assert.Equal(t, expectedErr, err)
+
+			_, err = d.QueryStream(ctx, 0, 10, nameMatcher)
+			assert.Equal(t, expectedErr, err)
+		}
+	}
+}
+
+func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool) *Distributor {
 	ingesters := []mockIngester{}
 	for i := 0; i < happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
-			happy: true,
+			happy:      true,
+			queryDelay: queryDelay,
 		})
 	}
 	for i := happyIngesters; i < numIngesters; i++ {
-		ingesters = append(ingesters, mockIngester{})
+		ingesters = append(ingesters, mockIngester{
+			queryDelay: queryDelay,
+		})
 	}
 
 	ingesterDescs := []*ring.IngesterDesc{}
@@ -255,6 +279,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, shardByAllLabels bo
 	cfg.limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory
 	cfg.ShardByAllLabels = shardByAllLabels
+	cfg.ExtraQueryDelay = 50 * time.Millisecond
 
 	d, err := New(cfg, ring)
 	if err != nil {
@@ -362,6 +387,7 @@ type mockIngester struct {
 	happy      bool
 	stats      client.UsersStatsResponse
 	timeseries map[uint32]*client.PreallocTimeseries
+	queryDelay time.Duration
 }
 
 func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts ...grpc.CallOption) (*client.WriteResponse, error) {
@@ -395,6 +421,7 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 }
 
 func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts ...grpc.CallOption) (*client.QueryResponse, error) {
+	time.Sleep(i.queryDelay)
 	i.Lock()
 	defer i.Unlock()
 
@@ -417,6 +444,7 @@ func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts
 }
 
 func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest, opts ...grpc.CallOption) (client.Ingester_QueryStreamClient, error) {
+	time.Sleep(i.queryDelay)
 	i.Lock()
 	defer i.Unlock()
 
@@ -554,7 +582,7 @@ func TestDistributorValidation(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			d := prepare(t, 3, 3, true)
+			d := prepare(t, 3, 3, 0, true)
 			defer d.Stop()
 
 			d.limits.Defaults.CreationGracePeriod = 2 * time.Hour

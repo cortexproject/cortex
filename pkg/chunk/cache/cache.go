@@ -7,8 +7,8 @@ import (
 
 // Cache byte arrays by key.
 type Cache interface {
-	StoreChunk(ctx context.Context, key string, buf []byte) error
-	FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
+	Store(ctx context.Context, key string, buf []byte) error
+	Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
 	Stop() error
 }
 

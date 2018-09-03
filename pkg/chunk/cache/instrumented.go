@@ -52,13 +52,13 @@ type instrumentedCache struct {
 	Cache
 }
 
-func (i *instrumentedCache) StoreChunk(ctx context.Context, key string, buf []byte) error {
+func (i *instrumentedCache) Store(ctx context.Context, key string, buf []byte) error {
 	return instr.TimeRequestHistogram(ctx, i.name+".store", requestDuration, func(ctx context.Context) error {
-		return i.Cache.StoreChunk(ctx, key, buf)
+		return i.Cache.Store(ctx, key, buf)
 	})
 }
 
-func (i *instrumentedCache) FetchChunkData(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
 	var (
 		found   []string
 		bufs    [][]byte
@@ -69,7 +69,7 @@ func (i *instrumentedCache) FetchChunkData(ctx context.Context, keys []string) (
 		sp.LogFields(otlog.Int("chunks requested", len(keys)))
 
 		var err error
-		found, bufs, missing, err = i.Cache.FetchChunkData(ctx, keys)
+		found, bufs, missing, err = i.Cache.Fetch(ctx, keys)
 
 		if err == nil {
 			sp.LogFields(otlog.Int("chunks found", len(found)), otlog.Int("chunks missing", len(keys)-len(found)))

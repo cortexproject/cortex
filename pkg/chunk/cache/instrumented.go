@@ -37,7 +37,8 @@ func init() {
 	prometheus.MustRegister(hits)
 }
 
-func instrument(name string, cache Cache) Cache {
+// Instrument returns an instrumented cache.
+func Instrument(name string, cache Cache) Cache {
 	return &instrumentedCache{
 		name:        name,
 		fetchedKeys: fetchedKeys.WithLabelValues(name),

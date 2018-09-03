@@ -53,14 +53,14 @@ type cachingStorageClient struct {
 	validity time.Duration
 }
 
-func newCachingStorageClient(client chunk.StorageClient, size int, validity time.Duration) chunk.StorageClient {
-	if size == 0 {
+func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache) chunk.StorageClient {
+	if cache == nil {
 		return client
 	}
 
 	return &cachingStorageClient{
 		StorageClient: client,
-		cache:         &indexCache{cache.NewFifoCache("index", size, validity)},
+		cache:         &indexCache{cache},
 	}
 }
 

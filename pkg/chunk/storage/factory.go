@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/aws"
+	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	"github.com/weaveworks/cortex/pkg/chunk/cassandra"
 	"github.com/weaveworks/cortex/pkg/chunk/gcp"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -26,6 +27,7 @@ type Config struct {
 
 	IndexCacheSize     int
 	IndexCacheValidity time.Duration
+	memcacheClient     cache.MemcachedClientConfig
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -37,16 +39,38 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Size of in-memory index cache, 0 to disable.")
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
+	cfg.memcacheClient.RegisterFlags(f)
 }
 
 // Opts makes the storage clients based on the configuration.
 func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
-	opts := []chunk.StorageOpt{}
-	client, err := newStorageClient(cfg, schemaCfg)
+	var caches []cache.Cache
+	if cfg.IndexCacheSize > 0 {
+		caches = append(caches, cache.Instrument(
+			"fifo-index",
+			cache.NewFifoCache("index", cfg.IndexCacheSize, cfg.IndexCacheValidity),
+		))
+	}
+
+	if cfg.memcacheClient.Host != "" {
+		client := cache.NewMemcachedClient(cfg.memcacheClient)
+		memcache := cache.NewMemcached(cache.MemcachedConfig{
+			Expiration: cfg.IndexCacheValidity,
+		}, client)
+		caches = append(caches, cache.Instrument("memcache-index", memcache))
+	}
+
+	var tieredCache cache.Cache
+	if len(caches) > 0 {
+		tieredCache = cache.NewTiered(caches)
+	}
+
+	client, err := newStorageClient(cfg, schemaCfg, tieredCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating storage client")
 	}
 
+	opts := []chunk.StorageOpt{}
 	opts = append(opts, chunk.StorageOpt{From: model.Time(0), Client: client})
 	if cfg.StorageClient == "gcp" && schemaCfg.BigtableColumnKeyFrom.IsSet() {
 		client, err = gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
@@ -56,14 +80,14 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 
 		opts = append(opts, chunk.StorageOpt{
 			From:   schemaCfg.BigtableColumnKeyFrom.Time,
-			Client: newCachingStorageClient(client, cfg.IndexCacheSize, cfg.IndexCacheValidity),
+			Client: newCachingStorageClient(client, tieredCache),
 		})
 	}
 
 	return opts, nil
 }
 
-func newStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (client chunk.StorageClient, err error) {
+func newStorageClient(cfg Config, schemaCfg chunk.SchemaConfig, cache cache.Cache) (client chunk.StorageClient, err error) {
 	switch cfg.StorageClient {
 	case "inmemory":
 		client, err = chunk.NewMockStorage(), nil
@@ -84,7 +108,7 @@ func newStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (client chunk.St
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", cfg.StorageClient)
 	}
 
-	client = newCachingStorageClient(client, cfg.IndexCacheSize, cfg.IndexCacheValidity)
+	client = newCachingStorageClient(client, cache)
 	return
 }
 

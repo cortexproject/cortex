@@ -6,6 +6,10 @@ type tiered []Cache
 
 // NewTiered makes a new tiered cache.
 func NewTiered(caches []Cache) Cache {
+	if len(caches) == 1 {
+		return caches[0]
+	}
+
 	return tiered(caches)
 }
 

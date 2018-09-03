@@ -47,9 +47,9 @@ func (cfg *MemcachedClientConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.UpdateInterval, "memcached.update-interval", 1*time.Minute, "Period with which to poll DNS for memcache servers.")
 }
 
-// newMemcachedClient creates a new MemcacheClient that gets its server list
+// NewMemcachedClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
-func newMemcachedClient(cfg MemcachedClientConfig) *memcachedClient {
+func NewMemcachedClient(cfg MemcachedClientConfig) MemcachedClient {
 	var servers memcache.ServerList
 	client := memcache.NewFromSelector(&servers)
 	client.Timeout = cfg.Timeout

@@ -3,6 +3,7 @@ package batch
 import (
 	"fmt"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
@@ -32,7 +33,7 @@ func print(b promchunk.Batch) {
 }
 
 // NewChunkMergeIterator returns a storage.SeriesIterator that merges chunks together.
-func NewChunkMergeIterator(chunks []chunk.Chunk) storage.SeriesIterator {
+func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) storage.SeriesIterator {
 	iter := newMergeIterator(chunks)
 	return newIteratorAdapter(iter)
 }

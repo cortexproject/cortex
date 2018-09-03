@@ -1,15 +1,21 @@
-package querier
+package iterators
 
 import (
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
+)
+
+const (
+	userID = "0"
+	fp     = 0
 )
 
 func TestChunkMergeIterator(t *testing.T) {
@@ -50,7 +56,7 @@ func TestChunkMergeIterator(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			iter := newChunkMergeIterator(tc.chunks)
+			iter := NewChunkMergeIterator(tc.chunks, 0, 0)
 			for i := tc.mint; i < tc.maxt; i++ {
 				require.True(t, iter.Next())
 				ts, s := iter.At()
@@ -64,11 +70,11 @@ func TestChunkMergeIterator(t *testing.T) {
 }
 
 func TestChunkMergeIteratorSeek(t *testing.T) {
-	iter := newChunkMergeIterator([]chunk.Chunk{
+	iter := NewChunkMergeIterator([]chunk.Chunk{
 		mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.Varbit),
 		mkChunk(t, 50, 150, 1*time.Millisecond, promchunk.Varbit),
 		mkChunk(t, 100, 200, 1*time.Millisecond, promchunk.Varbit),
-	})
+	}, 0, 0)
 
 	for i := int64(0); i < 10; i += 20 {
 		require.True(t, iter.Seek(i))
@@ -86,4 +92,22 @@ func TestChunkMergeIteratorSeek(t *testing.T) {
 		}
 		assert.False(t, iter.Next())
 	}
+}
+
+func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, encoding promchunk.Encoding) chunk.Chunk {
+	metric := model.Metric{
+		model.MetricNameLabel: "foo",
+	}
+	pc, err := promchunk.NewForEncoding(encoding)
+	require.NoError(t, err)
+	for i := mint; i.Before(maxt); i = i.Add(step) {
+		pcs, err := pc.Add(model.SamplePair{
+			Timestamp: i,
+			Value:     model.SampleValue(float64(i)),
+		})
+		require.NoError(t, err)
+		require.Len(t, pcs, 1)
+		pc = pcs[0]
+	}
+	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
 }

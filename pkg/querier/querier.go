@@ -2,17 +2,72 @@ package querier
 
 import (
 	"context"
+	"flag"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/querier/batch"
+	"github.com/weaveworks/cortex/pkg/querier/iterators"
+	"github.com/weaveworks/cortex/pkg/util"
 )
+
+// Config contains the configuration require to create a querier
+type Config struct {
+	MaxConcurrent     int
+	Timeout           time.Duration
+	Iterators         bool
+	BatchIterators    bool
+	IngesterStreaming bool
+
+	// For testing, to prevent re-registration of metrics in the promql engine.
+	metricsRegisterer prometheus.Registerer
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
+	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
+	if f.Lookup("promql.lookback-delta") == nil {
+		f.DurationVar(&promql.LookbackDelta, "promql.lookback-delta", promql.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
+	}
+	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
+	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", false, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
+	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
+	cfg.metricsRegisterer = prometheus.DefaultRegisterer
+}
 
 // ChunkStore is the read-interface to the Chunk Store.  Made an interface here
 // to reduce package coupling.
 type ChunkStore interface {
 	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error)
+}
+
+// New builds a queryable and promql engine.
+func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Queryable, *promql.Engine) {
+	iteratorFunc := mergeChunks
+	if cfg.BatchIterators {
+		iteratorFunc = batch.NewChunkMergeIterator
+	} else if cfg.Iterators {
+		iteratorFunc = iterators.NewChunkMergeIterator
+	}
+
+	var dq storage.Queryable
+	if cfg.IngesterStreaming {
+		dq = newIngesterStreamingQueryable(distributor, iteratorFunc)
+	} else {
+		dq = newDistributorQueryable(distributor)
+	}
+
+	cq := newChunkStoreQueryable(chunkStore, iteratorFunc)
+	queryable := NewQueryable(dq, cq, distributor)
+	engine := promql.NewEngine(util.Logger, prometheus.DefaultRegisterer, cfg.MaxConcurrent, cfg.Timeout)
+	return queryable, engine
 }
 
 // NewQueryable creates a new Queryable for cortex.
@@ -94,44 +149,5 @@ func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, 
 }
 
 func (querier) Close() error {
-	return nil
-}
-
-func newChunkQueryable(store ChunkStore) storage.Queryable {
-	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return &chunkQuerier{
-			store: store,
-			ctx:   ctx,
-			mint:  mint,
-			maxt:  maxt,
-		}, nil
-	})
-}
-
-type chunkQuerier struct {
-	store      ChunkStore
-	ctx        context.Context
-	mint, maxt int64
-}
-
-func (c chunkQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
-	chunks, err := c.store.Get(c.ctx, model.Time(c.mint), model.Time(c.maxt), matchers...)
-	if err != nil {
-		return nil, err
-	}
-
-	matrix, err := chunk.ChunksToMatrix(c.ctx, chunks, model.Time(c.mint), model.Time(c.maxt))
-	if err != nil {
-		return nil, err
-	}
-
-	return matrixToSeriesSet(matrix), nil
-}
-
-func (c chunkQuerier) LabelValues(name string) ([]string, error) {
-	return nil, nil
-}
-
-func (c chunkQuerier) Close() error {
 	return nil
 }

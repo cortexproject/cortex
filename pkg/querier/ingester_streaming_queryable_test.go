@@ -28,7 +28,7 @@ func TestIngesterStreaming(t *testing.T) {
 		},
 	}
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newIngesterStreamingQueryable(d)
+	queryable := newIngesterStreamingQueryable(d, mergeChunks)
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
 

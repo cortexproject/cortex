@@ -14,18 +14,29 @@ import (
 	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
 )
 
-func newIngesterStreamingQueryable(distributor Distributor) storage.Queryable {
-	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return &ingesterStreamingQuerier{
-			chunkIteratorFunc: newChunkMergeIterator,
-			distributorQuerier: distributorQuerier{
-				distributor: distributor,
-				ctx:         ctx,
-				mint:        mint,
-				maxt:        maxt,
-			},
-		}, nil
-	})
+func newIngesterStreamingQueryable(distributor Distributor, chunkIteratorFunc chunkIteratorFunc) *ingesterQueryable {
+	return &ingesterQueryable{
+		distributor:       distributor,
+		chunkIteratorFunc: chunkIteratorFunc,
+	}
+}
+
+type ingesterQueryable struct {
+	distributor       Distributor
+	chunkIteratorFunc chunkIteratorFunc
+}
+
+// Querier implements storage.Queryable.
+func (i ingesterQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return &ingesterStreamingQuerier{
+		chunkIteratorFunc: i.chunkIteratorFunc,
+		distributorQuerier: distributorQuerier{
+			distributor: i.distributor,
+			ctx:         ctx,
+			mint:        mint,
+			maxt:        maxt,
+		},
+	}, nil
 }
 
 type ingesterStreamingQuerier struct {
@@ -46,7 +57,8 @@ func (q *ingesterStreamingQuerier) Select(_ *storage.SelectParams, matchers ...*
 
 	serieses := make([]storage.Series, 0, len(results))
 	for _, result := range results {
-		chunks, err := chunkcompat.FromChunks(userID, result.Chunks)
+		metric := client.FromLabelPairs(result.Labels)
+		chunks, err := chunkcompat.FromChunks(userID, metric, result.Chunks)
 		if err != nil {
 			return nil, promql.ErrStorage(err)
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
 )
@@ -37,6 +38,31 @@ func (i ingesterQueryable) Querier(ctx context.Context, mint, maxt int64) (stora
 			maxt:        maxt,
 		},
 	}, nil
+}
+
+// Get implements ChunkStore.
+func (i ingesterQueryable) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, promql.ErrStorage(err)
+	}
+
+	results, err := i.distributor.QueryStream(ctx, from, through, matchers...)
+	if err != nil {
+		return nil, promql.ErrStorage(err)
+	}
+
+	chunks := make([]chunk.Chunk, 0, len(results))
+	for _, result := range results {
+		metric := client.FromLabelPairs(result.Labels)
+		cs, err := chunkcompat.FromChunks(userID, metric, result.Chunks)
+		if err != nil {
+			return nil, promql.ErrStorage(err)
+		}
+		chunks = append(chunks, cs...)
+	}
+
+	return chunks, nil
 }
 
 type ingesterStreamingQuerier struct {

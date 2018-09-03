@@ -57,16 +57,18 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 		iteratorFunc = iterators.NewChunkMergeIterator
 	}
 
-	var dq storage.Queryable
+	var queryable storage.Queryable
 	if cfg.IngesterStreaming {
-		dq = newIngesterStreamingQueryable(distributor, iteratorFunc)
+		dq := newIngesterStreamingQueryable(distributor, iteratorFunc)
+		queryable = newUnifiedChunkQueryable(chunkStore, dq, distributor, iteratorFunc)
+
 	} else {
-		dq = newDistributorQueryable(distributor)
+		cq := newChunkStoreQueryable(chunkStore, iteratorFunc)
+		dq := newDistributorQueryable(distributor)
+		queryable = NewQueryable(dq, cq, distributor)
 	}
 
-	cq := newChunkStoreQueryable(chunkStore, iteratorFunc)
-	queryable := NewQueryable(dq, cq, distributor)
-	engine := promql.NewEngine(util.Logger, prometheus.DefaultRegisterer, cfg.MaxConcurrent, cfg.Timeout)
+	engine := promql.NewEngine(util.Logger, cfg.metricsRegisterer, cfg.MaxConcurrent, cfg.Timeout)
 	return queryable, engine
 }
 

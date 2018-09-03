@@ -2,7 +2,9 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -12,10 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/weaveworks/cortex/pkg/querier/batch"
 	"github.com/weaveworks/cortex/pkg/querier/iterators"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
+	"github.com/weaveworks/cortex/pkg/util/wire"
 )
 
 const (
@@ -113,6 +119,51 @@ var (
 		},
 	}
 )
+
+func TestQuerier(t *testing.T) {
+	var cfg Config
+	util.DefaultValues(&cfg)
+
+	for _, query := range queries {
+		for _, encoding := range encodings {
+			for _, streaming := range []bool{false, true} {
+				for _, iterators := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/%s/streaming=%t/iterators=%t", query.query, encoding.name, streaming, iterators), func(t *testing.T) {
+						cfg.IngesterStreaming = streaming
+						cfg.Iterators = iterators
+						cfg.metricsRegisterer = nil
+
+						chunkStore, through := makeMockChunkStore(t, 24*7, encoding.e)
+						distributor := mockDistibutorFor(t, chunkStore, through)
+
+						queryable, _ := New(cfg, distributor, chunkStore)
+						testQuery(t, queryable, through, query)
+					})
+				}
+			}
+		}
+	}
+}
+
+// mockDistibutorFor duplicates the chunks in the mockChunkStore into the mockDistributor
+// so we can test everything is dedupe correctly.
+func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *mockDistributor {
+	chunks, err := chunkcompat.ToChunks(cs.chunks)
+	require.NoError(t, err)
+
+	tsc := client.TimeSeriesChunk{
+		Labels: []client.LabelPair{{Name: wire.Bytes(model.MetricNameLabel), Value: wire.Bytes("foo")}},
+		Chunks: chunks,
+	}
+	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)
+	require.NoError(t, err)
+
+	result := &mockDistributor{
+		m: matrix,
+		r: []client.TimeSeriesChunk{tsc},
+	}
+	return result
+}
 
 func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), q.step

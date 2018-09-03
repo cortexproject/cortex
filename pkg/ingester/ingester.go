@@ -55,20 +55,20 @@ var (
 	queriedSamples = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "cortex_ingester_queried_samples",
 		Help: "The total number of samples returned from queries.",
-		// Could easily return 10m samples per query - 80*(8^9) = 10.7m.
-		Buckets: prometheus.ExponentialBuckets(80, 8, 9),
+		// Could easily return 10m samples per query - 10*(8^7) = 20.9m.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 	})
 	queriedSeries = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "cortex_ingester_queried_series",
 		Help: "The total number of series returned from queries.",
-		// A reasonable upper bound is around 100k - 10*(8^8) = 167k.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 8),
+		// A reasonable upper bound is around 100k - 10*(8^5) = 327k.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 5),
 	})
 	queriedChunks = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "cortex_ingester_queried_chunks",
 		Help: "The total number of chunks returned from queries.",
-		// A small number of chunks per series - 10*(4^8) = 655k.
-		Buckets: prometheus.DefBuckets,
+		// A small number of chunks per series - 10*(8^6) = 2.6m.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 )
 

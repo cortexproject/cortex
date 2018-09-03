@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
@@ -33,6 +35,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	cacheableMissed := []chunk.IndexQuery{}
 	missed := map[string]chunk.IndexQuery{}
 
+	span, ctx := ot.StartSpanFromContext(ctx, "Index cache lookups")
 	for _, query := range queries {
 		value, ok := s.cache.Get(ctx, queryKey(query))
 		if !ok {
@@ -48,6 +51,8 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 			callback(query, batch)
 		}
 	}
+	span.LogFields(otlog.Int("queries", len(queries)), otlog.Int("hits", len(queries)-len(missed)), otlog.Int("misses", len(missed)))
+	span.Finish()
 
 	var resultsMtx sync.Mutex
 	results := map[string][]chunk.ReadBatch{}

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/gob"
 	"strings"
 	"time"
 
@@ -10,9 +11,45 @@ import (
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
 )
 
+// IndexCache describes the cache for the Index.
+type IndexCache interface {
+	Store(ctx context.Context, key string, val readBatch)
+	Fetch(ctx context.Context, key string) (val readBatch, ok bool, err error)
+	Stop() error
+}
+
+type indexCache struct {
+	cache.Cache
+}
+
+func (c *indexCache) Store(ctx context.Context, key string, val readBatch) {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(val); err != nil {
+		return
+	}
+
+	c.Cache.Store(ctx, key, buf.Bytes())
+	return
+}
+
+func (c *indexCache) Fetch(ctx context.Context, key string) (readBatch, bool, error) {
+	found, valBytes, _, err := c.Cache.Fetch(ctx, []string{key})
+	if len(found) != 1 || err != nil {
+		return nil, false, err
+	}
+
+	var q readBatch
+	r := bytes.NewReader(valBytes[0])
+	if err := gob.NewDecoder(r).Decode(&q); err != nil {
+		return nil, false, err
+	}
+
+	return q, true, nil
+}
+
 type cachingStorageClient struct {
 	chunk.StorageClient
-	cache    *cache.FifoCache
+	cache    IndexCache
 	validity time.Duration
 }
 
@@ -23,15 +60,14 @@ func newCachingStorageClient(client chunk.StorageClient, size int, validity time
 
 	return &cachingStorageClient{
 		StorageClient: client,
-		cache:         cache.NewFifoCache("index", size, validity),
+		cache:         &indexCache{cache.NewFifoCache("index", size, validity)},
 	}
 }
 
 func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
-	value, ok := s.cache.Get(ctx, queryKey(query))
+	value, ok, err := s.cache.Fetch(ctx, queryKey(query))
 	if ok {
-		batches := value.([]chunk.ReadBatch)
-		filteredBatch := filterBatchByQuery(query, batches)
+		filteredBatch, _ := filterBatchByQuery(query, []chunk.ReadBatch{value})
 		callback(filteredBatch)
 
 		return nil
@@ -43,28 +79,28 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.Index
 		HashValue: query.HashValue,
 	} // Just reads the entire row and caches it.
 
-	err := s.StorageClient.QueryPages(ctx, cacheableQuery, copyingCallback(&batches))
+	err = s.StorageClient.QueryPages(ctx, cacheableQuery, copyingCallback(&batches))
 	if err != nil {
 		return err
 	}
 
-	filteredBatch := filterBatchByQuery(query, batches)
+	filteredBatch, totalBatches := filterBatchByQuery(query, batches)
 	callback(filteredBatch)
 
-	s.cache.Put(ctx, queryKey(query), batches)
-
+	s.cache.Store(ctx, queryKey(query), totalBatches)
 	return nil
 }
 
-type readBatch []cell
+type readBatch []Cell
 
 func (b readBatch) Len() int                { return len(b) }
-func (b readBatch) RangeValue(i int) []byte { return b[i].column }
-func (b readBatch) Value(i int) []byte      { return b[i].value }
+func (b readBatch) RangeValue(i int) []byte { return b[i].Column }
+func (b readBatch) Value(i int) []byte      { return b[i].Value }
 
-type cell struct {
-	column []byte
-	value  []byte
+// Cell is dummyyyyy.
+type Cell struct {
+	Column []byte
+	Value  []byte
 }
 
 func copyingCallback(readBatches *[]chunk.ReadBatch) func(chunk.ReadBatch) bool {
@@ -79,7 +115,7 @@ func queryKey(q chunk.IndexQuery) string {
 	return q.TableName + sep + q.HashValue
 }
 
-func filterBatchByQuery(query chunk.IndexQuery, batches []chunk.ReadBatch) readBatch {
+func filterBatchByQuery(query chunk.IndexQuery, batches []chunk.ReadBatch) (filteredBatch readBatch, totalBatch readBatch) {
 	filter := func([]byte, []byte) bool { return true }
 
 	if len(query.RangeValuePrefix) != 0 {
@@ -100,14 +136,17 @@ func filterBatchByQuery(query chunk.IndexQuery, batches []chunk.ReadBatch) readB
 		}
 	}
 
-	finalBatch := make(readBatch, 0, len(batches)) // On the higher side for most queries. On the lower side for column key schema.
+	filteredBatch = make(readBatch, 0, len(batches)) // On the higher side for most queries. On the lower side for column key schema.
+	totalBatch = make(readBatch, 0, len(batches))
 	for _, batch := range batches {
 		for i := 0; i < batch.Len(); i++ {
+			totalBatch = append(totalBatch, Cell{Column: batch.RangeValue(i), Value: batch.Value(i)})
+
 			if filter(batch.RangeValue(i), batch.Value(i)) {
-				finalBatch = append(finalBatch, cell{column: batch.RangeValue(i), value: batch.Value(i)})
+				filteredBatch = append(filteredBatch, Cell{Column: batch.RangeValue(i), Value: batch.Value(i)})
 			}
 		}
 	}
 
-	return finalBatch
+	return
 }

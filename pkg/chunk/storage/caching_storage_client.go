@@ -21,6 +21,22 @@ var (
 		Name: "querier_index_cache_corruptions_total",
 		Help: "The number of cache corruptions for the index cache.",
 	})
+	cacheHits = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "querier_index_cache_hits_total",
+		Help: "The number of cache hits for the index cache.",
+	})
+	cacheGets = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "querier_index_cache_gets_total",
+		Help: "The number of gets for the index cache.",
+	})
+	cachePuts = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "querier_index_cache_puts_total",
+		Help: "The number of puts for the index cache.",
+	})
+	cacheEncodeErrs = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "querier_index_cache_encode_errors_total",
+		Help: "The number of errors for the index cache while encoding the body.",
+	})
 )
 
 // IndexCache describes the cache for the Index.
@@ -35,8 +51,11 @@ type indexCache struct {
 }
 
 func (c *indexCache) Store(ctx context.Context, key string, val readBatch) {
+	cachePuts.Inc()
+
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(val); err != nil {
+		cacheEncodeErrs.Inc()
 		return
 	}
 
@@ -47,6 +66,8 @@ func (c *indexCache) Store(ctx context.Context, key string, val readBatch) {
 }
 
 func (c *indexCache) Fetch(ctx context.Context, key string) (readBatch, bool, error) {
+	cacheGets.Inc()
+
 	found, valBytes, _, err := c.Cache.Fetch(ctx, []string{hashKey(key)})
 	if len(found) != 1 || err != nil {
 		return readBatch{}, false, err
@@ -60,6 +81,7 @@ func (c *indexCache) Fetch(ctx context.Context, key string) (readBatch, bool, er
 
 	// Make sure the hash(key) is not a collision by looking at the key in the value.
 	if key == rb.Key && time.Now().Before(rb.Expiry) {
+		cacheHits.Inc()
 		return rb, true, nil
 	}
 

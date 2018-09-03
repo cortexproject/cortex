@@ -39,7 +39,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Size of in-memory index cache, 0 to disable.")
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
-	cfg.memcacheClient.RegisterFlags(f)
+	f.StringVar(&cfg.memcacheClient.Host, "index.memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
+	f.StringVar(&cfg.memcacheClient.Service, "index.memcached.service", "memcached", "SRV service used to discover memcache servers.")
+	f.DurationVar(&cfg.memcacheClient.Timeout, "index.memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
+	f.DurationVar(&cfg.memcacheClient.UpdateInterval, "index.memcached.update-interval", 1*time.Minute, "Period with which to poll DNS for memcache servers.")
 }
 
 // Opts makes the storage clients based on the configuration.

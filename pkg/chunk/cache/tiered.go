@@ -44,6 +44,10 @@ func (t tiered) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 			tiered(previousCaches).Store(ctx, key, passBufs[i])
 		}
 
+		if len(missing) == 0 {
+			break
+		}
+
 		previousCaches = append(previousCaches, c)
 	}
 

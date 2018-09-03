@@ -4,11 +4,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"encoding/hex"
+	"hash/fnv"
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
+)
+
+var (
+	cacheCorruptErrs = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "querier_index_cache_corruptions_total",
+		Help: "The number of cache corruptions for the index cache.",
+	})
 )
 
 // IndexCache describes the cache for the Index.
@@ -28,23 +40,30 @@ func (c *indexCache) Store(ctx context.Context, key string, val readBatch) {
 		return
 	}
 
-	c.Cache.Store(ctx, key, buf.Bytes())
+	// We're doing the hashing to handle unicode and key len properly.
+	// Memcache fails for unicode keys and keys longer than 250 Bytes.
+	c.Cache.Store(ctx, hashKey(key), buf.Bytes())
 	return
 }
 
 func (c *indexCache) Fetch(ctx context.Context, key string) (readBatch, bool, error) {
-	found, valBytes, _, err := c.Cache.Fetch(ctx, []string{key})
+	found, valBytes, _, err := c.Cache.Fetch(ctx, []string{hashKey(key)})
 	if len(found) != 1 || err != nil {
-		return nil, false, err
+		return readBatch{}, false, err
 	}
 
-	var q readBatch
+	var rb readBatch
 	r := bytes.NewReader(valBytes[0])
-	if err := gob.NewDecoder(r).Decode(&q); err != nil {
-		return nil, false, err
+	if err := gob.NewDecoder(r).Decode(&rb); err != nil {
+		return readBatch{}, false, err
 	}
 
-	return q, true, nil
+	// Make sure the hash(key) is not a collision by looking at the key in the value.
+	if key == rb.Key {
+		return rb, true, nil
+	}
+
+	return readBatch{}, false, nil
 }
 
 type cachingStorageClient struct {
@@ -66,7 +85,11 @@ func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache) chun
 
 func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	value, ok, err := s.cache.Fetch(ctx, queryKey(query))
-	if ok {
+	if err != nil {
+		cacheCorruptErrs.Inc()
+	}
+
+	if ok && err == nil {
 		filteredBatch, _ := filterBatchByQuery(query, []chunk.ReadBatch{value})
 		callback(filteredBatch)
 
@@ -87,15 +110,19 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.Index
 	filteredBatch, totalBatches := filterBatchByQuery(query, batches)
 	callback(filteredBatch)
 
-	s.cache.Store(ctx, queryKey(query), totalBatches)
+	totalBatches.Key = queryKey(query)
+	s.cache.Store(ctx, totalBatches.Key, totalBatches)
 	return nil
 }
 
-type readBatch []Cell
+type readBatch struct {
+	Cells []Cell
+	Key   string
+}
 
-func (b readBatch) Len() int                { return len(b) }
-func (b readBatch) RangeValue(i int) []byte { return b[i].Column }
-func (b readBatch) Value(i int) []byte      { return b[i].Value }
+func (b readBatch) Len() int                { return len(b.Cells) }
+func (b readBatch) RangeValue(i int) []byte { return b.Cells[i].Column }
+func (b readBatch) Value(i int) []byte      { return b.Cells[i].Value }
 
 // Cell is dummyyyyy.
 type Cell struct {
@@ -136,17 +163,25 @@ func filterBatchByQuery(query chunk.IndexQuery, batches []chunk.ReadBatch) (filt
 		}
 	}
 
-	filteredBatch = make(readBatch, 0, len(batches)) // On the higher side for most queries. On the lower side for column key schema.
-	totalBatch = make(readBatch, 0, len(batches))
+	filteredBatch.Cells = make([]Cell, 0, len(batches)) // On the higher side for most queries. On the lower side for column key schema.
+	totalBatch.Cells = make([]Cell, 0, len(batches))
 	for _, batch := range batches {
 		for i := 0; i < batch.Len(); i++ {
-			totalBatch = append(totalBatch, Cell{Column: batch.RangeValue(i), Value: batch.Value(i)})
+			totalBatch.Cells = append(totalBatch.Cells, Cell{Column: batch.RangeValue(i), Value: batch.Value(i)})
 
 			if filter(batch.RangeValue(i), batch.Value(i)) {
-				filteredBatch = append(filteredBatch, Cell{Column: batch.RangeValue(i), Value: batch.Value(i)})
+				filteredBatch.Cells = append(filteredBatch.Cells, Cell{Column: batch.RangeValue(i), Value: batch.Value(i)})
 			}
 		}
 	}
 
 	return
+}
+
+func hashKey(key string) string {
+	hasher := fnv.New64a()
+	hasher.Write([]byte(key)) // This'll never error.
+
+	// Hex because memcache errors for the bytes produced by the hash.
+	return hex.EncodeToString(hasher.Sum(nil))
 }

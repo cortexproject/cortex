@@ -83,7 +83,7 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 
 		opts = append(opts, chunk.StorageOpt{
 			From:   schemaCfg.BigtableColumnKeyFrom.Time,
-			Client: newCachingStorageClient(client, tieredCache),
+			Client: newCachingStorageClient(client, tieredCache, cfg.IndexCacheValidity),
 		})
 	}
 
@@ -111,7 +111,7 @@ func newStorageClient(cfg Config, schemaCfg chunk.SchemaConfig, cache cache.Cach
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", cfg.StorageClient)
 	}
 
-	client = newCachingStorageClient(client, cache)
+	client = newCachingStorageClient(client, cache, cfg.IndexCacheValidity)
 	return
 }
 

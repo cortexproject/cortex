@@ -59,7 +59,7 @@ func (c *indexCache) Fetch(ctx context.Context, key string) (readBatch, bool, er
 	}
 
 	// Make sure the hash(key) is not a collision by looking at the key in the value.
-	if key == rb.Key {
+	if key == rb.Key && time.Now().Before(rb.Expiry) {
 		return rb, true, nil
 	}
 
@@ -72,7 +72,7 @@ type cachingStorageClient struct {
 	validity time.Duration
 }
 
-func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache) chunk.StorageClient {
+func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache, validity time.Duration) chunk.StorageClient {
 	if cache == nil {
 		return client
 	}
@@ -80,6 +80,7 @@ func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache) chun
 	return &cachingStorageClient{
 		StorageClient: client,
 		cache:         &indexCache{cache},
+		validity:      validity,
 	}
 }
 
@@ -102,6 +103,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.Index
 		HashValue: query.HashValue,
 	} // Just reads the entire row and caches it.
 
+	expiryTime := time.Now().Add(s.validity)
 	err = s.StorageClient.QueryPages(ctx, cacheableQuery, copyingCallback(&batches))
 	if err != nil {
 		return err
@@ -111,6 +113,8 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.Index
 	callback(filteredBatch)
 
 	totalBatches.Key = queryKey(query)
+	totalBatches.Expiry = expiryTime
+
 	s.cache.Store(ctx, totalBatches.Key, totalBatches)
 	return nil
 }
@@ -118,6 +122,9 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.Index
 type readBatch struct {
 	Cells []Cell
 	Key   string
+
+	// The time at which the key expires.
+	Expiry time.Time
 }
 
 func (b readBatch) Len() int                { return len(b.Cells) }

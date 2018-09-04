@@ -31,7 +31,7 @@ images:
 	@echo > /dev/null
 
 # Generating proto code is automated.
-PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print) vendor/github.com/weaveworks/common/httpgrpc/httpgrpc.proto
+PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
 # Building binaries is now automated.  The convention is to build a binary

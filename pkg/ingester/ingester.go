@@ -341,11 +341,14 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
 	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
-		numSeries++
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
 		}
+		if len(values) == 0 {
+			return nil
+		}
+		numSeries++
 
 		numSamples += len(values)
 		if numSamples > maxSamplesPerQuery {

@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
@@ -98,7 +99,14 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 	if err != nil {
 		return l
 	}
-	return WithUserID(userID, l)
+	l = WithUserID(userID, l)
+
+	traceID, ok := middleware.ExtractTraceID(ctx)
+	if !ok {
+		return l
+	}
+
+	return WithTraceID(traceID, l)
 }
 
 // WithUserID returns a Logger that has information about the current user in
@@ -106,4 +114,11 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 func WithUserID(userID string, l log.Logger) log.Logger {
 	// See note in WithContext.
 	return log.With(l, "org_id", userID)
+}
+
+// WithTraceID returns a Logger that has information about the traceID in
+// its details.
+func WithTraceID(traceID string, l log.Logger) log.Logger {
+	// See note in WithContext.
+	return log.With(l, "trace_id", traceID)
 }

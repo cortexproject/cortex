@@ -42,8 +42,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 
-	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 10000, "The maximum number of series that a query can return.")
-	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 100000, "The maximum number of samples that a query can return.")
+	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series that a query can return.")
+	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return.")
 	f.IntVar(&l.MaxSeriesPerUser, "ingester.max-series-per-user", 5000000, "Maximum number of active series per user.")
 	f.IntVar(&l.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
 

@@ -77,7 +77,7 @@ func (c *backgroundCache) Stop() error {
 	return c.Cache.Stop()
 }
 
-// Store writes chunks for the cache in the background.
+// Store writes keys for the cache in the background.
 func (c *backgroundCache) Store(ctx context.Context, key string, buf []byte) error {
 	bgWrite := backgroundWrite{
 		key: key,

@@ -3,15 +3,10 @@ package querier
 import (
 	"container/heap"
 	"sort"
-	"time"
 
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/cortex/pkg/chunk"
 )
-
-// Limit on the window size of seeks.
-const window = 24 * time.Hour
-const chunkSize = 12 * time.Hour
 
 type chunkMergeIterator struct {
 	its []*nonOverlappingIterator

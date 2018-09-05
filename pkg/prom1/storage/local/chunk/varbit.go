@@ -1087,6 +1087,22 @@ func (it *varbitChunkIterator) Value() model.SamplePair {
 	}
 }
 
+func (it *varbitChunkIterator) Batch(size int) Batch {
+	var batch Batch
+	j := 0
+	for j < size {
+		batch.Timestamps[j] = int64(it.t)
+		batch.Values[j] = float64(it.v)
+		j++
+		if j < size && !it.Scan() {
+			break
+		}
+	}
+	batch.Index = 0
+	batch.Length = j
+	return batch
+}
+
 // err implements Iterator.
 func (it *varbitChunkIterator) Err() error {
 	return it.lastError

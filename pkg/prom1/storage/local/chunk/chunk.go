@@ -318,9 +318,25 @@ type Iterator interface {
 	// of the find... methods). It returns model.ZeroSamplePair before any of
 	// those methods were called.
 	Value() model.SamplePair
+	// Returns a batch of the provisded size; NB not idempotent!  Should only be called
+	// once per Scan/FindAtOrBefore.
+	Batch(size int) Batch
 	// Returns the last error encountered. In general, an error signals data
 	// corruption in the chunk and requires quarantining.
 	Err() error
+}
+
+// BatchSize is samples per batch; this was choose by benchmarking all sizes from
+// 1 to 128.
+const BatchSize = 12
+
+// Batch is a sorted set of (timestamp, value) pairs.  They are intended to be
+// small, and passed by value.
+type Batch struct {
+	Timestamps [BatchSize]int64
+	Values     [BatchSize]float64
+	Index      int
+	Length     int
 }
 
 // RangeValues is a utility function that retrieves all values within the given
@@ -489,6 +505,23 @@ func (it *indexAccessingChunkIterator) FindAtOrAfter(t model.Time) bool {
 // value implements Iterator.
 func (it *indexAccessingChunkIterator) Value() model.SamplePair {
 	return it.lastValue
+}
+
+func (it *indexAccessingChunkIterator) Batch(size int) Batch {
+	var batch Batch
+	j := 0
+	for j < size && it.pos < it.len {
+		batch.Timestamps[j] = int64(it.acc.timestampAtIndex(it.pos))
+		batch.Values[j] = float64(it.acc.sampleValueAtIndex(it.pos))
+		it.pos++
+		j++
+	}
+	// Interface contract is that you call Scan before calling Batch; therefore
+	// without this decrement, you'd end up skipping samples.
+	it.pos--
+	batch.Index = 0
+	batch.Length = j
+	return batch
 }
 
 // err implements Iterator.

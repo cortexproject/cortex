@@ -133,7 +133,7 @@ func TestQuerier(t *testing.T) {
 						cfg.Iterators = iterators
 						cfg.metricsRegisterer = nil
 
-						chunkStore, through := makeMockChunkStore(t, 24*7, encoding.e)
+						chunkStore, through := makeMockChunkStore(t, 24, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
 						queryable, _ := New(cfg, distributor, chunkStore)

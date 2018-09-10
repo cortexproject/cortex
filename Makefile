@@ -51,6 +51,7 @@ pkg/ring/ring.pb.go: pkg/ring/ring.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
+dep-check: protos
 configs-integration-test: $(PROTO_GOS)
 
 # And now what goes into each image

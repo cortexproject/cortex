@@ -79,7 +79,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
+$(EXES) $(PROTO_GOS) lint test shell dep-check: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) time docker run $(RM) $(TTY) -i \
@@ -125,6 +125,9 @@ shell:
 
 configs-integration-test:
 	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
+
+dep-check:
+	dep check
 
 endif
 

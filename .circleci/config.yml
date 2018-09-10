@@ -3,7 +3,7 @@ version: 2
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: weaveworks/cortex-build-image:master-af2a0261
+    - image: cortexproject/cortex-build-image:check-vendor-87fd0610a
   working_directory: /go/src/github.com/weaveworks/cortex
 
 workflows:

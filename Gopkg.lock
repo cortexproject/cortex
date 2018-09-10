@@ -917,8 +917,8 @@
   revision = "be0d55e547b147ea1817f037cab9458bf7fc7850"
 
 [[projects]]
-  branch = "master"
-  digest = "1:7e52f72864ff1d884dbee16153715d71510a3be1b715b313dcf416d5bc9bbe61"
+  branch = "dont-trace-http-on-grpc"
+  digest = "1:532adf732d56ddee98d6953e626b23befed7abbcee0d5e985aed2e4b46ea565f"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -938,7 +938,8 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "6a85bf520acfc70202792d295429ffcf10de9e53"
+  revision = "82ab3ef4581bf3d7c2d662193ea4bee246541b91"
+  source = "github.com/tomwilkie/weaveworks-common"
 
 [[projects]]
   digest = "1:efac30de93ca1ff38050f46dc34f1338ebc8778de488f919f79ad9e6188719d3"
@@ -1385,6 +1386,7 @@
     "github.com/prometheus/prometheus/rules",
     "github.com/prometheus/prometheus/scrape",
     "github.com/prometheus/prometheus/storage",
+    "github.com/prometheus/prometheus/util/stats",
     "github.com/prometheus/prometheus/util/strutil",
     "github.com/prometheus/prometheus/web/api/v1",
     "github.com/prometheus/tsdb",
@@ -1392,6 +1394,8 @@
     "github.com/segmentio/fasthash/fnv1a",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
+    "github.com/uber/jaeger-client-go",
+    "github.com/uber/jaeger-client-go/config",
     "github.com/weaveworks/billing-client",
     "github.com/weaveworks/common/aws",
     "github.com/weaveworks/common/errors",

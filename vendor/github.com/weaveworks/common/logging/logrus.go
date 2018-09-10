@@ -28,29 +28,29 @@ type logrusLogger struct {
 }
 
 func (l logrusLogger) WithField(key string, value interface{}) Interface {
-	return logusEntry{
+	return logrusEntry{
 		Entry: l.Logger.WithField(key, value),
 	}
 }
 
 func (l logrusLogger) WithFields(fields Fields) Interface {
-	return logusEntry{
+	return logrusEntry{
 		Entry: l.Logger.WithFields(map[string]interface{}(fields)),
 	}
 }
 
-type logusEntry struct {
+type logrusEntry struct {
 	*logrus.Entry
 }
 
-func (l logusEntry) WithField(key string, value interface{}) Interface {
-	return logusEntry{
+func (l logrusEntry) WithField(key string, value interface{}) Interface {
+	return logrusEntry{
 		Entry: l.Entry.WithField(key, value),
 	}
 }
 
-func (l logusEntry) WithFields(fields Fields) Interface {
-	return logusEntry{
+func (l logrusEntry) WithFields(fields Fields) Interface {
+	return logrusEntry{
 		Entry: l.Entry.WithFields(map[string]interface{}(fields)),
 	}
 }

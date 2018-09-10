@@ -14,7 +14,6 @@ import (
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
 	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
 	"github.com/sercand/kuberesolver"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -44,18 +43,9 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 		return nil, err
 	}
 	toHeader(r.Headers, req.Header)
-	if tracer := opentracing.GlobalTracer(); tracer != nil {
-		clientContext, err := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
-		if err == nil {
-			span := tracer.StartSpan("httpgrpc", ext.RPCServerOption(clientContext))
-			defer span.Finish()
-			ctx = opentracing.ContextWithSpan(ctx, span)
-		} else if err != opentracing.ErrSpanContextNotFound {
-			logging.Global().Warnf("Failed to extract tracing headers from request: %v", err)
-		}
-	}
 	req = req.WithContext(ctx)
 	req.RequestURI = r.Url
+
 	recorder := httptest.NewRecorder()
 	s.handler.ServeHTTP(recorder, req)
 	resp := &httpgrpc.HTTPResponse{

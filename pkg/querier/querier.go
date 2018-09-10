@@ -61,7 +61,6 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 	if cfg.IngesterStreaming {
 		dq := newIngesterStreamingQueryable(distributor, iteratorFunc)
 		queryable = newUnifiedChunkQueryable(chunkStore, dq, distributor, iteratorFunc)
-
 	} else {
 		cq := newChunkStoreQueryable(chunkStore, iteratorFunc)
 		dq := newDistributorQueryable(distributor)

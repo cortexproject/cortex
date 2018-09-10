@@ -13,10 +13,15 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/weaveworks/cortex/pkg/querier/batch"
+	"github.com/weaveworks/cortex/pkg/querier/iterators"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
+	"github.com/weaveworks/cortex/pkg/util/wire"
 )
 
 const (
@@ -37,13 +42,13 @@ type query struct {
 }
 
 var (
-	queryables = []struct {
+	testcases = []struct {
 		name string
-		f    func(ChunkStore) storage.Queryable
+		f    chunkIteratorFunc
 	}{
-		{"matrixes", newChunkQueryable},
-		{"iterators", newIterChunkQueryable(newChunkMergeIterator)},
-		{"batches", newIterChunkQueryable(batch.NewChunkMergeIterator)},
+		{"matrixes", mergeChunks},
+		{"iterators", iterators.NewChunkMergeIterator},
+		{"batches", batch.NewChunkMergeIterator},
 	}
 
 	encodings = []struct {
@@ -115,57 +120,49 @@ var (
 	}
 )
 
-func TestChunkQueryable(t *testing.T) {
-	for _, queryable := range queryables {
+func TestQuerier(t *testing.T) {
+	var cfg Config
+	util.DefaultValues(&cfg)
+
+	for _, query := range queries {
 		for _, encoding := range encodings {
-			for _, query := range queries {
-				t.Run(fmt.Sprintf("%s/%s/%s (%s step)", queryable.name, encoding.name, query.query, query.step), func(t *testing.T) {
-					store, from := makeMockChunkStore(t, 24*2, encoding.e)
-					queryable := queryable.f(store)
-					testQuery(t, queryable, from, query)
-				})
+			for _, streaming := range []bool{false, true} {
+				for _, iterators := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/%s/streaming=%t/iterators=%t", query.query, encoding.name, streaming, iterators), func(t *testing.T) {
+						cfg.IngesterStreaming = streaming
+						cfg.Iterators = iterators
+						cfg.metricsRegisterer = nil
+
+						chunkStore, through := makeMockChunkStore(t, 24, encoding.e)
+						distributor := mockDistibutorFor(t, chunkStore, through)
+
+						queryable, _ := New(cfg, distributor, chunkStore)
+						testQuery(t, queryable, through, query)
+					})
+				}
 			}
 		}
 	}
 }
 
-type mockChunkStore struct {
-	chunks []chunk.Chunk
-}
-
-func (m mockChunkStore) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	return m.chunks, nil
-}
-
-func makeMockChunkStore(t require.TestingT, numChunks int, encoding promchunk.Encoding) (ChunkStore, model.Time) {
-	var (
-		chunks = make([]chunk.Chunk, 0, numChunks)
-		from   = model.Time(0)
-	)
-	for i := 0; i < numChunks; i++ {
-		c := mkChunk(t, from, from.Add(samplesPerChunk*sampleRate), sampleRate, encoding)
-		chunks = append(chunks, c)
-		from = from.Add(chunkOffset)
-	}
-	return mockChunkStore{chunks}, from
-}
-
-func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, encoding promchunk.Encoding) chunk.Chunk {
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
-	}
-	pc, err := promchunk.NewForEncoding(encoding)
+// mockDistibutorFor duplicates the chunks in the mockChunkStore into the mockDistributor
+// so we can test everything is dedupe correctly.
+func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *mockDistributor {
+	chunks, err := chunkcompat.ToChunks(cs.chunks)
 	require.NoError(t, err)
-	for i := mint; i.Before(maxt); i = i.Add(step) {
-		pcs, err := pc.Add(model.SamplePair{
-			Timestamp: i,
-			Value:     model.SampleValue(float64(i)),
-		})
-		require.NoError(t, err)
-		require.Len(t, pcs, 1)
-		pc = pcs[0]
+
+	tsc := client.TimeSeriesChunk{
+		Labels: []client.LabelPair{{Name: wire.Bytes(model.MetricNameLabel), Value: wire.Bytes("foo")}},
+		Chunks: chunks,
 	}
-	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
+	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)
+	require.NoError(t, err)
+
+	result := &mockDistributor{
+		m: matrix,
+		r: []client.TimeSeriesChunk{tsc},
+	}
+	return result
 }
 
 func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, q query) *promql.Result {
@@ -174,7 +171,8 @@ func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, 
 	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
 	require.NoError(t, err)
 
-	r := query.Exec(context.Background())
+	ctx := user.InjectOrgID(context.Background(), "0")
+	r := query.Exec(ctx)
 	m, err := r.Matrix()
 	require.NoError(t, err)
 

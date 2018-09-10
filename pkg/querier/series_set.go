@@ -25,23 +25,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
 
-// errSeriesSet implements storage.SeriesSet, just returning an error.
-type errSeriesSet struct {
-	err error
-}
-
-func (errSeriesSet) Next() bool {
-	return false
-}
-
-func (errSeriesSet) At() storage.Series {
-	return nil
-}
-
-func (e errSeriesSet) Err() error {
-	return e.err
-}
-
 // concreteSeriesSet implements storage.SeriesSet.
 type concreteSeriesSet struct {
 	cur    int
@@ -73,6 +56,13 @@ func (c *concreteSeriesSet) Err() error {
 type concreteSeries struct {
 	labels  labels.Labels
 	samples []model.SamplePair
+}
+
+func newConcreteSeries(ls labels.Labels, samples []model.SamplePair) *concreteSeries {
+	return &concreteSeries{
+		labels:  ls,
+		samples: samples,
+	}
 }
 
 func (c *concreteSeries) Labels() labels.Labels {
@@ -115,6 +105,27 @@ func (c *concreteSeriesIterator) Next() bool {
 
 func (c *concreteSeriesIterator) Err() error {
 	return nil
+}
+
+// errIterator implements storage.SeriesIterator, just returning an error.
+type errIterator struct {
+	err error
+}
+
+func (errIterator) Seek(int64) bool {
+	return false
+}
+
+func (errIterator) Next() bool {
+	return false
+}
+
+func (errIterator) At() (t int64, v float64) {
+	return 0, 0
+}
+
+func (e errIterator) Err() error {
+	return e.err
 }
 
 func matrixToSeriesSet(m model.Matrix) storage.SeriesSet {

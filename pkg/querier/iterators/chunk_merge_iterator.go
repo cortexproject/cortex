@@ -1,9 +1,10 @@
-package querier
+package iterators
 
 import (
 	"container/heap"
 	"sort"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/cortex/pkg/chunk"
 )
@@ -17,7 +18,8 @@ type chunkMergeIterator struct {
 	currErr   error
 }
 
-func newChunkMergeIterator(cs []chunk.Chunk) storage.SeriesIterator {
+// NewChunkMergeIterator creates a storage.SeriesIterator for a set of chunks.
+func NewChunkMergeIterator(cs []chunk.Chunk, _, _ model.Time) storage.SeriesIterator {
 	its := buildIterators(cs)
 	c := &chunkMergeIterator{
 		currTime: -1,

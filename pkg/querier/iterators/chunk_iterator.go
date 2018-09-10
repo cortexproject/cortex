@@ -1,4 +1,4 @@
-package querier
+package iterators
 
 import (
 	"github.com/prometheus/common/model"

@@ -6,6 +6,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 )
 
 const indexShards = 32
@@ -29,12 +31,13 @@ func newInvertedIndex() *invertedIndex {
 	}
 }
 
-func (ii *invertedIndex) add(metric model.Metric, fp model.Fingerprint) {
+func (ii *invertedIndex) add(metric labelPairs, fp model.Fingerprint) {
 	i := &ii.shards[hashFP(fp)%indexShards]
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
-	for name, value := range metric {
+	for _, pair := range metric {
+		name, value := model.LabelName(pair.Name), model.LabelValue(pair.Value)
 		values, ok := i.idx[name]
 		if !ok {
 			values = map[model.LabelValue][]model.Fingerprint{}
@@ -126,12 +129,13 @@ func (shard *indexShard) lookupLabelValues(name model.LabelName) model.LabelValu
 	return results
 }
 
-func (ii *invertedIndex) delete(metric model.Metric, fp model.Fingerprint) {
+func (ii *invertedIndex) delete(labels []client.LabelPair, fp model.Fingerprint) {
 	i := &ii.shards[hashFP(fp)%indexShards]
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
-	for name, value := range metric {
+	for _, pair := range labels {
+		name, value := model.LabelName(pair.Name), model.LabelValue(pair.Value)
 		values, ok := i.idx[name]
 		if !ok {
 			continue

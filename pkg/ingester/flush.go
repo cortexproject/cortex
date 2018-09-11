@@ -14,6 +14,7 @@ import (
 
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -227,7 +228,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	defer cancel() // releases resources if slowOperation completes before timeout elapses
 
 	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
-	err := i.flushChunks(ctx, fp, series.metric, chunks)
+	err := i.flushChunks(ctx, fp, client.FromLabelPairs(series.metric), chunks)
 	if err != nil {
 		return err
 	}

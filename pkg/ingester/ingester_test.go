@@ -165,26 +165,26 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	_, ing := newTestStore(t, defaultIngesterTestConfig())
 	defer ing.Shutdown()
 
-	m := model.Metric{
-		model.MetricNameLabel: "testmetric",
+	m := labelPairs{
+		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0}, client.API)
+	err := ing.append(ctx, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0}, client.API)
+	err = ing.append(ctx, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 0, Value: 0}, client.API)
+	err = ing.append(ctx, m, 0, 0, client.API)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 1}, client.API)
+	err = ing.append(ctx, m, 1, 1, client.API)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)

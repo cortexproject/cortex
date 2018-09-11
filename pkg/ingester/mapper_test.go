@@ -16,30 +16,30 @@ var (
 	fp1  = model.Fingerprint(maxMappedFP + 1)
 	fp2  = model.Fingerprint(maxMappedFP + 2)
 	fp3  = model.Fingerprint(1)
-	cm11 = model.Metric{
-		"foo":   "bar",
-		"dings": "bumms",
+	cm11 = labelPairs{
+		{Name: []byte("foo"), Value: []byte("bar")},
+		{Name: []byte("dings"), Value: []byte("bumms")},
 	}
-	cm12 = model.Metric{
-		"bar": "foo",
+	cm12 = labelPairs{
+		{Name: []byte("bar"), Value: []byte("foo")},
 	}
-	cm13 = model.Metric{
-		"foo": "bar",
+	cm13 = labelPairs{
+		{Name: []byte("foo"), Value: []byte("bar")},
 	}
-	cm21 = model.Metric{
-		"foo":   "bumms",
-		"dings": "bar",
+	cm21 = labelPairs{
+		{Name: []byte("foo"), Value: []byte("bumms")},
+		{Name: []byte("dings"), Value: []byte("bar")},
 	}
-	cm22 = model.Metric{
-		"dings": "foo",
-		"bar":   "bumms",
+	cm22 = labelPairs{
+		{Name: []byte("dings"), Value: []byte("foo")},
+		{Name: []byte("bar"), Value: []byte("bumms")},
 	}
-	cm31 = model.Metric{
-		"bumms": "dings",
+	cm31 = labelPairs{
+		{Name: []byte("bumms"), Value: []byte("dings")},
 	}
-	cm32 = model.Metric{
-		"bumms": "dings",
-		"bar":   "foo",
+	cm32 = labelPairs{
+		{Name: []byte("bumms"), Value: []byte("dings")},
+		{Name: []byte("bar"), Value: []byte("foo")},
 	}
 )
 

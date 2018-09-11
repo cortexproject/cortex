@@ -84,14 +84,13 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			fromIngesterID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
 		}
-		metric := client.FromLabelPairs(wireSeries.Labels)
 		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {
 			return err
 		}
 
-		state, fp, series, err := userStates.getOrCreateSeries(userCtx, metric)
+		state, fp, series, err := userStates.getOrCreateSeries(userCtx, wireSeries.Labels)
 		if err != nil {
 			return err
 		}
@@ -222,7 +221,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			err = stream.Send(&client.TimeSeriesChunk{
 				FromIngesterId: i.lifecycler.ID,
 				UserId:         userID,
-				Labels:         client.ToLabelPairs(pair.series.metric),
+				Labels:         pair.series.metric,
 				Chunks:         chunks,
 			})
 			state.fpLocker.Unlock(pair.fp)

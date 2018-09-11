@@ -23,7 +23,7 @@ func init() {
 }
 
 type memorySeries struct {
-	metric model.Metric
+	metric labelPairs
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
 	chunkDescs []*desc
@@ -50,7 +50,7 @@ func (error *memorySeriesError) Error() string {
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m model.Metric) *memorySeries {
+func newMemorySeries(m labelPairs) *memorySeries {
 	return &memorySeries{
 		metric:   m,
 		lastTime: model.Earliest,

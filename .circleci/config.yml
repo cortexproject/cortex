@@ -14,14 +14,12 @@ workflows:
     - test
     - integration
     - build
-    - dep-check
     - deploy:
         requires:
         - build
         - test
         - lint
         - integration
-        - dep-check
         filters:
           branches:
             only: master
@@ -34,6 +32,9 @@ jobs:
     - run:
         name: Lint
         command: make BUILD_IN_CONTAINER=false lint
+    - run:
+        name: Check vendor directory is consistent.
+        command: make BUILD_IN_CONTAINER=false dep-check
 
   test:
     <<: *defaults
@@ -86,16 +87,6 @@ jobs:
         key: v1-cortex-{{ .Branch }}-{{ .Revision }}
         paths:
         - images/
-
-  dep-check:
-    <<: *defaults
-    steps:
-    - checkout
-    - setup_remote_docker
-    - run:
-        name: Check vendor directory is consistent.
-        command: |
-          make BUILD_IN_CONTAINER=false dep-check
 
   deploy:
     <<: *defaults

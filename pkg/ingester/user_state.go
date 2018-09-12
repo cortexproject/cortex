@@ -261,7 +261,7 @@ outer:
 		}
 
 		for _, filter := range filters {
-			if !filter.Matches(string(client.ValueFromLabelPairs(series.metric, filter.Name))) {
+			if !filter.Matches(string(series.metric.valueForName([]byte(filter.Name)))) {
 				u.fpLocker.Unlock(fp)
 				continue outer
 			}

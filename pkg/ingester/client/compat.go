@@ -245,16 +245,6 @@ func FromLabelPairsToLabels(labelPairs []LabelPair) labels.Labels {
 	return ls
 }
 
-// ValueFromLabelPairs gets one value for a name
-func ValueFromLabelPairs(labels []LabelPair, name string) []byte {
-	for _, label := range labels {
-		if label.Name.Equal([]byte(name)) {
-			return label.Value
-		}
-	}
-	return nil
-}
-
 // FastFingerprint runs the same algorithm as Prometheus labelSetToFastFingerprint()
 func FastFingerprint(labelPairs []LabelPair) model.Fingerprint {
 	if len(labelPairs) == 0 {

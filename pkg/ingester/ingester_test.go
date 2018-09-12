@@ -399,6 +399,7 @@ func BenchmarkIngesterPush(b *testing.B) {
 		})
 	}
 	ctx := user.InjectOrgID(context.Background(), "1")
+	b.ResetTimer()
 	for iter := 0; iter < b.N; iter++ {
 		_, ing := newTestStore(b, cfg)
 		// Bump the timestamp on each of our test samples each time round the loop

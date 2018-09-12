@@ -482,7 +482,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 	for _, matchers := range matchersSet {
 		if err := state.forSeriesMatching(matchers, func(fp model.Fingerprint, series *memorySeries) error {
 			if _, ok := metrics[fp]; !ok {
-				metrics[fp] = series.metric
+				metrics[fp] = series.labels()
 			}
 			return nil
 		}); err != nil {

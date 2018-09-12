@@ -25,32 +25,32 @@ func init() {
 
 type sortedLabelPairs labelPairs
 
-func (m sortedLabelPairs) Len() int           { return len(m) }
-func (m sortedLabelPairs) Less(i, j int) bool { return bytes.Compare(m[i].Name, m[j].Name) < 0 }
-func (m sortedLabelPairs) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
+func (s sortedLabelPairs) Len() int           { return len(s) }
+func (s sortedLabelPairs) Less(i, j int) bool { return bytes.Compare(s[i].Name, s[j].Name) < 0 }
+func (s sortedLabelPairs) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-func (m labelPairs) sort() sortedLabelPairs {
-	c := make(sortedLabelPairs, len(m))
-	copy(c, m)
+func (s labelPairs) sort() sortedLabelPairs {
+	c := make(sortedLabelPairs, len(s))
+	copy(c, s)
 	sort.Sort(c)
 	return c
 }
 
-func (a sortedLabelPairs) valueForName(name []byte) []byte {
-	pos := sort.Search(len(a), func(i int) bool { return bytes.Compare(a[i].Name, name) >= 0 })
-	if pos == len(a) || !bytes.Equal(a[pos].Name, name) {
+func (s sortedLabelPairs) valueForName(name []byte) []byte {
+	pos := sort.Search(len(s), func(i int) bool { return bytes.Compare(s[i].Name, name) >= 0 })
+	if pos == len(s) || !bytes.Equal(s[pos].Name, name) {
 		return nil
 	}
-	return a[pos].Value
+	return s[pos].Value
 }
 
-// Check if a and b contain the same name/value pairs
-func (a sortedLabelPairs) equal(b labelPairs) bool {
-	if len(a) != len(b) {
+// Check if s and b contain the same name/value pairs
+func (s sortedLabelPairs) equal(b labelPairs) bool {
+	if len(s) != len(b) {
 		return false
 	}
 	for _, pair := range b {
-		found := a.valueForName(pair.Name)
+		found := s.valueForName(pair.Name)
 		if found == nil || !bytes.Equal(found, pair.Value) {
 			return false
 		}

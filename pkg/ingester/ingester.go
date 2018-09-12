@@ -469,7 +469,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 	if err != nil {
 		return nil, err
 	} else if !ok {
-		return client.ToMetricsForLabelMatchersResponse(nil), nil
+		return &client.MetricsForLabelMatchersResponse{}, nil
 	}
 
 	// TODO Right now we ignore start and end.

@@ -140,19 +140,6 @@ func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (mo
 	return from, to, matchersSet, nil
 }
 
-// ToMetricsForLabelMatchersResponse builds a MetricsForLabelMatchersResponse proto
-func ToMetricsForLabelMatchersResponse(metrics []model.Metric) *MetricsForLabelMatchersResponse {
-	resp := &MetricsForLabelMatchersResponse{
-		Metric: make([]*Metric, 0, len(metrics)),
-	}
-	for _, metric := range metrics {
-		resp.Metric = append(resp.Metric, &Metric{
-			Labels: ToLabelPairs(metric),
-		})
-	}
-	return resp
-}
-
 // FromMetricsForLabelMatchersResponse unpacks a MetricsForLabelMatchersResponse proto
 func FromMetricsForLabelMatchersResponse(resp *MetricsForLabelMatchersResponse) []model.Metric {
 	metrics := []model.Metric{}

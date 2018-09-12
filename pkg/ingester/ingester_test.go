@@ -375,3 +375,42 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 
 	wg.Wait()
 }
+
+func BenchmarkIngesterPush(b *testing.B) {
+	cfg := defaultIngesterTestConfig()
+
+	const (
+		series  = 100
+		samples = 100
+	)
+
+	// Construct a set of realistic-looking samples, all with slightly different label sets
+	labels := chunk.BenchmarkMetric.Clone()
+	ts := make([]client.PreallocTimeseries, 0, series)
+	for j := 0; j < series; j++ {
+		labels["cpu"] = model.LabelValue(fmt.Sprintf("cpu%02d", j))
+		ts = append(ts, client.PreallocTimeseries{
+			TimeSeries: client.TimeSeries{
+				Labels: client.ToLabelPairs(labels),
+				Samples: []client.Sample{
+					{TimestampMs: 0, Value: float64(j)},
+				},
+			},
+		})
+	}
+	ctx := user.InjectOrgID(context.Background(), "1")
+	for iter := 0; iter < b.N; iter++ {
+		_, ing := newTestStore(b, cfg)
+		// Bump the timestamp on each of our test samples each time round the loop
+		for j := 0; j < samples; j++ {
+			for i := range ts {
+				ts[i].TimeSeries.Samples[0].TimestampMs = int64(i)
+			}
+			_, err := ing.Push(ctx, &client.WriteRequest{
+				Timeseries: ts,
+			})
+			require.NoError(b, err)
+		}
+		ing.Shutdown()
+	}
+}

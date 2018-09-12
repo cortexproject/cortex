@@ -77,16 +77,17 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		if !ok {
 			return nil
 		}
-		var toIntersect []model.Fingerprint
+		var toIntersect model.Fingerprints
 		if matcher.Type == labels.MatchEqual {
 			fps := values[model.LabelValue(matcher.Value)]
-			toIntersect = merge(toIntersect, fps)
+			toIntersect = append(toIntersect, fps...)
 		} else {
 			for value, fps := range values {
 				if matcher.Matches(string(value)) {
-					toIntersect = merge(toIntersect, fps)
+					toIntersect = append(toIntersect, fps...)
 				}
 			}
+			sort.Sort(toIntersect)
 		}
 		result = intersect(result, toIntersect)
 		if len(result) == 0 {
@@ -177,25 +178,6 @@ func intersect(a, b []model.Fingerprint) []model.Fingerprint {
 			j++
 		}
 	}
-	return result
-}
-
-// merge two sorted lists of fingerprints.  Assumes there are no duplicate
-// fingerprints between or within the input lists.
-func merge(a, b []model.Fingerprint) []model.Fingerprint {
-	result := make([]model.Fingerprint, 0, len(a)+len(b))
-	i, j := 0, 0
-	for i < len(a) && j < len(b) {
-		if a[i] < b[j] {
-			result = append(result, a[i])
-			i++
-		} else {
-			result = append(result, b[j])
-			j++
-		}
-	}
-	result = append(result, a[i:]...)
-	result = append(result, b[j:]...)
 	return result
 }
 

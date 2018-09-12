@@ -54,13 +54,12 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labelPairs) model.Fingerpr
 		return m.maybeAddMapping(fp, metric)
 	}
 
-	ms := metricToUniqueString(metric)
 	// Then check the most likely case: This fp belongs to a series that is
 	// already in memory.
 	s, ok := m.fpToSeries.get(fp)
 	if ok {
 		// FP exists in memory, but is it for the same metric?
-		if ms == metricToUniqueString(s.metric) {
+		if s.metric.equal(metric) {
 			// Yupp. We are done.
 			return fp
 		}
@@ -74,6 +73,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labelPairs) model.Fingerpr
 	m.mtx.RUnlock()
 	if fpAlreadyMapped {
 		// We indeed have mapped fp historically.
+		ms := metricToUniqueString(metric)
 		// fp is locked by the caller, so no further locking of
 		// 'collisions' required (it is specific to fp).
 		mappedFP, ok := mappedFPs[ms]

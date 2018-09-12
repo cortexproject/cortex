@@ -241,7 +241,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	series.chunkDescs = series.chunkDescs[len(chunks):]
 	memoryChunks.Sub(float64(len(chunks)))
 	if len(series.chunkDescs) == 0 {
-		userState.removeSeries(fp, series.metric)
+		userState.removeSeries(fp, series.labels())
 	}
 	userState.fpLocker.Unlock(fp)
 	return nil

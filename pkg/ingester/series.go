@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 
@@ -22,8 +23,43 @@ func init() {
 	prometheus.MustRegister(createdChunks)
 }
 
+type sortedLabelPairs labelPairs
+
+func (m sortedLabelPairs) Len() int           { return len(m) }
+func (m sortedLabelPairs) Less(i, j int) bool { return bytes.Compare(m[i].Name, m[j].Name) < 0 }
+func (m sortedLabelPairs) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
+
+func (m labelPairs) sort() sortedLabelPairs {
+	c := make(sortedLabelPairs, len(m))
+	copy(c, m)
+	sort.Sort(c)
+	return c
+}
+
+func (a sortedLabelPairs) valueForName(name []byte) []byte {
+	pos := sort.Search(len(a), func(i int) bool { return bytes.Compare(a[i].Name, name) >= 0 })
+	if pos == len(a) || !bytes.Equal(a[pos].Name, name) {
+		return nil
+	}
+	return a[pos].Value
+}
+
+// Check if a and b contain the same name/value pairs
+func (a sortedLabelPairs) equal(b labelPairs) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for _, pair := range b {
+		found := a.valueForName(pair.Name)
+		if found == nil || !bytes.Equal(found, pair.Value) {
+			return false
+		}
+	}
+	return true
+}
+
 type memorySeries struct {
-	metric labelPairs
+	metric sortedLabelPairs
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
 	chunkDescs []*desc
@@ -52,9 +88,14 @@ func (error *memorySeriesError) Error() string {
 // given metric.
 func newMemorySeries(m labelPairs) *memorySeries {
 	return &memorySeries{
-		metric:   m,
+		metric:   m.sort(),
 		lastTime: model.Earliest,
 	}
+}
+
+// helper to extract the not-necessarily-sorted type used elsewhere, without casting everywhere.
+func (s *memorySeries) labels() labelPairs {
+	return labelPairs(s.metric)
 }
 
 // add adds a sample pair to the series. It returns the number of newly

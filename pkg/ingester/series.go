@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
@@ -23,7 +24,13 @@ func init() {
 	prometheus.MustRegister(createdChunks)
 }
 
-type sortedLabelPairs labelPairs
+// A series is uniquely identified by its set of label name/value
+// pairs, which may arrive in any order over the wire
+type labelPairs []client.LabelPair
+
+// We sort the set for faster lookup, and use a separate type to let
+// the compiler check usage.
+type sortedLabelPairs []client.LabelPair
 
 func (s sortedLabelPairs) Len() int           { return len(s) }
 func (s sortedLabelPairs) Less(i, j int) bool { return bytes.Compare(s[i].Name, s[j].Name) < 0 }

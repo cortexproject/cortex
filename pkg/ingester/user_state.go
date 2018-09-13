@@ -117,7 +117,7 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 	return state, ok, nil
 }
 
-func (us *userStates) getOrCreateSeries(ctx context.Context, labels []client.LabelPair) (*userState, model.Fingerprint, *memorySeries, error) {
+func (us *userStates) getOrCreateSeries(ctx context.Context, labels labelPairs) (*userState, model.Fingerprint, *memorySeries, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("no user id")

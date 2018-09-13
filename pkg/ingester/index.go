@@ -6,8 +6,6 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-
-	"github.com/weaveworks/cortex/pkg/ingester/client"
 )
 
 const indexShards = 32
@@ -129,7 +127,7 @@ func (shard *indexShard) lookupLabelValues(name model.LabelName) model.LabelValu
 	return results
 }
 
-func (ii *invertedIndex) delete(labels []client.LabelPair, fp model.Fingerprint) {
+func (ii *invertedIndex) delete(labels labelPairs, fp model.Fingerprint) {
 	i := &ii.shards[hashFP(fp)%indexShards]
 	i.mtx.Lock()
 	defer i.mtx.Unlock()

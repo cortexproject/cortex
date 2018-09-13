@@ -14,6 +14,7 @@ import (
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/cortex/pkg/util/extract"
 	"github.com/weaveworks/cortex/pkg/util/validation"
@@ -61,7 +62,7 @@ const metricCounterShards = 128
 
 type metricCounterShard struct {
 	mtx sync.Mutex
-	m   map[model.LabelValue]int
+	m   map[string]int
 }
 
 func newUserStates(limits *validation.Overrides, cfg Config) *userStates {
@@ -116,7 +117,7 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 	return state, ok, nil
 }
 
-func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric) (*userState, model.Fingerprint, *memorySeries, error) {
+func (us *userStates) getOrCreateSeries(ctx context.Context, labels labelPairs) (*userState, model.Fingerprint, *memorySeries, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("no user id")
@@ -128,7 +129,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 		seriesInMetric := make([]metricCounterShard, 0, metricCounterShards)
 		for i := 0; i < metricCounterShards; i++ {
 			seriesInMetric = append(seriesInMetric, metricCounterShard{
-				m: map[model.LabelValue]int{},
+				m: map[string]int{},
 			})
 		}
 
@@ -153,12 +154,12 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, metric model.Metric
 		state = stored.(*userState)
 	}
 
-	fp, series, err := state.getSeries(metric)
+	fp, series, err := state.getSeries(labels)
 	return state, fp, series, err
 }
 
-func (u *userState) getSeries(metric model.Metric) (model.Fingerprint, *memorySeries, error) {
-	rawFP := metric.FastFingerprint()
+func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeries, error) {
+	rawFP := client.FastFingerprint(metric)
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
 	if fp != rawFP {
@@ -181,13 +182,13 @@ func (u *userState) getSeries(metric model.Metric) (model.Fingerprint, *memorySe
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
 
-	metricName, err := extract.MetricNameFromMetric(metric)
+	metricName, err := extract.MetricNameFromLabelPairs(metric)
 	if err != nil {
 		u.fpLocker.Unlock(fp)
 		return fp, nil, err
 	}
 
-	if !u.canAddSeriesFor(metricName) {
+	if !u.canAddSeriesFor(string(metricName)) {
 		u.fpLocker.Unlock(fp)
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}
@@ -203,7 +204,7 @@ func (u *userState) getSeries(metric model.Metric) (model.Fingerprint, *memorySe
 	return fp, series, nil
 }
 
-func (u *userState) canAddSeriesFor(metric model.LabelValue) bool {
+func (u *userState) canAddSeriesFor(metric string) bool {
 	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
@@ -215,16 +216,17 @@ func (u *userState) canAddSeriesFor(metric model.LabelValue) bool {
 	return true
 }
 
-func (u *userState) removeSeries(fp model.Fingerprint, metric model.Metric) {
+func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 	u.fpToSeries.del(fp)
 	u.index.delete(metric, fp)
 
-	metricName, err := extract.MetricNameFromMetric(metric)
+	metricNameB, err := extract.MetricNameFromLabelPairs(metric)
 	if err != nil {
 		// Series without a metric name should never be able to make it into
 		// the ingester's memory storage.
 		panic(err)
 	}
+	metricName := string(metricNameB)
 
 	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
 	shard.mtx.Lock()
@@ -259,7 +261,7 @@ outer:
 		}
 
 		for _, filter := range filters {
-			if !filter.Matches(string(series.metric[model.LabelName(filter.Name)])) {
+			if !filter.Matches(string(series.metric.valueForName([]byte(filter.Name)))) {
 				u.fpLocker.Unlock(fp)
 				continue outer
 			}

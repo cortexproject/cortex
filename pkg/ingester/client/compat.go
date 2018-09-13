@@ -140,19 +140,6 @@ func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (mo
 	return from, to, matchersSet, nil
 }
 
-// ToMetricsForLabelMatchersResponse builds a MetricsForLabelMatchersResponse proto
-func ToMetricsForLabelMatchersResponse(metrics []model.Metric) *MetricsForLabelMatchersResponse {
-	resp := &MetricsForLabelMatchersResponse{
-		Metric: make([]*Metric, 0, len(metrics)),
-	}
-	for _, metric := range metrics {
-		resp.Metric = append(resp.Metric, &Metric{
-			Labels: ToLabelPairs(metric),
-		})
-	}
-	return resp
-}
-
 // FromMetricsForLabelMatchersResponse unpacks a MetricsForLabelMatchersResponse proto
 func FromMetricsForLabelMatchersResponse(resp *MetricsForLabelMatchersResponse) []model.Metric {
 	metrics := []model.Metric{}
@@ -243,4 +230,21 @@ func FromLabelPairsToLabels(labelPairs []LabelPair) labels.Labels {
 		})
 	}
 	return ls
+}
+
+// FastFingerprint runs the same algorithm as Prometheus labelSetToFastFingerprint()
+func FastFingerprint(labelPairs []LabelPair) model.Fingerprint {
+	if len(labelPairs) == 0 {
+		return model.Metric(nil).FastFingerprint()
+	}
+
+	var result uint64
+	for _, pair := range labelPairs {
+		sum := hashNew()
+		sum = hashAdd(sum, string(pair.Name))
+		sum = hashAddByte(sum, model.SeparatorByte)
+		sum = hashAdd(sum, string(pair.Value))
+		result ^= sum
+	}
+	return model.Fingerprint(result)
 }

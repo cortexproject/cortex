@@ -165,26 +165,26 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	_, ing := newTestStore(t, defaultIngesterTestConfig())
 	defer ing.Shutdown()
 
-	m := model.Metric{
-		model.MetricNameLabel: "testmetric",
+	m := labelPairs{
+		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0}, client.API)
+	err := ing.append(ctx, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0}, client.API)
+	err = ing.append(ctx, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 0, Value: 0}, client.API)
+	err = ing.append(ctx, m, 0, 0, client.API)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 1}, client.API)
+	err = ing.append(ctx, m, 1, 1, client.API)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
@@ -374,4 +374,44 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 	}
 
 	wg.Wait()
+}
+
+func BenchmarkIngesterPush(b *testing.B) {
+	cfg := defaultIngesterTestConfig()
+
+	const (
+		series  = 100
+		samples = 100
+	)
+
+	// Construct a set of realistic-looking samples, all with slightly different label sets
+	labels := chunk.BenchmarkMetric.Clone()
+	ts := make([]client.PreallocTimeseries, 0, series)
+	for j := 0; j < series; j++ {
+		labels["cpu"] = model.LabelValue(fmt.Sprintf("cpu%02d", j))
+		ts = append(ts, client.PreallocTimeseries{
+			TimeSeries: client.TimeSeries{
+				Labels: client.ToLabelPairs(labels),
+				Samples: []client.Sample{
+					{TimestampMs: 0, Value: float64(j)},
+				},
+			},
+		})
+	}
+	ctx := user.InjectOrgID(context.Background(), "1")
+	b.ResetTimer()
+	for iter := 0; iter < b.N; iter++ {
+		_, ing := newTestStore(b, cfg)
+		// Bump the timestamp on each of our test samples each time round the loop
+		for j := 0; j < samples; j++ {
+			for i := range ts {
+				ts[i].TimeSeries.Samples[0].TimestampMs = int64(i)
+			}
+			_, err := ing.Push(ctx, &client.WriteRequest{
+				Timeseries: ts,
+			})
+			require.NoError(b, err)
+		}
+		ing.Shutdown()
+	}
 }

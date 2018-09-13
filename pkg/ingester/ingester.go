@@ -241,33 +241,34 @@ func (i *Ingester) StopIncomingRequests() {
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	var lastPartialErr error
-	samples := client.FromWriteRequest(req)
 
-	for j := range samples {
-		err := i.append(ctx, &samples[j], req.Source)
-		if err == nil {
-			continue
-		}
-
-		ingestedSamplesFail.Inc()
-		if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			switch httpResp.Code {
-			case http.StatusBadRequest, http.StatusTooManyRequests:
-				lastPartialErr = err
+	for _, ts := range req.Timeseries {
+		for _, s := range ts.Samples {
+			err := i.append(ctx, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
+			if err == nil {
 				continue
 			}
-		}
 
-		return nil, err
+			ingestedSamplesFail.Inc()
+			if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
+				switch httpResp.Code {
+				case http.StatusBadRequest, http.StatusTooManyRequests:
+					lastPartialErr = err
+					continue
+				}
+			}
+
+			return nil, err
+		}
 	}
 
 	return &client.WriteResponse{}, lastPartialErr
 }
 
-func (i *Ingester) append(ctx context.Context, sample *model.Sample, source client.WriteRequest_SourceEnum) error {
-	for ln, lv := range sample.Metric {
-		if len(lv) == 0 {
-			delete(sample.Metric, ln)
+func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
+	for i, pair := range labels {
+		if len(pair.Value) == 0 {
+			labels = append(labels[:i], labels[i:]...)
 		}
 	}
 
@@ -279,7 +280,7 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample, source clie
 
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, sample.Metric)
+	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, labels)
 	if err != nil {
 		return err
 	}
@@ -289,8 +290,8 @@ func (i *Ingester) append(ctx context.Context, sample *model.Sample, source clie
 
 	prevNumChunks := len(series.chunkDescs)
 	if err := series.add(model.SamplePair{
-		Value:     sample.Value,
-		Timestamp: sample.Timestamp,
+		Value:     value,
+		Timestamp: timestamp,
 	}); err != nil {
 		if mse, ok := err.(*memorySeriesError); ok {
 			validation.DiscardedSamples.WithLabelValues(mse.errorType, state.userID).Inc()
@@ -337,7 +338,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		return &client.QueryResponse{}, nil
 	}
 
-	result := model.Matrix{}
+	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
 	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
@@ -355,15 +356,22 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
 		}
 
-		result = append(result, &model.SampleStream{
-			Metric: series.metric,
-			Values: values,
-		})
+		ts := client.TimeSeries{
+			Labels:  series.metric,
+			Samples: make([]client.Sample, 0, len(values)),
+		}
+		for _, s := range values {
+			ts.Samples = append(ts.Samples, client.Sample{
+				Value:       float64(s.Value),
+				TimestampMs: int64(s.Timestamp),
+			})
+		}
+		result.Timeseries = append(result.Timeseries, ts)
 		return nil
 	})
 	queriedSeries.Observe(float64(numSeries))
 	queriedSamples.Observe(float64(numSamples))
-	return client.ToQueryResponse(result), err
+	return result, err
 }
 
 // QueryStream implements service.IngesterServer
@@ -406,7 +414,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.ToLabelPairs(series.metric),
+			Labels: series.metric,
 			Chunks: wireChunks,
 		})
 
@@ -459,7 +467,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 	if err != nil {
 		return nil, err
 	} else if !ok {
-		return client.ToMetricsForLabelMatchersResponse(nil), nil
+		return &client.MetricsForLabelMatchersResponse{}, nil
 	}
 
 	// TODO Right now we ignore start and end.
@@ -468,11 +476,11 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 		return nil, err
 	}
 
-	metrics := map[model.Fingerprint]model.Metric{}
+	metrics := map[model.Fingerprint]labelPairs{}
 	for _, matchers := range matchersSet {
 		if err := state.forSeriesMatching(matchers, func(fp model.Fingerprint, series *memorySeries) error {
 			if _, ok := metrics[fp]; !ok {
-				metrics[fp] = series.metric
+				metrics[fp] = series.labels()
 			}
 			return nil
 		}); err != nil {
@@ -480,12 +488,14 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 		}
 	}
 
-	result := []model.Metric{}
+	result := &client.MetricsForLabelMatchersResponse{
+		Metric: make([]*client.Metric, 0, len(metrics)),
+	}
 	for _, metric := range metrics {
-		result = append(result, metric)
+		result.Metric = append(result.Metric, &client.Metric{Labels: metric})
 	}
 
-	return client.ToMetricsForLabelMatchersResponse(result), nil
+	return result, nil
 }
 
 // UserStats returns ingestion statistics for the current user.

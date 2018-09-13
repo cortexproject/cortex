@@ -1,12 +1,14 @@
 package ingester
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
@@ -22,8 +24,65 @@ func init() {
 	prometheus.MustRegister(createdChunks)
 }
 
+// A series is uniquely identified by its set of label name/value
+// pairs, which may arrive in any order over the wire
+type labelPairs []client.LabelPair
+
+// We sort the set for faster lookup, and use a separate type to let
+// the compiler check usage.
+type sortedLabelPairs []client.LabelPair
+
+func (s sortedLabelPairs) Len() int           { return len(s) }
+func (s sortedLabelPairs) Less(i, j int) bool { return bytes.Compare(s[i].Name, s[j].Name) < 0 }
+func (s sortedLabelPairs) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+func (a labelPairs) copyValuesAndSort() sortedLabelPairs {
+	c := make(sortedLabelPairs, len(a))
+	// Since names and values may point into a much larger buffer,
+	// make a copy of all the names and values, in one block for efficiency
+	totalLength := 0
+	for _, pair := range a {
+		totalLength += len(pair.Name) + len(pair.Value)
+	}
+	copyBytes := make([]byte, totalLength)
+	pos := 0
+	copyByteSlice := func(val []byte) []byte {
+		start := pos
+		pos += copy(copyBytes[pos:], val)
+		return copyBytes[start:pos]
+	}
+	for i, pair := range a {
+		c[i].Name = copyByteSlice(pair.Name)
+		c[i].Value = copyByteSlice(pair.Value)
+	}
+	sort.Sort(c)
+	return c
+}
+
+func (s sortedLabelPairs) valueForName(name []byte) []byte {
+	pos := sort.Search(len(s), func(i int) bool { return bytes.Compare(s[i].Name, name) >= 0 })
+	if pos == len(s) || !bytes.Equal(s[pos].Name, name) {
+		return nil
+	}
+	return s[pos].Value
+}
+
+// Check if s and b contain the same name/value pairs
+func (s sortedLabelPairs) equal(b labelPairs) bool {
+	if len(s) != len(b) {
+		return false
+	}
+	for _, pair := range b {
+		found := s.valueForName(pair.Name)
+		if found == nil || !bytes.Equal(found, pair.Value) {
+			return false
+		}
+	}
+	return true
+}
+
 type memorySeries struct {
-	metric model.Metric
+	metric sortedLabelPairs
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
 	chunkDescs []*desc
@@ -50,11 +109,16 @@ func (error *memorySeriesError) Error() string {
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m model.Metric) *memorySeries {
+func newMemorySeries(m labelPairs) *memorySeries {
 	return &memorySeries{
-		metric:   m,
+		metric:   m.copyValuesAndSort(),
 		lastTime: model.Earliest,
 	}
+}
+
+// helper to extract the not-necessarily-sorted type used elsewhere, without casting everywhere.
+func (s *memorySeries) labels() labelPairs {
+	return labelPairs(s.metric)
 }
 
 // add adds a sample pair to the series. It returns the number of newly

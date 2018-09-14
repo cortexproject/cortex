@@ -183,8 +183,11 @@ func (r *Runner) runRandomTest() {
 	start := r.cfg.MinTime.Time.Add(time.Duration(rand.Int63n(int64(now.Sub(r.cfg.MinTime.Time)))))
 	duration := r.cfg.testQueryMinSize +
 		time.Duration(rand.Int63n(int64(r.cfg.testQueryMaxSize)-int64(r.cfg.testQueryMinSize)))
-	if start.Add(duration).After(now) {
-		duration = now.Sub(start)
+	if start.Add(-duration).Before(r.cfg.MinTime.Time) {
+		duration = start.Sub(r.cfg.MinTime.Time)
+	}
+	if duration < r.cfg.testQueryMinSize {
+		return
 	}
 
 	var pairs []model.SamplePair

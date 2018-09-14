@@ -42,8 +42,9 @@ func main() {
 	}))
 
 	runner.Add(test.NewSimpleTestCase("sine_wave", func(t time.Time) float64 {
-		degrees := t.Sub(unixStart).Seconds() * (float64(runnerConfig.ScrapeInterval) / float64(time.Second))
-		radians := (degrees * math.Pi) / 180.
+		// With a 15-second scrape interval this gives a ten-minute period
+		period := 40 * runnerConfig.ScrapeInterval.Seconds()
+		radians := float64(t.Unix()) / period * 2 * math.Pi
 		return math.Sin(radians)
 	}))
 

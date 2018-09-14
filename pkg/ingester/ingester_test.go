@@ -91,6 +91,24 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 	return samples
 }
 
+func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.MatchType, n, v string) (model.Matrix, *client.QueryRequest, error) {
+	matcher, err := labels.NewMatcher(ty, n, v)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := ing.Query(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	res := client.FromQueryResponse(resp)
+	sort.Sort(res)
+	return res, req, nil
+}
+
 func TestIngesterAppend(t *testing.T) {
 	store, ing := newTestStore(t, defaultIngesterTestConfig())
 
@@ -112,17 +130,8 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		matcher, err := labels.NewMatcher(labels.MatchRegexp, model.JobLabel, ".+")
+		res, req, err := runTestQuery(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+")
 		require.NoError(t, err)
-
-		req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
-		require.NoError(t, err)
-
-		resp, err := ing.Query(ctx, req)
-		require.NoError(t, err)
-
-		res := client.FromQueryResponse(resp)
-		sort.Sort(res)
 		assert.Equal(t, testData[userID], res)
 
 		s := stream{
@@ -227,17 +236,8 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Read samples back via ingester queries.
-	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
-
-	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
-	require.NoError(t, err)
-
-	resp, err := ing.Query(ctx, req)
-	require.NoError(t, err)
-
-	res := client.FromQueryResponse(resp)
-	sort.Sort(res)
 
 	expected := model.Matrix{
 		{
@@ -294,17 +294,8 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Read samples back via ingester queries.
-	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
-
-	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
-	require.NoError(t, err)
-
-	resp, err := ing.Query(ctx, req)
-	require.NoError(t, err)
-
-	res := client.FromQueryResponse(resp)
-	sort.Sort(res)
 
 	expected := model.Matrix{
 		{

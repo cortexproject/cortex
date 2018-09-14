@@ -266,11 +266,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 }
 
 func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
-	for i, pair := range labels {
-		if len(pair.Value) == 0 {
-			labels = append(labels[:i], labels[i:]...)
-		}
-	}
+	labels.removeBlanks()
 
 	i.stopLock.RLock()
 	defer i.stopLock.RUnlock()

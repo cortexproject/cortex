@@ -49,6 +49,13 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	if err != nil {
 		return err
 	}
+	for _, chunk := range chunks {
+		for k, v := range chunk.Metric {
+			if v == "" {
+				return fmt.Errorf("Chunk has blank label %q", k)
+			}
+		}
+	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
 	return nil
 }
@@ -198,6 +205,35 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
+}
+
+// Test that blank labels are removed by the ingester
+func TestIngesterAppendBlankLabel(t *testing.T) {
+	_, ing := newTestStore(t, defaultIngesterTestConfig())
+	defer ing.Shutdown()
+
+	lp := labelPairs{
+		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
+		{Name: []byte("foo"), Value: []byte("")},
+		{Name: []byte("bar"), Value: []byte("")},
+	}
+	ctx := user.InjectOrgID(context.Background(), userID)
+	err := ing.append(ctx, lp, 1, 0, client.API)
+	require.NoError(t, err)
+
+	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	require.NoError(t, err)
+
+	expected := model.Matrix{
+		{
+			Metric: model.Metric{model.MetricNameLabel: "testmetric"},
+			Values: []model.SamplePair{
+				{Timestamp: 1, Value: 0},
+			},
+		},
+	}
+
+	assert.Equal(t, expected, res)
 }
 
 func TestIngesterUserSeriesLimitExceeded(t *testing.T) {

@@ -380,10 +380,13 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
-func (d *Distributor) forAllIngesters(ctx context.Context, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+func (d *Distributor) forAllIngesters(ctx context.Context, reallyAll bool, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
 	replicationSet, err := d.ring.GetAll()
 	if err != nil {
 		return nil, err
+	}
+	if reallyAll {
+		replicationSet.MaxErrors = 0
 	}
 
 	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ing *ring.IngesterDesc) (interface{}, error) {
@@ -401,7 +404,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 	req := &client.LabelValuesRequest{
 		LabelName: string(labelName),
 	}
-	resps, err := d.forAllIngesters(ctx, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.forAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
 	})
 	if err != nil {
@@ -429,7 +432,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 		return nil, err
 	}
 
-	resps, err := d.forAllIngesters(ctx, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.forAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
 		return client.MetricsForLabelMatchers(ctx, req)
 	})
 	if err != nil {
@@ -456,7 +459,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	req := &client.UserStatsRequest{}
-	resps, err := d.forAllIngesters(ctx, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.forAllIngesters(ctx, true, func(client client.IngesterClient) (interface{}, error) {
 		return client.UserStats(ctx, req)
 	})
 	if err != nil {

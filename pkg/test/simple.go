@@ -71,3 +71,7 @@ func (tc *simpleTestCase) Query(ctx context.Context, client v1.API, selectors st
 	}
 	return result, nil
 }
+
+func (tc *simpleTestCase) Quantized(duration time.Duration) time.Duration {
+	return duration.Truncate(time.Minute)
+}

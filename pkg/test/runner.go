@@ -212,7 +212,7 @@ func (r *Runner) runRandomTest() {
 		}
 	}
 
-	expectedNumSamples := int(duration / r.cfg.ScrapeInterval)
+	expectedNumSamples := int(tc.Quantized(duration) / r.cfg.ScrapeInterval)
 	if !epsilonCorrect(float64(len(pairs)), float64(expectedNumSamples), r.cfg.samplesEpsilon) {
 		log.Errorf("Expected %d samples, got %d", expectedNumSamples, len(pairs))
 		failures = true

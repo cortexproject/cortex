@@ -28,7 +28,7 @@ var (
 	testcaseResult = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Subsystem: subsystem,
-			Name:      "testcase_results_total",
+			Name:      "test_case_result_total",
 			Help:      "Number of test cases that succeed / fail.",
 		},
 		[]string{"result"},
@@ -36,7 +36,7 @@ var (
 	sampleResult = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Subsystem: subsystem,
-			Name:      "sample_results_total",
+			Name:      "sample_result_total",
 			Help:      "Number of samples that succeed / fail.",
 		},
 		[]string{"result"},

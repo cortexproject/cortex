@@ -24,9 +24,11 @@ type Config struct {
 	GCPStorageConfig       gcp.Config
 	CassandraStorageConfig cassandra.Config
 
-	IndexCacheSize     int
-	IndexCacheValidity time.Duration
-	memcacheClient     cache.MemcachedClientConfig
+	IndexCacheSize      int
+	IndexCacheValidity  time.Duration
+	memcacheClient      cache.MemcachedClientConfig
+	memcacheBatchSize   int
+	memcacheParallelism int
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -39,6 +41,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Size of in-memory index cache, 0 to disable.")
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
 	cfg.memcacheClient.RegisterFlagsWithPrefix("index", f)
+	// We're not doing WithPrefix because MemcacheConfig has a flag for expiry which we control via
+	// store.index-cache-validity.
+	f.IntVar(&cfg.memcacheBatchSize, "index.memcached.batchsize", 0, "How many keys to fetch in each batch.")
+	f.IntVar(&cfg.memcacheParallelism, "index.memcached.parallelism", 100, "Maximum active requests to memcache.")
 }
 
 // Opts makes the storage clients based on the configuration.
@@ -52,7 +58,9 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 	if cfg.memcacheClient.Host != "" {
 		client := cache.NewMemcachedClient(cfg.memcacheClient)
 		memcache := cache.MetricsInstrument("memcache-index", cache.NewMemcached(cache.MemcachedConfig{
-			Expiration: cfg.IndexCacheValidity,
+			Expiration:  cfg.IndexCacheValidity,
+			BatchSize:   cfg.memcacheBatchSize,
+			Parallelism: cfg.memcacheParallelism,
 		}, client))
 		caches = append(caches, cache.NewBackground(cache.BackgroundConfig{
 			WriteBackGoroutines: 10,

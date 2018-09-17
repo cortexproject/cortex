@@ -275,8 +275,8 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 
 	var cfg Config
 	util.DefaultValues(&cfg)
-	cfg.limits.IngestionRate = 20
-	cfg.limits.IngestionBurstSize = 20
+	cfg.Limits.IngestionRate = 20
+	cfg.Limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory
 	cfg.ShardByAllLabels = shardByAllLabels
 	cfg.ExtraQueryDelay = 50 * time.Millisecond

@@ -33,6 +33,13 @@ type Limits struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
+	// lite uses both ingester.Config and distributor.Config.
+	// Both of them has Limits, so calling RegisterFlags on them triggers panic.
+	// This check ignores second call to RegisterFlags on IngesterClientConfig and then populates it manually with SetClientConfig
+	if exist := f.Lookup("distributor.ingestion-rate-limit"); exist != nil {
+		return
+	}
+
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")

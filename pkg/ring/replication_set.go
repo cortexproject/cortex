@@ -30,11 +30,13 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*Ing
 		go func(i int, ing *IngesterDesc) {
 			// wait to send extra requests
 			if i >= minSuccess && delay > 0 {
+				after := time.NewTimer(delay)
+				defer after.Stop()
 				select {
 				case <-done:
 					return
 				case <-forceStart:
-				case <-time.After(delay):
+				case <-after.C:
 				}
 			}
 			result, err := f(ing)

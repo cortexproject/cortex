@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -50,6 +51,8 @@ func main() {
 		schemaConfig  chunk.SchemaConfig
 		storageConfig storage.Config
 
+		orgsFile string
+
 		scanner  scanner
 		loglevel string
 	)
@@ -60,6 +63,7 @@ func main() {
 	flag.IntVar(&scanner.deleters, "deleters", 1, "Number of deleters to run in parallel")
 	flag.IntVar(&scanner.deleteBatchSize, "delete-batch-size", 25, "Number of delete requests to batch up")
 	flag.StringVar(&scanner.address, "address", "localhost:6060", "Address to listen on, for profiling, etc.")
+	flag.StringVar(&orgsFile, "delete-orgs-file", "", "File containing IDs of orgs to delete")
 	flag.StringVar(&loglevel, "log-level", "info", "Debug level: debug, info, warning, error")
 	flag.IntVar(&pagesPerDot, "pages-per-dot", 10, "Print a dot per N pages in DynamoDB (0 to disable)")
 
@@ -73,6 +77,17 @@ func main() {
 	go func() {
 		checkFatal(http.ListenAndServe(scanner.address, nil))
 	}()
+
+	orgs := map[int]struct{}{}
+	if orgsFile != "" {
+		content, err := ioutil.ReadFile(orgsFile)
+		checkFatal(err)
+		for _, arg := range strings.Fields(string(content)) {
+			org, err := strconv.Atoi(arg)
+			checkFatal(err)
+			orgs[org] = struct{}{}
+		}
+	}
 
 	if scanner.week == 0 {
 		scanner.week = int(time.Now().Unix() / int64(7*24*time.Hour/time.Second))
@@ -112,7 +127,7 @@ func main() {
 
 	for segment := 0; segment < scanner.segments; segment++ {
 		go func(segment int) {
-			handler := newHandler()
+			handler := newHandler(orgs)
 			handler.requests = scanner.delete
 			err := scanner.segmentScan(segment, handler)
 			checkFatal(err)
@@ -144,12 +159,6 @@ func (sc *scanner) segmentScan(segment int, handler handler) error {
 		Segment:              aws.Int64(int64(segment)),
 		TotalSegments:        aws.Int64(int64(sc.segments)),
 		//ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-	}
-
-	for _, arg := range flag.Args() {
-		org, err := strconv.Atoi(arg)
-		checkFatal(err)
-		handler.orgs[org] = struct{}{}
 	}
 
 	err := sc.dynamoDB.ScanPages(input, handler.handlePage)
@@ -196,9 +205,9 @@ type handler struct {
 	summary
 }
 
-func newHandler() handler {
+func newHandler(orgs map[int]struct{}) handler {
 	return handler{
-		orgs:    map[int]struct{}{},
+		orgs:    orgs,
 		summary: newSummary(),
 	}
 }

@@ -16,7 +16,7 @@ type invertedIndex struct {
 
 type indexShard struct {
 	mtx sync.RWMutex
-	idx map[model.LabelName]map[model.LabelValue][]model.Fingerprint // entries are sorted in fp order?
+	idx map[model.LabelName]map[model.LabelValue][]model.Fingerprint // slice entries are sorted in fp order
 }
 
 func newInvertedIndex() *invertedIndex {
@@ -40,6 +40,7 @@ func (ii *invertedIndex) add(metric model.Metric, fp model.Fingerprint) {
 			values = map[model.LabelValue][]model.Fingerprint{}
 		}
 		fingerprints := values[value]
+		// Insert into the right position to keep fingerprints sorted
 		j := sort.Search(len(fingerprints), func(i int) bool {
 			return fingerprints[i] >= fp
 		})
@@ -67,10 +68,14 @@ func (ii *invertedIndex) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 }
 
 func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint {
+	// index slice values must only be accessed under lock, so all
+	// code paths must take a copy before returning
 	shard.mtx.RLock()
 	defer shard.mtx.RUnlock()
 
-	// per-shard intersection is initially nil, which is a special case.
+	// per-shard intersection is initially nil, which is a special case
+	// meaning "everything" when passed to intersect()
+	// loop invariant: result is sorted
 	var result []model.Fingerprint
 	for _, matcher := range matchers {
 		values, ok := shard.idx[model.LabelName(matcher.Name)]
@@ -80,8 +85,10 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		var toIntersect model.Fingerprints
 		if matcher.Type == labels.MatchEqual {
 			fps := values[model.LabelValue(matcher.Value)]
-			toIntersect = append(toIntersect, fps...)
+			toIntersect = append(toIntersect, fps...) // deliberate copy
 		} else {
+			// accumulate the matching fingerprints (which are all distinct)
+			// then sort to maintain the invariant
 			for value, fps := range values {
 				if matcher.Matches(string(value)) {
 					toIntersect = append(toIntersect, fps...)

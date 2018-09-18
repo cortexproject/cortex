@@ -35,7 +35,7 @@ type Limits struct {
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// lite uses both ingester.Config and distributor.Config.
 	// Both of them has Limits, so calling RegisterFlags on them triggers panic.
-	// This check ignores second call to RegisterFlags on IngesterClientConfig and then populates it manually with SetClientConfig
+	// This check ignores second call to RegisterFlags and then populates it manually with SetSharedConfigs
 	if exist := f.Lookup("distributor.ingestion-rate-limit"); exist != nil {
 		return
 	}

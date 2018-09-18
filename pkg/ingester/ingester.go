@@ -95,7 +95,7 @@ type Config struct {
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
 }
 
-// SetSharedConfigs sets clientConfig in config
+// SetSharedConfigs sets clientConfig and limits in config
 func (cfg *Config) SetSharedConfigs(clientConfig client.Config, limits validation.Limits) {
 	cfg.clientConfig = clientConfig
 	cfg.limits = limits

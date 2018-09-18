@@ -74,7 +74,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// lite uses both ingester.Config and distributor.Config.
 	// Both of them has IngesterClientConfig, so calling RegisterFlags on them triggers panic.
-	// This check ignores second call to RegisterFlags on IngesterClientConfig and then populates it manually with SetClientConfig
+	// This check ignores second call to RegisterFlags on IngesterClientConfig and then populates it manually with SetSharedConfigs
 	if flag.Lookup("ingester.client.max-recv-message-size") != nil {
 		return
 	}

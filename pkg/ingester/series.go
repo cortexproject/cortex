@@ -23,7 +23,7 @@ func init() {
 }
 
 type memorySeries struct {
-	metric model.Metric
+	metric sortedLabelPairs
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
 	chunkDescs []*desc
@@ -50,11 +50,16 @@ func (error *memorySeriesError) Error() string {
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m model.Metric) *memorySeries {
+func newMemorySeries(m labelPairs) *memorySeries {
 	return &memorySeries{
-		metric:   m,
+		metric:   m.copyValuesAndSort(),
 		lastTime: model.Earliest,
 	}
+}
+
+// helper to extract the not-necessarily-sorted type used elsewhere, without casting everywhere.
+func (s *memorySeries) labels() labelPairs {
+	return labelPairs(s.metric)
 }
 
 // add adds a sample pair to the series. It returns the number of newly

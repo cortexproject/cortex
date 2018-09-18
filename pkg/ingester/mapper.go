@@ -47,7 +47,7 @@ func newFPMapper(fpToSeries *seriesMap) *fpMapper {
 //
 // If an error is encountered, it is returned together with the unchanged raw
 // fingerprint.
-func (m *fpMapper) mapFP(fp model.Fingerprint, metric model.Metric) model.Fingerprint {
+func (m *fpMapper) mapFP(fp model.Fingerprint, metric labelPairs) model.Fingerprint {
 	// First check if we are in the reserved FP space, in which case this is
 	// automatically a collision that has to be mapped.
 	if fp <= maxMappedFP {
@@ -59,7 +59,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric model.Metric) model.Finger
 	s, ok := m.fpToSeries.get(fp)
 	if ok {
 		// FP exists in memory, but is it for the same metric?
-		if metric.Equal(s.metric) {
+		if s.metric.equal(metric) {
 			// Yupp. We are done.
 			return fp
 		}
@@ -90,7 +90,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric model.Metric) model.Finger
 // truly unique fingerprint for the colliding metric.
 func (m *fpMapper) maybeAddMapping(
 	fp model.Fingerprint,
-	collidingMetric model.Metric,
+	collidingMetric labelPairs,
 ) model.Fingerprint {
 	ms := metricToUniqueString(collidingMetric)
 	m.mtx.RLock()
@@ -143,10 +143,10 @@ func (m *fpMapper) nextMappedFP() model.Fingerprint {
 // FastFingerprint function, and its result is not suitable as a key for maps
 // and indexes as it might become really large, causing a lot of hashing effort
 // in maps and a lot of storage overhead in indexes.
-func metricToUniqueString(m model.Metric) string {
+func metricToUniqueString(m labelPairs) string {
 	parts := make([]string, 0, len(m))
-	for ln, lv := range m {
-		parts = append(parts, string(ln)+separatorString+string(lv))
+	for _, pair := range m {
+		parts = append(parts, string(pair.Name)+separatorString+string(pair.Value))
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, separatorString)

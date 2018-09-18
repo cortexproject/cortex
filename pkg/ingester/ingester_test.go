@@ -49,6 +49,13 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	if err != nil {
 		return err
 	}
+	for _, chunk := range chunks {
+		for k, v := range chunk.Metric {
+			if v == "" {
+				return fmt.Errorf("Chunk has blank label %q", k)
+			}
+		}
+	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
 	return nil
 }
@@ -91,6 +98,24 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 	return samples
 }
 
+func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.MatchType, n, v string) (model.Matrix, *client.QueryRequest, error) {
+	matcher, err := labels.NewMatcher(ty, n, v)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := ing.Query(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	res := client.FromQueryResponse(resp)
+	sort.Sort(res)
+	return res, req, nil
+}
+
 func TestIngesterAppend(t *testing.T) {
 	store, ing := newTestStore(t, defaultIngesterTestConfig())
 
@@ -112,17 +137,8 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		matcher, err := labels.NewMatcher(labels.MatchRegexp, model.JobLabel, ".+")
+		res, req, err := runTestQuery(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+")
 		require.NoError(t, err)
-
-		req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
-		require.NoError(t, err)
-
-		resp, err := ing.Query(ctx, req)
-		require.NoError(t, err)
-
-		res := client.FromQueryResponse(resp)
-		sort.Sort(res)
 		assert.Equal(t, testData[userID], res)
 
 		s := stream{
@@ -165,30 +181,59 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	_, ing := newTestStore(t, defaultIngesterTestConfig())
 	defer ing.Shutdown()
 
-	m := model.Metric{
-		model.MetricNameLabel: "testmetric",
+	m := labelPairs{
+		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0}, client.API)
+	err := ing.append(ctx, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 0}, client.API)
+	err = ing.append(ctx, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 0, Value: 0}, client.API)
+	err = ing.append(ctx, m, 0, 0, client.API)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, &model.Sample{Metric: m, Timestamp: 1, Value: 1}, client.API)
+	err = ing.append(ctx, m, 1, 1, client.API)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
+}
+
+// Test that blank labels are removed by the ingester
+func TestIngesterAppendBlankLabel(t *testing.T) {
+	_, ing := newTestStore(t, defaultIngesterTestConfig())
+	defer ing.Shutdown()
+
+	lp := labelPairs{
+		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
+		{Name: []byte("foo"), Value: []byte("")},
+		{Name: []byte("bar"), Value: []byte("")},
+	}
+	ctx := user.InjectOrgID(context.Background(), userID)
+	err := ing.append(ctx, lp, 1, 0, client.API)
+	require.NoError(t, err)
+
+	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	require.NoError(t, err)
+
+	expected := model.Matrix{
+		{
+			Metric: model.Metric{model.MetricNameLabel: "testmetric"},
+			Values: []model.SamplePair{
+				{Timestamp: 1, Value: 0},
+			},
+		},
+	}
+
+	assert.Equal(t, expected, res)
 }
 
 func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
@@ -227,17 +272,8 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Read samples back via ingester queries.
-	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
-
-	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
-	require.NoError(t, err)
-
-	resp, err := ing.Query(ctx, req)
-	require.NoError(t, err)
-
-	res := client.FromQueryResponse(resp)
-	sort.Sort(res)
 
 	expected := model.Matrix{
 		{
@@ -294,17 +330,8 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	}
 
 	// Read samples back via ingester queries.
-	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
 	require.NoError(t, err)
-
-	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
-	require.NoError(t, err)
-
-	resp, err := ing.Query(ctx, req)
-	require.NoError(t, err)
-
-	res := client.FromQueryResponse(resp)
-	sort.Sort(res)
 
 	expected := model.Matrix{
 		{
@@ -374,4 +401,44 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 	}
 
 	wg.Wait()
+}
+
+func BenchmarkIngesterPush(b *testing.B) {
+	cfg := defaultIngesterTestConfig()
+
+	const (
+		series  = 100
+		samples = 100
+	)
+
+	// Construct a set of realistic-looking samples, all with slightly different label sets
+	labels := chunk.BenchmarkMetric.Clone()
+	ts := make([]client.PreallocTimeseries, 0, series)
+	for j := 0; j < series; j++ {
+		labels["cpu"] = model.LabelValue(fmt.Sprintf("cpu%02d", j))
+		ts = append(ts, client.PreallocTimeseries{
+			TimeSeries: client.TimeSeries{
+				Labels: client.ToLabelPairs(labels),
+				Samples: []client.Sample{
+					{TimestampMs: 0, Value: float64(j)},
+				},
+			},
+		})
+	}
+	ctx := user.InjectOrgID(context.Background(), "1")
+	b.ResetTimer()
+	for iter := 0; iter < b.N; iter++ {
+		_, ing := newTestStore(b, cfg)
+		// Bump the timestamp on each of our test samples each time round the loop
+		for j := 0; j < samples; j++ {
+			for i := range ts {
+				ts[i].TimeSeries.Samples[0].TimestampMs = int64(i)
+			}
+			_, err := ing.Push(ctx, &client.WriteRequest{
+				Timeseries: ts,
+			})
+			require.NoError(b, err)
+		}
+		ing.Shutdown()
+	}
 }

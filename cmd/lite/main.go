@@ -28,6 +28,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/ruler"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 func main() {
@@ -48,15 +49,19 @@ func main() {
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 
+		ingesterClientConfig client.Config
+		limitsConfig         validation.Limits
+
 		unauthenticated bool
 	)
+
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
-		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig)
+		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig,
+		&ingesterClientConfig, &limitsConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
-	ingesterConfig.SetClientConfig(distributorConfig.IngesterClientConfig)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("ingester")
@@ -93,14 +98,14 @@ func main() {
 	defer r.Stop()
 	ingesterConfig.LifecyclerConfig.KVClient = r.KVClient
 
-	dist, err := distributor.New(distributorConfig, r)
+	dist, err := distributor.New(distributorConfig, ingesterClientConfig, limitsConfig, r)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
 		os.Exit(1)
 	}
 	defer dist.Stop()
 
-	ingester, err := ingester.New(ingesterConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, ingesterClientConfig, limitsConfig, chunkStore)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

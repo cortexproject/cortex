@@ -98,11 +98,9 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling        bool
-	BillingConfig        billing.Config
-	IngesterClientConfig ingester_client.Config
-	PoolConfig           ingester_client.PoolConfig
-	limits               validation.Limits
+	EnableBilling bool
+	BillingConfig billing.Config
+	PoolConfig    ingester_client.PoolConfig
 
 	RemoteTimeout   time.Duration
 	ExtraQueryDelay time.Duration
@@ -116,9 +114,7 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
-	cfg.IngesterClientConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
-	cfg.limits.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
@@ -127,10 +123,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limitsCfg validation.Limits, ring ring.ReadRing) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
-			return ingester_client.MakeIngesterClient(addr, cfg.IngesterClientConfig)
+			return ingester_client.MakeIngesterClient(addr, clientConfig)
 		}
 	}
 
@@ -143,7 +139,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 		}
 	}
 
-	limits, err := validation.NewOverrides(cfg.limits)
+	limits, err := validation.NewOverrides(limitsCfg)
 	if err != nil {
 		return nil, err
 	}

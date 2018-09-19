@@ -50,7 +50,7 @@ func (q *unifiedChunkQuerier) Select(sp *storage.SelectParams, matchers ...*labe
 	errs := make(chan error, len(q.stores))
 	for _, store := range q.stores {
 		go func(store ChunkStore) {
-			cs, err := store.Get(q.ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+			cs, err := store.Get(q.ctx, model.Time(sp.Start), model.Time(sp.End), matchers...)
 			if err != nil {
 				errs <- err
 			} else {

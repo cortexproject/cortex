@@ -38,8 +38,14 @@ type distributorQuerier struct {
 	mint, maxt  int64
 }
 
-func (q *distributorQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
-	matrix, err := q.distributor.Query(q.ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+	mint, maxt := q.mint, q.maxt
+	if sp != nil {
+		mint = sp.Start
+		maxt = sp.End
+	}
+
+	matrix, err := q.distributor.Query(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}

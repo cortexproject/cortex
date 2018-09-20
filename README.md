@@ -4,6 +4,7 @@
 
 [![Circle CI](https://circleci.com/gh/cortexproject/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/cortexproject/cortex/tree/master)
 [![GoDoc](https://godoc.org/github.com/cortexproject/cortex?status.svg)](https://godoc.org/github.com/cortexproject/cortex)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fcortexproject%2Fcortex.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fcortexproject%2Fcortex?ref=badge_shield)
 
 Cortex is a [CNCF](https://cncf.io) sandbox project used in several production
 systems including [Weave Cloud](https://cloud.weave.works), [GrafanaCloud](https://grafana.com/cloud)
@@ -96,3 +97,7 @@ If you have any questions regarding Cortex:
 - Send an email to <a href="mailto:cortex-users@lists.cncf.io">cortex-users@lists.cncf.io</a>
 
 Your feedback is always welcome.
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fcortexproject%2Fcortex.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fcortexproject%2Fcortex?ref=badge_large)

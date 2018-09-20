@@ -81,6 +81,6 @@ If you have any questions regarding Cortex:
 
 - Ask a question on the [Cortex Slack channel](https://cloud-native.slack.com/messages/cortex/). To invite yourself to the CNCF Slack, visit http://slack.cncf.io/.
 - <a href="https://github.com/cortexproject/cortex/issues/new">File an issue.</a>
-Send an email to <a href="mailto:cortex-users@lists.cncf.io">cortex-users@lists.cncf.io</a>
+- Send an email to <a href="mailto:cortex-users@lists.cncf.io">cortex-users@lists.cncf.io</a>
 
 Your feedback is always welcome.

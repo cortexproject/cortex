@@ -5,9 +5,11 @@
 [![Circle CI](https://circleci.com/gh/cortexproject/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/cortexproject/cortex/tree/master)
 [![GoDoc](https://godoc.org/github.com/cortexproject/cortex?status.svg)](https://godoc.org/github.com/cortexproject/cortex)
 
-Cortex is a [CNCF](https://cncf.io) sandbox project used in several production systems including [Weave Cloud](https://cloud.weave.works).
+Cortex is a [CNCF](https://cncf.io) sandbox project used in several production
+systems including [Weave Cloud](https://cloud.weave.works), [GrafanaCloud](https://grafana.com/cloud)
+and [FreshTracks.io](https://www.freshtracks.io/).
 
-It provides horizontally scalable, multi-tenant, long term storage for
+Cortex provides horizontally scalable, multi-tenant, long term storage for
 [Prometheus](https://prometheus.io) metrics when used as a [remote
 write](https://prometheus.io/docs/operating/configuration/#remote_write)
 destination, and a horizontally scalable, Prometheus-compatible query

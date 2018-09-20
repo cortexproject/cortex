@@ -18,16 +18,18 @@ API.
 Multi-tenant means it handles metrics from multiple independent
 Prometheus sources, keeping them separate.
 
+[Instrumenting Your App: Best Practises](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
+
+There are several commercial services where you can use Cortex
+on-demand:
+
 ## Weave Cloud
 
-To use Cortex as part of Weave Cloud, sign up for [Weave Cloud](https://cloud.weave.works)
-and follow the instructions there.
-
-Additional help can also be found in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/):
-
-* [Installing the Weave Cloud Agents](https://www.weave.works/docs/cloud/latest/install/installing-agents/#weave-cloud-supported)
-* [Prometheus Monitoring in Weave Cloud](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
-* [Instrumenting Your App: Best Practises](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
+[Weave Cloud](https://cloud.weave.works) from
+[Weaveworks](https://weave.works) lets you deploy, manage, and monitor
+container-based applications. Sign up at https://cloud.weave.works
+and follow the instructions there. Additional help can also be found
+in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/).
 
 ## GrafanaCloud
 

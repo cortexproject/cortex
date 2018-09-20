@@ -68,6 +68,10 @@ Cortex will sit behind an nginx instance exposed on port 30080.  A job is deploy
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
 
+### Sign your work
+
+Before submitting your work in a pull request, make sure all commits are signed off. See [DCO](https://github.com/probot/dco#how-it-works) for more information.
+
 ### Vendoring
 
 We use `dep` to vendor dependencies.  To fetch a new dependency, run:

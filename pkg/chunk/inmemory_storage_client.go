@@ -139,7 +139,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	for _, req := range mockBatch {
 		table, ok := m.tables[req.tableName]
 		if !ok {
-			return fmt.Errorf("table not found")
+			return fmt.Errorf("table %v not found", req.tableName)
 		}
 
 		// Check for duplicate writes by RangeKey in same batch
@@ -308,6 +308,14 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 		result = append(result, chunk)
 	}
 	return result, nil
+}
+
+func (m *MockStorage) StreamChunks(ctx context.Context, params StreamBatch, chunkChan chan []Chunk) error {
+	return nil
+}
+
+func (m *MockStorage) NewStreamBatch() StreamBatch {
+	return nil
 }
 
 type mockWriteBatch []struct {

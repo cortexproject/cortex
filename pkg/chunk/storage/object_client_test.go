@@ -5,9 +5,11 @@ import (
 	"math/rand"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -55,6 +57,49 @@ func TestChunksBasic(t *testing.T) {
 			for i := 0; i < len(chunksWeGot); i++ {
 				require.Equal(t, chunksToGet[i].ExternalKey(), chunksWeGot[i].ExternalKey(), strconv.Itoa(i))
 			}
+		}
+	})
+}
+
+func TestStreamChunks(t *testing.T) {
+	forAllFixtures(t, func(t *testing.T, client chunk.StorageClient, schema chunk.SchemaConfig) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, chunks, err := testutils.CreateChunks(0, 2000)
+		require.NoError(t, err)
+
+		err = client.PutChunks(ctx, chunks)
+		require.NoError(t, err)
+
+		batch := client.NewStreamBatch()
+		if batch == nil {
+			return
+		}
+		tablename := schema.ChunkTables.TableFor(model.Now().Add(-time.Hour))
+		batch.Add(tablename, "userID", 0, 240)
+
+		var retrievedChunks []chunk.Chunk
+		var wg sync.WaitGroup
+		out := make(chan []chunk.Chunk)
+		go func() {
+			wg.Add(1)
+			for c := range out {
+				retrievedChunks = append(retrievedChunks, c...)
+			}
+			wg.Done()
+		}()
+
+		err = client.StreamChunks(context.Background(), batch, out)
+		require.NoError(t, err)
+
+		close(out)
+		wg.Wait()
+		require.Equal(t, 2000, len(retrievedChunks))
+
+		sort.Sort(ByKey(retrievedChunks))
+		sort.Sort(ByKey(chunks))
+		for j := 0; j < len(retrievedChunks); j++ {
+			require.Equal(t, chunks[j].ExternalKey(), retrievedChunks[j].ExternalKey(), strconv.Itoa(j))
 		}
 	})
 }

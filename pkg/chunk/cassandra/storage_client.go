@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -304,4 +305,102 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	}
 	err = input.Decode(decodeContext, buf)
 	return input, err
+}
+
+func (s *storageClient) StreamChunks(ctx context.Context, params chunk.StreamBatch, out chan []chunk.Chunk) error {
+	batch := params.(*cassandraStreamBatch)
+	decodeContext := chunk.NewDecodeContext()
+
+	for _, query := range batch.queries {
+		var (
+			q     *gocql.Query
+			hash  string
+			value []byte
+			errs  []error
+		)
+		q = s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
+		iter := q.WithContext(ctx).Iter()
+		chunks := []chunk.Chunk{}
+		for iter.Scan(&hash, &value) {
+			userID, err := parseHash(hash)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			c, err := chunk.ParseExternalKey(userID, hash)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			err = c.Decode(decodeContext, value)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			chunks = append(chunks, c)
+		}
+		err := iter.Close()
+		if err != nil {
+			return err
+		}
+		out <- chunks
+		for _, err := range errs {
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func parseHash(hash string) (string, error) {
+	if !strings.Contains(hash, "/") {
+		return "", fmt.Errorf("cannot parse legacy ID for migration")
+	}
+	parts := strings.Split(hash, "/")
+	if len(parts) != 2 {
+		return "", errors.WithStack(chunk.ErrInvalidChunkID)
+	}
+	return parts[0], nil
+}
+
+func (s *storageClient) NewStreamBatch() chunk.StreamBatch {
+	return &cassandraStreamBatch{
+		queries: []cassandraStreamQuery{},
+	}
+}
+
+type cassandraStreamBatch struct {
+	queries []cassandraStreamQuery
+}
+
+type cassandraStreamQuery struct {
+	filterUserID bool
+	userID       string
+	tableName    string
+	tokenFrom    string
+	tokenTo      string
+}
+
+func (c *cassandraStreamBatch) Add(tableName, userID string, from, to int) {
+	var filterUserID = true
+	if userID == "*" {
+		filterUserID = false
+	}
+
+	c.queries = append(c.queries, cassandraStreamQuery{
+		filterUserID: filterUserID,
+		userID:       userID,
+		tableName:    tableName,
+		tokenFrom:    fmt.Sprintf("%d", getToken(int64(from))),
+		tokenTo:      fmt.Sprintf("%d", getToken(int64(to))),
+	})
+}
+
+func getToken(i int64) int64 {
+	if i == 240 {
+		return math.MaxInt64
+	}
+	return math.MinInt64 + (76861433640456465 * i)
 }

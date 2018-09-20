@@ -826,3 +826,11 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	config = config.WithMaxRetries(0) // We do our own retries, so we can monitor them
 	return session.New(config), nil
 }
+
+func (a storageClient) StreamChunks(ctx context.Context, params chunk.StreamBatch, out chan []chunk.Chunk) error {
+	return nil
+}
+
+func (a storageClient) NewStreamBatch() chunk.StreamBatch {
+	return nil
+}

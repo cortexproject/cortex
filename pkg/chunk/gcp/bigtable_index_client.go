@@ -383,3 +383,79 @@ func (b *rowBatchIterator) Value() []byte {
 	}
 	return cf[0].Value
 }
+
+func (s *storageClientColumnKey) StreamChunks(ctx context.Context, params chunk.StreamBatch, out chan []chunk.Chunk) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "StreamChunks")
+	defer sp.Finish()
+
+	bigtableStreamBatch := params.(*bigtableStreamBatch)
+	for _, query := range bigtableStreamBatch.queries {
+		var (
+			table         = s.client.Open(query.table)
+			processingErr error
+		)
+		decodeContext := chunk.NewDecodeContext()
+		rr := query.generateRowRange()
+		var chunks []chunk.Chunk
+		var curKey string
+		// Read through rows and forward slices of chunks with the same metrics
+		// fingerprint
+		err := table.ReadRows(ctx, rr, func(row bigtable.Row) bool {
+			c, err := chunk.ParseExternalKey(query.userID, row.Key())
+			if err != nil {
+				processingErr = err
+				return false
+			}
+			if c.Fingerprint.String() != curKey {
+				out <- chunks
+				curKey = c.Fingerprint.String()
+				chunks = []chunk.Chunk{}
+			}
+			err = c.Decode(decodeContext, row[columnFamily][0].Value)
+			if err != nil {
+				processingErr = err
+				return false
+			}
+			chunks = append(chunks, c)
+			return true
+		})
+		out <- chunks
+		if processingErr != nil {
+			return processingErr
+		} else if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *storageClientColumnKey) NewStreamBatch() chunk.StreamBatch {
+	return &bigtableStreamBatch{
+		queries: []bigtableStreamQuery{},
+	}
+}
+
+type bigtableStreamBatch struct {
+	queries []bigtableStreamQuery
+}
+
+func (b *bigtableStreamBatch) Add(tableName, userID string, from, to int) {
+	if from == 0 && to == 240 {
+		b.queries = append(b.queries, bigtableStreamQuery{userID, "", tableName})
+		return
+	}
+	for i := from; i <= to; i++ {
+		prefix := fmt.Sprintf("%02x", i+16)
+		b.queries = append(b.queries, bigtableStreamQuery{userID, prefix, tableName})
+	}
+}
+
+type bigtableStreamQuery struct {
+	userID     string
+	identifier string
+	table      string
+}
+
+func (b bigtableStreamQuery) generateRowRange() bigtable.RowRange {
+	return bigtable.PrefixRange(b.userID + "/" + b.identifier)
+}

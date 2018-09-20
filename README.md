@@ -1,14 +1,15 @@
-<p align="center"><img src="imgs/logo.png" alt="Weave Cortex Logo"></p>
+<p align="center"><img src="imgs/logo.png" alt="Cortex Logo"></p>
 
 # Open source, horizontally scalable, multi-tenant Prometheus as a service
 
-[![Circle CI](https://circleci.com/gh/weaveworks/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/weaveworks/cortex/tree/master)
-[![GoDoc](https://godoc.org/github.com/weaveworks/cortex?status.svg)](https://godoc.org/github.com/weaveworks/cortex)
-[![Slack Status](https://slack.weave.works/badge.svg)](https://slack.weave.works)
+[![Circle CI](https://circleci.com/gh/cortexproject/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/cortexproject/cortex/tree/master)
+[![GoDoc](https://godoc.org/github.com/cortexproject/cortex?status.svg)](https://godoc.org/github.com/cortexproject/cortex)
 
-Cortex is a [Weaveworks](https://weave.works) project that forms the monitoring backend of [Weave Cloud](https://cloud.weave.works).
+Cortex is a [CNCF](https://cncf.io) sandbox project used in several production
+systems including [Weave Cloud](https://cloud.weave.works), [GrafanaCloud](https://grafana.com/cloud)
+and [FreshTracks.io](https://www.freshtracks.io/).
 
-It provides horizontally scalable, multi-tenant, long term storage for
+Cortex provides horizontally scalable, multi-tenant, long term storage for
 [Prometheus](https://prometheus.io) metrics when used as a [remote
 write](https://prometheus.io/docs/operating/configuration/#remote_write)
 destination, and a horizontally scalable, Prometheus-compatible query
@@ -17,15 +18,28 @@ API.
 Multi-tenant means it handles metrics from multiple independent
 Prometheus sources, keeping them separate.
 
-To use Cortex, sign up for [Weave Cloud](https://cloud.weave.works) and follow the instructions there.
+[Instrumenting Your App: Best Practises](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
 
-Additional help can also be found in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/):
+## Hosted Cortex (Prometheus as a service)
 
-* [Installing the Weave Cloud Agents](https://www.weave.works/docs/cloud/latest/install/installing-agents/#weave-cloud-supported)
-* [Prometheus Monitoring in Weave Cloud](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
-* [Instrumenting Your App: Best Practises](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
+There are several commercial services where you can use Cortex
+on-demand:
 
-## Developing
+### Weave Cloud
+
+[Weave Cloud](https://cloud.weave.works) from
+[Weaveworks](https://weave.works) lets you deploy, manage, and monitor
+container-based applications. Sign up at https://cloud.weave.works
+and follow the instructions there. Additional help can also be found
+in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/).
+
+### GrafanaCloud
+
+To use Cortex as part of Grafana Cloud, sign up for [GrafanaCloud](https://grafana.com/cloud)
+by clicking "Log In" in the top right and then "Sign Up Now".  Cortex is included
+as part of the Starter and Basic Hosted Grafana plans.
+
+## For Developers
 
 To build:
 ```
@@ -75,12 +89,10 @@ To learn more about Cortex, consult the following documents / talks:
 
 ## <a name="help"></a>Getting Help
 
-If you have any questions regarding Cortex, or on using Prometheus with Weave Cloud:
+If you have any questions regarding Cortex:
 
-
-- Ask a question on the <a href="https://weave-community.slack.com/messages/general/"> #weave-community</a> Slack channel. To invite yourself to the Weave Community Slack channel, visit https://weaveworks.github.io/community-slack/.
-- Join the <a href="https://www.meetup.com/pro/Weave/"> Weave User Group </a> and get invited to online talks, hands-on training and meetups in your area.
-- Send an email to <a href="mailto:weave-users@weave.works">weave-users@weave.works</a>
-- <a href="https://github.com/weaveworks/cortex/issues/new">File an issue.</a>
+- Ask a question on the [Cortex Slack channel](https://cloud-native.slack.com/messages/cortex/). To invite yourself to the CNCF Slack, visit http://slack.cncf.io/.
+- <a href="https://github.com/cortexproject/cortex/issues/new">File an issue.</a>
+- Send an email to <a href="mailto:cortex-users@lists.cncf.io">cortex-users@lists.cncf.io</a>
 
 Your feedback is always welcome.

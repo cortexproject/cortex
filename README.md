@@ -20,10 +20,12 @@ Prometheus sources, keeping them separate.
 
 [Instrumenting Your App: Best Practises](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
 
+## Hosted Cortex (Prometheus as a service)
+
 There are several commercial services where you can use Cortex
 on-demand:
 
-## Weave Cloud
+### Weave Cloud
 
 [Weave Cloud](https://cloud.weave.works) from
 [Weaveworks](https://weave.works) lets you deploy, manage, and monitor
@@ -31,13 +33,13 @@ container-based applications. Sign up at https://cloud.weave.works
 and follow the instructions there. Additional help can also be found
 in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/).
 
-## GrafanaCloud
+### GrafanaCloud
 
 To use Cortex as part of Grafana Cloud, sign up for [GrafanaCloud](https://grafana.com/cloud)
 by clicking "Log In" in the top right and then "Sign Up Now".  Cortex is included
 as part of the Starter and Basic Hosted Grafana plans.
 
-## Developing
+## For Developers
 
 To build:
 ```

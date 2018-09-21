@@ -429,6 +429,21 @@ func (s *storageClientColumnKey) StreamChunks(ctx context.Context, params chunk.
 	return nil
 }
 
+// NewStreamBatch returns a GCP Bigtable specific stream batch.
+// By design the batch needs a userID, Table, and two integers representing
+// the first two characters of the fingerprint of metrics which will be streamed.
+// stream. Shards are an integer between 0 and 240 that map onto 2 hex characters.
+// For Example:
+// 			Shard | Prefix
+//			    0 | 10
+//			    1 | 11
+//			  ... | ...
+//			   16 |
+//			  240 | ff
+//
+// Technically there are 256 combinations of 2 hex character (16^2). However,
+// fingerprints will not lead with a 0 character so 00->0f excluded, leading to
+// 240
 func (s *storageClientColumnKey) NewStreamBatch() chunk.StreamBatch {
 	return &bigtableStreamBatch{
 		queries: []bigtableStreamQuery{},
@@ -440,12 +455,12 @@ type bigtableStreamBatch struct {
 }
 
 func (b *bigtableStreamBatch) Add(tableName, userID string, from, to int) {
-	if from == 0 && to == 240 {
+	if from == 1 && to == 240 {
 		b.queries = append(b.queries, bigtableStreamQuery{userID, "", tableName})
 		return
 	}
 	for i := from; i <= to; i++ {
-		prefix := fmt.Sprintf("%02x", i+16)
+		prefix := fmt.Sprintf("%02x", i+15)
 		b.queries = append(b.queries, bigtableStreamQuery{userID, prefix, tableName})
 	}
 }

@@ -12,10 +12,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-const (
-	userID = "userID"
-)
-
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
@@ -54,30 +50,44 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectCl
 	return indexClient, objectClient, err
 }
 
+type CreateChunkOptions interface {
+	set(req *createChunkRequest)
+}
+
+type createChunkRequest struct {
+	userID string
+}
+
+func User(user string) userOpt { return userOpt(user) }
+
+type userOpt string
+
+func (u userOpt) set(req *createChunkRequest) {
+	req.userID = string(u)
+}
+
 // CreateChunks creates some chunks for testing
-func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chunk.Chunk, error) {
+func CreateChunks(startIndex, batchSize int, start model.Time, options ...CreateChunkOptions) ([]string, []chunk.Chunk, error) {
+	req := &createChunkRequest{
+		userID: "userID",
+	}
+	for _, opt := range options {
+		opt.set(req)
+	}
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
 		chunk := dummyChunkFor(start, model.Metric{
 			model.MetricNameLabel: "foo",
 			"index":               model.LabelValue(strconv.Itoa(startIndex*batchSize + j)),
-		})
+		}, req.userID)
 		chunks = append(chunks, chunk)
 		keys = append(keys, chunk.ExternalKey())
 	}
 	return keys, chunks, nil
 }
 
-func dummyChunk(now model.Time) chunk.Chunk {
-	return dummyChunkFor(now, model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
-	})
-}
-
-func dummyChunkFor(now model.Time, metric model.Metric) chunk.Chunk {
+func dummyChunkFor(now model.Time, metric model.Metric, userID string) chunk.Chunk {
 	cs, _ := promchunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
 	chunk := chunk.NewChunk(
 		userID,

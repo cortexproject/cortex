@@ -327,6 +327,9 @@ func (s *storageClient) StreamChunks(ctx context.Context, params chunk.StreamBat
 				errs = append(errs, err)
 				continue
 			}
+			if query.filterUserID && userID != query.userID { // User ID filtering must be done client side in cassandra
+				continue
+			}
 			c, err := chunk.ParseExternalKey(userID, hash)
 			if err != nil {
 				errs = append(errs, err)
@@ -350,7 +353,6 @@ func (s *storageClient) StreamChunks(ctx context.Context, params chunk.StreamBat
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -389,18 +391,22 @@ func (c *cassandraStreamBatch) Add(tableName, userID string, from, to int) {
 		filterUserID = false
 	}
 
-	c.queries = append(c.queries, cassandraStreamQuery{
-		filterUserID: filterUserID,
-		userID:       userID,
-		tableName:    tableName,
-		tokenFrom:    fmt.Sprintf("%d", getToken(int64(from))),
-		tokenTo:      fmt.Sprintf("%d", getToken(int64(to))),
-	})
+	for i := from; i < to; i++ {
+		f := getToken(int64(i))
+		t := getToken(int64(i + 1))
+		c.queries = append(c.queries, cassandraStreamQuery{
+			filterUserID: filterUserID,
+			userID:       userID,
+			tableName:    tableName,
+			tokenFrom:    fmt.Sprintf("%d", f),
+			tokenTo:      fmt.Sprintf("%d", t),
+		})
+	}
 }
 
 func getToken(i int64) int64 {
-	if i == 240 {
+	if i == 241 {
 		return math.MaxInt64
 	}
-	return math.MinInt64 + (76861433640456465 * i)
+	return math.MinInt64 + (76861433640456465 * (i - 1))
 }

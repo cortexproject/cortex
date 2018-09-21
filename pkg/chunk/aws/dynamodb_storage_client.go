@@ -220,35 +220,10 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 		requests := dynamoDBWriteBatch{}
 		requests.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
 		requests.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
-
-		request := a.batchWriteItemRequestFn(ctx, &dynamodb.BatchWriteItemInput{
-			RequestItems:           requests,
-			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-		})
-
-		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-			return request.Send()
-		})
-		resp := request.Data().(*dynamodb.BatchWriteItemOutput)
-
-		for _, cc := range resp.ConsumedCapacity {
-			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
-				Add(float64(*cc.CapacityUnits))
-		}
+		unprocessedItems, err := a.BatchWriteNoRetry(ctx, requests)
 
 		if err != nil {
-			for tableName := range requests {
-				recordDynamoError(tableName, err, "DynamoDB.BatchWriteItem")
-			}
-
-			// If we get provisionedThroughputExceededException, then no items were processed,
-			// so back off and retry all.
-			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
-				logRetry(ctx, requests)
-				unprocessed.TakeReqs(requests, -1)
-				backoff.Wait()
-				continue
-			} else if ok && awsErr.Code() == validationException {
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == validationException {
 				// this write will never work, so the only option is to drop the offending items and continue.
 				level.Warn(util.Logger).Log("msg", "Data lost while flushing to Dynamo", "err", awsErr)
 				level.Debug(util.Logger).Log("msg", "Dropped request details", "requests", requests)
@@ -266,18 +241,55 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 		}
 
 		// If there are unprocessed items, retry those items.
-		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
-			logRetry(ctx, dynamoDBWriteBatch(unprocessedItems))
-			unprocessed.TakeReqs(unprocessedItems, -1)
+		if unprocessedItems != nil && unprocessedItems.(dynamoDBWriteBatch).Len() > 0 {
+			backoff.Wait()
+			unprocessed.TakeReqs(unprocessedItems.(dynamoDBWriteBatch), -1)
+		} else {
+			backoff.Reset()
 		}
-
-		backoff.Reset()
 	}
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
 		return fmt.Errorf("failed to write chunk, %d values remaining: %s", valuesLeft, backoff.Err())
 	}
 	return backoff.Err()
+}
+
+func (a dynamoDBStorageClient) BatchWriteNoRetry(ctx context.Context, batch chunk.WriteBatch) (retry chunk.WriteBatch, err error) {
+	requests := batch.(dynamoDBWriteBatch)
+	request := a.batchWriteItemRequestFn(ctx, &dynamodb.BatchWriteItemInput{
+		RequestItems:           requests,
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+	})
+
+	err = instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		return request.Send()
+	})
+	resp := request.Data().(*dynamodb.BatchWriteItemOutput)
+
+	for _, cc := range resp.ConsumedCapacity {
+		dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
+			Add(float64(*cc.CapacityUnits))
+	}
+
+	if err != nil {
+		for tableName := range requests {
+			recordDynamoError(tableName, err, "DynamoDB.BatchWriteItem")
+		}
+		if throttled(err) || request.Retryable() {
+			// Send the whole request back
+			return requests, nil
+		} else {
+			return nil, err
+		}
+	}
+	// Send unprocessed items back
+	return dynamoDBWriteBatch(resp.UnprocessedItems), nil
+}
+
+func throttled(err error) bool {
+	awsErr, ok := err.(awserr.Error)
+	return ok && (awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException)
 }
 
 // QueryPages implements chunk.IndexClient.

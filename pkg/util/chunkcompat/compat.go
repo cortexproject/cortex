@@ -72,7 +72,7 @@ func FromChunks(userID string, metric model.Metric, in []client.Chunk) ([]chunk.
 		firstTime, lastTime := model.Time(i.StartTimestampMs), model.Time(i.EndTimestampMs)
 		// As the lifetime of this chunk is scopes to this request, we don't need
 		// to supply a fingerprint.
-		out = append(out, chunk.NewChunk(userID, 0, metric, o, firstTime, lastTime))
+		out = append(out, chunk.NewChunk(userID, metric.Fingerprint(), metric, o, firstTime, lastTime))
 	}
 	return out, nil
 }

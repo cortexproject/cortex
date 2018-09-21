@@ -9,6 +9,8 @@ cmd/table-manager/table-manager
 cmd/lite/lite
 cmd/test-exporter/test-exporter
 cmd/*/.migrations
+cmd/migrate-reader/migrate-reader
+cmd/migrate-writer/migrate-writer
 .uptodate
 .pkg
 .cache

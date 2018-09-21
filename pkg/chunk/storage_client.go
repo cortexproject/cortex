@@ -9,6 +9,7 @@ type IndexClient interface {
 	// For the write path.
 	NewWriteBatch() WriteBatch
 	BatchWrite(context.Context, WriteBatch) error
+	BatchWriteNoRetry(context.Context, WriteBatch) (retry WriteBatch, err error)
 
 	// For the read path.
 	QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error
@@ -18,6 +19,9 @@ type IndexClient interface {
 type ObjectClient interface {
 	Stop()
 
+	// Iterate through every row in a table, for batch jobs
+	ScanTable(ctx context.Context, tableName string, callbacks []func(result ReadBatch)) error
+
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
 }
@@ -25,6 +29,10 @@ type ObjectClient interface {
 // WriteBatch represents a batch of writes.
 type WriteBatch interface {
 	Add(tableName, hashValue string, rangeValue []byte, value []byte)
+	AddDelete(tableName, hashValue string, rangeValue []byte)
+	AddBatch(WriteBatch)
+	Len() int
+	Take(undersizedOK bool) WriteBatch
 }
 
 // ReadBatch represents the results of a QueryPages.
@@ -35,6 +43,7 @@ type ReadBatch interface {
 // ReadBatchIterator is an iterator over a ReadBatch.
 type ReadBatchIterator interface {
 	Next() bool
+	HashValue() string
 	RangeValue() []byte
 	Value() []byte
 }

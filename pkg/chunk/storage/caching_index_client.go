@@ -162,6 +162,9 @@ type readBatchIterator struct {
 	readBatch ReadBatch
 }
 
+// HashValue implements chunk.ReadBatchIterator.
+func (b readBatchIterator) HashValue() string { panic("not implemented") }
+
 // Len implements chunk.ReadBatchIterator.
 func (b *readBatchIterator) Next() bool {
 	b.index++

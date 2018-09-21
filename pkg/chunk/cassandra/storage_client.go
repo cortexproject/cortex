@@ -164,6 +164,25 @@ func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value [
 	})
 }
 
+func (b *writeBatch) Len() int {
+	return len(b.entries)
+}
+
+func (b *writeBatch) AddDelete(tableName, hashValue string, rangeValue []byte) {
+	panic("not implemented")
+}
+
+func (b *writeBatch) AddBatch(a chunk.WriteBatch) {
+	b.entries = append(b.entries, a.(*writeBatch).entries...)
+}
+
+func (b *writeBatch) Take(undersizedOK bool) chunk.WriteBatch {
+	// Not sure what is a good batch size - just return everything
+	ret := *b
+	*b = writeBatch{}
+	return &ret
+}
+
 // BatchWrite implement chunk.IndexClient.
 func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	b := batch.(*writeBatch)
@@ -177,6 +196,10 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	}
 
 	return nil
+}
+
+func (s *storageClient) BatchWriteNoRetry(ctx context.Context, batch chunk.WriteBatch) (chunk.WriteBatch, error) {
+	return nil, s.BatchWrite(ctx, batch)
 }
 
 // QueryPages implement chunk.IndexClient.
@@ -217,7 +240,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	defer iter.Close()
 	scanner := iter.Scanner()
 	for scanner.Next() {
-		b := &readBatch{}
+		var b = &readBatch{hashValue: query.HashValue}
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
 			return errors.WithStack(err)
 		}
@@ -231,6 +254,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 // readBatch represents a batch of rows read from Cassandra.
 type readBatch struct {
 	consumed   bool
+	hashValue  string
 	rangeValue []byte
 	value      []byte
 }
@@ -252,6 +276,10 @@ func (b *readBatchIter) Next() bool {
 	}
 	b.consumed = true
 	return true
+}
+
+func (b readBatch) HashValue() string {
+	return b.hashValue
 }
 
 func (b *readBatchIter) RangeValue() []byte {
@@ -304,4 +332,8 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	}
 	err = input.Decode(decodeContext, buf)
 	return input, err
+}
+
+func (s *storageClient) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+	panic("not implemented")
 }

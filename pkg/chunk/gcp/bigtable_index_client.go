@@ -166,6 +166,60 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 	mutation.Set(columnFamily, columnKey, 0, value)
 }
 
+func (b bigtableWriteBatch) Len() int {
+	result := 0
+	for _, rows := range b.tables {
+		result += len(rows)
+	}
+	return result
+}
+
+func (b bigtableWriteBatch) AddDelete(tableName, hashValue string, rangeValue []byte) {
+	panic("not implemented")
+}
+
+func (b bigtableWriteBatch) AddBatch(a chunk.WriteBatch) {
+	for tableName, addRows := range a.(bigtableWriteBatch).tables {
+		rows, ok := b.tables[tableName]
+		if !ok {
+			rows = map[string]*bigtable.Mutation{}
+			b.tables[tableName] = rows
+		}
+		for rowKey, mut := range addRows {
+			rows[rowKey] = mut
+		}
+	}
+}
+
+func (b bigtableWriteBatch) Take(undersizedOK bool) chunk.WriteBatch {
+	ret := bigtableWriteBatch{
+		tables: map[string]map[string]*bigtable.Mutation{},
+	}
+
+	const batchSize = 25 // Not sure if...
+	count := 0
+	for tableName, fromRows := range b.tables {
+		rows, ok := ret.tables[tableName]
+		if !ok {
+			rows = map[string]*bigtable.Mutation{}
+			b.tables[tableName] = rows
+		}
+		for rowKey, mut := range fromRows {
+			rows[rowKey] = mut
+			delete(fromRows, rowKey)
+			count++
+			if count >= batchSize {
+				return ret
+			}
+		}
+		if len(fromRows) == 0 {
+			delete(b.tables, tableName)
+		}
+	}
+
+	return ret
+}
+
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	bigtableBatch := batch.(bigtableWriteBatch)
 
@@ -190,6 +244,10 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 	}
 
 	return nil
+}
+
+func (s *storageClientColumnKey) BatchWriteNoRetry(ctx context.Context, batch chunk.WriteBatch) (chunk.WriteBatch, error) {
+	return nil, s.BatchWrite(ctx, batch)
 }
 
 func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
@@ -292,6 +350,10 @@ func (c *columnKeyIterator) Next() bool {
 	return c.i < len(c.items)
 }
 
+func (c *columnKeyIterator) HashValue() string {
+	panic("not implemented")
+}
+
 func (c *columnKeyIterator) RangeValue() []byte {
 	return []byte(strings.TrimPrefix(c.items[c.i].Column, columnPrefix))
 }
@@ -300,6 +362,9 @@ func (c *columnKeyIterator) Value() []byte {
 	return c.items[c.i].Value
 }
 
+func (s *storageClientColumnKey) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+	panic("not implemented")
+}
 func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
 	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
 }
@@ -347,6 +412,10 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 	return nil
 }
 
+func (s *storageClientV1) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+	panic("not implemented")
+}
+
 // rowBatch represents a batch of rows read from Bigtable.  As the
 // bigtable interface gives us rows one-by-one, a batch always only contains
 // a single row.
@@ -371,6 +440,12 @@ func (b *rowBatchIterator) Next() bool {
 	}
 	b.consumed = true
 	return true
+}
+
+func (b *rowBatchIterator) HashValue() string {
+	// String before the first separator is the hashkey
+	parts := strings.SplitN(b.row.Key(), separator, 2)
+	return parts[0]
 }
 
 func (b *rowBatchIterator) RangeValue() []byte {

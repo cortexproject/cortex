@@ -138,8 +138,8 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 	if pagesPerDot > 0 && h.pages%pagesPerDot == 0 {
 		fmt.Printf(".")
 	}
-	for i := 0; i < page.Len(); i++ {
-		hashValue := page.HashValue(i)
+	for i := page.Iterator(); i.Next(); {
+		hashValue := i.HashValue()
 		org := chunk.OrgFromHash(hashValue)
 		if org <= 0 {
 			continue
@@ -147,7 +147,7 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 		h.counts[org]++
 		if _, found := h.orgs[org]; found {
 			request := h.storageClient.NewWriteBatch()
-			request.AddDelete(h.tableName, hashValue, page.RangeValue(i))
+			request.AddDelete(h.tableName, hashValue, i.RangeValue())
 			h.requests <- request
 		}
 	}

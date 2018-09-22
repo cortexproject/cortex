@@ -30,7 +30,7 @@ func (a storageClient) ScanTable(ctx context.Context, tableName string, withValu
 				TotalSegments:          aws.Int64(int64(len(callbacks))),
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			}
-			err := a.DynamoDB.ScanPages(input, func(page *dynamodb.ScanOutput, lastPage bool) bool {
+			err := a.DynamoDB.ScanPagesWithContext(ctx, input, func(page *dynamodb.ScanOutput, lastPage bool) bool {
 				if cc := page.ConsumedCapacity; cc != nil {
 					dynamoConsumedCapacity.WithLabelValues("DynamoDB.ScanTable", *cc.TableName).
 						Add(float64(*cc.CapacityUnits))

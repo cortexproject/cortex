@@ -24,13 +24,18 @@ func (a storageClient) ScanTable(ctx context.Context, tableName string, withValu
 	for segment, callback := range callbacks {
 		go func(segment int, callback func(result chunk.ReadBatch)) {
 			input := &dynamodb.ScanInput{
-				TableName:            aws.String(tableName),
-				ProjectionExpression: aws.String(projection),
-				Segment:              aws.Int64(int64(segment)),
-				TotalSegments:        aws.Int64(int64(len(callbacks))),
-				//ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+				TableName:              aws.String(tableName),
+				ProjectionExpression:   aws.String(projection),
+				Segment:                aws.Int64(int64(segment)),
+				TotalSegments:          aws.Int64(int64(len(callbacks))),
+				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			}
 			err := a.DynamoDB.ScanPages(input, func(page *dynamodb.ScanOutput, lastPage bool) bool {
+				if cc := page.ConsumedCapacity; cc != nil {
+					dynamoConsumedCapacity.WithLabelValues("DynamoDB.ScanTable", *cc.TableName).
+						Add(float64(*cc.CapacityUnits))
+				}
+
 				callback(&dynamoDBReadResponse{items: page.Items})
 				return true
 			})

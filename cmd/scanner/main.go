@@ -86,7 +86,7 @@ func main() {
 		callbacks[segment] = handler.handlePage
 	}
 
-	err = storageClient.ScanTable(context.Background(), tableName, callbacks)
+	err = storageClient.ScanTable(context.Background(), tableName, false, callbacks)
 	checkFatal(err)
 }
 

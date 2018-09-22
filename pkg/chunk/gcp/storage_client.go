@@ -489,7 +489,7 @@ func (s *storageClientColumnKey) GetChunks(ctx context.Context, input []chunk.Ch
 	return output, nil
 }
 
-func (s *storageClientColumnKey) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+func (s *storageClientColumnKey) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	panic("not implemented")
 }
 
@@ -541,7 +541,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 	return nil
 }
 
-func (s *storageClientV1) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+func (s *storageClientV1) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	panic("not implemented")
 }
 

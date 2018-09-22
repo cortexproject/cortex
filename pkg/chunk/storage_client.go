@@ -15,7 +15,7 @@ type StorageClient interface {
 	QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error
 
 	// Iterate through every row in a table, for batch jobs
-	ScanTable(ctx context.Context, tableName string, callbacks []func(result ReadBatch)) error
+	ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result ReadBatch)) error
 
 	// For storing and retrieving chunks.
 	PutChunks(ctx context.Context, chunks []Chunk) error

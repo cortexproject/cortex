@@ -185,7 +185,7 @@ func (m *MockStorage) BatchWriteNoRetry(ctx context.Context, batch WriteBatch) (
 	return nil, nil
 }
 
-func (m *MockStorage) ScanTable(ctx context.Context, tableName string, callbacks []func(result ReadBatch)) error {
+func (m *MockStorage) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result ReadBatch)) error {
 	return nil
 }
 

@@ -13,15 +13,19 @@ import (
 // ScanTable reads the whole of a table on multiple goroutines in
 // parallel, calling back with batches of results on one of the
 // callbacks for each goroutine.
-func (a storageClient) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+func (a storageClient) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	var outerErr error
+	projection := hashKey + "," + rangeKey
+	if withValue {
+		projection += "," + valueKey
+	}
 	var readerGroup sync.WaitGroup
 	readerGroup.Add(len(callbacks))
 	for segment, callback := range callbacks {
 		go func(segment int, callback func(result chunk.ReadBatch)) {
 			input := &dynamodb.ScanInput{
 				TableName:            aws.String(tableName),
-				ProjectionExpression: aws.String(hashKey + "," + rangeKey),
+				ProjectionExpression: aws.String(projection),
 				Segment:              aws.Int64(int64(segment)),
 				TotalSegments:        aws.Int64(int64(len(callbacks))),
 				//ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),

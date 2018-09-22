@@ -20,7 +20,7 @@ type ObjectClient interface {
 	Stop()
 
 	// Iterate through every row in a table, for batch jobs
-	ScanTable(ctx context.Context, tableName string, callbacks []func(result ReadBatch)) error
+	ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result ReadBatch)) error
 
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)

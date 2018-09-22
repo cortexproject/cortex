@@ -362,9 +362,10 @@ func (c *columnKeyIterator) Value() []byte {
 	return c.items[c.i].Value
 }
 
-func (s *storageClientColumnKey) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+func (s *storageClientColumnKey) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	panic("not implemented")
 }
+
 func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
 	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
 }
@@ -412,7 +413,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 	return nil
 }
 
-func (s *storageClientV1) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+func (s *storageClientV1) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	panic("not implemented")
 }
 

@@ -334,6 +334,6 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	return input, err
 }
 
-func (s *storageClient) ScanTable(ctx context.Context, tableName string, callbacks []func(result chunk.ReadBatch)) error {
+func (s *storageClient) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	panic("not implemented")
 }

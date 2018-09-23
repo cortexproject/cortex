@@ -70,13 +70,19 @@ type ingesterStreamingQuerier struct {
 	distributorQuerier
 }
 
-func (q *ingesterStreamingQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}
 
-	results, err := q.distributor.QueryStream(q.ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+	mint, maxt := q.mint, q.maxt
+	if sp != nil {
+		mint = sp.Start
+		maxt = sp.End
+	}
+
+	results, err := q.distributor.QueryStream(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}

@@ -11,15 +11,8 @@ import (
 )
 
 type WriterConfig struct {
-	writers        int
-	writeBatchSize int
-}
-
-type storageItem struct {
-	tableName  string
-	hashValue  string
-	rangeValue []byte
-	value      []byte
+	writers      int
+	maxQueueSize int
 }
 
 type Writer struct {
@@ -41,7 +34,7 @@ type Writer struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WriterConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&cfg.writers, "writers", 1, "Number of writers to run in parallel")
-	flag.IntVar(&cfg.writeBatchSize, "write-batch-size", 25, "Number of write requests to batch up")
+	flag.IntVar(&cfg.maxQueueSize, "writers-queue-limit", 1000, "Max rows to allow in writer queue")
 }
 
 func NewWriter(cfg WriterConfig, storage StorageClient) *Writer {
@@ -50,7 +43,7 @@ func NewWriter(cfg WriterConfig, storage StorageClient) *Writer {
 		storage:      storage,
 		// Unbuffered chan so we can tell when batcher has received all items
 		Write:   make(chan WriteBatch),
-		retry:   make(chan WriteBatch, 100),
+		retry:   make(chan WriteBatch, 100), // we should always accept retry data, to avoid deadlock
 		batched: make(chan WriteBatch),
 	}
 	return writer
@@ -64,7 +57,7 @@ func (writer *Writer) Run() {
 	}()
 	for i := 0; i < writer.writers; i++ {
 		go func() {
-			writer.writeLoop()
+			writer.writeLoop(context.TODO())
 			writer.group.Done()
 		}()
 	}
@@ -81,63 +74,61 @@ func (writer *Writer) Stop() {
 	writer.group.Wait()
 }
 
-func (sc *Writer) writeLoop() {
+// writeLoop receives on the 'batched' chan, sends to store, and
+// passes anything that was throttled to the 'retry' chan.
+func (sc *Writer) writeLoop(ctx context.Context) {
 	for {
 		batch, ok := <-sc.batched
 		if !ok {
 			return
 		}
-		level.Debug(util.Logger).Log("msg", "about to write", "num_requests", batch.Len())
-		retry, err := sc.storage.BatchWriteNoRetry(context.TODO(), batch)
+		batchLen := batch.Len()
+		level.Debug(util.Logger).Log("msg", "about to write", "num_requests", batchLen)
+		retry, err := sc.storage.BatchWriteNoRetry(ctx, batch)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "unable to write; dropping data", "err", err, "batch", batch)
-			sc.pending.Add(-batch.Len())
+			sc.pending.Add(-batchLen)
 			continue
 		}
 		// Send unprocessed items back into the batcher
 		sc.retry <- retry
-		sc.pending.Add(-(batch.Len() - retry.Len()))
+		sc.pending.Add(-(batchLen - retry.Len()))
 	}
 }
 
 // Receive individual requests, and batch them up into groups to send to the store
 func (sc *Writer) batcher() {
 	finished := false
-	var requests WriteBatch
+	var queue, outBatch WriteBatch
+	queue = sc.storage.NewWriteBatch()
 	for {
+		var in, out chan WriteBatch
 		// We will allow in new data if the queue isn't too long
-		var in chan WriteBatch
-		if requests.Len() < 1000 {
+		if queue.Len() < sc.maxQueueSize {
 			in = sc.Write
 		}
 		// We will send out a batch if the queue is big enough, or if we're finishing
-		var out chan WriteBatch
-		outBatch := requests.Take(finished)
-		if outBatch != nil {
+		if outBatch == nil || outBatch.Len() == 0 {
+			outBatch = queue.Take(finished)
+		}
+		if outBatch != nil && outBatch.Len() > 0 {
 			out = sc.batched
 		}
-		var inBatch WriteBatch
-		var ok bool
 		select {
-		case inBatch = <-in:
+		case inBatch := <-in:
 			if inBatch == nil { // Nil used as interlock to know we received all previous values
 				finished = true
 			} else {
-				requests.AddBatch(inBatch)
+				queue.AddBatch(inBatch)
 				sc.pending.Add(inBatch.Len())
 			}
-		case inBatch, ok = <-sc.retry:
+		case inBatch, ok := <-sc.retry:
 			if !ok {
 				return
 			}
+			queue.AddBatch(inBatch)
 		case out <- outBatch:
 			outBatch = nil
-		}
-		if inBatch != nil {
-			requests.AddBatch(inBatch)
-		}
-		if outBatch != nil {
-			requests.AddBatch(outBatch)
 		}
 	}
 }

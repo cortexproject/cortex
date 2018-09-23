@@ -751,6 +751,9 @@ func (b dynamoDBWriteBatch) Take(undersizedOK bool) chunk.WriteBatch {
 	if b.Len() >= dynamoDBMaxWriteBatchSize || undersizedOK {
 		ret.TakeReqs(b, dynamoDBMaxWriteBatchSize)
 	}
+	if len(ret) == 0 {
+		return nil
+	}
 	return ret
 }
 

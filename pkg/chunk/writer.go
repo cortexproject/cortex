@@ -6,13 +6,16 @@ import (
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type WriterConfig struct {
-	writers      int
-	maxQueueSize int
+	writers      int     // Number of writers to run in parallel
+	maxQueueSize int     // Max rows to allow in writer queue
+	rateLimit    float64 // Max rate to send rows to storage back-end, per writer
+	// (In some sense the rate we send should relate to the provisioned capacity in the back-end)
 }
 
 type Writer struct {
@@ -35,6 +38,7 @@ type Writer struct {
 func (cfg *WriterConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&cfg.writers, "writers", 1, "Number of writers to run in parallel")
 	flag.IntVar(&cfg.maxQueueSize, "writers-queue-limit", 1000, "Max rows to allow in writer queue")
+	flag.Float64Var(&cfg.rateLimit, "writer-rate-limit", 1000, "Max rate to send rows to storage back-end, per writer")
 }
 
 func NewWriter(cfg WriterConfig, storage ObjectClient) *Writer {
@@ -77,6 +81,7 @@ func (writer *Writer) Stop() {
 // writeLoop receives on the 'batched' chan, sends to store, and
 // passes anything that was throttled to the 'retry' chan.
 func (sc *Writer) writeLoop(ctx context.Context) {
+	limiter := rate.NewLimiter(rate.Limit(sc.rateLimit), 100) // burst size should be the largest batch
 	for {
 		batch, ok := <-sc.batched
 		if !ok {
@@ -93,6 +98,8 @@ func (sc *Writer) writeLoop(ctx context.Context) {
 		// Send unprocessed items back into the batcher
 		sc.retry <- retry
 		sc.pending.Add(-(batchLen - retry.Len()))
+		// Wait before accepting the next batch
+		limiter.WaitN(ctx, batchLen)
 	}
 }
 

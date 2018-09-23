@@ -128,11 +128,7 @@ func (bfp ByFingerprint) Less(i, j int) bool {
 	return bfp[i].Metric.Fingerprint() < bfp[j].Metric.Fingerprint()
 }
 
-// TestChunkStore_Get tests results are returned correctly depending on the type of query
-func TestChunkStore_Get(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-	now := model.Now()
-
+func dummyChunks(now model.Time) (Chunk, Chunk, Chunk, Chunk) {
 	fooMetric1 := model.Metric{
 		model.MetricNameLabel: "foo",
 		"bar":  "baz",
@@ -161,6 +157,15 @@ func TestChunkStore_Get(t *testing.T) {
 
 	barChunk1 := dummyChunkFor(now, barMetric1)
 	barChunk2 := dummyChunkFor(now, barMetric2)
+
+	return fooChunk1, fooChunk2, barChunk1, barChunk2
+}
+
+// TestChunkStore_Get tests results are returned correctly depending on the type of query
+func TestChunkStore_Get(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	now := model.Now()
+	fooChunk1, fooChunk2, barChunk1, barChunk2 := dummyChunks(now)
 
 	fooSampleStream1, err := createSampleStreamFrom(fooChunk1)
 	require.NoError(t, err)
@@ -313,17 +318,7 @@ func TestChunkStore_Get(t *testing.T) {
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
-	chunk1 := dummyChunkFor(now, model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
-		"flip": "flop",
-	})
-	chunk2 := dummyChunkFor(now, model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":  "beep",
-		"toms": "code",
-	})
+	chunk1, chunk2, _, _ := dummyChunks(now)
 
 	for _, tc := range []struct {
 		query  string

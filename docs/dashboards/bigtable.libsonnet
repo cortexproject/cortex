@@ -1,5 +1,5 @@
 {
-    name: 'Big Table',
+    name: 'Bigtable',
 
     readRateTargets: [{
         query: 'sum(rate(cortex_bigtable_request_duration_seconds_count{operation=~"/google.bigtable.v2.Bigtable/ReadRows"}[1m])) by (status_code)',

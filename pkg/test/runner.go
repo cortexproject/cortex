@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"flag"
 	"math"
 	"math/rand"
@@ -16,7 +17,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/net/context"
 )
 
 const (

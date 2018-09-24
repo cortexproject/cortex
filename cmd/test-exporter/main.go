@@ -9,7 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/server"
 
-	"github.com/weaveworks-experiments/prometheus-benchmarks/pkg/test"
+	"github.com/weaveworks/cortex/pkg/test"
 )
 
 var (

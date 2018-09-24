@@ -706,13 +706,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:61bc39babcd63cfcdf784ba17d02888afa6404bbcfcbd7b9238d3dde1578c74b"
+  digest = "1:511d8b5b4cef21fdc5c660e5d9c46a2d6d039809d9600ff1518b033e300522b9"
   name = "github.com/prometheus/client_golang"
   packages = [
     "api",
     "api/prometheus/v1",
     "prometheus",
     "prometheus/promauto",
+    "prometheus/promhttp",
   ]
   pruneopts = "UT"
   revision = "bcbbc08eb2ddff3af83bbf11e7ec13b4fd730b6e"
@@ -846,12 +847,12 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:5f2aaa360f48d1711795bd88c7e45a38f86cf81e4bc01453d20983baa67e2d51"
+  digest = "1:d867dfa6751c8d7a435821ad3b736310c2ed68945d05b50fb9d23aee0540c8cc"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   pruneopts = "UT"
-  revision = "f006c2ac4710855cf0f916dd6b77acf6b048dc6e"
-  version = "v1.0.3"
+  revision = "3e01752db0189b9157070a0e1668a620f9a85da2"
+  version = "v1.0.6"
 
 [[projects]]
   digest = "1:db1eb3ddc46067e4cda85237f4026899a8919a88fadde3c19be25e689e5e7fe2"
@@ -1370,6 +1371,7 @@
     "github.com/prometheus/client_golang/api/prometheus/v1",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promauto",
+    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/prometheus/common/config",
     "github.com/prometheus/common/model",
     "github.com/prometheus/common/route",
@@ -1390,6 +1392,7 @@
     "github.com/prometheus/tsdb",
     "github.com/prometheus/tsdb/fileutil",
     "github.com/segmentio/fasthash/fnv1a",
+    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/weaveworks/billing-client",

@@ -22,6 +22,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 const userID = "1"
@@ -41,13 +42,27 @@ func defaultIngesterTestConfig() Config {
 	return cfg
 }
 
+func defaultClientTestConfig() client.Config {
+	clientConfig := client.Config{}
+	util.DefaultValues(&clientConfig)
+	return clientConfig
+}
+
+func defaultLimitsTestConfig() validation.Limits {
+	limits := validation.Limits{}
+	util.DefaultValues(&limits)
+	return limits
+}
+
 // TestIngesterRestart tests a restarting ingester doesn't keep adding more tokens.
 func TestIngesterRestart(t *testing.T) {
 	config := defaultIngesterTestConfig()
+	clientConfig := defaultClientTestConfig()
+	limits := defaultLimitsTestConfig()
 	config.LifecyclerConfig.SkipUnregister = true
 
 	{
-		ingester, err := New(config, nil)
+		ingester, err := New(config, clientConfig, limits, nil)
 		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
@@ -58,7 +73,7 @@ func TestIngesterRestart(t *testing.T) {
 	})
 
 	{
-		ingester, err := New(config, nil)
+		ingester, err := New(config, clientConfig, limits, nil)
 		require.NoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
@@ -79,7 +94,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.ClaimOnRollout = true
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
 	cfg1.SearchPendingFor = 1 * time.Second
-	ing1, err := New(cfg1, nil)
+	ing1, err := New(cfg1, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -110,7 +125,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
-	ing2, err := New(cfg2, nil)
+	ing2, err := New(cfg2, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
@@ -158,7 +173,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.ClaimOnRollout = true
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
 	cfg.SearchPendingFor = 1 * time.Second
-	ing, err := New(cfg, nil)
+	ing, err := New(cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.PENDING, func() interface{} {
@@ -293,7 +308,7 @@ func (i ingesterClientAdapater) Close() error {
 // removing itself from the ring.
 func TestIngesterFlush(t *testing.T) {
 	// Start the ingester, and get it into ACTIVE state.
-	store, ing := newTestStore(t, defaultIngesterTestConfig())
+	store, ing := newTestStoreDefaults(t)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 		return ing.lifecycler.GetState()

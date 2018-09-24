@@ -191,7 +191,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 	}
 
 	level.Info(util.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
-	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.cfg.clientConfig)
+	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.clientConfig)
 	if err != nil {
 		return err
 	}

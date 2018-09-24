@@ -47,8 +47,8 @@ func main() {
 		storageConfig     storage.Config
 		workerConfig      frontend.WorkerConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits, &querierConfig,
-		&chunkStoreConfig, &schemaConfig, &storageConfig, &workerConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
+		&querierConfig, &chunkStoreConfig, &schemaConfig, &storageConfig, &workerConfig)
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing

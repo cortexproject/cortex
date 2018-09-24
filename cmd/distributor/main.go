@@ -53,7 +53,8 @@ func main() {
 		limits            validation.Limits
 		preallocConfig    client.PreallocConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits, &preallocConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
+		&preallocConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)

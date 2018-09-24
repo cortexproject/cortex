@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
+	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 var (
@@ -274,14 +275,16 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	}
 
 	var cfg Config
-	util.DefaultValues(&cfg)
-	cfg.limits.IngestionRate = 20
-	cfg.limits.IngestionBurstSize = 20
+	var limits validation.Limits
+	var clientConfig client.Config
+	util.DefaultValues(&cfg, &limits, &clientConfig)
+	limits.IngestionRate = 20
+	limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory
 	cfg.ShardByAllLabels = shardByAllLabels
 	cfg.ExtraQueryDelay = 50 * time.Millisecond
 
-	d, err := New(cfg, ring)
+	d, err := New(cfg, clientConfig, limits, ring)
 	if err != nil {
 		t.Fatal(err)
 	}

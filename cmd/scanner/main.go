@@ -87,14 +87,21 @@ func main() {
 	tableName = fmt.Sprintf("%s%d", schemaConfig.ChunkTables.Prefix, week)
 	fmt.Printf("table %s\n", tableName)
 
+	handlers := make([]handler, segments)
 	callbacks := make([]func(result chunk.ReadBatch), segments)
 	for segment := 0; segment < segments; segment++ {
-		handler := newHandler(storageClient, chunkStore, writer, tableName, reindexTablePrefix, orgs)
-		callbacks[segment] = handler.handlePage
+		handlers[segment] = newHandler(storageClient, chunkStore, writer, tableName, reindexTablePrefix, orgs)
+		callbacks[segment] = handlers[segment].handlePage
 	}
 
 	err = storageClient.ScanTable(context.Background(), tableName, reindexTablePrefix != "", callbacks)
 	checkFatal(err)
+
+	totals := newSummary()
+	for segment := 0; segment < segments; segment++ {
+		totals.accumulate(handlers[segment].summary)
+	}
+	totals.print()
 }
 
 /* TODO: delete v8 schema rows for all instances */

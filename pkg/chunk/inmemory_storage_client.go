@@ -182,7 +182,13 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 }
 
 func (m *MockStorage) BatchWriteNoRetry(ctx context.Context, batch WriteBatch) (retry WriteBatch, err error) {
-	return nil, nil
+	mockBatch := *batch.(*mockWriteBatch)
+	retryLen := len(mockBatch) / 3
+	sendLen := len(mockBatch) - retryLen
+	toSend := mockBatch[:sendLen]
+	err = m.BatchWrite(ctx, &toSend)
+	toRetry := mockBatch[sendLen:]
+	return &toRetry, err
 }
 
 func (m *MockStorage) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result ReadBatch)) error {

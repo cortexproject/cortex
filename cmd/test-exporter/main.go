@@ -9,7 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/server"
 
-	"github.com/weaveworks/cortex/pkg/test"
+	"github.com/weaveworks/cortex/pkg/querier/correctness"
 )
 
 var (
@@ -19,7 +19,7 @@ var (
 func main() {
 	var (
 		serverConfig server.Config
-		runnerConfig test.RunnerConfig
+		runnerConfig correctness.RunnerConfig
 	)
 	serverConfig.RegisterFlags(flag.CommandLine)
 	runnerConfig.RegisterFlags(flag.CommandLine)
@@ -31,17 +31,17 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	runner, err := test.NewRunner(runnerConfig)
+	runner, err := correctness.NewRunner(runnerConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer runner.Stop()
 
-	runner.Add(test.NewSimpleTestCase("now_seconds", func(t time.Time) float64 {
+	runner.Add(correctness.NewSimpleTestCase("now_seconds", func(t time.Time) float64 {
 		return t.Sub(unixStart).Seconds()
 	}))
 
-	runner.Add(test.NewSimpleTestCase("sine_wave", func(t time.Time) float64 {
+	runner.Add(correctness.NewSimpleTestCase("sine_wave", func(t time.Time) float64 {
 		// With a 15-second scrape interval this gives a ten-minute period
 		period := 40 * runnerConfig.ScrapeInterval.Seconds()
 		radians := float64(t.Unix()) / period * 2 * math.Pi

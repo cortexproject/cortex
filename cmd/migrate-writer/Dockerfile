@@ -6,5 +6,5 @@ ENTRYPOINT [ "/bin/migrate-writer" ]
 
 ARG revision
 LABEL org.opencontainers.image.title="migrate-writer" \
-      org.opencontainers.image.source="https://github.com/weaveworks/cortex/tree/master/cmd/migrate-writer" \
+      org.opencontainers.image.source="https://github.com/cortexproject/cortex/tree/master/cmd/migrate-writer" \
       org.opencontainers.image.revision="${revision}"

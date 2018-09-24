@@ -3,63 +3,60 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/storage"
-	"github.com/weaveworks/cortex/pkg/migrate"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/migrate"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
+	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/server"
+	"google.golang.org/grpc"
 )
 
 func main() {
 	var (
+		serverConfig = server.Config{
+			MetricsNamespace: "cortex",
+			GRPCMiddleware: []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			},
+			ExcludeRequestInLog: true,
+		}
 		storageConfig storage.Config
 		schemaConfig  chunk.SchemaConfig
 		readerConfig  migrate.ReaderConfig
 	)
-	util.RegisterFlags(&schemaConfig, &storageConfig, &readerConfig)
+	util.RegisterFlags(&schemaConfig, &storageConfig, &readerConfig, &serverConfig)
 	flag.Parse()
+
+	util.InitLogger(&serverConfig)
+
+	server, err := server.New(serverConfig)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
+	}
+	defer server.Shutdown()
+
+	go server.Run()
 
 	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
 	if err != nil {
-		fmt.Println(err)
+		level.Error(util.Logger).Log("msg", "unable to initialize storage", "err", err)
 		os.Exit(1)
 	}
 
 	reader, err := migrate.NewReader(readerConfig, storageOpts[0].Client)
 	if err != nil {
-		fmt.Println(err)
+		level.Error(util.Logger).Log("msg", "unable to initialize reader", "err", err)
 		os.Exit(1)
 	}
 
 	err = reader.TransferData(context.Background())
 	if err != nil {
-		fmt.Println(err)
+		level.Error(util.Logger).Log("msg", "unable to complete transfer", "err", err)
 		os.Exit(1)
 	}
-
-	// params := storageOpts[0].Client.NewStreamBatch()
-	// fmt.Println(params)
-	// params.Add("dev_chunks_2537", "331", 0, 0)
-	// fmt.Println(params)
-	// out := make(chan chunk.Chunk)
-	// var count int
-	// go func(ch chan chunk.Chunk) {
-	// 	for c := range ch {
-	// 		count++
-	// 		if count%50 == 0 {
-	// 			fmt.Println(count)
-	// 			fmt.Println(c.ExternalKey())
-	// 		}
-	// 		continue
-	// 	}
-	// 	fmt.Println(count)
-	// }(out)
-
-	// err = storageOpts[0].Client.StreamChunks(context.Background(), params, out)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
-	// close(out)
 }

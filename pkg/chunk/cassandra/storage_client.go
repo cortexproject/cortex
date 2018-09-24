@@ -307,6 +307,7 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	return input, err
 }
 
+// TODO query errors should format with shard numbers not cassandra token values
 func (s *storageClient) StreamChunks(ctx context.Context, params chunk.StreamBatch, out chan []chunk.Chunk) error {
 	batch := params.(*cassandraStreamBatch)
 	decodeContext := chunk.NewDecodeContext()
@@ -320,7 +321,11 @@ func (s *storageClient) StreamChunks(ctx context.Context, params chunk.StreamBat
 		)
 		q = s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
 		iter := q.WithContext(ctx).Iter()
-		chunks := []chunk.Chunk{}
+		chunkMap := map[string][]chunk.Chunk{}
+		for len(out) > 0 { // Wait for channel to clear before querying new metrics
+			time.Sleep(1 * time.Second)
+			continue
+		}
 		for iter.Scan(&hash, &value) {
 			userID, err := parseHash(hash)
 			if err != nil {
@@ -340,16 +345,27 @@ func (s *storageClient) StreamChunks(ctx context.Context, params chunk.StreamBat
 				errs = append(errs, err)
 				continue
 			}
-			chunks = append(chunks, c)
+			_, ok := chunkMap[userID+":"+c.Fingerprint.String()]
+			if !ok {
+				chunkMap[userID+":"+c.Fingerprint.String()] = []chunk.Chunk{}
+			}
+			chunkMap[userID+":"+c.Fingerprint.String()] = append(chunkMap[userID+":"+c.Fingerprint.String()], c)
 		}
 		err := iter.Close()
 		if err != nil {
-			return err
+			return fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
 		}
-		out <- chunks
 		for _, err := range errs {
 			if err != nil {
-				return err
+				return fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+			}
+		}
+		for _, chunks := range chunkMap {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("stream canceled, current query %v_%v_%v, with user %v", query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+			case out <- chunks:
+				continue
 			}
 		}
 	}
@@ -362,7 +378,7 @@ func parseHash(hash string) (string, error) {
 	}
 	parts := strings.Split(hash, "/")
 	if len(parts) != 2 {
-		return "", errors.WithStack(chunk.ErrInvalidChunkID)
+		return "", fmt.Errorf("unable to parse hash ID %v", hash)
 	}
 	return parts[0], nil
 }
@@ -385,13 +401,14 @@ type cassandraStreamQuery struct {
 	tokenTo      string
 }
 
+// Add adds a query plan to a cassandraStreamBatch
 func (c *cassandraStreamBatch) Add(tableName, userID string, from, to int) {
 	var filterUserID = true
 	if userID == "*" {
 		filterUserID = false
 	}
 
-	for i := from; i < to; i++ {
+	for i := from; i <= to; i++ {
 		f := getToken(int64(i))
 		t := getToken(int64(i + 1))
 		c.queries = append(c.queries, cassandraStreamQuery{

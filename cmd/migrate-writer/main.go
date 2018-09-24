@@ -1,23 +1,21 @@
 package main
 
 import (
-	"context"
 	"flag"
-	"fmt"
 	"os"
 
 	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/migrate"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/storage"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/migrate"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {
@@ -88,25 +86,6 @@ func main() {
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
-	}
-
-	tableClient, ok := storageOpts[0].Client.(chunk.TableClient)
-	if !ok {
-		level.Error(util.Logger).Log("msg", "error casting storage as table client", "err", err)
-		os.Exit(1)
-	}
-	err = tableClient.CreateTable(context.Background(), chunk.TableDesc{
-		Name:             "cortex",
-		ProvisionedRead:  100000,
-		ProvisionedWrite: 10000,
-	})
-	if err != nil {
-		level.Error(util.Logger).Log("err", err)
-		os.Exit(1)
-	}
-	tables, err := tableClient.ListTables(context.Background())
-	for _, t := range tables {
-		fmt.Println(t)
 	}
 
 	client.RegisterIngesterServer(server.GRPC, writer)

@@ -827,10 +827,12 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	return session.New(config), nil
 }
 
+// StreamChunks streams chunks to a channel
 func (a storageClient) StreamChunks(ctx context.Context, params chunk.StreamBatch, out chan []chunk.Chunk) error {
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
+// NewStreamBatch returns a StreamBatch
 func (a storageClient) NewStreamBatch() chunk.StreamBatch {
 	return nil
 }

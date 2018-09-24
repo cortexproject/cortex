@@ -3,6 +3,9 @@ package cassandra
 import (
 	"context"
 	"os"
+	"sync"
+
+	"github.com/gocql/gocql"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
@@ -12,6 +15,10 @@ import (
 // To enable these tests:
 // $ docker run --name cassandra --rm -p 9042:9042 cassandra:3.11
 // $ CASSANDRA_TEST_ADDRESSES=localhost:9042 go test ./pkg/chunk/storage
+
+var (
+	once sync.Once
+)
 
 type fixture struct {
 	name         string
@@ -45,6 +52,18 @@ func Fixtures() ([]testutils.Fixture, error) {
 		keyspace:          "test",
 		consistency:       "QUORUM",
 		replicationFactor: 1,
+	}
+	var err error
+	var s *gocql.Session
+	once.Do(func() {
+		s, err = cfg.session()
+		if err != nil {
+			return
+		}
+		err = s.Query("DROP KEYSPACE test").Exec()
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Get a SchemaConfig with the defaults.

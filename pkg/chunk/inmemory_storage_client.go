@@ -310,10 +310,12 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	return result, nil
 }
 
+// StreamChunks implements StorageClient
 func (m *MockStorage) StreamChunks(ctx context.Context, params StreamBatch, chunkChan chan []Chunk) error {
 	return nil
 }
 
+// NewStreamBatch implements StorageClient
 func (m *MockStorage) NewStreamBatch() StreamBatch {
 	return nil
 }

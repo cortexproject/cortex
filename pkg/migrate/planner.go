@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 // PlanConfig is used to configure the Planner

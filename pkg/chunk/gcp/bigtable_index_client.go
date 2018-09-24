@@ -419,11 +419,15 @@ func (s *storageClientColumnKey) StreamChunks(ctx context.Context, params chunk.
 			chunks = append(chunks, c)
 			return true
 		})
+		if err != nil {
+			return fmt.Errorf("stream canceled, %v. current query %v_%v, with user %v ", err, query.table, query.identifier, query.userID)
+		}
 		out <- chunks
 		if processingErr != nil {
-			return processingErr
-		} else if err != nil {
-			return err
+			return fmt.Errorf("stream canceled, %v. current query %v_%v, with user %v ", processingErr, query.table, query.identifier, query.userID)
+		}
+		for len(out) != 0 {
+			continue
 		}
 	}
 	return nil

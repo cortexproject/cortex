@@ -5,17 +5,35 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
-	"github.com/sirupsen/logrus"
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/testutils"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
 )
 
+var (
+	sentChunks = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "reader_sent_chunks_total",
+		Help:      "The total number of chunks sent by this reader.",
+	}, []string{"reader_id"})
+	streamErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "reader_stream_errors_total",
+		Help:      "The total number of errors caused by the chunk stream.",
+	}, []string{"reader_id"})
+)
+
+// ReaderConfig is a config for a Reader
 type ReaderConfig struct {
 	Addr           string
+	BufferSize     int
 	ClientConfig   client.Config
 	PlannerConfig  PlanConfig
 	ReaderIDPrefix string
@@ -25,58 +43,81 @@ type ReaderConfig struct {
 func (cfg *ReaderConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.PlannerConfig.RegisterFlags(f)
 	cfg.ClientConfig.RegisterFlags(f)
-	f.StringVar(&cfg.Addr, "reader.forward_addr", "", "address of the chunk transfer endpoint")
+	f.IntVar(&cfg.BufferSize, "reader.buffer-size", 10000, "number of chunk batches to buffer before forwarding")
+	f.StringVar(&cfg.Addr, "reader.forward-addr", "", "address of the chunk transfer endpoint")
 	f.StringVar(&cfg.ReaderIDPrefix, "reader.prefix", "reader_", "prefix used to identify reader when forwarding data to writer")
 }
 
 // Reader collects and forwards chunks according to it's planner
 type Reader struct {
-	Config                ReaderConfig
-	ID                    string // ID is the configured as the reading prefix and the shards assigned to the reader
-	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
+	cfg                   ReaderConfig
+	id                    string // ID is the configured as the reading prefix and the shards assigned to the reader
+	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 
-	storage chunk.StorageClient
-	planner Planner
+	storage      chunk.StorageClient
+	planner      Planner
+	chunkChannel chan []chunk.Chunk
 }
 
+// NewReader returns a Reader struct
 func NewReader(cfg ReaderConfig, storage chunk.StorageClient) (*Reader, error) {
 	planner, err := NewPlanner(cfg.PlannerConfig)
 	if err != nil {
 		return nil, err
 	}
 	id := cfg.ReaderIDPrefix + fmt.Sprintf("%d_%d", planner.firstShard, planner.lastShard)
+	out := make(chan []chunk.Chunk, cfg.BufferSize)
 	return &Reader{
-		Config:                cfg,
-		ID:                    id,
+		cfg:                   cfg,
+		id:                    id,
 		planner:               planner,
 		storage:               storage,
 		ingesterClientFactory: client.MakeIngesterClient,
+		chunkChannel:          out,
 	}, nil
 }
 
+// TransferData initializes a batch stream from a storage client and
+// forwards metrics to writer endpoint
 func (r *Reader) TransferData(ctx context.Context) error {
 	batch := r.storage.NewStreamBatch()
 	r.planner.Plan(batch)
 
-	out := make(chan []chunk.Chunk)
+	readCtx, cancel := context.WithCancel(ctx)
 
 	go func() {
-		_, chunks, _ := testutils.CreateChunks(0, 1)
-		out <- chunks
-		// err := r.storage.StreamChunks(ctx, batch, out)
-		// if err != nil {
-		// 	logrus.Infof("StreamChunks failed, %v", err)
-		// }
-		close(out)
+		err := r.storage.StreamChunks(readCtx, batch, r.chunkChannel)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error streaming chunks", "err", err)
+		}
+		close(r.chunkChannel)
 	}()
 
-	return r.Forward(ctx, out)
+	err := r.Forward(readCtx)
+	cancel()        // If the forwarding metrics errors out the reader will be canceled
+	if err != nil { // Loop to ensure streamchunks fails gracefully and returns a log of current progress
+		timer := time.NewTimer(time.Second * 60)
+		for {
+			select {
+			case _, ok := <-r.chunkChannel:
+				if !ok {
+					return err
+				}
+				continue
+			case <-timer.C:
+				level.Error(util.Logger).Log("msg", "shutting down reader, timed out")
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // Forward reads batched chunks with the same metric from a channel and wires them
 // to a Migrate Writer using the TransferChunks service in the ingester protobuf package
-func (r Reader) Forward(ctx context.Context, chunkChan chan []chunk.Chunk) error {
-	c, err := r.ingesterClientFactory(r.Config.Addr, r.Config.ClientConfig)
+func (r Reader) Forward(ctx context.Context) error {
+	c, err := r.ingesterClientFactory(r.cfg.Addr, r.cfg.ClientConfig)
 	if err != nil {
 		return err
 	}
@@ -87,25 +128,60 @@ func (r Reader) Forward(ctx context.Context, chunkChan chan []chunk.Chunk) error
 	if err != nil {
 		return err
 	}
-	for chunks := range chunkChan {
+	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: time.Second * 5,
+		MaxBackoff: time.Second * 360,
+	})
+	for chunks := range r.chunkChannel {
+		level.Debug(util.Logger).Log("msg", "sending chunk batch", "num_chunks", len(chunks))
 		if len(chunks) == 0 {
 			continue
 		}
-		logrus.Infof("transfering %v chunks with userID %v and fingerprint %v", len(chunks), chunks[0].UserID, chunks[0].Fingerprint)
 		wireChunks, err := chunkcompat.ToChunks(chunks)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to serialize chunks, %v", err)
 		}
 		labels := client.ToLabelPairs(chunks[0].Metric)
-		err = stream.Send(
-			&client.TimeSeriesChunk{
-				FromIngesterId: r.ID,
-				UserId:         chunks[0].UserID,
-				Labels:         labels,
-				Chunks:         wireChunks,
-			},
-		)
+
+		for backoff.Ongoing() {
+			err = stream.Send(
+				&client.TimeSeriesChunk{
+					FromIngesterId: r.id,
+					UserId:         chunks[0].UserID,
+					Labels:         labels,
+					Chunks:         wireChunks,
+				},
+			)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "streaming error", "err", err)
+				for backoff.Ongoing() {
+					streamErrors.WithLabelValues(r.id).Inc()
+					level.Info(util.Logger).Log("msg", "attempting to re-establish connection to writer", "try", backoff.NumRetries())
+					stream, err = c.TransferChunks(ctx)
+					if err != nil {
+						level.Error(util.Logger).Log("msg", "error initializing client", "err", err)
+						backoff.Wait()
+						continue
+					}
+					break
+				}
+				backoff.Reset()
+				continue
+			}
+			break
+		}
+
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "streaming error, unable to recover", "err", err)
+			return err
+		}
+
+		sentChunks.WithLabelValues(r.id).Add(float64(len(chunks)))
 	}
 	_, err = stream.CloseAndRecv()
+	if err.Error() == "EOF" {
+		return nil
+	}
+
 	return err
 }

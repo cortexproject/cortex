@@ -134,6 +134,13 @@ func TestStreamChunksByUserID(t *testing.T) {
 		go func() {
 			wg.Add(1)
 			for c := range out {
+				var fingerprint string
+				if len(c) > 0 {
+					fingerprint = c[0].Fingerprint.String()
+				}
+				for _, chun := range c {
+					require.Equal(t, chun.Fingerprint.String(), fingerprint)
+				}
 				retrievedChunks = append(retrievedChunks, c...)
 			}
 			wg.Done()

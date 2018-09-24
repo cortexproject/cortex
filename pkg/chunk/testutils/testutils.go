@@ -50,6 +50,7 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectCl
 	return indexClient, objectClient, err
 }
 
+// CreateChunkOptions allows options to be passed when creating chunks
 type CreateChunkOptions interface {
 	set(req *createChunkRequest)
 }
@@ -58,11 +59,13 @@ type createChunkRequest struct {
 	userID string
 }
 
-func User(user string) userOpt { return userOpt(user) }
+// User applies a new user ID to chunks created by CreateChunks
+func User(user string) UserOpt { return UserOpt(user) }
 
-type userOpt string
+// UserOpt is used to set the user for a set of chunks
+type UserOpt string
 
-func (u userOpt) set(req *createChunkRequest) {
+func (u UserOpt) set(req *createChunkRequest) {
 	req.userID = string(u)
 }
 

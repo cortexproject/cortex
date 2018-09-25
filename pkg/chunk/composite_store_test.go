@@ -25,6 +25,10 @@ func (m mockStore) IndexChunk(ctx context.Context, writer *Writer, chunk Chunk) 
 	return nil
 }
 
+func (m mockStore) Scan(ctx context.Context, time model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
+	return nil
+}
+
 func (m mockStore) Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error) {
 	return nil, nil
 }

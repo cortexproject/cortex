@@ -82,7 +82,16 @@ func main() {
 	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts)
 	checkFatal(err)
 	defer chunkStore.Stop()
+	var reindexStore chunk.Store
+	if reindexTablePrefix != "" {
+		reindexSchemaConfig := schemaConfig
+		reindexSchemaConfig.IndexTables.Prefix = reindexTablePrefix
+		// Note we rely on aws storageClient not using its schemaConfig on the write path
+		reindexStore, err = chunk.NewStore(chunkStoreConfig, reindexSchemaConfig, storageOpts)
+		checkFatal(err)
+	}
 	writer := chunk.NewWriter(writerConfig, storageClient)
+	writer.Run()
 
 	tableName = fmt.Sprintf("%s%d", schemaConfig.ChunkTables.Prefix, week)
 	fmt.Printf("table %s\n", tableName)
@@ -90,12 +99,16 @@ func main() {
 	handlers := make([]handler, segments)
 	callbacks := make([]func(result chunk.ReadBatch), segments)
 	for segment := 0; segment < segments; segment++ {
-		handlers[segment] = newHandler(storageClient, chunkStore, writer, tableName, reindexTablePrefix, orgs)
+		handlers[segment] = newHandler(storageClient, reindexStore, writer, tableName, reindexTablePrefix, orgs)
 		callbacks[segment] = handlers[segment].handlePage
 	}
 
 	err = storageClient.ScanTable(context.Background(), tableName, reindexTablePrefix != "", callbacks)
 	checkFatal(err)
+
+	if reindexStore != nil {
+		reindexStore.Stop()
+	}
 
 	totals := newSummary()
 	for segment := 0; segment < segments; segment++ {

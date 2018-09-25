@@ -739,7 +739,7 @@ func (b dynamoDBWriteBatch) String() string {
 		sb.WriteString(k)
 		sb.WriteString(": [")
 		for _, req := range reqs {
-			sb.WriteString(req.String())
+			sb.WriteString(stringForReq(req))
 			sb.WriteByte(',')
 		}
 		sb.WriteString("], ")

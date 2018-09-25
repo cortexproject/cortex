@@ -36,9 +36,9 @@ type Writer struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WriterConfig) RegisterFlags(f *flag.FlagSet) {
-	flag.IntVar(&cfg.writers, "writers", 1, "Number of writers to run in parallel")
-	flag.IntVar(&cfg.maxQueueSize, "writers-queue-limit", 1000, "Max rows to allow in writer queue")
-	flag.Float64Var(&cfg.rateLimit, "writer-rate-limit", 1000, "Max rate to send rows to storage back-end, per writer")
+	f.IntVar(&cfg.writers, "writers", 1, "Number of writers to run in parallel")
+	f.IntVar(&cfg.maxQueueSize, "writers-queue-limit", 1000, "Max rows to allow in writer queue")
+	f.Float64Var(&cfg.rateLimit, "writer-rate-limit", 1000, "Max rate to send rows to storage back-end, per writer")
 }
 
 func NewWriter(cfg WriterConfig, storage StorageClient) *Writer {
@@ -50,15 +50,16 @@ func NewWriter(cfg WriterConfig, storage StorageClient) *Writer {
 		retry:   make(chan WriteBatch, 100), // we should always accept retry data, to avoid deadlock
 		batched: make(chan WriteBatch),
 	}
+	writer.Run()
 	return writer
 }
 
-func (c *store) IndexChunk(ctx context.Context, writer *Writer, chunk Chunk) error {
+func (c *store) IndexChunk(ctx context.Context, chunk Chunk) error {
 	writeReqs, err := c.calculateIndexEntries(chunk.UserID, chunk.From, chunk.Through, chunk)
 	if err != nil {
 		return err
 	}
-	writer.Write <- writeReqs
+	c.writer.Write <- writeReqs
 	return nil
 }
 

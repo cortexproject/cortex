@@ -27,7 +27,6 @@ func TestWriter(t *testing.T) {
 	var cfg WriterConfig
 	util.DefaultValues(&cfg)
 	writer := NewWriter(cfg, store.storage)
-	writer.Run()
 
 	sendChunk := func(chunk Chunk) {
 		// can't use writer to store chunks with mock storage as it isn't flexible enough

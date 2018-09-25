@@ -31,37 +31,25 @@ import (
 	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
+var (
+	serverConfig      server.Config
+	chunkStoreConfig  chunk.StoreConfig
+	distributorConfig distributor.Config
+	querierConfig     querier.Config
+	ingesterConfig    ingester.Config
+	configStoreConfig ruler.ConfigStoreConfig
+	rulerConfig       ruler.Config
+	schemaConfig      chunk.SchemaConfig
+	storageConfig     storage.Config
+
+	ingesterClientConfig client.Config
+	limitsConfig         validation.Limits
+
+	unauthenticated bool
+)
+
 func main() {
-	var (
-		serverConfig = server.Config{
-			MetricsNamespace: "cortex",
-			GRPCMiddleware: []grpc.UnaryServerInterceptor{
-				middleware.ServerUserHeaderInterceptor,
-			},
-		}
-
-		chunkStoreConfig  chunk.StoreConfig
-		distributorConfig distributor.Config
-		querierConfig     querier.Config
-		ingesterConfig    ingester.Config
-		configStoreConfig ruler.ConfigStoreConfig
-		rulerConfig       ruler.Config
-		schemaConfig      chunk.SchemaConfig
-		storageConfig     storage.Config
-
-		ingesterClientConfig client.Config
-		limitsConfig         validation.Limits
-
-		unauthenticated bool
-	)
-
-	// Ingester needs to know our gRPC listen port.
-	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
-		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig,
-		&ingesterClientConfig, &limitsConfig)
-	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
-	flag.Parse()
+	getConfigsFromCommandLine()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("ingester")
@@ -207,4 +195,20 @@ func main() {
 		middleware.AuthenticateUser,
 	).Wrap(http.HandlerFunc(dist.PushHandler)))
 	server.Run()
+}
+
+func getConfigsFromCommandLine() {
+	serverConfig = server.Config{
+		MetricsNamespace: "cortex",
+		GRPCMiddleware: []grpc.UnaryServerInterceptor{
+			middleware.ServerUserHeaderInterceptor,
+		},
+	}
+	// Ingester needs to know our gRPC listen port.
+	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
+	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
+		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig,
+		&ingesterClientConfig, &limitsConfig)
+	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
+	flag.Parse()
 }

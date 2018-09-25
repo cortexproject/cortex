@@ -95,9 +95,10 @@ type Config struct {
 	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
 }
 
-// SetClientConfig sets clientConfig in config
-func (cfg *Config) SetClientConfig(clientConfig client.Config) {
+// SetSharedConfigs sets clientConfig and limits in config
+func (cfg *Config) SetSharedConfigs(clientConfig client.Config, limits validation.Limits) {
 	cfg.clientConfig = clientConfig
+	cfg.limits = limits
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

@@ -217,7 +217,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 
 // Test that blank labels are removed by the ingester
 func TestIngesterAppendBlankLabel(t *testing.T) {
-	_, ing := newTestStore(t, defaultIngesterTestConfig())
+	_, ing := newTestStoreDefaults(t)
 	defer ing.Shutdown()
 
 	lp := labelPairs{
@@ -412,6 +412,8 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 
 func BenchmarkIngesterPush(b *testing.B) {
 	cfg := defaultIngesterTestConfig()
+	clientCfg := defaultClientTestConfig()
+	limits := defaultLimitsTestConfig()
 
 	const (
 		series  = 100
@@ -435,7 +437,7 @@ func BenchmarkIngesterPush(b *testing.B) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	b.ResetTimer()
 	for iter := 0; iter < b.N; iter++ {
-		_, ing := newTestStore(b, cfg)
+		_, ing := newTestStore(b, cfg, clientCfg, limits)
 		// Bump the timestamp on each of our test samples each time round the loop
 		for j := 0; j < samples; j++ {
 			for i := range ts {

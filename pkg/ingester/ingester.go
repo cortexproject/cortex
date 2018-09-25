@@ -117,7 +117,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
 // MemorySeriesStorage.
 type Ingester struct {
-	cfg Config
+	cfg          Config
 	clientConfig client.Config
 
 	chunkStore ChunkStore

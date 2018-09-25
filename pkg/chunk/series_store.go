@@ -72,6 +72,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 	if err != nil {
 		return nil, err
 	}
+	writer := NewWriter(cfg.WriterConfig, storage)
 
 	if cfg.CacheLookupsOlderThan != 0 {
 		schema = &schemaCaching{
@@ -88,6 +89,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 			schema:  schema,
 			limits:  limits,
 			Fetcher: fetcher,
+			writer:  writer,
 		},
 		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{
 			Size:     cfg.CardinalityCacheSize,

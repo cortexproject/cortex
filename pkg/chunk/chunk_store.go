@@ -61,6 +61,7 @@ func init() {
 type StoreConfig struct {
 	ChunkCacheConfig       cache.Config
 	WriteDedupeCacheConfig cache.Config
+	WriterConfig           WriterConfig
 
 	MinChunkAge              time.Duration
 	CardinalityCacheSize     int
@@ -76,6 +77,7 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
+	cfg.WriterConfig.RegisterFlags(f)
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.IntVar(&cfg.CardinalityCacheSize, "store.cardinality-cache-size", 0, "Size of in-memory cardinality cache, 0 to disable.")
 	f.DurationVar(&cfg.CardinalityCacheValidity, "store.cardinality-cache-validity", 1*time.Hour, "Period for which entries in the cardinality cache are valid.")
@@ -92,6 +94,7 @@ type store struct {
 	schema Schema
 	limits *validation.Overrides
 	*Fetcher
+	writer *Writer
 }
 
 func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits *validation.Overrides) (Store, error) {
@@ -99,6 +102,7 @@ func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectCl
 	if err != nil {
 		return nil, err
 	}
+	writer := NewWriter(cfg.WriterConfig, storage)
 
 	return &store{
 		cfg:     cfg,
@@ -107,6 +111,7 @@ func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectCl
 		schema:  schema,
 		limits:  limits,
 		Fetcher: fetcher,
+		writer:  writer,
 	}, nil
 }
 

@@ -21,7 +21,7 @@ func (m mockStore) PutOne(ctx context.Context, from, through model.Time, chunk C
 	return nil
 }
 
-func (m mockStore) IndexChunk(ctx context.Context, writer *Writer, chunk Chunk) error {
+func (m mockStore) IndexChunk(ctx context.Context, chunk Chunk) error {
 	return nil
 }
 

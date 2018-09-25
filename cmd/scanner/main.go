@@ -28,7 +28,6 @@ var (
 
 func main() {
 	var (
-		writerConfig     chunk.WriterConfig
 		schemaConfig     chunk.SchemaConfig
 		storageConfig    storage.Config
 		chunkStoreConfig chunk.StoreConfig
@@ -44,7 +43,7 @@ func main() {
 		reindexTablePrefix string
 	)
 
-	util.RegisterFlags(&writerConfig, &storageConfig, &schemaConfig, &chunkStoreConfig)
+	util.RegisterFlags(&storageConfig, &schemaConfig, &chunkStoreConfig)
 	flag.StringVar(&address, "address", "localhost:6060", "Address to listen on, for profiling, etc.")
 	flag.IntVar(&week, "week", 0, "Week number to scan, e.g. 2497 (0 means current week)")
 	flag.IntVar(&segments, "segments", 1, "Number of segments to read in parallel")
@@ -92,8 +91,6 @@ func main() {
 		reindexStore, err = chunk.NewStore(chunkStoreConfig, reindexSchemaConfig, storageOpts)
 		checkFatal(err)
 	}
-	writer := chunk.NewWriter(writerConfig, storageClient)
-	writer.Run()
 
 	tableName = fmt.Sprintf("%s%d", schemaConfig.ChunkTables.Prefix, week)
 	fmt.Printf("table %s\n", tableName)
@@ -101,7 +98,7 @@ func main() {
 	handlers := make([]handler, segments)
 	callbacks := make([]func(result chunk.ReadBatch), segments)
 	for segment := 0; segment < segments; segment++ {
-		handlers[segment] = newHandler(storageClient, reindexStore, writer, tableName, reindexTablePrefix, orgs)
+		handlers[segment] = newHandler(reindexStore, tableName, reindexTablePrefix, orgs)
 		callbacks[segment] = handlers[segment].handlePage
 	}
 
@@ -145,9 +142,7 @@ func (s summary) print() {
 }
 
 type handler struct {
-	storageClient      chunk.StorageClient
 	store              chunk.Store
-	writer             *chunk.Writer
 	tableName          string
 	pages              int
 	orgs               map[int]struct{}
@@ -155,11 +150,9 @@ type handler struct {
 	summary
 }
 
-func newHandler(storageClient chunk.StorageClient, store chunk.Store, writer *chunk.Writer, tableName string, reindexTablePrefix string, orgs map[int]struct{}) handler {
+func newHandler(store chunk.Store, tableName string, reindexTablePrefix string, orgs map[int]struct{}) handler {
 	return handler{
-		storageClient:      storageClient,
 		store:              store,
-		writer:             writer,
 		tableName:          tableName,
 		orgs:               orgs,
 		summary:            newSummary(),
@@ -192,7 +185,7 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 				level.Error(util.Logger).Log("msg", "chunk decode error", "err", err)
 				continue
 			}
-			err = h.store.IndexChunk(ctx, h.writer, ch)
+			err = h.store.IndexChunk(ctx, ch)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "indexing error", "err", err)
 				continue

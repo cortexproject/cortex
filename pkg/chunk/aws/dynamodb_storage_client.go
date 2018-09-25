@@ -721,6 +721,17 @@ func (b dynamoDBWriteBatch) Len() int {
 	return result
 }
 
+func stringForReq(req *dynamodb.WriteRequest) string {
+	switch {
+	case req.DeleteRequest != nil:
+		return fmt.Sprintf("%s:%x", aws.StringValue(req.DeleteRequest.Key[hashKey].S), req.DeleteRequest.Key[rangeKey].B)
+	case req.PutRequest != nil:
+		return fmt.Sprintf("%s:%x", aws.StringValue(req.PutRequest.Item[hashKey].S), req.PutRequest.Item[rangeKey].B)
+	default:
+		return "empty"
+	}
+}
+
 func (b dynamoDBWriteBatch) String() string {
 	var sb strings.Builder
 	sb.WriteByte('{')
@@ -773,13 +784,38 @@ func (b dynamoDBWriteBatch) AddBatch(a chunk.WriteBatch) {
 
 func (b dynamoDBWriteBatch) Take(undersizedOK bool) chunk.WriteBatch {
 	var ret = dynamoDBWriteBatch{}
-	if b.Len() >= dynamoDBMaxWriteBatchSize || undersizedOK {
-		ret.TakeReqs(b, dynamoDBMaxWriteBatchSize)
-	}
-	if len(ret) == 0 {
-		return nil
+	for {
+		if b.Len() >= dynamoDBMaxWriteBatchSize || undersizedOK {
+			ret.TakeReqs(b, dynamoDBMaxWriteBatchSize)
+		}
+		if len(ret) == 0 {
+			return nil
+		}
+		if !ret.deDuplicate() {
+			break
+		}
 	}
 	return ret
+}
+
+func (b dynamoDBWriteBatch) deDuplicate() bool {
+	changed := false
+	for tableName, reqs := range b {
+		// Remove duplicate entries based on hashValue:rangeValue
+		seenIndexEntries := map[string]struct{}{}
+		for i := 0; i < len(reqs); {
+			key := stringForReq(reqs[i])
+			if _, found := seenIndexEntries[key]; found {
+				reqs = append(reqs[:i], reqs[i+1:]...)
+				changed = true
+			} else {
+				seenIndexEntries[key] = struct{}{}
+				i++
+			}
+		}
+		b[tableName] = reqs
+	}
+	return changed
 }
 
 // Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.

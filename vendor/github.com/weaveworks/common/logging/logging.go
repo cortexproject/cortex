@@ -22,7 +22,6 @@ func Setup(logLevel string) error {
 	}
 	logrus.SetOutput(os.Stderr)
 	logrus.SetLevel(level)
-	logrus.SetFormatter(&textFormatter{})
 	logrus.AddHook(hook)
 	SetGlobal(Logrus(logrus.StandardLogger()))
 	return nil

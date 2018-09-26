@@ -1,10 +1,7 @@
 package logging
 
 import (
-	"bytes"
-	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -14,7 +11,6 @@ func NewLogrus(level Level) Interface {
 	log := logrus.New()
 	log.Out = os.Stderr
 	log.Level = level.Logrus
-	log.Formatter = &textFormatter{}
 	return logrusLogger{log}
 }
 
@@ -53,22 +49,4 @@ func (l logrusEntry) WithFields(fields Fields) Interface {
 	return logrusEntry{
 		Entry: l.Entry.WithFields(map[string]interface{}(fields)),
 	}
-}
-
-type textFormatter struct{}
-
-// Based off logrus.TextFormatter, which behaves completely
-// differently when you don't want colored output
-func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	b := &bytes.Buffer{}
-
-	levelText := strings.ToUpper(entry.Level.String())[0:4]
-	timeStamp := entry.Time.Format("2006/01/02 15:04:05.000000")
-	fmt.Fprintf(b, "%s: %s %s", levelText, timeStamp, entry.Message)
-	if len(entry.Data) > 0 {
-		b.WriteString(" " + fieldsToString(entry.Data))
-	}
-
-	b.WriteByte('\n')
-	return b.Bytes(), nil
 }

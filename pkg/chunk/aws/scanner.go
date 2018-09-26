@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/client"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -30,6 +32,9 @@ func (a storageClient) ScanTable(ctx context.Context, tableName string, withValu
 				TotalSegments:          aws.Int64(int64(len(callbacks))),
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			}
+			withRetrys := func(req *request.Request) {
+				req.Retryer = client.DefaultRetryer{NumMaxRetries: a.cfg.backoffConfig.MaxRetries}
+			}
 			err := a.DynamoDB.ScanPagesWithContext(ctx, input, func(page *dynamodb.ScanOutput, lastPage bool) bool {
 				if cc := page.ConsumedCapacity; cc != nil {
 					dynamoConsumedCapacity.WithLabelValues("DynamoDB.ScanTable", *cc.TableName).
@@ -38,7 +43,7 @@ func (a storageClient) ScanTable(ctx context.Context, tableName string, withValu
 
 				callback(&dynamoDBReadResponse{items: page.Items})
 				return true
-			})
+			}, withRetrys)
 			if err != nil {
 				outerErr = err
 				// TODO: abort all segments

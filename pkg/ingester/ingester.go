@@ -92,7 +92,7 @@ type Config struct {
 	RateUpdatePeriod time.Duration
 
 	// For testing, you can override the address and ID of this ingester.
-	ingesterClientFactory func(addr string, cfg client.Config) (client.IngesterClient, error)
+	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
 
 // SetClientConfig sets clientConfig in config

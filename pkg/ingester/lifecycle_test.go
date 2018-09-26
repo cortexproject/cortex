@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -114,7 +115,7 @@ func TestIngesterTransfer(t *testing.T) {
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
-	ing1.cfg.ingesterClientFactory = func(addr string, _ client.Config) (client.IngesterClient, error) {
+	ing1.cfg.ingesterClientFactory = func(addr string, _ client.Config) (client.HealthAndIngesterClient, error) {
 		return ingesterClientAdapater{
 			ingester: ing2,
 		}, nil
@@ -266,6 +267,7 @@ func (*ingesterTransferChunkStreamMock) RecvMsg(m interface{}) error {
 
 type ingesterClientAdapater struct {
 	client.IngesterClient
+	grpc_health_v1.HealthClient
 	ingester client.IngesterServer
 }
 

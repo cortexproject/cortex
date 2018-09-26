@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -15,7 +16,8 @@ import (
 // ScanTable reads the whole of a table on multiple goroutines in
 // parallel, calling back with batches of results on one of the
 // callbacks for each goroutine.
-func (a storageClient) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+func (a storageClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+	tableName := a.schemaCfg.ChunkTableFor(from) // FIXME ignoring 'through'
 	var outerErr error
 	projection := hashKey + "," + rangeKey
 	if withValue {

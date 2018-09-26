@@ -25,7 +25,7 @@ func (m mockStore) IndexChunk(ctx context.Context, chunk Chunk) error {
 	return nil
 }
 
-func (m mockStore) Scan(ctx context.Context, time model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
+func (m mockStore) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
 	return nil
 }
 

@@ -103,7 +103,7 @@ func main() {
 	}
 
 	tableTime := model.TimeFromUnix(int64(week) * 7 * 24 * 3600)
-	err = chunkStore.Scan(context.Background(), tableTime, reindexTablePrefix != "", callbacks)
+	err = chunkStore.Scan(context.Background(), tableTime, tableTime, reindexTablePrefix != "", callbacks)
 	checkFatal(err)
 
 	if reindexStore != nil {

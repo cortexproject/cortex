@@ -199,9 +199,8 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	return c.getMetricNameChunks(ctx, from, through, matchers, metricName)
 }
 
-func (c *store) Scan(ctx context.Context, time model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
-	tableName := "dev_chunk_data_weekly_2478" // hard-coded as it's too hard...
-	return c.storage.ScanTable(ctx, tableName, withValue, callbacks)
+func (c *store) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
+	return c.storage.Scan(ctx, from, through, withValue, callbacks)
 }
 
 func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {

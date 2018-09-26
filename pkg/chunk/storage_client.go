@@ -1,6 +1,10 @@
 package chunk
 
-import "context"
+import (
+	"context"
+
+	"github.com/prometheus/common/model"
+)
 
 // StorageClient is a client for the persistent storage for Cortex. (e.g. DynamoDB + S3).
 type StorageClient interface {
@@ -14,8 +18,8 @@ type StorageClient interface {
 	// For the read path.
 	QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error
 
-	// Iterate through every row in a table, for batch jobs
-	ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result ReadBatch)) error
+	// Iterate through every row in the tables in time range, for batch jobs
+	Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error
 
 	// For storing and retrieving chunks.
 	PutChunks(ctx context.Context, chunks []Chunk) error

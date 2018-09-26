@@ -10,6 +10,7 @@ import (
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -489,7 +490,7 @@ func (s *storageClientColumnKey) GetChunks(ctx context.Context, input []chunk.Ch
 	return output, nil
 }
 
-func (s *storageClientColumnKey) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+func (s *storageClientColumnKey) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	panic("not implemented")
 }
 
@@ -541,7 +542,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 	return nil
 }
 
-func (s *storageClientV1) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+func (s *storageClientV1) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	panic("not implemented")
 }
 

@@ -15,7 +15,7 @@ type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error
 	IndexChunk(ctx context.Context, chunk Chunk) error
-	Scan(ctx context.Context, time model.Time, withValue bool, callbacks []func(result ReadBatch)) error
+	Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error
 	Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
 	Stop()
 }
@@ -77,9 +77,9 @@ func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 	})
 }
 
-func (c compositeStore) Scan(ctx context.Context, time model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
-	return c.forStores(time, time, func(from, through model.Time, store Store) error {
-		return store.Scan(ctx, time, withValue, callbacks)
+func (c compositeStore) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
+	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+		return store.Scan(ctx, from, through, withValue, callbacks)
 	})
 }
 

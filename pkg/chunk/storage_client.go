@@ -1,6 +1,10 @@
 package chunk
 
-import "context"
+import (
+	"context"
+
+	"github.com/prometheus/common/model"
+)
 
 // IndexClient is a client for the storage of the index (e.g. DynamoDB or Bigtable).
 type IndexClient interface {
@@ -19,8 +23,8 @@ type IndexClient interface {
 type ObjectClient interface {
 	Stop()
 
-	// Iterate through every row in a table, for batch jobs
-	ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result ReadBatch)) error
+	// Iterate through every row in the tables in time range, for batch jobs
+	Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error
 
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)

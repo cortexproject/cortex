@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/common/model"
 )
 
 // MockStorage is a fake in-memory StorageClient.
@@ -191,7 +192,7 @@ func (m *MockStorage) BatchWriteNoRetry(ctx context.Context, batch WriteBatch) (
 	return &toRetry, err
 }
 
-func (m *MockStorage) ScanTable(ctx context.Context, tableName string, withValue bool, callbacks []func(result ReadBatch)) error {
+func (m *MockStorage) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
 	return nil
 }
 

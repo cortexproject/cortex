@@ -274,7 +274,8 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 
 	// First, calculate the checksum of the chunk and confirm it matches
 	// what we expected.
-	if c.ChecksumSet && c.Checksum != crc32.Checksum(input, castagnoliTable) {
+	calculatedChecksum := crc32.Checksum(input, castagnoliTable)
+	if c.ChecksumSet && c.Checksum != calculatedChecksum {
 		return errors.WithStack(ErrInvalidChecksum)
 	}
 
@@ -303,6 +304,8 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 		if !equalByKey(*c, tempMetadata) {
 			return errors.WithStack(ErrWrongMetadata)
 		}
+	} else {
+		tempMetadata.Checksum, tempMetadata.ChecksumSet = calculatedChecksum, true
 	}
 	*c = tempMetadata
 

@@ -17,6 +17,10 @@ For more details on the Cortex architecture, you should read / watch:
 
 The query frontend is an optional job which accepts HTTP requests and queues them by tenant ID, retrying them on errors. This allow for the occasional large query which would otherwise cause a querier OOM, allowing us to over-provision querier parallelism. Also, it prevents multiple large requests from being convoyed on a single querier by distributing them FIFO across all queriers. And finally, it prevent a single tenant from DoSing other tenants by fairly scheduling queries between tenants.
 
+The query frontend will also split multi-day queries into multiple single-day queries, executing these queries in parallel on downstream queriers, and stitching the results back together again.  This prevents large, multi-day queries from OOMing a single querier, and helps them execute faster.
+
+Finally, the query frontend will also cache query results and reuse the on subsequent queries.  If the cached results are incomplete, the query frontend will calculate the required queries and execute them in parallel on downstream queries.  The query frontend can optionally align queries with their step parameter, to improve the cacheability of the query results.
+
 The query frontend job accepts gRPC streaming requests from the queriers, which then "pull" requests from the frontend. For HA it is recommended you run multiple frontends - the queriers will connect to (and pull requests from) all of them. To get the benefit of the fair scheduling, it is recommended you run fewer frontends than queriers - two should suffice.
 
 See the document "[Cortex Query Woes](https://docs.google.com/document/d/1lsvSkv0tiAMPQv-V8vI2LZ8f4i9JuTRsuPI_i-XcAqY)" for more details design discussion. In the future, query splitting, query alignment and query results caching will be added to the frontend.

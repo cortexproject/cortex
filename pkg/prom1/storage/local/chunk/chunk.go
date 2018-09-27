@@ -27,7 +27,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
 // ChunkLen is the length of a chunk in bytes.

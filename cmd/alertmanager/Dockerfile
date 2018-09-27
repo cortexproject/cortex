@@ -6,5 +6,5 @@ ENTRYPOINT [ "/bin/alertmanager" ]
 
 ARG revision
 LABEL org.opencontainers.image.title="alertmanager" \
-      org.opencontainers.image.source="https://github.com/weaveworks/cortex/tree/master/cmd/alertmanager" \
+      org.opencontainers.image.source="https://github.com/cortexproject/cortex/tree/master/cmd/alertmanager" \
       org.opencontainers.image.revision="${revision}"

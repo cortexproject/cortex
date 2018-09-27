@@ -7,11 +7,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
-	"github.com/weaveworks/cortex/pkg/querier/frontend"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {

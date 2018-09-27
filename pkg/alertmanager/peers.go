@@ -4,9 +4,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (

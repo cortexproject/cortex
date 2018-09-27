@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{

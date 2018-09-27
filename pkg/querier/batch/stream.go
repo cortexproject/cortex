@@ -3,7 +3,7 @@ package batch
 import (
 	"fmt"
 
-	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 )
 
 // batchStream deals with iteratoring through multiple, non-overlapping batches,

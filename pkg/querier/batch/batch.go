@@ -3,10 +3,10 @@ package batch
 import (
 	"fmt"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
 // iterator iterates over batches.

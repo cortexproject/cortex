@@ -19,11 +19,11 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/pkg/alertmanager"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {

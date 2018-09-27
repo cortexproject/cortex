@@ -7,11 +7,11 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 type resultsCacheConfig struct {

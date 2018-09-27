@@ -18,12 +18,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
-	"github.com/weaveworks/cortex/pkg/util/wire"
 )
 
 type testStore struct {

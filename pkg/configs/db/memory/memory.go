@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/weaveworks/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs"
 )
 
 // DB is an in-memory database for testing, and local development

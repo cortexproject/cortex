@@ -7,12 +7,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/storage"
-	"github.com/weaveworks/cortex/pkg/ingester"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func main() {

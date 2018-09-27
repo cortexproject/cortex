@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+  labels:
+    job-name: bryan-dynamodb-scanner
+    name: bryan-dynamodb-scanner
+  name: bryan-dynamodb-scanner
+  namespace: cortex
+spec:
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        name: bryan-dynamodb-scanner
+    spec:
+      containers:
+      - args:
+        - -week=2498
+        - -delete-orgs-file=/config/delete-orgs
+        - -segments=64
+        - -writers=16
+        - -writer-rate-limit=400
+        - -dynamodb.url=dynamodb://us-east-1/
+        - -dynamodb.chunk-table.from=2017-05-19
+        - -dynamodb.chunk-table.prefix=prod_chunk_data_weekly_
+        - -s3.url=s3://not:used@xxxxxxxx:0
+        - -dynamodb.reindex-prefix=prod_chunk_index_
+        - -dynamodb.rechunk-prefix=prod_chunk_data_
+        - -dynamodb.use-periodic-tables=true
+        - -dynamodb.v9-schema-from=2017-01-10
+        - -memcache.write-back-goroutines=1
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          value: "redacted"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "redacted"
+        - name: AWS_SESSION_TOKEN
+          value: "redacted"
+        image: quay.io/weaveworks/cortex-scanner:dynamodb-scanning-6ed98674
+        imagePullPolicy: Always
+        name: scanner
+        ports:
+        - containerPort: 6060
+          protocol: TCP
+        resources:
+          requests:
+            cpu: "4"
+            memory: 2Gi
+        volumeMounts:
+        - mountPath: /config
+          name: config-volume
+      imagePullSecrets:
+      - name: quay-secret
+      restartPolicy: Never
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: prune-config
+        name: config-volume

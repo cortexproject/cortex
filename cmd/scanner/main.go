@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
 
 	"github.com/go-kit/kit/log/level"
@@ -44,7 +45,7 @@ func main() {
 	)
 
 	util.RegisterFlags(&storageConfig, &schemaConfig, &chunkStoreConfig)
-	flag.StringVar(&address, "address", "localhost:6060", "Address to listen on, for profiling, etc.")
+	flag.StringVar(&address, "address", ":6060", "Address to listen on, for profiling, etc.")
 	flag.Int64Var(&week, "week", 0, "Week number to scan, e.g. 2497 (0 means current week)")
 	flag.IntVar(&segments, "segments", 1, "Number of segments to read in parallel")
 	flag.StringVar(&orgsFile, "delete-orgs-file", "", "File containing IDs of orgs to delete")
@@ -60,6 +61,7 @@ func main() {
 
 	// HTTP listener for profiling
 	go func() {
+		http.Handle("/metrics", promhttp.Handler())
 		checkFatal(http.ListenAndServe(address, nil))
 	}()
 

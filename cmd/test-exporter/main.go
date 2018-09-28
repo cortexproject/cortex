@@ -3,13 +3,16 @@ package main
 import (
 	"flag"
 	"math"
+	"os"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
-	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/querier/correctness"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/tracing"
 )
 
 var (
@@ -25,15 +28,23 @@ func main() {
 	runnerConfig.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	trace := tracing.NewFromEnv("test-exporter")
+	defer trace.Close()
+
+	util.InitLogger(&serverConfig)
+
 	server, err := server.New(serverConfig)
 	if err != nil {
-		log.Fatal(err)
+		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
+		os.Exit(1)
 	}
 	defer server.Shutdown()
 
 	runner, err := correctness.NewRunner(runnerConfig)
 	if err != nil {
-		log.Fatal(err)
+		level.Error(util.Logger).Log("msg", "error initializing runner", "err", err)
+		os.Exit(1)
 	}
 	defer runner.Stop()
 

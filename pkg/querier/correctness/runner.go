@@ -3,19 +3,24 @@ package correctness
 import (
 	"context"
 	"flag"
+	"fmt"
 	"math"
 	"math/rand"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	opentracing "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
-	log "github.com/sirupsen/logrus"
-	"github.com/weaveworks/common/instrument"
+
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/weaveworks/common/user"
 )
 
@@ -105,11 +110,14 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 		Address: cfg.prometheusAddr,
 	}
 	if cfg.userID != "" {
-		apiCfg.RoundTripper = promhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.userID), req)
-			return http.DefaultTransport.RoundTrip(req)
-		})
+		apiCfg.RoundTripper = &nethttp.Transport{
+			RoundTripper: promhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.userID), req)
+				return api.DefaultRoundTripper.RoundTrip(req)
+			}),
+		}
 	}
+
 	client, err := api.NewClient(apiCfg)
 	if err != nil {
 		return nil, err
@@ -123,6 +131,16 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 	tc.wg.Add(1)
 	go tc.verifyLoop()
 	return tc, nil
+}
+
+type tracingClient struct {
+	api.Client
+}
+
+func (t *tracingClient) Do(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
+	req, tr := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
+	defer tr.Finish()
+	return t.Client.Do(ctx, req)
 }
 
 // Stop the checking goroutine.
@@ -177,6 +195,11 @@ func (r *Runner) runRandomTest() {
 	tc := r.cases[rand.Intn(len(r.cases))]
 	r.mtx.Unlock()
 
+	ctx := context.Background()
+	log, ctx := spanlogger.New(ctx, "runRandomTest")
+	level.Info(log).Log("name", tc.Name())
+	defer log.Finish()
+
 	// pick a random time to start testStart and now
 	// pick a random length between minDuration and maxDuration
 	now := time.Now()
@@ -189,17 +212,14 @@ func (r *Runner) runRandomTest() {
 	if duration < r.cfg.testQueryMinSize {
 		return
 	}
+	level.Info(log).Log("start", start, "duration", duration)
 
-	var pairs []model.SamplePair
-	err := instrument.TimeRequestHistogram(context.Background(), "Prometheus.Query", prometheusRequestDuration, func(ctx context.Context) error {
-		var err error
-		pairs, err = tc.Query(ctx, r.client, r.cfg.extraSelectors, start, duration)
-		return err
-	})
+	pairs, err := tc.Query(ctx, r.client, r.cfg.extraSelectors, start, duration)
 	if err != nil {
-		log.Errorf("Error running test: %v", err)
+		level.Info(log).Log("err", err)
 		return
 	}
+
 	failures := false
 	for _, pair := range pairs {
 		correct := r.timeEpsilonCorrect(tc.ExpectedValueAt, pair) || r.valueEpsilonCorrect(tc.ExpectedValueAt, pair)
@@ -208,13 +228,15 @@ func (r *Runner) runRandomTest() {
 		} else {
 			failures = true
 			sampleResult.WithLabelValues(fail).Inc()
-			log.Errorf("Wrong value: %f !~ %f", tc.ExpectedValueAt(pair.Timestamp.Time()), pair.Value)
+			level.Error(log).Log("msg", "wrong value", "expected", tc.ExpectedValueAt(pair.Timestamp.Time()), "actual", pair.Value)
+			log.LogFields(otlog.Error(fmt.Errorf("wrong value")))
 		}
 	}
 
 	expectedNumSamples := int(tc.Quantized(duration) / r.cfg.ScrapeInterval)
 	if !epsilonCorrect(float64(len(pairs)), float64(expectedNumSamples), r.cfg.samplesEpsilon) {
-		log.Errorf("Expected %d samples, got %d", expectedNumSamples, len(pairs))
+		level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
+		log.LogFields(otlog.Error(fmt.Errorf("wrong number of samples")))
 		failures = true
 	}
 

@@ -158,7 +158,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	for _, result := range results {
 		for _, response := range result.([]*ingester_client.QueryStreamResponse) {
 			for _, series := range response.Timeseries {
-				hash := ingester_client.FromLabelPairs(series.Labels).FastFingerprint()
+				hash := client.FastFingerprint(series.Labels)
 				existing := hashToSeries[hash]
 				existing.Labels = series.Labels
 				existing.Chunks = append(existing.Chunks, series.Chunks...)

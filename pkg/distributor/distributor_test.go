@@ -251,11 +251,11 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 		})
 	}
 
-	ingesterDescs := []*ring.IngesterDesc{}
+	ingesterDescs := []ring.IngesterDesc{}
 	ingestersByAddr := map[string]*mockIngester{}
 	for i := range ingesters {
 		addr := fmt.Sprintf("%d", i)
-		ingesterDescs = append(ingesterDescs, &ring.IngesterDesc{
+		ingesterDescs = append(ingesterDescs, ring.IngesterDesc{
 			Addr:      addr,
 			Timestamp: time.Now().Unix(),
 		})
@@ -346,7 +346,7 @@ func mustEqualMatcher(k, v string) *labels.Matcher {
 // ingesters.
 type mockRing struct {
 	prometheus.Counter
-	ingesters         []*ring.IngesterDesc
+	ingesters         []ring.IngesterDesc
 	replicationFactor uint32
 }
 

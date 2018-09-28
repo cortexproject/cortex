@@ -194,7 +194,7 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 
 	var (
 		n             = r.cfg.ReplicationFactor
-		ingesters     = make([]*IngesterDesc, 0, n)
+		ingesters     = make([]IngesterDesc, 0, n)
 		distinctHosts = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0
@@ -247,11 +247,11 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	maxErrors := r.cfg.ReplicationFactor / 2
 
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester, Read) {
+		if !r.IsHealthy(&ingester, Read) {
 			maxErrors--
 			continue
 		}
@@ -342,7 +342,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		JOINING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester, Reporting) {
+		if !r.IsHealthy(&ingester, Reporting) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

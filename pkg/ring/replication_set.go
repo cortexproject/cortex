@@ -8,7 +8,7 @@ import (
 // ReplicationSet describes the ingesters to talk to for a given key, and how
 // many errors to tolerate.
 type ReplicationSet struct {
-	Ingesters []*IngesterDesc
+	Ingesters []IngesterDesc
 	MaxErrors int
 }
 
@@ -26,7 +26,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*Ing
 		close(done)
 	}()
 
-	for i, ing := range r.Ingesters {
+	for i := range r.Ingesters {
 		go func(i int, ing *IngesterDesc) {
 			// wait to send extra requests
 			if i >= minSuccess && delay > 0 {
@@ -45,7 +45,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*Ing
 			} else {
 				resultsChan <- result
 			}
-		}(i, ing)
+		}(i, &r.Ingesters[i])
 	}
 
 	var (

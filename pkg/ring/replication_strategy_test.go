@@ -73,14 +73,14 @@ func TestReplicationStrategy(t *testing.T) {
 			ExpectedError: "at least 3 live ingesters required, could only find 2",
 		},
 	} {
-		ingesters := []*IngesterDesc{}
+		ingesters := []IngesterDesc{}
 		for i := 0; i < tc.LiveIngesters; i++ {
-			ingesters = append(ingesters, &IngesterDesc{
+			ingesters = append(ingesters, IngesterDesc{
 				Timestamp: time.Now().Unix(),
 			})
 		}
 		for i := 0; i < tc.DeadIngesters; i++ {
-			ingesters = append(ingesters, &IngesterDesc{})
+			ingesters = append(ingesters, IngesterDesc{})
 		}
 
 		r, err := New(Config{

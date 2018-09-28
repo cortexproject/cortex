@@ -8,7 +8,7 @@ import (
 )
 
 // ByToken is a sortable list of TokenDescs
-type ByToken []*TokenDesc
+type ByToken []TokenDesc
 
 func (ts ByToken) Len() int           { return len(ts) }
 func (ts ByToken) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
@@ -22,23 +22,23 @@ func ProtoDescFactory() proto.Message {
 // NewDesc returns an empty ring.Desc
 func NewDesc() *Desc {
 	return &Desc{
-		Ingesters: map[string]*IngesterDesc{},
+		Ingesters: map[string]IngesterDesc{},
 	}
 }
 
 // AddIngester adds the given ingester to the ring.
 func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
 	if d.Ingesters == nil {
-		d.Ingesters = map[string]*IngesterDesc{}
+		d.Ingesters = map[string]IngesterDesc{}
 	}
-	d.Ingesters[id] = &IngesterDesc{
+	d.Ingesters[id] = IngesterDesc{
 		Addr:      addr,
 		Timestamp: time.Now().Unix(),
 		State:     state,
 	}
 
 	for _, token := range tokens {
-		d.Tokens = append(d.Tokens, &TokenDesc{
+		d.Tokens = append(d.Tokens, TokenDesc{
 			Token:    token,
 			Ingester: id,
 		})
@@ -50,7 +50,7 @@ func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState
 // RemoveIngester removes the given ingester and all its tokens.
 func (d *Desc) RemoveIngester(id string) {
 	delete(d.Ingesters, id)
-	output := []*TokenDesc{}
+	output := []TokenDesc{}
 	for i := 0; i < len(d.Tokens); i++ {
 		if d.Tokens[i].Ingester != id {
 			output = append(output, d.Tokens[i])
@@ -73,8 +73,8 @@ func (d *Desc) ClaimTokens(from, to string) []uint32 {
 }
 
 // FindIngestersByState returns the list of ingesters in the given state
-func (d *Desc) FindIngestersByState(state IngesterState) []*IngesterDesc {
-	var result []*IngesterDesc
+func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
+	var result []IngesterDesc
 	for _, ing := range d.Ingesters {
 		if ing.State == state {
 			result = append(result, ing)

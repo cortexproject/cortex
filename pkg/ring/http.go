@@ -103,7 +103,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ing := r.ringDesc.Ingesters[id]
 		timestamp := time.Unix(ing.Timestamp, 0)
 		state := ing.State.String()
-		if !r.IsHealthy(ing, Reporting) {
+		if !r.IsHealthy(&ing, Reporting) {
 			state = unhealthy
 		}
 

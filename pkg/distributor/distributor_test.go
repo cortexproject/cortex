@@ -384,6 +384,7 @@ func (r mockRing) ReplicationFactor() int {
 type mockIngester struct {
 	sync.Mutex
 	client.IngesterClient
+	grpc_health_v1.HealthClient
 	happy      bool
 	stats      client.UsersStatsResponse
 	timeseries map[uint32]*client.PreallocTimeseries

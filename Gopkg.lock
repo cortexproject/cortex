@@ -232,6 +232,14 @@
   revision = "697e7c57f99bb127606c4d4f975c2ff4f34eca1c"
 
 [[projects]]
+  digest = "1:3fdbd53962bb796a751552e6be1fb3dbd293d6d5851c0c48f611a82480769d7c"
+  name = "github.com/gogo/googleapis"
+  packages = ["google/rpc"]
+  pruneopts = "UT"
+  revision = "8558fb44d2f1fc223118afc694129d2c2d2924d1"
+  version = "v1.1.0"
+
+[[projects]]
   digest = "1:3f7c586d2fd571c4f2e3d313c0638b33b999055de507d5f11fafe27e5adc30db"
   name = "github.com/gogo/protobuf"
   packages = [
@@ -246,6 +254,14 @@
   version = "v1.1.1"
 
 [[projects]]
+  digest = "1:34cda9b255535dd76ef14c46a9ad6f440f20283b6cd353403717730d149815ae"
+  name = "github.com/gogo/status"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "d60b5acac426cb52f7e28124c6aaa862d9f339f5"
+  version = "v1.0.3"
+
+[[projects]]
   branch = "master"
   digest = "1:1ba1d79f2810270045c328ae5d674321db34e3aae468eb4233883b473c5c0467"
   name = "github.com/golang/glog"
@@ -254,8 +270,7 @@
   revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
 
 [[projects]]
-  branch = "master"
-  digest = "1:e870ada7a5dc7e50904bf54945cc52c4bcb88c39d6e87090343c28ec8845b86e"
+  digest = "1:4fbf68bee2a60f6af6414572936edb295f6f26b73c6fb25ab0e7b03b013854f5"
   name = "github.com/golang/protobuf"
   packages = [
     "jsonpb",
@@ -265,11 +280,13 @@
     "ptypes/any",
     "ptypes/duration",
     "ptypes/empty",
+    "ptypes/struct",
     "ptypes/timestamp",
     "ptypes/wrappers",
   ]
   pruneopts = "UT"
-  revision = "2bba0603135d7d7f5cb73b2125beeda19c09f4ef"
+  revision = "aa810b61a9c79d51363740d207bb46cf8e620ed5"
+  version = "v1.2.0"
 
 [[projects]]
   branch = "master"
@@ -919,7 +936,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:7e52f72864ff1d884dbee16153715d71510a3be1b715b313dcf416d5bc9bbe61"
+  digest = "1:cb82650acf4059a7a4ea11a3206fedc6315564dc93ef53e7cb98fb28a956ede2"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -939,7 +956,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "6a85bf520acfc70202792d295429ffcf10de9e53"
+  revision = "2a0cb6145a2f541de5ca19437fee675baf6a1985"
 
 [[projects]]
   digest = "1:efac30de93ca1ff38050f46dc34f1338ebc8778de488f919f79ad9e6188719d3"
@@ -1111,7 +1128,7 @@
   revision = "2b5a72b8730b0b16380010cfe5286c42108d88e7"
 
 [[projects]]
-  digest = "1:51b4cbf22763ef45ff316f82c73e94eef9a200d26aa49ebd78ccf78c200b3be0"
+  digest = "1:b59f366710f98a670ae357a3d2ef06ff6d592184593e42248316e376655bce5e"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -1124,10 +1141,13 @@
     "credentials/oauth",
     "encoding",
     "encoding/gzip",
-    "grpclb/grpc_lb_v1/messages",
+    "encoding/proto",
     "grpclog",
     "health/grpc_health_v1",
     "internal",
+    "internal/backoff",
+    "internal/channelz",
+    "internal/grpcrand",
     "keepalive",
     "metadata",
     "naming",
@@ -1141,8 +1161,8 @@
     "transport",
   ]
   pruneopts = "UT"
-  revision = "7cea4cc846bcf00cbb27595b07da5de875ef7de9"
-  version = "v1.9.1"
+  revision = "168a6198bcb0ef175f7dacec0b8691fc141dc9b8"
+  version = "v1.13.0"
 
 [[projects]]
   digest = "1:abeb38ade3f32a92943e5be54f55ed6d6e3b6602761d74b4aab4c9dd45c18abd"
@@ -1387,6 +1407,7 @@
     "github.com/prometheus/prometheus/rules",
     "github.com/prometheus/prometheus/scrape",
     "github.com/prometheus/prometheus/storage",
+    "github.com/prometheus/prometheus/util/stats",
     "github.com/prometheus/prometheus/util/strutil",
     "github.com/prometheus/prometheus/web/api/v1",
     "github.com/prometheus/tsdb",
@@ -1395,6 +1416,8 @@
     "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
+    "github.com/uber/jaeger-client-go",
+    "github.com/uber/jaeger-client-go/config",
     "github.com/weaveworks/billing-client",
     "github.com/weaveworks/common/aws",
     "github.com/weaveworks/common/errors",

@@ -1,5 +1,27 @@
 # Cortex Arguments Explained
 
+## Query Frontend
+
+- `-querier.align-querier-with-step`
+
+   If set to true, will cause the query frontend to mutate incoming queries and align their start and end parameters to the step parameter of the query.  This improves the cacheability of the query results.
+
+- `-querier.split-queries-by-day`
+
+   If set to true, will case the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.
+
+- `-querier.cache-results`
+
+   If set to true, will cause the querier to cache query results.  The cache will be used to answer future, overlapping queries.  The query frontend calculates extra queries required to fill gaps in the cache.
+
+- `-frontend.max-cache-freshness`
+
+   When caching query results, it is desirable to prevent the caching of very recent results that might still be in flux.  Use this parameter to configure the age of results that should be excluded.
+
+- `-memcached.{hostname, service, timeout}`
+
+   Use these flags to specify the location and timeout of the memcached cluster used to cache query results.
+
 ## Distributor
 
 - `-distributor.shard-by-all-labels`

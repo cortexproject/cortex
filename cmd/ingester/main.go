@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -95,6 +96,7 @@ func main() {
 	defer ingester.Shutdown()
 
 	client.RegisterIngesterServer(server.GRPC, ingester)
+	grpc_health_v1.RegisterHealthServer(server.GRPC, ingester)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	server.HTTP.Path("/flush").Handler(http.HandlerFunc(ingester.FlushHandler))
 	server.Run()

@@ -99,8 +99,9 @@ func main() {
 		reindexSchemaConfig := schemaConfig
 		reindexSchemaConfig.ChunkTables.Prefix = rechunkTablePrefix
 		reindexSchemaConfig.IndexTables.Prefix = reindexTablePrefix
-		// Note we rely on aws storageClient not using its schemaConfig on the write path
-		reindexStore, err = chunk.NewStore(chunkStoreConfig, reindexSchemaConfig, storageOpts)
+		reindexOpts, err := storage.Opts(storageConfig, reindexSchemaConfig)
+		checkFatal(err)
+		reindexStore, err = chunk.NewStore(chunkStoreConfig, reindexSchemaConfig, reindexOpts)
 		checkFatal(err)
 	}
 
@@ -201,7 +202,11 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 					continue
 				}
 			} else {
-				h.store.Put(ctx, []chunk.Chunk{ch})
+				err = h.store.Put(ctx, []chunk.Chunk{ch})
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "put error", "err", err)
+					continue
+				}
 			}
 		}
 	}

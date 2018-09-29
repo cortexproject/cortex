@@ -308,7 +308,7 @@ func (i ingesterClientAdapater) Close() error {
 // removing itself from the ring.
 func TestIngesterFlush(t *testing.T) {
 	// Start the ingester, and get it into ACTIVE state.
-	store, ing := newTestStoreDefaults(t)
+	store, ing := newDefaultTestStore(t)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 		return ing.lifecycler.GetState()

@@ -42,7 +42,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	return store, ing
 }
 
-func newTestStoreDefaults(t require.TestingT) (*testStore, *Ingester) {
+func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
 	return newTestStore(t,
 		defaultIngesterTestConfig(),
 		defaultClientTestConfig(),
@@ -125,7 +125,7 @@ func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.Ma
 }
 
 func TestIngesterAppend(t *testing.T) {
-	store, ing := newTestStoreDefaults(t)
+	store, ing := newDefaultTestStore(t)
 
 	userIDs := []string{"1", "2", "3"}
 
@@ -186,7 +186,7 @@ func (s *stream) Send(response *client.QueryStreamResponse) error {
 }
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
-	_, ing := newTestStoreDefaults(t)
+	_, ing := newDefaultTestStore(t)
 	defer ing.Shutdown()
 
 	m := labelPairs{
@@ -217,7 +217,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 
 // Test that blank labels are removed by the ingester
 func TestIngesterAppendBlankLabel(t *testing.T) {
-	_, ing := newTestStoreDefaults(t)
+	_, ing := newDefaultTestStore(t)
 	defer ing.Shutdown()
 
 	lp := labelPairs{
@@ -371,7 +371,7 @@ func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
 }
 
 func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
-	_, ing := newTestStoreDefaults(b)
+	_, ing := newDefaultTestStore(b)
 	defer ing.Shutdown()
 
 	var (

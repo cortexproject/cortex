@@ -2,9 +2,10 @@ package main
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFlags(t *testing.T) {
-	getConfigsFromCommandLine()
-	t.Log("Success (no panics for 'flag redefined')")
+	assert.NotPanics(t, getConfigsFromCommandLine)
 }

@@ -153,7 +153,8 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 		return err
 	}
 
-	return c.index.BatchWrite(ctx, writeReqs)
+	c.writer.Write <- writeReqs
+	return nil
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.

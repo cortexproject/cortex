@@ -119,6 +119,7 @@ func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectCl
 func (c *store) Stop() {
 	c.storage.Stop()
 	c.Fetcher.Stop()
+	c.writer.Stop()
 }
 
 // Put implements ChunkStore

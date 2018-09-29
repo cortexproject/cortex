@@ -29,6 +29,8 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 	return logger, ctx
 }
 
+// Log implements gokit's Logger interface; sends logs to underlying logger and
+// also puts the on the spans.
 func (s *SpanLogger) Log(kvps ...interface{}) error {
 	s.Logger.Log(kvps...)
 	fields, err := otlog.InterleavedKVToFields(kvps...)

@@ -102,9 +102,11 @@ func (sc *Writer) batcher() {
 	var queue, outBatch WriteBatch
 	queue = sc.storage.NewWriteBatch()
 	for {
+		queueLen := queue.Len()
+		writerQueueLength.Set(float64(queueLen)) // Prometheus metric
 		var in, out chan WriteBatch
 		// We will allow in new data if the queue isn't too long
-		if queue.Len() < sc.maxQueueSize {
+		if queueLen < sc.maxQueueSize {
 			in = sc.Write
 		}
 		// We will send out a batch if the queue is big enough, or if we're finishing

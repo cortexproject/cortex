@@ -266,6 +266,7 @@ func TestChunkStore_Get(t *testing.T) {
 					}); err != nil {
 						t.Fatal(err)
 					}
+					store.Flush()
 
 					matchers, err := promql.ParseMetricSelector(tc.query)
 					if err != nil {
@@ -372,6 +373,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 					if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
 						t.Fatal(err)
 					}
+					store.Flush()
 
 					matchers, err := promql.ParseMetricSelector(tc.query)
 					if err != nil {
@@ -429,6 +431,7 @@ func TestChunkStoreRandom(t *testing.T) {
 				err := store.Put(ctx, []Chunk{chunk})
 				require.NoError(t, err)
 			}
+			store.Flush()
 
 			// pick two random numbers and do a query
 			for i := 0; i < 100; i++ {
@@ -493,6 +496,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		err := store.Put(ctx, []Chunk{chunk})
 		require.NoError(t, err)
 	}
+	store.Flush()
 
 	// pick a random numbers and do a query to end of row
 	for i := 1; i < 24; i++ {

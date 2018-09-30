@@ -77,11 +77,18 @@ func (writer *Writer) Run() {
 	}
 }
 
-func (writer *Writer) Stop() {
+// Flush all pending items to the backing store
+// Note: nothing should be sent to the Write chan until this is over
+func (writer *Writer) Flush() {
 	// Ensure that batcher has received all items so it won't call Add() any more
 	writer.Write <- nil
 	// Wait for pending items to be sent to store
 	writer.pending.Wait()
+}
+
+// Stop all background goroutines after flushing pending writes
+func (writer *Writer) Stop() {
+	writer.Flush()
 	// Close chans to signal writer(s) and batcher to terminate
 	close(writer.batched)
 	close(writer.retry)
@@ -115,7 +122,7 @@ func (sc *Writer) writeLoop(ctx context.Context) {
 
 // Receive individual requests, and batch them up into groups to send to the store
 func (sc *Writer) batcher() {
-	finished := false
+	flushing := false
 	var queue, outBatch WriteBatch
 	queue = sc.storage.NewWriteBatch()
 	for {
@@ -126,9 +133,9 @@ func (sc *Writer) batcher() {
 		if queueLen < sc.maxQueueSize {
 			in = sc.Write
 		}
-		// We will send out a batch if the queue is big enough, or if we're finishing
+		// We will send out a batch if the queue is big enough, or if we're flushing
 		if outBatch == nil || outBatch.Len() == 0 {
-			outBatch = queue.Take(finished)
+			outBatch = queue.Take(flushing)
 		}
 		if outBatch != nil && outBatch.Len() > 0 {
 			out = sc.batched
@@ -136,8 +143,9 @@ func (sc *Writer) batcher() {
 		select {
 		case inBatch := <-in:
 			if inBatch == nil { // Nil used as interlock to know we received all previous values
-				finished = true
+				flushing = true
 			} else {
+				flushing = false
 				queue.AddBatch(inBatch)
 				sc.pending.Add(inBatch.Len())
 			}

@@ -33,7 +33,8 @@ func (m mockStore) Get(tx context.Context, from, through model.Time, matchers ..
 	return nil, nil
 }
 
-func (m mockStore) Stop() {}
+func (m mockStore) Stop()  {}
+func (m mockStore) Flush() {}
 
 func TestCompositeStore(t *testing.T) {
 	type result struct {

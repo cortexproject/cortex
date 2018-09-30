@@ -110,6 +110,11 @@ func newStore(cfg StoreConfig, schema Schema, storage StorageClient, limits *val
 	}, nil
 }
 
+// Flush all pending items to the backing store
+func (c *store) Flush() {
+	c.writer.Flush()
+}
+
 // Stop any background goroutines (ie in the cache.)
 func (c *store) Stop() {
 	c.storage.Stop()

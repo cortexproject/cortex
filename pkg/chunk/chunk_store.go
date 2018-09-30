@@ -115,6 +115,11 @@ func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectCl
 	}, nil
 }
 
+// Flush all pending items to the backing store
+func (c *store) Flush() {
+	c.writer.Flush()
+}
+
 // Stop any background goroutines (ie in the cache.)
 func (c *store) Stop() {
 	c.storage.Stop()

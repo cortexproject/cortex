@@ -17,6 +17,7 @@ type Store interface {
 	IndexChunk(ctx context.Context, chunk Chunk) error
 	Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error
 	Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	Flush()
 	Stop()
 }
 
@@ -100,6 +101,12 @@ func (c compositeStore) Get(ctx context.Context, from, through model.Time, match
 		return nil
 	})
 	return results, err
+}
+
+func (c compositeStore) Flush() {
+	for _, store := range c.stores {
+		store.Flush()
+	}
 }
 
 func (c compositeStore) Stop() {

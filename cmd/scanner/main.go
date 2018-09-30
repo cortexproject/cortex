@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
 
@@ -24,7 +26,11 @@ import (
 )
 
 var (
-	pagesPerDot int
+	pageCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "pages_scanned_total",
+		Help:      "Total count of pages scanned from a table",
+	}, []string{"table"})
 )
 
 func main() {
@@ -50,7 +56,6 @@ func main() {
 	flag.IntVar(&segments, "segments", 1, "Number of segments to read in parallel")
 	flag.StringVar(&orgsFile, "delete-orgs-file", "", "File containing IDs of orgs to delete")
 	flag.StringVar(&loglevel, "log-level", "info", "Debug level: debug, info, warning, error")
-	flag.IntVar(&pagesPerDot, "pages-per-dot", 10, "Print a dot per N pages in DynamoDB (0 to disable)")
 	flag.StringVar(&reindexTablePrefix, "dynamodb.reindex-prefix", "", "Prefix of new index table (blank to disable)")
 
 	flag.Parse()
@@ -164,11 +169,8 @@ func newHandler(store chunk.Store, tableName string, reindexTablePrefix string, 
 }
 
 func (h *handler) handlePage(page chunk.ReadBatch) {
-	h.pages++
-	if pagesPerDot > 0 && h.pages%pagesPerDot == 0 {
-		fmt.Printf(".")
-	}
 	ctx := context.Background()
+	pageCounter.WithLabelValues(h.tableName).Inc()
 	decodeContext := chunk.NewDecodeContext()
 	for i := page.Iterator(); i.Next(); {
 		hashValue := i.HashValue()

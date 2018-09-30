@@ -128,6 +128,9 @@ func (m *MockStorage) NewWriteBatch() WriteBatch {
 	return &mockWriteBatch{}
 }
 
+// Denotes chunk value inserted into write batch
+const chunkFakeTable = "__chunk__"
+
 // BatchWrite implements StorageClient.
 func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	m.mtx.Lock()
@@ -139,6 +142,11 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	m.numWrites += len(mockBatch)
 
 	for _, req := range mockBatch {
+		if req.tableName == chunkFakeTable { // chunk in batch
+			m.objects[req.hashValue] = req.value
+			continue
+		}
+
 		table, ok := m.tables[req.tableName]
 		if !ok {
 			return fmt.Errorf("table not found")
@@ -339,6 +347,10 @@ func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, val
 		rangeValue           []byte
 		value                []byte
 	}{tableName, hashValue, rangeValue, value})
+}
+
+func (b *mockWriteBatch) AddChunk(s StorageClient, chunk Chunk, encoded []byte) {
+	b.Add(chunkFakeTable, chunk.ExternalKey(), nil, encoded)
 }
 
 func (b *mockWriteBatch) AddDelete(tableName, hashValue string, rangeValue []byte) {

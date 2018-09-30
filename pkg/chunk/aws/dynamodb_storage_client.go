@@ -765,6 +765,14 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 	})
 }
 
+// FIXME: temporary hack passing in storageClient so we can get at the schemaCfg
+func (b dynamoDBWriteBatch) AddChunk(s chunk.StorageClient, chunk chunk.Chunk, encoded []byte) {
+	key := chunk.ExternalKey()
+	a := s.(storageClient)
+	table := a.schemaCfg.ChunkTableFor(chunk.From)
+	b.Add(table, key, placeholder, encoded)
+}
+
 func (b dynamoDBWriteBatch) AddDelete(tableName, hashValue string, rangeValue []byte) {
 	b[tableName] = append(b[tableName], &dynamodb.WriteRequest{
 		DeleteRequest: &dynamodb.DeleteRequest{

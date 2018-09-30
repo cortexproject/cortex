@@ -169,6 +169,10 @@ func (b *writeBatch) Len() int {
 	return len(b.entries)
 }
 
+func (b *writeBatch) AddChunk(s chunk.StorageClient, chunk chunk.Chunk, encoded []byte) {
+	panic("not implemented")
+}
+
 func (b *writeBatch) AddDelete(tableName, hashValue string, rangeValue []byte) {
 	panic("not implemented")
 }

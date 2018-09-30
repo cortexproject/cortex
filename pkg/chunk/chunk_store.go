@@ -134,19 +134,19 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
-	// Horribly, PutChunks mutates the chunk by setting its checksum.  By putting
-	// the chunk in a slice we are in fact passing by reference, so below we
-	// need to make sure we pick the chunk back out the slice.
-	chunks := []Chunk{chunk}
-
-	err := c.storage.PutChunks(ctx, chunks)
+	// Encode the chunk first - checksum is calculated as a side effect.
+	buf, err := chunk.Encode()
 	if err != nil {
 		return err
 	}
+	batch := c.storage.NewWriteBatch()
+	batch.AddChunk(c.storage, chunk, buf)
+	c.writer.Write <- batch
 
-	c.writeBackCache(ctx, chunks)
+	// FIXME: shouldn't send chunk to the cache until it has gone to the real store
+	c.writeBackCache(ctx, []Chunk{chunk})
 
-	writeReqs, err := c.calculateIndexEntries(chunk.UserID, from, through, chunks[0])
+	writeReqs, err := c.calculateIndexEntries(chunk.UserID, from, through, chunk)
 	if err != nil {
 		return err
 	}

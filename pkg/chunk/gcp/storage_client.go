@@ -143,6 +143,10 @@ func (b bigtableWriteBatch) Len() int {
 	return result
 }
 
+func (b bigtableWriteBatch) AddChunk(s chunk.StorageClient, chunk chunk.Chunk, encoded []byte) {
+	panic("not implemented")
+}
+
 func (b bigtableWriteBatch) AddDelete(tableName, hashValue string, rangeValue []byte) {
 	panic("not implemented")
 }

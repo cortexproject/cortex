@@ -168,7 +168,12 @@ func (r *Ring) loop(ctx context.Context) {
 
 // migrateRing will denormalise the ring's tokens if stored in normal form.
 func (r *Ring) migrateRing(desc *Desc) *Desc {
-	tokens := desc.Tokens
+	numTokens := len(desc.Tokens)
+	for _, ing := range desc.Ingesters {
+		numTokens += len(ing.Tokens)
+	}
+	tokens := make([]TokenDesc, len(desc.Tokens), numTokens)
+	copy(tokens, desc.Tokens)
 	for key, ing := range desc.Ingesters {
 		for _, token := range ing.Tokens {
 			tokens = append(tokens, TokenDesc{

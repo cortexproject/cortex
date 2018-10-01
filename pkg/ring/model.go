@@ -117,15 +117,17 @@ func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
 
 // Ready is true when all ingesters are active and healthy.
 func (d *Desc) Ready(heartbeatTimeout time.Duration) bool {
+	numTokens := len(d.Tokens)
 	for _, ingester := range d.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
 			return false
 		} else if ingester.State != ACTIVE {
 			return false
 		}
+		numTokens += len(ingester.Tokens)
 	}
 
-	return len(d.Tokens) > 0
+	return numTokens > 0
 }
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.

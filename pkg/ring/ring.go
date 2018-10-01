@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -176,7 +177,8 @@ func (r *Ring) migrateRing(desc *Desc) *Desc {
 			})
 		}
 	}
-	sort.Sort(ByToken(desc.Tokens))
+	sort.Sort(ByToken(tokens))
+	desc.Tokens = tokens
 	return desc
 }
 

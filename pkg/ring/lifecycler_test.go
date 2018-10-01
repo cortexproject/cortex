@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 type flushTransferer struct {

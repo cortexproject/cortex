@@ -109,11 +109,11 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	} else {
 		s.chunkDescs = s.chunkDescs[:len(s.chunkDescs)-1]
 		for _, c := range chunks {
-			lastTime, err := c.NewIterator().LastTimestamp()
+			first, last, err := firstAndLastTimes(c)
 			if err != nil {
 				return err
 			}
-			s.chunkDescs = append(s.chunkDescs, newDesc(c, c.FirstTime(), lastTime))
+			s.chunkDescs = append(s.chunkDescs, newDesc(c, first, last))
 			createdChunks.Inc()
 		}
 	}
@@ -123,6 +123,24 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	s.lastSampleValueSet = true
 
 	return nil
+}
+
+func firstAndLastTimes(c chunk.Chunk) (model.Time, model.Time, error) {
+	var (
+		first    model.Time
+		last     model.Time
+		firstSet bool
+		iter     = c.NewIterator()
+	)
+	for iter.Scan() {
+		sample := iter.Value()
+		if !firstSet {
+			first = sample.Timestamp
+			firstSet = true
+		}
+		last = sample.Timestamp
+	}
+	return first, last, iter.Err()
 }
 
 func (s *memorySeries) closeHead() {

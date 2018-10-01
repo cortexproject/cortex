@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -146,13 +147,14 @@ func toWireChunks(descs []*desc) ([]client.Chunk, error) {
 			StartTimestampMs: int64(d.FirstTime),
 			EndTimestampMs:   int64(d.LastTime),
 			Encoding:         int32(d.C.Encoding()),
-			Data:             make([]byte, chunk.ChunkLen, chunk.ChunkLen),
 		}
 
-		if err := d.C.MarshalToBuf(wireChunk.Data); err != nil {
+		buf := bytes.NewBuffer(make([]byte, 0, chunk.ChunkLen))
+		if err := d.C.Marshal(buf); err != nil {
 			return nil, err
 		}
 
+		wireChunk.Data = buf.Bytes()
 		wireChunks = append(wireChunks, wireChunk)
 	}
 	return wireChunks, nil

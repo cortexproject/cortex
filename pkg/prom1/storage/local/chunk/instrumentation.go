@@ -65,8 +65,6 @@ const (
 	Pin = "pin"
 	// Unpin is the label value for unpin chunk ops (excludes the unpin on persisting).
 	Unpin = "unpin"
-	// Clone is the label value for clone chunk ops.
-	Clone = "clone"
 	// Transcode is the label value for transcode chunk ops.
 	Transcode = "transcode"
 	// Drop is the label value for drop chunk ops.

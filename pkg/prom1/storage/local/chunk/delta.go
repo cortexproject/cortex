@@ -180,18 +180,6 @@ func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	return []Chunk{&c}, nil
 }
 
-// Clone implements chunk.
-func (c deltaEncodedChunk) Clone() Chunk {
-	clone := make(deltaEncodedChunk, len(c), cap(c))
-	copy(clone, c)
-	return &clone
-}
-
-// FirstTime implements chunk.
-func (c deltaEncodedChunk) FirstTime() model.Time {
-	return c.baseTime()
-}
-
 // NewIterator implements chunk.
 func (c *deltaEncodedChunk) NewIterator() Iterator {
 	return newIndexAccessingChunkIterator(c.Len(), &deltaEncodedIndexAccessor{
@@ -217,20 +205,6 @@ func (c deltaEncodedChunk) Marshal(w io.Writer) error {
 	}
 	if n != cap(c) {
 		return fmt.Errorf("wanted to write %d bytes, wrote %d", cap(c), n)
-	}
-	return nil
-}
-
-// MarshalToBuf implements chunk.
-func (c deltaEncodedChunk) MarshalToBuf(buf []byte) error {
-	if len(c) > math.MaxUint16 {
-		panic("chunk buffer length would overflow a 16 bit uint")
-	}
-	binary.LittleEndian.PutUint16(c[deltaHeaderBufLenOffset:], uint16(len(c)))
-
-	n := copy(buf, c)
-	if n != len(c) {
-		return fmt.Errorf("wanted to copy %d bytes to buffer, copied %d", len(c), n)
 	}
 	return nil
 }

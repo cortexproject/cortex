@@ -275,13 +275,6 @@ func (c *varbitChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	return c.addLaterSample(s, offset)
 }
 
-// Clone implements chunk.
-func (c varbitChunk) Clone() Chunk {
-	clone := make(varbitChunk, len(c))
-	copy(clone, c)
-	return &clone
-}
-
 // NewIterator implements chunk.
 func (c varbitChunk) NewIterator() Iterator {
 	return newVarbitChunkIterator(c)
@@ -295,15 +288,6 @@ func (c varbitChunk) Marshal(w io.Writer) error {
 	}
 	if n != cap(c) {
 		return fmt.Errorf("wanted to write %d bytes, wrote %d", cap(c), n)
-	}
-	return nil
-}
-
-// MarshalToBuf implements chunk.
-func (c varbitChunk) MarshalToBuf(buf []byte) error {
-	n := copy(buf, c)
-	if n != len(c) {
-		return fmt.Errorf("wanted to copy %d bytes to buffer, copied %d", len(c), n)
 	}
 	return nil
 }
@@ -340,8 +324,7 @@ func (c varbitChunk) Len() int {
 	return i
 }
 
-// FirstTime implements chunk.
-func (c varbitChunk) FirstTime() model.Time {
+func (c varbitChunk) firstTime() model.Time {
 	return model.Time(
 		binary.BigEndian.Uint64(
 			c[varbitFirstTimeOffset:],
@@ -508,7 +491,7 @@ func (c *varbitChunk) addFirstSample(s model.SamplePair) []Chunk {
 // first time delta from the provided sample and adds it to the chunk together
 // with the provided sample as the last sample.
 func (c *varbitChunk) addSecondSample(s model.SamplePair) ([]Chunk, error) {
-	firstTimeDelta := s.Timestamp - c.FirstTime()
+	firstTimeDelta := s.Timestamp - c.firstTime()
 	if firstTimeDelta < 0 {
 		return nil, fmt.Errorf("first Δt is less than zero: %v", firstTimeDelta)
 	}
@@ -921,26 +904,6 @@ func newVarbitChunkIterator(c varbitChunk) *varbitChunkIterator {
 	}
 }
 
-// lastTimestamp implements Iterator.
-func (it *varbitChunkIterator) LastTimestamp() (model.Time, error) {
-	if it.len == varbitFirstSampleBitOffset {
-		// No samples in the chunk yet.
-		return model.Earliest, it.lastError
-	}
-	return it.c.lastTime(), it.lastError
-}
-
-// contains implements Iterator.
-func (it *varbitChunkIterator) Contains(t model.Time) (bool, error) {
-	last, err := it.LastTimestamp()
-	if err != nil {
-		it.lastError = err
-		return false, err
-	}
-	return !t.Before(it.c.FirstTime()) &&
-		!t.After(last), it.lastError
-}
-
 // scan implements Iterator.
 func (it *varbitChunkIterator) Scan() bool {
 	if it.lastError != nil {
@@ -965,7 +928,7 @@ func (it *varbitChunkIterator) Scan() bool {
 		return it.lastError == nil
 	}
 	if it.pos == varbitFirstSampleBitOffset {
-		it.t = it.c.FirstTime()
+		it.t = it.c.firstTime()
 		it.v = it.c.firstValue()
 		it.pos = varbitSecondSampleBitOffset
 		return it.lastError == nil
@@ -1020,48 +983,12 @@ func (it *varbitChunkIterator) Scan() bool {
 	return it.lastError == nil
 }
 
-// findAtOrBefore implements Iterator.
-func (it *varbitChunkIterator) FindAtOrBefore(t model.Time) bool {
-	if it.len == 0 || t.Before(it.c.FirstTime()) {
-		return false
-	}
-	last := it.c.lastTime()
-	if !t.Before(last) {
-		it.t = last
-		it.v = it.c.lastValue()
-		it.pos = it.len + 1
-		return true
-	}
-	if t == it.t {
-		return it.lastError == nil
-	}
-	if t.Before(it.t) || it.rewound {
-		it.reset()
-	}
-
-	var (
-		prevT = model.Earliest
-		prevV model.SampleValue
-	)
-	for it.Scan() && !t.Before(it.t) {
-		prevT = it.t
-		prevV = it.v
-		// TODO(beorn7): If we are in a repeat, we could iterate forward
-		// much faster.
-	}
-	if t == it.t {
-		return it.lastError == nil
-	}
-	it.rewind(prevT, prevV)
-	return it.lastError == nil
-}
-
 // findAtOrAfter implements Iterator.
 func (it *varbitChunkIterator) FindAtOrAfter(t model.Time) bool {
 	if it.len == 0 || t.After(it.c.lastTime()) {
 		return false
 	}
-	first := it.c.FirstTime()
+	first := it.c.firstTime()
 	if !t.After(first) {
 		it.reset()
 		return it.Scan()

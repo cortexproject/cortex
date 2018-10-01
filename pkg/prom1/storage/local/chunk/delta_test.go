@@ -90,11 +90,11 @@ func TestUnmarshalingCorruptedDeltaReturnsAnError(t *testing.T) {
 			t.Fatalf("Couldn't add sample to empty %s: %s", c.chunkTypeName, err)
 		}
 
-		buf := make([]byte, ChunkLen)
-
-		cs[0].MarshalToBuf(buf)
+		var writer bytes.Buffer
+		cs[0].Marshal(&writer)
 
 		// Corrupt time byte to 0, which is illegal.
+		buf := writer.Bytes()
 		buf[c.timeBytesPos] = 0
 		err = cs[0].UnmarshalFromBuf(buf)
 		verifyUnmarshallingError(err, c.chunkTypeName, "buf", "invalid number of time bytes")

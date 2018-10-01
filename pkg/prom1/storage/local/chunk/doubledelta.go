@@ -187,13 +187,6 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	return []Chunk{&c}, nil
 }
 
-// Clone implements chunk.
-func (c doubleDeltaEncodedChunk) Clone() Chunk {
-	clone := make(doubleDeltaEncodedChunk, len(c), cap(c))
-	copy(clone, c)
-	return &clone
-}
-
 // FirstTime implements chunk.
 func (c doubleDeltaEncodedChunk) FirstTime() model.Time {
 	return c.baseTime()

@@ -1,11 +1,14 @@
 package chunkcompat
 
 import (
+	"bytes"
+
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/prometheus/common/model"
 )
 
 // StreamsToMatrix converts a slice of QueryStreamResponse to a model.Matrix.
@@ -82,13 +85,14 @@ func ToChunks(in []chunk.Chunk) ([]client.Chunk, error) {
 			StartTimestampMs: int64(i.From),
 			EndTimestampMs:   int64(i.Through),
 			Encoding:         int32(i.Data.Encoding()),
-			Data:             make([]byte, prom_chunk.ChunkLen, prom_chunk.ChunkLen),
 		}
 
-		if err := i.Data.MarshalToBuf(wireChunk.Data); err != nil {
+		buf := bytes.NewBuffer(make([]byte, 0, prom_chunk.ChunkLen))
+		if err := i.Data.Marshal(buf); err != nil {
 			return nil, err
 		}
 
+		wireChunk.Data = buf.Bytes()
 		out = append(out, wireChunk)
 	}
 	return out, nil

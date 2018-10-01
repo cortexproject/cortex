@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -481,13 +482,14 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 			c = cs[0]
 		}
 
+		var buf bytes.Buffer
 		chunk := client.Chunk{
 			Encoding: int32(c.Encoding()),
-			Data:     make([]byte, chunk.ChunkLen, chunk.ChunkLen),
 		}
-		if err := c.MarshalToBuf(chunk.Data); err != nil {
+		if err := c.Marshal(&buf); err != nil {
 			panic(err)
 		}
+		chunk.Data = buf.Bytes()
 
 		results = append(results, &client.QueryStreamResponse{
 			Timeseries: []client.TimeSeriesChunk{

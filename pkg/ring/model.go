@@ -27,24 +27,30 @@ func NewDesc() *Desc {
 }
 
 // AddIngester adds the given ingester to the ring.
-func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
+func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState, normaliseTokens bool) {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
-	d.Ingesters[id] = IngesterDesc{
+
+	ingester := IngesterDesc{
 		Addr:      addr,
 		Timestamp: time.Now().Unix(),
 		State:     state,
 	}
 
-	for _, token := range tokens {
-		d.Tokens = append(d.Tokens, TokenDesc{
-			Token:    token,
-			Ingester: id,
-		})
+	if normaliseTokens {
+		ingester.Tokens = tokens
+	} else {
+		for _, token := range tokens {
+			d.Tokens = append(d.Tokens, TokenDesc{
+				Token:    token,
+				Ingester: id,
+			})
+		}
+		sort.Sort(ByToken(d.Tokens))
 	}
 
-	sort.Sort(ByToken(d.Tokens))
+	d.Ingesters[id] = ingester
 }
 
 // RemoveIngester removes the given ingester and all its tokens.
@@ -61,14 +67,40 @@ func (d *Desc) RemoveIngester(id string) {
 
 // ClaimTokens transfers all the tokens from one ingester to another,
 // returning the claimed token.
-func (d *Desc) ClaimTokens(from, to string) []uint32 {
+func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
 	var result []uint32
-	for i := 0; i < len(d.Tokens); i++ {
-		if d.Tokens[i].Ingester == from {
-			d.Tokens[i].Ingester = to
-			result = append(result, d.Tokens[i].Token)
+
+	if normaliseTokens {
+
+		// If we are storing the tokens in a normalise form, we need to deal with
+		// the migration from denormalised by removing the tokens from the tokens
+		// list.
+		result = d.Ingesters[from].Tokens
+
+		for i := 0; i < len(d.Tokens); {
+			if d.Tokens[i].Ingester == from {
+				result = append(result, d.Tokens[i].Token)
+				d.Tokens = d.Tokens[:i+copy(d.Tokens[i:], d.Tokens[i+1:])]
+				continue
+			}
+			i++
+		}
+
+		sort.Sort(uint32s(result))
+		ing := d.Ingesters[to]
+		ing.Tokens = result
+		d.Ingesters[to] = ing
+
+	} else {
+
+		for i := 0; i < len(d.Tokens); i++ {
+			if d.Tokens[i].Ingester == from {
+				d.Tokens[i].Ingester = to
+				result = append(result, d.Tokens[i].Token)
+			}
 		}
 	}
+
 	return result
 }
 

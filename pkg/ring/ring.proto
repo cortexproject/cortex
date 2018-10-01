@@ -18,6 +18,7 @@ message IngesterDesc {
 	string addr = 1;
 	int64 timestamp = 2;
 	IngesterState state = 3;
+	repeated uint32 tokens = 6;
 }
 
 message TokenDesc {

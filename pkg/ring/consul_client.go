@@ -266,6 +266,8 @@ func (c *consulClient) Get(ctx context.Context, key string) (interface{}, error)
 	kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 	if err != nil {
 		return nil, err
+	} else if kvp == nil {
+		return nil, nil
 	}
 	return c.codec.Decode(kvp.Value)
 }

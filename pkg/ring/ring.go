@@ -59,7 +59,8 @@ type Config struct {
 	store             string
 	HeartbeatTimeout  time.Duration
 	ReplicationFactor int
-	Mock              KVClient
+
+	Mock KVClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -156,11 +157,27 @@ func (r *Ring) loop(ctx context.Context) {
 		}
 
 		ringDesc := value.(*Desc)
+		ringDesc = r.migrateRing(ringDesc)
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = ringDesc
 		return true
 	})
+}
+
+// migrateRing will denormalise the ring's tokens if stored in normal form.
+func (r *Ring) migrateRing(desc *Desc) *Desc {
+	tokens := desc.Tokens
+	for key, ing := range desc.Ingesters {
+		for _, token := range ing.Tokens {
+			tokens = append(tokens, TokenDesc{
+				Token:    token,
+				Ingester: key,
+			})
+		}
+	}
+	sort.Sort(ByToken(desc.Tokens))
+	return desc
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.

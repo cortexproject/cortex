@@ -273,12 +273,14 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 
-	samplesByIngester := map[ring.IngesterDesc][]*sampleTracker{}
+	ingesters := map[string]ring.IngesterDesc{}
+	samplesByIngester := map[string][]*sampleTracker{}
 	for i, replicationSet := range replicationSets {
 		sampleTrackers[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
 		sampleTrackers[i].maxFailures = replicationSet.MaxErrors
 		for _, ingester := range replicationSet.Ingesters {
-			samplesByIngester[ingester] = append(samplesByIngester[ingester], &sampleTrackers[i])
+			ingesters[ingester.Addr] = ingester
+			samplesByIngester[ingester.Addr] = append(samplesByIngester[ingester.Addr], &sampleTrackers[i])
 		}
 	}
 
@@ -297,7 +299,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
 			d.sendSamples(localCtx, ingester, sampleTrackers, &pushTracker)
-		}(ingester, sampleTrackers)
+		}(ingesters[ingester], sampleTrackers)
 	}
 	select {
 	case err := <-pushTracker.err:

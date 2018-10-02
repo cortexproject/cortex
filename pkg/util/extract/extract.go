@@ -22,10 +22,8 @@ func MetricNameFromLabelPairs(labels []client.LabelPair) ([]byte, error) {
 
 // MetricNameFromMetric extract the metric name from a model.Metric
 func MetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
-	for name, value := range m {
-		if name == model.MetricNameLabel {
-			return value, nil
-		}
+	if value, found := m[model.MetricNameLabel]; found {
+		return value, nil
 	}
 	return "", fmt.Errorf("no MetricNameLabel for chunk")
 }

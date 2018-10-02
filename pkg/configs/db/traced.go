@@ -3,9 +3,9 @@ package db
 import (
 	"fmt"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/weaveworks/cortex/pkg/configs"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // traced adds log trace lines on each db call

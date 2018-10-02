@@ -4,9 +4,9 @@ import (
 	"container/heap"
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/cortex/pkg/chunk"
 )
 
 type chunkMergeIterator struct {

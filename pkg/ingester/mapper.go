@@ -7,9 +7,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const maxMappedFP = 1 << 20 // About 1M fingerprints reserved for mapping.

@@ -13,8 +13,8 @@ import (
 	consul "github.com/hashicorp/consul/api"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (

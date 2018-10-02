@@ -18,7 +18,7 @@ UPTODATE := .uptodate
 	touch $@
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
-# 'make: Entering directory '/go/src/github.com/weaveworks/cortex' phase.
+# 'make: Entering directory '/go/src/github.com/cortexproject/cortex' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Get a list of directories containing Dockerfiles
@@ -86,7 +86,7 @@ $(EXES) $(PROTO_GOS) lint test shell dep-check: build-image/$(UPTODATE)
 	$(SUDO) time docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
+		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
 		$(IMAGE_PREFIX)build-image $@;
 
 configs-integration-test: build-image/$(UPTODATE)
@@ -96,10 +96,10 @@ configs-integration-test: build-image/$(UPTODATE)
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/weaveworks/cortex \
+		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
 		-v $(shell pwd)/cmd/configs/migrations:/migrations \
 		-e MIGRATIONS_DIR=/migrations \
-		--workdir /go/src/github.com/weaveworks/cortex \
+		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
 		$(IMAGE_PREFIX)build-image $@; \
 	status=$$?; \

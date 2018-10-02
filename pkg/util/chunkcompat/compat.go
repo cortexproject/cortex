@@ -1,11 +1,11 @@
 package chunkcompat
 
 import (
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // StreamsToMatrix converts a slice of QueryStreamResponse to a model.Matrix.

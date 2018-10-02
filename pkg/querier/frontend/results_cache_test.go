@@ -5,12 +5,12 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var dummyResponse = &apiResponse{

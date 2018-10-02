@@ -12,10 +12,10 @@ import (
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/db"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/configs"
-	"github.com/weaveworks/cortex/pkg/configs/db"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // API implements the configs api.

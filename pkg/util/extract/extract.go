@@ -3,9 +3,9 @@ package extract
 import (
 	"fmt"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
 )
 
 var labelNameBytes = []byte(model.MetricNameLabel)

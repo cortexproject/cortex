@@ -4,7 +4,7 @@ import (
 	"flag"
 	"time"
 
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // Limits describe all the limits for users; can be used to describe global default

@@ -4,8 +4,8 @@ import (
 	"container/heap"
 	"sort"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
-	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 )
 
 type mergeIterator struct {

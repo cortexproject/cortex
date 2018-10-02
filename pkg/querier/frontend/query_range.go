@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/stats"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/cortex/pkg/util/wire"
 )
 
 // TestMarshall is useful to try out various optimisation on the unmarshalling code.

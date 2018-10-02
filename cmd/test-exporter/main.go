@@ -9,7 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/server"
 
-	"github.com/weaveworks/cortex/pkg/querier/correctness"
+	"github.com/cortexproject/cortex/pkg/querier/correctness"
 )
 
 var (

@@ -7,8 +7,8 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/extract"
 )
 
 // A series is uniquely identified by its set of label name/value

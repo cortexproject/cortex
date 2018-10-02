@@ -13,10 +13,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/naming"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (

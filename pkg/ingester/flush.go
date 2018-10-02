@@ -46,6 +46,10 @@ var (
 		Name: "cortex_ingester_memory_chunks",
 		Help: "The total number of chunks in memory.",
 	})
+	flushReasons = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_flush_reasons",
+		Help: "Total number of series scheduled for flushing, with reasons.",
+	}, []string{"reason"})
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -109,6 +113,23 @@ const (
 	reasonIdle
 )
 
+func (f flushReason) String() string {
+	switch f {
+	case noFlush:
+		return "NoFlush"
+	case reasonImmediate:
+		return "Immediate"
+	case reasonMultipleChunksInSeries:
+		return "MultipleChunksInSeries"
+	case reasonAged:
+		return "Aged"
+	case reasonIdle:
+		return "Idle"
+	default:
+		panic("unrecognised flushReason")
+	}
+}
+
 // sweepSeries schedules a series for flushing based on a set of criteria
 //
 // NB we don't close the head chunk here, as the series could wait in the queue
@@ -120,6 +141,7 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 
 	firstTime := series.firstTime()
 	flush := i.shouldFlushSeries(series, fp, immediate)
+	flushReasons.WithLabelValues(flush.String()).Inc()
 
 	if flush != noFlush {
 		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))

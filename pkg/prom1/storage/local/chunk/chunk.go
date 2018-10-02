@@ -55,6 +55,8 @@ func (e *Encoding) Set(s string) error {
 		*e = DoubleDelta
 	case "2":
 		*e = Varbit
+	case "3":
+		*e = Bigchunk
 	default:
 		return fmt.Errorf("invalid chunk encoding: %s", s)
 	}
@@ -68,6 +70,8 @@ const (
 	DoubleDelta
 	// Varbit encoding
 	Varbit
+	// Bigchunk encoding
+	Bigchunk
 )
 
 // Chunk is the interface for all chunks. Chunks are generally not
@@ -208,6 +212,8 @@ func NewForEncoding(encoding Encoding) (Chunk, error) {
 		return newDoubleDeltaEncodedChunk(d1, d0, true, ChunkLen), nil
 	case Varbit:
 		return newVarbitChunk(varbitZeroEncoding), nil
+	case Bigchunk:
+		return newBigchunk(), nil
 	default:
 		return nil, fmt.Errorf("unknown chunk encoding: %v", encoding)
 	}

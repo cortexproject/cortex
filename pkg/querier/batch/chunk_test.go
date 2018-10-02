@@ -31,7 +31,7 @@ func mkChunk(t require.TestingT, from model.Time, points int) chunk.Chunk {
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
 	}
-	pc, err := promchunk.NewForEncoding(promchunk.DoubleDelta)
+	pc, err := promchunk.NewForEncoding(promchunk.Bigchunk)
 	require.NoError(t, err)
 	ts := from
 	for i := 0; i < points; i++ {

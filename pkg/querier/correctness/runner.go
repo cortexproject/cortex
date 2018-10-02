@@ -126,7 +126,7 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 	tc := &Runner{
 		cfg:    cfg,
 		quit:   make(chan struct{}),
-		client: v1.NewAPI(client),
+		client: v1.NewAPI(tracingClient{client}),
 	}
 	tc.wg.Add(1)
 	go tc.verifyLoop()
@@ -137,7 +137,7 @@ type tracingClient struct {
 	api.Client
 }
 
-func (t *tracingClient) Do(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
+func (t tracingClient) Do(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
 	req, tr := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
 	defer tr.Finish()
 	return t.Client.Do(ctx, req)

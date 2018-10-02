@@ -13,6 +13,7 @@ import (
 type Case interface {
 	prometheus.Collector
 
+	Name() string
 	Query(ctx context.Context, client v1.API, selectors string, start time.Time, duration time.Duration) ([]model.SamplePair, error)
 	ExpectedValueAt(time.Time) float64
 	Quantized(time.Duration) time.Duration

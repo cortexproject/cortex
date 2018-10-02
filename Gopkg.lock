@@ -1413,7 +1413,6 @@
     "github.com/prometheus/tsdb",
     "github.com/prometheus/tsdb/fileutil",
     "github.com/segmentio/fasthash/fnv1a",
-    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/uber/jaeger-client-go",

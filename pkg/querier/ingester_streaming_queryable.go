@@ -89,8 +89,7 @@ func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...
 
 	serieses := make([]storage.Series, 0, len(results))
 	for _, result := range results {
-		metric := client.FromLabelPairs(result.Labels)
-		chunks, err := chunkcompat.FromChunks(userID, metric, result.Chunks)
+		chunks, err := chunkcompat.FromChunks(userID, nil, result.Chunks)
 		if err != nil {
 			return nil, promql.ErrStorage(err)
 		}

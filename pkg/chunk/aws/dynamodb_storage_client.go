@@ -56,6 +56,16 @@ var (
 		// important.  So use 8 buckets from 128us to 2s.
 		Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
 	}, []string{"operation", "status_code"}))
+	dynamoSentItems = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_sent_items_total",
+		Help:      "Number of items sent to DynamoDB.",
+	}, []string{tableNameLabel})
+	dynamoThrottledItems = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_throttled_items_total",
+		Help:      "Number of items sent to DynamoDB but throttled.",
+	}, []string{"operation", tableNameLabel})
 	dynamoConsumedCapacity = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_consumed_capacity_total",
@@ -89,6 +99,9 @@ var (
 
 func init() {
 	dynamoRequestDuration.Register()
+	prometheus.MustRegister(dynamoRequestDuration)
+	prometheus.MustRegister(dynamoSentItems)
+	prometheus.MustRegister(dynamoThrottledItems)
 	prometheus.MustRegister(dynamoConsumedCapacity)
 	prometheus.MustRegister(dynamoFailures)
 	prometheus.MustRegister(dynamoQueryPagesCount)
@@ -262,6 +275,9 @@ func (a dynamoDBStorageClient) BatchWriteNoRetry(ctx context.Context, batch chun
 		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 	})
 
+	for tableName, items := range requests {
+		dynamoSentItems.WithLabelValues(tableName).Add(float64(len(items)))
+	}
 	err = instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return request.Send()
 	})
@@ -276,12 +292,18 @@ func (a dynamoDBStorageClient) BatchWriteNoRetry(ctx context.Context, batch chun
 		for tableName := range requests {
 			recordDynamoError(tableName, err, "DynamoDB.BatchWriteItem")
 		}
+		for tableName, items := range requests {
+			dynamoThrottledItems.WithLabelValues("DynamoDB.BatchWriteItem", tableName).Add(float64(len(items)))
+		}
 		if throttled(err) || request.Retryable() {
 			// Send the whole request back
 			return requests, nil
 		} else {
 			return nil, err
 		}
+	}
+	for tableName, items := range resp.UnprocessedItems {
+		dynamoThrottledItems.WithLabelValues("DynamoDB.BatchWriteItem", tableName).Add(float64(len(items)))
 	}
 	// Send unprocessed items back
 	return dynamoDBWriteBatch(resp.UnprocessedItems), nil

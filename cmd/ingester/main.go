@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
@@ -45,6 +46,8 @@ func main() {
 		storageConfig    storage.Config
 		ingesterConfig   ingester.Config
 		preallocConfig   client.PreallocConfig
+		clientConfig     client.Config
+		limits           validation.Limits
 		eventSampleRate  int
 		maxStreams       uint
 	)
@@ -55,8 +58,9 @@ func main() {
 
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
+
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
-		&schemaConfig, &ingesterConfig, &preallocConfig)
+		&schemaConfig, &ingesterConfig, &clientConfig, &limits, &preallocConfig)
 	flag.UintVar(&maxStreams, "ingester.max-concurrent-streams", 1000, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.Parse()
@@ -88,7 +92,7 @@ func main() {
 	}
 	defer chunkStore.Stop()
 
-	ingester, err := ingester.New(ingesterConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, clientConfig, limits, chunkStore)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

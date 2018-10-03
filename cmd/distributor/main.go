@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
@@ -48,9 +49,12 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		clientConfig      client.Config
+		limits            validation.Limits
 		preallocConfig    client.PreallocConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &preallocConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
+		&preallocConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)
@@ -67,7 +71,7 @@ func main() {
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
-	dist, err := distributor.New(distributorConfig, r)
+	dist, err := distributor.New(distributorConfig, clientConfig, limits, r)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
 		os.Exit(1)

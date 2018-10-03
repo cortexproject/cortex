@@ -17,10 +17,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -37,14 +39,16 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		clientConfig      client.Config
+		limits            validation.Limits
 		querierConfig     querier.Config
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 		workerConfig      frontend.WorkerConfig
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &querierConfig,
-		&chunkStoreConfig, &schemaConfig, &storageConfig, &workerConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
+		&querierConfig, &chunkStoreConfig, &schemaConfig, &storageConfig, &workerConfig)
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
@@ -61,7 +65,7 @@ func main() {
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
-	dist, err := distributor.New(distributorConfig, r)
+	dist, err := distributor.New(distributorConfig, clientConfig, limits, r)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
 		os.Exit(1)

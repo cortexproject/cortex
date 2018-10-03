@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -32,13 +33,20 @@ type testStore struct {
 	chunks map[string][]chunk.Chunk
 }
 
-func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
+func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, limits validation.Limits) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, clientConfig, limits, store)
 	require.NoError(t, err)
 	return store, ing
+}
+
+func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
+	return newTestStore(t,
+		defaultIngesterTestConfig(),
+		defaultClientTestConfig(),
+		defaultLimitsTestConfig())
 }
 
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
@@ -117,7 +125,7 @@ func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.Ma
 }
 
 func TestIngesterAppend(t *testing.T) {
-	store, ing := newTestStore(t, defaultIngesterTestConfig())
+	store, ing := newDefaultTestStore(t)
 
 	userIDs := []string{"1", "2", "3"}
 
@@ -178,7 +186,7 @@ func (s *stream) Send(response *client.QueryStreamResponse) error {
 }
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
-	_, ing := newTestStore(t, defaultIngesterTestConfig())
+	_, ing := newDefaultTestStore(t)
 	defer ing.Shutdown()
 
 	m := labelPairs{
@@ -209,7 +217,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 
 // Test that blank labels are removed by the ingester
 func TestIngesterAppendBlankLabel(t *testing.T) {
-	_, ing := newTestStore(t, defaultIngesterTestConfig())
+	_, ing := newDefaultTestStore(t)
 	defer ing.Shutdown()
 
 	lp := labelPairs{
@@ -237,10 +245,10 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 }
 
 func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
-	cfg.limits.MaxSeriesPerUser = 1
+	limits := defaultLimitsTestConfig()
+	limits.MaxSeriesPerUser = 1
 
-	_, ing := newTestStore(t, cfg)
+	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
 	defer ing.Shutdown()
 
 	userID := "1"
@@ -295,10 +303,10 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 }
 
 func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
-	cfg.limits.MaxSeriesPerMetric = 1
+	limits := defaultLimitsTestConfig()
+	limits.MaxSeriesPerMetric = 1
 
-	_, ing := newTestStore(t, cfg)
+	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
 	defer ing.Shutdown()
 
 	userID := "1"
@@ -363,8 +371,7 @@ func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
 }
 
 func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
-	cfg := defaultIngesterTestConfig()
-	_, ing := newTestStore(b, cfg)
+	_, ing := newDefaultTestStore(b)
 	defer ing.Shutdown()
 
 	var (
@@ -405,6 +412,8 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 
 func BenchmarkIngesterPush(b *testing.B) {
 	cfg := defaultIngesterTestConfig()
+	clientCfg := defaultClientTestConfig()
+	limits := defaultLimitsTestConfig()
 
 	const (
 		series  = 100
@@ -428,7 +437,7 @@ func BenchmarkIngesterPush(b *testing.B) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	b.ResetTimer()
 	for iter := 0; iter < b.N; iter++ {
-		_, ing := newTestStore(b, cfg)
+		_, ing := newTestStore(b, cfg, clientCfg, limits)
 		// Bump the timestamp on each of our test samples each time round the loop
 		for j := 0; j < samples; j++ {
 			for i := range ts {

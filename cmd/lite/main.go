@@ -24,39 +24,32 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
 	"github.com/weaveworks/common/user"
 )
 
+var (
+	serverConfig      server.Config
+	chunkStoreConfig  chunk.StoreConfig
+	distributorConfig distributor.Config
+	querierConfig     querier.Config
+	ingesterConfig    ingester.Config
+	configStoreConfig ruler.ConfigStoreConfig
+	rulerConfig       ruler.Config
+	schemaConfig      chunk.SchemaConfig
+	storageConfig     storage.Config
+
+	ingesterClientConfig client.Config
+	limitsConfig         validation.Limits
+
+	unauthenticated bool
+)
+
 func main() {
-	var (
-		serverConfig = server.Config{
-			MetricsNamespace: "cortex",
-			GRPCMiddleware: []grpc.UnaryServerInterceptor{
-				middleware.ServerUserHeaderInterceptor,
-			},
-		}
-
-		chunkStoreConfig  chunk.StoreConfig
-		distributorConfig distributor.Config
-		querierConfig     querier.Config
-		ingesterConfig    ingester.Config
-		configStoreConfig ruler.ConfigStoreConfig
-		rulerConfig       ruler.Config
-		schemaConfig      chunk.SchemaConfig
-		storageConfig     storage.Config
-
-		unauthenticated bool
-	)
-	// Ingester needs to know our gRPC listen port.
-	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
-		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig)
-	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
-	flag.Parse()
-	ingesterConfig.SetClientConfig(distributorConfig.IngesterClientConfig)
+	getConfigsFromCommandLine()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("ingester")
@@ -93,14 +86,14 @@ func main() {
 	defer r.Stop()
 	ingesterConfig.LifecyclerConfig.KVClient = r.KVClient
 
-	dist, err := distributor.New(distributorConfig, r)
+	dist, err := distributor.New(distributorConfig, ingesterClientConfig, limitsConfig, r)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
 		os.Exit(1)
 	}
 	defer dist.Stop()
 
-	ingester, err := ingester.New(ingesterConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, ingesterClientConfig, limitsConfig, chunkStore)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
@@ -202,4 +195,20 @@ func main() {
 		middleware.AuthenticateUser,
 	).Wrap(http.HandlerFunc(dist.PushHandler)))
 	server.Run()
+}
+
+func getConfigsFromCommandLine() {
+	serverConfig = server.Config{
+		MetricsNamespace: "cortex",
+		GRPCMiddleware: []grpc.UnaryServerInterceptor{
+			middleware.ServerUserHeaderInterceptor,
+		},
+	}
+	// Ingester needs to know our gRPC listen port.
+	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
+	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
+		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig,
+		&ingesterClientConfig, &limitsConfig)
+	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
+	flag.Parse()
 }

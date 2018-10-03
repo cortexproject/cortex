@@ -11,10 +11,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
@@ -30,6 +32,9 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		clientConfig      client.Config
+		limits            validation.Limits
+
 		rulerConfig       ruler.Config
 		chunkStoreConfig  chunk.StoreConfig
 		schemaConfig      chunk.SchemaConfig
@@ -42,7 +47,7 @@ func main() {
 	trace := tracing.NewFromEnv("ruler")
 	defer trace.Close()
 
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig,
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
 		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig,
 		&querierConfig)
 	flag.Parse()
@@ -69,7 +74,7 @@ func main() {
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
-	dist, err := distributor.New(distributorConfig, r)
+	dist, err := distributor.New(distributorConfig, clientConfig, limits, r)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
 		os.Exit(1)

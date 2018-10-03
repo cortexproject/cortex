@@ -75,8 +75,6 @@ var (
 // Config for an Ingester.
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig
-	clientConfig     client.Config
-	limits           validation.Limits
 
 	// Config for transferring chunks.
 	SearchPendingFor time.Duration
@@ -95,16 +93,9 @@ type Config struct {
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
 
-// SetClientConfig sets clientConfig in config
-func (cfg *Config) SetClientConfig(clientConfig client.Config) {
-	cfg.clientConfig = clientConfig
-}
-
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
-	cfg.clientConfig.RegisterFlags(f)
-	cfg.limits.RegisterFlags(f)
 
 	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
@@ -126,7 +117,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
 // MemorySeriesStorage.
 type Ingester struct {
-	cfg        Config
+	cfg          Config
+	clientConfig client.Config
+
 	chunkStore ChunkStore
 	lifecycler *ring.Lifecycler
 	limits     *validation.Overrides
@@ -154,7 +147,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limitsCfg validation.Limits, chunkStore ChunkStore) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -163,13 +156,14 @@ func New(cfg Config, chunkStore ChunkStore) (*Ingester, error) {
 		return nil, err
 	}
 
-	limits, err := validation.NewOverrides(cfg.limits)
+	limits, err := validation.NewOverrides(limitsCfg)
 	if err != nil {
 		return nil, err
 	}
 
 	i := &Ingester{
-		cfg: cfg,
+		cfg:          cfg,
+		clientConfig: clientConfig,
 
 		limits:     limits,
 		chunkStore: chunkStore,

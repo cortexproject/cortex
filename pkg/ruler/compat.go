@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/weaveworks/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 // Pusher is an ingester server that accepts pushes.

@@ -6,9 +6,9 @@ import (
 	"io/ioutil"
 	"net/url"
 
-	"github.com/weaveworks/cortex/pkg/configs"
-	"github.com/weaveworks/cortex/pkg/configs/db/memory"
-	"github.com/weaveworks/cortex/pkg/configs/db/postgres"
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/db/memory"
+	"github.com/cortexproject/cortex/pkg/configs/db/postgres"
 )
 
 // Config configures the database.

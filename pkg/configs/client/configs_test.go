@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/stretchr/testify/assert"
-	"github.com/weaveworks/cortex/pkg/configs"
 )
 
 func TestJSONDecoding(t *testing.T) {

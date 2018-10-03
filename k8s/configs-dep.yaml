@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: configs
-        image: quay.io/weaveworks/cortex-configs
+        image: quay.io/cortexproject/configs
         imagePullPolicy: IfNotPresent
         args:
         - -server.http-listen-port=80

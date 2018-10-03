@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
@@ -23,7 +23,7 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 type Overrides struct {
 	Defaults     Limits
 	overridesMtx sync.RWMutex
-	overrides    map[string]Limits
+	overrides    map[string]*Limits
 	quit         chan struct{}
 }
 
@@ -33,7 +33,7 @@ func NewOverrides(defaults Limits) (*Overrides, error) {
 		level.Info(util.Logger).Log("msg", "per-tenant overides disabled")
 		return &Overrides{
 			Defaults:  defaults,
-			overrides: map[string]Limits{},
+			overrides: map[string]*Limits{},
 			quit:      make(chan struct{}),
 		}, nil
 	}
@@ -82,14 +82,14 @@ func (o *Overrides) Stop() {
 	close(o.quit)
 }
 
-func loadOverrides(filename string) (map[string]Limits, error) {
+func loadOverrides(filename string) (map[string]*Limits, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 
 	var overrides struct {
-		Overrides map[string]Limits `yaml:"overrides"`
+		Overrides map[string]*Limits `yaml:"overrides"`
 	}
 
 	decoder := yaml.NewDecoder(f)
@@ -108,7 +108,7 @@ func (o *Overrides) getBool(userID string, f func(*Limits) bool) bool {
 	if !ok {
 		return f(&o.Defaults)
 	}
-	return f(&override)
+	return f(override)
 }
 
 func (o *Overrides) getInt(userID string, f func(*Limits) int) int {
@@ -118,7 +118,7 @@ func (o *Overrides) getInt(userID string, f func(*Limits) int) int {
 	if !ok {
 		return f(&o.Defaults)
 	}
-	return f(&override)
+	return f(override)
 }
 
 func (o *Overrides) getFloat(userID string, f func(*Limits) float64) float64 {
@@ -128,7 +128,7 @@ func (o *Overrides) getFloat(userID string, f func(*Limits) float64) float64 {
 	if !ok {
 		return f(&o.Defaults)
 	}
-	return f(&override)
+	return f(override)
 }
 
 func (o *Overrides) getDuration(userID string, f func(*Limits) time.Duration) time.Duration {
@@ -138,7 +138,7 @@ func (o *Overrides) getDuration(userID string, f func(*Limits) time.Duration) ti
 	if !ok {
 		return f(&o.Defaults)
 	}
-	return f(&override)
+	return f(override)
 }
 
 // IngestionRate returns the limit on ingester rate (samples per second).

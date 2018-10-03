@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // An ID is the ID of a single users's Cortex configuration. When a

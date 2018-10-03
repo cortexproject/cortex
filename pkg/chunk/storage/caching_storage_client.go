@@ -2,19 +2,17 @@ package storage
 
 import (
 	"context"
-	"encoding/hex"
-	"hash/fnv"
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (
@@ -59,7 +57,7 @@ func (c *indexCache) Store(ctx context.Context, keys []string, batches []ReadBat
 	hashed := make([]string, 0, len(keys))
 	bufs := make([][]byte, 0, len(batches))
 	for i := range keys {
-		hashed = append(hashed, hashKey(keys[i]))
+		hashed = append(hashed, cache.HashKey(keys[i]))
 		out, err := proto.Marshal(&batches[i])
 		if err != nil {
 			level.Warn(util.Logger).Log("msg", "error marshaling ReadBatch", "err", err)
@@ -80,7 +78,7 @@ func (c *indexCache) Fetch(ctx context.Context, keys []string) (batches []ReadBa
 	// the last hash.
 	hashedKeys := make(map[string]string, len(keys))
 	for _, key := range keys {
-		hashedKeys[hashKey(key)] = key
+		hashedKeys[cache.HashKey(key)] = key
 	}
 
 	// Build a list of hashes; could be less than keys due to collisions.
@@ -132,14 +130,6 @@ func (c *indexCache) Fetch(ctx context.Context, keys []string) (batches []ReadBa
 	}
 
 	return batches, missed
-}
-
-func hashKey(key string) string {
-	hasher := fnv.New64a()
-	hasher.Write([]byte(key)) // This'll never error.
-
-	// Hex because memcache errors for the bytes produced by the hash.
-	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 type cachingStorageClient struct {

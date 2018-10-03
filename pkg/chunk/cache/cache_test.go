@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
 const userID = "1"
@@ -168,5 +168,10 @@ func TestDiskcache(t *testing.T) {
 
 func TestFifoCache(t *testing.T) {
 	cache := cache.NewFifoCache("test", 1e3, 1*time.Hour)
+	testCache(t, cache)
+}
+
+func TestSnappyCache(t *testing.T) {
+	cache := cache.NewSnappy(cache.NewMockCache())
 	testCache(t, cache)
 }

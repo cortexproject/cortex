@@ -11,8 +11,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
 
 const (
@@ -33,6 +33,7 @@ type Config struct {
 	auth                     bool
 	username                 string
 	password                 string
+	timeout                  time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -49,6 +50,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.auth, "cassandra.auth", false, "Enable password authentication when connecting to cassandra.")
 	f.StringVar(&cfg.username, "cassandra.username", "", "Username to use when connecting to cassandra.")
 	f.StringVar(&cfg.password, "cassandra.password", "", "Password to use when connecting to cassandra.")
+	f.DurationVar(&cfg.timeout, "cassandra.timeout", 600*time.Millisecond, "Timeout when connecting to cassandra.")
 }
 
 func (cfg *Config) session() (*gocql.Session, error) {
@@ -67,7 +69,7 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.Consistency = consistency
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
-
+	cluster.Timeout = cfg.timeout
 	cfg.setClusterConfig(cluster)
 
 	return cluster.CreateSession()

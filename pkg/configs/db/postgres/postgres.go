@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"                         // Import the postgres sql driver
 	_ "github.com/mattes/migrate/driver/postgres" // Import the postgres migrations driver
 	"github.com/mattes/migrate/migrate"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/cortex/pkg/configs"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (
@@ -221,7 +221,7 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.Versio
 		// non-empty `rules_files` key.
 		//
 		// This whole situation is way too complicated. See
-		// https://github.com/weaveworks/cortex/issues/619 for the whole
+		// https://github.com/cortexproject/cortex/issues/619 for the whole
 		// story, and our plans to improve it.
 		Where("config ->> 'rules_files' <> '{}'").
 		OrderBy("owner_id, id DESC").

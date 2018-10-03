@@ -10,14 +10,19 @@ import (
 	"testing"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	jaeger "github.com/uber/jaeger-client-go"
+	"github.com/uber/jaeger-client-go/config"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func TestFrontend(t *testing.T) {
@@ -70,6 +75,55 @@ func TestFrontendRetries(t *testing.T) {
 	testFrontend(t, handler, test)
 }
 
+func TestFrontendPropagateTrace(t *testing.T) {
+	closer, err := config.Configuration{}.InitGlobalTracer("test")
+	require.NoError(t, err)
+	defer closer.Close()
+
+	observedTraceID := make(chan string, 2)
+
+	handler := middleware.Tracer{}.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sp := opentracing.SpanFromContext(r.Context())
+		defer sp.Finish()
+
+		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
+		observedTraceID <- traceID
+
+		w.Write([]byte(responseBody))
+	}))
+
+	test := func(addr string) {
+		sp, ctx := opentracing.StartSpanFromContext(context.Background(), "client")
+		defer sp.Finish()
+		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
+
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, query), nil)
+		require.NoError(t, err)
+		req = req.WithContext(ctx)
+		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
+		require.NoError(t, err)
+
+		req, tr := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
+		defer tr.Finish()
+
+		client := http.Client{
+			Transport: &nethttp.Transport{},
+		}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+
+		defer resp.Body.Close()
+		_, err = ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		// Query should do two calls.
+		assert.Equal(t, traceID, <-observedTraceID)
+		assert.Equal(t, traceID, <-observedTraceID)
+	}
+	testFrontend(t, handler, test)
+}
+
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 	logger := log.NewNopLogger() //log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 
@@ -78,6 +132,7 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 		workerConfig WorkerConfig
 	)
 	util.DefaultValues(&config, &workerConfig)
+	config.SplitQueriesByDay = true
 
 	grpcListen, err := net.Listen("tcp", "")
 	require.NoError(t, err)
@@ -89,13 +144,18 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 	frontend, err := New(config, logger)
 	require.NoError(t, err)
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.StreamInterceptor(otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer())),
+	)
 	defer grpcServer.GracefulStop()
 
 	RegisterFrontendServer(grpcServer, frontend)
 
 	httpServer := http.Server{
-		Handler: middleware.AuthenticateUser.Wrap(frontend),
+		Handler: middleware.Merge(
+			middleware.AuthenticateUser,
+			middleware.Tracer{},
+		).Wrap(frontend),
 	}
 	defer httpServer.Shutdown(context.Background())
 

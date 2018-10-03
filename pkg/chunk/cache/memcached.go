@@ -2,17 +2,19 @@ package cache
 
 import (
 	"context"
+	"encoding/hex"
 	"flag"
+	"hash/fnv"
 	"sync"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	instr "github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (
@@ -211,7 +213,7 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 		if err != nil {
 			sp := opentracing.SpanFromContext(ctx)
 			sp.LogFields(otlog.Error(err))
-			level.Error(util.Logger).Log("msg", "failed to put to diskcache", "err", err)
+			level.Error(util.Logger).Log("msg", "failed to put to memcached", "err", err)
 		}
 	}
 }
@@ -225,4 +227,13 @@ func (c *Memcached) Stop() error {
 	close(c.inputCh)
 	c.wg.Wait()
 	return nil
+}
+
+// HashKey hashes key into something you can store in memcached.
+func HashKey(key string) string {
+	hasher := fnv.New64a()
+	hasher.Write([]byte(key)) // This'll never error.
+
+	// Hex because memcache errors for the bytes produced by the hash.
+	return hex.EncodeToString(hasher.Sum(nil))
 }

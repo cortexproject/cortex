@@ -1,9 +1,9 @@
 package batch
 
 import (
+	"github.com/cortexproject/cortex/pkg/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
 // chunkIterator implement batchIterator over a chunk.  Its is designed to be

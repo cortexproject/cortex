@@ -9,10 +9,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
 )
 
 func newIngesterStreamingQueryable(distributor Distributor, chunkIteratorFunc chunkIteratorFunc) *ingesterQueryable {
@@ -89,8 +89,7 @@ func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...
 
 	serieses := make([]storage.Series, 0, len(results))
 	for _, result := range results {
-		metric := client.FromLabelPairs(result.Labels)
-		chunks, err := chunkcompat.FromChunks(userID, metric, result.Chunks)
+		chunks, err := chunkcompat.FromChunks(userID, nil, result.Chunks)
 		if err != nil {
 			return nil, promql.ErrStorage(err)
 		}

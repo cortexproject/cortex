@@ -50,20 +50,28 @@ var (
 type Config struct {
 	MaxOutstandingPerTenant int
 	MaxRetries              int
+	SplitQueriesByDay       bool
+	AlignQueriesWithStep    bool
+	CacheResults            bool
+	resultsCacheConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
-	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyon this, the downstream error is returned.")
+	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
+	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
+	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
+	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
+	cfg.resultsCacheConfig.RegisterFlags(f)
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
 // for requests which failed.
 type Frontend struct {
-	cfg    Config
-	log    log.Logger
-	tracer nethttp.Transport
+	cfg          Config
+	log          log.Logger
+	roundTripper http.RoundTripper
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
@@ -84,7 +92,45 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 		log:    log,
 		queues: map[string]chan *request{},
 	}
-	f.tracer.RoundTripper = f
+
+	// We need to do the opentracing at the leafs of the roundtrippers, as a
+	// single request could turn into multiple requests.
+	tracingRoundTripper := &nethttp.Transport{
+		RoundTripper: f,
+	}
+	var roundTripper http.RoundTripper = RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		req, ht := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
+		defer ht.Finish()
+
+		return tracingRoundTripper.RoundTrip(req)
+	})
+
+	// Stack up the pipeline of various query range middlewares.
+	queryRangeMiddleware := []queryRangeMiddleware{}
+	if cfg.AlignQueriesWithStep {
+		queryRangeMiddleware = append(queryRangeMiddleware, stepAlignMiddleware)
+	}
+	if cfg.SplitQueriesByDay {
+		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware)
+	}
+	if cfg.CacheResults {
+		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.resultsCacheConfig)
+		if err != nil {
+			return nil, err
+		}
+		queryRangeMiddleware = append(queryRangeMiddleware, queryCacheMiddleware)
+	}
+
+	// Finally, if the user selected any query range middleware, stitch it in.
+	if len(queryRangeMiddleware) > 0 {
+		roundTripper = &queryRangeRoundTripper{
+			next: roundTripper,
+			queryRangeMiddleware: merge(queryRangeMiddleware...).Wrap(&queryRangeTerminator{
+				next: roundTripper,
+			}),
+		}
+	}
+	f.roundTripper = roundTripper
 	f.cond = sync.NewCond(&f.mtx)
 	return f, nil
 }
@@ -100,10 +146,7 @@ func (f *Frontend) Close() {
 
 // ServeHTTP serves HTTP requests.
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r, ht := nethttp.TraceRequest(opentracing.GlobalTracer(), r)
-	defer ht.Finish()
-
-	resp, err := f.tracer.RoundTrip(r)
+	resp, err := f.roundTripper.RoundTrip(r)
 	if err != nil {
 		server.WriteError(w, err)
 		return

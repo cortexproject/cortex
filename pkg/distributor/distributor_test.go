@@ -19,14 +19,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
-	"github.com/weaveworks/cortex/pkg/ring"
-	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/cortex/pkg/util/chunkcompat"
-	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 var (
@@ -387,6 +387,7 @@ func (r mockRing) ReplicationFactor() int {
 type mockIngester struct {
 	sync.Mutex
 	client.IngesterClient
+	grpc_health_v1.HealthClient
 	happy      bool
 	stats      client.UsersStatsResponse
 	timeseries map[uint32]*client.PreallocTimeseries

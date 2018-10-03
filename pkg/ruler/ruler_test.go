@@ -11,10 +11,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/querier"
 )
 
 func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {

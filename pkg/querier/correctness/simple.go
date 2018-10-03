@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -41,14 +42,21 @@ func NewSimpleTestCase(name string, f func(time.Time) float64) Case {
 	}
 }
 
+func (tc *simpleTestCase) Name() string {
+	return tc.name
+}
+
 func (tc *simpleTestCase) ExpectedValueAt(t time.Time) float64 {
 	return tc.expectedValueAt(t)
 }
 
 func (tc *simpleTestCase) Query(ctx context.Context, client v1.API, selectors string, start time.Time, duration time.Duration) ([]model.SamplePair, error) {
+	log, ctx := spanlogger.New(ctx, "simpleTestCase.Query")
+	defer log.Finish()
+
 	metricName := prometheus.BuildFQName(namespace, subsystem, tc.name)
 	query := fmt.Sprintf("%s{%s}[%dm]", metricName, selectors, duration/time.Minute)
-	log.Println(query, "@", start)
+	level.Info(log).Log("query", query)
 
 	value, err := client.Query(ctx, query, start)
 	if err != nil {

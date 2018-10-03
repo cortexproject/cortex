@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/go-kit/kit/log"
-	"github.com/weaveworks/cortex/pkg/ring"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"

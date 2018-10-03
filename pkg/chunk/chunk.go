@@ -10,28 +10,31 @@ import (
 	"strings"
 	"sync"
 
+	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	errs "github.com/weaveworks/common/errors"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // Errors that decode can return
 const (
-	ErrInvalidChunkID  = errs.Error("invalid chunk ID")
 	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
+
+func errInvalidChunkID(s string) error {
+	return errors.Errorf("invalid chunk ID %q", s)
+}
 
 // Chunk contains encoded timeseries data
 type Chunk struct {
@@ -107,7 +110,7 @@ func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 3 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return Chunk{}, errInvalidChunkID(key)
 	}
 	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil {
@@ -132,12 +135,12 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 func parseNewExternalKey(key string) (Chunk, error) {
 	parts := strings.Split(key, "/")
 	if len(parts) != 2 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return Chunk{}, errInvalidChunkID(key)
 	}
 	userID := parts[0]
 	hexParts := strings.Split(parts[1], ":")
 	if len(hexParts) != 4 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return Chunk{}, errInvalidChunkID(key)
 	}
 	fingerprint, err := strconv.ParseUint(hexParts[0], 16, 64)
 	if err != nil {

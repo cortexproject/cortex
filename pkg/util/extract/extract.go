@@ -3,9 +3,9 @@ package extract
 import (
 	"fmt"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
 )
 
 var labelNameBytes = []byte(model.MetricNameLabel)
@@ -22,10 +22,8 @@ func MetricNameFromLabelPairs(labels []client.LabelPair) ([]byte, error) {
 
 // MetricNameFromMetric extract the metric name from a model.Metric
 func MetricNameFromMetric(m model.Metric) (model.LabelValue, error) {
-	for name, value := range m {
-		if name == model.MetricNameLabel {
-			return value, nil
-		}
+	if value, found := m[model.MetricNameLabel]; found {
+		return value, nil
 	}
 	return "", fmt.Errorf("no MetricNameLabel for chunk")
 }

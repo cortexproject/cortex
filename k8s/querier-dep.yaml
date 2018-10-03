@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: querier
-        image: quay.io/weaveworks/cortex-querier
+        image: quay.io/cortexproject/querier
         imagePullPolicy: IfNotPresent
         args:
         - -server.http-listen-port=80

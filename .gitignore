@@ -7,6 +7,7 @@ cmd/query-frontend/query-frontend
 cmd/ruler/ruler
 cmd/table-manager/table-manager
 cmd/lite/lite
+cmd/test-exporter/test-exporter
 .uptodate
 .pkg
 .cache

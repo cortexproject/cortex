@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/chunk"
 )
 
 func TestMergeIter(t *testing.T) {

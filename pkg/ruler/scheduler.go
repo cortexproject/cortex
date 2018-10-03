@@ -15,9 +15,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/rules"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/cortex/pkg/configs"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var backoffConfig = util.BackoffConfig{

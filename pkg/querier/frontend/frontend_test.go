@@ -21,8 +21,8 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 func TestFrontend(t *testing.T) {

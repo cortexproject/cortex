@@ -11,10 +11,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/querier/batch"
-	"github.com/weaveworks/cortex/pkg/querier/iterators"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/batch"
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // Config contains the configuration require to create a querier

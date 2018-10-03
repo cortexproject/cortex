@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 type mockKV struct {

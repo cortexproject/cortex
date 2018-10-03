@@ -19,10 +19,10 @@ package querier
 import (
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
 
 // concreteSeriesSet implements storage.SeriesSet.

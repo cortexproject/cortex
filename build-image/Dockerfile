@@ -27,5 +27,5 @@ ENTRYPOINT ["/build.sh"]
 
 ARG revision
 LABEL org.opencontainers.image.title="build-image" \
-      org.opencontainers.image.source="https://github.com/weaveworks/cortex/tree/master/build-image" \
+      org.opencontainers.image.source="https://github.com/cortexproject/cortex/tree/master/build-image" \
       org.opencontainers.image.revision="${revision}"

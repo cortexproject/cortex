@@ -9,9 +9,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const tpl = `

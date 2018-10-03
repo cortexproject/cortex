@@ -31,10 +31,10 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/distributor"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (

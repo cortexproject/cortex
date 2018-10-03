@@ -30,7 +30,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/mesh"
 )
 

@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: table-manager
-        image: quay.io/weaveworks/cortex-table-manager
+        image: quay.io/cortexproject/table-manager
         imagePullPolicy: IfNotPresent
         args:
         - -server.http-listen-port=80

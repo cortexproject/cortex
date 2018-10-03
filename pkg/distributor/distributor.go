@@ -20,16 +20,16 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	ingester_client "github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
-	"github.com/weaveworks/cortex/pkg/ring"
-	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/cortex/pkg/util/extract"
-	"github.com/weaveworks/cortex/pkg/util/validation"
 )
 
 const (

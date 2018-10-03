@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
 
 func TestSampleStreamIterator_Metric(t *testing.T) {

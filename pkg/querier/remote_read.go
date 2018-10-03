@@ -3,11 +3,11 @@ package querier
 import (
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // RemoteReadHandler handles Prometheus remote read requests.

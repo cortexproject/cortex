@@ -3,8 +3,8 @@ package util
 import (
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 )
 
 // SampleStreamIterator is a struct and not just a renamed type because otherwise the Metric

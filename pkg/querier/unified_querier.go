@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {

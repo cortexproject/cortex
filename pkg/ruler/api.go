@@ -9,10 +9,10 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/db"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/configs"
-	"github.com/weaveworks/cortex/pkg/configs/db"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // API implements the configs api.

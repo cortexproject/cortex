@@ -6,10 +6,10 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/weaveworks/cortex/pkg/configs"
-	configs_client "github.com/weaveworks/cortex/pkg/configs/client"
-	"github.com/weaveworks/cortex/pkg/configs/db"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/configs"
+	configs_client "github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/configs/db"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // ConfigStoreConfig says where we can find the ruler configs.
@@ -42,7 +42,7 @@ type RulesAPI interface {
 func NewRulesAPI(cfg ConfigStoreConfig) (RulesAPI, error) {
 	// All of this falderal is to allow for a smooth transition away from
 	// using the configs server and toward directly connecting to the database.
-	// See https://github.com/weaveworks/cortex/issues/619
+	// See https://github.com/cortexproject/cortex/issues/619
 	if cfg.ConfigsAPIURL.URL != nil {
 		return configsClient{
 			URL:     cfg.ConfigsAPIURL.URL,

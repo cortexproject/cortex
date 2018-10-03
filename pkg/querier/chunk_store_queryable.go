@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 type chunkIteratorFunc func(chunks []chunk.Chunk, from, through model.Time) storage.SeriesIterator

@@ -8,10 +8,10 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/config"
-	"github.com/weaveworks/cortex/pkg/configs"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // TODO: Extract configs client logic into go client library (ala users)

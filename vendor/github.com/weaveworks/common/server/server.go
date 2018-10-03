@@ -139,7 +139,9 @@ func New(cfg Config) (*Server, error) {
 		RegisterInstrumentation(router)
 	}
 	httpMiddleware := []middleware.Interface{
-		middleware.Tracer{},
+		middleware.Tracer{
+			RouteMatcher: router,
+		},
 		middleware.Log{
 			Log: log,
 		},

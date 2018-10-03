@@ -791,19 +791,20 @@ func (b dynamoDBWriteBatch) AddBatch(a chunk.WriteBatch) {
 }
 
 func (b dynamoDBWriteBatch) Take(undersizedOK bool) chunk.WriteBatch {
-	var ret = dynamoDBWriteBatch{}
-	for {
-		if b.Len() >= dynamoDBMaxWriteBatchSize || undersizedOK {
-			ret.TakeReqs(b, dynamoDBMaxWriteBatchSize)
-		}
-		if len(ret) == 0 {
-			return nil
-		}
-		if !ret.deDuplicate() {
-			break
+	// We only take a batch from one table, to avoid one table holding up another
+	for tableName, fromReqs := range b {
+		count := len(fromReqs)
+		if count >= dynamoDBMaxWriteBatchSize || (undersizedOK && count > 0) {
+			taken := util.Min(count, dynamoDBMaxWriteBatchSize)
+			ret := dynamoDBWriteBatch{
+				tableName: fromReqs[:taken:taken],
+			}
+			b[tableName] = fromReqs[taken:]
+			ret.deDuplicate()
+			return ret
 		}
 	}
-	return ret
+	return nil
 }
 
 func (b dynamoDBWriteBatch) deDuplicate() bool {

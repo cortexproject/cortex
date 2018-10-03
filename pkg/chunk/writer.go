@@ -112,11 +112,13 @@ func (sc *Writer) writeLoop(ctx context.Context) {
 			sc.pending.Add(-batchLen)
 			continue
 		}
-		// Send unprocessed items back into the batcher
-		sc.retry <- retry
+		if retry != nil {
+			// Wait before retry
+			limiter.WaitN(ctx, retry.Len())
+			// Send unprocessed items back into the batcher
+			sc.retry <- retry
+		}
 		sc.pending.Add(-(batchLen - retry.Len()))
-		// Wait before accepting the next batch
-		limiter.WaitN(ctx, batchLen)
 	}
 }
 

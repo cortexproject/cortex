@@ -164,7 +164,7 @@ func (b bigtableWriteBatch) AddBatch(a chunk.WriteBatch) {
 	}
 }
 
-func (b bigtableWriteBatch) Take(undersizedOK bool) chunk.WriteBatch {
+func (b bigtableWriteBatch) Take(undersizedOK bool) (chunk.WriteBatch, int) {
 	ret := bigtableWriteBatch{
 		tables: map[string]map[string]*bigtable.Mutation{},
 	}
@@ -182,7 +182,7 @@ func (b bigtableWriteBatch) Take(undersizedOK bool) chunk.WriteBatch {
 			delete(fromRows, rowKey)
 			count++
 			if count >= batchSize {
-				return ret
+				return ret, ret.Len()
 			}
 		}
 		if len(fromRows) == 0 {
@@ -190,7 +190,7 @@ func (b bigtableWriteBatch) Take(undersizedOK bool) chunk.WriteBatch {
 		}
 	}
 
-	return ret
+	return ret, ret.Len()
 }
 
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {

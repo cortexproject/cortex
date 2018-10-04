@@ -178,11 +178,11 @@ func (b *writeBatch) AddBatch(a chunk.WriteBatch) {
 	b.entries = append(b.entries, a.(*writeBatch).entries...)
 }
 
-func (b *writeBatch) Take(undersizedOK bool) chunk.WriteBatch {
+func (b *writeBatch) Take(undersizedOK bool) (chunk.WriteBatch, int) {
 	// Not sure what is a good batch size - just return everything
 	ret := *b
 	*b = writeBatch{}
-	return &ret
+	return &ret, ret.Len()
 }
 
 func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {

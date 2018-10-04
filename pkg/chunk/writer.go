@@ -137,7 +137,13 @@ func (sc *Writer) batcher() {
 		}
 		// We will send out a batch if the queue is big enough, or if we're flushing
 		if outBatch == nil || outBatch.Len() == 0 {
-			outBatch = queue.Take(flushing)
+			var removed int
+			outBatch, removed = queue.Take(flushing)
+			if removed > 0 {
+				// Account for entries removed from the queue which are not in the batch
+				// (e.g. because of deduplication)
+				sc.pending.Add(-(removed - outBatch.Len()))
+			}
 		}
 		if outBatch != nil && outBatch.Len() > 0 {
 			out = sc.batched

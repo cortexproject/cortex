@@ -16,7 +16,9 @@ type DoSingleQuery func(
 	callback func(chunk.ReadBatch) bool,
 ) error
 
-const maxParallelism = 100
+// QueryParallelism is the maximum number of subqueries run in
+// parallel per higher-level query
+var QueryParallelism = 100
 
 // DoParallelQueries translates between our interface for query batching,
 // and indexes that don't yet support batching.
@@ -26,7 +28,7 @@ func DoParallelQueries(
 ) error {
 	queue := make(chan chunk.IndexQuery)
 	incomingErrors := make(chan error)
-	n := util.Min(len(queries), maxParallelism)
+	n := util.Min(len(queries), QueryParallelism)
 	// Run n parallel goroutines fetching queries from the queue
 	for i := 0; i < n; i++ {
 		go func() {

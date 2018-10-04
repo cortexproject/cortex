@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -46,10 +47,13 @@ func main() {
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 		workerConfig      frontend.WorkerConfig
+		queryParallelism  int
 	)
 	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
 		&querierConfig, &chunkStoreConfig, &schemaConfig, &storageConfig, &workerConfig)
+	flag.IntVar(&queryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
 	flag.Parse()
+	chunk_util.QueryParallelism = queryParallelism
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("querier")

@@ -381,11 +381,11 @@ func (b *mockWriteBatch) AddBatch(a WriteBatch) {
 	*b = append(*b, *a.(*mockWriteBatch)...)
 }
 
-func (b *mockWriteBatch) Take(undersizedOK bool) WriteBatch {
+func (b *mockWriteBatch) Take(undersizedOK bool) (WriteBatch, int) {
 	// Not a very full implementation - just return everything
 	ret := *b
 	*b = nil
-	return &ret
+	return &ret, len(ret)
 }
 
 func (b *mockReadBatchIter) Next() bool {

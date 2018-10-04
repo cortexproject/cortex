@@ -37,7 +37,7 @@ type WriteBatch interface {
 	AddDelete(tableName, hashValue string, rangeValue []byte)
 	AddBatch(WriteBatch)
 	Len() int
-	Take(undersizedOK bool) WriteBatch
+	Take(undersizedOK bool) (WriteBatch, int)
 }
 
 // ReadBatch represents the results of a QueryPages.

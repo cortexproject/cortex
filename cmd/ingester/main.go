@@ -85,14 +85,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts)
+	overrides, err := validation.NewOverrides(limits)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
+		os.Exit(1)
+	}
+
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts, overrides)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
 	}
 	defer chunkStore.Stop()
 
-	ingester, err := ingester.New(ingesterConfig, clientConfig, limits, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, clientConfig, overrides, chunkStore)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

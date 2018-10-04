@@ -227,3 +227,17 @@ func (o *Overrides) MaxSeriesPerMetric(userID string) int {
 		return l.MaxSeriesPerMetric
 	})
 }
+
+// MaxChunksPerQuery returns the maximum number of chunks allowed per query.
+func (o *Overrides) MaxChunksPerQuery(userID string) int {
+	return o.getInt(userID, func(l *Limits) int {
+		return l.MaxChunksPerQuery
+	})
+}
+
+// MaxQueryLength returns the limit of the length (in time) of a query.
+func (o *Overrides) MaxQueryLength(userID string) time.Duration {
+	return o.getDuration(userID, func(l *Limits) time.Duration {
+		return l.MaxQueryLength
+	})
+}

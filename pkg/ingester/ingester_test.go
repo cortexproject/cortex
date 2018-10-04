@@ -37,8 +37,12 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
-	ing, err := New(cfg, clientConfig, limits, store)
+	overrides, err := validation.NewOverrides(limits)
 	require.NoError(t, err)
+
+	ing, err := New(cfg, clientConfig, overrides, store)
+	require.NoError(t, err)
+
 	return store, ing
 }
 

@@ -71,11 +71,16 @@ func (s resultsCache) Do(ctx context.Context, r *queryRangeRequest) (*apiRespons
 		response *apiResponse
 	)
 
-	cached, ok := s.get(ctx, key)
-	if ok {
-		response, extents, err = s.handleHit(ctx, r, cached)
+	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
+	if r.start > maxCacheTime {
+		response, extents, err = s.handleFresh(ctx, r)
 	} else {
-		response, extents, err = s.handleMiss(ctx, r)
+		cached, ok := s.get(ctx, key)
+		if ok {
+			response, extents, err = s.handleHit(ctx, r, cached)
+		} else {
+			response, extents, err = s.handleMiss(ctx, r)
+		}
 	}
 
 	if err == nil && len(extents) > 0 {
@@ -84,6 +89,18 @@ func (s resultsCache) Do(ctx context.Context, r *queryRangeRequest) (*apiRespons
 	}
 
 	return response, err
+}
+
+func (s resultsCache) handleFresh(ctx context.Context, r *queryRangeRequest) (*apiResponse, []extent, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "handle_fresh")
+	defer span.Finish()
+
+	response, err := s.next.Do(ctx, r)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return response, nil, nil
 }
 
 func (s resultsCache) handleMiss(ctx context.Context, r *queryRangeRequest) (*apiResponse, []extent, error) {

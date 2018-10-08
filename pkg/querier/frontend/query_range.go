@@ -182,8 +182,7 @@ func (q *queryRangeResponse) UnmarshalJSON(b []byte) error {
 		Result     jsoniter.RawMessage `json:"result"`
 	}{}
 
-	err := json.Unmarshal(b, &v)
-	if err != nil {
+	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
 
@@ -193,12 +192,16 @@ func (q *queryRangeResponse) UnmarshalJSON(b []byte) error {
 	switch v.ResultType {
 	case model.ValVector:
 		var vv model.Vector
-		err = json.Unmarshal(v.Result, &vv)
+		if err := json.Unmarshal(v.Result, &vv); err != nil {
+			return err
+		}
 		q.Result = vv
 
 	case model.ValMatrix:
 		var mv model.Matrix
-		err = json.Unmarshal(v.Result, &mv)
+		if err := json.Unmarshal(v.Result, &mv); err != nil {
+			return err
+		}
 		q.Result = mv
 
 	default:

@@ -186,23 +186,31 @@ type ConfigsView struct {
 	Configs map[string]configs.View `json:"configs"`
 }
 
+// getConfigsHelper returns configs started from ID = since and all configs if since = -1
+func (a *API) getConfigsHelper(since int64) (map[string]configs.View, error) {
+	if since == -1 {
+		return a.db.GetAllConfigs()
+	}
+	return a.db.GetConfigs(configs.ID(since))
+}
+
 func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
-	var cfgs map[string]configs.View
-	var err error
 	logger := util.WithContext(r.Context(), util.Logger)
+	var sinceID int64
 	rawSince := r.FormValue("since")
 	if rawSince == "" {
-		cfgs, err = a.db.GetAllConfigs()
+		sinceID = -1
 	} else {
-		since, err := strconv.ParseUint(rawSince, 10, 0)
+		id, err := strconv.ParseUint(rawSince, 10, 0)
 		if err != nil {
 			level.Info(logger).Log("msg", "invalid config ID", "err", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, err = a.db.GetConfigs(configs.ID(since))
+		sinceID = int64(id)
 	}
 
+	cfgs, err := a.getConfigsHelper(sinceID)
 	if err != nil {
 		// XXX: Untested
 		level.Error(logger).Log("msg", "error getting configs", "err", err)

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -10,11 +11,22 @@ import (
 )
 
 // Tracer is a middleware which traces incoming requests.
-type Tracer struct{}
+type Tracer struct {
+	RouteMatcher RouteMatcher
+}
 
 // Wrap implements Interface
 func (t Tracer) Wrap(next http.Handler) http.Handler {
-	traceHandler := nethttp.Middleware(opentracing.GlobalTracer(), next)
+	opMatcher := nethttp.OperationNameFunc(func(r *http.Request) string {
+		op := getRouteName(t.RouteMatcher, r)
+		if op == "" {
+			return "HTTP " + r.Method
+		}
+
+		return fmt.Sprintf("HTTP %s - %s", r.Method, op)
+	})
+
+	traceHandler := nethttp.Middleware(opentracing.GlobalTracer(), next, opMatcher)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var maybeTracer http.Handler
 		// Don't try and trace websocket requests because nethttp.Middleware

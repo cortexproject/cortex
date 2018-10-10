@@ -71,6 +71,11 @@ func (s resultsCache) Do(ctx context.Context, r *queryRangeRequest) (*apiRespons
 		response *apiResponse
 	)
 
+	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
+	if r.start > maxCacheTime {
+		return s.next.Do(ctx, r)
+	}
+
 	cached, ok := s.get(ctx, key)
 	if ok {
 		response, extents, err = s.handleHit(ctx, r, cached)

@@ -12,6 +12,7 @@ import (
 type PlanConfig struct {
 	FirstShard int
 	LastShard  int
+	BatchSize  int
 	UserIDList string
 	Tables     string
 }
@@ -26,8 +27,9 @@ type PlanConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *PlanConfig) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.FirstShard, "plan.firstShard", 1, "fist shard in range of shards to be migrated (1-240)")
-	f.IntVar(&cfg.LastShard, "plan.lastShard", 240, "last shard in range of shards to be migrated (1-240)")
+	f.IntVar(&cfg.FirstShard, "plan.firstShard", 0, "fist shard in range of shards to be migrated (0-240)")
+	f.IntVar(&cfg.LastShard, "plan.lastShard", 240, "last shard in range of shards to be migrated (0-240)")
+	f.IntVar(&cfg.BatchSize, "plan.batchsize", 1, "number of shards to stream per batch")
 	f.StringVar(&cfg.UserIDList, "plan.users", "", "comma separated list of user ids, if empty all users will be queried")
 	f.StringVar(&cfg.Tables, "plan.tables", "", "comma separated list of tables to migrate")
 }
@@ -36,17 +38,18 @@ func (cfg *PlanConfig) RegisterFlags(f *flag.FlagSet) {
 type Planner struct {
 	firstShard int
 	lastShard  int
+	batchSize  int
 	tables     []string
 	users      []string
 }
 
 // NewPlanner returns a new planner struct
 func NewPlanner(cfg PlanConfig) (Planner, error) {
-	if cfg.FirstShard < 1 || cfg.FirstShard > 240 {
-		return Planner{}, fmt.Errorf("plan.firstShard set to %v, must be in range 1-240", cfg.FirstShard)
+	if cfg.FirstShard < 0 || cfg.FirstShard > 240 {
+		return Planner{}, fmt.Errorf("plan.firstShard set to %v, must be in range 0-240", cfg.FirstShard)
 	}
-	if cfg.LastShard < 1 || cfg.LastShard > 240 {
-		return Planner{}, fmt.Errorf("plan.lastShard set to %v, must be in range 1-240", cfg.LastShard)
+	if cfg.LastShard < 0 || cfg.LastShard > 240 {
+		return Planner{}, fmt.Errorf("plan.lastShard set to %v, must be in range 0-240", cfg.LastShard)
 	}
 	if cfg.FirstShard > cfg.LastShard {
 		return Planner{}, fmt.Errorf("plan.lastShard (%v) is set to less than plan.from (%v)", cfg.LastShard, cfg.FirstShard)
@@ -59,6 +62,7 @@ func NewPlanner(cfg PlanConfig) (Planner, error) {
 		lastShard:  cfg.LastShard,
 		users:      userList,
 		tables:     tableList,
+		batchSize:  cfg.BatchSize,
 	}, nil
 }
 
@@ -66,7 +70,16 @@ func NewPlanner(cfg PlanConfig) (Planner, error) {
 func (p Planner) Plan(batch chunk.StreamBatch) {
 	for _, table := range p.tables {
 		for _, user := range p.users {
-			batch.Add(table, user, p.firstShard, p.lastShard)
+			for from := p.firstShard; from < p.lastShard; {
+				to := from + p.batchSize
+				fmt.Printf("from: %v, to: %v\n", from, to)
+				if to > p.lastShard {
+					batch.Add(table, user, from, p.lastShard)
+				} else {
+					batch.Add(table, user, from, to)
+				}
+				from = to
+			}
 		}
 	}
 }

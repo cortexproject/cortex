@@ -463,8 +463,8 @@ func (b *bigtableStreamBatch) Add(tableName, userID string, from, to int) {
 		b.queries = append(b.queries, bigtableStreamQuery{userID, "", tableName})
 		return
 	}
-	for i := from; i <= to; i++ {
-		prefix := fmt.Sprintf("%02x", i+15)
+	for i := from; i < to; i++ {
+		prefix := fmt.Sprintf("%02x", i+16)
 		b.queries = append(b.queries, bigtableStreamQuery{userID, prefix, tableName})
 	}
 }

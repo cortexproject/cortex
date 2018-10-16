@@ -408,22 +408,20 @@ func (c *cassandraStreamBatch) Add(tableName, userID string, from, to int) {
 		filterUserID = false
 	}
 
-	for i := from; i <= to; i++ {
-		f := getToken(int64(i))
-		t := getToken(int64(i + 1))
-		c.queries = append(c.queries, cassandraStreamQuery{
-			filterUserID: filterUserID,
-			userID:       userID,
-			tableName:    tableName,
-			tokenFrom:    fmt.Sprintf("%d", f),
-			tokenTo:      fmt.Sprintf("%d", t),
-		})
-	}
+	f := getToken(int64(from))
+	t := getToken(int64(to))
+	c.queries = append(c.queries, cassandraStreamQuery{
+		filterUserID: filterUserID,
+		userID:       userID,
+		tableName:    tableName,
+		tokenFrom:    fmt.Sprintf("%d", f),
+		tokenTo:      fmt.Sprintf("%d", t),
+	})
 }
 
 func getToken(i int64) int64 {
-	if i == 241 {
+	if i == 240 {
 		return math.MaxInt64
 	}
-	return math.MinInt64 + (76861433640456465 * (i - 1))
+	return math.MinInt64 + (76861433640456465 * (i))
 }

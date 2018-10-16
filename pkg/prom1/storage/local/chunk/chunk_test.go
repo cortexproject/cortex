@@ -145,12 +145,12 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 		require.EqualValues(t, model.Time(i*step), sample.Timestamp)
 		require.EqualValues(t, model.SampleValue(i), sample.Value)
 
-		i++
-		for ; i < samples; i++ {
+		j := i + 1
+		for ; j < samples; j++ {
 			require.True(t, iter.Scan())
 			sample := iter.Value()
-			require.EqualValues(t, model.Time(i*step), sample.Timestamp)
-			require.EqualValues(t, model.SampleValue(i), sample.Value)
+			require.EqualValues(t, model.Time(j*step), sample.Timestamp)
+			require.EqualValues(t, model.SampleValue(j), sample.Value)
 		}
 		require.False(t, iter.Scan())
 		require.NoError(t, iter.Err())

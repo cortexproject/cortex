@@ -11,14 +11,17 @@ import (
 	"github.com/prometheus/tsdb/chunkenc"
 )
 
-const samplesPerChunk = 120
+const samplesPerChunk = 60
 
 var errOutOfBounds = errors.New("out of bounds")
 
 // bigchunk is a set of prometheus/tsdb chunks.  It grows over time and has no
 // upperbound on number of samples it can contain.
 type bigchunk struct {
-	chunks           []chunkenc.Chunk
+	chunks []chunkenc.Chunk
+	starts []int64
+	ends   []int64
+
 	appender         chunkenc.Appender
 	remainingSamples int
 }
@@ -35,13 +38,17 @@ func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 			return nil, err
 		}
 
+		b.starts = append(b.starts, int64(sample.Timestamp))
+		b.ends = append(b.ends, int64(sample.Timestamp))
 		b.chunks = append(b.chunks, chunk)
+
 		b.appender = appender
 		b.remainingSamples = samplesPerChunk
 	}
 
 	b.appender.Append(int64(sample.Timestamp), float64(sample.Value))
 	b.remainingSamples--
+	b.ends[len(b.ends)-1] = int64(sample.Timestamp)
 	return []Chunk{b}, nil
 }
 
@@ -99,7 +106,14 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 			return err
 		}
 
+		start, end, err := firstAndLastTimes(chunk)
+		if err != nil {
+			return err
+		}
+
 		b.chunks = append(b.chunks, chunk)
+		b.starts = append(b.starts, start)
+		b.ends = append(b.ends, end)
 	}
 	return nil
 }
@@ -168,18 +182,30 @@ type bigchunkIterator struct {
 }
 
 func (i *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
+	// On average we'll have about 12*3600/15/120 = 24 chunks, so just linear
+	// scan for now.
 	i.i = 0
 	for i.i < len(i.chunks) {
-		i.iter = i.chunks[i.i].Iterator()
+		if int64(target) <= i.ends[i.i] {
+			break
+		}
 		i.i++
+	}
 
-		for i.iter.Next() {
-			t, _ := i.iter.At()
-			if t >= int64(target) {
-				return true
-			}
+	if i.i >= len(i.chunks) {
+		return false
+	}
+
+	i.iter = i.chunks[i.i].Iterator()
+	i.i++
+
+	for i.iter.Next() {
+		t, _ := i.iter.At()
+		if t >= int64(target) {
+			return true
 		}
 	}
+
 	return false
 }
 
@@ -214,6 +240,7 @@ func (i *bigchunkIterator) Batch(size int) Batch {
 		result.Timestamps[j] = t
 		result.Values[j] = v
 		j++
+
 		if j < size && !i.Scan() {
 			break
 		}
@@ -227,4 +254,22 @@ func (i *bigchunkIterator) Err() error {
 		return i.iter.Err()
 	}
 	return nil
+}
+
+func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
+	var (
+		first    int64
+		last     int64
+		firstSet bool
+		iter     = c.Iterator()
+	)
+	for iter.Next() {
+		t, _ := iter.At()
+		if !firstSet {
+			first = t
+			firstSet = true
+		}
+		last = t
+	}
+	return first, last, iter.Err()
 }

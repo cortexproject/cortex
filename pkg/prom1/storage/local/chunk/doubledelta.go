@@ -206,6 +206,10 @@ func (c *doubleDeltaEncodedChunk) NewIterator() Iterator {
 	})
 }
 
+func (c *doubleDeltaEncodedChunk) Slice(_, _ model.Time) Chunk {
+	return c
+}
+
 // Marshal implements chunk.
 func (c doubleDeltaEncodedChunk) Marshal(w io.Writer) error {
 	if len(c) > math.MaxUint16 {

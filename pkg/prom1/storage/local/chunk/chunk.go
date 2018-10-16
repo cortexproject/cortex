@@ -91,6 +91,10 @@ type Chunk interface {
 	Encoding() Encoding
 	Utilization() float64
 
+	// Slice returns a smaller chunk the includes all samples between start and end
+	// (inclusive).  Its may over estimate. On some encodings it is a noop.
+	Slice(start, end model.Time) Chunk
+
 	// Len returns the number of samples in the chunk.  Implementations may be
 	// expensive.
 	Len() int

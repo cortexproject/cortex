@@ -280,6 +280,10 @@ func (c varbitChunk) NewIterator() Iterator {
 	return newVarbitChunkIterator(c)
 }
 
+func (c *varbitChunk) Slice(_, _ model.Time) Chunk {
+	return c
+}
+
 // Marshal implements chunk.
 func (c varbitChunk) Marshal(w io.Writer) error {
 	n, err := w.Write(c)

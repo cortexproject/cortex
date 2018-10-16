@@ -245,3 +245,11 @@ func (d *desc) add(s model.SamplePair) ([]chunk.Chunk, error) {
 
 	return cs, nil
 }
+
+func (d *desc) slice(start, end model.Time) *desc {
+	return &desc{
+		C:         d.C.Slice(start, end),
+		FirstTime: start,
+		LastTime:  end,
+	}
+}

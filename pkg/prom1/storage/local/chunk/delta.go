@@ -180,6 +180,10 @@ func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	return []Chunk{&c}, nil
 }
 
+func (c *deltaEncodedChunk) Slice(_, _ model.Time) Chunk {
+	return c
+}
+
 // NewIterator implements chunk.
 func (c *deltaEncodedChunk) NewIterator() Iterator {
 	return newIndexAccessingChunkIterator(c.Len(), &deltaEncodedIndexAccessor{

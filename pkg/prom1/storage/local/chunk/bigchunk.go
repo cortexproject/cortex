@@ -140,6 +140,24 @@ func (b *bigchunk) NewIterator() Iterator {
 	}
 }
 
+func (b *bigchunk) Slice(start, end model.Time) Chunk {
+	i, j := 0, len(b.chunks)
+	for k := 0; k < len(b.chunks); k++ {
+		if b.ends[k] < int64(start) {
+			i = k + 1
+		}
+		if b.starts[k] > int64(end) {
+			j = k
+			break
+		}
+	}
+	return &bigchunk{
+		chunks: b.chunks[i:j],
+		starts: b.starts[i:j],
+		ends:   b.ends[i:j],
+	}
+}
+
 type writer struct {
 	io.Writer
 }

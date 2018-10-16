@@ -41,7 +41,7 @@ func TestStepAlign(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var result *QueryRangeRequest
 			s := stepAlign{
-				next: queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*apiResponse, error) {
+				next: queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*APIResponse, error) {
 					result = req
 					return nil, nil
 				}),

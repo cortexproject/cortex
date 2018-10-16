@@ -39,14 +39,14 @@ func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 // queryRangeHandlerFunc is like http.HandlerFunc, but for queryRangeHandler.
-type queryRangeHandlerFunc func(context.Context, *QueryRangeRequest) (*apiResponse, error)
+type queryRangeHandlerFunc func(context.Context, *QueryRangeRequest) (*APIResponse, error)
 
-func (q queryRangeHandlerFunc) Do(ctx context.Context, req *QueryRangeRequest) (*apiResponse, error) {
+func (q queryRangeHandlerFunc) Do(ctx context.Context, req *QueryRangeRequest) (*APIResponse, error) {
 	return q(ctx, req)
 }
 
 type queryRangeHandler interface {
-	Do(context.Context, *QueryRangeRequest) (*apiResponse, error)
+	Do(context.Context, *QueryRangeRequest) (*APIResponse, error)
 }
 
 // queryRangeMiddlewareFunc is like http.HandlerFunc, but for queryRangeMiddleware.
@@ -98,7 +98,7 @@ type queryRangeTerminator struct {
 	next http.RoundTripper
 }
 
-func (q queryRangeTerminator) Do(ctx context.Context, r *QueryRangeRequest) (*apiResponse, error) {
+func (q queryRangeTerminator) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
 	request, err := r.toHTTPRequest(ctx)
 	if err != nil {
 		return nil, err

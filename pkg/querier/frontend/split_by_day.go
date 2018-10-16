@@ -19,11 +19,11 @@ type splitByDay struct {
 
 type response struct {
 	req  QueryRangeRequest
-	resp *apiResponse
+	resp *APIResponse
 	err  error
 }
 
-func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*apiResponse, error) {
+func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
 	reqs := splitQuery(r)
@@ -33,7 +33,7 @@ func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*apiResponse,
 		return nil, err
 	}
 
-	resps := make([]*apiResponse, 0, len(reqResps))
+	resps := make([]*APIResponse, 0, len(reqResps))
 	for _, reqResp := range reqResps {
 		resps = append(resps, reqResp.resp)
 	}
@@ -69,7 +69,7 @@ func nextDayBoundary(t, step int64) int64 {
 
 type requestResponse struct {
 	req  *QueryRangeRequest
-	resp *apiResponse
+	resp *APIResponse
 }
 
 func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest) ([]requestResponse, error) {

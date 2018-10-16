@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 const (
@@ -20,14 +22,13 @@ const (
 	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
-var parsedResponse = &apiResponse{
+var parsedResponse = &APIResponse{
 	Status: "success",
-	Data: queryRangeResponse{
-		ResultType: model.ValMatrix,
-		Result: model.Matrix{
-			&model.SampleStream{
-				Metric: model.Metric{},
-				Values: []model.SamplePair{
+	Data: QueryRangeResponse{
+		ResultType: model.ValMatrix.String(),
+		Result: []SampleStream{
+			SampleStream{
+				Samples: []client.Sample{
 					{1536673680000, 137},
 					{1536673780000, 137},
 				},
@@ -103,7 +104,7 @@ func TestQueryRangeRequest(t *testing.T) {
 func TestQueryRangeResponse(t *testing.T) {
 	for i, tc := range []struct {
 		body     string
-		expected *apiResponse
+		expected *APIResponse
 	}{
 		{
 			body:     responseBody,
@@ -135,71 +136,65 @@ func TestQueryRangeResponse(t *testing.T) {
 
 func TestMergeAPIResponses(t *testing.T) {
 	for i, tc := range []struct {
-		input    []*apiResponse
-		expected *apiResponse
+		input    []*APIResponse
+		expected *APIResponse
 	}{
 		// No responses shouldn't panic.
 		{
-			input: []*apiResponse{},
-			expected: &apiResponse{
+			input: []*APIResponse{},
+			expected: &APIResponse{
 				Status: statusSuccess,
 			},
 		},
 
 		// A single empty response shouldn't panic.
 		{
-			input: []*apiResponse{
+			input: []*APIResponse{
 				{
-					Data: queryRangeResponse{
-						ResultType: model.ValMatrix,
-						Result:     model.Matrix{},
+					Data: QueryRangeResponse{
+						ResultType: model.ValMatrix.String(),
 					},
 				},
 			},
-			expected: &apiResponse{
+			expected: &APIResponse{
 				Status: statusSuccess,
-				Data: queryRangeResponse{
-					ResultType: model.ValMatrix,
-					Result:     model.Matrix{},
+				Data: QueryRangeResponse{
+					ResultType: model.ValMatrix.String(),
 				},
 			},
 		},
 
 		// Multiple empty responses shouldn't panic.
 		{
-			input: []*apiResponse{
+			input: []*APIResponse{
 				{
-					Data: queryRangeResponse{
-						ResultType: model.ValMatrix,
-						Result:     model.Matrix{},
+					Data: QueryRangeResponse{
+						ResultType: model.ValMatrix.String(),
 					},
 				},
 				{
-					Data: queryRangeResponse{
-						ResultType: model.ValMatrix,
-						Result:     model.Matrix{},
+					Data: QueryRangeResponse{
+						ResultType: model.ValMatrix.String(),
 					},
 				},
 			},
-			expected: &apiResponse{
+			expected: &APIResponse{
 				Status: statusSuccess,
-				Data: queryRangeResponse{
-					ResultType: model.ValMatrix,
-					Result:     model.Matrix{},
+				Data: QueryRangeResponse{
+					ResultType: model.ValMatrix.String(),
 				},
 			},
 		},
 
 		// Basic merging of two responses.
 		{
-			input: []*apiResponse{
+			input: []*APIResponse{
 				{
-					Data: queryRangeResponse{
-						ResultType: model.ValMatrix,
-						Result: model.Matrix{
+					Data: QueryRangeResponse{
+						ResultType: matrix,
+						Result: []SampleStream{
 							{
-								Metric: model.Metric{},
-								Values: []model.SamplePair{
+								Samples: []client.Sample{
 									{0, 0},
 									{1, 1},
 								},
@@ -208,12 +203,11 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 				{
-					Data: queryRangeResponse{
-						ResultType: model.ValMatrix,
-						Result: model.Matrix{
+					Data: QueryRangeResponse{
+						ResultType: matrix,
+						Result: []SampleStream{
 							{
-								Metric: model.Metric{},
-								Values: []model.SamplePair{
+								Samples: []client.Sample{
 									{2, 2},
 									{3, 3},
 								},
@@ -222,14 +216,13 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 			},
-			expected: &apiResponse{
+			expected: &APIResponse{
 				Status: statusSuccess,
-				Data: queryRangeResponse{
-					ResultType: model.ValMatrix,
-					Result: model.Matrix{
+				Data: QueryRangeResponse{
+					ResultType: matrix,
+					Result: []SampleStream{
 						{
-							Metric: model.Metric{},
-							Values: []model.SamplePair{
+							Samples: []client.Sample{
 								{0, 0},
 								{1, 1},
 								{2, 2},

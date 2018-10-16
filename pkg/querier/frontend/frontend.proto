@@ -5,8 +5,9 @@ package frontend;
 option go_package = "frontend";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
 import "google/protobuf/duration.proto";
+import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -18,12 +19,11 @@ service Frontend {
 message ProcessRequest {
   httpgrpc.HTTPRequest httpRequest = 1;
   QueryRangeRequest queryRangeRequest = 2;
-
 }
 
 message ProcessResponse {
   httpgrpc.HTTPResponse httpResponse = 1;
-  QueryRangeResponse queryRangeResponse = 2;
+  APIResponse apiResponse = 2;
 }
 
 message QueryRangeRequest {
@@ -35,6 +35,19 @@ message QueryRangeRequest {
   string query = 6;
 }
 
-message QueryRangeResponse {
+message APIResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  QueryRangeResponse Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+}
 
+message QueryRangeResponse {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated SampleStream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+}
+
+message SampleStream {
+  repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric"];
+  repeated cortex.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
 }

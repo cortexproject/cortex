@@ -57,10 +57,10 @@ type cachedResponse struct {
 type extent struct {
 	Start    int64        `json:"start"`
 	End      int64        `json:"end"`
-	Response *apiResponse `json:"response"`
+	Response *APIResponse `json:"response"`
 }
 
-func (s resultsCache) Do(ctx context.Context, r *QueryRangeRequest) (*apiResponse, error) {
+func (s resultsCache) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (s resultsCache) Do(ctx context.Context, r *QueryRangeRequest) (*apiRespons
 		day      = r.Start / millisecondPerDay
 		key      = fmt.Sprintf("%s:%s:%d:%d", userID, r.Query, r.Step, day)
 		extents  []extent
-		response *apiResponse
+		response *APIResponse
 	)
 
 	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
@@ -93,7 +93,7 @@ func (s resultsCache) Do(ctx context.Context, r *QueryRangeRequest) (*apiRespons
 	return response, err
 }
 
-func (s resultsCache) handleMiss(ctx context.Context, r *QueryRangeRequest) (*apiResponse, []extent, error) {
+func (s resultsCache) handleMiss(ctx context.Context, r *QueryRangeRequest) (*APIResponse, []extent, error) {
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
@@ -109,7 +109,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r *QueryRangeRequest) (*ap
 	return response, extents, nil
 }
 
-func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, extents []extent) (*apiResponse, []extent, error) {
+func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, extents []extent) (*APIResponse, []extent, error) {
 	var (
 		reqResps []requestResponse
 		err      error
@@ -149,7 +149,7 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 		}
 
 		accumulator.End = extents[i].End
-		accumulator.Response, err = mergeAPIResponses([]*apiResponse{accumulator.Response, extents[i].Response})
+		accumulator.Response, err = mergeAPIResponses([]*APIResponse{accumulator.Response, extents[i].Response})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -162,9 +162,9 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 }
 
 // partition calculates the required requests to satisfy req given the cached data.
-func partition(req *QueryRangeRequest, extents []extent) ([]*QueryRangeRequest, []*apiResponse) {
+func partition(req *QueryRangeRequest, extents []extent) ([]*QueryRangeRequest, []*APIResponse) {
 	var requests []*QueryRangeRequest
-	var cachedResponses []*apiResponse
+	var cachedResponses []*APIResponse
 	start := req.Start
 
 	for _, extent := range extents {

@@ -6,26 +6,28 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 )
 
-var dummyResponse = &apiResponse{
+var dummyResponse = &APIResponse{
 	Status: statusSuccess,
-	Data: queryRangeResponse{
-		ResultType: model.ValMatrix,
-		Result: model.Matrix{
-			&model.SampleStream{
-				Metric: model.Metric{
-					"foo": "bar",
+	Data: QueryRangeResponse{
+		ResultType: matrix,
+		Result: []SampleStream{
+			{
+				Labels: []client.LabelPair{
+					{wire.Bytes("foo"), wire.Bytes("bar")},
 				},
-				Values: []model.SamplePair{
+				Samples: []client.Sample{
 					{
-						Timestamp: 60,
-						Value:     60,
+						TimestampMs: 60,
+						Value:       60,
 					},
 				},
 			},
@@ -33,25 +35,25 @@ var dummyResponse = &apiResponse{
 	},
 }
 
-func mkAPIResponse(start, end, step int64) *apiResponse {
-	samples := []model.SamplePair{}
+func mkAPIResponse(start, end, step int64) *APIResponse {
+	samples := []client.Sample{}
 	for i := start; i <= end; i += step {
-		samples = append(samples, model.SamplePair{
-			Timestamp: model.Time(i),
-			Value:     model.SampleValue(float64(i)),
+		samples = append(samples, client.Sample{
+			TimestampMs: int64(i),
+			Value:       float64(i),
 		})
 	}
 
-	return &apiResponse{
+	return &APIResponse{
 		Status: statusSuccess,
-		Data: queryRangeResponse{
-			ResultType: model.ValMatrix,
-			Result: model.Matrix{
-				&model.SampleStream{
-					Metric: model.Metric{
-						"foo": "bar",
+		Data: QueryRangeResponse{
+			ResultType: matrix,
+			Result: []SampleStream{
+				{
+					Labels: []client.LabelPair{
+						{wire.Bytes("foo"), wire.Bytes("bar")},
 					},
-					Values: samples,
+					Samples: samples,
 				},
 			},
 		},
@@ -71,7 +73,7 @@ func TestPartiton(t *testing.T) {
 		input                  *QueryRangeRequest
 		prevCachedResponse     []extent
 		expectedRequests       []*QueryRangeRequest
-		expectedCachedResponse []*apiResponse
+		expectedCachedResponse []*APIResponse
 	}{
 		// 1. Test a complete hit.
 		{
@@ -82,7 +84,7 @@ func TestPartiton(t *testing.T) {
 			prevCachedResponse: []extent{
 				mkExtent(0, 100),
 			},
-			expectedCachedResponse: []*apiResponse{
+			expectedCachedResponse: []*APIResponse{
 				mkAPIResponse(0, 100, 10),
 			},
 		},
@@ -118,7 +120,7 @@ func TestPartiton(t *testing.T) {
 					End:   50,
 				},
 			},
-			expectedCachedResponse: []*apiResponse{
+			expectedCachedResponse: []*APIResponse{
 				mkAPIResponse(50, 100, 10),
 			},
 		},
@@ -139,7 +141,7 @@ func TestPartiton(t *testing.T) {
 					End:   160,
 				},
 			},
-			expectedCachedResponse: []*apiResponse{
+			expectedCachedResponse: []*APIResponse{
 				mkAPIResponse(100, 120, 10),
 				mkAPIResponse(160, 200, 10),
 			},
@@ -163,7 +165,7 @@ func TestResultsCache(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*apiResponse, error) {
+	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*APIResponse, error) {
 		calls++
 		return parsedResponse, nil
 	}))
@@ -199,7 +201,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	req.Start = req.End - (60 * 1e3)
 
 	calls := 0
-	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, r *QueryRangeRequest) (*apiResponse, error) {
+	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, r *QueryRangeRequest) (*APIResponse, error) {
 		calls++
 		assert.Equal(t, r, &req)
 		return parsedResponse, nil

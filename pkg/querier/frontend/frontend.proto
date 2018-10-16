@@ -6,6 +6,7 @@ option go_package = "frontend";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+import "google/protobuf/duration.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -16,8 +17,24 @@ service Frontend {
 
 message ProcessRequest {
   httpgrpc.HTTPRequest httpRequest = 1;
+  QueryRangeRequest queryRangeRequest = 2;
+
 }
 
 message ProcessResponse {
   httpgrpc.HTTPResponse httpResponse = 1;
+  QueryRangeResponse queryRangeResponse = 2;
+}
+
+message QueryRangeRequest {
+  string path = 1;
+  int64 start = 2;
+  int64 end = 3;
+  int64 step = 4;
+  google.protobuf.Duration timeout = 5 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  string query = 6;
+}
+
+message QueryRangeResponse {
+
 }

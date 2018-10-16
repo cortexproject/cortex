@@ -36,18 +36,18 @@ var parsedResponse = &apiResponse{
 	},
 }
 
-var parsedRequest = &queryRangeRequest{
-	path:  "/api/v1/query_range",
-	start: 1536673680 * 1e3,
-	end:   1536716898 * 1e3,
-	step:  120 * 1e3,
-	query: "sum(container_memory_rss) by (namespace)",
+var parsedRequest = &QueryRangeRequest{
+	Path:  "/api/v1/query_range",
+	Start: 1536673680 * 1e3,
+	End:   1536716898 * 1e3,
+	Step:  120 * 1e3,
+	Query: "sum(container_memory_rss) by (namespace)",
 }
 
 func TestQueryRangeRequest(t *testing.T) {
 	for i, tc := range []struct {
 		url         string
-		expected    *queryRangeRequest
+		expected    *QueryRangeRequest
 		expectedErr error
 	}{
 		{

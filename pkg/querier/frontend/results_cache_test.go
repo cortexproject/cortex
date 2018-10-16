@@ -68,16 +68,16 @@ func mkExtent(start, end int64) extent {
 
 func TestPartiton(t *testing.T) {
 	for i, tc := range []struct {
-		input                  *queryRangeRequest
+		input                  *QueryRangeRequest
 		prevCachedResponse     []extent
-		expectedRequests       []*queryRangeRequest
+		expectedRequests       []*QueryRangeRequest
 		expectedCachedResponse []*apiResponse
 	}{
 		// 1. Test a complete hit.
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   100,
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
 			},
 			prevCachedResponse: []extent{
 				mkExtent(0, 100),
@@ -89,33 +89,33 @@ func TestPartiton(t *testing.T) {
 
 		// Test with a complete miss.
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   100,
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
 			},
 			prevCachedResponse: []extent{
 				mkExtent(110, 210),
 			},
-			expectedRequests: []*queryRangeRequest{{
-				start: 0,
-				end:   100,
+			expectedRequests: []*QueryRangeRequest{{
+				Start: 0,
+				End:   100,
 			}},
 			expectedCachedResponse: nil,
 		},
 
 		// Test a partial hit.
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   100,
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
 			},
 			prevCachedResponse: []extent{
 				mkExtent(50, 100),
 			},
-			expectedRequests: []*queryRangeRequest{
+			expectedRequests: []*QueryRangeRequest{
 				{
-					start: 0,
-					end:   50,
+					Start: 0,
+					End:   50,
 				},
 			},
 			expectedCachedResponse: []*apiResponse{
@@ -125,18 +125,18 @@ func TestPartiton(t *testing.T) {
 
 		// Test multiple partial hits.
 		{
-			input: &queryRangeRequest{
-				start: 100,
-				end:   200,
+			input: &QueryRangeRequest{
+				Start: 100,
+				End:   200,
 			},
 			prevCachedResponse: []extent{
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
-			expectedRequests: []*queryRangeRequest{
+			expectedRequests: []*QueryRangeRequest{
 				{
-					start: 120,
-					end:   160,
+					Start: 120,
+					End:   160,
 				},
 			},
 			expectedCachedResponse: []*apiResponse{
@@ -163,7 +163,7 @@ func TestResultsCache(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *queryRangeRequest) (*apiResponse, error) {
+	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*apiResponse, error) {
 		calls++
 		return parsedResponse, nil
 	}))
@@ -181,7 +181,7 @@ func TestResultsCache(t *testing.T) {
 
 	// Doing request with new end time should do one more query.
 	req := parsedRequest.copy()
-	req.end += 100
+	req.End += 100
 	resp, err = rc.Do(ctx, &req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
@@ -195,11 +195,11 @@ func TestResultsCacheRecent(t *testing.T) {
 	require.NoError(t, err)
 
 	req := parsedRequest.copy()
-	req.end = int64(model.Now())
-	req.start = req.end - (60 * 1e3)
+	req.End = int64(model.Now())
+	req.Start = req.End - (60 * 1e3)
 
 	calls := 0
-	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, r *queryRangeRequest) (*apiResponse, error) {
+	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, r *QueryRangeRequest) (*apiResponse, error) {
 		calls++
 		assert.Equal(t, r, &req)
 		return parsedResponse, nil

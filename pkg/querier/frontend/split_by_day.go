@@ -18,12 +18,12 @@ type splitByDay struct {
 }
 
 type response struct {
-	req  queryRangeRequest
+	req  QueryRangeRequest
 	resp *apiResponse
 	err  error
 }
 
-func (s splitByDay) Do(ctx context.Context, r *queryRangeRequest) (*apiResponse, error) {
+func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*apiResponse, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
 	reqs := splitQuery(r)
@@ -41,20 +41,20 @@ func (s splitByDay) Do(ctx context.Context, r *queryRangeRequest) (*apiResponse,
 	return mergeAPIResponses(resps)
 }
 
-func splitQuery(r *queryRangeRequest) []*queryRangeRequest {
-	reqs := []*queryRangeRequest{}
-	for start := r.start; start < r.end; start = nextDayBoundary(start, r.step) + r.step {
-		end := nextDayBoundary(start, r.step)
-		if end+r.step >= r.end {
-			end = r.end
+func splitQuery(r *QueryRangeRequest) []*QueryRangeRequest {
+	reqs := []*QueryRangeRequest{}
+	for start := r.Start; start < r.End; start = nextDayBoundary(start, r.Step) + r.Step {
+		end := nextDayBoundary(start, r.Step)
+		if end+r.Step >= r.End {
+			end = r.End
 		}
 
-		reqs = append(reqs, &queryRangeRequest{
-			path:  r.path,
-			start: start,
-			end:   end,
-			step:  r.step,
-			query: r.query,
+		reqs = append(reqs, &QueryRangeRequest{
+			Path:  r.Path,
+			Start: start,
+			End:   end,
+			Step:  r.Step,
+			Query: r.Query,
 		})
 	}
 	return reqs
@@ -68,18 +68,18 @@ func nextDayBoundary(t, step int64) int64 {
 }
 
 type requestResponse struct {
-	req  *queryRangeRequest
+	req  *QueryRangeRequest
 	resp *apiResponse
 }
 
-func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*queryRangeRequest) ([]requestResponse, error) {
+func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest) ([]requestResponse, error) {
 	// If one of the requests fail, we want to be able to cancel the rest of them.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	respChan, errChan := make(chan requestResponse), make(chan error)
 	for _, req := range reqs {
-		go func(req *queryRangeRequest) {
+		go func(req *QueryRangeRequest) {
 			resp, err := downstream.Do(ctx, req)
 			if err != nil {
 				errChan <- err

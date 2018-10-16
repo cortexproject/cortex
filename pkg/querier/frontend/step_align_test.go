@@ -10,38 +10,38 @@ import (
 
 func TestStepAlign(t *testing.T) {
 	for i, tc := range []struct {
-		input, expected *queryRangeRequest
+		input, expected *QueryRangeRequest
 	}{
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   100,
-				step:  10,
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
+				Step:  10,
 			},
-			expected: &queryRangeRequest{
-				start: 0,
-				end:   100,
-				step:  10,
+			expected: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
+				Step:  10,
 			},
 		},
 
 		{
-			input: &queryRangeRequest{
-				start: 2,
-				end:   102,
-				step:  10,
+			input: &QueryRangeRequest{
+				Start: 2,
+				End:   102,
+				Step:  10,
 			},
-			expected: &queryRangeRequest{
-				start: 0,
-				end:   100,
-				step:  10,
+			expected: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
+				Step:  10,
 			},
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			var result *queryRangeRequest
+			var result *QueryRangeRequest
 			s := stepAlign{
-				next: queryRangeHandlerFunc(func(_ context.Context, req *queryRangeRequest) (*apiResponse, error) {
+				next: queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*apiResponse, error) {
 					result = req
 					return nil, nil
 				}),

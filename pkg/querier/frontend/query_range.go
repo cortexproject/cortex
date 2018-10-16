@@ -24,64 +24,56 @@ var (
 	errUnexpectedResponse = httpgrpc.Errorf(http.StatusInternalServerError, "unexpected response type")
 )
 
-type queryRangeRequest struct {
-	path       string
-	start, end int64 // Milliseconds since epoch.
-	step       int64 // Milliseconds.
-	timeout    time.Duration
-	query      string
-}
-
-func parseQueryRangeRequest(r *http.Request) (*queryRangeRequest, error) {
-	var result queryRangeRequest
+func parseQueryRangeRequest(r *http.Request) (*QueryRangeRequest, error) {
+	var result QueryRangeRequest
 	var err error
-	result.start, err = parseTime(r.FormValue("start"))
+	result.Start, err = parseTime(r.FormValue("start"))
 	if err != nil {
 		return nil, err
 	}
 
-	result.end, err = parseTime(r.FormValue("end"))
+	result.End, err = parseTime(r.FormValue("end"))
 	if err != nil {
 		return nil, err
 	}
 
-	if result.end < result.start {
+	if result.End < result.Start {
 		return nil, errEndBeforeStart
 	}
 
-	result.step, err = parseDurationMs(r.FormValue("step"))
+	result.Step, err = parseDurationMs(r.FormValue("step"))
 	if err != nil {
 		return nil, err
 	}
 
-	if result.step <= 0 {
+	if result.Step <= 0 {
 		return nil, errNegativeStep
 	}
 
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-	if (result.end-result.start)/result.step > 11000 {
+	if (result.End-result.Start)/result.Step > 11000 {
 		return nil, errStepTooSmall
 	}
 
-	result.query = r.FormValue("query")
-	result.path = r.URL.Path
+	result.Query = r.FormValue("query")
+	result.Path = r.URL.Path
 	return &result, nil
 }
 
-func (q queryRangeRequest) copy() queryRangeRequest {
+func (q QueryRangeRequest) copy() QueryRangeRequest {
 	return q
 }
 
-func (q queryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, error) {
+func (q QueryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, error) {
 	params := url.Values{
-		"start": []string{encodeTime(q.start)},
-		"end":   []string{encodeTime(q.end)},
-		"step":  []string{encodeDurationMs(q.step)},
-		"query": []string{q.query},
+		"start": []string{encodeTime(q.Start)},
+		"end":   []string{encodeTime(q.End)},
+		"step":  []string{encodeDurationMs(q.Step)},
+		"query": []string{q.Query},
 	}
 	u := &url.URL{
-		Path:     q.path,
+		Path:     q.Path,
 		RawQuery: params.Encode(),
 	}
 	req := &http.Request{

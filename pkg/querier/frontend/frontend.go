@@ -198,9 +198,16 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 			resp, _ = httpgrpc.HTTPResponseFromError(lastErr)
 		}
 
-		// Only retry is we get a HTTP 500 or non-HTTP error.
-		if resp == nil || resp.Code/100 == 5 {
-			level.Error(f.log).Log("msg", "error processing request", "try", tries, "err", lastErr, "resp", resp)
+		// Retry is we get a HTTP 500.
+		if resp != nil && resp.Code/100 == 5 {
+			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp)
+			lastErr = httpgrpc.ErrorFromHTTPResponse(resp)
+			continue
+		}
+
+		// Also retry for non-HTTP errors.
+		if resp == nil && lastErr != nil {
+			level.Error(f.log).Log("msg", "error processing request", "try", tries, "err", lastErr)
 			continue
 		}
 
@@ -217,7 +224,11 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 		return httpResp, nil
 	}
 
-	return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Query failed after %d retries", f.cfg.MaxRetries)
+	if lastErr != nil {
+		return nil, lastErr
+	}
+
+	return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Query failed after %d retries.", f.cfg.MaxRetries)
 }
 
 // Process allows backends to pull requests from the frontend.

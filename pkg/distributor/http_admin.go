@@ -28,7 +28,9 @@ const tpl = `
 					<tr>
 						<th>User</th>
 						<th># Series</th>
-						<th>Ingest Rate</th>
+						<th>Total Ingest Rate</th>
+						<th>API Ingest Rate</th>
+						<th>Rule Ingest Rate</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -37,6 +39,8 @@ const tpl = `
 						<td>{{ .UserID }}</td>
 						<td align='right'>{{ .UserStats.NumSeries }}</td>
 						<td align='right'>{{ printf "%.2f" .UserStats.IngestionRate }}</td>
+						<td align='right'>{{ printf "%.2f" .UserStats.APIIngestionRate }}</td>
+						<td align='right'>{{ printf "%.2f" .UserStats.RuleIngestionRate }}</td>
 					</tr>
 					{{ end }}
 				</tbody>

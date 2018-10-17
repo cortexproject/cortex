@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 
@@ -24,7 +25,7 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 		Span:   span,
 	}
 	if len(kvps) > 0 {
-		logger.Log(kvps...)
+		level.Debug(logger).Log(kvps...)
 	}
 	return logger, ctx
 }

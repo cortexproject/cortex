@@ -199,6 +199,7 @@ type desc struct {
 	FirstTime  model.Time  // Timestamp of first sample. Populated at creation. Immutable.
 	LastTime   model.Time  // Timestamp of last sample. Populated at creation & on append.
 	LastUpdate model.Time  // This server's local time on last change
+	flushed    bool        // set to true when flush succeeds
 }
 
 func newDesc(c chunk.Chunk, firstTime model.Time, lastTime model.Time) *desc {

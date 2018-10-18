@@ -93,6 +93,7 @@ func (i *Ingester) sweepUsers(immediate bool) {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
 			i.sweepSeries(id, pair.fp, pair.series, immediate)
+			i.removeFlushedChunks(state, pair.fp, pair.series)
 			state.fpLocker.Unlock(pair.fp)
 		}
 	}
@@ -147,6 +148,10 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) flush
 }
 
 func (i *Ingester) shouldFlushChunk(c *desc) flushReason {
+	if c.flushed { // don't flush chunks we've already flushed
+		return noFlush
+	}
+
 	// Chunks should be flushed if they span longer than MaxChunkAge
 	if c.LastTime.Sub(c.FirstTime) > i.cfg.MaxChunkAge {
 		return reasonAged
@@ -233,18 +238,36 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 		return err
 	}
 
-	// now remove the chunks
 	userState.fpLocker.Lock(fp)
-	for i := 0; i < len(chunks); i++ {
-		series.chunkDescs[i] = nil // erase reference so the chunk can be garbage-collected
-	}
-	series.chunkDescs = series.chunkDescs[len(chunks):]
-	memoryChunks.Sub(float64(len(chunks)))
-	if len(series.chunkDescs) == 0 {
+	if immediate {
 		userState.removeSeries(fp, series.labels())
+		memoryChunks.Sub(float64(len(chunks)))
+	} else {
+		for i := 0; i < len(chunks); i++ {
+			// mark the chunks as flushed, so we can remove them after the retention period
+			series.chunkDescs[i].flushed = true
+			series.chunkDescs[i].LastUpdate = model.Now()
+		}
 	}
 	userState.fpLocker.Unlock(fp)
 	return nil
+}
+
+// must be called under fpLocker lock
+func (i *Ingester) removeFlushedChunks(userState *userState, fp model.Fingerprint, series *memorySeries) {
+	now := model.Now()
+	for len(series.chunkDescs) > 0 {
+		if series.chunkDescs[0].flushed && now.Sub(series.chunkDescs[0].LastUpdate) > i.cfg.RetainPeriod {
+			series.chunkDescs[0] = nil // erase reference so the chunk can be garbage-collected
+			series.chunkDescs = series.chunkDescs[1:]
+			memoryChunks.Dec()
+		} else {
+			break
+		}
+	}
+	if len(series.chunkDescs) == 0 {
+		userState.removeSeries(fp, series.labels())
+	}
 }
 
 func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*desc) error {

@@ -70,6 +70,18 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 func (s *testStore) Stop() {}
 
+// check that the store is holding data equivalent to what we expect
+func (s *testStore) checkData(t *testing.T, userIDs []string, testData map[string]model.Matrix) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for _, userID := range userIDs {
+		res, err := chunk.ChunksToMatrix(context.Background(), s.chunks[userID], model.Time(0), model.Time(math.MaxInt64))
+		require.NoError(t, err)
+		sort.Sort(res)
+		assert.Equal(t, testData[userID], res)
+	}
+}
+
 func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matrix {
 	m := make(model.Matrix, 0, numSeries)
 	for i := 0; i < numSeries; i++ {
@@ -124,15 +136,13 @@ func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.Ma
 	return res, req, nil
 }
 
-func TestIngesterAppend(t *testing.T) {
-	store, ing := newDefaultTestStore(t)
-
+func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries int) ([]string, map[string]model.Matrix) {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test samples.
 	testData := map[string]model.Matrix{}
 	for i, userID := range userIDs {
-		testData[userID] = buildTestMatrix(10, 1000, i)
+		testData[userID] = buildTestMatrix(numSeries, samplesPerSeries, i)
 	}
 
 	// Append samples.
@@ -141,6 +151,13 @@ func TestIngesterAppend(t *testing.T) {
 		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID]), client.API))
 		require.NoError(t, err)
 	}
+	return userIDs, testData
+}
+
+func TestIngesterAppend(t *testing.T) {
+	store, ing := newDefaultTestStore(t)
+
+	userIDs, testData := pushTestSamples(t, ing, 10, 1000)
 
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
@@ -162,12 +179,7 @@ func TestIngesterAppend(t *testing.T) {
 
 	// Read samples back via chunk store.
 	ing.Shutdown()
-	for _, userID := range userIDs {
-		res, err := chunk.ChunksToMatrix(context.Background(), store.chunks[userID], model.Time(0), model.Time(math.MaxInt64))
-		require.NoError(t, err)
-		sort.Sort(res)
-		assert.Equal(t, testData[userID], res)
-	}
+	store.checkData(t, userIDs, testData)
 }
 
 type stream struct {

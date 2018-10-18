@@ -70,7 +70,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts)
+	overrides, err := validation.NewOverrides(limitsConfig)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
+		os.Exit(1)
+	}
+
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts, overrides)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
@@ -86,14 +92,14 @@ func main() {
 	defer r.Stop()
 	ingesterConfig.LifecyclerConfig.KVClient = r.KVClient
 
-	dist, err := distributor.New(distributorConfig, ingesterClientConfig, limitsConfig, r)
+	dist, err := distributor.New(distributorConfig, ingesterClientConfig, overrides, r)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
 		os.Exit(1)
 	}
 	defer dist.Stop()
 
-	ingester, err := ingester.New(ingesterConfig, ingesterClientConfig, limitsConfig, chunkStore)
+	ingester, err := ingester.New(ingesterConfig, ingesterClientConfig, overrides, chunkStore)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)

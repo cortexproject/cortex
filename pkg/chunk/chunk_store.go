@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -19,6 +20,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 )
 
@@ -51,15 +54,13 @@ func init() {
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	ChunkCacheConfig cache.Config
+	ChunkCacheConfig       cache.Config
+	WriteDedupeCacheConfig cache.Config
 
 	MinChunkAge              time.Duration
-	QueryChunkLimit          int
 	CardinalityCacheSize     int
 	CardinalityCacheValidity time.Duration
 	CardinalityLimit         int
-
-	WriteDedupeCacheConfig cache.Config
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -69,7 +70,6 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
-	f.IntVar(&cfg.QueryChunkLimit, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.IntVar(&cfg.CardinalityCacheSize, "store.cardinality-cache-size", 0, "Size of in-memory cardinality cache, 0 to disable.")
 	f.DurationVar(&cfg.CardinalityCacheValidity, "store.cardinality-cache-validity", 1*time.Hour, "Period for which entries in the cardinality cache are valid.")
 	f.IntVar(&cfg.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
@@ -81,10 +81,11 @@ type store struct {
 
 	storage StorageClient
 	schema  Schema
+	limits  *validation.Overrides
 	*Fetcher
 }
 
-func newStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
+func newStore(cfg StoreConfig, schema Schema, storage StorageClient, limits *validation.Overrides) (Store, error) {
 	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, storage)
 	if err != nil {
 		return nil, err
@@ -94,6 +95,7 @@ func newStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, err
 		cfg:     cfg,
 		storage: storage,
 		schema:  schema,
+		limits:  limits,
 		Fetcher: fetcher,
 	}, nil
 }
@@ -175,45 +177,52 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
 
 	// Validate the query is within reasonable bounds.
-	shortcut, err := c.validateQuery(ctx, from, &through)
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
 		return nil, nil
 	}
 
-	// Fetch metric name chunks if the matcher is of type equal,
-	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
-	if !ok && metricNameMatcher.Type != labels.MatchEqual {
-		return nil, fmt.Errorf("query must contain metric name")
-	}
-
-	log.Span.SetTag("metric", metricNameMatcher.Value)
-	return c.getMetricNameChunks(ctx, from, through, matchers, metricNameMatcher.Value)
+	log.Span.SetTag("metric", metricName)
+	return c.getMetricNameChunks(ctx, from, through, matchers, metricName)
 }
 
-func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time) (shortcut bool, err error) {
+func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQuery")
 	defer log.Span.Finish()
 
-	now := model.Now()
-
 	if *through < from {
-		err = fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
-		return
+		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
 	}
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return "", nil, false, err
+	}
+
+	maxQueryLength := c.limits.MaxQueryLength(userID)
+	if maxQueryLength > 0 && (*through).Sub(from) > maxQueryLength {
+		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (%s > %s)", (*through).Sub(from), maxQueryLength)
+	}
+
+	// Fetch metric name chunks if the matcher is of type equal,
+	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(matchers)
+	if !ok || metricNameMatcher.Type != labels.MatchEqual {
+		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "query must contain metric name")
+	}
+
+	now := model.Now()
 
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
 		level.Error(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
-		shortcut = true
-		return
+		return "", nil, true, nil
 	}
 
 	if from.After(now.Add(-c.cfg.MinChunkAge)) {
 		// no data relevant to this query will have arrived at the store yet
-		shortcut = true
-		return
+		return "", nil, true, nil
 	}
 
 	if through.After(now.Add(5 * time.Minute)) {
@@ -222,13 +231,18 @@ func (c *store) validateQuery(ctx context.Context, from model.Time, through *mod
 		*through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
 	}
 
-	return
+	return metricNameMatcher.Value, matchers, false, nil
 }
 
 func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.getMetricNameChunks")
 	defer log.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "matchers", len(allMatchers))
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
@@ -241,8 +255,9 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	filtered, keys := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
-	if len(filtered) > c.cfg.QueryChunkLimit {
-		err := fmt.Errorf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), c.cfg.QueryChunkLimit)
+	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
+	if maxChunksPerQuery > 0 && len(filtered) > maxChunksPerQuery {
+		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), maxChunksPerQuery)
 		level.Error(log).Log("err", err)
 		return nil, err
 	}

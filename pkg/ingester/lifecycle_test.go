@@ -63,8 +63,7 @@ func TestIngesterRestart(t *testing.T) {
 	config.LifecyclerConfig.SkipUnregister = true
 
 	{
-		ingester, err := New(config, clientConfig, limits, nil)
-		require.NoError(t, err)
+		_, ingester := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
 	}
@@ -74,8 +73,7 @@ func TestIngesterRestart(t *testing.T) {
 	})
 
 	{
-		ingester, err := New(config, clientConfig, limits, nil)
-		require.NoError(t, err)
+		_, ingester := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
 	}
@@ -88,6 +86,9 @@ func TestIngesterRestart(t *testing.T) {
 }
 
 func TestIngesterTransfer(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	require.NoError(t, err)
+
 	// Start the first ingester, and get it into ACTIVE state.
 	cfg1 := defaultIngesterTestConfig()
 	cfg1.LifecyclerConfig.ID = "ingester1"
@@ -95,7 +96,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.ClaimOnRollout = true
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
 	cfg1.SearchPendingFor = 1 * time.Second
-	ing1, err := New(cfg1, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -126,7 +127,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
-	ing2, err := New(cfg2, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil)
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
@@ -167,6 +168,9 @@ func TestIngesterTransfer(t *testing.T) {
 }
 
 func TestIngesterBadTransfer(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	require.NoError(t, err)
+
 	// Start ingester in PENDING.
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.ID = "ingester1"
@@ -174,7 +178,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.ClaimOnRollout = true
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
 	cfg.SearchPendingFor = 1 * time.Second
-	ing, err := New(cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
+	ing, err := New(cfg, defaultClientTestConfig(), limits, nil)
 	require.NoError(t, err)
 
 	poll(t, 100*time.Millisecond, ring.PENDING, func() interface{} {

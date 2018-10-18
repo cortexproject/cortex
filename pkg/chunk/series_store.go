@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -11,12 +12,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/weaveworks/common/user"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -59,7 +62,7 @@ type seriesStore struct {
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
+func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient, limits *validation.Overrides) (Store, error) {
 	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, storage)
 	if err != nil {
 		return nil, err
@@ -75,6 +78,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Stor
 			cfg:     cfg,
 			storage: storage,
 			schema:  schema,
+			limits:  limits,
 			Fetcher: fetcher,
 		},
 		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{
@@ -91,25 +95,25 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
 
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Validate the query is within reasonable bounds.
-	shortcut, err := c.validateQuery(ctx, from, &through)
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
 		return nil, nil
 	}
 
-	// Ensure this query includes a metric name.
-	metricNameMatcher, allMatchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
-	if !ok || metricNameMatcher.Type != labels.MatchEqual {
-		return nil, fmt.Errorf("query must contain metric name")
-	}
-	level.Debug(log).Log("metric", metricNameMatcher.Value)
+	level.Debug(log).Log("metric", metricName)
 
 	// Fetch the series IDs from the index, based on non-empty matchers from
 	// the query.
-	_, matchers := util.SplitFiltersAndMatchers(allMatchers)
-	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricNameMatcher.Value, matchers)
+	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricName, matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -118,12 +122,14 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	// Lookup the series in the index to get the chunks.
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
 	if err != nil {
+		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
 		return nil, err
 	}
 	level.Debug(log).Log("chunk-ids", len(chunkIDs))
 
 	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
 	if err != nil {
+		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
 		return nil, err
 	}
 	// Filter out chunks that are not in the selected time range.
@@ -132,8 +138,9 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	chunksPerQuery.Observe(float64(len(filtered)))
 
 	// Protect ourselves against OOMing.
-	if len(chunkIDs) > c.cfg.QueryChunkLimit {
-		err := fmt.Errorf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunkIDs), c.cfg.QueryChunkLimit)
+	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
+	if maxChunksPerQuery > 0 && len(chunkIDs) > maxChunksPerQuery {
+		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunkIDs), maxChunksPerQuery)
 		level.Error(log).Log("err", err)
 		return nil, err
 	}
@@ -141,7 +148,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	// Now fetch the actual chunk data from Memcache / S3
 	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
-		level.Error(log).Log("err", err)
+		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
 	}
 

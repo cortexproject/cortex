@@ -59,7 +59,14 @@ func main() {
 		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
 		os.Exit(1)
 	}
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts)
+
+	overrides, err := validation.NewOverrides(limits)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
+		os.Exit(1)
+	}
+
+	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts, overrides)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
@@ -74,7 +81,7 @@ func main() {
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
-	dist, err := distributor.New(distributorConfig, clientConfig, limits, r)
+	dist, err := distributor.New(distributorConfig, clientConfig, overrides, r)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
 		os.Exit(1)

@@ -20,11 +20,15 @@ type Limits struct {
 	RejectOldSamplesMaxAge time.Duration `yaml:"reject_old_samples_max_age"`
 	CreationGracePeriod    time.Duration `yaml:"creation_grace_period"`
 
-	// Ingester enforces limits.
+	// Ingester enforced limits.
 	MaxSeriesPerQuery  int `yaml:"max_series_per_query"`
 	MaxSamplesPerQuery int `yaml:"max_samples_per_query"`
 	MaxSeriesPerUser   int `yaml:"max_series_per_user"`
 	MaxSeriesPerMetric int `yaml:"max_series_per_metric"`
+
+	// Querier enforced limits.
+	MaxChunksPerQuery int           `yaml:"max_chunks_per_query"`
+	MaxQueryLength    time.Duration `yaml:"max_query_length"`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string
@@ -46,6 +50,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return.")
 	f.IntVar(&l.MaxSeriesPerUser, "ingester.max-series-per-user", 5000000, "Maximum number of active series per user.")
 	f.IntVar(&l.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
+
+	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
+	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with this to reload the overrides.")

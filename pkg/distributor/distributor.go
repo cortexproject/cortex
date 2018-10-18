@@ -123,7 +123,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limitsCfg validation.Limits, ring ring.ReadRing) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ring ring.ReadRing) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -137,11 +137,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limitsCfg validation.L
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	limits, err := validation.NewOverrides(limitsCfg)
-	if err != nil {
-		return nil, err
 	}
 
 	replicationFactor.Set(float64(ring.ReplicationFactor()))

@@ -19,12 +19,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/test"
 	"github.com/weaveworks/common/user"
 )
 
 type schemaFactory func(cfg SchemaConfig) Schema
-type storeFactory func(StoreConfig, Schema, StorageClient) (Store, error)
+type storeFactory func(StoreConfig, Schema, StorageClient, *validation.Overrides) (Store, error)
 type configFactory func() (StoreConfig, SchemaConfig)
 
 var schemas = []struct {
@@ -82,7 +83,6 @@ func newTestChunkStore(t *testing.T, schemaFactory schemaFactory, storeFactory s
 		schemaCfg SchemaConfig
 	)
 	util.DefaultValues(&storeCfg, &schemaCfg)
-
 	return newTestChunkStoreConfig(t, storeCfg, schemaCfg, schemaFactory, storeFactory)
 }
 
@@ -94,7 +94,13 @@ func newTestChunkStoreConfig(t *testing.T, storeCfg StoreConfig, schemaCfg Schem
 	err = tableManager.SyncTables(context.Background())
 	require.NoError(t, err)
 
-	store, err := storeFactory(storeCfg, schemaFactory(schemaCfg), storage)
+	var limits validation.Limits
+	util.DefaultValues(&storeCfg, &schemaCfg, &limits)
+	limits.MaxQueryLength = 30 * 24 * time.Hour
+	overrides, err := validation.NewOverrides(limits)
+	require.NoError(t, err)
+
+	store, err := storeFactory(storeCfg, schemaFactory(schemaCfg), storage, overrides)
 	require.NoError(t, err)
 	return store
 }
@@ -280,7 +286,7 @@ func TestChunkStore_Get(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), matchers...)
+					chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*10), matchers...)
 					require.NoError(t, err)
 
 					matrix2, err := ChunksToMatrix(ctx, chunks2, now.Add(-time.Hour), now)
@@ -407,7 +413,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			defer store.Stop()
 
 			// put 100 chunks from 0 to 99
-			const chunkLen = 13 * 3600 // in seconds
+			const chunkLen = 2 * 3600 // in seconds
 			for i := 0; i < 100; i++ {
 				ts := model.TimeFromUnix(int64(i * chunkLen))
 				chunks, _ := chunk.New().Add(model.SamplePair{
@@ -527,12 +533,10 @@ func TestChunkStoreLeastRead(t *testing.T) {
 
 func TestIndexCachingWorks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	now := model.Now()
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
 		"bar": "baz",
 	}
-
 	storeMaker := stores[1]
 	storeCfg, schemaCfg := storeMaker.configFn()
 
@@ -541,15 +545,62 @@ func TestIndexCachingWorks(t *testing.T) {
 
 	storage := store.(*seriesStore).storage.(*MockStorage)
 
-	fooChunk1 := dummyChunkFor(now, metric)
-	fooChunk2 := dummyChunkFor(now.Add(1*time.Millisecond), metric)
-
+	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
 	err := store.Put(ctx, []Chunk{fooChunk1})
 	require.NoError(t, err)
 	n := storage.numWrites
 
 	// Only one extra entry for the new chunk of same series.
+	fooChunk2 := dummyChunkFor(model.Time(0).Add(30*time.Second), metric)
 	err = store.Put(ctx, []Chunk{fooChunk2})
 	require.NoError(t, err)
 	require.Equal(t, n+1, storage.numWrites)
+}
+
+func TestChunkStoreError(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	for _, tc := range []struct {
+		query         string
+		from, through model.Time
+		err           string
+	}{
+		{
+			query:   "foo",
+			from:    model.Time(0).Add(31 * 24 * time.Hour),
+			through: model.Time(0),
+			err:     "rpc error: code = Code(400) desc = invalid query, through < from (0 < 2678400)",
+		},
+		{
+			query:   "foo",
+			from:    model.Time(0),
+			through: model.Time(0).Add(31 * 24 * time.Hour),
+			err:     "rpc error: code = Code(400) desc = invalid query, length > limit (744h0m0s > 720h0m0s)",
+		},
+		{
+			query:   "{foo=\"bar\"}",
+			from:    model.Time(0),
+			through: model.Time(0).Add(1 * time.Hour),
+			err:     "rpc error: code = Code(400) desc = query must contain metric name",
+		},
+		{
+			query:   "{__name__=~\"bar\"}",
+			from:    model.Time(0),
+			through: model.Time(0).Add(1 * time.Hour),
+			err:     "rpc error: code = Code(400) desc = query must contain metric name",
+		},
+	} {
+		for _, schema := range schemas {
+			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
+				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
+				defer store.Stop()
+
+				matchers, err := promql.ParseMetricSelector(tc.query)
+				require.NoError(t, err)
+
+				// Query with ordinary time-range
+				_, err = store.Get(ctx, tc.from, tc.through, matchers...)
+				require.EqualError(t, err, tc.err)
+			})
+		}
+	}
 }

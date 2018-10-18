@@ -149,17 +149,12 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, clientConfig client.Config, limitsCfg validation.Limits, chunkStore ChunkStore) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
 	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
-		return nil, err
-	}
-
-	limits, err := validation.NewOverrides(limitsCfg)
-	if err != nil {
 		return nil, err
 	}
 
@@ -175,6 +170,7 @@ func New(cfg Config, clientConfig client.Config, limitsCfg validation.Limits, ch
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 	}
 
+	var err error
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i)
 	if err != nil {
 		return nil, err

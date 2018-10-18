@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -180,6 +181,41 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via chunk store.
 	ing.Shutdown()
 	store.checkData(t, userIDs, testData)
+}
+
+func TestIngesterIdleFlush(t *testing.T) {
+	// Create test ingester with short flush cycle
+	cfg := defaultIngesterTestConfig()
+	cfg.FlushCheckPeriod = 20 * time.Millisecond
+	cfg.MaxChunkIdle = 100 * time.Millisecond
+	cfg.RetainPeriod = 500 * time.Millisecond
+	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+
+	userIDs, testData := pushTestSamples(t, ing, 4, 100)
+
+	// wait beyond idle time so samples flush
+	time.Sleep(cfg.MaxChunkIdle * 2)
+
+	store.checkData(t, userIDs, testData)
+
+	// Check data is still retained by ingester
+	for _, userID := range userIDs {
+		ctx := user.InjectOrgID(context.Background(), userID)
+		res, _, err := runTestQuery(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+")
+		require.NoError(t, err)
+		assert.Equal(t, testData[userID], res)
+	}
+
+	// now wait beyond retain time so chunks are removed from memory
+	time.Sleep(cfg.RetainPeriod)
+
+	// Check data has gone from ingester
+	for _, userID := range userIDs {
+		ctx := user.InjectOrgID(context.Background(), userID)
+		res, _, err := runTestQuery(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+")
+		require.NoError(t, err)
+		assert.Equal(t, model.Matrix{}, res)
+	}
 }
 
 type stream struct {

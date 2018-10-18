@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -21,42 +22,81 @@ import (
 var (
 	receivedChunks = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
-		Name:      "writer_received_chunks",
+		Name:      "writer_received_chunks_total",
 		Help:      "The total number of chunks received by this writer",
 	}, []string{"reader_id"})
+	writeErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "writer_store_errors_total",
+		Help:      "The total number of errors caused when storing chunks",
+	}, []string{"reader_id"})
 )
+
+type writeRequest struct {
+	ctx      context.Context
+	chunks   []chunk.Chunk
+	readerID string
+}
 
 // WriterConfig configures are Writer objects
 type WriterConfig struct {
 	storageEnabled bool
+	bufferSize     int
+	numWorkers     int
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *WriterConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.storageEnabled, "writer.enable-storage", true, "enable persisting metrics to a storage backend") // Disable for testing
+	f.IntVar(&cfg.numWorkers, "writer.num-workers", 1, "number of worker jobs handling backend writes")
+	f.IntVar(&cfg.bufferSize, "writer.buffer-size", 1000, "Number of chunk batches to buffer for writes to storage backend")
 }
 
 // Writer receives chunks and stores them in a storage backend
 type Writer struct {
+	writeChan      chan writeRequest
 	chunkStore     chunk.Store
 	storageEnabled bool
 }
 
 // NewWriter returns a Writer object
 func NewWriter(cfg WriterConfig, store chunk.Store) Writer {
-	return Writer{
+	writeChan := make(chan writeRequest, cfg.bufferSize)
+	writer := Writer{
 		chunkStore:     store,
 		storageEnabled: cfg.storageEnabled,
+		writeChan:      writeChan,
 	}
+
+	for i := 0; i < cfg.numWorkers; i++ {
+		go writer.write(i)
+	}
+	return writer
 }
 
-// Store passes a batch of metrics to a storage backend
-func (w Writer) Store(ctx context.Context, chunks []chunk.Chunk) error {
-	level.Debug(util.Logger).Log("msg", "storing chunks", "num_chunks", len(chunks))
-	if w.storageEnabled {
-		return w.chunkStore.Put(ctx, chunks)
+func (w Writer) write(workerID int) {
+	backoff := util.NewBackoff(context.Background(), util.BackoffConfig{
+		MinBackoff: time.Second * 5,
+		MaxBackoff: time.Second * 360,
+	})
+	level.Debug(util.Logger).Log("msg", "starting writer goroutine", "worker_id", workerID)
+	for req := range w.writeChan {
+		level.Debug(util.Logger).Log("msg", "storing chunks", "num_chunks", len(req.chunks), "worker_id", workerID)
+		if w.storageEnabled {
+			for backoff.Ongoing() {
+				err := w.chunkStore.Put(req.ctx, req.chunks)
+				if err != nil {
+					writeErrors.WithLabelValues(req.readerID).Inc()
+					level.Error(util.Logger).Log("msg", "failed to store chunks", "err", err, "retry_attempy", backoff.NumRetries())
+					backoff.Wait()
+					continue
+				}
+				backoff.Reset()
+				break
+			}
+		}
 	}
-	return nil
+	level.Info(util.Logger).Log("msg", "closing writer goroutine", "worker_id", workerID)
 }
 
 // TransferChunks reads chunks from a stream and stores them in the configured storage backend
@@ -85,11 +125,10 @@ func (w Writer) TransferChunks(stream client.Ingester_TransferChunksServer) erro
 			return err
 		}
 		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
-		err = w.Store(userCtx, chunks)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error storing chunks", "err", err, "readerID", fromReaderID)
-			return err
-		}
+
+		level.Debug(util.Logger).Log("msg", "storing chunks", "num_chunks", len(chunks))
+		w.writeChan <- writeRequest{userCtx, chunks, fromReaderID}
+
 		receivedChunks.WithLabelValues(fromReaderID).Add(float64(len(chunks)))
 	}
 	return nil

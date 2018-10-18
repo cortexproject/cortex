@@ -96,6 +96,7 @@ func (r *Reader) TransferData(ctx context.Context) error {
 	err := r.Forward(readCtx)
 	cancel()        // If the forwarding metrics errors out the reader will be canceled
 	if err != nil { // Loop to ensure streamchunks fails gracefully and returns a log of current progress
+		level.Error(util.Logger).Log("msg", "error forwarding metrics, attempting graceful shutdown", "err", err)
 		timer := time.NewTimer(time.Second * 60)
 		for {
 			select {

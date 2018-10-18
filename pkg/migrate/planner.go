@@ -72,7 +72,6 @@ func (p Planner) Plan(batch chunk.StreamBatch) {
 		for _, user := range p.users {
 			for from := p.firstShard; from < p.lastShard; {
 				to := from + p.batchSize
-				fmt.Printf("from: %v, to: %v\n", from, to)
 				if to > p.lastShard {
 					batch.Add(table, user, from, p.lastShard)
 				} else {

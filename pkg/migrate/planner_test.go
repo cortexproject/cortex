@@ -54,7 +54,7 @@ func TestPlan(t *testing.T) {
 			result: result{
 				batch: mockBatch{
 					queries: []mockQuery{
-						mockQuery{
+						{
 							from:  0,
 							to:    240,
 							user:  "*",
@@ -76,13 +76,13 @@ func TestPlan(t *testing.T) {
 			result: result{
 				batch: mockBatch{
 					queries: []mockQuery{
-						mockQuery{
+						{
 							from:  0,
 							to:    24,
 							user:  "*",
 							table: "simple",
 						},
-						mockQuery{
+						{
 							from:  24,
 							to:    25,
 							user:  "*",
@@ -104,7 +104,7 @@ func TestPlan(t *testing.T) {
 			result: result{
 				batch: mockBatch{
 					queries: []mockQuery{
-						mockQuery{
+						{
 							from:  0,
 							to:    25,
 							user:  "*",
@@ -126,31 +126,31 @@ func TestPlan(t *testing.T) {
 			result: result{
 				batch: mockBatch{
 					queries: []mockQuery{
-						mockQuery{
+						{
 							from:  0,
 							to:    48,
 							user:  "*",
 							table: "simple",
 						},
-						mockQuery{
+						{
 							from:  48,
 							to:    96,
 							user:  "*",
 							table: "simple",
 						},
-						mockQuery{
+						{
 							from:  96,
 							to:    144,
 							user:  "*",
 							table: "simple",
 						},
-						mockQuery{
+						{
 							from:  144,
 							to:    192,
 							user:  "*",
 							table: "simple",
 						},
-						mockQuery{
+						{
 							from:  192,
 							to:    240,
 							user:  "*",

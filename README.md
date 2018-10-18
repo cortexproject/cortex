@@ -39,6 +39,10 @@ To use Cortex as part of Grafana Cloud, sign up for [GrafanaCloud](https://grafa
 by clicking "Log In" in the top right and then "Sign Up Now".  Cortex is included
 as part of the Starter and Basic Hosted Grafana plans.
 
+## Contributing
+
+For a guide to contributing to Cortex, see the [contributor guidelines](CONTRIBUTING.md).
+
 ## For Developers
 
 To build:
@@ -67,10 +71,6 @@ Kubernetes cluster)
 Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape it itself.  Try it:
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
-
-### Sign your work
-
-Before submitting your work in a pull request, make sure all commits are signed off. See [DCO](https://github.com/probot/dco#how-it-works) for more information.
 
 ### Vendoring
 

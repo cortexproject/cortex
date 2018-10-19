@@ -90,15 +90,9 @@ func main() {
 	defer server.Shutdown()
 	server.HTTP.Handle("/ring", r)
 
-	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
+	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
-		os.Exit(1)
-	}
-
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts, overrides)
-	if err != nil {
-		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
 	}
 	defer chunkStore.Stop()

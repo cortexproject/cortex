@@ -41,6 +41,7 @@ var (
 	rulerConfig       ruler.Config
 	schemaConfig      chunk.SchemaConfig
 	storageConfig     storage.Config
+	tbmConfig         chunk.TableManagerConfig
 
 	ingesterClientConfig client.Config
 	limitsConfig         validation.Limits
@@ -64,19 +65,13 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
-		os.Exit(1)
-	}
-
 	overrides, err := validation.NewOverrides(limitsConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
 		os.Exit(1)
 	}
-
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts, overrides)
+	schemaConfig.Load()
+	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
@@ -106,13 +101,15 @@ func main() {
 	}
 	defer ingester.Shutdown()
 
-	tableClient, err := storage.NewTableClient(storageConfig)
+	// Assume the newest config is the one to use
+	storeName := schemaConfig.Configs[len(schemaConfig.Configs)-1].Store
+	tableClient, err := storage.NewTableClient(storeName, storageConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
 		os.Exit(1)
 	}
 
-	tableManager, err := chunk.NewTableManager(schemaConfig, ingesterConfig.MaxChunkAge, tableClient)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, ingesterConfig.MaxChunkAge, tableClient)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table manager", "err", err)
 		os.Exit(1)
@@ -214,7 +211,7 @@ func getConfigsFromCommandLine() {
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig,
-		&ingesterClientConfig, &limitsConfig)
+		&ingesterClientConfig, &limitsConfig, &tbmConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()
 }

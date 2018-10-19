@@ -22,28 +22,30 @@ const (
 	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
-var parsedResponse = &APIResponse{
-	Status: "success",
-	Data: QueryRangeResponse{
-		ResultType: model.ValMatrix.String(),
-		Result: []SampleStream{
-			SampleStream{
-				Samples: []client.Sample{
-					{1536673680000, 137},
-					{1536673780000, 137},
+var (
+	parsedRequest = &QueryRangeRequest{
+		Path:  "/api/v1/query_range",
+		Start: 1536673680 * 1e3,
+		End:   1536716898 * 1e3,
+		Step:  120 * 1e3,
+		Query: "sum(container_memory_rss) by (namespace)",
+	}
+	parsedResponse = &APIResponse{
+		Status: "success",
+		Data: QueryRangeResponse{
+			ResultType: model.ValMatrix.String(),
+			Result: []SampleStream{
+				SampleStream{
+					Labels: []client.LabelPair{},
+					Samples: []client.Sample{
+						{137, 1536673680000},
+						{137, 1536673780000},
+					},
 				},
 			},
 		},
-	},
-}
-
-var parsedRequest = &QueryRangeRequest{
-	Path:  "/api/v1/query_range",
-	Start: 1536673680 * 1e3,
-	End:   1536716898 * 1e3,
-	Step:  120 * 1e3,
-	Query: "sum(container_memory_rss) by (namespace)",
-}
+	}
+)
 
 func TestQueryRangeRequest(t *testing.T) {
 	for i, tc := range []struct {
@@ -152,14 +154,16 @@ func TestMergeAPIResponses(t *testing.T) {
 			input: []*APIResponse{
 				{
 					Data: QueryRangeResponse{
-						ResultType: model.ValMatrix.String(),
+						ResultType: matrix,
+						Result:     []SampleStream{},
 					},
 				},
 			},
 			expected: &APIResponse{
 				Status: statusSuccess,
 				Data: QueryRangeResponse{
-					ResultType: model.ValMatrix.String(),
+					ResultType: matrix,
+					Result:     []SampleStream{},
 				},
 			},
 		},
@@ -169,19 +173,22 @@ func TestMergeAPIResponses(t *testing.T) {
 			input: []*APIResponse{
 				{
 					Data: QueryRangeResponse{
-						ResultType: model.ValMatrix.String(),
+						ResultType: matrix,
+						Result:     []SampleStream{},
 					},
 				},
 				{
 					Data: QueryRangeResponse{
-						ResultType: model.ValMatrix.String(),
+						ResultType: matrix,
+						Result:     []SampleStream{},
 					},
 				},
 			},
 			expected: &APIResponse{
 				Status: statusSuccess,
 				Data: QueryRangeResponse{
-					ResultType: model.ValMatrix.String(),
+					ResultType: matrix,
+					Result:     []SampleStream{},
 				},
 			},
 		},
@@ -194,6 +201,7 @@ func TestMergeAPIResponses(t *testing.T) {
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
+								Labels: []client.LabelPair{},
 								Samples: []client.Sample{
 									{0, 0},
 									{1, 1},
@@ -207,6 +215,7 @@ func TestMergeAPIResponses(t *testing.T) {
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
+								Labels: []client.LabelPair{},
 								Samples: []client.Sample{
 									{2, 2},
 									{3, 3},
@@ -222,6 +231,7 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
+							Labels: []client.LabelPair{},
 							Samples: []client.Sample{
 								{0, 0},
 								{1, 1},

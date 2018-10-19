@@ -95,7 +95,10 @@ func (q queryRangeRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 }
 
 type queryRangeTerminator struct {
-	next http.RoundTripper
+	next     http.RoundTripper
+	nextGRPC interface {
+		RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error)
+	}
 }
 
 func (q queryRangeTerminator) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {

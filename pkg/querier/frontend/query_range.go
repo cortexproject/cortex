@@ -139,17 +139,30 @@ func parseQueryRangeResponse(r *http.Response) (*APIResponse, error) {
 	return &resp, nil
 }
 
+// UnmarshalJSON implements json.Unmarshaler.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
-		Metric model.Metric    `json:metric`
-		Values []client.Sample `json:values`
+		Metric model.Metric    `json:"metric"`
+		Values []client.Sample `json:"values"`
 	}
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = client.FromMetric(stream.Metric)
+	s.Labels = client.ToLabelPairs(stream.Metric)
 	s.Samples = stream.Values
 	return nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s *SampleStream) MarshalJSON() ([]byte, error) {
+	stream := struct {
+		Metric model.Metric    `json:"metric"`
+		Values []client.Sample `json:"values"`
+	}{
+		Metric: client.FromLabelPairs(s.Labels),
+		Values: s.Samples,
+	}
+	return json.Marshal(stream)
 }
 
 func (a *APIResponse) toHTTPResponse() (*http.Response, error) {

@@ -82,9 +82,9 @@ type request struct {
 	enqueueTime time.Time
 	context     context.Context
 
-	request  *httpgrpc.HTTPRequest
+	request  *ProcessRequest
 	err      chan error
-	response chan *httpgrpc.HTTPResponse
+	response chan *ProcessResponse
 }
 
 // New creates a new frontend.
@@ -164,13 +164,32 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // RoundTrip implement http.Transport.
 func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
-	ctx := r.Context()
-	userID, err := user.ExtractOrgID(ctx)
+	req, err := server.HTTPRequest(r)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := server.HTTPRequest(r)
+	resp, err := f.RoundTripGRPC(r.Context(), &ProcessRequest{
+		HttpRequest: req,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	httpResp := &http.Response{
+		StatusCode: int(resp.HttpResponse.Code),
+		Body:       ioutil.NopCloser(bytes.NewReader(resp.HttpResponse.Body)),
+		Header:     http.Header{},
+	}
+	for _, h := range resp.HttpResponse.Headers {
+		httpResp.Header[h.Key] = h.Values
+	}
+	return httpResp, nil
+}
+
+// RoundTripGRPC round trips a proto (instread of a HTTP request).
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +200,7 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 		request: req,
 		// Buffer of 1 to ensure response can be written even if client has gone away.
 		err:      make(chan error, 1),
-		response: make(chan *httpgrpc.HTTPResponse, 1),
+		response: make(chan *ProcessResponse, 1),
 	}
 
 	var lastErr error
@@ -190,7 +209,7 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 
-		var resp *httpgrpc.HTTPResponse
+		var resp *ProcessResponse
 		select {
 		case <-ctx.Done():
 			// TODO propagate cancellation.
@@ -199,13 +218,17 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 
 		case resp = <-request.response:
 		case lastErr = <-request.err:
-			resp, _ = httpgrpc.HTTPResponseFromError(lastErr)
+			httpResp, ok := httpgrpc.HTTPResponseFromError(lastErr)
+			if ok {
+				resp = &ProcessResponse{
+					HttpResponse: httpResp,
+				}
+			}
 		}
 
 		// Retry is we get a HTTP 500.
-		if resp != nil && resp.Code/100 == 5 {
-			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp)
-			lastErr = httpgrpc.ErrorFromHTTPResponse(resp)
+		if resp != nil && resp.HttpResponse.Code/100 == 5 {
+			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp.HttpResponse)
 			continue
 		}
 
@@ -217,15 +240,7 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 
 		retries.Observe(float64(tries))
 
-		httpResp := &http.Response{
-			StatusCode: int(resp.Code),
-			Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
-			Header:     http.Header{},
-		}
-		for _, h := range resp.Headers {
-			httpResp.Header[h.Key] = h.Values
-		}
-		return httpResp, nil
+		return resp, nil
 	}
 
 	if lastErr != nil {
@@ -252,9 +267,7 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
-		if err := server.Send(&ProcessRequest{
-			HttpRequest: request.request,
-		}); err != nil {
+		if err := server.Send(request.request); err != nil {
 			request.err <- err
 			return err
 		}
@@ -265,7 +278,7 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
-		request.response <- response.HttpResponse
+		request.response <- response
 	}
 }
 

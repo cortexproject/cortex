@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/prometheus/common/model"
@@ -247,4 +248,30 @@ func FastFingerprint(labelPairs []LabelPair) model.Fingerprint {
 		result ^= sum
 	}
 	return model.Fingerprint(result)
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Sample) MarshalJSON() ([]byte, error) {
+	t, err := json.Marshal(model.Time(s.TimestampMs))
+	if err != nil {
+		return nil, err
+	}
+	v, err := json.Marshal(model.SampleValue(s.Value))
+	if err != nil {
+		return nil, err
+	}
+	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Sample) UnmarshalJSON(b []byte) error {
+	var t model.Time
+	var v model.SampleValue
+	vs := [...]json.Unmarshaler{&t, &v}
+	if err := json.Unmarshal(b, &vs); err != nil {
+		return err
+	}
+	s.TimestampMs = int64(t)
+	s.Value = float64(v)
+	return nil
 }

@@ -6,7 +6,13 @@ Cortex consists of multiple horizontally scalable microservices. Each microservi
 
 ## The role of Prometheus
 
-Prometheus instances scrape samples from various targets and then push them to Cortex (using Prometheus' [remote storage API](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations)). Cortex handles the incoming samples using the [distributor](#distributor).
+Prometheus instances scrape samples from various targets and then push them to Cortex (using Prometheus' [remote write API](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations)).
+
+That remote write API emits batched [Snappy](https://google.github.io/snappy/)-compressed [Protocol Buffer](https://developers.google.com/protocol-buffers/) messages inside the body of an HTTP `PUT` request. Cortex requires that each HTTP request bear a header specifying a tenant ID for the request.
+
+Request authentication and authorization are handled by an external reverse proxy.
+
+Cortex handles incoming samples using either the [distributor](#distributor) or the [query frontend](#query-frontend), depending on your Cortex setup.
 
 ## Services
 
@@ -14,19 +20,53 @@ Cortex has a fundamentally service-based architecture, in which the overall syst
 
 ### Distributor
 
-The **distributor** service is responsible for handling samples written by Prometheus. It's essentially the "first stop" in the write path for Prometheus samples, *unless* you run an optional [query frontend](#query-frontend), in which case the distributor takes writes from the query frontend rather than from Prometheus instances directly.
+The **distributor** service is responsible for handling samples written by Prometheus. It's essentially the "first stop" in the write path for Prometheus samples, *unless* you run an optional [query frontend](#query-frontend), in which case the distributor takes writes from the query frontend rather than from Prometheus instances directly. Once the distributor receives samples from Prometheus, it splits them into chunks, replicates them (based on a configurable replication factor), and then sends them to the [ingester](#ingester) service.
 
-Once the distributor receives samples from Prometheus, it splits them into chunks, replicates them (based on a configurable replication factor), and then sends them to the [ingester](#ingester) service.
+Distributors communicate with ingesters via [gRPC](https://grpc.io). They are stateless and can be scaled up and down as needed.
 
-Distributors use consistent hashing, in conjunction with the (configurable) replication factor, to determine *which* instance of the ingester service receives each sample.
+#### Hashing
+
+Distributors use consistent hashing, in conjunction with the (configurable) replication factor, to determine *which* instance of the ingester service receives each sample. The hash itself is based on the metric name and tenant ID for the series. Cortex ensures that the samples for a given series all end up on the same subset of ingesters.
+
+> This hashing scheme was originally chosen to reduce the number of required ingesters on the query path. The trade-off, however, is that the write load on the ingesters is less even.
+
+#### The hash ring
+
+A consistent hash ring is stored in [Consul](https://www.consul.io/) as a single key-value pair, with the ring data structure also encoded as a [Protobuf](https://developers.google.com/protocol-buffers/) message. The consistent hash ring consists of a list of tokens and ingesters. Hash values are looked up in the ring; the replication set is built for the closest unique ingesters by token. One of the benefits of this system is that adding and remove ingesters results in only 1/_n_ of the series being moved (where _n_ is the number of ingesters).
+
+All distributors share access to the same hash ring, which means that write requests can be sent to any distributor.
+
+#### Quorum consistency
+
+To ensure consistent query results, Cortex uses DynamoDB-style quorum consistency on reads and writes. This means that the distributor will wait for a positive response of at least one half plus one of the ingesters to send the sample to before responding to the user.
+
+#### Load balancing across distributors
+
+We recommend randomly load balancing write requests across distributor instances, potentially by running the distributors as a Kubernetes [Service](https://kubernetes.io/docs/concepts/services-networking/service/).
 
 ### Ingester
 
-The **ingester** service is responsible for writing sample data to long-term storage backends (DynamoDB, S3, Cassandra, etc.). Each instance of the ingester service receives a subset of the total samples 
+The **ingester** service is responsible for writing sample data to long-term storage backends (DynamoDB, S3, Cassandra, etc.).
+
+#### Shared-nothing processes
+
+Ingesters are, for the most part, shared-nothing processes. They don't coordinate or communicate with each other *under normal operation*. The exception is on rolling updates, during which ingesters transfer their in-memory data from the ingester exiting the group to the ingester joining the group.
+
+#### State
+
+Ingesters are semi-stateful in that they always retain the last 12 hours worth of samples. When restarting or upgrading ingesters, care must be taken to avoid losing that data.
+
+As *semi*-stateful processes, ingesters are *not* designed to be long-term data stores. In Cortex, that role is played by the [chunk store](#chunk-store).
+
+#### Write de-amplification
+
+Ingesters semi-statefully store the last 12 hours worth of samples in order to perform **write de-amplification**, i.e. batching and compressing samples for the same series and flushing them out to the [chunk store](#chunk-store). Under normal operations, there should be *many* orders of magnitude fewer queries per second (QPS) worth of writes to the chunk store than to the ingesters.
+
+This division of labor between the ingester and the chunk store is the main source of Cortex's low total cost of ownership (TCO).
 
 ### Querier
 
-The **querier** service handles the actual [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) evaluation.
+The **querier** service handles the actual [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) evaluation of samples stored in long-term storage.
 
 It embeds the chunk store client code for fetching data from long-term storage and communicates with [ingesters](#ingester) for more recent data.
 
@@ -54,15 +94,38 @@ The query frontend splits multi-day queries into multiple single-day queries, ex
 
 #### Caching
 
-The query frontend caches query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required queries and executes them in parallel on downstream queries. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results.
+The query frontend caches query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queries. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results.
 
 #### Parallelism
 
 The query frontend job accepts gRPC streaming requests from the queriers, which then "pull" requests from the frontend. For high availability it's recommended that you run multiple frontends; the queriers will connect to---and pull requests from---all of them. To reap the benefit of fair scheduling, it is recommended that you run fewer frontends than queriers. Two should suffice in most cases.
 
+## Chunk store
+
+The **chunk store** is Cortex's long-term data store, designed to support interactive querying and sustained writing without the need for background maintenance tasks. It consists of:
+
+* An index for the chunks. This index can be backed by [DynamoDB from Amazon Web Services](https://aws.amazon.com/dynamodb/), [Bigtable from Google Cloud Platform](https://cloud.google.com/bigtable/), or [Apache Cassandra](https://cassandra.apache.org).
+* A key-value (KV) store for the chunk data itself
+
+> Unlike the other core components of Cortex, the chunk store is not a separate service, job, or process, but rather a library embedded in the three services that need to access Cortex data: the [ingester](#ingester), [querier](#querier), and [ruler](#ruler).
+
+The chunk store relies on a unified interface to the "[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores---DynamoDB, Bigtable, and Cassandra---that can be used to back the chunk store index. This interface assumes that the index is a collection of entries keyed by:
+
+* A **hash key**. This is required for *all* reads and writes.
+* A **range key**. This is required for writes and can be omitted for reads, which can be queried by prefix or range.
+
+The interface works somewhat differently across the supported databases:
+
+* DynamoDB supports range and hash keys natively. Index entries are thus modelled directly as DynamoDB entries, with the hash key as the distribution key and the range as the range key.
+* For both Bigtable and Cassandra, index entries are modelled as individual column values. The hash key becomes the row key and the range key becomes the column key.
+
+A set of schemas are used to map the matchers and label sets used on reads and writes to the chunk store into appropriate operations on the index. Schemas have been added as Cortex has evolved, mainly in an attempt to better load balance writes and improve query performance.
+
+> The current schema recommendation is the **v6 schema**.
+
 ## See also
 
-For more details on Cortex's architecture, you should read/watch:
+For more details on Cortex's architecture, we recommend reading/watching:
 
 - "[Project Frankenstein: A multi tenant, scale out Prometheus](https://docs.google.com/document/d/1C7yhMnb1x2sfeoe45f4mnnKConvroWhJ8KQZwIHJOuw/edit#heading=h.nimsq29kl184)" (the original design doc)
 - "[Multitenant, Scale-Out Prometheus](https://promcon.io/2016-berlin/talks/multitenant-scale-out-prometheus/)" (PromCon 2016 talk)

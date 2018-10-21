@@ -198,7 +198,7 @@ func main() {
 		middleware.Func(func(handler http.Handler) http.Handler {
 			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
 		}),
-		middleware.AuthenticateUser,
+		activeMiddleware,
 	).Wrap(http.HandlerFunc(dist.PushHandler)))
 	server.Run()
 }

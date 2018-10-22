@@ -66,8 +66,8 @@ func NewPlanner(cfg PlanConfig) (Planner, error) {
 	}, nil
 }
 
-// Plan updates a StreamBatch with the correct queries for the planned migration
-func (p Planner) Plan(batch chunk.StreamBatch) {
+// Plan updates a Streamer with the correct queries for the planned migration
+func (p Planner) Plan(batch chunk.Streamer) {
 	for _, table := range p.tables {
 		for _, user := range p.users {
 			for from := p.firstShard; from < p.lastShard; {

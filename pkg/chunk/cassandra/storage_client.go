@@ -8,11 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -307,12 +308,34 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	return input, err
 }
 
-// TODO query errors should format with shard numbers not cassandra token values
-func (s *storageClient) StreamChunks(ctx context.Context, params chunk.StreamBatch, out chan []chunk.Chunk) error {
-	batch := params.(*cassandraStreamBatch)
-	decodeContext := chunk.NewDecodeContext()
+func parseHash(hash string) (string, error) {
+	if !strings.Contains(hash, "/") {
+		return "", fmt.Errorf("cannot parse legacy ID for migration")
+	}
+	parts := strings.Split(hash, "/")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("unable to parse hash ID %v", hash)
+	}
+	return parts[0], nil
+}
 
-	for _, query := range batch.queries {
+type streamer struct {
+	queries []streamQuery
+	session *gocql.Session
+}
+
+func (s *storageClient) NewStreamer() chunk.Streamer {
+	return &streamer{
+		queries: []streamQuery{},
+		session: s.session,
+	}
+}
+
+// TODO query errors should format with shard numbers not cassandra token values
+func (s *streamer) Stream(ctx context.Context, out chan []chunk.Chunk) error {
+	decodeContext := chunk.NewDecodeContext()
+	for _, query := range s.queries {
+		level.Info(util.Logger).Log("msg", "streaming query", "queryID", query.id)
 		var (
 			q     *gocql.Query
 			hash  string
@@ -372,37 +395,10 @@ func (s *storageClient) StreamChunks(ctx context.Context, params chunk.StreamBat
 	return nil
 }
 
-func parseHash(hash string) (string, error) {
-	if !strings.Contains(hash, "/") {
-		return "", fmt.Errorf("cannot parse legacy ID for migration")
-	}
-	parts := strings.Split(hash, "/")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("unable to parse hash ID %v", hash)
-	}
-	return parts[0], nil
-}
+// Add adds a query plan to a streamer
+func (s *streamer) Add(tableName, userID string, from, to int) {
+	queryID := fmt.Sprintf("%v_%v_%v_%v", tableName, userID, from, to)
 
-func (s *storageClient) NewStreamBatch() chunk.StreamBatch {
-	return &cassandraStreamBatch{
-		queries: []cassandraStreamQuery{},
-	}
-}
-
-type cassandraStreamBatch struct {
-	queries []cassandraStreamQuery
-}
-
-type cassandraStreamQuery struct {
-	filterUserID bool
-	userID       string
-	tableName    string
-	tokenFrom    string
-	tokenTo      string
-}
-
-// Add adds a query plan to a cassandraStreamBatch
-func (c *cassandraStreamBatch) Add(tableName, userID string, from, to int) {
 	var filterUserID = true
 	if userID == "*" {
 		filterUserID = false
@@ -410,13 +406,68 @@ func (c *cassandraStreamBatch) Add(tableName, userID string, from, to int) {
 
 	f := getToken(int64(from))
 	t := getToken(int64(to))
-	c.queries = append(c.queries, cassandraStreamQuery{
+	s.queries = append(s.queries, streamQuery{
+		id:           queryID,
 		filterUserID: filterUserID,
 		userID:       userID,
 		tableName:    tableName,
 		tokenFrom:    fmt.Sprintf("%d", f),
 		tokenTo:      fmt.Sprintf("%d", t),
 	})
+}
+
+// Size adds a query plan to a Streamer
+func (s *streamer) Size(ctx context.Context) (int, error) {
+	n := 0
+	for _, query := range s.queries {
+		count := 0
+		if query.filterUserID {
+			var (
+				hash  string
+				value []byte
+				errs  []error
+			)
+			q := s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
+			iter := q.WithContext(ctx).Iter()
+			for iter.Scan(&hash, &value) {
+				userID, err := parseHash(hash)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+				if userID != query.userID { // User ID filtering must be done client side in cassandra
+					continue
+				}
+				count++
+			}
+			err := iter.Close()
+			if err != nil {
+				return 0, fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+			}
+		} else {
+			q := s.session.Query(fmt.Sprintf("SELECT COUNT(hash) FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
+			iter := q.WithContext(ctx).Iter()
+
+			for iter.Scan(&count) {
+				n += count
+			}
+			err := iter.Close()
+			if err != nil {
+				return 0, fmt.Errorf("error: %v, query: %v_%v_%v_%v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+			}
+		}
+		n += count
+	}
+	return n, nil
+}
+
+type streamQuery struct {
+	id           string
+	filterUserID bool
+	userID       string
+	tableName    string
+	tokenFrom    string
+	tokenTo      string
 }
 
 func getToken(i int64) int64 {

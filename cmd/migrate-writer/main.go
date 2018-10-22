@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/migrate"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
@@ -42,6 +44,7 @@ func main() {
 		schemaConfig     chunk.SchemaConfig
 		storageConfig    storage.Config
 		writerConfig     migrate.WriterConfig
+		limits           validation.Limits
 		eventSampleRate  int
 		maxStreams       uint
 	)
@@ -69,13 +72,13 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
+	overrides, err := validation.NewOverrides(limits)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
+		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
 		os.Exit(1)
 	}
 
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts)
+	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
 	if err != nil {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
@@ -87,6 +90,11 @@ func main() {
 		level.Error(util.Logger).Log("err", err)
 		os.Exit(1)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	writer.Start(ctx)
+
+	defer writer.Shutdown()
+	defer cancel()
 
 	client.RegisterIngesterServer(server.GRPC, writer)
 	server.Run()

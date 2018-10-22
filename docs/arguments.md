@@ -156,3 +156,19 @@ Valid fields are (with their corresponding flags for default values):
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 
   Limits on the number of timeseries and samples returns by a single ingester during a query.
+
+## Migrate-Reader
+
+The migrate-reader will take a chunkstore config as well as a plan config. A plan is a description of which chunks will be read from a chunkstore and what chunks will be transferred to the migrate-writer. Each chunk storage client must implement a `Streamer` to work with the migrate-reader. The following flags configure how the chunks are read and transferred. The proper config must be considered in relation to the storage backend.
+
+- `plan.batchsize`
+
+  Number of shards to send per batch. A small batch size allows for a resilient failure mechanism. If a query fails it limits the scope of the failure and allows for the reader to be restarted with a more concise plan specified. Works well with Bigtable because chunks with the same fingerprint will always be in the same shard. In cassandra a higher batch size is ideal since it will allow for more efficient bundling when transferring chunks.
+
+- `plan.tables`
+
+  Comma separated list of tables to migrate.
+
+- `plan.users`
+
+  Comma separated list of user ids, if empty all users will be queried.

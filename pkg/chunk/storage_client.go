@@ -21,8 +21,7 @@ type ObjectClient interface {
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
 
-	StreamChunks(ctx context.Context, params StreamBatch, chunkChan chan []Chunk) error
-	NewStreamBatch() StreamBatch
+	NewStreamer() Streamer
 }
 
 // WriteBatch represents a batch of writes.
@@ -42,7 +41,9 @@ type ReadBatchIterator interface {
 	Value() []byte
 }
 
-// StreamBatch represents the configuration for streaming chunks
-type StreamBatch interface {
-	Add(tableName, userID string, from, to int)
+// Streamer represents the configuration for streaming chunks
+type Streamer interface {
+	Add(string, string, int, int)
+	Stream(context.Context, chan []Chunk) error
+	Size(context.Context) (int, error)
 }

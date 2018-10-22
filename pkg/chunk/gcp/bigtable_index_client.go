@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"cloud.google.com/go/bigtable"
+	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 
@@ -384,14 +385,14 @@ func (b *rowBatchIterator) Value() []byte {
 	return cf[0].Value
 }
 
-func (s *storageClientColumnKey) StreamChunks(ctx context.Context, params chunk.StreamBatch, out chan []chunk.Chunk) error {
-	sp, ctx := ot.StartSpanFromContext(ctx, "StreamChunks")
+func (b *bigtableStreamer) Stream(ctx context.Context, out chan []chunk.Chunk) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "Stream")
 	defer sp.Finish()
 
-	bigtableStreamBatch := params.(*bigtableStreamBatch)
-	for _, query := range bigtableStreamBatch.queries {
+	for _, query := range b.queries {
+		level.Info(util.WithContext(ctx, util.Logger)).Log("msg", "streaming query", "queryID", query.id)
 		var (
-			table         = s.client.Open(query.table)
+			table         = b.client.Open(query.table)
 			processingErr error
 		)
 		decodeContext := chunk.NewDecodeContext()
@@ -433,7 +434,24 @@ func (s *storageClientColumnKey) StreamChunks(ctx context.Context, params chunk.
 	return nil
 }
 
-// NewStreamBatch returns a GCP Bigtable specific stream batch.
+func (b *bigtableStreamer) Size(ctx context.Context) (int, error) {
+	n := 0
+	for _, query := range b.queries {
+		table := b.client.Open(query.table)
+		rr := query.generateRowRange()
+
+		err := table.ReadRows(ctx, rr, func(row bigtable.Row) bool {
+			n++
+			return true
+		}, bigtable.RowFilter(bigtable.StripValueFilter()))
+		if err != nil {
+			return 0, fmt.Errorf("error: %v, query: %v_%v_%v", err, query.table, query.identifier, query.userID)
+		}
+	}
+	return n, nil
+}
+
+// NewStreamer returns a GCP Bigtable specific stream batch.
 // By design the batch needs a userID, Table, and two integers representing
 // the first two characters of the fingerprint of metrics which will be streamed.
 // stream. Shards are an integer between 0 and 240 that map onto 2 hex characters.
@@ -448,28 +466,32 @@ func (s *storageClientColumnKey) StreamChunks(ctx context.Context, params chunk.
 // Technically there are 256 combinations of 2 hex character (16^2). However,
 // fingerprints will not lead with a 0 character so 00->0f excluded, leading to
 // 240
-func (s *storageClientColumnKey) NewStreamBatch() chunk.StreamBatch {
-	return &bigtableStreamBatch{
+func (s *storageClientColumnKey) NewStreamer() chunk.Streamer {
+	return &bigtableStreamer{
+		client:  s.client,
 		queries: []bigtableStreamQuery{},
 	}
 }
 
-type bigtableStreamBatch struct {
+type bigtableStreamer struct {
 	queries []bigtableStreamQuery
+	client  *bigtable.Client
 }
 
-func (b *bigtableStreamBatch) Add(tableName, userID string, from, to int) {
+func (b *bigtableStreamer) Add(tableName, userID string, from, to int) {
+	queryID := fmt.Sprintf("%v_%v_%v_%v", tableName, userID, from, to)
 	if from == 1 && to == 240 {
-		b.queries = append(b.queries, bigtableStreamQuery{userID, "", tableName})
+		b.queries = append(b.queries, bigtableStreamQuery{queryID, userID, "", tableName})
 		return
 	}
 	for i := from; i < to; i++ {
 		prefix := fmt.Sprintf("%02x", i+16)
-		b.queries = append(b.queries, bigtableStreamQuery{userID, prefix, tableName})
+		b.queries = append(b.queries, bigtableStreamQuery{queryID, userID, prefix, tableName})
 	}
 }
 
 type bigtableStreamQuery struct {
+	id         string
 	userID     string
 	identifier string
 	table      string

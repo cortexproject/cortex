@@ -28,6 +28,11 @@ var (
 		Name:      "reader_stream_errors_total",
 		Help:      "The total number of errors caused by the chunk stream.",
 	}, []string{"reader_id"})
+	totalChunks = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "reader_batch_chunks_total",
+		Help:      "The total number of chunks this reader is responsible for.",
+	}, []string{"reader_id"})
 )
 
 // ReaderConfig is a config for a Reader
@@ -80,13 +85,17 @@ func NewReader(cfg ReaderConfig, storage chunk.StorageClient) (*Reader, error) {
 // TransferData initializes a batch stream from a storage client and
 // forwards metrics to writer endpoint
 func (r *Reader) TransferData(ctx context.Context) error {
-	batch := r.storage.NewStreamBatch()
+	batch := r.storage.NewStreamer()
 	r.planner.Plan(batch)
-
 	readCtx, cancel := context.WithCancel(ctx)
 
 	go func() {
-		err := r.storage.StreamChunks(readCtx, batch, r.chunkChannel)
+		size, err := batch.Size(ctx)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error estimating size of batch", "err", err)
+		}
+		totalChunks.WithLabelValues(r.id).Add(float64(size))
+		err = batch.Stream(readCtx, r.chunkChannel)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error streaming chunks", "err", err)
 		}

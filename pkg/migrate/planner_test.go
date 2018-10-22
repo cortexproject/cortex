@@ -1,8 +1,10 @@
 package migrate
 
 import (
+	"context"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,6 +26,14 @@ func (c *mockBatch) Add(table, user string, from, to int) {
 		from:  from,
 		to:    to,
 	})
+}
+
+func (c *mockBatch) Size(context.Context) (int, error) {
+	return 0, nil
+}
+
+func (c *mockBatch) Stream(context.Context, chan []chunk.Chunk) error {
+	return nil
 }
 
 func TestPlan(t *testing.T) {

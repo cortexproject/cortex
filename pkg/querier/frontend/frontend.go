@@ -80,9 +80,11 @@ type Frontend struct {
 
 type request struct {
 	enqueueTime time.Time
-	request     *httpgrpc.HTTPRequest
-	err         chan error
-	response    chan *httpgrpc.HTTPResponse
+	context     context.Context
+
+	request  *httpgrpc.HTTPRequest
+	err      chan error
+	response chan *httpgrpc.HTTPResponse
 }
 
 // New creates a new frontend.
@@ -174,6 +176,8 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 
 	request := &request{
+		context: ctx,
+
 		request: req,
 		// Buffer of 1 to ensure response can be written even if client has gone away.
 		err:      make(chan error, 1),
@@ -267,6 +271,8 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 
 func (f *Frontend) queueRequest(userID string, req *request) error {
 	req.enqueueTime = time.Now()
+	_, ctx := opentracing.StartSpanFromContext(req.context, "queued")
+	req.context = ctx
 
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
@@ -318,6 +324,10 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 
 		queueDuration.Observe(time.Now().Sub(request.enqueueTime).Seconds())
 		queueLength.Add(-1)
+
+		sp := opentracing.SpanFromContext(request.context)
+		sp.Finish()
+
 		return request, nil
 	}
 

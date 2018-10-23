@@ -10,6 +10,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	opentracing "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
 )
@@ -213,8 +215,12 @@ func (s resultsCache) get(ctx context.Context, key string) ([]extent, bool) {
 	}
 
 	var resp cachedResponse
+	sp, _ := opentracing.StartSpanFromContext(ctx, "unmarshal-extent")
+	defer sp.Finish()
+
 	if err := json.Unmarshal(buf[0], &resp); err != nil {
 		level.Error(util.Logger).Log("msg", "error unmarshaling cached value", "err", err)
+		sp.LogFields(otlog.Error(err))
 		return nil, false
 	}
 

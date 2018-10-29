@@ -27,28 +27,37 @@ func main() {
 		ingesterConfig ingester.Config
 		storageConfig  storage.Config
 		schemaConfig   chunk.SchemaConfig
+		tbmConfig      chunk.TableManagerConfig
 	)
-	util.RegisterFlags(&ingesterConfig, &serverConfig, &storageConfig, &schemaConfig)
+	util.RegisterFlags(&ingesterConfig, &serverConfig, &storageConfig, &schemaConfig, &tbmConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)
 
-	if (schemaConfig.ChunkTables.WriteScale.Enabled ||
-		schemaConfig.IndexTables.WriteScale.Enabled ||
-		schemaConfig.ChunkTables.InactiveWriteScale.Enabled ||
-		schemaConfig.IndexTables.InactiveWriteScale.Enabled) &&
+	err := schemaConfig.Load()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error loading schema config", "err", err)
+		os.Exit(1)
+	}
+	// Assume the newest config is the one to use
+	lastConfig := &schemaConfig.Configs[len(schemaConfig.Configs)-1]
+
+	if (lastConfig.ChunkTables.WriteScale.Enabled ||
+		lastConfig.IndexTables.WriteScale.Enabled ||
+		lastConfig.ChunkTables.InactiveWriteScale.Enabled ||
+		lastConfig.IndexTables.InactiveWriteScale.Enabled) &&
 		(storageConfig.AWSStorageConfig.ApplicationAutoScaling.URL == nil && storageConfig.AWSStorageConfig.Metrics.URL == "") {
 		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling or Metrics URL has been provided")
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(storageConfig)
+	tableClient, err := storage.NewTableClient(lastConfig.Store, storageConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
 		os.Exit(1)
 	}
 
-	tableManager, err := chunk.NewTableManager(schemaConfig, ingesterConfig.MaxChunkAge, tableClient)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, ingesterConfig.MaxChunkAge, tableClient)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table manager", "err", err)
 		os.Exit(1)

@@ -91,7 +91,7 @@ type Distributor struct {
 	billingClient *billing.Client
 
 	// Per-user rate limiters.
-	ingestLimitersMtx sync.Mutex
+	ingestLimitersMtx sync.RWMutex
 	ingestLimiters    map[string]*rate.Limiter
 }
 
@@ -303,15 +303,20 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 }
 
 func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
-	d.ingestLimitersMtx.Lock()
-	defer d.ingestLimitersMtx.Unlock()
+	d.ingestLimitersMtx.RLock()
+	limiter, ok := d.ingestLimiters[userID]
+	d.ingestLimitersMtx.RUnlock()
 
-	if limiter, ok := d.ingestLimiters[userID]; ok {
+	if ok {
 		return limiter
 	}
 
-	limiter := rate.NewLimiter(rate.Limit(d.limits.IngestionRate(userID)), d.limits.IngestionBurstSize(userID))
+	limiter = rate.NewLimiter(rate.Limit(d.limits.IngestionRate(userID)), d.limits.IngestionBurstSize(userID))
+
+	d.ingestLimitersMtx.Lock()
 	d.ingestLimiters[userID] = limiter
+	d.ingestLimitersMtx.Unlock()
+
 	return limiter
 }
 

@@ -188,11 +188,11 @@ type ConfigsView struct {
 
 func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 	var cfgs map[string]configs.View
-	var err error
+	var cfgErr error
 	logger := util.WithContext(r.Context(), util.Logger)
 	rawSince := r.FormValue("since")
 	if rawSince == "" {
-		cfgs, err = a.db.GetAllConfigs()
+		cfgs, cfgErr = a.db.GetAllConfigs()
 	} else {
 		since, err := strconv.ParseUint(rawSince, 10, 0)
 		if err != nil {
@@ -200,13 +200,13 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, err = a.db.GetConfigs(configs.ID(since))
+		cfgs, cfgErr = a.db.GetConfigs(configs.ID(since))
 	}
 
-	if err != nil {
+	if cfgErr != nil {
 		// XXX: Untested
-		level.Error(logger).Log("msg", "error getting configs", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		level.Error(logger).Log("msg", "error getting configs", "err", cfgErr)
+		http.Error(w, cfgErr.Error(), http.StatusInternalServerError)
 		return
 	}
 

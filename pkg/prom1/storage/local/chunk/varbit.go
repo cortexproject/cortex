@@ -328,6 +328,10 @@ func (c varbitChunk) Len() int {
 	return i
 }
 
+func (c varbitChunk) Size() int {
+	return len(c)
+}
+
 func (c varbitChunk) firstTime() model.Time {
 	return model.Time(
 		binary.BigEndian.Uint64(

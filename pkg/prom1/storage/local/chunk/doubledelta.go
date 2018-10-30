@@ -355,6 +355,10 @@ func (c doubleDeltaEncodedChunk) Len() int {
 	return (len(c)-doubleDeltaHeaderBytes)/c.sampleSize() + 2
 }
 
+func (c doubleDeltaEncodedChunk) Size() int {
+	return len(c)
+}
+
 func (c doubleDeltaEncodedChunk) isInt() bool {
 	return c[doubleDeltaHeaderIsIntOffset] == 1
 }

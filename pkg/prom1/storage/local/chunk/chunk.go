@@ -98,6 +98,9 @@ type Chunk interface {
 	// Len returns the number of samples in the chunk.  Implementations may be
 	// expensive.
 	Len() int
+
+	// Size returns the approximate length of the chunk in bytes.
+	Size() int
 }
 
 // Iterator enables efficient access to the content of a chunk. It is

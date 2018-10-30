@@ -134,6 +134,14 @@ func (b *bigchunk) Len() int {
 	return sum
 }
 
+func (b *bigchunk) Size() int {
+	sum := 0
+	for _, c := range b.chunks {
+		sum += len(c.Bytes())
+	}
+	return sum
+}
+
 func (b *bigchunk) NewIterator() Iterator {
 	return &bigchunkIterator{
 		bigchunk: b,

@@ -614,14 +614,6 @@
   revision = "164c5fae744b141cd3e4a182b40d66fd4655c822"
 
 [[projects]]
-  branch = "master"
-  digest = "1:16886567e49201f2bb97fc738dfe8097494764135a83b533fc020fcefe37d8fe"
-  name = "github.com/nightlyone/lockfile"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "6a197d5ea61168f2ac821de2b7f011b250904900"
-
-[[projects]]
   digest = "1:d5f4c5b22e15b338051c4e26387e980b60d8e9eed13938adf1c415913ac64dbd"
   name = "github.com/oklog/oklog"
   packages = ["pkg/group"]
@@ -723,17 +715,18 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:511d8b5b4cef21fdc5c660e5d9c46a2d6d039809d9600ff1518b033e300522b9"
+  digest = "1:38fc24d62aaef064aa5277a6c9560c8520d94633e636804dc13ec3a7da24a4c6"
   name = "github.com/prometheus/client_golang"
   packages = [
     "api",
     "api/prometheus/v1",
     "prometheus",
+    "prometheus/internal",
     "prometheus/promauto",
     "prometheus/promhttp",
   ]
   pruneopts = "UT"
-  revision = "bcbbc08eb2ddff3af83bbf11e7ec13b4fd730b6e"
+  revision = "f30f428035633da15d00d3dfefb0128c5e569ef4"
 
 [[projects]]
   branch = "master"
@@ -818,7 +811,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:8a81e6f6374afec45e2a8686f8c25e9551fa0fd50187ae0de767e54b1ae6e8cb"
+  digest = "1:2cdda56c55a79af892e94b2f2a9f63558a8dbb62f1c9125263ea0e45cfde981a"
   name = "github.com/prometheus/tsdb"
   packages = [
     ".",
@@ -827,9 +820,10 @@
     "fileutil",
     "index",
     "labels",
+    "wal",
   ]
   pruneopts = "UT"
-  revision = "195bc0d286b077f5633eb4bda76743620588b2fa"
+  revision = "23a5f09085e5ee9423ea570f9c0bba4a02eae854"
 
 [[projects]]
   branch = "master"
@@ -1412,6 +1406,7 @@
     "github.com/prometheus/prometheus/web/api/v1",
     "github.com/prometheus/tsdb",
     "github.com/prometheus/tsdb/fileutil",
+    "github.com/prometheus/tsdb/wal",
     "github.com/segmentio/fasthash/fnv1a",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",

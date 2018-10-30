@@ -119,7 +119,7 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 	}
 
 	firstTime := series.firstTime()
-	flush := i.shouldFlushSeries(series, immediate)
+	flush := i.shouldFlushSeries(series, fp, immediate)
 
 	if flush != noFlush {
 		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
@@ -129,14 +129,14 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 	}
 }
 
-func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) flushReason {
+func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint, immediate bool) flushReason {
 	if immediate {
 		return reasonImmediate
 	}
 
 	// Series should be scheduled for flushing if the oldest chunk in the series needs flushing
 	if len(series.chunkDescs) > 0 {
-		reason := i.shouldFlushChunk(series.chunkDescs[0])
+		reason := i.shouldFlushChunk(series.chunkDescs[0], fp)
 		if reason != noFlush && len(series.chunkDescs) > 1 {
 			// Maintain a distinct reason for reporting purposes
 			reason = reasonMultipleChunksInSeries
@@ -147,13 +147,18 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, immediate bool) flush
 	return noFlush
 }
 
-func (i *Ingester) shouldFlushChunk(c *desc) flushReason {
+func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint) flushReason {
 	if c.flushed { // don't flush chunks we've already flushed
 		return noFlush
 	}
 
+	// Adjust max age slightly to spread flushes out over time
+	var jitter time.Duration
+	if i.cfg.ChunkAgeJitter != 0 {
+		jitter = time.Duration(fp) % i.cfg.ChunkAgeJitter
+	}
 	// Chunks should be flushed if they span longer than MaxChunkAge
-	if c.LastTime.Sub(c.FirstTime) > i.cfg.MaxChunkAge {
+	if c.LastTime.Sub(c.FirstTime) > (i.cfg.MaxChunkAge - jitter) {
 		return reasonAged
 	}
 
@@ -208,7 +213,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	}
 
 	userState.fpLocker.Lock(fp)
-	reason := i.shouldFlushSeries(series, immediate)
+	reason := i.shouldFlushSeries(series, fp, immediate)
 	if reason == noFlush {
 		userState.fpLocker.Unlock(fp)
 		return nil
@@ -216,7 +221,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 
 	// Assume we're going to flush everything, and maybe don't flush the head chunk if it doesn't need it.
 	chunks := series.chunkDescs
-	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head()) != noFlush) {
+	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head(), fp) != noFlush) {
 		series.closeHead()
 	} else {
 		chunks = chunks[:len(chunks)-1]

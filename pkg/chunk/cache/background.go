@@ -74,6 +74,11 @@ func NewBackground(name string, cfg BackgroundConfig, cache Cache) Cache {
 
 // Stop the background flushing goroutines.
 func (c *backgroundCache) Stop() error {
+	// If we already Stopped, we should just no-op.
+	if c.quit == nil {
+		return nil
+	}
+
 	close(c.quit)
 	c.wg.Wait()
 

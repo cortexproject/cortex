@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package ingester;
+
+option go_package = "ingester";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+
+message Record {
+  string user_id = 1;
+  repeated Labels labels = 2 [(gogoproto.nullable) = false];
+  repeated Sample samples = 3 [(gogoproto.nullable) = false];
+}
+
+message Labels {
+  int64 fingerprint = 1;
+  repeated cortex.LabelPair labels = 2 [(gogoproto.nullable) = false];
+}
+
+message Sample {
+  int64 fingerprint = 1;
+  int64 timestamp = 2;
+  double value = 3;
+}
+
+message Series {
+  string user_id = 1;
+  int64 fingerprint = 2;
+  repeated cortex.LabelPair labels = 3 [(gogoproto.nullable) = false];
+  repeated cortex.Chunk chunks = 4 [(gogoproto.nullable) = false];
+}

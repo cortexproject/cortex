@@ -75,6 +75,7 @@ var (
 // Config for an Ingester.
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig
+	WALConfig        WALConfig
 
 	// Config for transferring chunks.
 	SearchPendingFor time.Duration
@@ -98,6 +99,7 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
+	cfg.WALConfig.RegisterFlags(f)
 
 	f.DurationVar(&cfg.SearchPendingFor, "ingester.search-pending-for", 30*time.Second, "Time to spend searching for a pending ingester when shutting down.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
@@ -141,6 +143,8 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	wal WAL
+
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
 }
@@ -173,6 +177,11 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	var err error
+	i.wal, err = newWAL(cfg.WALConfig, i)
+	if err != nil {
+		return nil, err
+	}
+
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i)
 	if err != nil {
 		return nil, err
@@ -221,6 +230,8 @@ func (i *Ingester) Shutdown() {
 	close(i.quit)
 	i.done.Wait()
 
+	i.wal.Stop()
+
 	// Next initiate our graceful exit from the ring.
 	i.lifecycler.Shutdown()
 }
@@ -234,11 +245,20 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	var lastPartialErr error
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
 
+	record := Record{
+		UserId:  userID,
+		Samples: make([]Sample, 0, len(req.Timeseries)),
+	}
+
+	var lastPartialErr error
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
-			err := i.append(ctx, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
+			err := i.append(ctx, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, &record)
 			if err == nil {
 				continue
 			}
@@ -256,10 +276,14 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		}
 	}
 
+	if err := i.wal.Log(&record); err != nil {
+		return nil, err
+	}
+
 	return &client.WriteResponse{}, lastPartialErr
 }
 
-func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
+func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *Record) error {
 	labels.removeBlanks()
 
 	i.stopLock.RLock()
@@ -270,7 +294,7 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, labels)
+	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, labels, record)
 	if err != nil {
 		return err
 	}
@@ -290,6 +314,12 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 		}
 		return err
 	}
+
+	record.Samples = append(record.Samples, Sample{
+		Fingerprint: int64(fp),
+		Timestamp:   int64(timestamp),
+		Value:       float64(value),
+	})
 
 	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 	ingestedSamples.Inc()

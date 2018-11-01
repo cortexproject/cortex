@@ -42,12 +42,14 @@ type ReaderConfig struct {
 	ClientConfig   client.Config
 	PlannerConfig  PlanConfig
 	ReaderIDPrefix string
+	StorageClient  string
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *ReaderConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.PlannerConfig.RegisterFlags(f)
 	cfg.ClientConfig.RegisterFlags(f)
+	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "gcp", "Which storage client to use (gcp, cassandra).")
 	f.IntVar(&cfg.BufferSize, "reader.buffer-size", 10000, "number of chunk batches to buffer before forwarding")
 	f.StringVar(&cfg.Addr, "reader.forward-addr", "", "address of the chunk transfer endpoint")
 	f.StringVar(&cfg.ReaderIDPrefix, "reader.prefix", "reader_", "prefix used to identify reader when forwarding data to writer")

@@ -5,7 +5,6 @@ import (
 	"flag"
 	"os"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/migrate"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -25,10 +24,9 @@ func main() {
 			ExcludeRequestInLog: true,
 		}
 		storageConfig storage.Config
-		schemaConfig  chunk.SchemaConfig
 		readerConfig  migrate.ReaderConfig
 	)
-	util.RegisterFlags(&schemaConfig, &storageConfig, &readerConfig, &serverConfig)
+	util.RegisterFlags(&storageConfig, &readerConfig, &serverConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)
@@ -42,13 +40,13 @@ func main() {
 
 	go server.Run()
 
-	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
+	store, err := migrate.NewStorage(readerConfig.StorageClient, storageConfig)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "unable to initialize storage", "err", err)
+		level.Error(util.Logger).Log("msg", "unable to initialize storage client", "err", err)
 		os.Exit(1)
 	}
 
-	reader, err := migrate.NewReader(readerConfig, storageOpts[0].Client)
+	reader, err := migrate.NewReader(readerConfig, store)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "unable to initialize reader", "err", err)
 		os.Exit(1)

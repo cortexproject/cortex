@@ -97,7 +97,7 @@ The query frontend caches query results and reuses them on subsequent queries. I
 
 #### Parallelism
 
-The query frontend job accepts gRPC streaming requests from the queriers, which then "pull" requests from the frontend. For high availability it's recommended that you run multiple frontends; the queriers will connect to---and pull requests from---all of them. To reap the benefit of fair scheduling, it is recommended that you run fewer frontends than queriers. Two should suffice in most cases.
+The query frontend job accepts gRPC streaming requests from the queriers, which then "pull" requests from the frontend. For high availability it's recommended that you run multiple frontends; the queriers will connect to—and pull requests from—all of them. To reap the benefit of fair scheduling, it is recommended that you run fewer frontends than queriers. Two should suffice in most cases.
 
 ### Querier
 
@@ -114,7 +114,7 @@ The **chunk store** is Cortex's long-term data store, designed to support intera
 
 > Unlike the other core components of Cortex, the chunk store is not a separate service, job, or process, but rather a library embedded in the three services that need to access Cortex data: the [ingester](#ingester), [querier](#querier), and [ruler](#ruler).
 
-The chunk store relies on a unified interface to the "[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores---DynamoDB, Bigtable, and Cassandra---that can be used to back the chunk store index. This interface assumes that the index is a collection of entries keyed by:
+The chunk store relies on a unified interface to the "[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores—DynamoDB, Bigtable, and Cassandra—that can be used to back the chunk store index. This interface assumes that the index is a collection of entries keyed by:
 
 * A **hash key**. This is required for *all* reads and writes.
 * A **range key**. This is required for writes and can be omitted for reads, which can be queried by prefix or range.

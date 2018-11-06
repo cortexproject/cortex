@@ -56,6 +56,9 @@ type userState struct {
 	ingestedRuleSamples *ewmaRate
 
 	seriesInMetric []metricCounterShard
+
+	memSeriesCreatedTotal prometheus.Counter
+	memSeriesRemovedTotal prometheus.Counter
 }
 
 const metricCounterShards = 128
@@ -145,6 +148,9 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, labels labelPairs) 
 			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			seriesInMetric:      seriesInMetric,
+
+			memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
+			memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		stored, ok := us.states.LoadOrStore(userID, state)
@@ -194,7 +200,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	}
 
 	util.Event().Log("msg", "new series", "userID", u.userID, "fp", fp, "series", metric)
-	memSeriesCreatedTotal.WithLabelValues(u.userID).Inc()
+	u.memSeriesCreatedTotal.Inc()
 	memSeries.Inc()
 
 	series = newMemorySeries(metric)
@@ -237,7 +243,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 		delete(shard.m, metricName)
 	}
 
-	memSeriesRemovedTotal.WithLabelValues(u.userID).Inc()
+	u.memSeriesRemovedTotal.Inc()
 	memSeries.Dec()
 }
 

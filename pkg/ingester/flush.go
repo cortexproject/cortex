@@ -134,14 +134,12 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint,
 		return reasonImmediate
 	}
 
-	// Series should be scheduled for flushing if the oldest chunk in the series needs flushing
-	if len(series.chunkDescs) > 0 {
-		reason := i.shouldFlushChunk(series.chunkDescs[0], fp)
-		if reason != noFlush && len(series.chunkDescs) > 1 {
-			// Maintain a distinct reason for reporting purposes
-			reason = reasonMultipleChunksInSeries
-		}
-		return reason
+	// Flush if we have more than one chunk, and haven't already flushed the first chunk
+	if len(series.chunkDescs) > 1 && !series.chunkDescs[0].flushed {
+		return reasonMultipleChunksInSeries
+	} else if len(series.chunkDescs) > 0 {
+		// Otherwise look in more detail at the first chunk
+		return i.shouldFlushChunk(series.chunkDescs[0], fp)
 	}
 
 	return noFlush

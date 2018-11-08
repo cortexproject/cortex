@@ -32,24 +32,44 @@ func newBigchunk() *bigchunk {
 
 func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 	if b.remainingSamples == 0 {
-		chunk := chunkenc.NewXORChunk()
-		appender, err := chunk.Appender()
-		if err != nil {
+		if err := b.addNextChunk(sample.Timestamp); err != nil {
 			return nil, err
 		}
-
-		b.starts = append(b.starts, int64(sample.Timestamp))
-		b.ends = append(b.ends, int64(sample.Timestamp))
-		b.chunks = append(b.chunks, chunk)
-
-		b.appender = appender
-		b.remainingSamples = samplesPerChunk
 	}
 
 	b.appender.Append(int64(sample.Timestamp), float64(sample.Value))
 	b.remainingSamples--
 	b.ends[len(b.ends)-1] = int64(sample.Timestamp)
 	return []Chunk{b}, nil
+}
+
+// addNextChunk adds a new XOR "subchunk" to the internal list of chunks.
+func (b *bigchunk) addNextChunk(start model.Time) error {
+	// To save memory, we "compact" the last chunk.
+	if l := len(b.chunks); l > 0 {
+		c := b.chunks[l-1]
+		buf := make([]byte, len(c.Bytes()))
+		copy(buf, c.Bytes())
+		compacted, err := chunkenc.FromData(chunkenc.EncXOR, buf)
+		if err != nil {
+			return err
+		}
+		b.chunks[l-1] = compacted
+	}
+
+	chunk := chunkenc.NewXORChunk()
+	appender, err := chunk.Appender()
+	if err != nil {
+		return err
+	}
+
+	b.starts = append(b.starts, int64(start))
+	b.ends = append(b.ends, int64(start))
+	b.chunks = append(b.chunks, chunk)
+
+	b.appender = appender
+	b.remainingSamples = samplesPerChunk
+	return nil
 }
 
 func (b *bigchunk) Marshal(wio io.Writer) error {

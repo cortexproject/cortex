@@ -1,6 +1,8 @@
 package chunk
 
 import (
+	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -54,4 +56,34 @@ func TestSliceBiggerChunk(t *testing.T) {
 			require.True(t, iter.Scan())
 		}
 	}
+}
+
+func BenchmarkBiggerChunkMemory(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var c Chunk = newBigchunk()
+		for i := 0; i < 12*3600/15; i++ {
+			cs, err := c.Add(model.SamplePair{
+				Timestamp: model.Time(i * step),
+				Value:     model.SampleValue(i),
+			})
+			require.NoError(b, err)
+			c = cs[0]
+		}
+
+		c.(*bigchunk).printSize()
+	}
+}
+
+// printSize calculates various sizes of the chunk when encoded, and in memory.
+func (b *bigchunk) printSize() {
+	var buf bytes.Buffer
+	b.Marshal(&buf)
+
+	var size, allocd int
+	for _, c := range b.chunks {
+		size += len(c.Bytes())
+		allocd += cap(c.Bytes())
+	}
+
+	fmt.Println("encodedlen =", len(buf.Bytes()), "subchunks =", len(b.chunks), "len =", size, "cap =", allocd)
 }

@@ -42,10 +42,10 @@ func main() {
 	// Assume the newest config is the one to use
 	lastConfig := &schemaConfig.Configs[len(schemaConfig.Configs)-1]
 
-	if (lastConfig.ChunkTables.WriteScale.Enabled ||
-		lastConfig.IndexTables.WriteScale.Enabled ||
-		lastConfig.ChunkTables.InactiveWriteScale.Enabled ||
-		lastConfig.IndexTables.InactiveWriteScale.Enabled) &&
+	if (tbmConfig.ChunkTables.WriteScale.Enabled ||
+		tbmConfig.IndexTables.WriteScale.Enabled ||
+		tbmConfig.ChunkTables.InactiveWriteScale.Enabled ||
+		tbmConfig.IndexTables.InactiveWriteScale.Enabled) &&
 		(storageConfig.AWSStorageConfig.ApplicationAutoScaling.URL == nil && storageConfig.AWSStorageConfig.Metrics.URL == "") {
 		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling or Metrics URL has been provided")
 		os.Exit(1)

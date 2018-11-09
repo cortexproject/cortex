@@ -37,6 +37,14 @@
 - `-distributor.extra-query-delay`
    This is used by a component with an embedded distributor (Querier and Ruler) to control how long to wait until sending more than the minimum amount of queries needed for a successful response.
 
+## Ingester
+
+- `-ingester.normalise-tokens`
+
+   Write out "normalised" tokens to the ring.  Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.
+
+   Before enabling, rollout a version of Cortex that supports normalised token (ie ones which have this flag) for all jobs that interact with the ring, then rollout this flag set to `true`.  The new ring code can still read and write the old ring format, so is backwards compatible.
+
 ## Ingester, Distributor & Querier limits.
 
 Cortex implements various limits on the requests it can process, in order to prevent a single tenant overwhelming the cluster.  There are various default global limits which apply to all tenants which can be set on the command line.  These limits can also be overridden on a per-tenant basis, using a configuration file.  Specify the filename for the override configuration file using the `-limits.per-user-override-config=<filename>` flag.  The override file will be re-read every 10 seconds by default - this can also be controlled using the `-limits.per-user-override-period=10s` flag.

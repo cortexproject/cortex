@@ -381,6 +381,14 @@
   revision = "9cad4c3443a7200dd6400aef47183728de563a38"
 
 [[projects]]
+  digest = "1:1168584a5881d371e96cb0e66ef6db71d7cef0856cc7f311490bc856627f8328"
+  name = "github.com/grpc-ecosystem/go-grpc-middleware"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "c250d6563d4d4c20252cd865923440e829844f4e"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:47d5a48673e054e5d8a172abf17b88675bea87ca48b7acebe85e4e0dfd153a7b"
   name = "github.com/grpc-ecosystem/grpc-gateway"
   packages = [
@@ -1370,6 +1378,7 @@
     "github.com/golang/protobuf/proto",
     "github.com/golang/snappy",
     "github.com/gorilla/mux",
+    "github.com/grpc-ecosystem/go-grpc-middleware",
     "github.com/hashicorp/consul/api",
     "github.com/hashicorp/go-cleanhttp",
     "github.com/jonboulle/clockwork",
@@ -1378,7 +1387,6 @@
     "github.com/mattes/migrate/driver/postgres",
     "github.com/mattes/migrate/migrate",
     "github.com/mgutz/ansi",
-    "github.com/mwitkow/go-grpc-middleware",
     "github.com/opentracing-contrib/go-grpc",
     "github.com/opentracing-contrib/go-stdlib/nethttp",
     "github.com/opentracing/opentracing-go",

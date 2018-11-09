@@ -43,7 +43,7 @@
 
    Write out "normalised" tokens to the ring.  Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.
 
-   Before enabling, rollout a version of Cortex that supports normalised token (ie ones which have this flag) for all jobs that interact with the ring, then rollout this flag set to `true`.  The new ring code can still read and write the old ring format, so is backwards compatible.
+   Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters.  The new ring code can still read and write the old ring format, so is backwards compatible.
 
 ## Ingester, Distributor & Querier limits.
 

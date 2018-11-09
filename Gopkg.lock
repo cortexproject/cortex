@@ -639,6 +639,14 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:3173a0e98abdc5021301c4d34e6ac5ff8e6c792f3d22849c879ace70d5828978"
+  name = "github.com/opentracing-contrib/go-grpc"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "4b5a12d3ff02ba61ae861b7797e17a0c4f0ecea9"
+
+[[projects]]
+  branch = "master"
   digest = "1:55a4c23a5ff747a3436588879dc6ff4ea36d2e42dad8c67449f3df4ecb4b41a7"
   name = "github.com/opentracing-contrib/go-stdlib"
   packages = ["nethttp"]
@@ -1362,7 +1370,6 @@
     "github.com/golang/protobuf/proto",
     "github.com/golang/snappy",
     "github.com/gorilla/mux",
-    "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hashicorp/consul/api",
     "github.com/hashicorp/go-cleanhttp",
     "github.com/jonboulle/clockwork",
@@ -1372,6 +1379,7 @@
     "github.com/mattes/migrate/migrate",
     "github.com/mgutz/ansi",
     "github.com/mwitkow/go-grpc-middleware",
+    "github.com/opentracing-contrib/go-grpc",
     "github.com/opentracing-contrib/go-stdlib/nethttp",
     "github.com/opentracing/opentracing-go",
     "github.com/opentracing/opentracing-go/log",

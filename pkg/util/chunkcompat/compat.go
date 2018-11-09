@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 

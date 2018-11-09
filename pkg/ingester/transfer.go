@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
@@ -149,7 +149,7 @@ func toWireChunks(descs []*desc) ([]client.Chunk, error) {
 			Encoding:         int32(d.C.Encoding()),
 		}
 
-		buf := bytes.NewBuffer(make([]byte, 0, chunk.ChunkLen))
+		buf := bytes.NewBuffer(make([]byte, 0, encoding.ChunkLen))
 		if err := d.C.Marshal(buf); err != nil {
 			return nil, err
 		}
@@ -170,7 +170,7 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 		}
 
 		var err error
-		desc.C, err = chunk.NewForEncoding(chunk.Encoding(byte(c.Encoding)))
+		desc.C, err = encoding.NewForEncoding(encoding.Encoding(byte(c.Encoding)))
 		if err != nil {
 			return nil, err
 		}

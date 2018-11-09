@@ -20,8 +20,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
@@ -470,7 +470,7 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 			continue
 		}
 
-		c := chunk.New()
+		c := encoding.New()
 		for _, sample := range ts.Samples {
 			cs, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(sample.TimestampMs),

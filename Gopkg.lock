@@ -45,6 +45,15 @@
   version = "v10.14.0"
 
 [[projects]]
+  branch = "move-to-rss-alloc"
+  digest = "1:861e894b869a676602edf798faa36ac65746c8de83d5c2db421b0074e16ed194"
+  name = "github.com/Dieterbe/profiletrigger"
+  packages = ["heap"]
+  pruneopts = "UT"
+  revision = "3fa6d10b60f8edf1d1081b361112bf42d665f9b8"
+  source = "github.com/gouthamve/profiletrigger"
+
+[[projects]]
   branch = "v1"
   digest = "1:4bc622d0f7772ba43b97a2395283c2be4cbefcde88b3a253b05d61beac66ea1d"
   name = "github.com/Masterminds/squirrel"
@@ -1338,6 +1347,7 @@
   input-imports = [
     "cloud.google.com/go/bigtable",
     "cloud.google.com/go/bigtable/bttest",
+    "github.com/Dieterbe/profiletrigger/heap",
     "github.com/Masterminds/squirrel",
     "github.com/armon/go-socks5",
     "github.com/aws/aws-sdk-go/aws",

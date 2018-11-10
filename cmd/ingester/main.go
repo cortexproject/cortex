@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/profiletrigger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -48,6 +49,7 @@ func main() {
 		preallocConfig   client.PreallocConfig
 		clientConfig     client.Config
 		limits           validation.Limits
+		profiletrigger   profiletrigger.Config
 		eventSampleRate  int
 		maxStreams       uint
 	)
@@ -60,13 +62,15 @@ func main() {
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 
 	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &storageConfig,
-		&schemaConfig, &ingesterConfig, &clientConfig, &limits, &preallocConfig)
+		&schemaConfig, &ingesterConfig, &clientConfig, &limits, &preallocConfig,
+		&profiletrigger)
 	flag.UintVar(&maxStreams, "ingester.max-concurrent-streams", 1000, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)
 	util.InitEvents(eventSampleRate)
+	profiletrigger.Run()
 
 	if maxStreams > 0 {
 		serverConfig.GRPCOptions = append(serverConfig.GRPCOptions, grpc.MaxConcurrentStreams(uint32(maxStreams)))

@@ -50,3 +50,8 @@
 [[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
+
+[[constraint]]
+  branch = "move-to-rss-alloc"
+  name = "github.com/Dieterbe/profiletrigger"
+  source = "github.com/gouthamve/profiletrigger"

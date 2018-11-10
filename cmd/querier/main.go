@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/profiletrigger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
@@ -47,10 +48,12 @@ func main() {
 		schemaConfig      chunk.SchemaConfig
 		storageConfig     storage.Config
 		workerConfig      frontend.WorkerConfig
+		profiletrigger    profiletrigger.Config
 		queryParallelism  int
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
-		&querierConfig, &chunkStoreConfig, &schemaConfig, &storageConfig, &workerConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig,
+		&limits, &querierConfig, &chunkStoreConfig, &schemaConfig, &storageConfig,
+		&workerConfig, &profiletrigger)
 	flag.IntVar(&queryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
 	flag.Parse()
 	chunk_util.QueryParallelism = queryParallelism
@@ -60,6 +63,7 @@ func main() {
 	defer trace.Close()
 
 	util.InitLogger(&serverConfig)
+	profiletrigger.Run()
 
 	r, err := ring.New(ringConfig)
 	if err != nil {

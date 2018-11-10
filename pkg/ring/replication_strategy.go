@@ -10,8 +10,8 @@ import (
 // tolerate.
 // - Filters out dead ingesters so the one doesn't even try to write to them.
 // - Checks there is enough ingesters for an operation to succeed.
-func (r *Ring) replicationStrategy(ingesters []*IngesterDesc, op Operation) (
-	liveIngesters []*IngesterDesc, maxFailure int, err error,
+func (r *Ring) replicationStrategy(ingesters []IngesterDesc, op Operation) (
+	liveIngesters []IngesterDesc, maxFailure int, err error,
 ) {
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
@@ -26,9 +26,9 @@ func (r *Ring) replicationStrategy(ingesters []*IngesterDesc, op Operation) (
 	// Skip those that have not heartbeated in a while. NB these are still
 	// included in the calculation of minSuccess, so if too many failed ingesters
 	// will cause the whole write to fail.
-	liveIngesters = make([]*IngesterDesc, 0, len(ingesters))
+	liveIngesters = make([]IngesterDesc, 0, len(ingesters))
 	for _, ingester := range ingesters {
-		if r.IsHealthy(ingester, op) {
+		if r.IsHealthy(&ingester, op) {
 			liveIngesters = append(liveIngesters, ingester)
 		} else {
 			maxFailure--

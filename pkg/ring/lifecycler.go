@@ -46,6 +46,7 @@ type LifecyclerConfig struct {
 	HeartbeatPeriod time.Duration
 	JoinAfter       time.Duration
 	ClaimOnRollout  bool
+	NormaliseTokens bool
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string
@@ -63,6 +64,7 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
 	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")
 	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
+	f.BoolVar(&cfg.NormaliseTokens, "ingester.normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -232,7 +234,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 				return nil, false, fmt.Errorf("Cannot claim tokens in an empty ring")
 			}
 
-			tokens = ringDesc.ClaimTokens(ingesterID, i.ID)
+			tokens = ringDesc.ClaimTokens(ingesterID, i.ID, i.cfg.NormaliseTokens)
 			return ringDesc, true, nil
 		}
 
@@ -360,7 +362,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		if !ok {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
-			ringDesc.AddIngester(i.ID, i.addr, []uint32{}, i.GetState())
+			ringDesc.AddIngester(i.ID, i.addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
 			return ringDesc, true, nil
 		}
 
@@ -392,7 +394,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(ACTIVE)
-		ringDesc.AddIngester(i.ID, i.addr, newTokens, i.GetState())
+		ringDesc.AddIngester(i.ID, i.addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
 		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
@@ -417,7 +419,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
-			ringDesc.AddIngester(i.ID, i.addr, i.getTokens(), i.GetState())
+			ringDesc.AddIngester(i.ID, i.addr, i.getTokens(), i.GetState(), i.cfg.NormaliseTokens)
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()

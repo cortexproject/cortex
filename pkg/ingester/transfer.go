@@ -261,7 +261,7 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 			return nil, fmt.Errorf("no pending ingesters")
 		}
 
-		return ingesters[0], nil
+		return &ingesters[0], nil
 	}
 
 	deadline := time.Now().Add(i.cfg.SearchPendingFor)

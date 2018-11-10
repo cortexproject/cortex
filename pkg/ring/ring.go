@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -59,7 +60,8 @@ type Config struct {
 	store             string
 	HeartbeatTimeout  time.Duration
 	ReplicationFactor int
-	Mock              KVClient
+
+	Mock KVClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -156,11 +158,33 @@ func (r *Ring) loop(ctx context.Context) {
 		}
 
 		ringDesc := value.(*Desc)
+		ringDesc = r.migrateRing(ringDesc)
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = ringDesc
 		return true
 	})
+}
+
+// migrateRing will denormalise the ring's tokens if stored in normal form.
+func (r *Ring) migrateRing(desc *Desc) *Desc {
+	numTokens := len(desc.Tokens)
+	for _, ing := range desc.Ingesters {
+		numTokens += len(ing.Tokens)
+	}
+	tokens := make([]TokenDesc, len(desc.Tokens), numTokens)
+	copy(tokens, desc.Tokens)
+	for key, ing := range desc.Ingesters {
+		for _, token := range ing.Tokens {
+			tokens = append(tokens, TokenDesc{
+				Token:    token,
+				Ingester: key,
+			})
+		}
+	}
+	sort.Sort(ByToken(tokens))
+	desc.Tokens = tokens
+	return desc
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.
@@ -194,7 +218,7 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 
 	var (
 		n             = r.cfg.ReplicationFactor
-		ingesters     = make([]*IngesterDesc, 0, n)
+		ingesters     = make([]IngesterDesc, 0, n)
 		distinctHosts = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0
@@ -247,11 +271,11 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	maxErrors := r.cfg.ReplicationFactor / 2
 
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester, Read) {
+		if !r.IsHealthy(&ingester, Read) {
 			maxErrors--
 			continue
 		}
@@ -342,7 +366,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		JOINING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester, Reporting) {
+		if !r.IsHealthy(&ingester, Reporting) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++

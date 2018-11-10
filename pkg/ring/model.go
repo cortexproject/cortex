@@ -8,7 +8,7 @@ import (
 )
 
 // ByToken is a sortable list of TokenDescs
-type ByToken []*TokenDesc
+type ByToken []TokenDesc
 
 func (ts ByToken) Len() int           { return len(ts) }
 func (ts ByToken) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
@@ -22,35 +22,41 @@ func ProtoDescFactory() proto.Message {
 // NewDesc returns an empty ring.Desc
 func NewDesc() *Desc {
 	return &Desc{
-		Ingesters: map[string]*IngesterDesc{},
+		Ingesters: map[string]IngesterDesc{},
 	}
 }
 
 // AddIngester adds the given ingester to the ring.
-func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
+func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState, normaliseTokens bool) {
 	if d.Ingesters == nil {
-		d.Ingesters = map[string]*IngesterDesc{}
+		d.Ingesters = map[string]IngesterDesc{}
 	}
-	d.Ingesters[id] = &IngesterDesc{
+
+	ingester := IngesterDesc{
 		Addr:      addr,
 		Timestamp: time.Now().Unix(),
 		State:     state,
 	}
 
-	for _, token := range tokens {
-		d.Tokens = append(d.Tokens, &TokenDesc{
-			Token:    token,
-			Ingester: id,
-		})
+	if normaliseTokens {
+		ingester.Tokens = tokens
+	} else {
+		for _, token := range tokens {
+			d.Tokens = append(d.Tokens, TokenDesc{
+				Token:    token,
+				Ingester: id,
+			})
+		}
+		sort.Sort(ByToken(d.Tokens))
 	}
 
-	sort.Sort(ByToken(d.Tokens))
+	d.Ingesters[id] = ingester
 }
 
 // RemoveIngester removes the given ingester and all its tokens.
 func (d *Desc) RemoveIngester(id string) {
 	delete(d.Ingesters, id)
-	output := []*TokenDesc{}
+	output := []TokenDesc{}
 	for i := 0; i < len(d.Tokens); i++ {
 		if d.Tokens[i].Ingester != id {
 			output = append(output, d.Tokens[i])
@@ -61,20 +67,46 @@ func (d *Desc) RemoveIngester(id string) {
 
 // ClaimTokens transfers all the tokens from one ingester to another,
 // returning the claimed token.
-func (d *Desc) ClaimTokens(from, to string) []uint32 {
+func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
 	var result []uint32
-	for i := 0; i < len(d.Tokens); i++ {
-		if d.Tokens[i].Ingester == from {
-			d.Tokens[i].Ingester = to
-			result = append(result, d.Tokens[i].Token)
+
+	if normaliseTokens {
+
+		// If we are storing the tokens in a normalise form, we need to deal with
+		// the migration from denormalised by removing the tokens from the tokens
+		// list.
+		result = d.Ingesters[from].Tokens
+
+		for i := 0; i < len(d.Tokens); {
+			if d.Tokens[i].Ingester == from {
+				result = append(result, d.Tokens[i].Token)
+				d.Tokens = d.Tokens[:i+copy(d.Tokens[i:], d.Tokens[i+1:])]
+				continue
+			}
+			i++
+		}
+
+		sort.Sort(uint32s(result))
+		ing := d.Ingesters[to]
+		ing.Tokens = result
+		d.Ingesters[to] = ing
+
+	} else {
+
+		for i := 0; i < len(d.Tokens); i++ {
+			if d.Tokens[i].Ingester == from {
+				d.Tokens[i].Ingester = to
+				result = append(result, d.Tokens[i].Token)
+			}
 		}
 	}
+
 	return result
 }
 
 // FindIngestersByState returns the list of ingesters in the given state
-func (d *Desc) FindIngestersByState(state IngesterState) []*IngesterDesc {
-	var result []*IngesterDesc
+func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
+	var result []IngesterDesc
 	for _, ing := range d.Ingesters {
 		if ing.State == state {
 			result = append(result, ing)
@@ -85,15 +117,17 @@ func (d *Desc) FindIngestersByState(state IngesterState) []*IngesterDesc {
 
 // Ready is true when all ingesters are active and healthy.
 func (d *Desc) Ready(heartbeatTimeout time.Duration) bool {
+	numTokens := len(d.Tokens)
 	for _, ingester := range d.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
 			return false
 		} else if ingester.State != ACTIVE {
 			return false
 		}
+		numTokens += len(ingester.Tokens)
 	}
 
-	return len(d.Tokens) > 0
+	return numTokens > 0
 }
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.

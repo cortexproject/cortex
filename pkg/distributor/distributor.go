@@ -268,12 +268,14 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 
-	samplesByIngester := map[*ring.IngesterDesc][]*sampleTracker{}
+	ingesters := map[string]ring.IngesterDesc{}
+	samplesByIngester := map[string][]*sampleTracker{}
 	for i, replicationSet := range replicationSets {
 		sampleTrackers[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
 		sampleTrackers[i].maxFailures = replicationSet.MaxErrors
 		for _, ingester := range replicationSet.Ingesters {
-			samplesByIngester[ingester] = append(samplesByIngester[ingester], &sampleTrackers[i])
+			ingesters[ingester.Addr] = ingester
+			samplesByIngester[ingester.Addr] = append(samplesByIngester[ingester.Addr], &sampleTrackers[i])
 		}
 	}
 
@@ -283,7 +285,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		err:         make(chan error),
 	}
 	for ingester, sampleTrackers := range samplesByIngester {
-		go func(ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker) {
+		go func(ingester ring.IngesterDesc, sampleTrackers []*sampleTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
 			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
 			defer cancel()
@@ -292,7 +294,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
 			d.sendSamples(localCtx, ingester, sampleTrackers, &pushTracker)
-		}(ingester, sampleTrackers)
+		}(ingesters[ingester], sampleTrackers)
 	}
 	select {
 	case err := <-pushTracker.err:
@@ -315,7 +317,7 @@ func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
 	return limiter
 }
 
-func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDesc, sampleTrackers []*sampleTracker, pushTracker *pushTracker) {
+func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, sampleTrackers []*sampleTracker, pushTracker *pushTracker) {
 	err := d.sendSamplesErr(ctx, ingester, sampleTrackers)
 
 	// If we succeed, decrement each sample's pending count by one.  If we reach
@@ -346,7 +348,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 	}
 }
 
-func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, samples []*sampleTracker) error {
+func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.IngesterDesc, samples []*sampleTracker) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err

@@ -4,6 +4,8 @@
 
 Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the [ingesters](#ingester)) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex's architecture.
 
+<p align="center"><img src="architecture.png" alt="Cortex Architecture"></p>
+
 ## The role of Prometheus
 
 Prometheus instances scrape samples from various targets and then push them to Cortex (using Prometheus' [remote write API](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations)). That remote write API emits batched [Snappy](https://google.github.io/snappy/)-compressed [Protocol Buffer](https://developers.google.com/protocol-buffers/) messages inside the body of an HTTP `PUT` request.
@@ -138,3 +140,4 @@ For more details on Cortex's architecture, we recommend reading/watching:
 - "[Cortex: Prometheus as a Service, One Year On](https://promcon.io/2017-munich/talks/cortex-prometheus-as-a-service-one-year-on/)" (PromCon 2017 Talk)
 - "Horizontally Scalable, Multi-tenant Prometheus" [slides](https://docs.google.com/presentation/d/190oIFgujktVYxWZLhLYN4q8p9dtQYoe4sxHgn4deBSI/edit#slide=id.g3b8e2d6f7e_0_6) (CNCF TOC Presentation)
 - [Cortex Query Woes](https://docs.google.com/document/d/1lsvSkv0tiAMPQv-V8vI2LZ8f4i9JuTRsuPI_i-XcAqY) provides details on Cortex query optimizations.
+- [Cortex: Horizontally Scalable, Highly Available Prometheus Monitoring](https://speakerdeck.com/grafana/cortex-horizontally-scalable-highly-available-prometheus-monitoring) (Presentation at Cloud Native London Meetup, Nov 2018)

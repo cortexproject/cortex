@@ -52,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.Store, storageConfig)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, storageConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
 		os.Exit(1)

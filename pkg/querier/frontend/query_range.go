@@ -181,7 +181,7 @@ func (a *APIResponse) toHTTPResponse() (*http.Response, error) {
 	return &resp, nil
 }
 
-func extract(start, end int64, extent extent) *APIResponse {
+func extract(start, end int64, extent Extent) *APIResponse {
 	return &APIResponse{
 		Status: statusSuccess,
 		Data: QueryRangeResponse{

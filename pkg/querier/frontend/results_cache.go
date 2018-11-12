@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
@@ -47,19 +48,6 @@ func newResultsCacheMiddleware(cfg resultsCacheConfig) (queryRangeMiddleware, er
 	}), nil
 }
 
-type cachedResponse struct {
-	Key string `json:"key"`
-
-	// List of cached responses; non-overlapping and in order.
-	Extents []extent `json:"extents"`
-}
-
-type extent struct {
-	Start    int64        `json:"start"`
-	End      int64        `json:"end"`
-	Response *APIResponse `json:"response"`
-}
-
 func (s resultsCache) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -69,7 +57,7 @@ func (s resultsCache) Do(ctx context.Context, r *QueryRangeRequest) (*APIRespons
 	var (
 		day      = r.Start / millisecondPerDay
 		key      = fmt.Sprintf("%s:%s:%d:%d", userID, r.Query, r.Step, day)
-		extents  []extent
+		extents  []Extent
 		response *APIResponse
 	)
 
@@ -93,13 +81,13 @@ func (s resultsCache) Do(ctx context.Context, r *QueryRangeRequest) (*APIRespons
 	return response, err
 }
 
-func (s resultsCache) handleMiss(ctx context.Context, r *QueryRangeRequest) (*APIResponse, []extent, error) {
+func (s resultsCache) handleMiss(ctx context.Context, r *QueryRangeRequest) (*APIResponse, []Extent, error) {
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	extents := []extent{
+	extents := []Extent{
 		{
 			Start:    r.Start,
 			End:      r.End,
@@ -109,7 +97,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r *QueryRangeRequest) (*AP
 	return response, extents, nil
 }
 
-func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, extents []extent) (*APIResponse, []extent, error) {
+func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, extents []Extent) (*APIResponse, []Extent, error) {
 	var (
 		reqResps []requestResponse
 		err      error
@@ -129,7 +117,7 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.resp)
-		extents = append(extents, extent{
+		extents = append(extents, Extent{
 			Start:    reqResp.req.Start,
 			End:      reqResp.req.End,
 			Response: reqResp.resp,
@@ -140,7 +128,7 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 	})
 
 	// Merge any extents - they're guaranteed not to overlap.
-	accumulator, mergedExtents := extents[0], make([]extent, 0, len(extents))
+	accumulator, mergedExtents := extents[0], make([]Extent, 0, len(extents))
 	for i := 1; i < len(extents); i++ {
 		if accumulator.End+r.Step < extents[i].Start {
 			mergedExtents = append(mergedExtents, accumulator)
@@ -162,7 +150,7 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 }
 
 // partition calculates the required requests to satisfy req given the cached data.
-func partition(req *QueryRangeRequest, extents []extent) ([]*QueryRangeRequest, []*APIResponse) {
+func partition(req *QueryRangeRequest, extents []Extent) ([]*QueryRangeRequest, []*APIResponse) {
 	var requests []*QueryRangeRequest
 	var cachedResponses []*APIResponse
 	start := req.Start
@@ -196,7 +184,7 @@ func partition(req *QueryRangeRequest, extents []extent) ([]*QueryRangeRequest, 
 	return requests, cachedResponses
 }
 
-func (s resultsCache) filterRecentExtents(req *QueryRangeRequest, extents []extent) []extent {
+func (s resultsCache) filterRecentExtents(req *QueryRangeRequest, extents []Extent) []Extent {
 	maxCacheTime := (int64(model.Now().Add(-s.cfg.MaxCacheFreshness)) / req.Step) * req.Step
 	for i := range extents {
 		// Never cache data for the latest freshness period.
@@ -208,17 +196,17 @@ func (s resultsCache) filterRecentExtents(req *QueryRangeRequest, extents []exte
 	return extents
 }
 
-func (s resultsCache) get(ctx context.Context, key string) ([]extent, bool) {
+func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	found, buf, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
 	if len(found) != 1 {
 		return nil, false
 	}
 
-	var resp cachedResponse
+	var resp CachedResponse
 	sp, _ := opentracing.StartSpanFromContext(ctx, "unmarshal-extent")
 	defer sp.Finish()
 
-	if err := json.Unmarshal(buf[0], &resp); err != nil {
+	if err := proto.Unmarshal(buf[0], &resp); err != nil {
 		level.Error(util.Logger).Log("msg", "error unmarshaling cached value", "err", err)
 		sp.LogFields(otlog.Error(err))
 		return nil, false
@@ -231,8 +219,8 @@ func (s resultsCache) get(ctx context.Context, key string) ([]extent, bool) {
 	return resp.Extents, true
 }
 
-func (s resultsCache) put(ctx context.Context, key string, extents []extent) {
-	buf, err := json.Marshal(cachedResponse{
+func (s resultsCache) put(ctx context.Context, key string, extents []Extent) {
+	buf, err := proto.Marshal(&CachedResponse{
 		Key:     key,
 		Extents: extents,
 	})

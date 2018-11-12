@@ -51,3 +51,16 @@ message SampleStream {
   repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric"];
   repeated cortex.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
 }
+
+message CachedResponse  {
+	string key = 1 [(gogoproto.jsontag) = "key"];
+
+	// List of cached responses; non-overlapping and in order.
+	repeated Extent extents = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "extents"];
+}
+
+message Extent  {
+	int64 start = 1 [(gogoproto.jsontag) = "start"];
+	int64 end = 2 [(gogoproto.jsontag) = "end"];
+	APIResponse response = 3 [(gogoproto.jsontag) = "response"];
+}

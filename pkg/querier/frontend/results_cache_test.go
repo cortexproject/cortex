@@ -60,8 +60,8 @@ func mkAPIResponse(start, end, step int64) *APIResponse {
 	}
 }
 
-func mkExtent(start, end int64) extent {
-	return extent{
+func mkExtent(start, end int64) Extent {
+	return Extent{
 		Start:    start,
 		End:      end,
 		Response: mkAPIResponse(start, end, 10),
@@ -71,7 +71,7 @@ func mkExtent(start, end int64) extent {
 func TestPartiton(t *testing.T) {
 	for i, tc := range []struct {
 		input                  *QueryRangeRequest
-		prevCachedResponse     []extent
+		prevCachedResponse     []Extent
 		expectedRequests       []*QueryRangeRequest
 		expectedCachedResponse []*APIResponse
 	}{
@@ -81,7 +81,7 @@ func TestPartiton(t *testing.T) {
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []extent{
+			prevCachedResponse: []Extent{
 				mkExtent(0, 100),
 			},
 			expectedCachedResponse: []*APIResponse{
@@ -95,7 +95,7 @@ func TestPartiton(t *testing.T) {
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []extent{
+			prevCachedResponse: []Extent{
 				mkExtent(110, 210),
 			},
 			expectedRequests: []*QueryRangeRequest{{
@@ -111,7 +111,7 @@ func TestPartiton(t *testing.T) {
 				Start: 0,
 				End:   100,
 			},
-			prevCachedResponse: []extent{
+			prevCachedResponse: []Extent{
 				mkExtent(50, 100),
 			},
 			expectedRequests: []*QueryRangeRequest{
@@ -131,7 +131,7 @@ func TestPartiton(t *testing.T) {
 				Start: 100,
 				End:   200,
 			},
-			prevCachedResponse: []extent{
+			prevCachedResponse: []Extent{
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},

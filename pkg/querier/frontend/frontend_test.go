@@ -134,11 +134,12 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 	util.DefaultValues(&config, &workerConfig)
 	config.SplitQueriesByDay = true
 
-	grpcListen, err := net.Listen("tcp", "")
+	// localhost:0 prevents firewall warnings on Mac OS X.
+	grpcListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 	workerConfig.Address = grpcListen.Addr().String()
 
-	httpListen, err := net.Listen("tcp", "")
+	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
 	frontend, err := New(config, logger)

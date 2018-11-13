@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -230,6 +231,8 @@ func FromLabelPairsToLabels(labelPairs []LabelPair) labels.Labels {
 			Value: string(l.Value),
 		})
 	}
+
+	sort.Sort(ls) // The labels should be sorted upon initialisation.
 	return ls
 }
 

@@ -246,6 +246,57 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
+
+		// Merging of responses when labels are in different order.
+		{
+			input: []*APIResponse{
+				{
+					Data: QueryRangeResponse{
+						ResultType: matrix,
+						Result: []SampleStream{
+							{
+								Labels: []client.LabelPair{{Name: []byte("a"), Value: []byte("b")}, {Name: []byte("b"), Value: []byte("a")}},
+								Samples: []client.Sample{
+									{0, 0},
+									{1, 1},
+								},
+							},
+						},
+					},
+				},
+				{
+					Data: QueryRangeResponse{
+						ResultType: matrix,
+						Result: []SampleStream{
+							{
+								Labels: []client.LabelPair{{Name: []byte("b"), Value: []byte("a")}, {Name: []byte("a"), Value: []byte("b")}},
+								Samples: []client.Sample{
+									{2, 2},
+									{3, 3},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &APIResponse{
+				Status: statusSuccess,
+				Data: QueryRangeResponse{
+					ResultType: matrix,
+					Result: []SampleStream{
+						{
+							Labels: []client.LabelPair{{Name: []byte("a"), Value: []byte("b")}, {Name: []byte("b"), Value: []byte("a")}},
+							Samples: []client.Sample{
+								{0, 0},
+								{1, 1},
+								{2, 2},
+								{3, 3},
+							},
+						},
+					},
+				},
+			},
+		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			output, err := mergeAPIResponses(tc.input)

@@ -1,7 +1,10 @@
 package client
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -208,8 +211,15 @@ func ToLabelPairs(metric model.Metric) []LabelPair {
 			Value: []byte(v),
 		})
 	}
+	sort.Sort(byLabel(labelPairs)) // The labels should be sorted upon initialisation.
 	return labelPairs
 }
+
+type byLabel []LabelPair
+
+func (s byLabel) Len() int           { return len(s) }
+func (s byLabel) Less(i, j int) bool { return bytes.Compare(s[i].Name, s[j].Name) < 0 }
+func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // FromLabelPairs unpack a []LabelPair to a model.Metric
 func FromLabelPairs(labelPairs []LabelPair) model.Metric {
@@ -247,4 +257,30 @@ func FastFingerprint(labelPairs []LabelPair) model.Fingerprint {
 		result ^= sum
 	}
 	return model.Fingerprint(result)
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s Sample) MarshalJSON() ([]byte, error) {
+	t, err := json.Marshal(model.Time(s.TimestampMs))
+	if err != nil {
+		return nil, err
+	}
+	v, err := json.Marshal(model.SampleValue(s.Value))
+	if err != nil {
+		return nil, err
+	}
+	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Sample) UnmarshalJSON(b []byte) error {
+	var t model.Time
+	var v model.SampleValue
+	vs := [...]json.Unmarshaler{&t, &v}
+	if err := json.Unmarshal(b, &vs); err != nil {
+		return err
+	}
+	s.TimestampMs = int64(t)
+	s.Value = float64(v)
+	return nil
 }

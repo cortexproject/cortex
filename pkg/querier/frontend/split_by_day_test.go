@@ -32,88 +32,88 @@ func TestNextDayBoundary(t *testing.T) {
 
 func TestSplitQuery(t *testing.T) {
 	for i, tc := range []struct {
-		input    *queryRangeRequest
-		expected []*queryRangeRequest
+		input    *QueryRangeRequest
+		expected []*QueryRangeRequest
 	}{
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   60 * 60 * seconds,
-				step:  15 * seconds,
-				query: "foo",
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   60 * 60 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
 			},
-			expected: []*queryRangeRequest{
+			expected: []*QueryRangeRequest{
 				{
-					start: 0,
-					end:   60 * 60 * seconds,
-					step:  15 * seconds,
-					query: "foo",
+					Start: 0,
+					End:   60 * 60 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 			},
 		},
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   24 * 3600 * seconds,
-				step:  15 * seconds,
-				query: "foo",
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   24 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
 			},
-			expected: []*queryRangeRequest{
+			expected: []*QueryRangeRequest{
 				{
-					start: 0,
-					end:   24 * 3600 * seconds,
-					step:  15 * seconds,
-					query: "foo",
+					Start: 0,
+					End:   24 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 			},
 		},
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   2 * 24 * 3600 * seconds,
-				step:  15 * seconds,
-				query: "foo",
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   2 * 24 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
 			},
-			expected: []*queryRangeRequest{
+			expected: []*QueryRangeRequest{
 				{
-					start: 0,
-					end:   (24 * 3600 * seconds) - (15 * seconds),
-					step:  15 * seconds,
-					query: "foo",
+					Start: 0,
+					End:   (24 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 				{
-					start: 24 * 3600 * seconds,
-					end:   2 * 24 * 3600 * seconds,
-					step:  15 * seconds,
-					query: "foo",
+					Start: 24 * 3600 * seconds,
+					End:   2 * 24 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 			},
 		},
 		{
-			input: &queryRangeRequest{
-				start: 3 * 3600 * seconds,
-				end:   3 * 24 * 3600 * seconds,
-				step:  15 * seconds,
-				query: "foo",
+			input: &QueryRangeRequest{
+				Start: 3 * 3600 * seconds,
+				End:   3 * 24 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
 			},
-			expected: []*queryRangeRequest{
+			expected: []*QueryRangeRequest{
 				{
-					start: 3 * 3600 * seconds,
-					end:   (24 * 3600 * seconds) - (15 * seconds),
-					step:  15 * seconds,
-					query: "foo",
+					Start: 3 * 3600 * seconds,
+					End:   (24 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 				{
-					start: 24 * 3600 * seconds,
-					end:   (2 * 24 * 3600 * seconds) - (15 * seconds),
-					step:  15 * seconds,
-					query: "foo",
+					Start: 24 * 3600 * seconds,
+					End:   (2 * 24 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 				{
-					start: 2 * 24 * 3600 * seconds,
-					end:   3 * 24 * 3600 * seconds,
-					step:  15 * seconds,
-					query: "foo",
+					Start: 2 * 24 * 3600 * seconds,
+					End:   3 * 24 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 			},
 		},
@@ -148,7 +148,7 @@ func TestSplitByDay(t *testing.T) {
 		},
 	}
 
-	mergedResponse, err := mergeAPIResponses([]*apiResponse{
+	mergedResponse, err := mergeAPIResponses([]*APIResponse{
 		parsedResponse,
 		parsedResponse,
 	})

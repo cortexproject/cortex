@@ -11,77 +11,71 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/util/stats"
 	"github.com/weaveworks/common/httpgrpc"
+
+	client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
+	matrix                = model.ValMatrix.String()
 	json                  = jsoniter.ConfigCompatibleWithStandardLibrary
 	errUnexpectedResponse = httpgrpc.Errorf(http.StatusInternalServerError, "unexpected response type")
 )
 
-type queryRangeRequest struct {
-	path       string
-	start, end int64 // Milliseconds since epoch.
-	step       int64 // Milliseconds.
-	timeout    time.Duration
-	query      string
-}
-
-func parseQueryRangeRequest(r *http.Request) (*queryRangeRequest, error) {
-	var result queryRangeRequest
+func parseQueryRangeRequest(r *http.Request) (*QueryRangeRequest, error) {
+	var result QueryRangeRequest
 	var err error
-	result.start, err = parseTime(r.FormValue("start"))
+	result.Start, err = parseTime(r.FormValue("start"))
 	if err != nil {
 		return nil, err
 	}
 
-	result.end, err = parseTime(r.FormValue("end"))
+	result.End, err = parseTime(r.FormValue("end"))
 	if err != nil {
 		return nil, err
 	}
 
-	if result.end < result.start {
+	if result.End < result.Start {
 		return nil, errEndBeforeStart
 	}
 
-	result.step, err = parseDurationMs(r.FormValue("step"))
+	result.Step, err = parseDurationMs(r.FormValue("step"))
 	if err != nil {
 		return nil, err
 	}
 
-	if result.step <= 0 {
+	if result.Step <= 0 {
 		return nil, errNegativeStep
 	}
 
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-	if (result.end-result.start)/result.step > 11000 {
+	if (result.End-result.Start)/result.Step > 11000 {
 		return nil, errStepTooSmall
 	}
 
-	result.query = r.FormValue("query")
-	result.path = r.URL.Path
+	result.Query = r.FormValue("query")
+	result.Path = r.URL.Path
 	return &result, nil
 }
 
-func (q queryRangeRequest) copy() queryRangeRequest {
+func (q QueryRangeRequest) copy() QueryRangeRequest {
 	return q
 }
 
-func (q queryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, error) {
+func (q QueryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, error) {
 	params := url.Values{
-		"start": []string{encodeTime(q.start)},
-		"end":   []string{encodeTime(q.end)},
-		"step":  []string{encodeDurationMs(q.step)},
-		"query": []string{q.query},
+		"start": []string{encodeTime(q.Start)},
+		"end":   []string{encodeTime(q.End)},
+		"step":  []string{encodeDurationMs(q.Step)},
+		"query": []string{q.Query},
 	}
 	u := &url.URL{
-		Path:     q.path,
+		Path:     q.Path,
 		RawQuery: params.Encode(),
 	}
 	req := &http.Request{
@@ -132,27 +126,46 @@ func encodeDurationMs(d int64) string {
 
 const statusSuccess = "success"
 
-type apiResponse struct {
-	Status    string             `json:"status"`
-	Data      queryRangeResponse `json:"data,omitempty"`
-	ErrorType string             `json:"errorType,omitempty"`
-	Error     string             `json:"error,omitempty"`
-}
-
-func parseQueryRangeResponse(r *http.Response) (*apiResponse, error) {
+func parseQueryRangeResponse(r *http.Response) (*APIResponse, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
-	var resp apiResponse
+	var resp APIResponse
 	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 	return &resp, nil
 }
 
-func (a *apiResponse) toHTTPResponse() (*http.Response, error) {
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *SampleStream) UnmarshalJSON(data []byte) error {
+	var stream struct {
+		Metric model.Metric    `json:"metric"`
+		Values []client.Sample `json:"values"`
+	}
+	if err := json.Unmarshal(data, &stream); err != nil {
+		return err
+	}
+	s.Labels = client.ToLabelPairs(stream.Metric)
+	s.Samples = stream.Values
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s *SampleStream) MarshalJSON() ([]byte, error) {
+	stream := struct {
+		Metric model.Metric    `json:"metric"`
+		Values []client.Sample `json:"values"`
+	}{
+		Metric: client.FromLabelPairs(s.Labels),
+		Values: s.Samples,
+	}
+	return json.Marshal(stream)
+}
+
+func (a *APIResponse) toHTTPResponse() (*http.Response, error) {
 	b, err := json.Marshal(a)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error marshalling json response", "err", err)
@@ -168,178 +181,91 @@ func (a *apiResponse) toHTTPResponse() (*http.Response, error) {
 	return &resp, nil
 }
 
-// queryRangeResponse contains result data for a query_range.
-type queryRangeResponse struct {
-	ResultType model.ValueType   `json:"resultType"`
-	Result     model.Value       `json:"result"`
-	Stats      *stats.QueryStats `json:"stats,omitempty"`
-}
-
-func (q *queryRangeResponse) UnmarshalJSON(b []byte) error {
-	v := struct {
-		ResultType model.ValueType     `json:"resultType"`
-		Stats      *stats.QueryStats   `json:"stats,omitempty"`
-		Result     jsoniter.RawMessage `json:"result"`
-	}{}
-
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
-	}
-
-	q.ResultType = v.ResultType
-	q.Stats = v.Stats
-
-	switch v.ResultType {
-	case model.ValVector:
-		var vv model.Vector
-		if err := json.Unmarshal(v.Result, &vv); err != nil {
-			return err
-		}
-		q.Result = vv
-
-	case model.ValMatrix:
-		var mv model.Matrix
-		if err := json.Unmarshal(v.Result, &mv); err != nil {
-			return err
-		}
-		q.Result = mv
-
-	default:
-		return errUnexpectedResponse
-	}
-
-	return nil
-}
-
-func extract(start, end int64, extent extent) *apiResponse {
-	resp := &apiResponse{
+func extract(start, end int64, extent Extent) *APIResponse {
+	return &APIResponse{
 		Status: statusSuccess,
-		Data: queryRangeResponse{
+		Data: QueryRangeResponse{
 			ResultType: extent.Response.Data.ResultType,
+			Result:     extractMatrix(start, end, extent.Response.Data.Result),
 		},
 	}
-	switch data := extent.Response.Data.Result.(type) {
-	case model.Vector:
-		resp.Data.Result = extractVector(start, end, data)
-	case model.Matrix:
-		resp.Data.Result = extractMatrix(start, end, data)
-	default:
-		panic("?")
-	}
-	return resp
 }
 
-func extractVector(start, end int64, vector model.Vector) model.Vector {
-	result := model.Vector{}
-	for _, sample := range vector {
-		if model.Time(start) <= sample.Timestamp || sample.Timestamp <= model.Time(end) {
-			result = append(result, sample)
-		}
-	}
-	return result
-}
-
-func extractMatrix(start, end int64, matrix model.Matrix) model.Matrix {
-	result := make(model.Matrix, 0, len(matrix))
+func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
+	result := make([]SampleStream, 0, len(matrix))
 	for _, stream := range matrix {
-		extracted := extractSampleStream(start, end, stream)
-		if extracted != nil {
+		extracted, ok := extractSampleStream(start, end, stream)
+		if ok {
 			result = append(result, extracted)
 		}
 	}
 	return result
 }
 
-func extractSampleStream(start, end int64, stream *model.SampleStream) *model.SampleStream {
-	result := &model.SampleStream{
-		Metric: stream.Metric,
+func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, bool) {
+	result := SampleStream{
+		Labels:  stream.Labels,
+		Samples: make([]client.Sample, 0, len(stream.Samples)),
 	}
-	for _, sample := range stream.Values {
-		if model.Time(start) <= sample.Timestamp && sample.Timestamp <= model.Time(end) {
-			result.Values = append(result.Values, sample)
+	for _, sample := range stream.Samples {
+		if start <= sample.TimestampMs && sample.TimestampMs <= end {
+			result.Samples = append(result.Samples, sample)
 		}
 	}
-	if len(result.Values) == 0 {
-		return nil
+	if len(result.Samples) == 0 {
+		return SampleStream{}, false
 	}
-	return result
+	return result, true
 }
 
-func mergeAPIResponses(responses []*apiResponse) (*apiResponse, error) {
+func mergeAPIResponses(responses []*APIResponse) (*APIResponse, error) {
 	// Merge the responses.
 	sort.Sort(byFirstTime(responses))
 
 	if len(responses) == 0 {
-		return &apiResponse{
+		return &APIResponse{
 			Status: statusSuccess,
 		}, nil
 	}
 
-	switch responses[0].Data.Result.(type) {
-	case model.Vector:
-		return vectorMerge(responses)
-	case model.Matrix:
-		return matrixMerge(responses)
-	default:
-		return nil, errUnexpectedResponse
-	}
+	return &APIResponse{
+		Status: statusSuccess,
+		Data: QueryRangeResponse{
+			ResultType: model.ValMatrix.String(),
+			Result:     matrixMerge(responses),
+		},
+	}, nil
 }
 
-type byFirstTime []*apiResponse
+type byFirstTime []*APIResponse
 
 func (a byFirstTime) Len() int           { return len(a) }
 func (a byFirstTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byFirstTime) Less(i, j int) bool { return minTime(a[i]) < minTime(a[j]) }
 
-func minTime(resp *apiResponse) model.Time {
-	switch result := resp.Data.Result.(type) {
-	case model.Vector:
-		if len(result) == 0 {
-			return -1
-		}
-		return result[0].Timestamp
-
-	case model.Matrix:
-		if len(result) == 0 {
-			return -1
-		}
-		if len(result[0].Values) == 0 {
-			return -1
-		}
-		return result[0].Values[0].Timestamp
-
-	default:
+func minTime(resp *APIResponse) int64 {
+	result := resp.Data.Result
+	if len(result) == 0 {
 		return -1
 	}
-}
-
-func vectorMerge(resps []*apiResponse) (*apiResponse, error) {
-	var output model.Vector
-	for _, resp := range resps {
-		output = append(output, resp.Data.Result.(model.Vector)...)
+	if len(result[0].Samples) == 0 {
+		return -1
 	}
-	return &apiResponse{
-		Status: statusSuccess,
-		Data: queryRangeResponse{
-			ResultType: model.ValVector,
-			Result:     output,
-		},
-	}, nil
+	return result[0].Samples[0].TimestampMs
 }
 
-func matrixMerge(resps []*apiResponse) (*apiResponse, error) {
-	output := map[string]*model.SampleStream{}
+func matrixMerge(resps []*APIResponse) []SampleStream {
+	output := map[string]*SampleStream{}
 	for _, resp := range resps {
-		matrix := resp.Data.Result.(model.Matrix)
-		for _, stream := range matrix {
-			metric := stream.Metric.String()
+		for _, stream := range resp.Data.Result {
+			metric := client.FromLabelPairsToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
-				existing = &model.SampleStream{
-					Metric: stream.Metric,
+				existing = &SampleStream{
+					Labels: stream.Labels,
 				}
 			}
-			existing.Values = append(existing.Values, stream.Values...)
+			existing.Samples = append(existing.Samples, stream.Samples...)
 			output[metric] = existing
 		}
 	}
@@ -350,16 +276,10 @@ func matrixMerge(resps []*apiResponse) (*apiResponse, error) {
 	}
 	sort.Strings(keys)
 
-	result := make(model.Matrix, 0, len(output))
+	result := make([]SampleStream, 0, len(output))
 	for _, key := range keys {
-		result = append(result, output[key])
+		result = append(result, *output[key])
 	}
 
-	return &apiResponse{
-		Status: statusSuccess,
-		Data: queryRangeResponse{
-			ResultType: model.ValMatrix,
-			Result:     result,
-		},
-	}, nil
+	return result
 }

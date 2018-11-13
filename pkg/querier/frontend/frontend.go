@@ -13,10 +13,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
@@ -80,11 +80,11 @@ type Frontend struct {
 
 type request struct {
 	enqueueTime time.Time
-	context     context.Context
+	queueSpan   opentracing.Span
 
-	request  *httpgrpc.HTTPRequest
+	request  *ProcessRequest
 	err      chan error
-	response chan *httpgrpc.HTTPResponse
+	response chan *ProcessResponse
 }
 
 // New creates a new frontend.
@@ -94,18 +94,6 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 		log:    log,
 		queues: map[string]chan *request{},
 	}
-
-	// We need to do the opentracing at the leafs of the roundtrippers, as a
-	// single request could turn into multiple requests.
-	tracingRoundTripper := &nethttp.Transport{
-		RoundTripper: f,
-	}
-	var roundTripper http.RoundTripper = RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		req, ht := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
-		defer ht.Finish()
-
-		return tracingRoundTripper.RoundTrip(req)
-	})
 
 	// Stack up the pipeline of various query range middlewares.
 	queryRangeMiddleware := []queryRangeMiddleware{}
@@ -124,6 +112,7 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 	}
 
 	// Finally, if the user selected any query range middleware, stitch it in.
+	var roundTripper http.RoundTripper = f
 	if len(queryRangeMiddleware) > 0 {
 		roundTripper = &queryRangeRoundTripper{
 			next: roundTripper,
@@ -164,33 +153,61 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // RoundTrip implement http.Transport.
 func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
-	ctx := r.Context()
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	req, err := server.HTTPRequest(r)
 	if err != nil {
 		return nil, err
 	}
 
-	request := &request{
-		context: ctx,
+	resp, err := f.RoundTripGRPC(r.Context(), &ProcessRequest{
+		HttpRequest: req,
+	})
+	if err != nil {
+		return nil, err
+	}
 
+	httpResp := &http.Response{
+		StatusCode: int(resp.HttpResponse.Code),
+		Body:       ioutil.NopCloser(bytes.NewReader(resp.HttpResponse.Body)),
+		Header:     http.Header{},
+	}
+	for _, h := range resp.HttpResponse.Headers {
+		httpResp.Header[h.Key] = h.Values
+	}
+	return httpResp, nil
+}
+
+type httpgrpcHeadersCarrier httpgrpc.HTTPRequest
+
+func (c *httpgrpcHeadersCarrier) Set(key, val string) {
+	c.Headers = append(c.Headers, &httpgrpc.Header{
+		Key:    key,
+		Values: []string{val},
+	})
+}
+
+// RoundTripGRPC round trips a proto (instread of a HTTP request).
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error) {
+	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
+	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+	if tracer != nil && span != nil {
+		carrier := (*httpgrpcHeadersCarrier)(req.HttpRequest)
+		tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
+	}
+
+	request := &request{
 		request: req,
 		// Buffer of 1 to ensure response can be written even if client has gone away.
 		err:      make(chan error, 1),
-		response: make(chan *httpgrpc.HTTPResponse, 1),
+		response: make(chan *ProcessResponse, 1),
 	}
 
 	var lastErr error
 	for tries := 0; tries < f.cfg.MaxRetries; tries++ {
-		if err := f.queueRequest(userID, request); err != nil {
+		if err := f.queueRequest(ctx, request); err != nil {
 			return nil, err
 		}
 
-		var resp *httpgrpc.HTTPResponse
+		var resp *ProcessResponse
 		select {
 		case <-ctx.Done():
 			// TODO propagate cancellation.
@@ -199,13 +216,17 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 
 		case resp = <-request.response:
 		case lastErr = <-request.err:
-			resp, _ = httpgrpc.HTTPResponseFromError(lastErr)
+			httpResp, ok := httpgrpc.HTTPResponseFromError(lastErr)
+			if ok {
+				resp = &ProcessResponse{
+					HttpResponse: httpResp,
+				}
+			}
 		}
 
 		// Retry is we get a HTTP 500.
-		if resp != nil && resp.Code/100 == 5 {
-			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp)
-			lastErr = httpgrpc.ErrorFromHTTPResponse(resp)
+		if resp != nil && resp.HttpResponse.Code/100 == 5 {
+			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp.HttpResponse)
 			continue
 		}
 
@@ -217,15 +238,7 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 
 		retries.Observe(float64(tries))
 
-		httpResp := &http.Response{
-			StatusCode: int(resp.Code),
-			Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
-			Header:     http.Header{},
-		}
-		for _, h := range resp.Headers {
-			httpResp.Header[h.Key] = h.Values
-		}
-		return httpResp, nil
+		return resp, nil
 	}
 
 	if lastErr != nil {
@@ -252,9 +265,7 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
-		if err := server.Send(&ProcessRequest{
-			HttpRequest: request.request,
-		}); err != nil {
+		if err := server.Send(request.request); err != nil {
 			request.err <- err
 			return err
 		}
@@ -265,14 +276,18 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
-		request.response <- response.HttpResponse
+		request.response <- response
 	}
 }
 
-func (f *Frontend) queueRequest(userID string, req *request) error {
+func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
 	req.enqueueTime = time.Now()
-	_, ctx := opentracing.StartSpanFromContext(req.context, "queued")
-	req.context = ctx
+	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
@@ -324,9 +339,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 
 		queueDuration.Observe(time.Now().Sub(request.enqueueTime).Seconds())
 		queueLength.Add(-1)
-
-		sp := opentracing.SpanFromContext(request.context)
-		sp.Finish()
+		request.queueSpan.Finish()
 
 		return request, nil
 	}

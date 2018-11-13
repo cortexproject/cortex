@@ -48,6 +48,7 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 # Manually declared dependancies And what goes into each exe
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
+pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
@@ -113,7 +114,7 @@ $(EXES):
 	$(NETGO_CHECK)
 
 %.pb.go:
-	protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
+	protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint:
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .

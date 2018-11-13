@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -210,8 +211,15 @@ func ToLabelPairs(metric model.Metric) []LabelPair {
 			Value: []byte(v),
 		})
 	}
+	sort.Sort(byLabel(labelPairs)) // The labels should be sorted upon initialisation.
 	return labelPairs
 }
+
+type byLabel []LabelPair
+
+func (s byLabel) Len() int           { return len(s) }
+func (s byLabel) Less(i, j int) bool { return bytes.Compare(s[i].Name, s[j].Name) < 0 }
+func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // FromLabelPairs unpack a []LabelPair to a model.Metric
 func FromLabelPairs(labelPairs []LabelPair) model.Metric {
@@ -231,8 +239,6 @@ func FromLabelPairsToLabels(labelPairs []LabelPair) labels.Labels {
 			Value: string(l.Value),
 		})
 	}
-
-	sort.Sort(ls) // The labels should be sorted upon initialisation.
 	return ls
 }
 

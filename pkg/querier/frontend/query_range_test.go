@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"testing"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -250,34 +251,8 @@ func TestMergeAPIResponses(t *testing.T) {
 		// Merging of responses when labels are in different order.
 		{
 			input: []*APIResponse{
-				{
-					Data: QueryRangeResponse{
-						ResultType: matrix,
-						Result: []SampleStream{
-							{
-								Labels: []client.LabelPair{{Name: []byte("a"), Value: []byte("b")}, {Name: []byte("b"), Value: []byte("a")}},
-								Samples: []client.Sample{
-									{0, 0},
-									{1, 1},
-								},
-							},
-						},
-					},
-				},
-				{
-					Data: QueryRangeResponse{
-						ResultType: matrix,
-						Result: []SampleStream{
-							{
-								Labels: []client.LabelPair{{Name: []byte("b"), Value: []byte("a")}, {Name: []byte("a"), Value: []byte("b")}},
-								Samples: []client.Sample{
-									{2, 2},
-									{3, 3},
-								},
-							},
-						},
-					},
-				},
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[0,"0"],[1,"1"]]}]}}`),
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
 			expected: &APIResponse{
 				Status: statusSuccess,
@@ -285,12 +260,12 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []client.LabelPair{{Name: []byte("a"), Value: []byte("b")}, {Name: []byte("b"), Value: []byte("a")}},
+							Labels: []client.LabelPair{{Name: []byte("a"), Value: []byte("b")}, {Name: []byte("c"), Value: []byte("d")}},
 							Samples: []client.Sample{
 								{0, 0},
-								{1, 1},
-								{2, 2},
-								{3, 3},
+								{1, 1000},
+								{2, 2000},
+								{3, 3000},
 							},
 						},
 					},
@@ -304,4 +279,12 @@ func TestMergeAPIResponses(t *testing.T) {
 			require.Equal(t, tc.expected, output)
 		})
 	}
+}
+
+func mustParse(t *testing.T, apiResponse string) *APIResponse {
+	var resp APIResponse
+	// Needed as goimports automatically add a json import otherwise.
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+	require.NoError(t, json.Unmarshal([]byte(apiResponse), &resp))
+	return &resp
 }

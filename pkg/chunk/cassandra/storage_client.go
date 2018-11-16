@@ -421,15 +421,15 @@ func (s *streamer) Size(ctx context.Context) (int, error) {
 	n := 0
 	for _, query := range s.queries {
 		count := 0
-		if query.filterUserID {
-			var (
-				hash  string
-				value []byte
-				errs  []error
-			)
-			q := s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
-			iter := q.WithContext(ctx).Iter()
-			for iter.Scan(&hash, &value) {
+		var (
+			hash  string
+			value []byte
+			errs  []error
+		)
+		q := s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
+		iter := q.WithContext(ctx).Iter()
+		for iter.Scan(&hash, &value) {
+			if query.filterUserID {
 				userID, err := parseHash(hash)
 				if err != nil {
 					errs = append(errs, err)
@@ -438,23 +438,12 @@ func (s *streamer) Size(ctx context.Context) (int, error) {
 				if userID != query.userID { // User ID filtering must be done client side in cassandra
 					continue
 				}
-				count++
 			}
-			err := iter.Close()
-			if err != nil {
-				return 0, fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
-			}
-		} else {
-			q := s.session.Query(fmt.Sprintf("SELECT COUNT(hash) FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
-			iter := q.WithContext(ctx).Iter()
-
-			for iter.Scan(&count) {
-				n += count
-			}
-			err := iter.Close()
-			if err != nil {
-				return 0, fmt.Errorf("error: %v, query: %v_%v_%v_%v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
-			}
+			count++
+		}
+		err := iter.Close()
+		if err != nil {
+			return 0, fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
 		}
 		n += count
 	}

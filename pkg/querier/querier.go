@@ -67,8 +67,16 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 		queryable = NewQueryable(dq, cq, distributor)
 	}
 
+	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
+		querier, err := queryable.Querier(ctx, mint, maxt)
+		if err != nil {
+			return nil, err
+		}
+		return newLazyQuerier(querier), nil
+	})
+
 	engine := promql.NewEngine(util.Logger, cfg.metricsRegisterer, cfg.MaxConcurrent, cfg.Timeout)
-	return queryable, engine
+	return lazyQueryable, engine
 }
 
 // NewQueryable creates a new Queryable for cortex.

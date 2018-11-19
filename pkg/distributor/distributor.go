@@ -91,8 +91,9 @@ type Distributor struct {
 	billingClient *billing.Client
 
 	// Per-user rate limiters.
-	ingestLimitersMtx sync.Mutex
+	ingestLimitersMtx sync.RWMutex
 	ingestLimiters    map[string]*rate.Limiter
+	quit              chan struct{}
 }
 
 // Config contains the configuration require to
@@ -102,8 +103,9 @@ type Config struct {
 	BillingConfig billing.Config
 	PoolConfig    ingester_client.PoolConfig
 
-	RemoteTimeout   time.Duration
-	ExtraQueryDelay time.Duration
+	RemoteTimeout       time.Duration
+	ExtraQueryDelay     time.Duration
+	LimiterReloadPeriod time.Duration
 
 	ShardByAllLabels bool
 
@@ -119,6 +121,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
+	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
@@ -149,12 +152,38 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		billingClient:  billingClient,
 		limits:         limits,
 		ingestLimiters: map[string]*rate.Limiter{},
+		quit:           make(chan struct{}),
 	}
+
+	go d.loop()
+
 	return d, nil
+}
+
+func (d *Distributor) loop() {
+	if d.cfg.LimiterReloadPeriod == 0 {
+		return
+	}
+
+	ticker := time.NewTicker(d.cfg.LimiterReloadPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			d.ingestLimitersMtx.Lock()
+			d.ingestLimiters = make(map[string]*rate.Limiter, len(d.ingestLimiters))
+			d.ingestLimitersMtx.Unlock()
+
+		case <-d.quit:
+			return
+		}
+	}
 }
 
 // Stop stops the distributor's maintenance loop.
 func (d *Distributor) Stop() {
+	close(d.quit)
 	d.limits.Stop()
 	d.ingesterPool.Stop()
 }
@@ -305,15 +334,20 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 }
 
 func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
-	d.ingestLimitersMtx.Lock()
-	defer d.ingestLimitersMtx.Unlock()
+	d.ingestLimitersMtx.RLock()
+	limiter, ok := d.ingestLimiters[userID]
+	d.ingestLimitersMtx.RUnlock()
 
-	if limiter, ok := d.ingestLimiters[userID]; ok {
+	if ok {
 		return limiter
 	}
 
-	limiter := rate.NewLimiter(rate.Limit(d.limits.IngestionRate(userID)), d.limits.IngestionBurstSize(userID))
+	limiter = rate.NewLimiter(rate.Limit(d.limits.IngestionRate(userID)), d.limits.IngestionBurstSize(userID))
+
+	d.ingestLimitersMtx.Lock()
 	d.ingestLimiters[userID] = limiter
+	d.ingestLimitersMtx.Unlock()
+
 	return limiter
 }
 

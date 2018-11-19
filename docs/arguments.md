@@ -72,7 +72,7 @@ Valid fields are (with their corresponding flags for default values):
 
   The per-tenant rate limit (and burst size), in samples per second. Enforced on a per distributor basis, actual effective rate limit will be N times higher, where N is the number of distributor replicas.
 
-  **NB** Changing these values currently require restarting the distributor.
+  **NB** Limits are reset every `-distributor.limiter-reload-period`, as such if you set a very high burst limit it will never be hit.
 
 - `max_label_name_length` / `-validation.max-length-label-name`
 - `max_label_value_length` / `-validation.max-length-label-value`

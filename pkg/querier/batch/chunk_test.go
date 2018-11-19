@@ -20,18 +20,30 @@ const (
 )
 
 func TestChunkIter(t *testing.T) {
-	chunk := mkChunk(t, 0, 100)
-	iter := &chunkIterator{}
-	iter.reset(chunk)
-	testIter(t, 100, newIteratorAdapter(iter))
-	testSeek(t, 100, newIteratorAdapter(iter))
+	forEncodings(t, func(t *testing.T, enc promchunk.Encoding) {
+		chunk := mkChunk(t, 0, 100, enc)
+		iter := &chunkIterator{}
+		iter.reset(chunk)
+		testIter(t, 100, newIteratorAdapter(iter))
+		testSeek(t, 100, newIteratorAdapter(iter))
+	})
 }
 
-func mkChunk(t require.TestingT, from model.Time, points int) chunk.Chunk {
+func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
+	for _, enc := range []promchunk.Encoding{
+		promchunk.DoubleDelta, promchunk.Varbit, promchunk.Bigchunk,
+	} {
+		t.Run(enc.String(), func(t *testing.T) {
+			f(t, enc)
+		})
+	}
+}
+
+func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) chunk.Chunk {
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
 	}
-	pc, err := promchunk.NewForEncoding(promchunk.Bigchunk)
+	pc, err := promchunk.NewForEncoding(enc)
 	require.NoError(t, err)
 	ts := from
 	for i := 0; i < points; i++ {

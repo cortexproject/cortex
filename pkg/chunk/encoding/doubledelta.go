@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package chunk
+package encoding
 
 import (
 	"encoding/binary"
@@ -187,13 +187,6 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	return []Chunk{&c}, nil
 }
 
-// Clone implements chunk.
-func (c doubleDeltaEncodedChunk) Clone() Chunk {
-	clone := make(doubleDeltaEncodedChunk, len(c), cap(c))
-	copy(clone, c)
-	return &clone
-}
-
 // FirstTime implements chunk.
 func (c doubleDeltaEncodedChunk) FirstTime() model.Time {
 	return c.baseTime()
@@ -211,6 +204,10 @@ func (c *doubleDeltaEncodedChunk) NewIterator() Iterator {
 		vBytes: c.valueBytes(),
 		isInt:  c.isInt(),
 	})
+}
+
+func (c *doubleDeltaEncodedChunk) Slice(_, _ model.Time) Chunk {
+	return c
 }
 
 // Marshal implements chunk.
@@ -356,6 +353,10 @@ func (c doubleDeltaEncodedChunk) Len() int {
 		return 1
 	}
 	return (len(c)-doubleDeltaHeaderBytes)/c.sampleSize() + 2
+}
+
+func (c doubleDeltaEncodedChunk) Size() int {
+	return len(c)
 }
 
 func (c doubleDeltaEncodedChunk) isInt() bool {

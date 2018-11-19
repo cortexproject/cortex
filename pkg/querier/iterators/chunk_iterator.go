@@ -2,7 +2,7 @@ package iterators
 
 import (
 	"github.com/cortexproject/cortex/pkg/chunk"
-	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/prometheus/common/model"
 )
 

@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package chunk
+package encoding
 
 import (
 	"encoding/binary"
@@ -180,16 +180,8 @@ func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	return []Chunk{&c}, nil
 }
 
-// Clone implements chunk.
-func (c deltaEncodedChunk) Clone() Chunk {
-	clone := make(deltaEncodedChunk, len(c), cap(c))
-	copy(clone, c)
-	return &clone
-}
-
-// FirstTime implements chunk.
-func (c deltaEncodedChunk) FirstTime() model.Time {
-	return c.baseTime()
+func (c *deltaEncodedChunk) Slice(_, _ model.Time) Chunk {
+	return c
 }
 
 // NewIterator implements chunk.
@@ -217,20 +209,6 @@ func (c deltaEncodedChunk) Marshal(w io.Writer) error {
 	}
 	if n != cap(c) {
 		return fmt.Errorf("wanted to write %d bytes, wrote %d", cap(c), n)
-	}
-	return nil
-}
-
-// MarshalToBuf implements chunk.
-func (c deltaEncodedChunk) MarshalToBuf(buf []byte) error {
-	if len(c) > math.MaxUint16 {
-		panic("chunk buffer length would overflow a 16 bit uint")
-	}
-	binary.LittleEndian.PutUint16(c[deltaHeaderBufLenOffset:], uint16(len(c)))
-
-	n := copy(buf, c)
-	if n != len(c) {
-		return fmt.Errorf("wanted to copy %d bytes to buffer, copied %d", len(c), n)
 	}
 	return nil
 }
@@ -314,6 +292,10 @@ func (c deltaEncodedChunk) Len() int {
 		return 0
 	}
 	return (len(c) - deltaHeaderBytes) / c.sampleSize()
+}
+
+func (c deltaEncodedChunk) Size() int {
+	return len(c)
 }
 
 // deltaEncodedIndexAccessor implements indexAccessor.

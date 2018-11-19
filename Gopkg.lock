@@ -1412,6 +1412,7 @@
     "github.com/prometheus/prometheus/util/strutil",
     "github.com/prometheus/prometheus/web/api/v1",
     "github.com/prometheus/tsdb",
+    "github.com/prometheus/tsdb/chunkenc",
     "github.com/prometheus/tsdb/fileutil",
     "github.com/segmentio/fasthash/fnv1a",
     "github.com/stretchr/testify/assert",

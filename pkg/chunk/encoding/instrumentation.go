@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package chunk
+package encoding
 
 import "github.com/prometheus/client_golang/prometheus"
 
@@ -65,8 +65,6 @@ const (
 	Pin = "pin"
 	// Unpin is the label value for unpin chunk ops (excludes the unpin on persisting).
 	Unpin = "unpin"
-	// Clone is the label value for clone chunk ops.
-	Clone = "clone"
 	// Transcode is the label value for transcode chunk ops.
 	Transcode = "transcode"
 	// Drop is the label value for drop chunk ops.

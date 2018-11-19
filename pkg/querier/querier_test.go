@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -57,6 +57,7 @@ var (
 	}{
 		{"DoubleDelta", promchunk.DoubleDelta},
 		{"Varbit", promchunk.Varbit},
+		{"Bigchunk", promchunk.Bigchunk},
 	}
 
 	queries = []query{

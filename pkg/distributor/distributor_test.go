@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,8 +20,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
@@ -469,7 +470,7 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 			continue
 		}
 
-		c := chunk.New()
+		c := encoding.New()
 		for _, sample := range ts.Samples {
 			cs, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(sample.TimestampMs),
@@ -481,13 +482,14 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 			c = cs[0]
 		}
 
+		var buf bytes.Buffer
 		chunk := client.Chunk{
 			Encoding: int32(c.Encoding()),
-			Data:     make([]byte, chunk.ChunkLen, chunk.ChunkLen),
 		}
-		if err := c.MarshalToBuf(chunk.Data); err != nil {
+		if err := c.Marshal(&buf); err != nil {
 			panic(err)
 		}
+		chunk.Data = buf.Bytes()
 
 		results = append(results, &client.QueryStreamResponse{
 			Timeseries: []client.TimeSeriesChunk{

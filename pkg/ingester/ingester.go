@@ -12,7 +12,7 @@ import (
 	old_ctx "golang.org/x/net/context"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -156,7 +156,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
-	if err := chunk.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
+	if err := encoding.DefaultEncoding.Set(cfg.ChunkEncoding); err != nil {
 		return nil, err
 	}
 
@@ -366,7 +366,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
-	_, _, matchers, err := client.FromQueryRequest(req)
+	from, through, matchers, err := client.FromQueryRequest(req)
 	if err != nil {
 		return err
 	}
@@ -392,8 +392,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		numSeries++
 		chunks := make([]*desc, 0, len(series.chunkDescs))
 		for _, chunk := range series.chunkDescs {
-			if !(chunk.FirstTime.After(model.Time(req.EndTimestampMs)) || chunk.LastTime.Before(model.Time(req.StartTimestampMs))) {
-				chunks = append(chunks, chunk)
+			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
+				chunks = append(chunks, chunk.slice(from, through))
 			}
 		}
 

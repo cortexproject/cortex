@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/mwitkow/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/sercand/kuberesolver"
 	"golang.org/x/net/context"
@@ -91,13 +91,17 @@ func ParseURL(unparsed string) (string, []grpc.DialOption, error) {
 		if err != nil {
 			return "", nil, err
 		}
-		parts := strings.SplitN(host, ".", 2)
-		service, namespace := parts[0], "default"
-		if len(parts) == 2 {
+		parts := strings.SplitN(host, ".", 3)
+		service, namespace, domain := parts[0], "default", ""
+		if len(parts) > 1 {
 			namespace = parts[1]
+			domain = "." + namespace
+		}
+		if len(parts) > 2 {
+			domain = domain + "." + parts[2]
 		}
 		balancer := kuberesolver.NewWithNamespace(namespace)
-		address := fmt.Sprintf("kubernetes://%s:%s", service, port)
+		address := fmt.Sprintf("kubernetes://%s%s:%s", service, domain, port)
 		dialOptions := []grpc.DialOption{balancer.DialOption()}
 		return address, dialOptions, nil
 

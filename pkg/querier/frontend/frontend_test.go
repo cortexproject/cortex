@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/assert"

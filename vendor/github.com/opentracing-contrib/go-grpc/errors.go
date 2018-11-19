@@ -63,7 +63,7 @@ func SetSpanTags(span opentracing.Span, err error, client bool) {
 	if err == nil {
 		return
 	}
-	if client || c == ServerError {
+	if c != Success && (client || c == ServerError) {
 		ext.Error.Set(span, true)
 	}
 }

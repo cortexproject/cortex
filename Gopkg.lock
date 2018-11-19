@@ -381,6 +381,14 @@
   revision = "9cad4c3443a7200dd6400aef47183728de563a38"
 
 [[projects]]
+  digest = "1:1168584a5881d371e96cb0e66ef6db71d7cef0856cc7f311490bc856627f8328"
+  name = "github.com/grpc-ecosystem/go-grpc-middleware"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "c250d6563d4d4c20252cd865923440e829844f4e"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:47d5a48673e054e5d8a172abf17b88675bea87ca48b7acebe85e4e0dfd153a7b"
   name = "github.com/grpc-ecosystem/grpc-gateway"
   packages = [
@@ -391,14 +399,6 @@
   pruneopts = "UT"
   revision = "07f5e79768022f9a3265235f0db4ac8c3f675fec"
   version = "v1.3.1"
-
-[[projects]]
-  branch = "master"
-  digest = "1:1a1206efd03a54d336dce7bb8719e74f2f8932f661cb9f57d5813a1d99c083d8"
-  name = "github.com/grpc-ecosystem/grpc-opentracing"
-  packages = ["go/otgrpc"]
-  pruneopts = "UT"
-  revision = "8e809c8a86450a29b90dcc9efbf062d0fe6d9746"
 
 [[projects]]
   branch = "master"
@@ -607,14 +607,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:7cfb9b66e4b58631f4fe31a854fed5536a9169204dbe188f063d47109cb3acba"
-  name = "github.com/mwitkow/go-grpc-middleware"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "164c5fae744b141cd3e4a182b40d66fd4655c822"
-
-[[projects]]
-  branch = "master"
   digest = "1:16886567e49201f2bb97fc738dfe8097494764135a83b533fc020fcefe37d8fe"
   name = "github.com/nightlyone/lockfile"
   packages = ["."]
@@ -636,6 +628,14 @@
   pruneopts = "UT"
   revision = "d311cb43c92434ec4072dfbbda3400741d0a6337"
   version = "v0.3.0"
+
+[[projects]]
+  branch = "master"
+  digest = "1:3173a0e98abdc5021301c4d34e6ac5ff8e6c792f3d22849c879ace70d5828978"
+  name = "github.com/opentracing-contrib/go-grpc"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "4b5a12d3ff02ba61ae861b7797e17a0c4f0ecea9"
 
 [[projects]]
   branch = "master"
@@ -936,7 +936,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:6e4a66a9a768fc71e492bec9fafc4c387698a559af45087c731b25b1599497d3"
+  digest = "1:0b1e3d99a4914c79245fb7d8992db23596ed79848c078307db97a099a1899e62"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -956,7 +956,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "e017e7c69cfdc53d5d3bbd4115eb84aa8a180a82"
+  revision = "c1808abf9c462ba088ef5c764053a316a58cde24"
 
 [[projects]]
   digest = "1:efac30de93ca1ff38050f46dc34f1338ebc8778de488f919f79ad9e6188719d3"
@@ -1364,7 +1364,7 @@
     "github.com/golang/protobuf/ptypes/duration",
     "github.com/golang/snappy",
     "github.com/gorilla/mux",
-    "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
+    "github.com/grpc-ecosystem/go-grpc-middleware",
     "github.com/hashicorp/consul/api",
     "github.com/hashicorp/go-cleanhttp",
     "github.com/jonboulle/clockwork",
@@ -1373,7 +1373,7 @@
     "github.com/mattes/migrate/driver/postgres",
     "github.com/mattes/migrate/migrate",
     "github.com/mgutz/ansi",
-    "github.com/mwitkow/go-grpc-middleware",
+    "github.com/opentracing-contrib/go-grpc",
     "github.com/opentracing-contrib/go-stdlib/nethttp",
     "github.com/opentracing/opentracing-go",
     "github.com/opentracing/opentracing-go/log",

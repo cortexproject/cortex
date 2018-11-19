@@ -7,24 +7,24 @@
 [![codecov](https://codecov.io/gh/grpc-ecosystem/go-grpc-middleware/branch/master/graph/badge.svg)](https://codecov.io/gh/grpc-ecosystem/go-grpc-middleware)
 [![Apache 2.0 License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![quality: production](https://img.shields.io/badge/quality-production-orange.svg)](#status)
-
+[![Slack](slack.png)](https://join.slack.com/t/improbable-eng/shared_invite/enQtMzQ1ODcyMzQ5MjM4LWY5ZWZmNGM2ODc5MmViNmQ3ZTA3ZTY3NzQwOTBlMTkzZmIxZTIxODk0OWU3YjZhNWVlNDU3MDlkZGViZjhkMjc)
 
 [gRPC Go](https://github.com/grpc/grpc-go) Middleware: interceptors, helpers, utilities.
 
-**Important** The repo recently moved from `github.com/grpc-ecosystem/go-grpc-middleware`, please update your import paths.
+**Important** The repo recently moved to `github.com/grpc-ecosystem/go-grpc-middleware`, please update your import paths.
 
 ## Middleware
 
 [gRPC Go](https://github.com/grpc/grpc-go) recently acquired support for
 Interceptors, i.e. [middleware](https://medium.com/@matryer/writing-middleware-in-golang-and-how-go-makes-it-so-much-fun-4375c1246e81#.gv7tdlghs) 
 that is executed either on the gRPC Server before the request is passed onto the user's application logic, or on the gRPC client either around the user call. It is a perfect way to implement
-common patters: auth, logging, message, validation, retries or monitoring.
+common patterns: auth, logging, message, validation, retries or monitoring.
 
 These are generic building blocks that make it easy to build multiple microservices easily.
 The purpose of this repository is to act as a go-to point for such reusable functionality. It contains
 some of them itself, but also will link to useful external repos.
 
-`grpc_middleware` itself provides support for chaining interceptors. Se [Documentation](DOC.md), but here's an example:
+`grpc_middleware` itself provides support for chaining interceptors. See [Documentation](DOC.md), but here's an example:
 
 ```go
 import "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -36,6 +36,7 @@ myServer := grpc.NewServer(
         grpc_prometheus.StreamServerInterceptor,
         grpc_zap.StreamServerInterceptor(zapLogger),
         grpc_auth.StreamServerInterceptor(myAuthFunction),
+        grpc_recovery.StreamServerInterceptor(),
     )),
     grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
         grpc_ctxtags.UnaryServerInterceptor(),
@@ -43,6 +44,7 @@ myServer := grpc.NewServer(
         grpc_prometheus.UnaryServerInterceptor,
         grpc_zap.UnaryServerInterceptor(zapLogger),
         grpc_auth.UnaryServerInterceptor(myAuthFunction),
+        grpc_recovery.UnaryServerInterceptor(),
     )),
 )
 ```
@@ -52,12 +54,12 @@ myServer := grpc.NewServer(
 *Please send a PR to add new interceptors or middleware to this list*
 
 #### Auth
-   * [`grpc_auth`](auth) - a customizable (via `AuthFunc) piece of auth middleware 
+   * [`grpc_auth`](auth) - a customizable (via `AuthFunc`) piece of auth middleware 
 
 #### Logging
    * [`grpc_ctxtags`](tags/) - a library that adds a `Tag` map to context, with data populated from request body
    * [`grpc_zap`](logging/zap/) - integration of [zap](https://github.com/uber-go/zap) logging library into gRPC handlers.
-   * [`grpc_logrus`](logging/logrus/) - integration of [logrus](https://github.com/Sirupsen/logrus) logging library into gRPC handlers.
+   * [`grpc_logrus`](logging/logrus/) - integration of [logrus](https://github.com/sirupsen/logrus) logging library into gRPC handlers.
 
 
 #### Monitoring
@@ -69,7 +71,8 @@ myServer := grpc.NewServer(
    * [`grpc_retry`](retry/) - a generic gRPC response code retry mechanism, client-side middleware
 
 #### Server
-   * [`grpc_validator`](validator/) - codegen inbound message validation from `.proto` options 
+   * [`grpc_validator`](validator/) - codegen inbound message validation from `.proto` options
+   * [`grpc_recovery`](recovery/) - turn panics into gRPC errors
 
 
 ## Status

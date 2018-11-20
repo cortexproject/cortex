@@ -54,6 +54,14 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:ef5b0622d834c139454148b8fd0c92bb314828900532b267ae62da9fec109866"
+  name = "github.com/armon/go-metrics"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "f0300d1749da6fa982027e449ec0c7a145510c3c"
+
+[[projects]]
+  branch = "master"
   digest = "1:5a91fc342af1f94bce8b760a80d5b709fe53ea10c870a5daf1dc7e9fada8525f"
   name = "github.com/armon/go-socks5"
   packages = ["."]
@@ -417,12 +425,44 @@
   version = "v1.1.0"
 
 [[projects]]
+  digest = "1:0ade334594e69404d80d9d323445d2297ff8161637f9b2d347cc6973d2d6f05b"
+  name = "github.com/hashicorp/errwrap"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "8a6fb523712970c966eefc6b39ed2c5e74880354"
+  version = "v1.0.0"
+
+[[projects]]
   branch = "master"
   digest = "1:ae263e6b149fb7aadfc0f2284a8891cc3b9d2700e58b9a613fecf70fcc6e495d"
   name = "github.com/hashicorp/go-cleanhttp"
   packages = ["."]
   pruneopts = "UT"
   revision = "3573b8b52aa7b37b9358d966a898feb387f62437"
+
+[[projects]]
+  digest = "1:2be5a35f0c5b35162c41bb24971e5dcf6ce825403296ee435429cdcc4e1e847e"
+  name = "github.com/hashicorp/go-immutable-radix"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "27df80928bb34bb1b0d6d0e01b9e679902e7a6b5"
+  version = "v1.0.0"
+
+[[projects]]
+  branch = "master"
+  digest = "1:b8ba23b0b493e601d5ebaf21079bd3433eb304a5d73c0fb40b8aea526e94f46b"
+  name = "github.com/hashicorp/go-msgpack"
+  packages = ["codec"]
+  pruneopts = "UT"
+  revision = "fa3f63826f7c23912c15263591e65d54d080b458"
+
+[[projects]]
+  digest = "1:f668349b83f7d779567c880550534addeca7ebadfdcf44b0b9c39be61864b4b7"
+  name = "github.com/hashicorp/go-multierror"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "886a7fbe3eb1c874d46f623bfa70af45f425b3d1"
+  version = "v1.0.0"
 
 [[projects]]
   branch = "master"
@@ -434,6 +474,14 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:14f2005c31ddf99c4a0f36fc440f8d1ac43224194c7c4a904b3c8f4ba5654d0b"
+  name = "github.com/hashicorp/go-sockaddr"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "6d291a969b86c4b633730bfc6b8b9d64c3aafed9"
+
+[[projects]]
+  branch = "master"
   digest = "1:cf296baa185baae04a9a7004efee8511d08e2f5f51d4cbe5375da89722d681db"
   name = "github.com/hashicorp/golang-lru"
   packages = [
@@ -442,6 +490,14 @@
   ]
   pruneopts = "UT"
   revision = "0fb14efe8c47ae851c0034ed7a448854d3d34cf3"
+
+[[projects]]
+  digest = "1:c303b69fce100a685a87a43c99169644966e88c4ff372965813df11fa92ec937"
+  name = "github.com/hashicorp/memberlist"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "ce8abaa0c60c2d6bee7219f5ddf500e0a1457b28"
+  version = "v0.1.0"
 
 [[projects]]
   digest = "1:0dd7b7b01769f9df356dc99f9e4144bdbabf6c79041ea7c0892379c5737f3c44"
@@ -698,10 +754,12 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:5356cb87fb01fa859b9360b0888a4ae1b51974d846d5d8cbe5ab556b6e877980"
+  digest = "1:c7d08e7456ded70e1770a187d7e52debbf94032169f4a16f2b14d209458367b1"
   name = "github.com/prometheus/alertmanager"
   packages = [
     "api",
+    "cluster",
+    "cluster/clusterpb",
     "config",
     "dispatch",
     "inhibit",
@@ -719,7 +777,8 @@
     "ui",
   ]
   pruneopts = "UT"
-  revision = "fb713f6d8239b57c646cae30f78e8b4b8861a1aa"
+  revision = "d4a7697cc90f8bce62efe7c44b63b542578ec0a1"
+  version = "v0.15.3"
 
 [[projects]]
   branch = "master"
@@ -846,6 +905,14 @@
   pruneopts = "UT"
   revision = "879c5887cd475cd7864858769793b2ceb0d44feb"
   version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  digest = "1:579c4bbcc2e16d4caf871ba91c0e2c331b07c5560c80d142d82c0de01c57fa96"
+  name = "github.com/sean-/seed"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "e2103e2c35297fb7e17febb81e49b312087a2372"
 
 [[projects]]
   branch = "master"

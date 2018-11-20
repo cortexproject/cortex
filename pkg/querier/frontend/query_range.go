@@ -89,6 +89,7 @@ func (q QueryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, er
 	return req.WithContext(ctx), nil
 }
 
+// ParseTime parses the string into an int64, milliseconds since epoch.
 func ParseTime(s string) (int64, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
 		s, ns := math.Modf(t)

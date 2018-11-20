@@ -41,6 +41,14 @@ func ChunksHandler(queryable storage.Queryable) http.Handler {
 			return
 		}
 
+		//lazyQuerier, ok := querier.(lazyQuerier)
+		//if !ok {
+		//	http.Error(w, "not supported", http.StatusServiceUnavailable)
+		//	return
+		//}
+
+		//store, ok := lazyQuerier.next.(ChunkStore)
+
 		store, ok := querier.(ChunkStore)
 		if !ok {
 			http.Error(w, "not supported", http.StatusServiceUnavailable)
@@ -54,7 +62,10 @@ func ChunksHandler(queryable storage.Queryable) http.Handler {
 		}
 
 		w.Header().Add("Content-Type", "application/tar+gzip")
-		writer := tar.NewWriter(gzip.NewWriter(w))
+		gw := gzip.NewWriter(w)
+		defer gw.Close()
+
+		writer := tar.NewWriter(gw)
 		defer writer.Close()
 
 		for _, chunk := range chunks {

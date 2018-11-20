@@ -990,20 +990,20 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:84f6a3fce2ada5a498b946be270669e2668ee7412fa88247e41d9affc3c90de7"
+  digest = "1:5ad570851feb57bcc5c147ee81a54cdd023a8c66a5c716d57faed25a7b6c1dff"
   name = "golang.org/x/net"
   packages = [
     "context",
     "context/ctxhttp",
+    "http/httpguts",
     "http2",
     "http2/hpack",
     "idna",
     "internal/timeseries",
-    "lex/httplex",
     "trace",
   ]
   pruneopts = "UT"
-  revision = "da118f7b8e5954f39d0d2130ab35d4bf0e3cb344"
+  revision = "adae6a3d119ae4890b46832a2e88a95adc62b8e7"
 
 [[projects]]
   branch = "master"
@@ -1029,11 +1029,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:767687750817e16373348a1ca68aa99d58a850b311a6baf17ec1ec8eb7457511"
+  digest = "1:44010c69a8af2745fcdc6b4c57b126b4dd3de5cb01b6a5ba97a1781a24df0886"
   name = "golang.org/x/sys"
   packages = ["unix"]
   pruneopts = "UT"
-  revision = "9f30dcbe5be197894515a338a9bda9253567ea8f"
+  revision = "ec83556a53fe16b65c452a104ea9d1e86a671852"
 
 [[projects]]
   branch = "master"
@@ -1128,7 +1128,7 @@
   revision = "2b5a72b8730b0b16380010cfe5286c42108d88e7"
 
 [[projects]]
-  digest = "1:b59f366710f98a670ae357a3d2ef06ff6d592184593e42248316e376655bce5e"
+  digest = "1:5ee69667898c808cb1bf8e42b5e54bd15f402960ccf71fae72629f1474021fa0"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -1147,7 +1147,9 @@
     "internal",
     "internal/backoff",
     "internal/channelz",
+    "internal/envconfig",
     "internal/grpcrand",
+    "internal/transport",
     "keepalive",
     "metadata",
     "naming",
@@ -1158,11 +1160,10 @@
     "stats",
     "status",
     "tap",
-    "transport",
   ]
   pruneopts = "UT"
-  revision = "168a6198bcb0ef175f7dacec0b8691fc141dc9b8"
-  version = "v1.13.0"
+  revision = "2e463a05d100327ca47ac218281906921038fd95"
+  version = "v1.16.0"
 
 [[projects]]
   digest = "1:abeb38ade3f32a92943e5be54f55ed6d6e3b6602761d74b4aab4c9dd45c18abd"
@@ -1360,6 +1361,7 @@
     "github.com/gogo/protobuf/proto",
     "github.com/gogo/protobuf/sortkeys",
     "github.com/gogo/protobuf/types",
+    "github.com/gogo/status",
     "github.com/golang/protobuf/proto",
     "github.com/golang/protobuf/ptypes/duration",
     "github.com/golang/snappy",
@@ -1442,6 +1444,7 @@
     "golang.org/x/tools/cover",
     "google.golang.org/api/option",
     "google.golang.org/grpc",
+    "google.golang.org/grpc/codes",
     "google.golang.org/grpc/encoding/gzip",
     "google.golang.org/grpc/health/grpc_health_v1",
     "google.golang.org/grpc/metadata",

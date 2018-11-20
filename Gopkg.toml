@@ -49,4 +49,4 @@
 
 [[override]]
   name = "github.com/weaveworks/mesh"
-  revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
+  version = "^0.1"

@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -107,8 +106,6 @@ func loadChunks(userID, filename string) ([]chunk.Chunk, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "here 2")
 		}
-
-		fmt.Println(hdr.Name)
 
 		var buf = make([]byte, int(hdr.Size))
 		if _, err := io.ReadFull(tarReader, buf); err != nil {

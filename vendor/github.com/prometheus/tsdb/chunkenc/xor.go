@@ -13,7 +13,7 @@
 
 // The code in this file was largely written by Damian Gryski as part of
 // https://github.com/dgryski/go-tsz and published under the license below.
-// It was modified to accomodate reading from byte slices without modifying
+// It was modified to accommodate reading from byte slices without modifying
 // the underlying bytes, which would panic when reading from mmaped
 // read-only byte slices.
 
@@ -221,7 +221,7 @@ func (a *xorAppender) writeVDelta(v float64) {
 }
 
 type xorIterator struct {
-	br       *bstream
+	br       bstream
 	numTotal uint16
 	numRead  uint16
 
@@ -249,7 +249,7 @@ func (it *xorIterator) Next() bool {
 	}
 
 	if it.numRead == 0 {
-		t, err := binary.ReadVarint(it.br)
+		t, err := binary.ReadVarint(&it.br)
 		if err != nil {
 			it.err = err
 			return false
@@ -259,14 +259,14 @@ func (it *xorIterator) Next() bool {
 			it.err = err
 			return false
 		}
-		it.t = int64(t)
+		it.t = t
 		it.val = math.Float64frombits(v)
 
 		it.numRead++
 		return true
 	}
 	if it.numRead == 1 {
-		tDelta, err := binary.ReadUvarint(it.br)
+		tDelta, err := binary.ReadUvarint(&it.br)
 		if err != nil {
 			it.err = err
 			return false

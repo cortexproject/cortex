@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/pkg/errors"
 )
@@ -28,7 +29,7 @@ const tombstoneFilename = "tombstones"
 
 const (
 	// MagicTombstone is 4 bytes at the head of a tombstone file.
-	MagicTombstone = 0x130BA30
+	MagicTombstone = 0x0130BA30
 
 	tombstoneFormatV1 = 1
 )
@@ -40,6 +41,9 @@ type TombstoneReader interface {
 
 	// Iter calls the given function for each encountered interval.
 	Iter(func(uint64, Intervals) error) error
+
+	// Total returns the total count of tombstones.
+	Total() uint64
 
 	// Close any underlying resources
 	Close() error
@@ -72,7 +76,7 @@ func writeTombstoneFile(dir string, tr TombstoneReader) error {
 
 	mw := io.MultiWriter(f, hash)
 
-	tr.Iter(func(ref uint64, ivs Intervals) error {
+	if err := tr.Iter(func(ref uint64, ivs Intervals) error {
 		for _, iv := range ivs {
 			buf.reset()
 
@@ -86,7 +90,9 @@ func writeTombstoneFile(dir string, tr TombstoneReader) error {
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("error writing tombstones: %v", err)
+	}
 
 	_, err = f.Write(hash.Sum(nil))
 	if err != nil {
@@ -107,10 +113,10 @@ type Stone struct {
 	intervals Intervals
 }
 
-func readTombstones(dir string) (memTombstones, error) {
+func readTombstones(dir string) (TombstoneReader, error) {
 	b, err := ioutil.ReadFile(filepath.Join(dir, tombstoneFilename))
 	if os.IsNotExist(err) {
-		return memTombstones{}, nil
+		return newMemTombstones(), nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -140,7 +146,7 @@ func readTombstones(dir string) (memTombstones, error) {
 		return nil, errors.New("checksum did not match")
 	}
 
-	stonesMap := memTombstones{}
+	stonesMap := newMemTombstones()
 
 	for d.len() > 0 {
 		k := d.uvarint64()
@@ -150,27 +156,33 @@ func readTombstones(dir string) (memTombstones, error) {
 			return nil, d.err()
 		}
 
-		stonesMap.add(k, Interval{mint, maxt})
+		stonesMap.addInterval(k, Interval{mint, maxt})
 	}
 
 	return stonesMap, nil
 }
 
-type memTombstones map[uint64]Intervals
-
-var emptyTombstoneReader = memTombstones{}
-
-// EmptyTombstoneReader returns a TombstoneReader that is always empty.
-func EmptyTombstoneReader() TombstoneReader {
-	return emptyTombstoneReader
+type memTombstones struct {
+	intvlGroups map[uint64]Intervals
+	mtx         sync.RWMutex
 }
 
-func (t memTombstones) Get(ref uint64) (Intervals, error) {
-	return t[ref], nil
+// newMemTombstones creates new in memory TombstoneReader
+// that allows adding new intervals.
+func newMemTombstones() *memTombstones {
+	return &memTombstones{intvlGroups: make(map[uint64]Intervals)}
 }
 
-func (t memTombstones) Iter(f func(uint64, Intervals) error) error {
-	for ref, ivs := range t {
+func (t *memTombstones) Get(ref uint64) (Intervals, error) {
+	t.mtx.RLock()
+	defer t.mtx.RUnlock()
+	return t.intvlGroups[ref], nil
+}
+
+func (t *memTombstones) Iter(f func(uint64, Intervals) error) error {
+	t.mtx.RLock()
+	defer t.mtx.RUnlock()
+	for ref, ivs := range t.intvlGroups {
 		if err := f(ref, ivs); err != nil {
 			return err
 		}
@@ -178,11 +190,27 @@ func (t memTombstones) Iter(f func(uint64, Intervals) error) error {
 	return nil
 }
 
-func (t memTombstones) add(ref uint64, itv Interval) {
-	t[ref] = t[ref].add(itv)
+func (t *memTombstones) Total() uint64 {
+	t.mtx.RLock()
+	defer t.mtx.RUnlock()
+
+	total := uint64(0)
+	for _, ivs := range t.intvlGroups {
+		total += uint64(len(ivs))
+	}
+	return total
 }
 
-func (memTombstones) Close() error {
+// addInterval to an existing memTombstones
+func (t *memTombstones) addInterval(ref uint64, itvs ...Interval) {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	for _, itv := range itvs {
+		t.intvlGroups[ref] = t.intvlGroups[ref].add(itv)
+	}
+}
+
+func (*memTombstones) Close() error {
 	return nil
 }
 
@@ -208,7 +236,7 @@ func (tr Interval) isSubrange(dranges Intervals) bool {
 // Intervals represents	a set of increasing and non-overlapping time-intervals.
 type Intervals []Interval
 
-// This adds the new time-range to the existing ones.
+// add the new time-range to the existing ones.
 // The existing ones must be sorted.
 func (itvs Intervals) add(n Interval) Intervals {
 	for i, r := range itvs {

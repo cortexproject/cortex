@@ -56,6 +56,15 @@ func newIteratorAdapter(underlying iterator) storage.SeriesIterator {
 
 // Seek implements storage.SeriesIterator.
 func (a *iteratorAdapter) Seek(t int64) bool {
+	// Optimisation: see if the seek is within the current batch.
+	if a.curr.Length > 0 && t >= a.curr.Timestamps[0] && t <= a.curr.Timestamps[a.curr.Length-1] {
+		a.curr.Index = 0
+		for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
+			a.curr.Index++
+		}
+		return true
+	}
+
 	a.curr.Length = -1
 	a.batchSize = 1
 	if a.underlying.Seek(t, a.batchSize) {

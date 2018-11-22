@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -51,7 +52,7 @@ type LifecyclerConfig struct {
 	// For testing, you can override the address and ID of this ingester
 	Addr           string
 	Port           int
-	InfName        string
+	InfNames       []string
 	ID             string
 	SkipUnregister bool
 }
@@ -72,7 +73,8 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 		os.Exit(1)
 	}
 
-	f.StringVar(&cfg.InfName, "ingester.interface", "eth0", "Name of network interface to read address from.")
+	cfg.InfNames = []string{"eth0", "en0"}
+	f.Var((*flagext.Strings)(&cfg.InfNames), "ingester.interface", "Name of network interface to read address from.")
 	f.StringVar(&cfg.Addr, "ingester.addr", "", "IP address to advertise in consul.")
 	f.IntVar(&cfg.Port, "ingester.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.ID, "ingester.ID", hostname, "ID to register into consul.")
@@ -127,7 +129,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
-		addr, err = util.GetFirstAddressOf(cfg.InfName)
+		addr, err = util.GetFirstAddressOf(cfg.InfNames)
 		if err != nil {
 			return nil, err
 		}

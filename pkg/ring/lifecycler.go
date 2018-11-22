@@ -54,7 +54,6 @@ type LifecyclerConfig struct {
 	InfNames       []string
 	ID             string
 	SkipUnregister bool
-	KVClient       KVClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -116,16 +115,6 @@ type Lifecycler struct {
 
 // NewLifecycler makes and starts a new Lifecycler.
 func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Lifecycler, error) {
-	kvstore := cfg.KVClient
-	if kvstore == nil {
-		var err error
-		codec := ProtoCodec{Factory: ProtoDescFactory}
-		kvstore, err = NewConsulClient(cfg.RingConfig.Consul, codec)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -139,10 +128,15 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 		port = *cfg.ListenPort
 	}
 
+	store, err := newKVStore(cfg.RingConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	l := &Lifecycler{
 		cfg:             cfg,
 		flushTransferer: flushTransferer,
-		KVStore:         kvstore,
+		KVStore:         store,
 
 		addr: fmt.Sprintf("%s:%d", addr, port),
 		ID:   cfg.ID,

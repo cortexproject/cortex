@@ -95,20 +95,9 @@ func New(cfg Config) (*Ring, error) {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
 
-	store := cfg.Mock
-	if store == nil {
-		var err error
-
-		switch cfg.Store {
-		case "consul":
-			codec := ProtoCodec{Factory: ProtoDescFactory}
-			store, err = NewConsulClient(cfg.Consul, codec)
-		case "inmemory":
-			store = NewInMemoryKVClient()
-		}
-		if err != nil {
-			return nil, err
-		}
+	store, err := newKVStore(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	r := &Ring{

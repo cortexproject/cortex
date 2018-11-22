@@ -39,7 +39,6 @@ func TestRingNormaliseMigration(t *testing.T) {
 	lifecyclerConfig1.Addr = "0.0.0.0"
 	lifecyclerConfig1.Port = 1
 	lifecyclerConfig1.RingConfig = ringConfig
-	lifecyclerConfig1.KVClient = ringConfig.Mock
 	lifecyclerConfig1.NumTokens = 1
 	lifecyclerConfig1.ClaimOnRollout = true
 	lifecyclerConfig1.ID = "ing1"

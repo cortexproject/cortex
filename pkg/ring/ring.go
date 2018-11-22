@@ -56,7 +56,7 @@ var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
-	ConsulConfig      `yaml:"consul,omitempty"`
+	Consul            ConsulConfig  `yaml:"consul,omitempty"`
 	Store             string        `yaml:"store,omitempty"`
 	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
 	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
@@ -66,7 +66,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ConsulConfig.RegisterFlags(f)
+	cfg.Consul.RegisterFlags(f)
 
 	f.StringVar(&cfg.Store, "ring.store", "consul", "Backend storage to use for the ring (consul, inmemory).")
 	f.DurationVar(&cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
@@ -102,7 +102,7 @@ func New(cfg Config) (*Ring, error) {
 		switch cfg.Store {
 		case "consul":
 			codec := ProtoCodec{Factory: ProtoDescFactory}
-			store, err = NewConsulClient(cfg.ConsulConfig, codec)
+			store, err = NewConsulClient(cfg.Consul, codec)
 		case "inmemory":
 			store = NewInMemoryKVClient()
 		}

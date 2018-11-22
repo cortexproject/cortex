@@ -38,16 +38,15 @@ var (
 
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
-	KVClient   KVClient
-	RingConfig Config
+	RingConfig Config `yaml:"ring,omitempty"`
 
 	// Config for the ingester lifecycle control
 	ListenPort      *int
-	NumTokens       int
-	HeartbeatPeriod time.Duration
-	JoinAfter       time.Duration
-	ClaimOnRollout  bool
-	NormaliseTokens bool
+	NumTokens       int           `yaml:"num_tokens,omitempty"`
+	HeartbeatPeriod time.Duration `yaml:"heartbeat_period,omitempty"`
+	JoinAfter       time.Duration `yaml:"join_after,omitempty"`
+	ClaimOnRollout  bool          `yaml:"claim_on_rollout,omitempty"`
+	NormaliseTokens bool          `yaml:"normalise_tokens,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string
@@ -55,6 +54,7 @@ type LifecyclerConfig struct {
 	InfNames       []string
 	ID             string
 	SkipUnregister bool
+	KVClient       KVClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -120,7 +120,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 	if kvstore == nil {
 		var err error
 		codec := ProtoCodec{Factory: ProtoDescFactory}
-		kvstore, err = NewConsulClient(cfg.RingConfig.ConsulConfig, codec)
+		kvstore, err = NewConsulClient(cfg.RingConfig.Consul, codec)
 		if err != nil {
 			return nil, err
 		}

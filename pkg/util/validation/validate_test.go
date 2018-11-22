@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/httpgrpc"
 )
 
 func TestValidateLabels(t *testing.T) {
 	var cfg Limits
 	userID := "testUser"
-	util.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg)
 	cfg.MaxLabelValueLength = 25
 	cfg.MaxLabelNameLength = 25
 	cfg.MaxLabelNamesPerSeries = 64

@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
@@ -49,7 +50,7 @@ func main() {
 		workerConfig      frontend.WorkerConfig
 		queryParallelism  int
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
+	flagext.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
 		&querierConfig, &chunkStoreConfig, &schemaConfig, &storageConfig, &workerConfig)
 	flag.IntVar(&queryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
 	flag.Parse()
@@ -114,7 +115,7 @@ func main() {
 		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
-		false, // Disable admin APIs.
+		false,                          // Disable admin APIs.
 		util.Logger,
 		querier.DummyRulesRetriever{},
 	)

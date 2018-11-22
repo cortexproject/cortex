@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -21,7 +22,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
 )
 
@@ -131,7 +131,7 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 		config       Config
 		workerConfig WorkerConfig
 	)
-	util.DefaultValues(&config, &workerConfig)
+	flagext.DefaultValues(&config, &workerConfig)
 	config.SplitQueriesByDay = true
 
 	// localhost:0 prevents firewall warnings on Mac OS X.

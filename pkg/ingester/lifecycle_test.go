@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/user"
@@ -30,7 +31,7 @@ const userID = "1"
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()
 	cfg := Config{}
-	util.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg)
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
@@ -44,13 +45,13 @@ func defaultIngesterTestConfig() Config {
 
 func defaultClientTestConfig() client.Config {
 	clientConfig := client.Config{}
-	util.DefaultValues(&clientConfig)
+	flagext.DefaultValues(&clientConfig)
 	return clientConfig
 }
 
 func defaultLimitsTestConfig() validation.Limits {
 	limits := validation.Limits{}
-	util.DefaultValues(&limits)
+	flagext.DefaultValues(&limits)
 	return limits
 }
 

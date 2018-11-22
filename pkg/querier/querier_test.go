@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/weaveworks/common/user"
 )
@@ -123,7 +124,7 @@ var (
 
 func TestQuerier(t *testing.T) {
 	var cfg Config
-	util.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg)
 
 	for _, query := range queries {
 		for _, encoding := range encodings {

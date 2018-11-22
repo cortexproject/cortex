@@ -23,8 +23,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -278,7 +278,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	var cfg Config
 	var limits validation.Limits
 	var clientConfig client.Config
-	util.DefaultValues(&cfg, &limits, &clientConfig)
+	flagext.DefaultValues(&cfg, &limits, &clientConfig)
 	limits.IngestionRate = 20
 	limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory

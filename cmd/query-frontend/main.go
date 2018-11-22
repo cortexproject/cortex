@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
@@ -25,7 +26,7 @@ func main() {
 		frontendConfig frontend.Config
 		maxMessageSize int
 	)
-	util.RegisterFlags(&serverConfig, &frontendConfig)
+	flagext.RegisterFlags(&serverConfig, &frontendConfig)
 	flag.IntVar(&maxMessageSize, "query-frontend.max-recv-message-size-bytes", 1024*1024*64, "Limit on the size of a grpc message this server can receive.")
 	flag.Parse()
 

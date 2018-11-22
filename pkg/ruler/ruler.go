@@ -33,6 +33,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 )
@@ -78,14 +79,14 @@ func init() {
 // Config is the configuration for the recording rules server.
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL
-	ExternalURL util.URLValue
+	ExternalURL flagext.URLValue
 
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
 	NumWorkers         int
 
 	// URL of the Alertmanager to send notifications to.
-	AlertmanagerURL util.URLValue
+	AlertmanagerURL flagext.URLValue
 	// Whether to use DNS SRV records to discover alertmanagers.
 	AlertmanagerDiscovery bool
 	// How long to wait between refreshing the list of alertmanagers based on

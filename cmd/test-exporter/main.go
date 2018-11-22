@@ -8,11 +8,12 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/tracing"
 
 	"github.com/cortexproject/cortex/pkg/querier/correctness"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/tracing"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (
@@ -24,8 +25,7 @@ func main() {
 		serverConfig server.Config
 		runnerConfig correctness.RunnerConfig
 	)
-	serverConfig.RegisterFlags(flag.CommandLine)
-	runnerConfig.RegisterFlags(flag.CommandLine)
+	flagext.RegisterFlags(&serverConfig, &runnerConfig)
 	flag.Parse()
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing

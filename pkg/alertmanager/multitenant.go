@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configs_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/mesh"
@@ -176,8 +177,8 @@ func counts(counts map[string]int, keys []string) string {
 type MultitenantAlertmanagerConfig struct {
 	DataDir       string
 	Retention     time.Duration
-	ExternalURL   util.URLValue
-	ConfigsAPIURL util.URLValue
+	ExternalURL   flagext.URLValue
+	ConfigsAPIURL flagext.URLValue
 	PollInterval  time.Duration
 	ClientTimeout time.Duration
 

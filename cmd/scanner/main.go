@@ -34,7 +34,7 @@ func main() {
 
 		orgsFile string
 
-		week      int
+		week      int64
 		segments  int
 		tableName string
 		loglevel  string
@@ -45,7 +45,7 @@ func main() {
 
 	util.RegisterFlags(&storageConfig, &schemaConfig, &chunkStoreConfig)
 	flag.StringVar(&address, "address", "localhost:6060", "Address to listen on, for profiling, etc.")
-	flag.IntVar(&week, "week", 0, "Week number to scan, e.g. 2497 (0 means current week)")
+	flag.Int64Var(&week, "week", 0, "Week number to scan, e.g. 2497 (0 means current week)")
 	flag.IntVar(&segments, "segments", 1, "Number of segments to read in parallel")
 	flag.StringVar(&orgsFile, "delete-orgs-file", "", "File containing IDs of orgs to delete")
 	flag.StringVar(&loglevel, "log-level", "info", "Debug level: debug, info, warning, error")
@@ -74,8 +74,9 @@ func main() {
 		}
 	}
 
+	secondsInWeek := int64(7 * 24 * time.Hour.Seconds())
 	if week == 0 {
-		week = int(time.Now().Unix() / int64(7*24*time.Hour/time.Second))
+		week = time.Now().Unix() / secondsInWeek
 	}
 
 	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
@@ -102,7 +103,7 @@ func main() {
 		callbacks[segment] = handlers[segment].handlePage
 	}
 
-	tableTime := model.TimeFromUnix(int64(week) * 7 * 24 * 3600)
+	tableTime := model.TimeFromUnix(week * secondsInWeek)
 	err = chunkStore.Scan(context.Background(), tableTime, tableTime, reindexTablePrefix != "", callbacks)
 	checkFatal(err)
 

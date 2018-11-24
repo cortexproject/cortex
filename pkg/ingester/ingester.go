@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/status"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -23,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -333,7 +335,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
-	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
+	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
@@ -368,6 +370,8 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
+
 	from, through, matchers, err := client.FromQueryRequest(req)
 	if err != nil {
 		return err
@@ -376,7 +380,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	queries.Inc()
 
 	i.userStatesMtx.RLock()
-	state, ok, err := i.userStates.getViaContext(stream.Context())
+	state, ok, err := i.userStates.getViaContext(ctx)
 	i.userStatesMtx.RUnlock()
 	if err != nil {
 		return err
@@ -390,7 +394,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// can iteratively merge them with entries coming from the chunk store.  But
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
-	err = state.forSeriesMatching(matchers, func(_ model.Fingerprint, series *memorySeries) error {
+	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
 		numSeries++
 		chunks := make([]*desc, 0, len(series.chunkDescs))
 		for _, chunk := range series.chunkDescs {
@@ -427,8 +431,11 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 			Timeseries: batch,
 		})
 	}
+
 	queriedSeries.Observe(float64(numSeries))
 	queriedChunks.Observe(float64(numChunks))
+	level.Debug(log).Log("streams", numSeries)
+	level.Debug(log).Log("chunks", numChunks)
 	return err
 }
 
@@ -470,7 +477,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 	metrics := map[model.Fingerprint]labelPairs{}
 	for _, matchers := range matchersSet {
-		if err := state.forSeriesMatching(matchers, func(fp model.Fingerprint, series *memorySeries) error {
+		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *memorySeries) error {
 			if _, ok := metrics[fp]; !ok {
 				metrics[fp] = series.labels()
 			}

@@ -48,11 +48,13 @@ var (
 
 // Config for a Frontend.
 type Config struct {
-	MaxOutstandingPerTenant int
-	MaxRetries              int
-	SplitQueriesByDay       bool
-	AlignQueriesWithStep    bool
-	CacheResults            bool
+	MaxOutstandingPerTenant     int
+	MaxRetries                  int
+	SplitQueriesByDay           bool
+	AlignQueriesWithStep        bool
+	CacheResults                bool
+	RecordRuleSubstitution      bool
+	QueryToRecordingRuleMapFile string
 	resultsCacheConfig
 }
 
@@ -63,6 +65,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
+	f.BoolVar(&cfg.RecordRuleSubstitution, "querier.record-rule-substitution", false, "Substitute pre defined queries with equivalent recording rule.")
+	f.StringVar(&cfg.QueryToRecordingRuleMapFile, "querier.query-to-recording-rule-map-file", "", "File containing map from query to recording rule for every organisation.")
 	cfg.resultsCacheConfig.RegisterFlags(f)
 }
 
@@ -99,6 +103,14 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 	queryRangeMiddleware := []queryRangeMiddleware{}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, stepAlignMiddleware)
+	}
+	if cfg.RecordRuleSubstitution {
+		// TODO(codesome): What should be it's order in the middlewares.
+		recordRuleSubstitutionMiddleware, err := newRecordRuleSubstitutionMiddleware(cfg.QueryToRecordingRuleMapFile)
+		if err != nil {
+			return nil, err
+		}
+		queryRangeMiddleware = append(queryRangeMiddleware, recordRuleSubstitutionMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
 		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware)

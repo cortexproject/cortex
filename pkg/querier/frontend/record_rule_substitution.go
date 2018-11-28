@@ -31,6 +31,7 @@ func newRecordRuleSubstitutionMiddleware(filename string) (queryRangeMiddleware,
 		return nil, err
 	}
 
+	// Creating the query to recording rule map from the file.
 	qrrMap := make(map[string][]queryToRecordingRuleMap)
 	for _, o := range parsedFile.Orgs {
 		for i := range o.QueryToRuleMap {
@@ -70,53 +71,43 @@ func (rr recordRuleSubstitution) Do(ctx context.Context, r *QueryRangeRequest) (
 		return rr.next.Do(ctx, r)
 	}
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	qrrs, ok := rr.qrrMap[userID]
-	if !ok {
-		return rr.next.Do(ctx, r)
-	}
-
+	var err error
 	r.Query, err = generaliseQuery(r.Query)
 	if err != nil {
 		return nil, err
 	}
 
-	ruleSubstituted := false
-	var maxModifiedAt time.Time
-	rCopy := &*r
-	for _, qrr := range qrrs {
-		if strings.Contains(rCopy.Query, qrr.Query) {
-			rCopy.Query = strings.Replace(rCopy.Query, qrr.Query, qrr.RuleName, -1)
-			if !ruleSubstituted {
-				maxModifiedAt = qrr.ModifiedAt
-				ruleSubstituted = true
-			}
-			if qrr.ModifiedAt.Sub(maxModifiedAt) > 0 {
-				maxModifiedAt = qrr.ModifiedAt
-			}
-		}
+	rCopy, maxModifiedAt, err := rr.replaceQueryWithRecordingRule(ctx, r)
+	if err != nil {
+		return nil, err
 	}
 
-	if !ruleSubstituted {
+	if rCopy == nil {
 		return rr.next.Do(ctx, r)
 	}
 
 	modifiedAtMillis := maxModifiedAt.UnixNano() / int64(time.Millisecond/time.Nanosecond)
-
+	modifiedAtMillis = (modifiedAtMillis / r.Step) * r.Step
 	if modifiedAtMillis > r.End {
+		// No recording rule exist for the query range.
 		return rr.next.Do(ctx, r)
 	}
-	if modifiedAtMillis < r.Start {
+	if modifiedAtMillis <= r.Start {
+		// Recording rule exists for entire query range.
 		return rr.next.Do(ctx, rCopy)
 	}
 
-	modifiedAtMillis = (modifiedAtMillis / r.Step) * r.Step
-	r.End = modifiedAtMillis
+	// Recording rule exists for partial query range.
+
+	alignedSafetyOffset := (safetyOffset / r.Step) * r.Step
+	r.End = modifiedAtMillis + alignedSafetyOffset
+
 	rCopy.Start = r.End + r.Step
+	if rCopy.Start >= rCopy.End {
+		// Very less evaulations using the recording rule.
+		// This is also possible because of adding 'alignedSafetyOffset'.
+		return rr.next.Do(ctx, r)
+	}
 
 	reqResps, err := doRequests(ctx, rr.next, []*QueryRangeRequest{r, rCopy})
 	if err != nil {
@@ -131,15 +122,58 @@ func (rr recordRuleSubstitution) Do(ctx context.Context, r *QueryRangeRequest) (
 	return mergeAPIResponses(resps)
 }
 
+// This offset is added to the modifiedAtMillis to give room to the first evaluation
+// of all recording rules.
+var safetyOffset = int64(5 * time.Minute / time.Millisecond)
+
+func (rr recordRuleSubstitution) replaceQueryWithRecordingRule(ctx context.Context, r *QueryRangeRequest) (*QueryRangeRequest, time.Time, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, time.Unix(0, 0), err
+	}
+
+	qrrs, ok := rr.qrrMap[userID]
+	if !ok {
+		return nil, time.Unix(0, 0), nil
+	}
+
+	rCopy := *r
+	ruleSubstituted := false
+	var maxModifiedAt time.Time
+	for _, qrr := range qrrs {
+		if strings.Contains(rCopy.Query, qrr.Query) {
+			rCopy.Query = strings.Replace(rCopy.Query, qrr.Query, qrr.RuleName, -1)
+			if !ruleSubstituted {
+				maxModifiedAt = qrr.ModifiedAt
+				ruleSubstituted = true
+			}
+			if qrr.ModifiedAt.Sub(maxModifiedAt) > 0 {
+				maxModifiedAt = qrr.ModifiedAt
+			}
+		}
+	}
+
+	if !ruleSubstituted {
+		return nil, time.Unix(0, 0), nil
+	}
+
+	return &rCopy, maxModifiedAt, nil
+}
+
+// structs for the file containing query to recording rule map.
+
+// queryToRecordingRuleFile is the top most level in the file.
 type queryToRecordingRuleFile struct {
 	Orgs []orgQueryToRecordingRuleMap `yaml:"orgs"`
 }
 
+// orgQueryToRecordingRuleMap holds all the recording rules of an organisation.
 type orgQueryToRecordingRuleMap struct {
 	OrgID          string                    `yaml:"org_id"`
 	QueryToRuleMap []queryToRecordingRuleMap `yaml:"rules"`
 }
 
+// queryToRecordingRuleMap is a single query to recording rule map.
 type queryToRecordingRuleMap struct {
 	RuleName   string    `yaml:"name"`
 	Query      string    `yaml:"query"`

@@ -86,7 +86,6 @@ func main() {
 	}
 	prometheus.MustRegister(r)
 	defer r.Stop()
-	ingesterConfig.LifecyclerConfig.KVClient = r.KVClient
 
 	dist, err := distributor.New(distributorConfig, ingesterClientConfig, overrides, r)
 	if err != nil {
@@ -150,7 +149,7 @@ func main() {
 		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
-		false,                          // Disable admin APIs.
+		false, // Disable admin APIs.
 		util.Logger,
 		querier.DummyRulesRetriever{},
 	)

@@ -36,7 +36,7 @@ push_image() {
         return
     fi
 
-    # remove the quey prefix and push to docker hub
+    # remove the quay prefix and push to docker hub
     docker_hub_image=${image#$QUAY_PREFIX}
     docker tag ${image}:${IMAGE_TAG} ${docker_hub_image}:${IMAGE_TAG}
 

@@ -1,20 +1,22 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/segmentio/fasthash/fnv1a"
-	"golang.org/x/net/context"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -249,12 +251,17 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.
 // Deals with locking and the quirks of zero-length matcher values.
-func (u *userState) forSeriesMatching(allMatchers []*labels.Matcher, callback func(model.Fingerprint, *memorySeries) error) error {
+func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher, callback func(context.Context, model.Fingerprint, *memorySeries) error) error {
+	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
+	defer log.Finish()
+
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	fps := u.index.lookup(matchers)
 	if len(fps) > u.limits.MaxSeriesPerQuery(u.userID) {
 		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
 	}
+
+	level.Debug(log).Log("series", len(fps))
 
 	// fps is sorted, lock them in order to prevent deadlocks
 outer:
@@ -273,7 +280,7 @@ outer:
 			}
 		}
 
-		err := callback(fp, series)
+		err := callback(ctx, fp, series)
 		u.fpLocker.Unlock(fp)
 		if err != nil {
 			return err

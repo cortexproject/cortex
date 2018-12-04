@@ -497,7 +497,7 @@ func (ng *Engine) populateSeries(ctx context.Context, q storage.Queryable, s *Ev
 				params.End = params.End - offsetMilliseconds
 			}
 
-			set, err = querier.Select(params, n.LabelMatchers...)
+			set, err, _ = querier.Select(params, n.LabelMatchers...)
 			if err != nil {
 				level.Error(ng.logger).Log("msg", "error selecting series set", "err", err)
 				return err
@@ -520,7 +520,7 @@ func (ng *Engine) populateSeries(ctx context.Context, q storage.Queryable, s *Ev
 				params.End = params.End - offsetMilliseconds
 			}
 
-			set, err = querier.Select(params, n.LabelMatchers...)
+			set, err, _ = querier.Select(params, n.LabelMatchers...)
 			if err != nil {
 				level.Error(ng.logger).Log("msg", "error selecting series set", "err", err)
 				return err

@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
+
+	legacy_promql "github.com/cortexproject/cortex/pkg/configs/legacy_promql"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // An ID is the ID of a single users's Cortex configuration. When a
@@ -235,7 +237,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 	result := map[string][]rules.Rule{}
 	for fn, content := range c.Files {
-		stmts, err := promql.ParseStmts(content)
+		stmts, err := legacy_promql.ParseStmts(content)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
 		}
@@ -244,11 +246,23 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 			var rule rules.Rule
 
 			switch r := stmt.(type) {
-			case *promql.AlertStmt:
-				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations, true, util.Logger)
+			case *legacy_promql.AlertStmt:
+				// Re-parse the expression to get it into the right types.
+				expr, err := promql.ParseExpr(r.Expr.String())
+				if err != nil {
+					return nil, err
+				}
 
-			case *promql.RecordStmt:
-				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)
+				rule = rules.NewAlertingRule(r.Name, expr, r.Duration, r.Labels, r.Annotations, true, util.Logger)
+
+			case *legacy_promql.RecordStmt:
+				// Re-parse the expression to get it into the right types.
+				expr, err := promql.ParseExpr(r.Expr.String())
+				if err != nil {
+					return nil, err
+				}
+
+				rule = rules.NewRecordingRule(r.Name, expr, r.Labels)
 
 			default:
 				return nil, fmt.Errorf("ruler.GetRules: unknown statement type")

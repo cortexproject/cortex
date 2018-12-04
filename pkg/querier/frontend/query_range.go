@@ -29,12 +29,12 @@ var (
 func parseQueryRangeRequest(r *http.Request) (*QueryRangeRequest, error) {
 	var result QueryRangeRequest
 	var err error
-	result.Start, err = parseTime(r.FormValue("start"))
+	result.Start, err = ParseTime(r.FormValue("start"))
 	if err != nil {
 		return nil, err
 	}
 
-	result.End, err = parseTime(r.FormValue("end"))
+	result.End, err = ParseTime(r.FormValue("end"))
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,8 @@ func (q QueryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, er
 	return req.WithContext(ctx), nil
 }
 
-func parseTime(s string) (int64, error) {
+// ParseTime parses the string into an int64, milliseconds since epoch.
+func ParseTime(s string) (int64, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
 		s, ns := math.Modf(t)
 		tm := time.Unix(int64(s), int64(ns*float64(time.Second)))

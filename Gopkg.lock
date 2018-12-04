@@ -606,14 +606,6 @@
   revision = "cc309e4a22231782e8893f3c35ced0967807a33e"
 
 [[projects]]
-  branch = "master"
-  digest = "1:16886567e49201f2bb97fc738dfe8097494764135a83b533fc020fcefe37d8fe"
-  name = "github.com/nightlyone/lockfile"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "6a197d5ea61168f2ac821de2b7f011b250904900"
-
-[[projects]]
   digest = "1:d5f4c5b22e15b338051c4e26387e980b60d8e9eed13938adf1c415913ac64dbd"
   name = "github.com/oklog/oklog"
   packages = ["pkg/group"]
@@ -818,7 +810,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:8a81e6f6374afec45e2a8686f8c25e9551fa0fd50187ae0de767e54b1ae6e8cb"
+  digest = "1:929b39631d2559a956c1d63ea9017ad200392b2714220ad1f02017edc53b709c"
   name = "github.com/prometheus/tsdb"
   packages = [
     ".",
@@ -827,9 +819,10 @@
     "fileutil",
     "index",
     "labels",
+    "wal",
   ]
   pruneopts = "UT"
-  revision = "195bc0d286b077f5633eb4bda76743620588b2fa"
+  revision = "24520727a42bb4412dbc8ea0b6e5967d0d68fef5"
 
 [[projects]]
   branch = "master"

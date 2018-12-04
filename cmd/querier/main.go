@@ -126,6 +126,7 @@ func main() {
 	subrouter.Path("/read").Handler(middleware.AuthenticateUser.Wrap(querier.RemoteReadHandler(queryable)))
 	subrouter.Path("/validate_expr").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.ValidateExprHandler)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(dist.UserStatsHandler)))
+	subrouter.Path("/chunks").Handler(middleware.AuthenticateUser.Wrap(querier.ChunksHandler(queryable)))
 
 	server.Run()
 }

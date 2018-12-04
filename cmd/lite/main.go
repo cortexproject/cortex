@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -85,7 +86,6 @@ func main() {
 	}
 	prometheus.MustRegister(r)
 	defer r.Stop()
-	ingesterConfig.LifecyclerConfig.KVClient = r.KVClient
 
 	dist, err := distributor.New(distributorConfig, ingesterClientConfig, overrides, r)
 	if err != nil {
@@ -209,7 +209,7 @@ func getConfigsFromCommandLine() {
 	}
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
+	flagext.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig,
 		&ingesterClientConfig, &limitsConfig, &tbmConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")

@@ -21,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -36,7 +37,7 @@ func main() {
 		}
 		alertmanagerConfig alertmanager.MultitenantAlertmanagerConfig
 	)
-	util.RegisterFlags(&serverConfig, &alertmanagerConfig)
+	flagext.RegisterFlags(&serverConfig, &alertmanagerConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)

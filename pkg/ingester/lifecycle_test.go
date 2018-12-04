@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/user"
@@ -30,11 +31,11 @@ const userID = "1"
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()
 	cfg := Config{}
-	util.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg)
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
-	cfg.LifecyclerConfig.KVClient = consul
+	cfg.LifecyclerConfig.RingConfig.Mock = consul
 	cfg.LifecyclerConfig.NumTokens = 1
 	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
 	cfg.LifecyclerConfig.Addr = "localhost"
@@ -44,13 +45,13 @@ func defaultIngesterTestConfig() Config {
 
 func defaultClientTestConfig() client.Config {
 	clientConfig := client.Config{}
-	util.DefaultValues(&clientConfig)
+	flagext.DefaultValues(&clientConfig)
 	return clientConfig
 }
 
 func defaultLimitsTestConfig() validation.Limits {
 	limits := validation.Limits{}
-	util.DefaultValues(&limits)
+	flagext.DefaultValues(&limits)
 	return limits
 }
 
@@ -68,7 +69,7 @@ func TestIngesterRestart(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.LifecyclerConfig.KVClient, "localhost")
+		return numTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
 	})
 
 	{
@@ -80,7 +81,7 @@ func TestIngesterRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.LifecyclerConfig.KVClient, "localhost")
+		return numTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
 	})
 }
 
@@ -122,7 +123,7 @@ func TestIngesterTransfer(t *testing.T) {
 
 	// Start a second ingester, but let it go into PENDING
 	cfg2 := defaultIngesterTestConfig()
-	cfg2.LifecyclerConfig.KVClient = cfg1.LifecyclerConfig.KVClient
+	cfg2.LifecyclerConfig.RingConfig.Mock = cfg1.LifecyclerConfig.RingConfig.Mock
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second

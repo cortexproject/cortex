@@ -38,7 +38,7 @@ type distributorQuerier struct {
 	mint, maxt  int64
 }
 
-func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
 	mint, maxt := q.mint, q.maxt
 	if sp != nil {
 		mint = sp.Start
@@ -47,14 +47,18 @@ func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*label
 
 	matrix, err := q.distributor.Query(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
-		return nil, promql.ErrStorage(err)
+		return nil, promql.ErrStorage{Err: err}, nil
 	}
 
-	return matrixToSeriesSet(matrix), nil
+	return matrixToSeriesSet(matrix), nil, nil
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, error) {
 	return q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
+}
+
+func (q *distributorQuerier) LabelNames() ([]string, error) {
+	return nil, nil
 }
 
 func (q *distributorQuerier) Close() error {

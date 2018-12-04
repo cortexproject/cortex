@@ -32,13 +32,13 @@ type chunkStoreQuerier struct {
 	mint, maxt        int64
 }
 
-func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
 	chunks, err := q.store.Get(q.ctx, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
-		return nil, promql.ErrStorage(err)
+		return nil, promql.ErrStorage{Err: err}, nil
 	}
 
-	return q.partitionChunks(chunks), nil
+	return q.partitionChunks(chunks), nil, nil
 }
 
 func (q *chunkStoreQuerier) partitionChunks(chunks []chunk.Chunk) storage.SeriesSet {
@@ -63,6 +63,10 @@ func (q *chunkStoreQuerier) partitionChunks(chunks []chunk.Chunk) storage.Series
 }
 
 func (q *chunkStoreQuerier) LabelValues(name string) ([]string, error) {
+	return nil, nil
+}
+
+func (q *chunkStoreQuerier) LabelNames() ([]string, error) {
 	return nil, nil
 }
 

@@ -88,11 +88,15 @@ type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
-	return matrixToSeriesSet(m.matrix), nil
+func (m mockQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
+	return matrixToSeriesSet(m.matrix), nil, nil
 }
 
 func (m mockQuerier) LabelValues(name string) ([]string, error) {
+	return nil, nil
+}
+
+func (m mockQuerier) LabelNames() ([]string, error) {
 	return nil, nil
 }
 

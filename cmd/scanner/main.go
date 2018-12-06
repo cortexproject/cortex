@@ -20,9 +20,10 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/logging"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/storage"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -102,24 +103,22 @@ func main() {
 		week = time.Now().Unix() / secondsInWeek
 	}
 
-	storageOpts, err := storage.Opts(storageConfig, schemaConfig)
-	checkFatal(err)
-	chunkStore, err := chunk.NewStore(chunkStoreConfig, schemaConfig, storageOpts)
+	overrides := &validation.Overrides{}
+	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
 	checkFatal(err)
 	defer chunkStore.Stop()
 
 	var reindexStore chunk.Store
 	if reindexTablePrefix != "" || rechunkTablePrefix != "" {
 		reindexSchemaConfig := schemaConfig
-		reindexSchemaConfig.ChunkTables.Prefix = rechunkTablePrefix
-		reindexSchemaConfig.IndexTables.Prefix = reindexTablePrefix
-		reindexOpts, err := storage.Opts(storageConfig, reindexSchemaConfig)
-		checkFatal(err)
-		reindexStore, err = chunk.NewStore(chunkStoreConfig, reindexSchemaConfig, reindexOpts)
+		//FIXME
+		//reindexSchemaConfig.ChunkTables.Prefix = rechunkTablePrefix
+		//reindexSchemaConfig.IndexTables.Prefix = reindexTablePrefix
+		reindexStore, err = storage.NewStore(storageConfig, chunkStoreConfig, reindexSchemaConfig, overrides)
 		checkFatal(err)
 	}
 
-	tableName = fmt.Sprintf("%s%d", schemaConfig.ChunkTables.Prefix, week)
+	tableName = "FIXME" //fmt.Sprintf("%s%d", schemaConfig.ChunkTables.Prefix, week)
 	fmt.Printf("table %s\n", tableName)
 
 	handlers := make([]handler, segments)

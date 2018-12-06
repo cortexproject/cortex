@@ -19,7 +19,7 @@ type InvertedIndex struct {
 	shards []indexShard
 }
 
-// New returns an new InvertedIndex.
+// New returns a new InvertedIndex.
 func New() *InvertedIndex {
 	shards := make([]indexShard, indexShards)
 	for i := 0; i < indexShards; i++ {

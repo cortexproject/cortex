@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+// WriterConfig configures a Writer
 type WriterConfig struct {
 	writers      int     // Number of writers to run in parallel
 	maxQueueSize int     // Max rows to allow in writer queue
@@ -18,6 +19,7 @@ type WriterConfig struct {
 	// (In some sense the rate we send should relate to the provisioned capacity in the back-end)
 }
 
+// Writer batches up writes to a Store
 type Writer struct {
 	WriterConfig
 
@@ -41,6 +43,7 @@ func (cfg *WriterConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.rateLimit, "writer-rate-limit", 1000, "Max rate to send rows to storage back-end, per writer")
 }
 
+// NewWriter creates a new Writer
 func NewWriter(cfg WriterConfig, storage StorageClient) *Writer {
 	writer := &Writer{
 		WriterConfig: cfg,
@@ -54,6 +57,7 @@ func NewWriter(cfg WriterConfig, storage StorageClient) *Writer {
 	return writer
 }
 
+// IndexChunk writes the index entries for a chunk to the store
 func (c *store) IndexChunk(ctx context.Context, chunk Chunk) error {
 	writeReqs, err := c.calculateIndexEntries(chunk.UserID, chunk.From, chunk.Through, chunk)
 	if err != nil {
@@ -63,6 +67,7 @@ func (c *store) IndexChunk(ctx context.Context, chunk Chunk) error {
 	return nil
 }
 
+// Run starts all the goroutines
 func (writer *Writer) Run() {
 	writer.group.Add(1 + writer.writers)
 	go func() {
@@ -97,43 +102,43 @@ func (writer *Writer) Stop() {
 
 // writeLoop receives on the 'batched' chan, sends to store, and
 // passes anything that was throttled to the 'retry' chan.
-func (sc *Writer) writeLoop(ctx context.Context) {
-	limiter := rate.NewLimiter(rate.Limit(sc.rateLimit), 100) // burst size should be the largest batch
+func (writer *Writer) writeLoop(ctx context.Context) {
+	limiter := rate.NewLimiter(rate.Limit(writer.rateLimit), 100) // burst size should be the largest batch
 	for {
-		batch, ok := <-sc.batched
+		batch, ok := <-writer.batched
 		if !ok {
 			return
 		}
 		batchLen := batch.Len()
 		level.Debug(util.Logger).Log("msg", "about to write", "num_requests", batchLen)
-		retry, err := sc.storage.BatchWriteNoRetry(ctx, batch)
+		retry, err := writer.storage.BatchWriteNoRetry(ctx, batch)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "unable to write; dropping data", "err", err, "batch", batch)
-			sc.pending.Add(-batchLen)
+			writer.pending.Add(-batchLen)
 			continue
 		}
 		if retry != nil {
 			// Wait before retry
 			limiter.WaitN(ctx, retry.Len())
 			// Send unprocessed items back into the batcher
-			sc.retry <- retry
+			writer.retry <- retry
 		}
-		sc.pending.Add(-(batchLen - retry.Len()))
+		writer.pending.Add(-(batchLen - retry.Len()))
 	}
 }
 
 // Receive individual requests, and batch them up into groups to send to the store
-func (sc *Writer) batcher() {
+func (writer *Writer) batcher() {
 	flushing := false
 	var queue, outBatch WriteBatch
-	queue = sc.storage.NewWriteBatch()
+	queue = writer.storage.NewWriteBatch()
 	for {
 		queueLen := queue.Len()
 		writerQueueLength.Set(float64(queueLen)) // Prometheus metric
 		var in, out chan WriteBatch
 		// We will allow in new data if the queue isn't too long
-		if queueLen < sc.maxQueueSize {
-			in = sc.Write
+		if queueLen < writer.maxQueueSize {
+			in = writer.Write
 		}
 		// We will send out a batch if the queue is big enough, or if we're flushing
 		if outBatch == nil || outBatch.Len() == 0 {
@@ -142,11 +147,11 @@ func (sc *Writer) batcher() {
 			if removed > 0 {
 				// Account for entries removed from the queue which are not in the batch
 				// (e.g. because of deduplication)
-				sc.pending.Add(-(removed - outBatch.Len()))
+				writer.pending.Add(-(removed - outBatch.Len()))
 			}
 		}
 		if outBatch != nil && outBatch.Len() > 0 {
-			out = sc.batched
+			out = writer.batched
 		}
 		select {
 		case inBatch := <-in:
@@ -155,9 +160,9 @@ func (sc *Writer) batcher() {
 			} else {
 				flushing = false
 				queue.AddBatch(inBatch)
-				sc.pending.Add(inBatch.Len())
+				writer.pending.Add(inBatch.Len())
 			}
-		case inBatch, ok := <-sc.retry:
+		case inBatch, ok := <-writer.retry:
 			if !ok {
 				return
 			}

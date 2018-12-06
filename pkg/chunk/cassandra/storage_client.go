@@ -278,7 +278,7 @@ func (b *readBatchIter) Next() bool {
 	return true
 }
 
-func (b readBatch) HashValue() string {
+func (b readBatchIter) HashValue() string {
 	return b.hashValue
 }
 

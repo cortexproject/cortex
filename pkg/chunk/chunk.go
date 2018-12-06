@@ -188,6 +188,7 @@ var writerPool = sync.Pool{
 	New: func() interface{} { return snappy.NewBufferedWriter(nil) },
 }
 
+// ForceEncode re-encodes a chunk rather than using the cached encoding
 func (c *Chunk) ForceEncode() error {
 	c.encoded = nil
 	_, err := c.Encode()
@@ -376,22 +377,4 @@ func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
 	it := c.Data.NewIterator()
 	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
 	return prom_chunk.RangeValues(it, interval)
-}
-
-func OrgFromHash(hashStr string) int {
-	if hashStr == "" {
-		return -1
-	}
-	pos := strings.Index(hashStr, "/")
-	if pos < 0 { // try index table format
-		pos = strings.Index(hashStr, ":")
-	}
-	if pos < 0 { // unrecognized format
-		return -1
-	}
-	org, err := strconv.Atoi(hashStr[:pos])
-	if err != nil {
-		return -1
-	}
-	return org
 }

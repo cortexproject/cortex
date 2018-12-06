@@ -285,9 +285,8 @@ func (a storageClient) BatchWriteNoRetry(ctx context.Context, batch chunk.WriteB
 		if throttled(err) || request.Retryable() {
 			// Send the whole request back
 			return requests, nil
-		} else {
-			return nil, err
 		}
+		return nil, err
 	}
 	for tableName, items := range resp.UnprocessedItems {
 		dynamoThrottledItems.WithLabelValues("DynamoDB.BatchWriteItem", tableName).Add(float64(len(items)))

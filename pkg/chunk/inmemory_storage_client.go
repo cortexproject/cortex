@@ -176,6 +176,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	return nil
 }
 
+// BatchWriteNoRetry implements StorageClient.
 func (m *MockStorage) BatchWriteNoRetry(ctx context.Context, batch WriteBatch) (retry WriteBatch, err error) {
 	mockBatch := *batch.(*mockWriteBatch)
 	retryLen := len(mockBatch) / 3
@@ -186,6 +187,7 @@ func (m *MockStorage) BatchWriteNoRetry(ctx context.Context, batch WriteBatch) (
 	return &toRetry, err
 }
 
+// Scan implements StorageClient.
 func (m *MockStorage) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
 	return nil
 }

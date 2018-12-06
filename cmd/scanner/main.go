@@ -209,7 +209,7 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 	decodeContext := chunk.NewDecodeContext()
 	for i := page.Iterator(); i.Next(); {
 		hashValue := i.HashValue()
-		org := chunk.OrgFromHash(hashValue)
+		org := orgFromHash(hashValue)
 		if org <= 0 {
 			continue
 		}
@@ -256,6 +256,24 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 			}
 		}
 	}
+}
+
+func orgFromHash(hashStr string) int {
+	if hashStr == "" {
+		return -1
+	}
+	pos := strings.Index(hashStr, "/")
+	if pos < 0 { // try index table format
+		pos = strings.Index(hashStr, ":")
+	}
+	if pos < 0 { // unrecognized format
+		return -1
+	}
+	org, err := strconv.Atoi(hashStr[:pos])
+	if err != nil {
+		return -1
+	}
+	return org
 }
 
 func checkFatal(err error) {

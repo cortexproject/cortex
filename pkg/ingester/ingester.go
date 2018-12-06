@@ -451,7 +451,7 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 	}
 
 	resp := &client.LabelValuesResponse{}
-	for _, v := range state.index.lookupLabelValues(model.LabelName(req.LabelName)) {
+	for _, v := range state.index.LabelValues(model.LabelName(req.LabelName)) {
 		resp.LabelValues = append(resp.LabelValues, string(v))
 	}
 

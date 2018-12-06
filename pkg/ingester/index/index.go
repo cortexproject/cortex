@@ -1,4 +1,4 @@
-package ingester
+package index
 
 import (
 	"sort"
@@ -6,54 +6,37 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 const indexShards = 32
 
-type invertedIndex struct {
+// InvertedIndex implements a in-memory inverter index from label pairs to fingerprints.
+// It is sharded to reduce lock contention on writes.
+type InvertedIndex struct {
 	shards []indexShard
 }
 
-type indexShard struct {
-	mtx sync.RWMutex
-	idx map[model.LabelName]map[model.LabelValue][]model.Fingerprint // slice entries are sorted in fp order
-}
-
-func newInvertedIndex() *invertedIndex {
+// New returns an new InvertedIndex.
+func New() *InvertedIndex {
 	shards := make([]indexShard, indexShards)
 	for i := 0; i < indexShards; i++ {
 		shards[i].idx = map[model.LabelName]map[model.LabelValue][]model.Fingerprint{}
 	}
-	return &invertedIndex{
+	return &InvertedIndex{
 		shards: shards,
 	}
 }
 
-func (ii *invertedIndex) add(metric labelPairs, fp model.Fingerprint) {
-	i := &ii.shards[hashFP(fp)%indexShards]
-	i.mtx.Lock()
-	defer i.mtx.Unlock()
-
-	for _, pair := range metric {
-		name, value := model.LabelName(pair.Name), model.LabelValue(pair.Value)
-		values, ok := i.idx[name]
-		if !ok {
-			values = map[model.LabelValue][]model.Fingerprint{}
-		}
-		fingerprints := values[value]
-		// Insert into the right position to keep fingerprints sorted
-		j := sort.Search(len(fingerprints), func(i int) bool {
-			return fingerprints[i] >= fp
-		})
-		fingerprints = append(fingerprints, 0)
-		copy(fingerprints[j+1:], fingerprints[j:])
-		fingerprints[j] = fp
-		values[value] = fingerprints
-		i.idx[name] = values
-	}
+// Add a fingerprint under the specified labels.
+func (ii *InvertedIndex) Add(labels []client.LabelPair, fp model.Fingerprint) {
+	shard := &ii.shards[hashFP(fp)%indexShards]
+	shard.add(labels, fp)
 }
 
-func (ii *invertedIndex) lookup(matchers []*labels.Matcher) []model.Fingerprint {
+// Lookup all fingerprints for the provided matchers.
+func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher) []model.Fingerprint {
 	if len(matchers) == 0 {
 		return nil
 	}
@@ -66,6 +49,67 @@ func (ii *invertedIndex) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 
 	sort.Sort(fingerprints(result))
 	return result
+}
+
+// LabelNames returns all label names.
+func (ii *InvertedIndex) LabelNames() model.LabelNames {
+	results := make([]model.LabelNames, 0, indexShards)
+
+	for i := range ii.shards {
+		shardResult := ii.shards[i].labelNames()
+		results = append(results, shardResult)
+	}
+
+	return mergeLabelNameLists(results)
+}
+
+// LabelValues returns the values for the given label.
+func (ii *InvertedIndex) LabelValues(name model.LabelName) model.LabelValues {
+	results := make([]model.LabelValues, 0, indexShards)
+
+	for i := range ii.shards {
+		shardResult := ii.shards[i].labelValues(name)
+		results = append(results, shardResult)
+	}
+
+	return mergeLabelValueLists(results)
+}
+
+// Delete a fingerprint with the given label pairs.
+func (ii *InvertedIndex) Delete(labels []client.LabelPair, fp model.Fingerprint) {
+	shard := &ii.shards[hashFP(fp)%indexShards]
+	shard.delete(labels, fp)
+}
+
+// NB slice entries are sorted in fp order.
+type unlockIndex map[model.LabelName]map[model.LabelValue][]model.Fingerprint
+
+type indexShard struct {
+	mtx sync.RWMutex
+	idx unlockIndex
+}
+
+func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) {
+	shard.mtx.Lock()
+	defer shard.mtx.Unlock()
+
+	for _, pair := range metric {
+		name, value := model.LabelName(pair.Name), model.LabelValue(pair.Value)
+		values, ok := shard.idx[name]
+		if !ok {
+			values = map[model.LabelValue][]model.Fingerprint{}
+		}
+		fingerprints := values[value]
+		// Insert into the right position to keep fingerprints sorted
+		j := sort.Search(len(fingerprints), func(i int) bool {
+			return fingerprints[i] >= fp
+		})
+		fingerprints = append(fingerprints, 0)
+		copy(fingerprints[j+1:], fingerprints[j:])
+		fingerprints[j] = fp
+		values[value] = fingerprints
+		shard.idx[name] = values
+	}
 }
 
 func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint {
@@ -106,18 +150,20 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 	return result
 }
 
-func (ii *invertedIndex) lookupLabelValues(name model.LabelName) model.LabelValues {
-	results := make([]model.LabelValues, 0, indexShards)
+func (shard *indexShard) labelNames() model.LabelNames {
+	shard.mtx.RLock()
+	defer shard.mtx.RUnlock()
 
-	for i := range ii.shards {
-		shardResult := ii.shards[i].lookupLabelValues(name)
-		results = append(results, shardResult)
+	results := make(model.LabelNames, 0, len(shard.idx))
+	for name := range shard.idx {
+		results = append(results, name)
 	}
 
-	return mergeLabelValueLists(results)
+	sort.Sort(labelNames(results))
+	return results
 }
 
-func (shard *indexShard) lookupLabelValues(name model.LabelName) model.LabelValues {
+func (shard *indexShard) labelValues(name model.LabelName) model.LabelValues {
 	shard.mtx.RLock()
 	defer shard.mtx.RUnlock()
 
@@ -135,14 +181,13 @@ func (shard *indexShard) lookupLabelValues(name model.LabelName) model.LabelValu
 	return results
 }
 
-func (ii *invertedIndex) delete(labels labelPairs, fp model.Fingerprint) {
-	i := &ii.shards[hashFP(fp)%indexShards]
-	i.mtx.Lock()
-	defer i.mtx.Unlock()
+func (shard *indexShard) delete(labels []client.LabelPair, fp model.Fingerprint) {
+	shard.mtx.Lock()
+	defer shard.mtx.Unlock()
 
 	for _, pair := range labels {
 		name, value := model.LabelName(pair.Name), model.LabelValue(pair.Value)
-		values, ok := i.idx[name]
+		values, ok := shard.idx[name]
 		if !ok {
 			continue
 		}
@@ -163,9 +208,9 @@ func (ii *invertedIndex) delete(labels labelPairs, fp model.Fingerprint) {
 		}
 
 		if len(values) == 0 {
-			delete(i.idx, name)
+			delete(shard.idx, name)
 		} else {
-			i.idx[name] = values
+			shard.idx[name] = values
 		}
 	}
 }
@@ -190,11 +235,28 @@ func intersect(a, b []model.Fingerprint) []model.Fingerprint {
 	return result
 }
 
+// hashFP simply moves entropy from the most significant 48 bits of the
+// fingerprint into the least significant 16 bits (by XORing) so that a simple
+// MOD on the result can be used to pick a mutex while still making use of
+// changes in more significant bits of the fingerprint. (The fast fingerprinting
+// function we use is prone to only change a few bits for similar metrics. We
+// really want to make use of every change in the fingerprint to vary mutex
+// selection.)
+func hashFP(fp model.Fingerprint) uint {
+	return uint(fp ^ (fp >> 32) ^ (fp >> 16))
+}
+
 type labelValues model.LabelValues
 
 func (a labelValues) Len() int           { return len(a) }
 func (a labelValues) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a labelValues) Less(i, j int) bool { return a[i] < a[j] }
+
+type labelNames model.LabelNames
+
+func (a labelNames) Len() int           { return len(a) }
+func (a labelNames) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a labelNames) Less(i, j int) bool { return a[i] < a[j] }
 
 type fingerprints []model.Fingerprint
 
@@ -220,6 +282,39 @@ func mergeLabelValueLists(lvss []model.LabelValues) model.LabelValues {
 
 func mergeTwoLabelValueLists(a, b model.LabelValues) model.LabelValues {
 	result := make(model.LabelValues, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i] < b[j] {
+			result = append(result, a[i])
+			i++
+		} else {
+			result = append(result, b[j])
+			j++
+		}
+	}
+	result = append(result, a[i:]...)
+	result = append(result, b[j:]...)
+	return result
+}
+
+func mergeLabelNameLists(lnss []model.LabelNames) model.LabelNames {
+	switch len(lnss) {
+	case 0:
+		return nil
+	case 1:
+		return lnss[0]
+	case 2:
+		return mergeTwoLabelNameLists(lnss[0], lnss[1])
+	default:
+		n := len(lnss) / 2
+		left := mergeLabelNameLists(lnss[:n])
+		right := mergeLabelNameLists(lnss[n:])
+		return mergeTwoLabelNameLists(left, right)
+	}
+}
+
+func mergeTwoLabelNameLists(a, b model.LabelNames) model.LabelNames {
+	result := make(model.LabelNames, 0, len(a)+len(b))
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
 		if a[i] < b[j] {

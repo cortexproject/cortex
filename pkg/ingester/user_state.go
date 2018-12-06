@@ -14,6 +14,7 @@ import (
 	"github.com/segmentio/fasthash/fnv1a"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ingester/index"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -53,7 +54,7 @@ type userState struct {
 	fpLocker            *fingerprintLocker
 	fpToSeries          *seriesMap
 	mapper              *fpMapper
-	index               *invertedIndex
+	index               *index.InvertedIndex
 	ingestedAPISamples  *ewmaRate
 	ingestedRuleSamples *ewmaRate
 
@@ -146,7 +147,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, labels labelPairs) 
 			limits:              us.limits,
 			fpToSeries:          newSeriesMap(),
 			fpLocker:            newFingerprintLocker(16 * 1024),
-			index:               newInvertedIndex(),
+			index:               index.New(),
 			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			seriesInMetric:      seriesInMetric,
@@ -207,7 +208,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
-	u.index.add(metric, fp)
+	u.index.Add(metric, fp)
 
 	return fp, series, nil
 }
@@ -226,7 +227,7 @@ func (u *userState) canAddSeriesFor(metric string) bool {
 
 func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 	u.fpToSeries.del(fp)
-	u.index.delete(metric, fp)
+	u.index.Delete(metric, fp)
 
 	metricNameB, err := extract.MetricNameFromLabelPairs(metric)
 	if err != nil {
@@ -256,7 +257,7 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 	defer log.Finish()
 
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
-	fps := u.index.lookup(matchers)
+	fps := u.index.Lookup(matchers)
 	if len(fps) > u.limits.MaxSeriesPerQuery(u.userID) {
 		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
 	}

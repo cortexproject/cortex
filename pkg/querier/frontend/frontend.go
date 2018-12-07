@@ -76,6 +76,7 @@ type Frontend struct {
 	cfg          Config
 	log          log.Logger
 	roundTripper http.RoundTripper
+	qrrMap       *OrgToQueryRecordingRulesMap
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
@@ -106,10 +107,11 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 	}
 	if cfg.RecordRuleSubstitution {
 		// TODO(codesome): What should be it's order in the middlewares.
-		recordRuleSubstitutionMiddleware, err := newRecordRuleSubstitutionMiddleware(cfg.QueryToRecordingRuleMapFile)
+		recordRuleSubstitutionMiddleware, qrrMap, err := newRecordRuleSubstitutionMiddleware(cfg.QueryToRecordingRuleMapFile)
 		if err != nil {
 			return nil, err
 		}
+		f.qrrMap = qrrMap
 		queryRangeMiddleware = append(queryRangeMiddleware, recordRuleSubstitutionMiddleware)
 	}
 	if cfg.SplitQueriesByDay {

@@ -48,49 +48,12 @@ type recordRuleSubstitution struct {
 }
 
 func (rr recordRuleSubstitution) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
-	if rr.qrrMap == nil {
-		return rr.next.Do(ctx, r)
-	}
-
-	var err error
-	r.Query, err = generaliseQuery(r.Query)
+	reqs, err := rr.replaceQueryWithRecordingRule(ctx, r)
 	if err != nil {
 		return nil, err
 	}
 
-	rReplaced, maxModifiedAt, err := rr.replaceQueryWithRecordingRule(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-
-	if rReplaced == nil {
-		return rr.next.Do(ctx, r)
-	}
-
-	modifiedAtMillis := maxModifiedAt.UnixNano() / int64(time.Millisecond/time.Nanosecond)
-	modifiedAtMillis = (modifiedAtMillis / r.Step) * r.Step
-	if modifiedAtMillis > r.End {
-		// No recording rule exist for the query range.
-		return rr.next.Do(ctx, r)
-	}
-	if modifiedAtMillis <= r.Start {
-		// Recording rule exists for entire query range.
-		return rr.next.Do(ctx, rReplaced)
-	}
-
-	// Recording rule exists for partial query range.
-
-	alignedSafetyOffset := (safetyOffset / r.Step) * r.Step
-	r.End = modifiedAtMillis + alignedSafetyOffset
-
-	rReplaced.Start = r.End + r.Step
-	if rReplaced.Start >= rReplaced.End {
-		// Very less evaulations using the recording rule.
-		// This is also possible because of adding 'alignedSafetyOffset'.
-		return rr.next.Do(ctx, r)
-	}
-
-	reqResps, err := doRequests(ctx, rr.next, []*QueryRangeRequest{r, rReplaced})
+	reqResps, err := doRequests(ctx, rr.next, reqs)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +66,57 @@ func (rr recordRuleSubstitution) Do(ctx context.Context, r *QueryRangeRequest) (
 	return mergeAPIResponses(resps)
 }
 
+func (rr recordRuleSubstitution) replaceQueryWithRecordingRule(ctx context.Context, r *QueryRangeRequest) ([]*QueryRangeRequest, error) {
+	if rr.qrrMap == nil {
+		return []*QueryRangeRequest{r}, nil
+	}
+
+	var err error
+	r.Query, err = generaliseQuery(r.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	org, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rReplaced, maxModifiedAt, err := rr.qrrMap.ReplaceQueryWithRecordingRule(org, r)
+	if err != nil {
+		return nil, err
+	}
+
+	if rReplaced == nil {
+		return []*QueryRangeRequest{r}, nil
+	}
+
+	modifiedAtMillis := maxModifiedAt.UnixNano() / int64(time.Millisecond/time.Nanosecond)
+	modifiedAtMillis = (modifiedAtMillis / r.Step) * r.Step
+	if modifiedAtMillis > r.End {
+		// No recording rule exist for the query range.
+		return []*QueryRangeRequest{r}, nil
+	}
+	if modifiedAtMillis <= r.Start {
+		// Recording rule exists for entire query range.
+		return []*QueryRangeRequest{rReplaced}, nil
+	}
+
+	// Recording rule exists for partial query range.
+
+	alignedSafetyOffset := (safetyOffset / r.Step) * r.Step
+	r.End = modifiedAtMillis + alignedSafetyOffset
+
+	rReplaced.Start = r.End + r.Step
+	if rReplaced.Start >= rReplaced.End {
+		// Very less evaulations using the recording rule.
+		// This is also possible because of adding 'alignedSafetyOffset'.
+		return []*QueryRangeRequest{r}, nil
+	}
+
+	return []*QueryRangeRequest{r, rReplaced}, nil
+}
+
 // generaliseQuery returns the query by formatting it with PromQL printer.
 // This will generalise the query structure, and also check for errors in query.
 func generaliseQuery(q string) (string, error) {
@@ -111,40 +125,6 @@ func generaliseQuery(q string) (string, error) {
 		return "", err
 	}
 	return expr.String(), nil
-}
-
-func (rr recordRuleSubstitution) replaceQueryWithRecordingRule(ctx context.Context, r *QueryRangeRequest) (*QueryRangeRequest, time.Time, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, time.Unix(0, 0), err
-	}
-
-	qrrs := rr.qrrMap.GetMapsForOrg(userID)
-	if len(qrrs) == 0 {
-		return nil, time.Unix(0, 0), nil
-	}
-
-	rReplaced := *r
-	ruleSubstituted := false
-	var maxModifiedAt time.Time
-	for _, qrr := range qrrs {
-		if strings.Contains(rReplaced.Query, qrr.Query) {
-			rReplaced.Query = strings.Replace(rReplaced.Query, qrr.Query, qrr.RuleName, -1)
-			if !ruleSubstituted {
-				maxModifiedAt = qrr.ModifiedAt
-				ruleSubstituted = true
-			}
-			if qrr.ModifiedAt.Sub(maxModifiedAt) > 0 {
-				maxModifiedAt = qrr.ModifiedAt
-			}
-		}
-	}
-
-	if !ruleSubstituted {
-		return nil, time.Unix(0, 0), nil
-	}
-
-	return &rReplaced, maxModifiedAt, nil
 }
 
 // OrgToQueryRecordingRulesMap gives thread safe access to
@@ -195,6 +175,43 @@ func (oqr *OrgToQueryRecordingRulesMap) GetMapsForOrg(org string) []queryToRecor
 	oqr.mtx.RLock()
 	defer oqr.mtx.RUnlock()
 	return oqr.qrrMap[org]
+}
+
+// ReplaceQueryWithRecordingRule returns *QueryRangeRequest with the parts of query replaced
+// with recording rules according to the query to recording rule map that it has.
+// It will replace the query if its recording rules was modified before r.End,
+// and query request ranges should be handled separately for returned QueryRangeRequest.
+func (oqr *OrgToQueryRecordingRulesMap) ReplaceQueryWithRecordingRule(org string, r *QueryRangeRequest) (*QueryRangeRequest, time.Time, error) {
+	qrrs := oqr.GetMapsForOrg(org)
+	if len(qrrs) == 0 {
+		return nil, time.Unix(0, 0), nil
+	}
+
+	rReplaced := *r
+	ruleSubstituted := false
+	var maxModifiedAt time.Time
+	for _, qrr := range qrrs {
+		modifiedAtMillis := qrr.ModifiedAt.UnixNano() / int64(time.Millisecond/time.Nanosecond)
+		if modifiedAtMillis > r.End {
+			continue
+		}
+		if strings.Contains(rReplaced.Query, qrr.Query) {
+			rReplaced.Query = strings.Replace(rReplaced.Query, qrr.Query, qrr.RuleName, -1)
+			if !ruleSubstituted {
+				maxModifiedAt = qrr.ModifiedAt
+				ruleSubstituted = true
+			}
+			if qrr.ModifiedAt.Sub(maxModifiedAt) > 0 {
+				maxModifiedAt = qrr.ModifiedAt
+			}
+		}
+	}
+
+	if !ruleSubstituted {
+		return nil, time.Unix(0, 0), nil
+	}
+
+	return &rReplaced, maxModifiedAt, nil
 }
 
 // structs for the file containing query to recording rule map.

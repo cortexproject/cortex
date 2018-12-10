@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/migrate"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -53,7 +54,7 @@ func main() {
 	trace := tracing.NewFromEnv("migrate-writer")
 	defer trace.Close()
 
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &schemaConfig, &storageConfig, &writerConfig)
+	flagext.RegisterFlags(&serverConfig, &chunkStoreConfig, &schemaConfig, &storageConfig, &writerConfig)
 	flag.UintVar(&maxStreams, "ingester.max-concurrent-streams", 1000, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.Parse()

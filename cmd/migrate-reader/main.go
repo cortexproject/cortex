@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/migrate"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -26,7 +27,7 @@ func main() {
 		storageConfig storage.Config
 		readerConfig  migrate.ReaderConfig
 	)
-	util.RegisterFlags(&storageConfig, &readerConfig, &serverConfig)
+	flagext.RegisterFlags(&storageConfig, &readerConfig, &serverConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)

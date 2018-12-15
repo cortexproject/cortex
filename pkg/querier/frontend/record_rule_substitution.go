@@ -71,12 +71,6 @@ func (rr recordRuleSubstitution) replaceQueryWithRecordingRule(ctx context.Conte
 		return []*QueryRangeRequest{r}, nil
 	}
 
-	var err error
-	r.Query, err = generaliseQuery(r.Query)
-	if err != nil {
-		return nil, err
-	}
-
 	org, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -130,7 +124,7 @@ func generaliseQuery(q string) (string, error) {
 // OrgToQueryRecordingRulesMap gives thread safe access to
 // query to recording rule map of all organisations.
 type OrgToQueryRecordingRulesMap struct {
-	qrrMap map[string][]queryToRecordingRuleMap
+	qrrMap map[string][]QueryToRecordingRuleMap
 	mtx    sync.RWMutex
 }
 
@@ -141,12 +135,12 @@ func (oqr *OrgToQueryRecordingRulesMap) LoadFromFile(filename string) error {
 	if err != nil {
 		return err
 	}
-	return oqr.loadFromBytes(b)
+	return oqr.LoadFromBytes(b)
 }
 
-// loadFromBytes clears the previous config and loads the query to recording rule
+// LoadFromBytes clears the previous config and loads the query to recording rule
 // config from bytes.
-func (oqr *OrgToQueryRecordingRulesMap) loadFromBytes(b []byte) error {
+func (oqr *OrgToQueryRecordingRulesMap) LoadFromBytes(b []byte) error {
 	oqr.mtx.Lock()
 	defer oqr.mtx.Unlock()
 
@@ -157,7 +151,7 @@ func (oqr *OrgToQueryRecordingRulesMap) loadFromBytes(b []byte) error {
 	}
 
 	// Creating the query to recording rule map from the file.
-	oqr.qrrMap = make(map[string][]queryToRecordingRuleMap)
+	oqr.qrrMap = make(map[string][]QueryToRecordingRuleMap)
 	for _, o := range parsedFile.Orgs {
 		for i := range o.QueryToRuleMap {
 			o.QueryToRuleMap[i].Query, err = generaliseQuery(o.QueryToRuleMap[i].Query)
@@ -171,7 +165,7 @@ func (oqr *OrgToQueryRecordingRulesMap) loadFromBytes(b []byte) error {
 }
 
 // GetMapsForOrg returns the query to recording rule map for the given organisation.
-func (oqr *OrgToQueryRecordingRulesMap) GetMapsForOrg(org string) []queryToRecordingRuleMap {
+func (oqr *OrgToQueryRecordingRulesMap) GetMapsForOrg(org string) []QueryToRecordingRuleMap {
 	oqr.mtx.RLock()
 	defer oqr.mtx.RUnlock()
 	return oqr.qrrMap[org]
@@ -188,6 +182,12 @@ func (oqr *OrgToQueryRecordingRulesMap) ReplaceQueryWithRecordingRule(org string
 	}
 
 	rReplaced := *r
+	if q, err := generaliseQuery(r.Query); err != nil {
+		return nil, time.Unix(0, 0), err
+	} else {
+		rReplaced.Query = q
+	}
+
 	ruleSubstituted := false
 	var maxModifiedAt time.Time
 	for _, qrr := range qrrs {
@@ -214,6 +214,29 @@ func (oqr *OrgToQueryRecordingRulesMap) ReplaceQueryWithRecordingRule(org string
 	return &rReplaced, maxModifiedAt, nil
 }
 
+// GetMatchingRules returns QueryToRecordingRuleMap for queries that can be replaced with recording rules in given query.
+func (oqr *OrgToQueryRecordingRulesMap) GetMatchingRules(org, query string) ([]QueryToRecordingRuleMap, error) {
+	result := []QueryToRecordingRuleMap{}
+
+	qrrs := oqr.GetMapsForOrg(org)
+	if len(qrrs) == 0 {
+		return result, nil
+	}
+
+	query, err := generaliseQuery(query)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, qrr := range qrrs {
+		if strings.Contains(query, qrr.Query) {
+			result = append(result, qrr)
+		}
+	}
+
+	return result, nil
+}
+
 // structs for the file containing query to recording rule map.
 
 // queryToRecordingRuleFile is the top most level in the file.
@@ -224,11 +247,11 @@ type queryToRecordingRuleFile struct {
 // orgQueryToRecordingRuleMap holds all the recording rules of an organisation.
 type orgQueryToRecordingRuleMap struct {
 	OrgID          string                    `yaml:"org_id"`
-	QueryToRuleMap []queryToRecordingRuleMap `yaml:"rules"`
+	QueryToRuleMap []QueryToRecordingRuleMap `yaml:"rules"`
 }
 
-// queryToRecordingRuleMap is a single query to recording rule map.
-type queryToRecordingRuleMap struct {
+// QueryToRecordingRuleMap is a single query to recording rule map.
+type QueryToRecordingRuleMap struct {
 	RuleName   string    `yaml:"name"`
 	Query      string    `yaml:"query"`
 	ModifiedAt time.Time `yaml:"modifiedAt"`

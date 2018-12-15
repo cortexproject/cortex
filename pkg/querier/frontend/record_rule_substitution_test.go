@@ -182,7 +182,7 @@ func TestReplaceQueryWithRecordingRule(t *testing.T) {
 
 	for _, tst := range tests {
 		qrrMap := OrgToQueryRecordingRulesMap{}
-		qrrMap.loadFromBytes([]byte(tst.file))
+		qrrMap.LoadFromBytes([]byte(tst.file))
 
 		for _, ut := range tst.unittests {
 			actQ, maxma, err := qrrMap.ReplaceQueryWithRecordingRule(ut.org, ut.inputQuery)
@@ -321,7 +321,7 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 	for _, tst := range tests {
 		rr := recordRuleSubstitution{}
 		rr.qrrMap = &OrgToQueryRecordingRulesMap{}
-		rr.qrrMap.loadFromBytes([]byte(tst.file))
+		rr.qrrMap.LoadFromBytes([]byte(tst.file))
 
 		for _, ut := range tst.unittests {
 			ctx := context.Background()
@@ -332,4 +332,87 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 			require.Exactly(t, ut.expQueries, res)
 		}
 	}
+}
+
+func TestGetMatchingRules(t *testing.T) {
+	tests := []struct {
+		file      string
+		unittests []struct {
+			org   string
+			query string
+			exp   []QueryToRecordingRuleMap
+		}
+	}{
+		{
+			file: fileInputs[0],
+			unittests: []struct {
+				org   string
+				query string
+				exp   []QueryToRecordingRuleMap
+			}{
+				{
+					org:   "org1",
+					query: "avg(sum(rate(some_metric[1d])))",
+					exp: []QueryToRecordingRuleMap{
+						QueryToRecordingRuleMap{
+							RuleName:   "sum_rate_some_metric_1d",
+							Query:      "sum(rate(some_metric[1d]))",
+							ModifiedAt: mustParseTime("1970-01-01T00:33:20+00:00"),
+						},
+					},
+				},
+				{
+					org:   "org2",
+					query: "avg(sum(rate(some_metric[5d])))",
+					exp: []QueryToRecordingRuleMap{
+						QueryToRecordingRuleMap{
+							RuleName:   "prefix:sum_rate_some_metric_5d",
+							Query:      "sum(rate(some_metric[5d]))",
+							ModifiedAt: mustParseTime("1970-01-01T02:46:40+00:00"),
+						},
+					},
+				},
+				{
+					org:   "org1",
+					query: "avg(sum(rate(some_metric[1d]))) + avg(sum(rate(some_metric[5d])))",
+					exp: []QueryToRecordingRuleMap{
+						QueryToRecordingRuleMap{
+							RuleName:   "sum_rate_some_metric_1d",
+							Query:      "sum(rate(some_metric[1d]))",
+							ModifiedAt: mustParseTime("1970-01-01T00:33:20+00:00"),
+						},
+						QueryToRecordingRuleMap{
+							RuleName:   "sum_rate_some_metric_5d",
+							Query:      "sum(rate(some_metric[5d]))",
+							ModifiedAt: mustParseTime("1970-01-01T02:46:40+00:00"),
+						},
+					},
+				},
+				{
+					org:   "org1",
+					query: "avg(sum(irate(some_metric[1d]))) + avg(sum(irate(some_metric[5d])))",
+					exp:   []QueryToRecordingRuleMap{},
+				},
+			},
+		},
+	}
+
+	for _, tst := range tests {
+		qrrMap := &OrgToQueryRecordingRulesMap{}
+		qrrMap.LoadFromBytes([]byte(tst.file))
+
+		for _, ut := range tst.unittests {
+			act, err := qrrMap.GetMatchingRules(ut.org, ut.query)
+			require.Empty(t, err)
+			require.Exactly(t, ut.exp, act)
+		}
+	}
+}
+
+func mustParseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		panic(err)
+	}
+	return t
 }

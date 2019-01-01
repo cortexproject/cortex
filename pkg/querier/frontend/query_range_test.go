@@ -123,7 +123,7 @@ func TestQueryRangeResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := parseQueryRangeResponse(response)
+			resp, err := parseQueryRangeResponse(context.Background(), response)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, resp)
 
@@ -133,7 +133,7 @@ func TestQueryRangeResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp2, err := resp.toHTTPResponse()
+			resp2, err := resp.toHTTPResponse(context.Background())
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})

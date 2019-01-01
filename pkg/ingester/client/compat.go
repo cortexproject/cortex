@@ -2,13 +2,19 @@ package client
 
 import (
 	"bytes"
-	"encoding/json"
+	stdjson "encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
+	"time"
+	"unsafe"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // FromWriteRequest converts a WriteRequest proto into an array of samples.
 func FromWriteRequest(req *WriteRequest) []model.Sample {
@@ -276,11 +282,57 @@ func (s Sample) MarshalJSON() ([]byte, error) {
 func (s *Sample) UnmarshalJSON(b []byte) error {
 	var t model.Time
 	var v model.SampleValue
-	vs := [...]json.Unmarshaler{&t, &v}
+	vs := [...]stdjson.Unmarshaler{&t, &v}
 	if err := json.Unmarshal(b, &vs); err != nil {
 		return err
 	}
 	s.TimestampMs = int64(t)
 	s.Value = float64(v)
 	return nil
+}
+
+func init() {
+
+	jsoniter.RegisterTypeEncoderFunc("client.Sample", func(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+		sample := (*Sample)(ptr)
+
+		stream.WriteArrayStart()
+		stream.WriteRaw(model.Time(sample.TimestampMs).String())
+		stream.WriteMore()
+		stream.WriteString(model.SampleValue(sample.Value).String())
+		stream.WriteArrayEnd()
+	}, func(unsafe.Pointer) bool {
+		return false
+	})
+
+	jsoniter.RegisterTypeDecoderFunc("client.Sample", func(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+		if !iter.ReadArray() {
+			iter.ReportError("client.Sample", "expected [")
+			return
+		}
+
+		t := model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond))
+
+		if !iter.ReadArray() {
+			iter.ReportError("client.Sample", "expected ,")
+			return
+		}
+
+		bs := iter.ReadStringAsSlice()
+		ss := *(*string)(unsafe.Pointer(&bs))
+		v, err := strconv.ParseFloat(ss, 64)
+		if err != nil {
+			iter.ReportError("client.Sample", "expected ,")
+			return
+		}
+
+		if iter.ReadArray() {
+			iter.ReportError("client.Sample", "expected ]")
+		}
+
+		*(*Sample)(ptr) = Sample{
+			TimestampMs: int64(t),
+			Value:       v,
+		}
+	})
 }

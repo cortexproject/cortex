@@ -197,7 +197,7 @@ func (s resultsCache) filterRecentExtents(req *QueryRangeRequest, extents []Exte
 }
 
 func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
-	found, buf, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
+	found, bufs, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
 	if len(found) != 1 {
 		return nil, false
 	}
@@ -206,7 +206,9 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "unmarshal-extent")
 	defer sp.Finish()
 
-	if err := proto.Unmarshal(buf[0], &resp); err != nil {
+	sp.LogFields(otlog.Int("bytes", len(bufs[0])))
+
+	if err := proto.Unmarshal(bufs[0], &resp); err != nil {
 		level.Error(util.Logger).Log("msg", "error unmarshaling cached value", "err", err)
 		sp.LogFields(otlog.Error(err))
 		return nil, false

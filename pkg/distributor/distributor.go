@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 )
 
@@ -37,12 +38,12 @@ const (
 )
 
 var (
-	queryDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	queryDuration = instrument.NewHistogramCollector(promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "distributor_query_duration_seconds",
 		Help:      "Time spent executing expression queries.",
 		Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
-	}, []string{"method", "status_code"})
+	}, []string{"method", "status_code"}))
 	receivedSamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_received_samples_total",

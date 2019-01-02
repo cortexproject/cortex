@@ -257,7 +257,10 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 					return nil, err
 				}
 
-				rule = rules.NewAlertingRule(r.Name, expr, r.Duration, r.Labels, r.Annotations, true, util.Logger)
+				rule = rules.NewAlertingRule(
+					r.Name, expr, r.Duration, r.Labels, r.Annotations, true,
+					log.With(util.Logger, "alert", r.Name),
+				)
 
 			case *legacy_promql.RecordStmt:
 				expr, err := promql.ParseExpr(r.Expr.String())

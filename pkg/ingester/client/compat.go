@@ -297,7 +297,7 @@ func init() {
 		sample := (*Sample)(ptr)
 
 		stream.WriteArrayStart()
-		stream.WriteRaw(model.Time(sample.TimestampMs).String())
+		stream.WriteFloat64(float64(sample.TimestampMs) / float64(time.Second/time.Millisecond))
 		stream.WriteMore()
 		stream.WriteString(model.SampleValue(sample.Value).String())
 		stream.WriteArrayEnd()
@@ -322,7 +322,7 @@ func init() {
 		ss := *(*string)(unsafe.Pointer(&bs))
 		v, err := strconv.ParseFloat(ss, 64)
 		if err != nil {
-			iter.ReportError("client.Sample", "expected ,")
+			iter.ReportError("client.Sample", err.Error())
 			return
 		}
 

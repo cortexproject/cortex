@@ -1,6 +1,11 @@
 package querier
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 )
@@ -9,6 +14,8 @@ type lazyQuerier struct {
 	next storage.Querier
 }
 
+// newLazyQuerier wraps a storage.Querier, does the Select in the background.
+// Return value cannot be used from more than one goroutine simultaneously.
 func newLazyQuerier(next storage.Querier) storage.Querier {
 	return lazyQuerier{next}
 }
@@ -36,6 +43,16 @@ func (l lazyQuerier) Close() error {
 	return l.next.Close()
 }
 
+// Get implements ChunkStore for the chunk tar HTTP handler.
+func (l lazyQuerier) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	store, ok := l.next.(ChunkStore)
+	if !ok {
+		return nil, fmt.Errorf("not supported")
+	}
+
+	return store.Get(ctx, from, through, matchers...)
+}
+
 // errSeriesSet implements storage.SeriesSet, just returning an error.
 type errSeriesSet struct {
 	err error
@@ -58,6 +75,7 @@ type lazySeriesSet struct {
 	future chan storage.SeriesSet
 }
 
+// Next implements storage.SeriesSet.  NB not thread safe!
 func (s *lazySeriesSet) Next() bool {
 	if s.next == nil {
 		s.next = <-s.future

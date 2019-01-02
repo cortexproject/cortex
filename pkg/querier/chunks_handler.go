@@ -41,13 +41,7 @@ func ChunksHandler(queryable storage.Queryable) http.Handler {
 			return
 		}
 
-		lazyQuerier, ok := querier.(lazyQuerier)
-		if !ok {
-			http.Error(w, "not supported", http.StatusServiceUnavailable)
-			return
-		}
-
-		store, ok := lazyQuerier.next.(ChunkStore)
+		store, ok := querier.(ChunkStore)
 		if !ok {
 			http.Error(w, "not supported", http.StatusServiceUnavailable)
 			return

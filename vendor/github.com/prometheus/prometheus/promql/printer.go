@@ -34,12 +34,28 @@ func tree(node Node, level string) string {
 	}
 	typs := strings.Split(fmt.Sprintf("%T", node), ".")[1]
 
-	t := fmt.Sprintf("%s |---- %s :: %s\n", level, typs, node)
+	var t string
+	// Only print the number of statements for readability.
+	if stmts, ok := node.(Statements); ok {
+		t = fmt.Sprintf("%s |---- %s :: %d\n", level, typs, len(stmts))
+	} else {
+		t = fmt.Sprintf("%s |---- %s :: %s\n", level, typs, node)
+	}
 
 	level += " · · ·"
 
 	switch n := node.(type) {
+	case Statements:
+		for _, s := range n {
+			t += tree(s, level)
+		}
+	case *AlertStmt:
+		t += tree(n.Expr, level)
+
 	case *EvalStmt:
+		t += tree(n.Expr, level)
+
+	case *RecordStmt:
 		t += tree(n.Expr, level)
 
 	case Expressions:
@@ -62,9 +78,6 @@ func tree(node Node, level string) string {
 	case *UnaryExpr:
 		t += tree(n.Expr, level)
 
-	case *SubqueryExpr:
-		t += tree(n.Expr, level)
-
 	case *MatrixSelector, *NumberLiteral, *StringLiteral, *VectorSelector:
 		// nothing to do
 
@@ -74,8 +87,39 @@ func tree(node Node, level string) string {
 	return t
 }
 
+func (stmts Statements) String() (s string) {
+	if len(stmts) == 0 {
+		return ""
+	}
+	for _, stmt := range stmts {
+		s += stmt.String()
+		s += "\n\n"
+	}
+	return s[:len(s)-2]
+}
+
+func (node *AlertStmt) String() string {
+	s := fmt.Sprintf("ALERT %s", node.Name)
+	s += fmt.Sprintf("\n\tIF %s", node.Expr)
+	if node.Duration > 0 {
+		s += fmt.Sprintf("\n\tFOR %s", model.Duration(node.Duration))
+	}
+	if len(node.Labels) > 0 {
+		s += fmt.Sprintf("\n\tLABELS %s", node.Labels)
+	}
+	if len(node.Annotations) > 0 {
+		s += fmt.Sprintf("\n\tANNOTATIONS %s", node.Annotations)
+	}
+	return s
+}
+
 func (node *EvalStmt) String() string {
 	return "EVAL " + node.Expr.String()
+}
+
+func (node *RecordStmt) String() string {
+	s := fmt.Sprintf("%s%s = %s", node.Name, node.Labels, node.Expr)
+	return s
 }
 
 func (es Expressions) String() (s string) {
@@ -150,14 +194,6 @@ func (node *MatrixSelector) String() string {
 		offset = fmt.Sprintf(" offset %s", model.Duration(node.Offset))
 	}
 	return fmt.Sprintf("%s[%s]%s", vecSelector.String(), model.Duration(node.Range), offset)
-}
-
-func (node *SubqueryExpr) String() string {
-	step := ""
-	if node.Step != 0 {
-		step = fmt.Sprintf("%s", model.Duration(node.Step))
-	}
-	return fmt.Sprintf("%s[%s:%s]", node.Expr.String(), model.Duration(node.Range), step)
 }
 
 func (node *NumberLiteral) String() string {

@@ -43,7 +43,7 @@ type Function struct {
 	// enh.out is a pre-allocated empty vector that you may use to accumulate
 	//    output before returning it. The vectors in vals should not be returned.a
 	// Range vector functions need only return a vector with the right value,
-	//     the metric and timestamp are not needed.
+	//     the metric and timestamp are not neded.
 	// Instant vector functions need only return a vector with the right values and
 	//     metrics, the timestamp are not needed.
 	// Scalar results should be returned as the value of a sample in a Vector.
@@ -371,12 +371,11 @@ func aggrOverTime(vals []Value, enh *EvalNodeHelper, aggrFn func([]Point) float6
 // === avg_over_time(Matrix ValueTypeMatrix) Vector ===
 func funcAvgOverTime(vals []Value, args Expressions, enh *EvalNodeHelper) Vector {
 	return aggrOverTime(vals, enh, func(values []Point) float64 {
-		var mean, count float64
+		var sum float64
 		for _, v := range values {
-			count++
-			mean += (v.V - mean) / count
+			sum += v.V
 		}
-		return mean
+		return sum / float64(len(values))
 	})
 }
 
@@ -391,11 +390,9 @@ func funcCountOverTime(vals []Value, args Expressions, enh *EvalNodeHelper) Vect
 // === max_over_time(Matrix ValueTypeMatrix) Vector ===
 func funcMaxOverTime(vals []Value, args Expressions, enh *EvalNodeHelper) Vector {
 	return aggrOverTime(vals, enh, func(values []Point) float64 {
-		max := values[0].V
+		max := math.Inf(-1)
 		for _, v := range values {
-			if v.V > max || math.IsNaN(max) {
-				max = v.V
-			}
+			max = math.Max(max, v.V)
 		}
 		return max
 	})
@@ -404,11 +401,9 @@ func funcMaxOverTime(vals []Value, args Expressions, enh *EvalNodeHelper) Vector
 // === min_over_time(Matrix ValueTypeMatrix) Vector ===
 func funcMinOverTime(vals []Value, args Expressions, enh *EvalNodeHelper) Vector {
 	return aggrOverTime(vals, enh, func(values []Point) float64 {
-		min := values[0].V
+		min := math.Inf(1)
 		for _, v := range values {
-			if v.V < min || math.IsNaN(min) {
-				min = v.V
-			}
+			min = math.Min(min, v.V)
 		}
 		return min
 	})
@@ -449,28 +444,28 @@ func funcQuantileOverTime(vals []Value, args Expressions, enh *EvalNodeHelper) V
 // === stddev_over_time(Matrix ValueTypeMatrix) Vector ===
 func funcStddevOverTime(vals []Value, args Expressions, enh *EvalNodeHelper) Vector {
 	return aggrOverTime(vals, enh, func(values []Point) float64 {
-		var aux, count, mean float64
+		var sum, squaredSum, count float64
 		for _, v := range values {
+			sum += v.V
+			squaredSum += v.V * v.V
 			count++
-			delta := v.V - mean
-			mean += delta / count
-			aux += delta * (v.V - mean)
 		}
-		return math.Sqrt(aux / count)
+		avg := sum / count
+		return math.Sqrt(squaredSum/count - avg*avg)
 	})
 }
 
 // === stdvar_over_time(Matrix ValueTypeMatrix) Vector ===
 func funcStdvarOverTime(vals []Value, args Expressions, enh *EvalNodeHelper) Vector {
 	return aggrOverTime(vals, enh, func(values []Point) float64 {
-		var aux, count, mean float64
+		var sum, squaredSum, count float64
 		for _, v := range values {
+			sum += v.V
+			squaredSum += v.V * v.V
 			count++
-			delta := v.V - mean
-			mean += delta / count
-			aux += delta * (v.V - mean)
 		}
-		return aux / count
+		avg := sum / count
+		return squaredSum/count - avg*avg
 	})
 }
 
@@ -738,6 +733,7 @@ func funcLabelReplace(vals []Value, args Expressions, enh *EvalNodeHelper) Vecto
 		enh.dmn = make(map[uint64]labels.Labels, len(enh.out))
 	}
 
+	outSet := make(map[uint64]struct{}, len(vector))
 	for _, el := range vector {
 		h := el.Metric.Hash()
 		var outMetric labels.Labels
@@ -762,10 +758,17 @@ func funcLabelReplace(vals []Value, args Expressions, enh *EvalNodeHelper) Vecto
 			}
 		}
 
-		enh.out = append(enh.out, Sample{
-			Metric: outMetric,
-			Point:  Point{V: el.Point.V},
-		})
+		outHash := outMetric.Hash()
+		if _, ok := outSet[outHash]; ok {
+			panic(fmt.Errorf("duplicated label set in output of label_replace(): %s", el.Metric))
+		} else {
+			enh.out = append(enh.out,
+				Sample{
+					Metric: outMetric,
+					Point:  Point{V: el.Point.V},
+				})
+			outSet[outHash] = struct{}{}
+		}
 	}
 	return enh.out
 }
@@ -804,6 +807,7 @@ func funcLabelJoin(vals []Value, args Expressions, enh *EvalNodeHelper) Vector {
 		panic(fmt.Errorf("invalid destination label name in label_join(): %s", dst))
 	}
 
+	outSet := make(map[uint64]struct{}, len(vector))
 	srcVals := make([]string, len(srcLabels))
 	for _, el := range vector {
 		h := el.Metric.Hash()
@@ -828,11 +832,17 @@ func funcLabelJoin(vals []Value, args Expressions, enh *EvalNodeHelper) Vector {
 			outMetric = lb.Labels()
 			enh.dmn[h] = outMetric
 		}
+		outHash := outMetric.Hash()
 
-		enh.out = append(enh.out, Sample{
-			Metric: outMetric,
-			Point:  Point{V: el.Point.V},
-		})
+		if _, exists := outSet[outHash]; exists {
+			panic(fmt.Errorf("duplicated label set in output of label_join(): %s", el.Metric))
+		} else {
+			enh.out = append(enh.out, Sample{
+				Metric: outMetric,
+				Point:  Point{V: el.Point.V},
+			})
+			outSet[outHash] = struct{}{}
+		}
 	}
 	return enh.out
 }

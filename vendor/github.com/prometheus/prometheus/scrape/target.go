@@ -53,12 +53,11 @@ type Target struct {
 	// Additional URL parmeters that are part of the target URL.
 	params url.Values
 
-	mtx                sync.RWMutex
-	lastError          error
-	lastScrape         time.Time
-	lastScrapeDuration time.Duration
-	health             TargetHealth
-	metadata           metricMetadataStore
+	mtx        sync.RWMutex
+	lastError  error
+	lastScrape time.Time
+	health     TargetHealth
+	metadata   metricMetadataStore
 }
 
 // NewTarget creates a reasonably configured target for querying.
@@ -85,7 +84,6 @@ type MetricMetadata struct {
 	Metric string
 	Type   textparse.MetricType
 	Help   string
-	Unit   string
 }
 
 func (t *Target) MetadataList() []MetricMetadata {
@@ -129,7 +127,7 @@ func (t *Target) offset(interval time.Duration) time.Duration {
 	now := time.Now().UnixNano()
 
 	var (
-		base   = int64(interval) - now%int64(interval)
+		base   = now % int64(interval)
 		offset = t.hash() % uint64(interval)
 		next   = base + int64(offset)
 	)
@@ -208,7 +206,6 @@ func (t *Target) report(start time.Time, dur time.Duration, err error) {
 
 	t.lastError = err
 	t.lastScrape = start
-	t.lastScrapeDuration = dur
 }
 
 // LastError returns the error encountered during the last scrape.
@@ -225,14 +222,6 @@ func (t *Target) LastScrape() time.Time {
 	defer t.mtx.RUnlock()
 
 	return t.lastScrape
-}
-
-// LastScrapeDuration returns how long the last scrape of the target took.
-func (t *Target) LastScrapeDuration() time.Duration {
-	t.mtx.RLock()
-	defer t.mtx.RUnlock()
-
-	return t.lastScrapeDuration
 }
 
 // Health returns the last known health state of the target.

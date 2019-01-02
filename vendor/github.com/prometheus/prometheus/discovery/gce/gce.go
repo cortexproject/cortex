@@ -25,6 +25,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	compute "google.golang.org/api/compute/v1"
 
@@ -139,7 +140,7 @@ func NewDiscovery(conf SDConfig, logger log.Logger) (*Discovery, error) {
 		logger:       logger,
 	}
 	var err error
-	gd.client, err = google.DefaultClient(context.Background(), compute.ComputeReadonlyScope)
+	gd.client, err = google.DefaultClient(oauth2.NoContext, compute.ComputeReadonlyScope)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up communication with GCE service: %s", err)
 	}
@@ -243,9 +244,11 @@ func (d *Discovery) refresh() (tg *targetgroup.Group, err error) {
 			}
 
 			// GCE labels are key-value pairs that group associated resources
-			for key, value := range inst.Labels {
-				name := strutil.SanitizeLabelName(key)
-				labels[gceLabelLabel+model.LabelName(name)] = model.LabelValue(value)
+			if inst.Labels != nil {
+				for key, value := range inst.Labels {
+					name := strutil.SanitizeLabelName(key)
+					labels[gceLabelLabel+model.LabelName(name)] = model.LabelValue(value)
+				}
 			}
 
 			if len(priIface.AccessConfigs) > 0 {

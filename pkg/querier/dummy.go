@@ -11,14 +11,10 @@ import (
 type DummyTargetRetriever struct{}
 
 // TargetsActive implements targetRetriever.
-func (DummyTargetRetriever) TargetsActive() map[string][]*scrape.Target {
-	return map[string][]*scrape.Target{}
-}
+func (DummyTargetRetriever) TargetsActive() []*scrape.Target { return nil }
 
 // TargetsDropped implements targetRetriever.
-func (DummyTargetRetriever) TargetsDropped() map[string][]*scrape.Target {
-	return map[string][]*scrape.Target{}
-}
+func (DummyTargetRetriever) TargetsDropped() []*scrape.Target { return nil }
 
 // DummyAlertmanagerRetriever implements AlertmanagerRetriever.
 type DummyAlertmanagerRetriever struct{}

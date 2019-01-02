@@ -52,13 +52,10 @@ type Queryable interface {
 // Querier provides reading access to time series data.
 type Querier interface {
 	// Select returns a set of series that matches the given label matchers.
-	Select(*SelectParams, ...*labels.Matcher) (SeriesSet, Warnings, error)
+	Select(*SelectParams, ...*labels.Matcher) (SeriesSet, error)
 
 	// LabelValues returns all potential values for a label name.
 	LabelValues(name string) ([]string, error)
-
-	// LabelNames returns all the unique label names present in the block in sorted order.
-	LabelNames() ([]string, error)
 
 	// Close releases the resources of the Querier.
 	Close() error
@@ -122,5 +119,3 @@ type SeriesIterator interface {
 	// Err returns the current error.
 	Err() error
 }
-
-type Warnings []error

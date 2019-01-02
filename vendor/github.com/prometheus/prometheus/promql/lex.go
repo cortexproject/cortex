@@ -137,14 +137,12 @@ const (
 	itemRightBracket
 	itemComma
 	itemAssign
-	itemColon
 	itemSemicolon
 	itemString
 	itemNumber
 	itemDuration
 	itemBlank
 	itemTimes
-	itemSpace
 
 	operatorsStart
 	// Operators.
@@ -184,6 +182,11 @@ const (
 
 	keywordsStart
 	// Keywords.
+	itemAlert
+	itemIf
+	itemFor
+	itemLabels
+	itemAnnotations
 	itemOffset
 	itemBy
 	itemWithout
@@ -215,6 +218,11 @@ var key = map[string]ItemType{
 	"quantile":     itemQuantile,
 
 	// Keywords.
+	"alert":       itemAlert,
+	"if":          itemIf,
+	"for":         itemFor,
+	"labels":      itemLabels,
+	"annotations": itemAnnotations,
 	"offset":      itemOffset,
 	"by":          itemBy,
 	"without":     itemWithout,
@@ -236,11 +244,9 @@ var itemTypeStr = map[ItemType]string{
 	itemRightBracket: "]",
 	itemComma:        ",",
 	itemAssign:       "=",
-	itemColon:        ":",
 	itemSemicolon:    ";",
 	itemBlank:        "_",
 	itemTimes:        "x",
-	itemSpace:        "<space>",
 
 	itemSUB:      "-",
 	itemADD:      "+",
@@ -328,7 +334,6 @@ type lexer struct {
 	parenDepth  int  // Nesting depth of ( ) exprs.
 	braceOpen   bool // Whether a { is opened.
 	bracketOpen bool // Whether a [ is opened.
-	gotColon    bool // Whether we got a ':' after [ was opened.
 	stringOpen  rune // Quote rune of the string currently being read.
 
 	// seriesDesc is set when a series description for the testing
@@ -437,13 +442,6 @@ func (l *lexer) run() {
 	close(l.items)
 }
 
-// Release resources used by lexer.
-func (l *lexer) close() {
-	for range l.items {
-		// Consume.
-	}
-}
-
 // lineComment is the character that starts a line comment.
 const lineComment = "#"
 
@@ -520,15 +518,8 @@ func lexStatements(l *lexer) stateFn {
 		l.stringOpen = r
 		return lexRawString
 	case isAlpha(r) || r == ':':
-		if !l.bracketOpen {
-			l.backup()
-			return lexKeywordOrIdentifier
-		}
-		if l.gotColon {
-			return l.errorf("unexpected colon %q", r)
-		}
-		l.emit(itemColon)
-		l.gotColon = true
+		l.backup()
+		return lexKeywordOrIdentifier
 	case r == '(':
 		l.emit(itemLeftParen)
 		l.parenDepth++
@@ -548,7 +539,6 @@ func lexStatements(l *lexer) stateFn {
 		if l.bracketOpen {
 			return l.errorf("unexpected left bracket %q", r)
 		}
-		l.gotColon = false
 		l.emit(itemLeftBracket)
 		l.bracketOpen = true
 		return lexDuration
@@ -626,7 +616,6 @@ func lexValueSequence(l *lexer) stateFn {
 	case r == eof:
 		return lexStatements
 	case isSpace(r):
-		l.emit(itemSpace)
 		lexSpace(l)
 	case r == '+':
 		l.emit(itemADD)

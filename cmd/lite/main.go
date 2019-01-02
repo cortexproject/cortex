@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/web/api/v1"
+	"github.com/prometheus/tsdb"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -147,11 +148,10 @@ func main() {
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
-		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
+		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.
 		util.Logger,
 		querier.DummyRulesRetriever{},
-		0, 0, // Remote read samples and concurrency limit.
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)

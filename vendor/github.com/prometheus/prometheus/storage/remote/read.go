@@ -16,30 +16,14 @@ package remote
 import (
 	"context"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 )
 
-var remoteReadQueries = prometheus.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Namespace: namespace,
-		Subsystem: subsystem,
-		Name:      "remote_read_queries",
-		Help:      "The number of in-flight remote read queries.",
-	},
-	[]string{"client"},
-)
-
-func init() {
-	prometheus.MustRegister(remoteReadQueries)
-}
-
 // QueryableClient returns a storage.Queryable which queries the given
 // Client to select series sets.
 func QueryableClient(c *Client) storage.Queryable {
-	remoteReadQueries.WithLabelValues(c.Name())
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		return &querier{
 			ctx:    ctx,
@@ -59,32 +43,22 @@ type querier struct {
 
 // Select implements storage.Querier and uses the given matchers to read series
 // sets from the Client.
-func (q *querier) Select(p *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q *querier) Select(p *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	query, err := ToQuery(q.mint, q.maxt, matchers, p)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-
-	remoteReadGauge := remoteReadQueries.WithLabelValues(q.client.Name())
-	remoteReadGauge.Inc()
-	defer remoteReadGauge.Dec()
 
 	res, err := q.client.Read(q.ctx, query)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return FromQueryResult(res), nil, nil
+	return FromQueryResult(res), nil
 }
 
 // LabelValues implements storage.Querier and is a noop.
 func (q *querier) LabelValues(name string) ([]string, error) {
-	// TODO implement?
-	return nil, nil
-}
-
-// LabelNames implements storage.Querier and is a noop.
-func (q *querier) LabelNames() ([]string, error) {
 	// TODO implement?
 	return nil, nil
 }
@@ -117,13 +91,13 @@ type externalLabelsQuerier struct {
 // Select adds equality matchers for all external labels to the list of matchers
 // before calling the wrapped storage.Queryable. The added external labels are
 // removed from the returned series sets.
-func (q externalLabelsQuerier) Select(p *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q externalLabelsQuerier) Select(p *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	m, added := q.addExternalLabels(matchers)
-	s, warnings, err := q.Querier.Select(p, m...)
+	s, err := q.Querier.Select(p, m...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, err
 	}
-	return newSeriesSetFilter(s, added), warnings, nil
+	return newSeriesSetFilter(s, added), nil
 }
 
 // PreferLocalStorageFilter returns a QueryableFunc which creates a NoopQuerier
@@ -170,7 +144,7 @@ type requiredMatchersQuerier struct {
 
 // Select returns a NoopSeriesSet if the given matchers don't match the label
 // set of the requiredMatchersQuerier. Otherwise it'll call the wrapped querier.
-func (q requiredMatchersQuerier) Select(p *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (q requiredMatchersQuerier) Select(p *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
 	ms := q.requiredMatchers
 	for _, m := range matchers {
 		for i, r := range ms {
@@ -184,7 +158,7 @@ func (q requiredMatchersQuerier) Select(p *storage.SelectParams, matchers ...*la
 		}
 	}
 	if len(ms) > 0 {
-		return storage.NoopSeriesSet(), nil, nil
+		return storage.NoopSeriesSet(), nil
 	}
 	return q.Querier.Select(p, matchers...)
 }
@@ -225,15 +199,6 @@ func newSeriesSetFilter(ss storage.SeriesSet, toFilter model.LabelSet) storage.S
 type seriesSetFilter struct {
 	storage.SeriesSet
 	toFilter model.LabelSet
-	querier  storage.Querier
-}
-
-func (ssf *seriesSetFilter) GetQuerier() storage.Querier {
-	return ssf.querier
-}
-
-func (ssf *seriesSetFilter) SetQuerier(querier storage.Querier) {
-	ssf.querier = querier
 }
 
 func (ssf seriesSetFilter) At() storage.Series {

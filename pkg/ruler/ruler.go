@@ -250,7 +250,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	amConfig := &config.AlertmanagerConfig{
 		Scheme:                 u.Scheme,
 		PathPrefix:             u.Path,
-		Timeout:                model.Duration(rulerConfig.NotificationTimeout),
+		Timeout:                rulerConfig.NotificationTimeout,
 		ServiceDiscoveryConfig: sdConfig,
 	}
 

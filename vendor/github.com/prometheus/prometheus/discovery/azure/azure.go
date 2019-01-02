@@ -26,11 +26,13 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/util/strutil"
 )
@@ -45,9 +47,6 @@ const (
 	azureLabelMachinePrivateIP     = azureLabel + "machine_private_ip"
 	azureLabelMachineTag           = azureLabel + "machine_tag_"
 	azureLabelMachineScaleSet      = azureLabel + "machine_scale_set"
-
-	authMethodOAuth           = "OAuth"
-	authMethodManagedIdentity = "ManagedIdentity"
 )
 
 var (
@@ -64,30 +63,19 @@ var (
 
 	// DefaultSDConfig is the default Azure SD configuration.
 	DefaultSDConfig = SDConfig{
-		Port:                 80,
-		RefreshInterval:      model.Duration(5 * time.Minute),
-		Environment:          azure.PublicCloud.Name,
-		AuthenticationMethod: authMethodOAuth,
+		Port:            80,
+		RefreshInterval: model.Duration(5 * time.Minute),
 	}
 )
 
 // SDConfig is the configuration for Azure based service discovery.
 type SDConfig struct {
-	Environment          string             `yaml:"environment,omitempty"`
-	Port                 int                `yaml:"port"`
-	SubscriptionID       string             `yaml:"subscription_id"`
-	TenantID             string             `yaml:"tenant_id,omitempty"`
-	ClientID             string             `yaml:"client_id,omitempty"`
-	ClientSecret         config_util.Secret `yaml:"client_secret,omitempty"`
-	RefreshInterval      model.Duration     `yaml:"refresh_interval,omitempty"`
-	AuthenticationMethod string             `yaml:"authentication_method,omitempty"`
-}
-
-func validateAuthParam(param, name string) error {
-	if len(param) == 0 {
-		return fmt.Errorf("Azure SD configuration requires a %s", name)
-	}
-	return nil
+	Port            int                `yaml:"port"`
+	SubscriptionID  string             `yaml:"subscription_id"`
+	TenantID        string             `yaml:"tenant_id,omitempty"`
+	ClientID        string             `yaml:"client_id,omitempty"`
+	ClientSecret    config_util.Secret `yaml:"client_secret,omitempty"`
+	RefreshInterval model.Duration     `yaml:"refresh_interval,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -98,27 +86,9 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err != nil {
 		return err
 	}
-
-	if err = validateAuthParam(c.SubscriptionID, "subscription_id"); err != nil {
-		return err
+	if c.SubscriptionID == "" {
+		return fmt.Errorf("Azure SD configuration requires a subscription_id")
 	}
-
-	if c.AuthenticationMethod == authMethodOAuth {
-		if err = validateAuthParam(c.TenantID, "tenant_id"); err != nil {
-			return err
-		}
-		if err = validateAuthParam(c.ClientID, "client_id"); err != nil {
-			return err
-		}
-		if err = validateAuthParam(string(c.ClientSecret), "client_secret"); err != nil {
-			return err
-		}
-	}
-
-	if c.AuthenticationMethod != authMethodOAuth && c.AuthenticationMethod != authMethodManagedIdentity {
-		return fmt.Errorf("Unknown authentication_type %q. Supported types are %q or %q", c.AuthenticationMethod, authMethodOAuth, authMethodManagedIdentity)
-	}
-
 	return nil
 }
 
@@ -189,54 +159,27 @@ type azureClient struct {
 
 // createAzureClient is a helper function for creating an Azure compute client to ARM.
 func createAzureClient(cfg SDConfig) (azureClient, error) {
-	env, err := azure.EnvironmentFromName(cfg.Environment)
+	var c azureClient
+	oauthConfig, err := adal.NewOAuthConfig(azure.PublicCloud.ActiveDirectoryEndpoint, cfg.TenantID)
+	if err != nil {
+		return azureClient{}, err
+	}
+	spt, err := adal.NewServicePrincipalToken(*oauthConfig, cfg.ClientID, string(cfg.ClientSecret), azure.PublicCloud.ResourceManagerEndpoint)
 	if err != nil {
 		return azureClient{}, err
 	}
 
-	activeDirectoryEndpoint := env.ActiveDirectoryEndpoint
-	resourceManagerEndpoint := env.ResourceManagerEndpoint
+	c.vm = compute.NewVirtualMachinesClient(cfg.SubscriptionID)
+	c.vm.Authorizer = autorest.NewBearerAuthorizer(spt)
 
-	var c azureClient
+	c.nic = network.NewInterfacesClient(cfg.SubscriptionID)
+	c.nic.Authorizer = autorest.NewBearerAuthorizer(spt)
 
-	var spt *adal.ServicePrincipalToken
+	c.vmss = compute.NewVirtualMachineScaleSetsClient(cfg.SubscriptionID)
+	c.vmss.Authorizer = autorest.NewBearerAuthorizer(spt)
 
-	switch cfg.AuthenticationMethod {
-	case authMethodManagedIdentity:
-		msiEndpoint, err := adal.GetMSIVMEndpoint()
-		if err != nil {
-			return azureClient{}, err
-		}
-
-		spt, err = adal.NewServicePrincipalTokenFromMSI(msiEndpoint, resourceManagerEndpoint)
-		if err != nil {
-			return azureClient{}, err
-		}
-	case authMethodOAuth:
-		oauthConfig, err := adal.NewOAuthConfig(activeDirectoryEndpoint, cfg.TenantID)
-		if err != nil {
-			return azureClient{}, err
-		}
-
-		spt, err = adal.NewServicePrincipalToken(*oauthConfig, cfg.ClientID, string(cfg.ClientSecret), resourceManagerEndpoint)
-		if err != nil {
-			return azureClient{}, err
-		}
-	}
-
-	bearerAuthorizer := autorest.NewBearerAuthorizer(spt)
-
-	c.vm = compute.NewVirtualMachinesClientWithBaseURI(resourceManagerEndpoint, cfg.SubscriptionID)
-	c.vm.Authorizer = bearerAuthorizer
-
-	c.nic = network.NewInterfacesClientWithBaseURI(resourceManagerEndpoint, cfg.SubscriptionID)
-	c.nic.Authorizer = bearerAuthorizer
-
-	c.vmss = compute.NewVirtualMachineScaleSetsClientWithBaseURI(resourceManagerEndpoint, cfg.SubscriptionID)
-	c.vmss.Authorizer = bearerAuthorizer
-
-	c.vmssvm = compute.NewVirtualMachineScaleSetVMsClientWithBaseURI(resourceManagerEndpoint, cfg.SubscriptionID)
-	c.vmssvm.Authorizer = bearerAuthorizer
+	c.vmssvm = compute.NewVirtualMachineScaleSetVMsClient(cfg.SubscriptionID)
+	c.vmssvm.Authorizer = autorest.NewBearerAuthorizer(spt)
 
 	return c, nil
 }
@@ -263,7 +206,7 @@ type virtualMachine struct {
 func newAzureResourceFromID(id string, logger log.Logger) (azureResource, error) {
 	// Resource IDs have the following format.
 	// /subscriptions/SUBSCRIPTION_ID/resourceGroups/RESOURCE_GROUP/providers/PROVIDER/TYPE/NAME
-	// or if embedded resource then
+	// or if embeded resource then
 	// /subscriptions/SUBSCRIPTION_ID/resourceGroups/RESOURCE_GROUP/providers/PROVIDER/TYPE/NAME/TYPE/NAME
 	s := strings.Split(id, "/")
 	if len(s) != 9 && len(s) != 11 {
@@ -360,10 +303,6 @@ func (d *Discovery) refresh() (tg *targetgroup.Group, err error) {
 					return
 				}
 
-				if networkInterface.Properties == nil {
-					continue
-				}
-
 				// Unfortunately Azure does not return information on whether a VM is deallocated.
 				// This information is available via another API call however the Go SDK does not
 				// yet support this. On deallocated machines, this value happens to be nil so it
@@ -408,7 +347,7 @@ func (d *Discovery) refresh() (tg *targetgroup.Group, err error) {
 }
 
 func (client *azureClient) getVMs() ([]virtualMachine, error) {
-	var vms []virtualMachine
+	vms := []virtualMachine{}
 	result, err := client.vm.ListAll()
 	if err != nil {
 		return vms, fmt.Errorf("could not list virtual machines: %s", err)
@@ -434,7 +373,7 @@ func (client *azureClient) getVMs() ([]virtualMachine, error) {
 }
 
 func (client *azureClient) getScaleSets() ([]compute.VirtualMachineScaleSet, error) {
-	var scaleSets []compute.VirtualMachineScaleSet
+	scaleSets := []compute.VirtualMachineScaleSet{}
 	result, err := client.vmss.ListAll()
 	if err != nil {
 		return scaleSets, fmt.Errorf("could not list virtual machine scale sets: %s", err)
@@ -453,7 +392,7 @@ func (client *azureClient) getScaleSets() ([]compute.VirtualMachineScaleSet, err
 }
 
 func (client *azureClient) getScaleSetVMs(scaleSet compute.VirtualMachineScaleSet) ([]virtualMachine, error) {
-	var vms []virtualMachine
+	vms := []virtualMachine{}
 	//TODO do we really need to fetch the resourcegroup this way?
 	r, err := newAzureResourceFromID(*scaleSet.ID, nil)
 

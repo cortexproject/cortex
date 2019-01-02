@@ -35,7 +35,7 @@ func TestDistributorQuerier(t *testing.T) {
 	querier, err := queryable.Querier(context.Background(), mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet, _, err := querier.Select(nil)
+	seriesSet, err := querier.Select(nil)
 	require.NoError(t, err)
 
 	require.True(t, seriesSet.Next())

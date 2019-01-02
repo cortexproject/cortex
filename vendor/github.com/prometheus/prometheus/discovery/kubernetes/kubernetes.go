@@ -40,18 +40,15 @@ import (
 const (
 	// kubernetesMetaLabelPrefix is the meta prefix used for all meta labels.
 	// in this discovery.
-	metaLabelPrefix  = model.MetaLabelPrefix + "kubernetes_"
-	namespaceLabel   = metaLabelPrefix + "namespace"
-	metricsNamespace = "prometheus_sd_kubernetes"
+	metaLabelPrefix = model.MetaLabelPrefix + "kubernetes_"
+	namespaceLabel  = metaLabelPrefix + "namespace"
 )
 
 var (
-	// Custom events metric
 	eventCount = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "events_total",
-			Help:      "The number of Kubernetes events handled.",
+			Name: "prometheus_sd_kubernetes_events_total",
+			Help: "The number of Kubernetes events handled.",
 		},
 		[]string{"role", "event"},
 	)
@@ -104,7 +101,7 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	if c.Role == "" {
-		return fmt.Errorf("role missing (one of: pod, service, endpoints, node, ingress)")
+		return fmt.Errorf("role missing (one of: pod, service, endpoints, node)")
 	}
 	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
 		return fmt.Errorf("at most one of bearer_token & bearer_token_file must be configured")
@@ -137,22 +134,11 @@ func init() {
 	prometheus.MustRegister(eventCount)
 
 	// Initialize metric vectors.
-	for _, role := range []string{"endpoints", "node", "pod", "service", "ingress"} {
+	for _, role := range []string{"endpoints", "node", "pod", "service"} {
 		for _, evt := range []string{"add", "delete", "update"} {
 			eventCount.WithLabelValues(role, evt)
 		}
 	}
-
-	var (
-		clientGoRequestMetricAdapterInstance     = clientGoRequestMetricAdapter{}
-		clientGoCacheMetricsProviderInstance     = clientGoCacheMetricsProvider{}
-		clientGoWorkqueueMetricsProviderInstance = clientGoWorkqueueMetricsProvider{}
-	)
-
-	clientGoRequestMetricAdapterInstance.Register(prometheus.DefaultRegisterer)
-	clientGoCacheMetricsProviderInstance.Register(prometheus.DefaultRegisterer)
-	clientGoWorkqueueMetricsProviderInstance.Register(prometheus.DefaultRegisterer)
-
 }
 
 // This is only for internal use.
@@ -238,7 +224,7 @@ func New(l log.Logger, conf *SDConfig) (*Discovery, error) {
 		}
 	}
 
-	kcfg.UserAgent = "Prometheus/discovery"
+	kcfg.UserAgent = "prometheus/discovery"
 
 	c, err := kubernetes.NewForConfig(kcfg)
 	if err != nil {
@@ -384,8 +370,6 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 	}
 
 	d.Unlock()
-
-	wg.Wait()
 	<-ctx.Done()
 }
 
@@ -397,6 +381,7 @@ func send(ctx context.Context, l log.Logger, role Role, ch chan<- []*targetgroup
 	if tg == nil {
 		return
 	}
+	level.Debug(l).Log("msg", "kubernetes discovery update", "role", string(role), "tg", fmt.Sprintf("%#v", tg))
 	select {
 	case <-ctx.Done():
 	case ch <- []*targetgroup.Group{tg}:

@@ -169,12 +169,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 
 func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
-	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util.Logger,
-		MaxConcurrent: 10,
-		MaxSamples:    1e6,
-		Timeout:       1 * time.Minute,
-	})
+	engine := promql.NewEngine(util.Logger, nil, 10, 1*time.Minute)
 	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
 	require.NoError(t, err)
 

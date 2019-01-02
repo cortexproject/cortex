@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
@@ -142,7 +141,7 @@ func TestDistributorPushQuery(t *testing.T) {
 						numIngesters:     numIngesters,
 						happyIngesters:   happyIngesters,
 						matchers:         []*labels.Matcher{nameMatcher, barMatcher},
-						expectedError:    promql.ErrStorage{Err: errFail},
+						expectedError:    errFail,
 						shardByAllLabels: shardByAllLabels,
 					})
 					continue
@@ -225,7 +224,7 @@ func TestSlowQueries(t *testing.T) {
 		for happy := 0; happy <= nIngesters; happy++ {
 			var expectedErr error
 			if nIngesters-happy > 1 {
-				expectedErr = promql.ErrStorage{Err: errFail}
+				expectedErr = errFail
 			}
 			d := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels)
 			defer d.Stop()

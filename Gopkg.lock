@@ -763,7 +763,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:96a380edd5767b4a198a8bc308e94968ea98fffd3e1ebf75630f433cdab08bf4"
+  digest = "1:802ca71c23e27f7fe0a6392c1f9240e398bfdcaa6c357408ad40a1fe8d3c403d"
   name = "github.com/prometheus/prometheus"
   packages = [
     "config",
@@ -782,7 +782,6 @@
     "discovery/triton",
     "discovery/zookeeper",
     "notifier",
-    "pkg/gate",
     "pkg/labels",
     "pkg/pool",
     "pkg/relabel",
@@ -807,9 +806,10 @@
     "web/api/v1",
   ]
   pruneopts = "UT"
-  revision = "6e08029b56ae17c49e133d92a2792f6f119f2cbd"
+  revision = "71855a22a456cfd25858ab3840fcdf8d590edd09"
 
 [[projects]]
+  branch = "master"
   digest = "1:929b39631d2559a956c1d63ea9017ad200392b2714220ad1f02017edc53b709c"
   name = "github.com/prometheus/tsdb"
   packages = [
@@ -823,7 +823,6 @@
   ]
   pruneopts = "UT"
   revision = "24520727a42bb4412dbc8ea0b6e5967d0d68fef5"
-  version = "v0.2.0"
 
 [[projects]]
   branch = "master"
@@ -1401,17 +1400,13 @@
     "github.com/prometheus/prometheus/notifier",
     "github.com/prometheus/prometheus/pkg/labels",
     "github.com/prometheus/prometheus/pkg/rulefmt",
-    "github.com/prometheus/prometheus/pkg/textparse",
-    "github.com/prometheus/prometheus/pkg/timestamp",
-    "github.com/prometheus/prometheus/pkg/value",
     "github.com/prometheus/prometheus/promql",
     "github.com/prometheus/prometheus/rules",
     "github.com/prometheus/prometheus/scrape",
     "github.com/prometheus/prometheus/storage",
-    "github.com/prometheus/prometheus/util/stats",
     "github.com/prometheus/prometheus/util/strutil",
-    "github.com/prometheus/prometheus/util/testutil",
     "github.com/prometheus/prometheus/web/api/v1",
+    "github.com/prometheus/tsdb",
     "github.com/prometheus/tsdb/chunkenc",
     "github.com/prometheus/tsdb/fileutil",
     "github.com/segmentio/fasthash/fnv1a",

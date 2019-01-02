@@ -88,7 +88,7 @@ type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
+func (m mockQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	return matrixToSeriesSet(m.matrix), nil, nil
 }
 

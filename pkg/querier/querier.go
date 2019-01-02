@@ -119,7 +119,7 @@ type querier struct {
 }
 
 // Select implements storage.Querier.
-func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
+func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata.
 	if sp == nil {
@@ -130,7 +130,7 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 	errs := make(chan error, len(q.queriers))
 	for _, querier := range q.queriers {
 		go func(querier storage.Querier) {
-			set, err, _ := querier.Select(sp, matchers...)
+			set, _, err := querier.Select(sp, matchers...)
 			if err != nil {
 				errs <- err
 			} else {
@@ -143,7 +143,7 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 	for range q.queriers {
 		select {
 		case err := <-errs:
-			return nil, err, nil
+			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
 		}
@@ -161,10 +161,10 @@ func (q querier) LabelNames() ([]string, error) {
 	return nil, nil
 }
 
-func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
+func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	ms, err := q.distributor.MetricsForLabelMatchers(q.ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 	if err != nil {
-		return nil, err, nil
+		return nil, nil, err
 	}
 	return metricsToSeriesSet(ms), nil, nil
 }

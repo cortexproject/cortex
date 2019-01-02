@@ -32,10 +32,10 @@ type chunkStoreQuerier struct {
 	mint, maxt        int64
 }
 
-func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
+func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	chunks, err := q.store.Get(q.ctx, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
-		return nil, promql.ErrStorage{Err: err}, nil
+		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
 	return q.partitionChunks(chunks), nil, nil

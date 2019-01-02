@@ -70,10 +70,10 @@ type ingesterStreamingQuerier struct {
 	distributorQuerier
 }
 
-func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
+func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	userID, err := user.ExtractOrgID(q.ctx)
 	if err != nil {
-		return nil, promql.ErrStorage{Err: err}, nil
+		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
 	mint, maxt := q.mint, q.maxt
@@ -84,14 +84,14 @@ func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...
 
 	results, err := q.distributor.QueryStream(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
-		return nil, promql.ErrStorage{Err: err}, nil
+		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
 	serieses := make([]storage.Series, 0, len(results))
 	for _, result := range results {
 		chunks, err := chunkcompat.FromChunks(userID, nil, result.Chunks)
 		if err != nil {
-			return nil, promql.ErrStorage{Err: err}, nil
+			return nil, nil, promql.ErrStorage{Err: err}
 		}
 
 		ls := client.FromLabelPairsToLabels(result.Labels)

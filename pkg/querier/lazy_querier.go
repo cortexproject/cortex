@@ -20,10 +20,10 @@ func newLazyQuerier(next storage.Querier) storage.Querier {
 	return lazyQuerier{next}
 }
 
-func (l lazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error, storage.Warnings) {
+func (l lazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	future := make(chan storage.SeriesSet)
 	go func() {
-		set, err, _ := l.next.Select(params, matchers...)
+		set, _, err := l.next.Select(params, matchers...)
 		if err != nil {
 			future <- errSeriesSet{err}
 		} else {

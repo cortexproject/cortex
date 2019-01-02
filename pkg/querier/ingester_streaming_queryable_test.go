@@ -32,7 +32,7 @@ func TestIngesterStreaming(t *testing.T) {
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet, err, _ := querier.Select(nil)
+	seriesSet, _, err := querier.Select(nil)
 	require.NoError(t, err)
 
 	require.True(t, seriesSet.Next())

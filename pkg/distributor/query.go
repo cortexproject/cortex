@@ -23,12 +23,12 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", queryDuration, func(ctx context.Context) error {
 		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
 		if err != nil {
-			return promql.ErrStorage(err)
+			return promql.ErrStorage{Err: err}
 		}
 
 		matrix, err = d.queryIngesters(ctx, replicationSet, req)
 		if err != nil {
-			return promql.ErrStorage(err)
+			return promql.ErrStorage{Err: err}
 		}
 		return nil
 	})
@@ -41,12 +41,12 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 	err := instrument.TimeRequestHistogram(ctx, "Distributor.QueryStream", queryDuration, func(ctx context.Context) error {
 		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
 		if err != nil {
-			return promql.ErrStorage(err)
+			return promql.ErrStorage{Err: err}
 		}
 
 		result, err = d.queryIngesterStream(ctx, replicationSet, req)
 		if err != nil {
-			return promql.ErrStorage(err)
+			return promql.ErrStorage{Err: err}
 		}
 		return nil
 	})

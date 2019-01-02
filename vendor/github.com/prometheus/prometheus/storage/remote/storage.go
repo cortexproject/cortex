@@ -25,7 +25,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
-// Callback func that return the oldest timestamp stored in a storage.
+// startTimeCallback is a callback func that return the oldest timestamp stored in a storage.
 type startTimeCallback func() (int64, error)
 
 // Storage represents all the remote read and write endpoints.  It implements
@@ -140,7 +140,7 @@ func (s *Storage) Querier(ctx context.Context, mint, maxt int64) (storage.Querie
 		}
 		queriers = append(queriers, q)
 	}
-	return storage.NewMergeQuerier(queriers), nil
+	return storage.NewMergeQuerier(nil, queriers), nil
 }
 
 // Close the background processing of the storage queues.

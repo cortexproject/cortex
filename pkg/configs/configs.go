@@ -247,7 +247,11 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 
 			switch r := stmt.(type) {
 			case *legacy_promql.AlertStmt:
-				// Re-parse the expression to get it into the right types.
+				// legacy_promql.ParseStmts has parsed the whole rule for us.
+				// Ideally we'd just use r.Expr and pass that to rules.NewAlertingRule,
+				// but it is of the type legacy_proql.Expr and not promql.Expr.
+				// So we convert it back to a string, and then parse it again with the
+				// upstream parser to get it into the right type.
 				expr, err := promql.ParseExpr(r.Expr.String())
 				if err != nil {
 					return nil, err
@@ -256,7 +260,6 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 				rule = rules.NewAlertingRule(r.Name, expr, r.Duration, r.Labels, r.Annotations, true, util.Logger)
 
 			case *legacy_promql.RecordStmt:
-				// Re-parse the expression to get it into the right types.
 				expr, err := promql.ParseExpr(r.Expr.String())
 				if err != nil {
 					return nil, err

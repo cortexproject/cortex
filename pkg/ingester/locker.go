@@ -4,6 +4,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 )
 
@@ -46,21 +47,10 @@ func newFingerprintLocker(preallocatedMutexes int) *fingerprintLocker {
 
 // Lock locks the given fingerprint.
 func (l *fingerprintLocker) Lock(fp model.Fingerprint) {
-	l.fpMtxs[hashFP(fp)%l.numFpMtxs].Lock()
+	l.fpMtxs[util.HashFP(fp)%l.numFpMtxs].Lock()
 }
 
 // Unlock unlocks the given fingerprint.
 func (l *fingerprintLocker) Unlock(fp model.Fingerprint) {
-	l.fpMtxs[hashFP(fp)%l.numFpMtxs].Unlock()
-}
-
-// hashFP simply moves entropy from the most significant 48 bits of the
-// fingerprint into the least significant 16 bits (by XORing) so that a simple
-// MOD on the result can be used to pick a mutex while still making use of
-// changes in more significant bits of the fingerprint. (The fast fingerprinting
-// function we use is prone to only change a few bits for similar metrics. We
-// really want to make use of every change in the fingerprint to vary mutex
-// selection.)
-func hashFP(fp model.Fingerprint) uint {
-	return uint(fp ^ (fp >> 32) ^ (fp >> 16))
+	l.fpMtxs[util.HashFP(fp)%l.numFpMtxs].Unlock()
 }

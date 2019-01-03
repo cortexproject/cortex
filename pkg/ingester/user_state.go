@@ -214,7 +214,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 }
 
 func (u *userState) canAddSeriesFor(metric string) bool {
-	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
+	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
@@ -237,7 +237,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 	}
 	metricName := string(metricNameB)
 
-	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
+	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 

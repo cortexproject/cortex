@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const indexShards = 32
@@ -32,7 +33,7 @@ func New() *InvertedIndex {
 
 // Add a fingerprint under the specified labels.
 func (ii *InvertedIndex) Add(labels []client.LabelPair, fp model.Fingerprint) {
-	shard := &ii.shards[hashFP(fp)%indexShards]
+	shard := &ii.shards[util.HashFP(fp)%indexShards]
 	shard.add(labels, fp)
 }
 
@@ -78,7 +79,7 @@ func (ii *InvertedIndex) LabelValues(name model.LabelName) model.LabelValues {
 
 // Delete a fingerprint with the given label pairs.
 func (ii *InvertedIndex) Delete(labels []client.LabelPair, fp model.Fingerprint) {
-	shard := &ii.shards[hashFP(fp)%indexShards]
+	shard := &ii.shards[util.HashFP(fp)%indexShards]
 	shard.delete(labels, fp)
 }
 
@@ -238,17 +239,6 @@ func intersect(a, b []model.Fingerprint) []model.Fingerprint {
 		}
 	}
 	return result
-}
-
-// hashFP simply moves entropy from the most significant 48 bits of the
-// fingerprint into the least significant 16 bits (by XORing) so that a simple
-// MOD on the result can be used to pick a mutex while still making use of
-// changes in more significant bits of the fingerprint. (The fast fingerprinting
-// function we use is prone to only change a few bits for similar metrics. We
-// really want to make use of every change in the fingerprint to vary mutex
-// selection.)
-func hashFP(fp model.Fingerprint) uint {
-	return uint(fp ^ (fp >> 32) ^ (fp >> 16))
 }
 
 type labelValues model.LabelValues

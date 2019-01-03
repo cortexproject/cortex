@@ -51,18 +51,6 @@ func (e *ParseErr) Error() string {
 	return fmt.Sprintf("parse error at line %d, char %d: %s", e.Line, e.Pos, e.Err)
 }
 
-// ParseStmts parses the input and returns the resulting statements or any occurring error.
-func ParseStmts(input string) (Statements, error) {
-	p := newParser(input)
-
-	stmts, err := p.parseStmts()
-	if err != nil {
-		return nil, err
-	}
-	err = p.typecheck(stmts)
-	return stmts, err
-}
-
 // ParseExpr returns the expression parsed from the input.
 func ParseExpr(input string) (Expr, error) {
 	p := newParser(input)
@@ -110,20 +98,6 @@ func newParser(input string) *parser {
 		lex: lex(input),
 	}
 	return p
-}
-
-// parseStmts parses a sequence of statements from the input.
-func (p *parser) parseStmts() (stmts Statements, err error) {
-	defer p.recover(&err)
-	stmts = Statements{}
-
-	for p.peek().typ != itemEOF {
-		if p.peek().typ == itemComment {
-			continue
-		}
-		stmts = append(stmts, p.stmt())
-	}
-	return
 }
 
 // parseExpr parses a single expression from the input.
@@ -175,6 +149,9 @@ func (p *parser) parseSeriesDesc() (m labels.Labels, vals []sequenceValue, err e
 
 	const ctx = "series values"
 	for {
+		for p.peek().typ == itemSpace {
+			p.next()
+		}
 		if p.peek().typ == itemEOF {
 			break
 		}
@@ -192,6 +169,11 @@ func (p *parser) parseSeriesDesc() (m labels.Labels, vals []sequenceValue, err e
 			}
 			for i := uint64(0); i < times; i++ {
 				vals = append(vals, sequenceValue{omitted: true})
+			}
+			// This is to ensure that there is a space between this and the next number.
+			// This is especially required if the next number is negative.
+			if t := p.expectOneOf(itemSpace, itemEOF, ctx).typ; t == itemEOF {
+				break
 			}
 			continue
 		}
@@ -217,7 +199,8 @@ func (p *parser) parseSeriesDesc() (m labels.Labels, vals []sequenceValue, err e
 		})
 
 		// If there are no offset repetitions specified, proceed with the next value.
-		if t := p.peek(); t.typ == itemNumber || t.typ == itemBlank || t.typ == itemIdentifier && t.val == "stale" {
+		if t := p.peek(); t.typ == itemSpace {
+			// This ensures there is a space between every value.
 			continue
 		} else if t.typ == itemEOF {
 			break
@@ -243,6 +226,12 @@ func (p *parser) parseSeriesDesc() (m labels.Labels, vals []sequenceValue, err e
 			vals = append(vals, sequenceValue{
 				value: k,
 			})
+		}
+		// This is to ensure that there is a space between this expanding notation
+		// and the next number. This is especially required if the next number
+		// is negative.
+		if t := p.expectOneOf(itemSpace, itemEOF, ctx).typ; t == itemEOF {
+			break
 		}
 	}
 	return m, vals, nil
@@ -348,93 +337,7 @@ func (p *parser) recover(errp *error) {
 			*errp = e.(error)
 		}
 	}
-}
-
-// stmt parses any statement.
-//
-// 		alertStatement | recordStatement
-//
-func (p *parser) stmt() Statement {
-	switch tok := p.peek(); tok.typ {
-	case itemAlert:
-		return p.alertStmt()
-	case itemIdentifier, itemMetricIdentifier:
-		return p.recordStmt()
-	}
-	p.errorf("no valid statement detected")
-	return nil
-}
-
-// alertStmt parses an alert rule.
-//
-//		ALERT name IF expr [FOR duration]
-//			[LABELS label_set]
-//			[ANNOTATIONS label_set]
-//
-func (p *parser) alertStmt() *AlertStmt {
-	const ctx = "alert statement"
-
-	p.expect(itemAlert, ctx)
-	name := p.expect(itemIdentifier, ctx)
-	// Alerts require a Vector typed expression.
-	p.expect(itemIf, ctx)
-	expr := p.expr()
-
-	// Optional for clause.
-	var (
-		duration time.Duration
-		err      error
-	)
-	if p.peek().typ == itemFor {
-		p.next()
-		dur := p.expect(itemDuration, ctx)
-		duration, err = parseDuration(dur.val)
-		if err != nil {
-			p.error(err)
-		}
-	}
-
-	var (
-		lset        labels.Labels
-		annotations labels.Labels
-	)
-	if p.peek().typ == itemLabels {
-		p.expect(itemLabels, ctx)
-		lset = p.labelSet()
-	}
-	if p.peek().typ == itemAnnotations {
-		p.expect(itemAnnotations, ctx)
-		annotations = p.labelSet()
-	}
-
-	return &AlertStmt{
-		Name:        name.val,
-		Expr:        expr,
-		Duration:    duration,
-		Labels:      lset,
-		Annotations: annotations,
-	}
-}
-
-// recordStmt parses a recording rule.
-func (p *parser) recordStmt() *RecordStmt {
-	const ctx = "record statement"
-
-	name := p.expectOneOf(itemIdentifier, itemMetricIdentifier, ctx).val
-
-	var lset labels.Labels
-	if p.peek().typ == itemLeftBrace {
-		lset = p.labelSet()
-	}
-
-	p.expect(itemAssign, ctx)
-	expr := p.expr()
-
-	return &RecordStmt{
-		Name:   name,
-		Labels: lset,
-		Expr:   expr,
-	}
+	p.lex.close()
 }
 
 // expr parses any expression.
@@ -448,6 +351,17 @@ func (p *parser) expr() Expr {
 		// If the next token is not an operator the expression is done.
 		op := p.peek().typ
 		if !op.isOperator() {
+			// Check for subquery.
+			if op == itemLeftBracket {
+				expr = p.subqueryOrRangeSelector(expr, false)
+				if s, ok := expr.(*SubqueryExpr); ok {
+					// Parse optional offset.
+					if p.peek().typ == itemOffset {
+						offset := p.offset()
+						s.Offset = offset
+					}
+				}
+			}
 			return expr
 		}
 		p.next() // Consume operator.
@@ -568,11 +482,7 @@ func (p *parser) unaryExpr() Expr {
 
 	// Expression might be followed by a range selector.
 	if p.peek().typ == itemLeftBracket {
-		vs, ok := e.(*VectorSelector)
-		if !ok {
-			p.errorf("range specification must be preceded by a metric selector, but follows a %T instead", e)
-		}
-		e = p.rangeSelector(vs)
+		e = p.subqueryOrRangeSelector(e, true)
 	}
 
 	// Parse optional offset.
@@ -584,6 +494,8 @@ func (p *parser) unaryExpr() Expr {
 			s.Offset = offset
 		case *MatrixSelector:
 			s.Offset = offset
+		case *SubqueryExpr:
+			s.Offset = offset
 		default:
 			p.errorf("offset modifier must be preceded by an instant or range selector, but follows a %T instead", e)
 		}
@@ -592,13 +504,17 @@ func (p *parser) unaryExpr() Expr {
 	return e
 }
 
-// rangeSelector parses a Matrix (a.k.a. range) selector based on a given
-// Vector selector.
+// subqueryOrRangeSelector parses a Subquery based on given Expr (or)
+// a Matrix (a.k.a. range) selector based on a given Vector selector.
 //
-//		<Vector_selector> '[' <duration> ']'
+//		<Vector_selector> '[' <duration> ']' | <Vector_selector> '[' <duration> ':' [<duration>] ']'
 //
-func (p *parser) rangeSelector(vs *VectorSelector) *MatrixSelector {
-	const ctx = "range selector"
+func (p *parser) subqueryOrRangeSelector(expr Expr, checkRange bool) Expr {
+	ctx := "subquery selector"
+	if checkRange {
+		ctx = "range/subquery selector"
+	}
+
 	p.next()
 
 	var erange time.Duration
@@ -610,14 +526,43 @@ func (p *parser) rangeSelector(vs *VectorSelector) *MatrixSelector {
 		p.error(err)
 	}
 
-	p.expect(itemRightBracket, ctx)
-
-	e := &MatrixSelector{
-		Name:          vs.Name,
-		LabelMatchers: vs.LabelMatchers,
-		Range:         erange,
+	var itm item
+	if checkRange {
+		itm = p.expectOneOf(itemRightBracket, itemColon, ctx)
+		if itm.typ == itemRightBracket {
+			// Range selector.
+			vs, ok := expr.(*VectorSelector)
+			if !ok {
+				p.errorf("range specification must be preceded by a metric selector, but follows a %T instead", expr)
+			}
+			return &MatrixSelector{
+				Name:          vs.Name,
+				LabelMatchers: vs.LabelMatchers,
+				Range:         erange,
+			}
+		}
+	} else {
+		itm = p.expect(itemColon, ctx)
 	}
-	return e
+
+	// Subquery.
+	var estep time.Duration
+
+	itm = p.expectOneOf(itemRightBracket, itemDuration, ctx)
+	if itm.typ == itemDuration {
+		estepStr := itm.val
+		estep, err = parseDuration(estepStr)
+		if err != nil {
+			p.error(err)
+		}
+		p.expect(itemRightBracket, ctx)
+	}
+
+	return &SubqueryExpr{
+		Expr:  expr,
+		Range: erange,
+		Step:  estep,
+	}
 }
 
 // number parses a number.
@@ -994,9 +939,9 @@ func (p *parser) expectType(node Node, want ValueType, context string) {
 // them, but the costs are small and might reveal errors when making changes.
 func (p *parser) checkType(node Node) (typ ValueType) {
 	// For expressions the type is determined by their Type function.
-	// Statements and lists do not have a type but are not invalid either.
+	// Lists do not have a type but are not invalid either.
 	switch n := node.(type) {
-	case Statements, Expressions, Statement:
+	case Expressions:
 		typ = ValueTypeNone
 	case Expr:
 		typ = n.Type()
@@ -1007,23 +952,10 @@ func (p *parser) checkType(node Node) (typ ValueType) {
 	// Recursively check correct typing for child nodes and raise
 	// errors in case of bad typing.
 	switch n := node.(type) {
-	case Statements:
-		for _, s := range n {
-			p.expectType(s, ValueTypeNone, "statement list")
-		}
-	case *AlertStmt:
-		p.expectType(n.Expr, ValueTypeVector, "alert statement")
-
 	case *EvalStmt:
 		ty := p.checkType(n.Expr)
 		if ty == ValueTypeNone {
 			p.errorf("evaluation statement must have a valid expression type but got %s", documentedType(ty))
-		}
-
-	case *RecordStmt:
-		ty := p.checkType(n.Expr)
-		if ty != ValueTypeVector && ty != ValueTypeScalar {
-			p.errorf("record statement must have a valid expression of type instant vector or scalar but got %s", documentedType(ty))
 		}
 
 	case Expressions:
@@ -1108,6 +1040,12 @@ func (p *parser) checkType(node Node) (typ ValueType) {
 		}
 		if t := p.checkType(n.Expr); t != ValueTypeScalar && t != ValueTypeVector {
 			p.errorf("unary expression only allowed on expressions of type scalar or instant vector, got %q", documentedType(t))
+		}
+
+	case *SubqueryExpr:
+		ty := p.checkType(n.Expr)
+		if ty != ValueTypeVector {
+			p.errorf("subquery is only allowed on instant vector, got %s in %q instead", ty, n.String())
 		}
 
 	case *NumberLiteral, *MatrixSelector, *StringLiteral, *VectorSelector:

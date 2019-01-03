@@ -91,7 +91,7 @@ func (q queryRangeRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 		return nil, err
 	}
 
-	return response.toHTTPResponse()
+	return response.toHTTPResponse(r.Context())
 }
 
 type queryRangeTerminator struct {
@@ -117,5 +117,5 @@ func (q queryRangeTerminator) Do(ctx context.Context, r *QueryRangeRequest) (*AP
 	}
 	defer response.Body.Close()
 
-	return parseQueryRangeResponse(response)
+	return parseQueryRangeResponse(ctx, response)
 }

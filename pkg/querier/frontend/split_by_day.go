@@ -7,11 +7,11 @@ import (
 
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
 
-var splitByDayMiddleware queryRangeMiddlewareFunc = func(next queryRangeHandler) queryRangeHandler {
-	return splitByDay{
+var splitByDayMiddleware = queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
+	return instrument("split_by_day").Wrap(splitByDay{
 		next: next,
-	}
-}
+	})
+})
 
 type splitByDay struct {
 	next queryRangeHandler

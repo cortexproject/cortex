@@ -3,6 +3,7 @@ package index
 import (
 	"sort"
 	"sync"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -84,9 +85,13 @@ func (ii *InvertedIndex) Delete(labels []client.LabelPair, fp model.Fingerprint)
 // NB slice entries are sorted in fp order.
 type unlockIndex map[model.LabelName]map[model.LabelValue][]model.Fingerprint
 
+// This is the prevalent value for Intel and AMD CPUs as-at 2018.
+const cacheLineSize = 64
+
 type indexShard struct {
 	mtx sync.RWMutex
 	idx unlockIndex
+	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(unlockIndex{})]byte
 }
 
 func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) {

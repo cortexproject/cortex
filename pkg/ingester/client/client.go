@@ -51,6 +51,7 @@ func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error
 			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
 		)),
 		cfg.GRPCClientConfig.DialOption(),
+		grpc.WithBalancer(grpc.RoundRobin(grpcclient.NewPoolResolver(10))),
 	}
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {

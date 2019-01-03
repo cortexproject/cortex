@@ -263,10 +263,17 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 	}
 
 	level.Debug(log).Log("series", len(fps))
+	done := ctx.Done()
 
 	// fps is sorted, lock them in order to prevent deadlocks
 outer:
 	for _, fp := range fps {
+		select {
+		case <-done:
+			return ctx.Err()
+		default:
+		}
+
 		u.fpLocker.Lock(fp)
 		series, ok := u.fpToSeries.get(fp)
 		if !ok {

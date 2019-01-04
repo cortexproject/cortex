@@ -101,7 +101,7 @@ func main() {
 	defer ingester.Shutdown()
 
 	// Assume the newest config is the one to use
-	storeName := schemaConfig.Configs[len(schemaConfig.Configs)-1].Store
+	storeName := schemaConfig.Configs[len(schemaConfig.Configs)-1].IndexType
 	tableClient, err := storage.NewTableClient(storeName, storageConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)

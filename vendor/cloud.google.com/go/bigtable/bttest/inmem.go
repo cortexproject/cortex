@@ -1,5 +1,5 @@
 /*
-Copyright 2015 Google Inc. All Rights Reserved.
+Copyright 2015 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ To use a Server, create it, and then connect to it with no security:
 package bttest // import "cloud.google.com/go/bigtable/bttest"
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"log"
@@ -41,18 +42,25 @@ import (
 	"sync"
 	"time"
 
-	"bytes"
-
 	emptypb "github.com/golang/protobuf/ptypes/empty"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/google/btree"
 	"golang.org/x/net/context"
 	btapb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
 	btpb "google.golang.org/genproto/googleapis/bigtable/v2"
+	"google.golang.org/genproto/googleapis/longrunning"
 	statpb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+const (
+	// MilliSeconds field of the minimum valid Timestamp.
+	minValidMilliSeconds = 0
+
+	// MilliSeconds field of the max valid Timestamp.
+	maxValidMilliSeconds = int64(time.Millisecond) * 253402300800
 )
 
 // Server is an in-memory Cloud Bigtable fake.
@@ -121,12 +129,16 @@ func (s *server) CreateTable(ctx context.Context, req *btapb.CreateTableRequest)
 	s.mu.Lock()
 	if _, ok := s.tables[tbl]; ok {
 		s.mu.Unlock()
-		return nil, grpc.Errorf(codes.AlreadyExists, "table %q already exists", tbl)
+		return nil, status.Errorf(codes.AlreadyExists, "table %q already exists", tbl)
 	}
 	s.tables[tbl] = newTable(req)
 	s.mu.Unlock()
 
 	return &btapb.Table{Name: tbl}, nil
+}
+
+func (s *server) CreateTableFromSnapshot(context.Context, *btapb.CreateTableFromSnapshotRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support snapshots")
 }
 
 func (s *server) ListTables(ctx context.Context, req *btapb.ListTablesRequest) (*btapb.ListTablesResponse, error) {
@@ -151,7 +163,7 @@ func (s *server) GetTable(ctx context.Context, req *btapb.GetTableRequest) (*bta
 	tblIns, ok := s.tables[tbl]
 	s.mu.Unlock()
 	if !ok {
-		return nil, grpc.Errorf(codes.NotFound, "table %q not found", tbl)
+		return nil, status.Errorf(codes.NotFound, "table %q not found", tbl)
 	}
 
 	return &btapb.Table{
@@ -171,13 +183,11 @@ func (s *server) DeleteTable(ctx context.Context, req *btapb.DeleteTableRequest)
 }
 
 func (s *server) ModifyColumnFamilies(ctx context.Context, req *btapb.ModifyColumnFamiliesRequest) (*btapb.Table, error) {
-	tblName := req.Name[strings.LastIndex(req.Name, "/")+1:]
-
 	s.mu.Lock()
 	tbl, ok := s.tables[req.Name]
 	s.mu.Unlock()
 	if !ok {
-		return nil, grpc.Errorf(codes.NotFound, "table %q not found", req.Name)
+		return nil, status.Errorf(codes.NotFound, "table %q not found", req.Name)
 	}
 
 	tbl.mu.Lock()
@@ -186,7 +196,7 @@ func (s *server) ModifyColumnFamilies(ctx context.Context, req *btapb.ModifyColu
 	for _, mod := range req.Modifications {
 		if create := mod.GetCreate(); create != nil {
 			if _, ok := tbl.families[mod.Id]; ok {
-				return nil, grpc.Errorf(codes.AlreadyExists, "family %q already exists", mod.Id)
+				return nil, status.Errorf(codes.AlreadyExists, "family %q already exists", mod.Id)
 			}
 			newcf := &columnFamily{
 				name:   req.Name + "/columnFamilies/" + mod.Id,
@@ -216,8 +226,9 @@ func (s *server) ModifyColumnFamilies(ctx context.Context, req *btapb.ModifyColu
 
 	s.needGC()
 	return &btapb.Table{
-		Name:           tblName,
+		Name:           req.Name,
 		ColumnFamilies: toColumnFamilies(tbl.families),
+		Granularity:    btapb.Table_TimestampGranularity(btapb.Table_MILLIS),
 	}, nil
 }
 
@@ -259,10 +270,6 @@ func (s *server) DropRowRange(ctx context.Context, req *btapb.DropRowRangeReques
 	return &emptypb.Empty{}, nil
 }
 
-// This is a private alpha release of Cloud Bigtable replication. This feature
-// is not currently available to most Cloud Bigtable customers. This feature
-// might be changed in backward-incompatible ways and is not recommended for
-// production use. It is not subject to any SLA or deprecation policy.
 func (s *server) GenerateConsistencyToken(ctx context.Context, req *btapb.GenerateConsistencyTokenRequest) (*btapb.GenerateConsistencyTokenResponse, error) {
 	// Check that the table exists.
 	_, ok := s.tables[req.Name]
@@ -275,10 +282,6 @@ func (s *server) GenerateConsistencyToken(ctx context.Context, req *btapb.Genera
 	}, nil
 }
 
-// This is a private alpha release of Cloud Bigtable replication. This feature
-// is not currently available to most Cloud Bigtable customers. This feature
-// might be changed in backward-incompatible ways and is not recommended for
-// production use. It is not subject to any SLA or deprecation policy.
 func (s *server) CheckConsistency(ctx context.Context, req *btapb.CheckConsistencyRequest) (*btapb.CheckConsistencyResponse, error) {
 	// Check that the table exists.
 	_, ok := s.tables[req.Name]
@@ -295,6 +298,20 @@ func (s *server) CheckConsistency(ctx context.Context, req *btapb.CheckConsisten
 	return &btapb.CheckConsistencyResponse{
 		Consistent: true,
 	}, nil
+}
+
+func (s *server) SnapshotTable(context.Context, *btapb.SnapshotTableRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support snapshots")
+}
+
+func (s *server) GetSnapshot(context.Context, *btapb.GetSnapshotRequest) (*btapb.Snapshot, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support snapshots")
+}
+func (s *server) ListSnapshots(context.Context, *btapb.ListSnapshotsRequest) (*btapb.ListSnapshotsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support snapshots")
+}
+func (s *server) DeleteSnapshot(context.Context, *btapb.DeleteSnapshotRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support snapshots")
 }
 
 func (s *server) ReadRows(req *btpb.ReadRowsRequest, stream btpb.Bigtable_ReadRowsServer) error {
@@ -316,7 +333,8 @@ func (s *server) ReadRows(req *btpb.ReadRowsRequest, stream btpb.Bigtable_ReadRo
 		return true
 	}
 
-	if req.Rows != nil {
+	if req.Rows != nil &&
+		len(req.Rows.RowKeys)+len(req.Rows.RowRanges) > 0 {
 		// Add the explicitly given keys
 		for _, key := range req.Rows.RowKeys {
 			k := string(key)
@@ -415,7 +433,7 @@ func streamRow(stream btpb.Bigtable_ReadRowsServer, r *row, f *btpb.RowFilter) (
 	// We can't have a cell with just COMMIT set, which would imply a new empty cell.
 	// So modify the last cell to have the COMMIT flag set.
 	if len(rrr.Chunks) > 0 {
-		rrr.Chunks[len(rrr.Chunks)-1].RowStatus = &btpb.ReadRowsResponse_CellChunk_CommitRow{true}
+		rrr.Chunks[len(rrr.Chunks)-1].RowStatus = &btpb.ReadRowsResponse_CellChunk_CommitRow{CommitRow: true}
 	}
 
 	return true, stream.Send(rrr)
@@ -429,6 +447,10 @@ func filterRow(f *btpb.RowFilter, r *row) bool {
 	}
 	// Handle filters that apply beyond just including/excluding cells.
 	switch f := f.Filter.(type) {
+	case *btpb.RowFilter_BlockAllFilter:
+		return !f.BlockAllFilter
+	case *btpb.RowFilter_PassAllFilter:
+		return f.PassAllFilter
 	case *btpb.RowFilter_Chain_:
 		for _, sub := range f.Chain.Filters {
 			if !filterRow(sub, r) {
@@ -484,10 +506,9 @@ func filterRow(f *btpb.RowFilter, r *row) bool {
 		}
 		return filterRow(f.Condition.FalseFilter, r)
 	case *btpb.RowFilter_RowKeyRegexFilter:
-		pat := string(f.RowKeyRegexFilter)
-		rx, err := regexp.Compile(pat)
+		rx, err := newRegexp(f.RowKeyRegexFilter)
 		if err != nil {
-			log.Printf("Bad rowkey_regex_filter pattern %q: %v", pat, err)
+			log.Printf("Bad rowkey_regex_filter pattern %q: %v", string(f.RowKeyRegexFilter), err)
 			return false
 		}
 		if !rx.MatchString(r.key) {
@@ -581,26 +602,23 @@ func includeCell(f *btpb.RowFilter, fam, col string, cell cell) bool {
 		log.Printf("WARNING: don't know how to handle filter of type %T (ignoring it)", f)
 		return true
 	case *btpb.RowFilter_FamilyNameRegexFilter:
-		pat := string(f.FamilyNameRegexFilter)
-		rx, err := regexp.Compile(pat)
+		rx, err := newRegexp([]byte(f.FamilyNameRegexFilter))
 		if err != nil {
-			log.Printf("Bad family_name_regex_filter pattern %q: %v", pat, err)
+			log.Printf("Bad family_name_regex_filter pattern %q: %v", f.FamilyNameRegexFilter, err)
 			return false
 		}
 		return rx.MatchString(fam)
 	case *btpb.RowFilter_ColumnQualifierRegexFilter:
-		pat := string(f.ColumnQualifierRegexFilter)
-		rx, err := regexp.Compile(pat)
+		rx, err := newRegexp(f.ColumnQualifierRegexFilter)
 		if err != nil {
-			log.Printf("Bad column_qualifier_regex_filter pattern %q: %v", pat, err)
+			log.Printf("Bad column_qualifier_regex_filter pattern %q: %v", string(f.ColumnQualifierRegexFilter), err)
 			return false
 		}
-		return rx.MatchString(col)
+		return rx.MatchString(toUTF8([]byte(col)))
 	case *btpb.RowFilter_ValueRegexFilter:
-		pat := string(f.ValueRegexFilter)
-		rx, err := regexp.Compile(pat)
+		rx, err := newRegexp(f.ValueRegexFilter)
 		if err != nil {
-			log.Printf("Bad value_regex_filter pattern %q: %v", pat, err)
+			log.Printf("Bad value_regex_filter pattern %q: %v", string(f.ValueRegexFilter), err)
 			return false
 		}
 		return rx.Match(cell.value)
@@ -651,6 +669,23 @@ func includeCell(f *btpb.RowFilter, fam, col string, cell cell) bool {
 	}
 }
 
+func toUTF8(bs []byte) string {
+	var rs []rune
+	for _, b := range bs {
+		rs = append(rs, rune(b))
+	}
+	return string(rs)
+}
+
+func newRegexp(patBytes []byte) (*regexp.Regexp, error) {
+	pat := toUTF8(patBytes)
+	re, err := regexp.Compile("^" + pat + "$") // match entire target
+	if err != nil {
+		log.Printf("Bad pattern %q: %v", pat, err)
+	}
+	return re, err
+}
+
 func (s *server) MutateRow(ctx context.Context, req *btpb.MutateRowRequest) (*btpb.MutateRowResponse, error) {
 	s.mu.Lock()
 	tbl, ok := s.tables[req.TableName]
@@ -693,8 +728,7 @@ func (s *server) MutateRows(req *btpb.MutateRowsRequest, stream btpb.Bigtable_Mu
 		}
 		r.mu.Unlock()
 	}
-	stream.Send(res)
-	return nil
+	return stream.Send(res)
 }
 
 func (s *server) CheckAndMutateRow(ctx context.Context, req *btpb.CheckAndMutateRowRequest) (*btpb.CheckAndMutateRowResponse, error) {
@@ -776,9 +810,13 @@ func applyMutations(tbl *table, r *row, muts []*btpb.Mutation, fs map[string]*co
 					if !tbl.validTimestamp(tsr.StartTimestampMicros) {
 						return fmt.Errorf("invalid timestamp %d", tsr.StartTimestampMicros)
 					}
-					if !tbl.validTimestamp(tsr.EndTimestampMicros) {
+					if !tbl.validTimestamp(tsr.EndTimestampMicros) && tsr.EndTimestampMicros != 0 {
 						return fmt.Errorf("invalid timestamp %d", tsr.EndTimestampMicros)
 					}
+					if tsr.StartTimestampMicros >= tsr.EndTimestampMicros && tsr.EndTimestampMicros != 0 {
+						return fmt.Errorf("inverted or invalid timestamp range [%d, %d]", tsr.StartTimestampMicros, tsr.EndTimestampMicros)
+					}
+
 					// Find half-open interval to remove.
 					// Cells are in descending timestamp order,
 					// so the predicates to sort.Search are inverted.
@@ -856,12 +894,13 @@ func (s *server) ReadModifyWriteRow(ctx context.Context, req *btpb.ReadModifyWri
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "table %q not found", req.TableName)
 	}
-	updates := make(map[string]cell) // copy of updated cells; keyed by full column name
 
 	fs := tbl.columnFamilies()
 
 	rowKey := string(req.RowKey)
 	r := tbl.mutableRow(rowKey)
+	resultRow := newRow(rowKey) // copy of updated cells
+
 	// This must be done before the row lock, acquired below, is released.
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -909,35 +948,37 @@ func (s *server) ReadModifyWriteRow(ctx context.Context, req *btpb.ReadModifyWri
 			binary.BigEndian.PutUint64(val[:], uint64(v))
 			newCell = cell{ts: ts, value: val[:]}
 		}
-		key := strings.Join([]string{fam, col}, ":")
-		updates[key] = newCell
+
+		// Store the new cell
 		f.cells[col] = appendOrReplaceCell(f.cellsByColumn(col), newCell)
+
+		// Store a copy for the result row
+		resultFamily := resultRow.getOrCreateFamily(fam, fs[fam].order)
+		resultFamily.cellsByColumn(col)           // create the column
+		resultFamily.cells[col] = []cell{newCell} // overwrite the cells
 	}
 
+	// Build the response using the result row
 	res := &btpb.Row{
-		Key: req.RowKey,
+		Key:      req.RowKey,
+		Families: make([]*btpb.Family, len(resultRow.families)),
 	}
-	for col, cell := range updates {
-		i := strings.Index(col, ":")
-		fam, qual := col[:i], col[i+1:]
-		var f *btpb.Family
-		for _, ff := range res.Families {
-			if ff.Name == fam {
-				f = ff
-				break
+
+	for i, family := range resultRow.sortedFamilies() {
+		res.Families[i] = &btpb.Family{
+			Name:    family.name,
+			Columns: make([]*btpb.Column, len(family.colNames)),
+		}
+
+		for j, colName := range family.colNames {
+			res.Families[i].Columns[j] = &btpb.Column{
+				Qualifier: []byte(colName),
+				Cells: []*btpb.Cell{{
+					TimestampMicros: family.cells[colName][0].ts,
+					Value:           family.cells[colName][0].value,
+				}},
 			}
 		}
-		if f == nil {
-			f = &btpb.Family{Name: fam}
-			res.Families = append(res.Families, f)
-		}
-		f.Columns = append(f.Columns, &btpb.Column{
-			Qualifier: []byte(qual),
-			Cells: []*btpb.Cell{{
-				TimestampMicros: cell.ts,
-				Value:           cell.value,
-			}},
-		})
 	}
 	return &btpb.ReadModifyWriteRowResponse{Row: res}, nil
 }
@@ -1045,6 +1086,10 @@ func newTable(ctr *btapb.CreateTableRequest) *table {
 }
 
 func (t *table) validTimestamp(ts int64) bool {
+	if ts < minValidMilliSeconds || ts > maxValidMilliSeconds {
+		return false
+	}
+
 	// Assume millisecond granularity is required.
 	return ts%1000 == 0
 }
@@ -1259,8 +1304,8 @@ func applyGC(cells []cell, rule *btapb.GcRule) []cell {
 type family struct {
 	name     string            // Column family name
 	order    uint64            // Creation order of column family
-	colNames []string          // Collumn names are sorted in lexicographical ascending order
-	cells    map[string][]cell // Keyed by collumn name; cells are in descending timestamp order
+	colNames []string          // Column names are sorted in lexicographical ascending order
+	cells    map[string][]cell // Keyed by column name; cells are in descending timestamp order
 }
 
 type byCreationOrder []*family

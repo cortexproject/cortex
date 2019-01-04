@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"net/http"
 
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	"google.golang.org/grpc"
 )
 
@@ -29,7 +30,9 @@ type DialSettings struct {
 	Endpoint        string
 	Scopes          []string
 	TokenSource     oauth2.TokenSource
+	Credentials     *google.DefaultCredentials
 	CredentialsFile string // if set, Token Source is ignored.
+	CredentialsJSON []byte
 	UserAgent       string
 	APIKey          string
 	HTTPClient      *http.Client
@@ -40,9 +43,32 @@ type DialSettings struct {
 
 // Validate reports an error if ds is invalid.
 func (ds *DialSettings) Validate() error {
-	hasCreds := ds.APIKey != "" || ds.TokenSource != nil || ds.CredentialsFile != ""
+	hasCreds := ds.APIKey != "" || ds.TokenSource != nil || ds.CredentialsFile != "" || ds.Credentials != nil
 	if ds.NoAuth && hasCreds {
 		return errors.New("options.WithoutAuthentication is incompatible with any option that provides credentials")
+	}
+	// Credentials should not appear with other options.
+	// We currently allow TokenSource and CredentialsFile to coexist.
+	// TODO(jba): make TokenSource & CredentialsFile an error (breaking change).
+	nCreds := 0
+	if ds.Credentials != nil {
+		nCreds++
+	}
+	if ds.CredentialsJSON != nil {
+		nCreds++
+	}
+	if ds.CredentialsFile != "" {
+		nCreds++
+	}
+	if ds.APIKey != "" {
+		nCreds++
+	}
+	if ds.TokenSource != nil {
+		nCreds++
+	}
+	// Accept only one form of credentials, except we allow TokenSource and CredentialsFile for backwards compatibility.
+	if nCreds > 1 && !(nCreds == 2 && ds.TokenSource != nil && ds.CredentialsFile != "") {
+		return errors.New("multiple credential options provided")
 	}
 	if ds.HTTPClient != nil && ds.GRPCConn != nil {
 		return errors.New("WithHTTPClient is incompatible with WithGRPCConn")
@@ -50,5 +76,6 @@ func (ds *DialSettings) Validate() error {
 	if ds.HTTPClient != nil && ds.GRPCDialOpts != nil {
 		return errors.New("WithHTTPClient is incompatible with gRPC dial options")
 	}
+
 	return nil
 }

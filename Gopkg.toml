@@ -49,3 +49,14 @@
 [[override]]
   name = "github.com/weaveworks/mesh"
   revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
+
+# bbolt version tags are not understood by dep, so we need to manually specify them.
+[[constraint]]
+  name = "github.com/etcd-io/bbolt"
+  version = "v1.3.1-etcd.8"
+
+# Last tagged release was 25 Sept 2018, need master for updated dependency
+# on cloud.google.com/go.
+[[constraint]]
+  branch = "master"
+  name = "github.com/fsouza/fake-gcs-server"

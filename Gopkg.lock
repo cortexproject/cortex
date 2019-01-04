@@ -173,12 +173,12 @@
   version = "v3.2.0"
 
 [[projects]]
-  digest = "1:c28625428387b63dd7154eb857f51e700465cfbf7c06f619e71f2da33cefe47e"
+  digest = "1:3762d59edaa6e5c71d5e594c020c8391f274ff283e9c30fb43c518ec59a3f9b3"
   name = "github.com/etcd-io/bbolt"
   packages = ["."]
   pruneopts = "UT"
-  revision = "583e8937c61f1af6513608ccc75c97b6abdf4ff9"
-  version = "v1.3.0"
+  revision = "7ee3ded59d4835e10f3e7d0f7603c42aa5e83820"
+  version = "v1.3.1-etcd.8"
 
 [[projects]]
   digest = "1:bb7d57887e4d5eeb6479ffd0cd4f4eefe387ea6fe5e710c1bcfbbaa211cd2710"

@@ -55,7 +55,7 @@
   name = "github.com/etcd-io/bbolt"
   version = "v1.3.1-etcd.8"
 
-# Last tagged release was 25 Sept 2018, need master for updated dependancy
+# Last tagged release was 25 Sept 2018, need master for updated dependency
 # on cloud.google.com/go.
 [[constraint]]
   branch = "master"

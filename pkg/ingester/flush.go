@@ -316,8 +316,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 	}
 
 	// Record statistsics only when actual put request did not return error.
-	for _, chunkDesc := range chunkDescs {
-		utilization, length, size := chunkDesc.C.Utilization(), chunkDesc.C.Len(), chunkDesc.C.Size()
+	for i, chunkDesc := range chunkDescs {
+		utilization, length := chunkDesc.C.Utilization(), chunkDesc.C.Len()
+		size := wireChunks[i].EncodedSize()
 		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "utilization", utilization, "length", length, "size", size, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)
 		chunkUtilization.Observe(utilization)
 		chunkLength.Observe(float64(length))

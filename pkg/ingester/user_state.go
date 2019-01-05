@@ -1,20 +1,23 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/segmentio/fasthash/fnv1a"
-	"golang.org/x/net/context"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ingester/index"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -51,7 +54,7 @@ type userState struct {
 	fpLocker            *fingerprintLocker
 	fpToSeries          *seriesMap
 	mapper              *fpMapper
-	index               *invertedIndex
+	index               *index.InvertedIndex
 	ingestedAPISamples  *ewmaRate
 	ingestedRuleSamples *ewmaRate
 
@@ -144,7 +147,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, labels labelPairs) 
 			limits:              us.limits,
 			fpToSeries:          newSeriesMap(),
 			fpLocker:            newFingerprintLocker(16 * 1024),
-			index:               newInvertedIndex(),
+			index:               index.New(),
 			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			seriesInMetric:      seriesInMetric,
@@ -205,13 +208,13 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 
 	series = newMemorySeries(metric)
 	u.fpToSeries.put(fp, series)
-	u.index.add(metric, fp)
+	u.index.Add(metric, fp)
 
 	return fp, series, nil
 }
 
 func (u *userState) canAddSeriesFor(metric string) bool {
-	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
+	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
@@ -224,7 +227,7 @@ func (u *userState) canAddSeriesFor(metric string) bool {
 
 func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 	u.fpToSeries.del(fp)
-	u.index.delete(metric, fp)
+	u.index.Delete(metric, fp)
 
 	metricNameB, err := extract.MetricNameFromLabelPairs(metric)
 	if err != nil {
@@ -234,7 +237,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 	}
 	metricName := string(metricNameB)
 
-	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
+	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
@@ -249,12 +252,17 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.
 // Deals with locking and the quirks of zero-length matcher values.
-func (u *userState) forSeriesMatching(allMatchers []*labels.Matcher, callback func(model.Fingerprint, *memorySeries) error) error {
+func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher, callback func(context.Context, model.Fingerprint, *memorySeries) error) error {
+	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
+	defer log.Finish()
+
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
-	fps := u.index.lookup(matchers)
+	fps := u.index.Lookup(matchers)
 	if len(fps) > u.limits.MaxSeriesPerQuery(u.userID) {
 		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
 	}
+
+	level.Debug(log).Log("series", len(fps))
 
 	// fps is sorted, lock them in order to prevent deadlocks
 outer:
@@ -273,7 +281,7 @@ outer:
 			}
 		}
 
-		err := callback(fp, series)
+		err := callback(ctx, fp, series)
 		u.fpLocker.Unlock(fp)
 		if err != nil {
 			return err

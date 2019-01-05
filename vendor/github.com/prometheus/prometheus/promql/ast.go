@@ -48,18 +48,6 @@ type Statement interface {
 	stmt()
 }
 
-// Statements is a list of statement nodes that implements Node.
-type Statements []Statement
-
-// AlertStmt represents an added alert rule.
-type AlertStmt struct {
-	Name        string
-	Expr        Expr
-	Duration    time.Duration
-	Labels      labels.Labels
-	Annotations labels.Labels
-}
-
 // EvalStmt holds an expression and information on the range it should
 // be evaluated on.
 type EvalStmt struct {
@@ -72,16 +60,7 @@ type EvalStmt struct {
 	Interval time.Duration
 }
 
-// RecordStmt represents an added recording rule.
-type RecordStmt struct {
-	Name   string
-	Expr   Expr
-	Labels labels.Labels
-}
-
-func (*AlertStmt) stmt()  {}
-func (*EvalStmt) stmt()   {}
-func (*RecordStmt) stmt() {}
+func (*EvalStmt) stmt() {}
 
 // Expr is a generic interface for all expression types.
 type Expr interface {
@@ -132,8 +111,17 @@ type MatrixSelector struct {
 	Offset        time.Duration
 	LabelMatchers []*labels.Matcher
 
-	// The series are populated at query preparation time.
-	series []storage.Series
+	// The unexpanded seriesSet populated at query preparation time.
+	unexpandedSeriesSet storage.SeriesSet
+	series              []storage.Series
+}
+
+// SubqueryExpr represents a subquery.
+type SubqueryExpr struct {
+	Expr   Expr
+	Range  time.Duration
+	Offset time.Duration
+	Step   time.Duration
 }
 
 // NumberLiteral represents a number.
@@ -165,13 +153,15 @@ type VectorSelector struct {
 	Offset        time.Duration
 	LabelMatchers []*labels.Matcher
 
-	// The series are populated at query preparation time.
-	series []storage.Series
+	// The unexpanded seriesSet populated at query preparation time.
+	unexpandedSeriesSet storage.SeriesSet
+	series              []storage.Series
 }
 
 func (e *AggregateExpr) Type() ValueType  { return ValueTypeVector }
 func (e *Call) Type() ValueType           { return e.Func.ReturnType }
 func (e *MatrixSelector) Type() ValueType { return ValueTypeMatrix }
+func (e *SubqueryExpr) Type() ValueType   { return ValueTypeMatrix }
 func (e *NumberLiteral) Type() ValueType  { return ValueTypeScalar }
 func (e *ParenExpr) Type() ValueType      { return e.Expr.Type() }
 func (e *StringLiteral) Type() ValueType  { return ValueTypeString }
@@ -188,6 +178,7 @@ func (*AggregateExpr) expr()  {}
 func (*BinaryExpr) expr()     {}
 func (*Call) expr()           {}
 func (*MatrixSelector) expr() {}
+func (*SubqueryExpr) expr()   {}
 func (*NumberLiteral) expr()  {}
 func (*ParenExpr) expr()      {}
 func (*StringLiteral) expr()  {}
@@ -257,23 +248,7 @@ func Walk(v Visitor, node Node, path []Node) error {
 	path = append(path, node)
 
 	switch n := node.(type) {
-	case Statements:
-		for _, s := range n {
-			if err := Walk(v, s, path); err != nil {
-				return err
-			}
-		}
-	case *AlertStmt:
-		if err := Walk(v, n.Expr, path); err != nil {
-			return err
-		}
-
 	case *EvalStmt:
-		if err := Walk(v, n.Expr, path); err != nil {
-			return err
-		}
-
-	case *RecordStmt:
 		if err := Walk(v, n.Expr, path); err != nil {
 			return err
 		}
@@ -299,6 +274,11 @@ func Walk(v Visitor, node Node, path []Node) error {
 
 	case *Call:
 		if err := Walk(v, n.Args, path); err != nil {
+			return err
+		}
+
+	case *SubqueryExpr:
+		if err := Walk(v, n.Expr, path); err != nil {
 			return err
 		}
 

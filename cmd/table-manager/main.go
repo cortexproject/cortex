@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 )
@@ -29,7 +30,7 @@ func main() {
 		schemaConfig   chunk.SchemaConfig
 		tbmConfig      chunk.TableManagerConfig
 	)
-	util.RegisterFlags(&ingesterConfig, &serverConfig, &storageConfig, &schemaConfig, &tbmConfig)
+	flagext.RegisterFlags(&ingesterConfig, &serverConfig, &storageConfig, &schemaConfig, &tbmConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)
@@ -51,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.Store, storageConfig)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, storageConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
 		os.Exit(1)

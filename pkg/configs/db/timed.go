@@ -9,16 +9,16 @@ import (
 )
 
 var (
-	databaseRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	databaseRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "database_request_duration_seconds",
 		Help:      "Time spent (in seconds) doing database requests.",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"method", "status_code"})
+	}, []string{"method", "status_code"}))
 )
 
 func init() {
-	prometheus.MustRegister(databaseRequestDuration)
+	databaseRequestDuration.Register()
 }
 
 // timed adds prometheus timings to another database implementation
@@ -36,7 +36,7 @@ func (t timed) errorCode(err error) string {
 }
 
 func (t timed) timeRequest(method string, f func(context.Context) error) error {
-	return instrument.TimeRequestHistogramStatus(context.TODO(), method, databaseRequestDuration, t.errorCode, f)
+	return instrument.CollectedRequest(context.TODO(), method, databaseRequestDuration, t.errorCode, f)
 }
 
 func (t timed) GetConfig(userID string) (cfg configs.View, err error) {

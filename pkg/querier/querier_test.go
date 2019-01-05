@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/weaveworks/common/user"
 )
@@ -123,7 +124,7 @@ var (
 
 func TestQuerier(t *testing.T) {
 	var cfg Config
-	util.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg)
 
 	for _, query := range queries {
 		for _, encoding := range encodings {
@@ -168,7 +169,12 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 
 func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
-	engine := promql.NewEngine(util.Logger, nil, 10, 1*time.Minute)
+	engine := promql.NewEngine(promql.EngineOpts{
+		Logger:        util.Logger,
+		MaxConcurrent: 10,
+		MaxSamples:    1e6,
+		Timeout:       1 * time.Minute,
+	})
 	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
 	require.NoError(t, err)
 

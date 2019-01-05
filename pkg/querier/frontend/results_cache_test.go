@@ -7,7 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -191,7 +191,7 @@ func TestResultsCache(t *testing.T) {
 
 func TestResultsCacheRecent(t *testing.T) {
 	var cfg resultsCacheConfig
-	util.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg)
 	cfg.cacheConfig.Cache = cache.NewMockCache()
 	rcm, err := newResultsCacheMiddleware(cfg)
 	require.NoError(t, err)

@@ -30,6 +30,18 @@ func (i *chunkIterator) Seek(t int64, size int) bool {
 		return false
 	}
 
+	// If the seek is to the middle of the current batch, and size fits, we can
+	// shortcut.
+	if i.batch.Length > 0 && t >= i.batch.Timestamps[0] && t <= i.batch.Timestamps[i.batch.Length-1] {
+		i.batch.Index = 0
+		for i.batch.Index < i.batch.Length && t > i.batch.Timestamps[i.batch.Index] {
+			i.batch.Index++
+		}
+		if i.batch.Index+size < i.batch.Length {
+			return true
+		}
+	}
+
 	if i.it.FindAtOrAfter(model.Time(t)) {
 		i.batch = i.it.Batch(size)
 		return i.batch.Length > 0

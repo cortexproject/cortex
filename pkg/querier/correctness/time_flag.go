@@ -10,7 +10,7 @@ type TimeValue struct {
 	set bool
 }
 
-// NewTimeValue makes a new DayValue; will round t down to the nearest midnight.
+// NewTimeValue makes a new TimeValue; will round t down to the nearest midnight.
 func NewTimeValue(t time.Time) TimeValue {
 	return TimeValue{
 		Time: t,

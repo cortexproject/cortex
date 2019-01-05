@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/web/api/v1"
-	"github.com/prometheus/tsdb"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -24,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -85,7 +85,6 @@ func main() {
 	}
 	prometheus.MustRegister(r)
 	defer r.Stop()
-	ingesterConfig.LifecyclerConfig.KVClient = r.KVClient
 
 	dist, err := distributor.New(distributorConfig, ingesterClientConfig, overrides, r)
 	if err != nil {
@@ -102,7 +101,7 @@ func main() {
 	defer ingester.Shutdown()
 
 	// Assume the newest config is the one to use
-	storeName := schemaConfig.Configs[len(schemaConfig.Configs)-1].Store
+	storeName := schemaConfig.Configs[len(schemaConfig.Configs)-1].IndexType
 	tableClient, err := storage.NewTableClient(storeName, storageConfig)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
@@ -148,10 +147,11 @@ func main() {
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
-		func() *tsdb.DB { return nil }, // Only needed for admin APIs.
+		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
 		false, // Disable admin APIs.
 		util.Logger,
 		querier.DummyRulesRetriever{},
+		0, 0, // Remote read samples and concurrency limit.
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)
@@ -209,7 +209,7 @@ func getConfigsFromCommandLine() {
 	}
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
-	util.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
+	flagext.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
 		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig,
 		&ingesterClientConfig, &limitsConfig, &tbmConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")

@@ -182,11 +182,11 @@ func (oqr *OrgToQueryRecordingRulesMap) ReplaceQueryWithRecordingRule(org string
 	}
 
 	rReplaced := *r
-	if q, err := generaliseQuery(r.Query); err != nil {
+	q, err := generaliseQuery(r.Query)
+	if err != nil {
 		return nil, time.Unix(0, 0), err
-	} else {
-		rReplaced.Query = q
 	}
+	rReplaced.Query = q
 
 	ruleSubstituted := false
 	var maxModifiedAt time.Time

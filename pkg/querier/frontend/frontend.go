@@ -81,6 +81,7 @@ type Frontend struct {
 type request struct {
 	enqueueTime time.Time
 	queueSpan   opentracing.Span
+	originalCtx context.Context
 
 	request  *ProcessRequest
 	err      chan error
@@ -195,7 +196,8 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 	}
 
 	request := &request{
-		request: req,
+		request:     req,
+		originalCtx: ctx,
 		// Buffer of 1 to ensure response can be written even if client has gone away.
 		err:      make(chan error, 1),
 		response: make(chan *ProcessResponse, 1),
@@ -210,8 +212,6 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 		var resp *ProcessResponse
 		select {
 		case <-ctx.Done():
-			// TODO propagate cancellation.
-			//request.Cancel()
 			return nil, errCanceled
 
 		case resp = <-request.response:
@@ -250,13 +250,47 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
+	var (
+		sendChan = make(chan *ProcessRequest)
+		recvChan = make(chan *ProcessResponse)
 
-	// If this request is canceled, ping the condition to unblock. This is done
-	// once, here (instead of in getNextRequest) as we expect calls to Process to
-	// process many requests.
+		// Need buffer of 2 so goroutines reading/writing to stream don't hang
+		// around when stream dies.
+		errChan = make(chan error, 2)
+	)
+
+	// If the stream from the querier is canceled, ping the condition to unblock.
+	// This is done once, here (instead of in getNextRequest) as we expect calls
+	// to Process to process many requests.
 	go func() {
 		<-server.Context().Done()
 		f.cond.Broadcast()
+	}()
+
+	// Use a pair of goroutines to read/write from the stream and send to channels,
+	// so we can use selects to also wait on the cancellation of the request context.
+	// These goroutines will error out when the stream returns.
+	go func() {
+		for {
+			req := <-sendChan
+			err := server.Send(req)
+			if err != nil {
+				errChan <- err
+				return
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			resp, err := server.Recv()
+			if err == nil {
+				recvChan <- resp
+			} else {
+				errChan <- err
+				return
+			}
+		}
 	}()
 
 	for {
@@ -265,18 +299,26 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
-		if err := server.Send(request.request); err != nil {
+		originalCtx := request.originalCtx
+
+		select {
+		case sendChan <- request.request:
+		case err := <-errChan:
 			request.err <- err
 			return err
+		case <-originalCtx.Done():
+			return originalCtx.Err()
 		}
 
-		response, err := server.Recv()
-		if err != nil {
+		select {
+		case resp := <-recvChan:
+			request.response <- resp
+		case err := <-errChan:
 			request.err <- err
 			return err
+		case <-originalCtx.Done():
+			return originalCtx.Err()
 		}
-
-		request.response <- response
 	}
 }
 

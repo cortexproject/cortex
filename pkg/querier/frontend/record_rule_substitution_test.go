@@ -220,13 +220,13 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 						Query: "avg(sum(rate(some_metric[1d])))",
 					},
 					expQueries: []*QueryRangeRequest{
-						&QueryRangeRequest{
+						{
 							Start: 1000 * 1000,
 							End:   (2000 * 1000) + safetyOffset,
 							Step:  10 * 1000,
 							Query: "avg(sum(rate(some_metric[1d])))",
 						},
-						&QueryRangeRequest{
+						{
 							Start: (2000 * 1000) + safetyOffset + (10 * 1000),
 							End:   3000 * 1000,
 							Step:  10 * 1000,
@@ -243,7 +243,7 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 						Query: "avg(sum(rate(some_metric[1d]))) + avg(sum(rate(some_metric[5d])))",
 					},
 					expQueries: []*QueryRangeRequest{
-						&QueryRangeRequest{
+						{
 							Start: 1000 * 1000,
 							End:   1500 * 1000,
 							Step:  10 * 1000,
@@ -260,13 +260,13 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 						Query: "avg(sum(rate(some_metric[1d]))) + avg(sum(rate(some_metric[5d])))",
 					},
 					expQueries: []*QueryRangeRequest{
-						&QueryRangeRequest{
+						{
 							Start: 1000 * 1000,
 							End:   (2000 * 1000) + safetyOffset,
 							Step:  10 * 1000,
 							Query: "avg(sum(rate(some_metric[1d]))) + avg(sum(rate(some_metric[5d])))",
 						},
-						&QueryRangeRequest{
+						{
 							Start: (2000 * 1000) + safetyOffset + (10 * 1000),
 							End:   3000 * 1000,
 							Step:  10 * 1000,
@@ -283,13 +283,13 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 						Query: "avg(sum(rate(some_metric[1d]))) + avg(sum(rate(some_metric[5d])))",
 					},
 					expQueries: []*QueryRangeRequest{
-						&QueryRangeRequest{
+						{
 							Start: 1000 * 1000,
 							End:   (10000 * 1000) + safetyOffset,
 							Step:  10 * 1000,
 							Query: "avg(sum(rate(some_metric[1d]))) + avg(sum(rate(some_metric[5d])))",
 						},
-						&QueryRangeRequest{
+						{
 							Start: (10000 * 1000) + safetyOffset + (10 * 1000),
 							End:   11000 * 1000,
 							Step:  10 * 1000,
@@ -306,7 +306,7 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 						Query: "avg(sum(rate(some_metric[1d]))) + avg(sum(rate(some_metric[5d])))",
 					},
 					expQueries: []*QueryRangeRequest{
-						&QueryRangeRequest{
+						{
 							Start: 11000 * 1000,
 							End:   12000 * 1000,
 							Step:  10 * 1000,
@@ -354,7 +354,7 @@ func TestGetMatchingRules(t *testing.T) {
 					org:   "org1",
 					query: "avg(sum(rate(some_metric[1d])))",
 					exp: []QueryToRecordingRuleMap{
-						QueryToRecordingRuleMap{
+						{
 							RuleName:   "sum_rate_some_metric_1d",
 							Query:      "sum(rate(some_metric[1d]))",
 							ModifiedAt: mustParseTime("1970-01-01T00:33:20+00:00"),
@@ -365,7 +365,7 @@ func TestGetMatchingRules(t *testing.T) {
 					org:   "org2",
 					query: "avg(sum(rate(some_metric[5d])))",
 					exp: []QueryToRecordingRuleMap{
-						QueryToRecordingRuleMap{
+						{
 							RuleName:   "prefix:sum_rate_some_metric_5d",
 							Query:      "sum(rate(some_metric[5d]))",
 							ModifiedAt: mustParseTime("1970-01-01T02:46:40+00:00"),
@@ -376,12 +376,12 @@ func TestGetMatchingRules(t *testing.T) {
 					org:   "org1",
 					query: "avg(sum(rate(some_metric[1d]))) + avg(sum(rate(some_metric[5d])))",
 					exp: []QueryToRecordingRuleMap{
-						QueryToRecordingRuleMap{
+						{
 							RuleName:   "sum_rate_some_metric_1d",
 							Query:      "sum(rate(some_metric[1d]))",
 							ModifiedAt: mustParseTime("1970-01-01T00:33:20+00:00"),
 						},
-						QueryToRecordingRuleMap{
+						{
 							RuleName:   "sum_rate_some_metric_5d",
 							Query:      "sum(rate(some_metric[5d]))",
 							ModifiedAt: mustParseTime("1970-01-01T02:46:40+00:00"),

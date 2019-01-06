@@ -2,13 +2,21 @@ package frontend
 
 import (
 	"context"
-	"github.com/prometheus/prometheus/promql"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io"
 	"io/ioutil"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/fsnotify/fsnotify.v1"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -18,33 +26,97 @@ var (
 	safetyOffset = int64(5 * time.Minute / time.Millisecond)
 )
 
-func newRecordRuleSubstitutionMiddleware(filename string) (queryRangeMiddleware, *OrgToQueryRecordingRulesMap, error) {
-	qrrMap := &OrgToQueryRecordingRulesMap{}
+func newRecordRuleSubstitutionMiddleware(filename string, log log.Logger) (queryRangeMiddleware, *fsnotify.Watcher, error) {
 	if filename == "" {
-		return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
-			return recordRuleSubstitution{
-				next:   next,
-				qrrMap: qrrMap,
-			}
-		}), qrrMap, nil
+		return nil, nil, errors.New("config file is missing")
 	}
 
+	qrrMap := &OrgToQueryRecordingRulesMap{}
 	err := qrrMap.LoadFromFile(filename)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// Watcher to reload config when file is modified.
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, nil, err
+	}
+	watcher.Add(filename)
+	go watchConfigFile(watcher, qrrMap, filename, log)
+
 	return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
 		return recordRuleSubstitution{
-			next:   next,
-			qrrMap: qrrMap,
+			next:           next,
+			qrrMap:         qrrMap,
+			configFilename: filename,
+			watcher:        watcher,
 		}
-	}), qrrMap, nil
+	}), watcher, nil
+}
+
+// TODO(codesome): add test for this.
+// TODO(codesome): should this end gracefully when frontend is closed?
+func watchConfigFile(watcher *fsnotify.Watcher, qrrMap *OrgToQueryRecordingRulesMap, filename string, log log.Logger) {
+	getHash := func(fname string) (string, error) {
+		hasher := sha256.New()
+		f, err := os.Open(fname)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		if _, err := io.Copy(hasher, f); err != nil {
+			return "", err
+		}
+		return hex.EncodeToString(hasher.Sum(nil)), nil
+	}
+
+	lastHash, err := getHash(filename)
+	if err != nil {
+		level.Error(log).Log("msg", "getting hash of config file for RecordRuleSubstitutionMiddleware, closing watcher", "err", err.Error())
+		return
+	}
+
+	for {
+		select {
+		case event := <-watcher.Events:
+			// fsnotify sometimes sends a bunch of events without name or operation.
+			// It's unclear what they are and why they are sent - filter them out.
+			if len(event.Name) == 0 {
+				break
+			}
+			// Everything but a chmod requires reloading.
+			if event.Op^fsnotify.Chmod == 0 {
+				break
+			}
+
+			h, err := getHash(event.Name)
+			if err != nil {
+				level.Error(log).Log("msg", "getting hash of config file for RecordRuleSubstitutionMiddleware", "err", err.Error())
+				break
+			}
+			if h == lastHash {
+				break
+			}
+
+			if err := qrrMap.LoadFromFile(event.Name); err != nil {
+				lastHash = ""
+				level.Error(log).Log("msg", "reloading config file for RecordRuleSubstitutionMiddleware", "err", err.Error())
+			}
+			lastHash = h
+
+		case err := <-watcher.Errors:
+			level.Error(log).Log("msg", "watching config file for RecordRuleSubstitutionMiddleware", "err", err.Error())
+		}
+	}
 }
 
 type recordRuleSubstitution struct {
 	next   queryRangeHandler
 	qrrMap *OrgToQueryRecordingRulesMap
+
+	configFilename string
+	watcher        *fsnotify.Watcher
 }
 
 func (rr recordRuleSubstitution) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
@@ -140,12 +212,16 @@ func (oqr *OrgToQueryRecordingRulesMap) LoadFromFile(filename string) error {
 
 // LoadFromBytes clears the previous config and loads the query to recording rule
 // config from bytes.
-func (oqr *OrgToQueryRecordingRulesMap) LoadFromBytes(b []byte) error {
+func (oqr *OrgToQueryRecordingRulesMap) LoadFromBytes(b []byte) (err error) {
 	oqr.mtx.Lock()
-	defer oqr.mtx.Unlock()
+	defer func() {
+		if err != nil {
+			oqr.qrrMap = nil
+		}
+		oqr.mtx.Unlock()
+	}()
 
 	var parsedFile queryToRecordingRuleFile
-	var err error
 	if err = yaml.UnmarshalStrict(b, &parsedFile); err != nil {
 		return err
 	}
@@ -168,6 +244,9 @@ func (oqr *OrgToQueryRecordingRulesMap) LoadFromBytes(b []byte) error {
 func (oqr *OrgToQueryRecordingRulesMap) GetMapsForOrg(org string) []QueryToRecordingRuleMap {
 	oqr.mtx.RLock()
 	defer oqr.mtx.RUnlock()
+	if oqr.qrrMap == nil {
+		return nil
+	}
 	return oqr.qrrMap[org]
 }
 
@@ -216,24 +295,20 @@ func (oqr *OrgToQueryRecordingRulesMap) ReplaceQueryWithRecordingRule(org string
 
 // GetMatchingRules returns QueryToRecordingRuleMap for queries that can be replaced with recording rules in given query.
 func (oqr *OrgToQueryRecordingRulesMap) GetMatchingRules(org, query string) ([]QueryToRecordingRuleMap, error) {
-	result := []QueryToRecordingRuleMap{}
-
 	qrrs := oqr.GetMapsForOrg(org)
 	if len(qrrs) == 0 {
-		return result, nil
+		return nil, nil
 	}
-
 	query, err := generaliseQuery(query)
 	if err != nil {
 		return nil, err
 	}
-
+	result := []QueryToRecordingRuleMap{}
 	for _, qrr := range qrrs {
 		if strings.Contains(query, qrr.Query) {
 			result = append(result, qrr)
 		}
 	}
-
 	return result, nil
 }
 

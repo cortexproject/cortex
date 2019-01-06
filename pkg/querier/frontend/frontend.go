@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"gopkg.in/fsnotify/fsnotify.v1"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -76,11 +77,12 @@ type Frontend struct {
 	cfg          Config
 	log          log.Logger
 	roundTripper http.RoundTripper
-	qrrMap       *OrgToQueryRecordingRulesMap
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
 	queues map[string]chan *request
+
+	qrrConfigWatcher *fsnotify.Watcher
 }
 
 type request struct {
@@ -107,11 +109,11 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 	}
 	if cfg.RecordRuleSubstitution {
 		// TODO(codesome): What should be it's order in the middlewares.
-		recordRuleSubstitutionMiddleware, qrrMap, err := newRecordRuleSubstitutionMiddleware(cfg.QueryToRecordingRuleMapFile)
+		recordRuleSubstitutionMiddleware, qrrConfigWatcher, err := newRecordRuleSubstitutionMiddleware(cfg.QueryToRecordingRuleMapFile, log)
 		if err != nil {
 			return nil, err
 		}
-		f.qrrMap = qrrMap
+		f.qrrConfigWatcher = qrrConfigWatcher
 		queryRangeMiddleware = append(queryRangeMiddleware, recordRuleSubstitutionMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
@@ -141,12 +143,16 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 }
 
 // Close stops new requests and errors out any pending requests.
-func (f *Frontend) Close() {
+func (f *Frontend) Close() error {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	for len(f.queues) > 0 {
 		f.cond.Wait()
 	}
+	if f.qrrConfigWatcher != nil {
+		return f.qrrConfigWatcher.Close()
+	}
+	return nil
 }
 
 // ServeHTTP serves HTTP requests.

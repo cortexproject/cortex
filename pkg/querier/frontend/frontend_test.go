@@ -144,7 +144,9 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 
 	frontend, err := New(config, logger)
 	require.NoError(t, err)
-	defer frontend.Close()
+	defer func() {
+		require.NoError(t, frontend.Close())
+	}()
 
 	grpcServer := grpc.NewServer(
 		grpc.StreamInterceptor(otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer())),

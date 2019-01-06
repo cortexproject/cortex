@@ -212,14 +212,14 @@ func (w *worker) process(ctx context.Context, c Frontend_ProcessClient) error {
 }
 
 func (w *worker) connect(address string) (FrontendClient, error) {
-	conn, err := grpc.Dial(
-		address,
+	opts := []grpc.DialOption{
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
 			middleware.ClientUserHeaderInterceptor,
 		)),
-		w.cfg.GRPCClientConfig.DialOption(),
-	)
+	}
+	opts = append(opts, w.cfg.GRPCClientConfig.DialOptions()...)
+	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, err
 	}

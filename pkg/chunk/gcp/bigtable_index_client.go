@@ -65,7 +65,9 @@ type storageClientV1 struct {
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
 	opts := instrumentation()
-	opts = append(opts, option.WithGRPCDialOption(cfg.GRPCClientConfig.DialOption()))
+	for _, dialOption := range cfg.GRPCClientConfig.DialOptions() {
+		opts = append(opts, option.WithGRPCDialOption(dialOption))
+	}
 
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {

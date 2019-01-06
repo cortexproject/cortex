@@ -41,7 +41,7 @@ func (w *poolWatcher) Next() ([]*naming.Update, error) {
 		return nil, err
 	}
 
-	result := make([]*naming.Update, 0, len(updates)*w.size)
+	result := make([]*naming.Update, len(updates)*w.size)
 	for i := 0; i < len(updates)*w.size; i++ {
 		result[i] = updates[i/w.size]
 	}

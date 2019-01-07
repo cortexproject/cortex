@@ -108,7 +108,7 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 		if err != nil {
 			return nil, err
 		}
-		queryRangeMiddleware = append(queryRangeMiddleware, queryCacheMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, instrument("results_cache"), queryCacheMiddleware)
 	}
 
 	// Finally, if the user selected any query range middleware, stitch it in.

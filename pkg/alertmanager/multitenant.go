@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configs_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/mesh"
@@ -94,12 +95,12 @@ var (
 		Name:      "configs",
 		Help:      "How many configs the multitenant alertmanager knows about.",
 	})
-	configsRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	configsRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "configs_request_duration_seconds",
 		Help:      "Time spent requesting configs.",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"})
+	}, []string{"operation", "status_code"}))
 	totalPeers = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "mesh_peers",
@@ -110,7 +111,7 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(configsRequestDuration)
+	configsRequestDuration.Register()
 	prometheus.MustRegister(totalConfigs)
 	prometheus.MustRegister(totalPeers)
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
@@ -176,8 +177,8 @@ func counts(counts map[string]int, keys []string) string {
 type MultitenantAlertmanagerConfig struct {
 	DataDir       string
 	Retention     time.Duration
-	ExternalURL   util.URLValue
-	ConfigsAPIURL util.URLValue
+	ExternalURL   flagext.URLValue
+	ConfigsAPIURL flagext.URLValue
 	PollInterval  time.Duration
 	ClientTimeout time.Duration
 
@@ -363,7 +364,7 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
 	configID := am.latestConfig
 	var cfgs *configs_client.ConfigsResponse
-	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, func(_ context.Context) error {
+	err := instrument.CollectedRequest(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
 		cfgs, err = am.configsAPI.GetConfigs(configID)
 		return err

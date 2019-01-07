@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 )
@@ -26,7 +27,7 @@ func main() {
 		}
 		dbConfig db.Config
 	)
-	util.RegisterFlags(&serverConfig, &dbConfig)
+	flagext.RegisterFlags(&serverConfig, &dbConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)

@@ -154,7 +154,7 @@ func TestSplitByDay(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	mergedHTTPResponse, err := mergedResponse.toHTTPResponse()
+	mergedHTTPResponse, err := mergedResponse.toHTTPResponse(context.Background())
 	require.NoError(t, err)
 
 	mergedHTTPResponseBody, err := ioutil.ReadAll(mergedHTTPResponse.Body)

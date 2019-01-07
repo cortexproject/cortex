@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -26,7 +26,7 @@ func (f *flushTransferer) TransferOut(ctx context.Context) error {
 
 func TestRingNormaliseMigration(t *testing.T) {
 	var ringConfig Config
-	util.DefaultValues(&ringConfig)
+	flagext.DefaultValues(&ringConfig)
 	ringConfig.Mock = NewInMemoryKVClient()
 
 	r, err := New(ringConfig)
@@ -35,11 +35,10 @@ func TestRingNormaliseMigration(t *testing.T) {
 
 	// Add an 'ingester' with denormalised tokens.
 	var lifecyclerConfig1 LifecyclerConfig
-	util.DefaultValues(&lifecyclerConfig1)
+	flagext.DefaultValues(&lifecyclerConfig1)
 	lifecyclerConfig1.Addr = "0.0.0.0"
 	lifecyclerConfig1.Port = 1
 	lifecyclerConfig1.RingConfig = ringConfig
-	lifecyclerConfig1.KVClient = ringConfig.Mock
 	lifecyclerConfig1.NumTokens = 1
 	lifecyclerConfig1.ClaimOnRollout = true
 	lifecyclerConfig1.ID = "ing1"

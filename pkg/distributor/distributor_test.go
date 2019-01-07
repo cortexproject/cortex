@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
@@ -23,8 +24,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -141,7 +142,7 @@ func TestDistributorPushQuery(t *testing.T) {
 						numIngesters:     numIngesters,
 						happyIngesters:   happyIngesters,
 						matchers:         []*labels.Matcher{nameMatcher, barMatcher},
-						expectedError:    errFail,
+						expectedError:    promql.ErrStorage{Err: errFail},
 						shardByAllLabels: shardByAllLabels,
 					})
 					continue
@@ -224,7 +225,7 @@ func TestSlowQueries(t *testing.T) {
 		for happy := 0; happy <= nIngesters; happy++ {
 			var expectedErr error
 			if nIngesters-happy > 1 {
-				expectedErr = errFail
+				expectedErr = promql.ErrStorage{Err: errFail}
 			}
 			d := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels)
 			defer d.Stop()
@@ -278,7 +279,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	var cfg Config
 	var limits validation.Limits
 	var clientConfig client.Config
-	util.DefaultValues(&cfg, &limits, &clientConfig)
+	flagext.DefaultValues(&cfg, &limits, &clientConfig)
 	limits.IngestionRate = 20
 	limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory

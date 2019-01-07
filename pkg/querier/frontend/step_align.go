@@ -4,11 +4,11 @@ import (
 	"context"
 )
 
-var stepAlignMiddleware queryRangeMiddlewareFunc = func(next queryRangeHandler) queryRangeHandler {
-	return stepAlign{
+var stepAlignMiddleware = queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
+	return instrument("step_align").Wrap(stepAlign{
 		next: next,
-	}
-}
+	})
+})
 
 type stepAlign struct {
 	next queryRangeHandler

@@ -91,3 +91,52 @@ func testSeek(t require.TestingT, points int, iter storage.SeriesIterator) {
 		}
 	}
 }
+
+func TestSeek(t *testing.T) {
+	var it mockIterator
+	c := chunkIterator{
+		chunk: chunk.Chunk{
+			Through: promchunk.BatchSize,
+		},
+		it: &it,
+	}
+
+	for i := 0; i < promchunk.BatchSize-1; i++ {
+		require.True(t, c.Seek(int64(i), 1))
+	}
+	require.Equal(t, 1, it.seeks)
+
+	require.True(t, c.Seek(int64(promchunk.BatchSize), 1))
+	require.Equal(t, 2, it.seeks)
+}
+
+type mockIterator struct {
+	seeks int
+}
+
+func (i *mockIterator) Scan() bool {
+	return true
+}
+
+func (i *mockIterator) FindAtOrAfter(model.Time) bool {
+	i.seeks++
+	return true
+}
+
+func (i *mockIterator) Value() model.SamplePair {
+	return model.SamplePair{}
+}
+
+func (i *mockIterator) Batch(size int) promchunk.Batch {
+	batch := promchunk.Batch{
+		Length: promchunk.BatchSize,
+	}
+	for i := 0; i < promchunk.BatchSize; i++ {
+		batch.Timestamps[i] = int64(i)
+	}
+	return batch
+}
+
+func (i *mockIterator) Err() error {
+	return nil
+}

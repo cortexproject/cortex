@@ -41,16 +41,16 @@ var (
 		Name:      "scheduler_config_updates_total",
 		Help:      "How many config updates the scheduler has made.",
 	})
-	configsRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	configsRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "configs_request_duration_seconds",
 		Help:      "Time spent requesting configs.",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"})
+	}, []string{"operation", "status_code"}))
 )
 
 func init() {
-	prometheus.MustRegister(configsRequestDuration)
+	configsRequestDuration.Register()
 	prometheus.MustRegister(totalConfigs)
 	prometheus.MustRegister(configUpdates)
 }
@@ -178,7 +178,7 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 	configID := s.latestConfig
 	s.Unlock()
 	var cfgs map[string]configs.VersionedRulesConfig
-	err := instrument.TimeRequestHistogram(context.Background(), "Configs.GetConfigs", configsRequestDuration, func(_ context.Context) error {
+	err := instrument.CollectedRequest(context.Background(), "Configs.GetConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
 		cfgs, err = s.rulesAPI.GetConfigs(configID) // Warning: this will produce an incorrect result if the configID ever overflows
 		return err

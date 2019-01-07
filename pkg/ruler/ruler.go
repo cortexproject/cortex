@@ -33,6 +33,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 )
@@ -78,14 +79,14 @@ func init() {
 // Config is the configuration for the recording rules server.
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL
-	ExternalURL util.URLValue
+	ExternalURL flagext.URLValue
 
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration
 	NumWorkers         int
 
 	// URL of the Alertmanager to send notifications to.
-	AlertmanagerURL util.URLValue
+	AlertmanagerURL flagext.URLValue
 	// Whether to use DNS SRV records to discover alertmanagers.
 	AlertmanagerDiscovery bool
 	// How long to wait between refreshing the list of alertmanagers based on
@@ -126,6 +127,7 @@ type Ruler struct {
 	notifierCfg   *config.Config
 	queueCapacity int
 	groupTimeout  time.Duration
+	metrics       *rules.Metrics
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -208,6 +210,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		queueCapacity: cfg.NotificationQueueCapacity,
 		notifiers:     map[string]*rulerNotifier{},
 		groupTimeout:  cfg.GroupTimeout,
+		metrics:       rules.NewGroupMetrics(prometheus.DefaultRegisterer),
 	}, nil
 }
 
@@ -249,7 +252,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	amConfig := &config.AlertmanagerConfig{
 		Scheme:                 u.Scheme,
 		PathPrefix:             u.Path,
-		Timeout:                rulerConfig.NotificationTimeout,
+		Timeout:                model.Duration(rulerConfig.NotificationTimeout),
 		ServiceDiscoveryConfig: sdConfig,
 	}
 
@@ -287,7 +290,7 @@ func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*gr
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
 		Logger:      gklog.NewNopLogger(),
-		Registerer:  prometheus.DefaultRegisterer,
+		Metrics:     r.metrics,
 	}
 	return newGroup(groupName, rls, appendable, opts), nil
 }

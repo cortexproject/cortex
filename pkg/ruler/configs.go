@@ -9,7 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configs_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // ConfigStoreConfig says where we can find the ruler configs.
@@ -17,7 +17,7 @@ type ConfigStoreConfig struct {
 	DBConfig db.Config
 
 	// DEPRECATED
-	ConfigsAPIURL util.URLValue
+	ConfigsAPIURL flagext.URLValue
 
 	// DEPRECATED. HTTP timeout duration for requests made to the Weave Cloud
 	// configs service.

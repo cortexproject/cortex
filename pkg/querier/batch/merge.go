@@ -29,15 +29,10 @@ func newMergeIterator(cs []chunk.Chunk) *mergeIterator {
 	}
 
 	c := &mergeIterator{
-		its: its,
-		h:   make(iteratorHeap, 0, len(its)),
-
-		// Is 2x # iterators guaranteed to be enough?
-		// Yes: if we've popped two batches of each iterators, we're guaranteed
-		// that the last entry in the first of the resulting merged batches is smaller
-		// than any remaining iterator.
-		batches:    make(batchStream, 0, len(its)*2),
-		batchesBuf: make(batchStream, 0, len(its)*2),
+		its:        its,
+		h:          make(iteratorHeap, 0, len(its)),
+		batches:    make(batchStream, 0, len(its)*2*promchunk.BatchSize),
+		batchesBuf: make(batchStream, 0, len(its)*2*promchunk.BatchSize),
 	}
 
 	for _, iter := range c.its {
@@ -56,22 +51,43 @@ func newMergeIterator(cs []chunk.Chunk) *mergeIterator {
 }
 
 func (c *mergeIterator) Seek(t int64, size int) bool {
-	c.h = c.h[:0]
-	c.batches = c.batches[:0]
 
-	for _, iter := range c.its {
-		if iter.Seek(t, size) {
-			c.h = append(c.h, iter)
-			continue
+	// Optimisation to see if the seek is within our current caches batches.
+found:
+	for len(c.batches) > 0 {
+		batch := &c.batches[0]
+		if t >= batch.Timestamps[0] && t <= batch.Timestamps[batch.Length-1] {
+			batch.Index = 0
+			for batch.Index < batch.Length && t > batch.Timestamps[batch.Index] {
+				batch.Index++
+			}
+			break found
 		}
-
-		if err := iter.Err(); err != nil {
-			c.currErr = err
-			return false
-		}
+		copy(c.batches, c.batches[1:])
+		c.batches = c.batches[:len(c.batches)-1]
 	}
 
-	heap.Init(&c.h)
+	// If we didn't find anything in the current set of batches, reset the heap
+	// and seek.
+	if len(c.batches) == 0 {
+		c.h = c.h[:0]
+		c.batches = c.batches[:0]
+
+		for _, iter := range c.its {
+			if iter.Seek(t, size) {
+				c.h = append(c.h, iter)
+				continue
+			}
+
+			if err := iter.Err(); err != nil {
+				c.currErr = err
+				return false
+			}
+		}
+
+		heap.Init(&c.h)
+	}
+
 	return c.buildNextBatch(size)
 }
 

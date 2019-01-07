@@ -33,7 +33,7 @@ data:
         }
 
         location ~ /api/prom/.* {
-          proxy_pass      http://querier.default.svc.cluster.local$request_uri;
+          proxy_pass      http://query-frontend.default.svc.cluster.local$request_uri;
         }
       }
     }

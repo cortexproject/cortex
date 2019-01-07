@@ -28,7 +28,11 @@ func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
 	// TODO: Populate distributor and chunk store arguments to enable
 	// other kinds of tests.
 
-	engine := promql.NewEngine(nil, nil, 20, 2*time.Minute)
+	engine := promql.NewEngine(promql.EngineOpts{
+		MaxSamples:    1e6,
+		MaxConcurrent: 20,
+		Timeout:       2 * time.Minute,
+	})
 	queryable := querier.NewQueryable(nil, nil, nil)
 	ruler, err := NewRuler(cfg, engine, queryable, nil)
 	if err != nil {

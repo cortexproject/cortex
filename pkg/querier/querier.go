@@ -24,6 +24,7 @@ type Config struct {
 	Iterators         bool
 	BatchIterators    bool
 	IngesterStreaming bool
+	MaxSamples        int
 
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer
@@ -39,6 +40,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
 	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", false, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
+	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -67,8 +69,22 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 		queryable = NewQueryable(dq, cq, distributor)
 	}
 
-	engine := promql.NewEngine(util.Logger, cfg.metricsRegisterer, cfg.MaxConcurrent, cfg.Timeout)
-	return queryable, engine
+	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
+		querier, err := queryable.Querier(ctx, mint, maxt)
+		if err != nil {
+			return nil, err
+		}
+		return newLazyQuerier(querier), nil
+	})
+
+	engine := promql.NewEngine(promql.EngineOpts{
+		Logger:        util.Logger,
+		Reg:           cfg.metricsRegisterer,
+		MaxConcurrent: cfg.MaxConcurrent,
+		MaxSamples:    cfg.MaxSamples,
+		Timeout:       cfg.Timeout,
+	})
+	return lazyQueryable, engine
 }
 
 // NewQueryable creates a new Queryable for cortex.
@@ -103,7 +119,7 @@ type querier struct {
 }
 
 // Select implements storage.Querier.
-func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	// Kludge: Prometheus passes nil SelectParams if it is doing a 'series' operation,
 	// which needs only metadata.
 	if sp == nil {
@@ -114,7 +130,7 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 	errs := make(chan error, len(q.queriers))
 	for _, querier := range q.queriers {
 		go func(querier storage.Querier) {
-			set, err := querier.Select(sp, matchers...)
+			set, _, err := querier.Select(sp, matchers...)
 			if err != nil {
 				errs <- err
 			} else {
@@ -127,13 +143,13 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 	for range q.queriers {
 		select {
 		case err := <-errs:
-			return nil, err
+			return nil, nil, err
 		case set := <-sets:
 			result = append(result, set)
 		}
 	}
 
-	return storage.NewMergeSeriesSet(result), nil
+	return storage.NewMergeSeriesSet(result, nil), nil, nil
 }
 
 // LabelsValue implements storage.Querier.
@@ -141,12 +157,16 @@ func (q querier) LabelValues(name string) ([]string, error) {
 	return q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
 }
 
-func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (q querier) LabelNames() ([]string, error) {
+	return nil, nil
+}
+
+func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	ms, err := q.distributor.MetricsForLabelMatchers(q.ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return metricsToSeriesSet(ms), nil
+	return metricsToSeriesSet(ms), nil, nil
 }
 
 func (querier) Close() error {

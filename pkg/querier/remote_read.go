@@ -43,7 +43,7 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 					return
 				}
 
-				seriesSet, err := querier.Select(nil, matchers...)
+				seriesSet, _, err := querier.Select(nil, matchers...)
 				if err != nil {
 					errors <- err
 					return

@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/json-iterator/go"
+	opentracing "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -29,12 +31,12 @@ var (
 func parseQueryRangeRequest(r *http.Request) (*QueryRangeRequest, error) {
 	var result QueryRangeRequest
 	var err error
-	result.Start, err = parseTime(r.FormValue("start"))
+	result.Start, err = ParseTime(r.FormValue("start"))
 	if err != nil {
 		return nil, err
 	}
 
-	result.End, err = parseTime(r.FormValue("end"))
+	result.End, err = ParseTime(r.FormValue("end"))
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +91,8 @@ func (q QueryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, er
 	return req.WithContext(ctx), nil
 }
 
-func parseTime(s string) (int64, error) {
+// ParseTime parses the string into an int64, milliseconds since epoch.
+func ParseTime(s string) (int64, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
 		s, ns := math.Modf(t)
 		tm := time.Unix(int64(s), int64(ns*float64(time.Second)))
@@ -126,14 +129,25 @@ func encodeDurationMs(d int64) string {
 
 const statusSuccess = "success"
 
-func parseQueryRangeResponse(r *http.Response) (*APIResponse, error) {
+func parseQueryRangeResponse(ctx context.Context, r *http.Response) (*APIResponse, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
+	sp, _ := opentracing.StartSpanFromContext(ctx, "parseQueryRangeResponse")
+	defer sp.Finish()
+
+	buf, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		sp.LogFields(otlog.Error(err))
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+
+	sp.LogFields(otlog.Int("bytes", len(buf)))
+
 	var resp APIResponse
-	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
+	if err := json.Unmarshal(buf, &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 	return &resp, nil
@@ -165,12 +179,18 @@ func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	return json.Marshal(stream)
 }
 
-func (a *APIResponse) toHTTPResponse() (*http.Response, error) {
+func (a *APIResponse) toHTTPResponse(ctx context.Context) (*http.Response, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.toHTTPResponse")
+	defer sp.Finish()
+
 	b, err := json.Marshal(a)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error marshalling json response", "err", err)
 		return nil, err
 	}
+
+	sp.LogFields(otlog.Int("bytes", len(b)))
+
 	resp := http.Response{
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},

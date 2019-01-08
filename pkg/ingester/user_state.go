@@ -188,7 +188,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	// serially), and the overshoot in allowed series would be minimal.
 	if u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
 		u.fpLocker.Unlock(fp)
-		validation.DiscardedSamples.WithLabelValues("rate_limited", u.userID).Inc()
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, u.userID).Inc()
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
 
@@ -200,7 +200,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 
 	if !u.canAddSeriesFor(string(metricName)) {
 		u.fpLocker.Unlock(fp)
-		validation.DiscardedSamples.WithLabelValues("rate_limited", u.userID).Inc()
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, u.userID).Inc()
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}
 

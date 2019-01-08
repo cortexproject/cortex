@@ -46,7 +46,7 @@ func newRecordRuleSubstitutionMiddleware(filename string, log log.Logger) (query
 	go watchConfigFile(watcher, qrrMap, filename, log)
 
 	return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
-		return recordRuleSubstitution{
+		return &recordRuleSubstitution{
 			next:           next,
 			qrrMap:         qrrMap,
 			configFilename: filename,
@@ -205,6 +205,7 @@ type OrgToQueryRecordingRulesMap struct {
 func (oqr *OrgToQueryRecordingRulesMap) LoadFromFile(filename string) error {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
+		oqr.qrrMap = nil
 		return err
 	}
 	return oqr.LoadFromBytes(b)

@@ -2,9 +2,12 @@ package frontend
 
 import (
 	"context"
+	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 )
@@ -28,7 +31,29 @@ orgs:
       - name: prefix:sum_rate_some_metric_5d
         query: "sum(rate(some_metric[5d]))"
         modifiedAt: 1970-01-01T02:46:40+00:00 # 10000s
-    `,
+`,
+	`
+orgs:
+  - org_id: org1
+    rules: 
+      - name: sum_rate_some_metric_1d
+        query: "sum(rate(some_metric[1d]))"
+        modifiedAt: 1970-01-19T00:33:20+00:00
+      - name: sum_rate_some_metric_5d
+        query: "sum(rate(some_metric[5d]))"
+        modifiedAt: 1970-01-15T02:46:40+00:00
+`,
+	`
+orgs:
+  - org_id: org2
+    rules: 
+      - name: prefix:sum_rate_some_metric_1d
+        query: "sum(rate(some_metric[1d]))"
+        modifiedAt: 1977-01-11T05:33:20+00:00
+      - name: prefix:sum_rate_some_metric_5d
+        query: "sum(rate(some_metric[5d]))"
+        modifiedAt: 1977-01-15T11:43:40+00:00
+`,
 }
 
 func TestReplaceQueryWithRecordingRule(t *testing.T) {
@@ -415,4 +440,52 @@ func mustParseTime(s string) time.Time {
 		panic(err)
 	}
 	return t
+}
+
+func TestWatchConfigFile(t *testing.T) {
+	filename := "test_config.yml"
+	defer func() {
+		os.Remove(filename)
+	}()
+
+	require.NoError(t, ioutil.WriteFile(filename, []byte(fileInputs[0]), 0644))
+
+	qrm, _, err := newRecordRuleSubstitutionMiddleware(filename, log.NewNopLogger())
+	require.NoError(t, err)
+
+	// Getting the OrgToQueryRecordingRulesMap
+	rrsInterface := qrm.Wrap(nil)
+	rrs, ok := rrsInterface.(*recordRuleSubstitution)
+	require.True(t, ok)
+	qrrMap := rrs.qrrMap
+
+	var qrrMapExp OrgToQueryRecordingRulesMap
+
+	// Test the normal load.
+	qrrMapExp.LoadFromBytes([]byte(fileInputs[0]))
+	require.Equal(t, qrrMapExp.qrrMap, qrrMap.qrrMap)
+
+	testFunc := func(configContent string) {
+		t.Helper()
+		require.NoError(t, ioutil.WriteFile(filename, []byte(configContent), 0644))
+		<-time.After(2 * time.Second) // So that the watcher can update.
+		err = qrrMapExp.LoadFromBytes([]byte(configContent))
+		require.NoError(t, err)
+		require.Equal(t, qrrMapExp.qrrMap, qrrMap.qrrMap)
+	}
+
+	// Modify the file.
+	testFunc(fileInputs[1])
+
+	// Modify the file.
+	testFunc(fileInputs[2])
+
+	// Delete the file. Watcher doesn't update the config here.
+	require.NoError(t, os.Remove(filename))
+	<-time.After(2 * time.Second)
+	require.Equal(t, qrrMapExp.qrrMap, qrrMap.qrrMap)
+
+	// New file.
+	// TODO(codesome): why does this not work?
+	// testFunc(fileInputs[1])
 }

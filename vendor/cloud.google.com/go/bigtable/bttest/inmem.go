@@ -380,7 +380,13 @@ func (s *server) ReadRows(req *btpb.ReadRowsRequest, stream btpb.Bigtable_ReadRo
 
 	rows := make([]*row, 0, len(rowSet))
 	for _, r := range rowSet {
-		rows = append(rows, r)
+		r.mu.Lock()
+		fams := len(r.families)
+		r.mu.Unlock()
+
+		if fams != 0 {
+			rows = append(rows, r)
+		}
 	}
 	sort.Sort(byRowKey(rows))
 

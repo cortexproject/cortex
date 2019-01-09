@@ -71,7 +71,7 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 	o = append(o,
 		option.WithGRPCConnectionPool(4),
 		// Set the max size to correspond to server-side limits.
-		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(100<<20), grpc.MaxCallRecvMsgSize(100<<20))),
+		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(1<<28), grpc.MaxCallRecvMsgSize(1<<28))),
 		// TODO(grpc/grpc-go#1388) using connection pool without WithBlock
 		// can cause RPCs to fail randomly. We can delete this after the issue is fixed.
 		option.WithGRPCDialOption(grpc.WithBlock()))

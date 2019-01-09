@@ -206,7 +206,7 @@ func TestReplaceQueryWithRecordingRule(t *testing.T) {
 	}
 
 	for _, tst := range tests {
-		qrrMap := OrgToQueryRecordingRulesMap{}
+		qrrMap := RecordRuleSubstitutionConfig{}
 		qrrMap.LoadFromBytes([]byte(tst.file))
 
 		for _, ut := range tst.unittests {
@@ -345,7 +345,7 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 
 	for _, tst := range tests {
 		rr := recordRuleSubstitution{}
-		rr.qrrMap = &OrgToQueryRecordingRulesMap{}
+		rr.qrrMap = &RecordRuleSubstitutionConfig{}
 		rr.qrrMap.LoadFromBytes([]byte(tst.file))
 
 		for _, ut := range tst.unittests {
@@ -423,7 +423,7 @@ func TestGetMatchingRules(t *testing.T) {
 	}
 
 	for _, tst := range tests {
-		qrrMap := &OrgToQueryRecordingRulesMap{}
+		qrrMap := &RecordRuleSubstitutionConfig{}
 		qrrMap.LoadFromBytes([]byte(tst.file))
 
 		for _, ut := range tst.unittests {
@@ -459,7 +459,7 @@ func TestWatchConfigFile(t *testing.T) {
 	require.True(t, ok)
 	qrrMap := rrs.qrrMap
 
-	var qrrMapExp OrgToQueryRecordingRulesMap
+	var qrrMapExp RecordRuleSubstitutionConfig
 
 	// Test the normal load.
 	qrrMapExp.LoadFromBytes([]byte(fileInputs[0]))
@@ -488,4 +488,6 @@ func TestWatchConfigFile(t *testing.T) {
 	// New file.
 	// TODO(codesome): why does this not work?
 	// testFunc(fileInputs[1])
+
+	require.NoError(t, rrs.watcher.Close())
 }

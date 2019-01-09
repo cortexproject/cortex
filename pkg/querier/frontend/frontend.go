@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"gopkg.in/fsnotify/fsnotify.v1"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -17,6 +16,7 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"gopkg.in/fsnotify/fsnotify.v1"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"

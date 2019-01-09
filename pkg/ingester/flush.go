@@ -38,7 +38,7 @@ var (
 	chunkSize = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "cortex_ingester_chunk_size_bytes",
 		Help:    "Distribution of stored chunk sizes (when stored).",
-		Buckets: prometheus.ExponentialBuckets(10, 10, 5), // biggest bucket is 5*2^(11-1) = 5120
+		Buckets: prometheus.ExponentialBuckets(500, 2, 5), // biggest bucket is 500*2^(5-1) = 8000
 	})
 	chunkSizePerUser = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ingester_chunk_bytes_total",

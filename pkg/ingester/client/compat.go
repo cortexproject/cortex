@@ -257,9 +257,9 @@ func FastFingerprint(labelPairs []LabelPair) model.Fingerprint {
 	var result uint64
 	for _, pair := range labelPairs {
 		sum := hashNew()
-		sum = hashAdd(sum, string(pair.Name))
+		sum = hashAdd(sum, pair.Name)
 		sum = hashAddByte(sum, model.SeparatorByte)
-		sum = hashAdd(sum, string(pair.Value))
+		sum = hashAdd(sum, pair.Value)
 		result ^= sum
 	}
 	return model.Fingerprint(result)

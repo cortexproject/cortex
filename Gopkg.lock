@@ -66,7 +66,7 @@
   revision = "e75332964ef517daa070d7c38a9466a0d687e0a5"
 
 [[projects]]
-  digest = "1:cf7ce678c95c3b922de56cd952950add81b7ac4994d3814005495344e0a29a75"
+  digest = "1:5fe3945dc2ef7ded1c93300ce364ec5141b5c10915c0d434b3dcc36b3039fd80"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -79,15 +79,24 @@
     "aws/credentials/ec2rolecreds",
     "aws/credentials/endpointcreds",
     "aws/credentials/stscreds",
+    "aws/crr",
+    "aws/csm",
     "aws/defaults",
     "aws/ec2metadata",
     "aws/endpoints",
     "aws/request",
     "aws/session",
     "aws/signer/v4",
+    "internal/ini",
+    "internal/s3err",
+    "internal/sdkio",
+    "internal/sdkrand",
+    "internal/sdkuri",
     "internal/shareddefaults",
     "private/protocol",
     "private/protocol/ec2query",
+    "private/protocol/eventstream",
+    "private/protocol/eventstream/eventstreamapi",
     "private/protocol/json/jsonutil",
     "private/protocol/jsonrpc",
     "private/protocol/query",
@@ -105,8 +114,8 @@
     "service/sts",
   ]
   pruneopts = "UT"
-  revision = "b1a7b51924b90a6ecdbaeb17e96418740ff07a1e"
-  version = "v1.10.8"
+  revision = "ddc06f9fad886ea5daa5f828f3ca094084f8c2a7"
+  version = "v1.15.90"
 
 [[projects]]
   branch = "master"
@@ -206,14 +215,6 @@
   pruneopts = "UT"
   revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
   version = "v1.0.0"
-
-[[projects]]
-  digest = "1:f779e6a6b3a143d9fd6cbc8e1c3ddfbe42df2cbab0ecabe66669a609a56460b8"
-  name = "github.com/go-ini/ini"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "e7fea39b01aea8d5671f6858f0532f56e8bff3a5"
-  version = "v1.27.0"
 
 [[projects]]
   digest = "1:7e8ba7677decaf2c6ea3ee0c40eec253c6056732eeb0c7b3ed4bef3f286b845f"
@@ -476,12 +477,11 @@
   version = "v0.8.1"
 
 [[projects]]
-  digest = "1:b87714e57a511d88f307aba7d5b63522da12bed0a050889c81272fc50f71100e"
+  digest = "1:e22af8c7518e1eab6f2eab2b7d7558927f816262586cd6ed9f349c97a6c285c4"
   name = "github.com/jmespath/go-jmespath"
   packages = ["."]
   pruneopts = "UT"
-  revision = "3433f3ea46d9f8019119e7dd41274e112a2359a9"
-  version = "0.2.2"
+  revision = "0b12d6b5"
 
 [[projects]]
   digest = "1:75ab90ae3f5d876167e60f493beadfe66f0ed861a710f283fb06c86437a09538"

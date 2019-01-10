@@ -252,7 +252,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
 	var (
 		sendChan = make(chan *ProcessRequest)
-		recvChan = make(chan *ProcessResponse)
+		recvChan = make(chan *ProcessResponse, 1)
 
 		// Need buffer of 2 so goroutines reading/writing to stream don't hang
 		// around when stream dies.
@@ -272,7 +272,13 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 	// These goroutines will error out when the stream returns.
 	go func() {
 		for {
-			req := <-sendChan
+			var req *ProcessRequest
+			select {
+			case req = <-sendChan:
+			case <-server.Context().Done():
+				return
+			}
+
 			err := server.Send(req)
 			if err != nil {
 				errChan <- err

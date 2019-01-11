@@ -15,44 +15,40 @@ import (
 var fileInputs = []string{
 	`
 orgs:
-  - org_id: org1
-    rules: 
-      - name: sum_rate_some_metric_1d
-        query: "sum(rate(some_metric[1d]))"
-        modifiedAt: 1970-01-01T00:33:20+00:00 # 2000s
-      - name: sum_rate_some_metric_5d
-        query: "sum(rate(some_metric[5d]))"
-        modifiedAt: 1970-01-01T02:46:40+00:00 # 10000s
-  - org_id: org2
-    rules: 
-      - name: prefix:sum_rate_some_metric_1d
-        query: "sum(rate(some_metric[1d]))"
-        modifiedAt: 1970-01-01T00:33:20+00:00 # 2000s
-      - name: prefix:sum_rate_some_metric_5d
-        query: "sum(rate(some_metric[5d]))"
-        modifiedAt: 1970-01-01T02:46:40+00:00 # 10000s
+  org1: 
+    - name: sum_rate_some_metric_1d
+      query: "sum(rate(some_metric[1d]))"
+      modifiedAt: 1970-01-01T00:33:20+00:00 # 2000s
+    - name: sum_rate_some_metric_5d
+      query: "sum(rate(some_metric[5d]))"
+      modifiedAt: 1970-01-01T02:46:40+00:00 # 10000s
+  org2: 
+    - name: prefix:sum_rate_some_metric_1d
+      query: "sum(rate(some_metric[1d]))"
+      modifiedAt: 1970-01-01T00:33:20+00:00 # 2000s
+    - name: prefix:sum_rate_some_metric_5d
+      query: "sum(rate(some_metric[5d]))"
+      modifiedAt: 1970-01-01T02:46:40+00:00 # 10000s
 `,
 	`
 orgs:
-  - org_id: org1
-    rules: 
-      - name: sum_rate_some_metric_1d
-        query: "sum(rate(some_metric[1d]))"
-        modifiedAt: 1970-01-19T00:33:20+00:00
-      - name: sum_rate_some_metric_5d
-        query: "sum(rate(some_metric[5d]))"
-        modifiedAt: 1970-01-15T02:46:40+00:00
+  org1: 
+    - name: sum_rate_some_metric_1d
+      query: "sum(rate(some_metric[1d]))"
+      modifiedAt: 1970-01-19T00:33:20+00:00
+    - name: sum_rate_some_metric_5d
+      query: "sum(rate(some_metric[5d]))"
+      modifiedAt: 1970-01-15T02:46:40+00:00
 `,
 	`
 orgs:
-  - org_id: org2
-    rules: 
-      - name: prefix:sum_rate_some_metric_1d
-        query: "sum(rate(some_metric[1d]))"
-        modifiedAt: 1977-01-11T05:33:20+00:00
-      - name: prefix:sum_rate_some_metric_5d
-        query: "sum(rate(some_metric[5d]))"
-        modifiedAt: 1977-01-15T11:43:40+00:00
+  org2: 
+    - name: prefix:sum_rate_some_metric_1d
+      query: "sum(rate(some_metric[1d]))"
+      modifiedAt: 1977-01-11T05:33:20+00:00
+    - name: prefix:sum_rate_some_metric_5d
+      query: "sum(rate(some_metric[5d]))"
+      modifiedAt: 1977-01-15T11:43:40+00:00
 `,
 }
 
@@ -467,19 +463,18 @@ func TestWatchConfigFile(t *testing.T) {
 		require.NoError(t, err)
 
 		// Location (memory)pointer differs sometimes, so normalising it.
-		require.NoError(t, err)
-		for _, v := range qrrMapExp.qrrMap {
+		for _, v := range qrrMapExp.QrrMap {
 			for i, q := range v {
 				v[i].ModifiedAt = q.ModifiedAt.In(time.UTC)
 			}
 		}
-		for _, v := range rrs.qrrMap.qrrMap {
+		for _, v := range rrs.qrrMap.QrrMap {
 			for i, q := range v {
 				v[i].ModifiedAt = q.ModifiedAt.In(time.UTC)
 			}
 		}
 
-		require.Equal(t, qrrMapExp.qrrMap, rrs.qrrMap.qrrMap)
+		require.Equal(t, qrrMapExp.QrrMap, rrs.qrrMap.QrrMap)
 	}
 
 	// Test the normal load.

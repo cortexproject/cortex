@@ -147,67 +147,74 @@ func generaliseQuery(q string) (string, error) {
 // RecordRuleSubstitutionConfig gives thread safe access to
 // query to recording rule map of all organisations.
 type RecordRuleSubstitutionConfig struct {
-	qrrMap map[string][]QueryToRecordingRuleMap // (org id) -> its query-recording rule maps.
+	QrrMap map[string][]QueryToRecordingRuleMap `yaml:"orgs"` // (org id) -> its query-recording rule maps.
 	mtx    sync.RWMutex
+}
+
+// QueryToRecordingRuleMap is a single query to recording rule map.
+type QueryToRecordingRuleMap struct {
+	RuleName   string    `yaml:"name"`
+	Query      string    `yaml:"query"`
+	ModifiedAt time.Time `yaml:"modifiedAt"`
 }
 
 // LoadFromFile clears the previous config and loads the query to recording rule
 // config from a file.
-func (oqr *RecordRuleSubstitutionConfig) LoadFromFile(filename string) error {
+func (rrs *RecordRuleSubstitutionConfig) LoadFromFile(filename string) error {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
-		oqr.qrrMap = nil
+		rrs.QrrMap = nil
 		return err
 	}
-	return oqr.LoadFromBytes(b)
+	return rrs.LoadFromBytes(b)
 }
 
 // LoadFromBytes clears the previous config and loads the query to recording rule
 // config from bytes.
-func (oqr *RecordRuleSubstitutionConfig) LoadFromBytes(b []byte) (err error) {
-	oqr.mtx.Lock()
+func (rrs *RecordRuleSubstitutionConfig) LoadFromBytes(b []byte) (err error) {
+	rrs.mtx.Lock()
 	defer func() {
 		if err != nil {
-			oqr.qrrMap = nil
+			rrs.QrrMap = nil
 		}
-		oqr.mtx.Unlock()
+		rrs.mtx.Unlock()
 	}()
 
-	var parsedFile recordRuleSubstitutionConfigFile
-	if err = yaml.UnmarshalStrict(b, &parsedFile); err != nil {
+	var tempRrs RecordRuleSubstitutionConfig
+	if err = yaml.UnmarshalStrict(b, &tempRrs); err != nil {
 		return err
 	}
+	rrs.QrrMap = tempRrs.QrrMap
 
-	// Creating the query to recording rule map from the file.
-	oqr.qrrMap = make(map[string][]QueryToRecordingRuleMap)
-	for _, o := range parsedFile.Orgs {
-		for i := range o.QueryToRecordingRuleMap {
-			o.QueryToRecordingRuleMap[i].Query, err = generaliseQuery(o.QueryToRecordingRuleMap[i].Query)
+	// Sanitize the query.
+	for _, org := range rrs.QrrMap {
+		for i := range org {
+			org[i].Query, err = generaliseQuery(org[i].Query)
 			if err != nil {
 				return err
 			}
 		}
-		oqr.qrrMap[o.OrgID] = append(oqr.qrrMap[o.OrgID], o.QueryToRecordingRuleMap...)
 	}
+
 	return nil
 }
 
 // GetMapsForOrg returns the query to recording rule map for the given organisation.
-func (oqr *RecordRuleSubstitutionConfig) GetMapsForOrg(org string) []QueryToRecordingRuleMap {
-	oqr.mtx.RLock()
-	defer oqr.mtx.RUnlock()
-	if oqr.qrrMap == nil {
+func (rrs *RecordRuleSubstitutionConfig) GetMapsForOrg(org string) []QueryToRecordingRuleMap {
+	rrs.mtx.RLock()
+	defer rrs.mtx.RUnlock()
+	if rrs.QrrMap == nil {
 		return nil
 	}
-	return oqr.qrrMap[org]
+	return rrs.QrrMap[org]
 }
 
 // ReplaceQueryWithRecordingRule returns *QueryRangeRequest with the parts of query replaced
 // with recording rules according to the query to recording rule map that it has.
 // It will replace the query if its recording rules was modified before r.End,
 // and query request ranges should be handled separately for returned QueryRangeRequest.
-func (oqr *RecordRuleSubstitutionConfig) ReplaceQueryWithRecordingRule(org string, r *QueryRangeRequest) (*QueryRangeRequest, time.Time, error) {
-	qrrs := oqr.GetMapsForOrg(org)
+func (rrs *RecordRuleSubstitutionConfig) ReplaceQueryWithRecordingRule(org string, r *QueryRangeRequest) (*QueryRangeRequest, time.Time, error) {
+	qrrs := rrs.GetMapsForOrg(org)
 	if len(qrrs) == 0 {
 		return nil, time.Unix(0, 0), nil
 	}
@@ -246,8 +253,8 @@ func (oqr *RecordRuleSubstitutionConfig) ReplaceQueryWithRecordingRule(org strin
 }
 
 // GetMatchingRules returns QueryToRecordingRuleMap for queries that can be replaced with recording rules in given query.
-func (oqr *RecordRuleSubstitutionConfig) GetMatchingRules(org, query string) ([]QueryToRecordingRuleMap, error) {
-	qrrs := oqr.GetMapsForOrg(org)
+func (rrs *RecordRuleSubstitutionConfig) GetMatchingRules(org, query string) ([]QueryToRecordingRuleMap, error) {
+	qrrs := rrs.GetMapsForOrg(org)
 	if len(qrrs) == 0 {
 		return nil, nil
 	}
@@ -262,24 +269,4 @@ func (oqr *RecordRuleSubstitutionConfig) GetMatchingRules(org, query string) ([]
 		}
 	}
 	return result, nil
-}
-
-// structs for the file containing query to recording rule map.
-
-// recordRuleSubstitutionConfigFile is the top most level in the file.
-type recordRuleSubstitutionConfigFile struct {
-	Orgs []orgQueryToRecordingRuleMap `yaml:"orgs"`
-}
-
-// orgQueryToRecordingRuleMap holds all the recording rules of an organisation.
-type orgQueryToRecordingRuleMap struct {
-	OrgID                   string                    `yaml:"org_id"`
-	QueryToRecordingRuleMap []QueryToRecordingRuleMap `yaml:"rules"`
-}
-
-// QueryToRecordingRuleMap is a single query to recording rule map.
-type QueryToRecordingRuleMap struct {
-	RuleName   string    `yaml:"name"`
-	Query      string    `yaml:"query"`
-	ModifiedAt time.Time `yaml:"modifiedAt"`
 }

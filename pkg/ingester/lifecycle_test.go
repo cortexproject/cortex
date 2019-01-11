@@ -291,6 +291,10 @@ func (i ingesterClientAdapater) Close() error {
 	return nil
 }
 
+func (i ingesterClientAdapater) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	return nil, nil
+}
+
 // TestIngesterFlush tries to test that the ingester flushes chunks before
 // removing itself from the ring.
 func TestIngesterFlush(t *testing.T) {

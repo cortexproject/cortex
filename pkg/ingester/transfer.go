@@ -11,6 +11,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -258,7 +260,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 
 // findTargetIngester finds an ingester in PENDING state.
 func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, error) {
-	findIngester := func() (*ring.IngesterDesc, error) {
+	findIngester := func(ctx context.Context) (*ring.IngesterDesc, error) {
 		ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
 		if err != nil {
 			return nil, err
@@ -269,22 +271,40 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 			return nil, fmt.Errorf("no pending ingesters")
 		}
 
-		return &ingesters[0], nil
+		ingester := &ingesters[0]
+		c, err := i.cfg.ingesterClientFactory(ingester.Addr, i.clientConfig)
+		if err != nil {
+			return nil, err
+		}
+		defer c.Close()
+
+		_, err = c.Check(ctx, &grpc_health_v1.HealthCheckRequest{}, grpc.FailFast(true))
+		return ingester, nil
 	}
 
-	deadline := time.Now().Add(i.cfg.SearchPendingFor)
+	deadline := time.NewTimer(i.cfg.SearchPendingFor)
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(i.cfg.SearchPendingFor / pendingSearchIterations)
+	defer ticker.Stop()
+
 	for {
-		ingester, err := findIngester()
-		if err != nil {
-			level.Debug(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
-			if time.Now().Before(deadline) {
-				time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
-				continue
-			} else {
-				level.Warn(util.Logger).Log("msg", "Could not find pending ingester before deadline", "err", err)
-				return nil, err
+		select {
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(ctx, i.cfg.SearchPendingFor/pendingSearchIterations)
+			ingester, err := findIngester(ctx)
+			cancel()
+			if err != nil {
+				level.Debug(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
 			}
+			return ingester, nil
+
+		case <-deadline.C:
+			level.Warn(util.Logger).Log("msg", "Could not find pending ingester before deadline")
+			return nil, fmt.Errorf("could not find pending ingester before deadline")
+
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
-		return ingester, nil
 	}
 }

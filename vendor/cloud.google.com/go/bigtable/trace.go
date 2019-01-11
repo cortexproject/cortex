@@ -12,25 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build go1.8
-
 package bigtable
 
 import (
+	"context"
 	"fmt"
 
-	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/trace"
-	"golang.org/x/net/context"
-	"google.golang.org/api/option"
-	"google.golang.org/grpc"
 )
-
-func openCensusOptions() []option.ClientOption {
-	return []option.ClientOption{
-		option.WithGRPCDialOption(grpc.WithStatsHandler(&ocgrpc.ClientHandler{})),
-	}
-}
 
 func traceStartSpan(ctx context.Context, name string) context.Context {
 	ctx, _ = trace.StartSpan(ctx, name)

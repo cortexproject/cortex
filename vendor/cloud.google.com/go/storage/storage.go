@@ -16,6 +16,7 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -25,7 +26,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -36,19 +36,19 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"cloud.google.com/go/internal/trace"
-	"google.golang.org/api/option"
-	htransport "google.golang.org/api/transport/http"
-
 	"cloud.google.com/go/internal/optional"
+	"cloud.google.com/go/internal/trace"
 	"cloud.google.com/go/internal/version"
-	"golang.org/x/net/context"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
 	raw "google.golang.org/api/storage/v1"
+	htransport "google.golang.org/api/transport/http"
 )
 
 var (
+	// ErrBucketNotExist indicates that the bucket does not exist.
 	ErrBucketNotExist = errors.New("storage: bucket doesn't exist")
+	// ErrObjectNotExist indicates that the object does not exist.
 	ErrObjectNotExist = errors.New("storage: object doesn't exist")
 )
 
@@ -869,17 +869,6 @@ type Query struct {
 	// Versions indicates whether multiple versions of the same
 	// object will be included in the results.
 	Versions bool
-}
-
-// contentTyper implements ContentTyper to enable an
-// io.ReadCloser to specify its MIME type.
-type contentTyper struct {
-	io.Reader
-	t string
-}
-
-func (c *contentTyper) ContentType() string {
-	return c.t
 }
 
 // Conditions constrain methods to act on specific generations of

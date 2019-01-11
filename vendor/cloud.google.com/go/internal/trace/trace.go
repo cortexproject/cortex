@@ -12,23 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build go1.8
-
 package trace
 
 import (
+	"context"
+
 	"go.opencensus.io/trace"
-	"golang.org/x/net/context"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/grpc/status"
 )
 
+// StartSpan adds a span to the trace with the given name.
 func StartSpan(ctx context.Context, name string) context.Context {
 	ctx, _ = trace.StartSpan(ctx, name)
 	return ctx
 }
 
+// EndSpan ends a span with the given error.
 func EndSpan(ctx context.Context, err error) {
 	span := trace.FromContext(ctx)
 	if err != nil {

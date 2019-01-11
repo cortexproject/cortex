@@ -2,7 +2,8 @@
 
 
 [[projects]]
-  digest = "1:222b6a408066f9ec6fd619286ded1b71f78a90ffebff9112e44ed72ba0ab1f93"
+  branch = "master"
+  digest = "1:12959545df4ae6f04d36e253382c17bd0f4575824e9dabc73e43cb7e01d88906"
   name = "cloud.google.com/go"
   packages = [
     "bigtable",
@@ -20,8 +21,7 @@
     "storage",
   ]
   pruneopts = "UT"
-  revision = "6cb29e61d96723a38dcac44d4c15c36744d96d07"
-  version = "v0.29.0"
+  revision = "ed41f43dafb848a06a7136373760f3c09326fb44"
 
 [[projects]]
   digest = "1:253580c3e9e495538385a96f276a0e06f3ba90c73421df1258de8a8375ff4b09"
@@ -189,7 +189,6 @@
   version = "v1.2.1"
 
 [[projects]]
-  branch = "master"
   digest = "1:812c304ad1cbb214459f7a198cc246a9c8a114a6a92063cef7b31c4ec42a5d6c"
   name = "github.com/fsouza/fake-gcs-server"
   packages = [
@@ -197,7 +196,8 @@
     "internal/backend",
   ]
   pruneopts = "UT"
-  revision = "cc83cc197acdd99a2c590fd7f71d9c662a0c3c69"
+  revision = "9f9efdc50d6ad4314a4ff85646341f2a9b75ae5f"
+  version = "v1.3.0"
 
 [[projects]]
   digest = "1:2cd7915ab26ede7d95b8749e6b1f933f1c6d5398030684e6505940a10f31cfda"
@@ -337,12 +337,12 @@
   revision = "44d81051d367757e1c7c6a5a86423ece9afcf63c"
 
 [[projects]]
-  branch = "master"
-  digest = "1:76be9b8b5aa776de44eecd5a873d3344ae4fe583ba905d50a38c7d60f21fbdd3"
+  digest = "1:856bd1e35f6da8ce5671a5df09d0e89bf01e9b74b3dabb6d097d39b3813801e1"
   name = "github.com/googleapis/gax-go"
-  packages = ["."]
+  packages = ["v2"]
   pruneopts = "UT"
-  revision = "9af46dd5a1713e8b5cd71106287eba3cefdde50b"
+  revision = "c8a15bac9b9fe955bd9f900272f9a306465d28cf"
+  version = "v2.0.3"
 
 [[projects]]
   digest = "1:65c4414eeb350c47b8de71110150d0ea8a281835b1f386eacaa3ad7325929c21"

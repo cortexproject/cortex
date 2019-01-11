@@ -17,6 +17,7 @@ limitations under the License.
 package bigtable
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -32,7 +33,6 @@ import (
 	lroauto "cloud.google.com/go/longrunning/autogen"
 	"github.com/golang/protobuf/ptypes"
 	durpb "github.com/golang/protobuf/ptypes/duration"
-	"golang.org/x/net/context"
 	"google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -154,9 +154,9 @@ func (ac *AdminClient) CreatePresplitTable(ctx context.Context, table string, sp
 // CreateTableFromConf creates a new table in the instance from the given configuration.
 func (ac *AdminClient) CreateTableFromConf(ctx context.Context, conf *TableConf) error {
 	ctx = mergeOutgoingMetadata(ctx, ac.md)
-	var req_splits []*btapb.CreateTableRequest_Split
+	var reqSplits []*btapb.CreateTableRequest_Split
 	for _, split := range conf.SplitKeys {
-		req_splits = append(req_splits, &btapb.CreateTableRequest_Split{Key: []byte(split)})
+		reqSplits = append(reqSplits, &btapb.CreateTableRequest_Split{Key: []byte(split)})
 	}
 	var tbl btapb.Table
 	if conf.Families != nil {
@@ -170,7 +170,7 @@ func (ac *AdminClient) CreateTableFromConf(ctx context.Context, conf *TableConf)
 		Parent:        prefix,
 		TableId:       conf.TableID,
 		Table:         &tbl,
-		InitialSplits: req_splits,
+		InitialSplits: reqSplits,
 	}
 	_, err := ac.tClient.CreateTable(ctx, req)
 	return err
@@ -312,10 +312,12 @@ func (ac *AdminClient) CreateTableFromSnapshot(ctx context.Context, table, clust
 	return longrunning.InternalNewOperation(ac.lroClient, op).Wait(ctx, &resp)
 }
 
+// DefaultSnapshotDuration is the default TTL for a snapshot.
 const DefaultSnapshotDuration time.Duration = 0
 
-// Creates a new snapshot in the specified cluster from the specified source table.
-// Setting the ttl to `DefaultSnapshotDuration` will use the server side default for the duration.
+// SnapshotTable creates a new snapshot in the specified cluster from the
+// specified source table. Setting the TTL to `DefaultSnapshotDuration` will
+// use the server side default for the duration.
 //
 // This is a private alpha release of Cloud Bigtable snapshots. This feature
 // is not currently available to most Cloud Bigtable customers. This feature
@@ -383,7 +385,7 @@ func (ac *AdminClient) Snapshots(ctx context.Context, cluster string) *SnapshotI
 		for _, s := range resp.Snapshots {
 			snapshotInfo, err := newSnapshotInfo(s)
 			if err != nil {
-				return "", fmt.Errorf("Failed to parse snapshot proto %v", err)
+				return "", fmt.Errorf("failed to parse snapshot proto %v", err)
 			}
 			it.items = append(it.items, snapshotInfo)
 		}
@@ -405,12 +407,12 @@ func newSnapshotInfo(snapshot *btapb.Snapshot) (*SnapshotInfo, error) {
 
 	createTime, err := ptypes.Timestamp(snapshot.CreateTime)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid createTime: %v", err)
+		return nil, fmt.Errorf("invalid createTime: %v", err)
 	}
 
 	deleteTime, err := ptypes.Timestamp(snapshot.DeleteTime)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid deleteTime: %v", err)
+		return nil, fmt.Errorf("invalid deleteTime: %v", err)
 	}
 
 	return &SnapshotInfo{
@@ -422,7 +424,7 @@ func newSnapshotInfo(snapshot *btapb.Snapshot) (*SnapshotInfo, error) {
 	}, nil
 }
 
-// An EntryIterator iterates over log entries.
+// SnapshotIterator is an EntryIterator that iterates over log entries.
 //
 // This is a private alpha release of Cloud Bigtable snapshots. This feature
 // is not currently available to most Cloud Bigtable customers. This feature
@@ -451,6 +453,7 @@ func (it *SnapshotIterator) Next() (*SnapshotInfo, error) {
 	return item, nil
 }
 
+// SnapshotInfo contains snapshot metadata.
 type SnapshotInfo struct {
 	Name        string
 	SourceTable string
@@ -459,7 +462,7 @@ type SnapshotInfo struct {
 	DeleteTime  time.Time
 }
 
-// Get snapshot metadata.
+// SnapshotInfo gets snapshot metadata.
 //
 // This is a private alpha release of Cloud Bigtable snapshots. This feature
 // is not currently available to most Cloud Bigtable customers. This feature
@@ -488,7 +491,7 @@ func (ac *AdminClient) SnapshotInfo(ctx context.Context, cluster, snapshot strin
 	return newSnapshotInfo(resp)
 }
 
-// Delete a snapshot in a cluster.
+// DeleteSnapshot deletes a snapshot in a cluster.
 //
 // This is a private alpha release of Cloud Bigtable snapshots. This feature
 // is not currently available to most Cloud Bigtable customers. This feature
@@ -689,7 +692,7 @@ func (iac *InstanceAdminClient) CreateInstance(ctx context.Context, conf *Instan
 	return iac.CreateInstanceWithClusters(ctx, &newConfig)
 }
 
-// CreateInstance creates a new instance with configured clusters in the project.
+// CreateInstanceWithClusters creates a new instance with configured clusters in the project.
 // This method will return when the instance has been created or when an error occurs.
 func (iac *InstanceAdminClient) CreateInstanceWithClusters(ctx context.Context, conf *InstanceWithClustersConfig) error {
 	ctx = mergeOutgoingMetadata(ctx, iac.md)
@@ -898,6 +901,7 @@ func (iac *InstanceAdminClient) GetCluster(ctx context.Context, instanceID, clus
 	return cis, nil
 }
 
+// InstanceIAM returns the instance's IAM handle.
 func (iac *InstanceAdminClient) InstanceIAM(instanceID string) *iam.Handle {
 	return iam.InternalNewHandleGRPCClient(iac.iClient, "projects/"+iac.project+"/instances/"+instanceID)
 
@@ -905,7 +909,15 @@ func (iac *InstanceAdminClient) InstanceIAM(instanceID string) *iam.Handle {
 
 // Routing policies.
 const (
-	MultiClusterRouting  = "multi_cluster_routing_use_any"
+	// MultiClusterRouting is a policy that allows read/write requests to be
+	// routed to any cluster in the instance. Requests will will fail over to
+	// another cluster in the event of transient errors or delays. Choosing
+	// this option sacrifices read-your-writes consistency to improve
+	// availability.
+	MultiClusterRouting = "multi_cluster_routing_use_any"
+	// SingleClusterRouting is a policy that unconditionally routes all
+	// read/write requests to a specific cluster. This option preserves
+	// read-your-writes consistency, but does not improve availability.
 	SingleClusterRouting = "single_cluster_routing"
 )
 
@@ -924,13 +936,14 @@ type ProfileConf struct {
 	IgnoreWarnings bool
 }
 
+// ProfileIterator iterates over profiles.
 type ProfileIterator struct {
 	items    []*btapb.AppProfile
 	pageInfo *iterator.PageInfo
 	nextFunc func() error
 }
 
-//set this to patch app profile. If unset, no fields will be replaced.
+// ProfileAttrsToUpdate define addrs to update during an Update call. If unset, no fields will be replaced.
 type ProfileAttrsToUpdate struct {
 	// If set, updates the description.
 	Description optional.String
@@ -946,6 +959,7 @@ type ProfileAttrsToUpdate struct {
 	IgnoreWarnings bool
 }
 
+// GetFieldMaskPath returns the field mask path.
 func (p *ProfileAttrsToUpdate) GetFieldMaskPath() []string {
 	path := make([]string, 0)
 	if p.Description != nil {
@@ -1050,9 +1064,7 @@ func (iac *InstanceAdminClient) ListAppProfiles(ctx context.Context, instanceID 
 			return "", err
 		}
 
-		for _, a := range profileRes.AppProfiles {
-			pit.items = append(pit.items, a)
-		}
+		pit.items = append(pit.items, profileRes.AppProfiles...)
 		return profileRes.NextPageToken, nil
 	}
 

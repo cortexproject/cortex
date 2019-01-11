@@ -5,6 +5,7 @@
 - `-querier.max-concurrent`
 
    The maximum number of top-level PromQL queries that will execute at the same time, per querier process.
+   If using the query frontend, this should be set to at least (`querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.
 
 - `-querier.query-parallelism`
 
@@ -31,10 +32,11 @@ The next three options only apply when the querier is used together with the Que
 - `-querier.worker-parallelism`
 
    Number of simultaneous queries to process, per worker process.
+   See note on `-querier.max-concurrent`
 
 ## Querier and Ruler
 
-The ingester query API was improved over time, but defaults to the old behaviour for backwards-compatibility. Therefore in a new installation both of these next flags should be set to `true`:
+The ingester query API was improved over time, but defaults to the old behaviour for backwards-compatibility. For best results both of these next two flags should be set to `true`:
 
 - `-querier.batch-iterators`
 
@@ -47,6 +49,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 - `-querier.iterators`
 
    This is similar to `-querier.batch-iterators` but less efficient.
+   If both `iterators` and `batch-iterators` are `true`, `batch-iterators` will take precedence.
 
 - `-promql.lookback-delta`
 

@@ -40,8 +40,12 @@ var (
 		Help:    "Distribution of stored chunk sizes (when stored).",
 		Buckets: prometheus.ExponentialBuckets(500, 2, 5), // biggest bucket is 500*2^(5-1) = 8000
 	})
+	chunksPerUser = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_chunks_stored_total",
+		Help: "Total stored chunks per user.",
+	}, []string{"user"})
 	chunkSizePerUser = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ingester_chunk_bytes_total",
+		Name: "cortex_ingester_chunk_stored_bytes_total",
 		Help: "Total bytes stored in chunks per user.",
 	}, []string{"user"})
 	chunkAge = promauto.NewHistogram(prometheus.HistogramOpts{
@@ -320,6 +324,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 	}
 
 	sizePerUser := chunkSizePerUser.WithLabelValues(userID)
+	countPerUser := chunksPerUser.WithLabelValues(userID)
 	// Record statistsics only when actual put request did not return error.
 	for _, chunkDesc := range chunkDescs {
 		utilization, length, size := chunkDesc.C.Utilization(), chunkDesc.C.Len(), chunkDesc.C.Size()
@@ -328,6 +333,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 		chunkLength.Observe(float64(length))
 		chunkSize.Observe(float64(size))
 		sizePerUser.Add(float64(size))
+		countPerUser.Inc()
 		chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
 	}
 

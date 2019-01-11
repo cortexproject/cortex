@@ -2,10 +2,8 @@ package frontend
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"io"
+	"github.com/cortexproject/cortex/pkg/util"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -16,7 +14,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/user"
-	"gopkg.in/fsnotify/fsnotify.v1"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -24,11 +21,16 @@ var (
 	// This offset is added to the modifiedAtMillis to give room to the first evaluation
 	// of all recording rules.
 	safetyOffset = int64(5 * time.Minute / time.Millisecond)
+
+	configReloadInterval = 30 * time.Second
 )
 
-func newRecordRuleSubstitutionMiddleware(filename string, log log.Logger) (queryRangeMiddleware, *fsnotify.Watcher, error) {
+func newRecordRuleSubstitutionMiddleware(filename string, logger log.Logger) (queryRangeMiddleware, *util.Reloader, error) {
 	if filename == "" {
 		return nil, nil, errors.New("config file is missing")
+	}
+	if logger == nil {
+		logger = log.NewNopLogger()
 	}
 
 	qrrMap := &RecordRuleSubstitutionConfig{}
@@ -37,73 +39,26 @@ func newRecordRuleSubstitutionMiddleware(filename string, log log.Logger) (query
 		return nil, nil, err
 	}
 
-	// Watcher to reload config when file is modified.
-	watcher, err := fsnotify.NewWatcher()
+	reloader, err := util.NewReloader(filename, configReloadInterval, configReloadCallback(qrrMap, logger))
 	if err != nil {
 		return nil, nil, err
 	}
-	watcher.Add(filename)
-	go watchConfigFile(watcher, qrrMap, filename, log)
 
 	return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
 		return &recordRuleSubstitution{
 			next:           next,
 			qrrMap:         qrrMap,
 			configFilename: filename,
-			watcher:        watcher,
 		}
-	}), watcher, nil
+	}), reloader, nil
 }
 
-// TODO(codesome): should this end gracefully when frontend is closed?
-func watchConfigFile(watcher *fsnotify.Watcher, qrrMap *RecordRuleSubstitutionConfig, filename string, log log.Logger) {
-	getFileHash := func(fname string) (string, error) {
-		hasher := sha256.New()
-		f, err := os.Open(fname)
-		if err != nil {
-			return "", err
-		}
-		defer f.Close()
-		if _, err := io.Copy(hasher, f); err != nil {
-			return "", err
-		}
-		return hex.EncodeToString(hasher.Sum(nil)), nil
-	}
-
-	lastHash, err := getFileHash(filename)
-	if err != nil {
-		level.Error(log).Log("msg", "getting hash of config file for RecordRuleSubstitutionMiddleware, closing watcher", "err", err.Error())
-		return
-	}
-
-	for {
-		select {
-		case event := <-watcher.Events:
-			// fsnotify sometimes sends a bunch of events without name or operation.
-			// It's unclear what they are and why they are sent - filter them out.
-			if len(event.Name) == 0 {
-				break
-			}
-			// Everything but a chmod requires reloading.
-			if event.Op^fsnotify.Chmod == 0 {
-				break
-			}
-
-			if h, err := getFileHash(event.Name); err != nil {
-				level.Error(log).Log("msg", "getting hash of config file for RecordRuleSubstitutionMiddleware", "err", err.Error())
-				break
-			} else if h != lastHash {
-				lastHash = h
-				if err := qrrMap.LoadFromFile(event.Name); err != nil {
-					lastHash = ""
-					level.Error(log).Log("msg", "reloading config file for RecordRuleSubstitutionMiddleware", "err", err.Error())
-				}
-			}
-
-		case err := <-watcher.Errors:
-			if err != nil {
-				level.Error(log).Log("msg", "watching config file for RecordRuleSubstitutionMiddleware", "err", err)
-			}
+func configReloadCallback(qrrMap *RecordRuleSubstitutionConfig, logger log.Logger) func(f *os.File, err error) {
+	return func(f *os.File, err error) {
+		if b, err := ioutil.ReadAll(f); err != nil {
+			level.Error(logger).Log("msg", "reading file failed in configReloadCallback", "err", err.Error())
+		} else if err := qrrMap.LoadFromBytes(b); err != nil {
+			level.Error(logger).Log("msg", "failed to load config in configReloadCallback", "err", err.Error())
 		}
 	}
 }
@@ -113,7 +68,6 @@ type recordRuleSubstitution struct {
 	qrrMap *RecordRuleSubstitutionConfig
 
 	configFilename string
-	watcher        *fsnotify.Watcher
 }
 
 func (rr recordRuleSubstitution) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {

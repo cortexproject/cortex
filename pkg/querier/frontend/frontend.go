@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"github.com/cortexproject/cortex/pkg/util"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -16,7 +17,6 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"gopkg.in/fsnotify/fsnotify.v1"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
@@ -82,7 +82,7 @@ type Frontend struct {
 	cond   *sync.Cond
 	queues map[string]chan *request
 
-	qrrConfigWatcher *fsnotify.Watcher
+	qrrConfigReloader *util.Reloader
 }
 
 type request struct {
@@ -113,7 +113,7 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 		if err != nil {
 			return nil, err
 		}
-		f.qrrConfigWatcher = qrrConfigWatcher
+		f.qrrConfigReloader = qrrConfigWatcher
 		queryRangeMiddleware = append(queryRangeMiddleware, recordRuleSubstitutionMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
@@ -149,8 +149,8 @@ func (f *Frontend) Close() error {
 	for len(f.queues) > 0 {
 		f.cond.Wait()
 	}
-	if f.qrrConfigWatcher != nil {
-		return f.qrrConfigWatcher.Close()
+	if f.qrrConfigReloader != nil {
+		f.qrrConfigReloader.Stop()
 	}
 	return nil
 }

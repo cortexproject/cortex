@@ -24,7 +24,7 @@ type Overrides struct {
 	Defaults     Limits
 	overridesMtx sync.RWMutex
 	overrides    map[string]*Limits
-	quit         chan struct{}
+	reloader     *util.Reloader
 }
 
 // NewOverrides makes a new Overrides.
@@ -34,11 +34,14 @@ func NewOverrides(defaults Limits) (*Overrides, error) {
 		return &Overrides{
 			Defaults:  defaults,
 			overrides: map[string]*Limits{},
-			quit:      make(chan struct{}),
 		}, nil
 	}
 
-	overrides, err := loadOverrides(defaults.PerTenantOverrideConfig)
+	f, err := os.Open(defaults.PerTenantOverrideConfig)
+	if err != nil {
+		return nil, err
+	}
+	overrides, err := loadOverrides(f)
 	if err != nil {
 		return nil, err
 	}
@@ -46,48 +49,41 @@ func NewOverrides(defaults Limits) (*Overrides, error) {
 	o := &Overrides{
 		Defaults:  defaults,
 		overrides: overrides,
-		quit:      make(chan struct{}),
 	}
 
-	go o.loop()
+	reloader, err := util.NewReloader(defaults.PerTenantOverrideConfig, o.Defaults.PerTenantOverridePeriod, o.reloadCallback)
+	if err != nil {
+		return nil, err
+	}
+	o.reloader = reloader
+
 	return o, nil
 }
 
-func (o *Overrides) loop() {
-	ticker := time.NewTicker(o.Defaults.PerTenantOverridePeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			overrides, err := loadOverrides(o.Defaults.PerTenantOverrideConfig)
-			if err != nil {
-				overridesReloadSuccess.Set(0)
-				level.Error(util.Logger).Log("msg", "failed to reload overrides", "err", err)
-				continue
-			}
-			overridesReloadSuccess.Set(1)
-
-			o.overridesMtx.Lock()
-			o.overrides = overrides
-			o.overridesMtx.Unlock()
-		case <-o.quit:
-			return
-		}
+func (o *Overrides) reloadCallback(f *os.File, err error) {
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to reload overrides", "err", err)
 	}
+
+	overrides, err := loadOverrides(f)
+	if err != nil {
+		overridesReloadSuccess.Set(0)
+		level.Error(util.Logger).Log("msg", "failed to reload overrides", "err", err)
+		return
+	}
+	overridesReloadSuccess.Set(1)
+
+	o.overridesMtx.Lock()
+	o.overrides = overrides
+	o.overridesMtx.Unlock()
 }
 
 // Stop background reloading of overrides.
 func (o *Overrides) Stop() {
-	close(o.quit)
+	o.reloader.Stop()
 }
 
-func loadOverrides(filename string) (map[string]*Limits, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-
+func loadOverrides(f *os.File) (map[string]*Limits, error) {
 	var overrides struct {
 		Overrides map[string]*Limits `yaml:"overrides"`
 	}

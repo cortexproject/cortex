@@ -343,9 +343,9 @@ func TestRecordRuleSubstitution_replaceQueryWithRecordingRule(t *testing.T) {
 		},
 	}
 
+	rr := recordRuleSubstitution{}
+	rr.qrrMap = &RecordRuleSubstitutionConfig{}
 	for _, tst := range tests {
-		rr := recordRuleSubstitution{}
-		rr.qrrMap = &RecordRuleSubstitutionConfig{}
 		rr.qrrMap.LoadFromBytes([]byte(tst.file))
 
 		for _, ut := range tst.unittests {
@@ -443,51 +443,63 @@ func mustParseTime(s string) time.Time {
 }
 
 func TestWatchConfigFile(t *testing.T) {
+	configReloadInterval = 500 * time.Millisecond
 	filename := "test_config.yml"
 	defer func() {
 		os.Remove(filename)
 	}()
 
+	// Initial config.
 	require.NoError(t, ioutil.WriteFile(filename, []byte(fileInputs[0]), 0644))
 
-	qrm, _, err := newRecordRuleSubstitutionMiddleware(filename, log.NewNopLogger())
+	qrm, reloader, err := newRecordRuleSubstitutionMiddleware(filename, log.NewNopLogger())
 	require.NoError(t, err)
 
-	// Getting the OrgToQueryRecordingRulesMap
-	rrsInterface := qrm.Wrap(nil)
-	rrs, ok := rrsInterface.(*recordRuleSubstitution)
-	require.True(t, ok)
-	qrrMap := rrs.qrrMap
-
-	var qrrMapExp RecordRuleSubstitutionConfig
-
-	// Test the normal load.
-	qrrMapExp.LoadFromBytes([]byte(fileInputs[0]))
-	require.Equal(t, qrrMapExp.qrrMap, qrrMap.qrrMap)
-
-	testFunc := func(configContent string) {
+	testExpected := func(configContent string) {
 		t.Helper()
-		require.NoError(t, ioutil.WriteFile(filename, []byte(configContent), 0644))
-		<-time.After(2 * time.Second) // So that the watcher can update.
-		err = qrrMapExp.LoadFromBytes([]byte(configContent))
+		<-time.After(1000 * time.Millisecond) // So that the reloader can update.
+
+		rrs, ok := qrm.Wrap(nil).(*recordRuleSubstitution)
+		require.True(t, ok)
+
+		var qrrMapExp RecordRuleSubstitutionConfig
+		err := qrrMapExp.LoadFromBytes([]byte(configContent))
 		require.NoError(t, err)
-		require.Equal(t, qrrMapExp.qrrMap, qrrMap.qrrMap)
+
+		// Location (memory)pointer differs sometimes, so normalising it.
+		require.NoError(t, err)
+		for _, v := range qrrMapExp.qrrMap {
+			for i, q := range v {
+				v[i].ModifiedAt = q.ModifiedAt.In(time.UTC)
+			}
+		}
+		for _, v := range rrs.qrrMap.qrrMap {
+			for i, q := range v {
+				v[i].ModifiedAt = q.ModifiedAt.In(time.UTC)
+			}
+		}
+
+		require.Equal(t, qrrMapExp.qrrMap, rrs.qrrMap.qrrMap)
 	}
 
-	// Modify the file.
-	testFunc(fileInputs[1])
+	// Test the normal load.
+	testExpected(fileInputs[0])
 
 	// Modify the file.
-	testFunc(fileInputs[2])
+	require.NoError(t, ioutil.WriteFile(filename, []byte(fileInputs[1]), 0644))
+	testExpected(fileInputs[1])
+
+	// Modify the file.
+	require.NoError(t, ioutil.WriteFile(filename, []byte(fileInputs[2]), 0644))
+	testExpected(fileInputs[2])
 
 	// Delete the file. Watcher doesn't update the config here.
 	require.NoError(t, os.Remove(filename))
-	<-time.After(2 * time.Second)
-	require.Equal(t, qrrMapExp.qrrMap, qrrMap.qrrMap)
+	testExpected(fileInputs[2])
 
 	// New file.
-	// TODO(codesome): why does this not work?
-	// testFunc(fileInputs[1])
+	require.NoError(t, ioutil.WriteFile(filename, []byte(fileInputs[1]), 0644))
+	testExpected(fileInputs[1])
 
-	require.NoError(t, rrs.watcher.Close())
+	reloader.Stop()
 }

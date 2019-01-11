@@ -463,6 +463,8 @@ func TestWatchConfigFile(t *testing.T) {
 		require.NoError(t, err)
 
 		// Location (memory)pointer differs sometimes, so normalising it.
+		qrrMapExp.mtx.Lock()
+		rrs.qrrMap.mtx.Lock()
 		for _, v := range qrrMapExp.QrrMap {
 			for i, q := range v {
 				v[i].ModifiedAt = q.ModifiedAt.In(time.UTC)
@@ -475,6 +477,8 @@ func TestWatchConfigFile(t *testing.T) {
 		}
 
 		require.Equal(t, qrrMapExp.QrrMap, rrs.qrrMap.QrrMap)
+		qrrMapExp.mtx.Unlock()
+		rrs.qrrMap.mtx.Unlock()
 	}
 
 	// Test the normal load.

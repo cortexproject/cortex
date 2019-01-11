@@ -80,7 +80,9 @@ func (o *Overrides) reloadCallback(f *os.File, err error) {
 
 // Stop background reloading of overrides.
 func (o *Overrides) Stop() {
-	o.reloader.Stop()
+	if o.reloader != nil {
+		o.reloader.Stop()
+	}
 }
 
 func loadOverrides(f *os.File) (map[string]*Limits, error) {

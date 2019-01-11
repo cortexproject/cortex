@@ -204,7 +204,6 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}
 
-	util.Event().Log("msg", "new series", "userID", u.userID, "fp", fp, "series", metric)
 	u.memSeriesCreatedTotal.Inc()
 	memSeries.Inc()
 

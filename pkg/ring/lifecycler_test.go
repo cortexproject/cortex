@@ -42,6 +42,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	lifecyclerConfig1.NumTokens = 1
 	lifecyclerConfig1.ClaimOnRollout = true
 	lifecyclerConfig1.ID = "ing1"
+	lifecyclerConfig1.FinalSleep = 0
 
 	ft := &flushTransferer{}
 	l1, err := NewLifecycler(lifecyclerConfig1, ft)
@@ -67,6 +68,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	lifecyclerConfig2.JoinAfter = 100 * time.Second
 	lifecyclerConfig2.NormaliseTokens = true
 	lifecyclerConfig2.ID = "ing2"
+	lifecyclerConfig1.FinalSleep = 0
 
 	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{})
 	require.NoError(t, err)

@@ -30,6 +30,11 @@ var (
 		Name: "cortex_ingester_ring_tokens_to_own",
 		Help: "The number of tokens to own in the ring.",
 	})
+	shutdownDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "cortex_shutdown_duration_seconds",
+		Help:    "Duration (in seconds) of cortex shutdown procedure (ie transfer or flush).",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"op", "status"})
 )
 
 // LifecyclerConfig is the config to build a Lifecycler.
@@ -454,16 +459,24 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := true
 	if i.cfg.ClaimOnRollout {
+		transferStart := time.Now()
 		if err := i.flushTransferer.TransferOut(ctx); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
+			shutdownDuration.WithLabelValues("transfer", "fail").Observe(time.Since(transferStart).Seconds())
 		} else {
 			flushRequired = false
+			shutdownDuration.WithLabelValues("transfer", "success").Observe(time.Since(transferStart).Seconds())
 		}
 	}
 
 	if flushRequired {
+		flushStart := time.Now()
 		i.flushTransferer.Flush()
+		shutdownDuration.WithLabelValues("flush", "success").Observe(time.Since(flushStart).Seconds())
 	}
+
+	// Sleep for 2 scrape intervals, so the shutdownDuration metric can be collected.
+	time.Sleep(30 * time.Second)
 }
 
 // unregister removes our entry from consul.

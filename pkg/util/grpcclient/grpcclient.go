@@ -35,8 +35,9 @@ func (cfg *Config) CallOptions() []grpc.CallOption {
 
 // DialOptions returns the config as a grpc.DialOptions.
 func (cfg *Config) DialOptions() []grpc.DialOption {
-	return []grpc.DialOption{
-		grpc.WithDefaultCallOptions(cfg.CallOptions()...),
-		grpc.WithBalancer(grpc.RoundRobin(NewPoolResolver(cfg.ConnectionPoolSize))),
+	result := []grpc.DialOption{grpc.WithDefaultCallOptions(cfg.CallOptions()...)}
+	if cfg.ConnectionPoolSize > 1 {
+		result = append(result, grpc.WithBalancer(grpc.RoundRobin(NewPoolResolver(cfg.ConnectionPoolSize))))
 	}
+	return result
 }

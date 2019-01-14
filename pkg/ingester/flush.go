@@ -150,13 +150,14 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 
 	firstTime := series.firstTime()
 	flush := i.shouldFlushSeries(series, fp, immediate)
-	flushReasons.WithLabelValues(flush.String()).Inc()
+	if flush == noFlush {
+		return
+	}
 
-	if flush != noFlush {
-		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-		if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
-			util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
-		}
+	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
+	if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
+		flushReasons.WithLabelValues(flush.String()).Inc()
+		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
 	}
 }
 

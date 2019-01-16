@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/go-kit/kit/log/level"
+	ot "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -266,6 +267,10 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel() // releases resources if slowOperation completes before timeout elapses
+
+	sp, ctx := ot.StartSpanFromContext(ctx, "flushUserSeries")
+	defer sp.Finish()
+	sp.SetTag("organization", userID)
 
 	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
 	err := i.flushChunks(ctx, fp, client.FromLabelPairs(series.metric), chunks)

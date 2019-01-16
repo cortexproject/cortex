@@ -1,5 +1,60 @@
 # Cortex Arguments Explained
 
+## Querier
+
+- `-querier.max-concurrent`
+
+   The maximum number of top-level PromQL queries that will execute at the same time, per querier process.
+   If using the query frontend, this should be set to at least (`querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.
+
+- `-querier.query-parallelism`
+
+   This refers to database queries against the store (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
+
+- `-querier.timeout`
+
+   The timeout for a top-level PromQL query.
+
+- `-querier.max-samples`
+
+   Maximum number of samples a single query can load into memory, to avoid blowing up on enormous queries.
+
+The next three options only apply when the querier is used together with the Query Frontend:
+
+- `-querier.frontend-address`
+
+   Address of query frontend service, used by workers to find the frontend which will give them queries to execute.
+
+- `-querier.dns-lookup-period`
+
+   How often the workers will query DNS to re-check where the frontend is.
+
+- `-querier.worker-parallelism`
+
+   Number of simultaneous queries to process, per worker process.
+   See note on `-querier.max-concurrent`
+
+## Querier and Ruler
+
+The ingester query API was improved over time, but defaults to the old behaviour for backwards-compatibility. For best results both of these next two flags should be set to `true`:
+
+- `-querier.batch-iterators`
+
+   This uses iterators to execute query, as opposed to fully materialising the series in memory, and fetches multiple results per loop.
+
+- `-querier.ingester-streaming`
+
+   Use streaming RPCs to query ingester, to reduce memory pressure in the ingester.
+
+- `-querier.iterators`
+
+   This is similar to `-querier.batch-iterators` but less efficient.
+   If both `iterators` and `batch-iterators` are `true`, `batch-iterators` will take precedence.
+
+- `-promql.lookback-delta`
+
+   Time since the last sample after which a time series is considered stale and ignored by expression evaluations.
+
 ## Query Frontend
 
 - `-querier.align-querier-with-step`

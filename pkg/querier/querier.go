@@ -19,13 +19,13 @@ import (
 
 // Config contains the configuration require to create a querier
 type Config struct {
-	MaxConcurrent       int
-	Timeout             time.Duration
-	Iterators           bool
-	BatchIterators      bool
-	IngesterStreaming   bool
-	MaxSamples          int
-	IngesterMaxChunkAge time.Duration
+	MaxConcurrent            int
+	Timeout                  time.Duration
+	Iterators                bool
+	BatchIterators           bool
+	IngesterStreaming        bool
+	MaxSamples               int
+	IngesterMaxQueryLookback time.Duration
 
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer
@@ -42,7 +42,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", false, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
-	f.DurationVar(&cfg.IngesterMaxChunkAge, "querier.ingester-max-chunk-age", 12*time.Hour, "Maximum chunk age in ingester before flushing.")
+	f.DurationVar(&cfg.IngesterMaxQueryLookback, "querier.ingester-max-query-lookback", 24*time.Hour, "Maximum lookback beyond which queries are not sent to ingester.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -64,11 +64,11 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 	var queryable storage.Queryable
 	if cfg.IngesterStreaming {
 		dq := newIngesterStreamingQueryable(distributor, iteratorFunc)
-		queryable = newUnifiedChunkQueryable(chunkStore, dq, distributor, iteratorFunc, cfg.IngesterMaxChunkAge)
+		queryable = newUnifiedChunkQueryable(chunkStore, dq, distributor, iteratorFunc, cfg.IngesterMaxQueryLookback)
 	} else {
 		cq := newChunkStoreQueryable(chunkStore, iteratorFunc)
 		dq := newDistributorQueryable(distributor)
-		queryable = NewQueryable(dq, cq, distributor, cfg.IngesterMaxChunkAge)
+		queryable = NewQueryable(dq, cq, distributor, cfg.IngesterMaxQueryLookback)
 	}
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
@@ -90,29 +90,28 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(dq, cq storage.Queryable, distributor Distributor, ingesterMaxChunkAge time.Duration) storage.Queryable {
+func NewQueryable(dq, cq storage.Queryable, distributor Distributor, ingesterMaxQueryLookback time.Duration) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		cqr, err := cq.Querier(ctx, mint, maxt)
+		if err != nil {
+			return nil, err
+		}
+
 		q := querier{
+			queriers:    []storage.Querier{cqr},
 			distributor: distributor,
 			ctx:         ctx,
 			mint:        mint,
 			maxt:        maxt,
 		}
 
-		cqr, err := cq.Querier(ctx, mint, maxt)
-		if err != nil {
-			return nil, err
-		}
-
 		// Include ingester only if maxt is within 2 times ingester chunk age w.r.t. current time.
-		if maxt >= time.Now().Add(-2*ingesterMaxChunkAge).UnixNano()/1e6 {
+		if maxt >= time.Now().Add(-ingesterMaxQueryLookback).UnixNano()/1e6 {
 			dqr, err := dq.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err
 			}
-			q.queriers = []storage.Querier{dqr, cqr}
-		} else {
-			q.queriers = []storage.Querier{cqr}
+			q.queriers = append(q.queriers, dqr)
 		}
 
 		return q, nil

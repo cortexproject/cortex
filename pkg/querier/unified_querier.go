@@ -11,9 +11,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc, ingesterMaxChunkAge time.Duration) storage.Queryable {
+func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc, ingesterMaxQueryLookback time.Duration) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		ucq := &unifiedChunkQuerier{
+			stores: []ChunkStore{cs},
 			querier: querier{
 				ctx:         ctx,
 				mint:        mint,
@@ -29,10 +30,8 @@ func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkI
 		}
 
 		// Include ingester only if maxt is within 2 times ingester chunk age w.r.t. current time.
-		if maxt >= time.Now().Add(-2*ingesterMaxChunkAge).UnixNano()/1e6 {
-			ucq.stores = []ChunkStore{ds, cs}
-		} else {
-			ucq.stores = []ChunkStore{cs}
+		if maxt >= time.Now().Add(-ingesterMaxQueryLookback).UnixNano()/1e6 {
+			ucq.stores = append(ucq.stores, ds)
 		}
 
 		return ucq, nil

@@ -325,6 +325,7 @@ type streamer struct {
 	session *gocql.Session
 }
 
+// NewStreamer returns a Streamer
 func (s *StorageClient) NewStreamer() chunk.Streamer {
 	return &streamer{
 		queries: []streamQuery{},

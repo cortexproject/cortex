@@ -72,6 +72,6 @@ func (f *fsObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 }
 
 // NewStreamer returns a Streamer
-func (s *fsObjectClient) NewStreamer() chunk.Streamer {
+func (f *fsObjectClient) NewStreamer() chunk.Streamer {
 	return nil
 }

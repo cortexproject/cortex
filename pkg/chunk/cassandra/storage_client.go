@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/chunk/util"
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 )
 
 const (
@@ -324,7 +325,7 @@ type streamer struct {
 	session *gocql.Session
 }
 
-func (s *storageClient) NewStreamer() chunk.Streamer {
+func (s *StorageClient) NewStreamer() chunk.Streamer {
 	return &streamer{
 		queries: []streamQuery{},
 		session: s.session,
@@ -333,63 +334,81 @@ func (s *storageClient) NewStreamer() chunk.Streamer {
 
 // TODO query errors should format with shard numbers not cassandra token values
 func (s *streamer) Stream(ctx context.Context, out chan []chunk.Chunk) error {
-	decodeContext := chunk.NewDecodeContext()
+	sp, ctx := ot.StartSpanFromContext(ctx, "Stream")
+	defer sp.Finish()
+
 	for _, query := range s.queries {
-		level.Info(util.Logger).Log("msg", "streaming query", "queryID", query.id)
-		var (
-			q     *gocql.Query
-			hash  string
-			value []byte
-			errs  []error
-		)
-		q = s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
-		iter := q.WithContext(ctx).Iter()
-		chunkMap := map[string][]chunk.Chunk{}
-		for len(out) > 0 { // Wait for channel to clear before querying new metrics
-			time.Sleep(1 * time.Second)
+		err := s.streamQuery(ctx, query, out)
+		if err != nil {
+			return err
+		}
+		for len(out) != 0 {
 			continue
 		}
-		for iter.Scan(&hash, &value) {
-			userID, err := parseHash(hash)
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
-			if query.filterUserID && userID != query.userID { // User ID filtering must be done client side in cassandra
-				continue
-			}
-			c, err := chunk.ParseExternalKey(userID, hash)
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
-			err = c.Decode(decodeContext, value)
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
-			_, ok := chunkMap[userID+":"+c.Fingerprint.String()]
-			if !ok {
-				chunkMap[userID+":"+c.Fingerprint.String()] = []chunk.Chunk{}
-			}
-			chunkMap[userID+":"+c.Fingerprint.String()] = append(chunkMap[userID+":"+c.Fingerprint.String()], c)
+	}
+	return nil
+}
+
+func (s *streamer) streamQuery(ctx context.Context, query streamQuery, out chan []chunk.Chunk) error {
+	decodeContext := chunk.NewDecodeContext()
+	sp, ctx := ot.StartSpanFromContext(ctx, "streamQuery")
+	defer sp.Finish()
+	sp.LogFields(otlog.String("id", query.id))
+
+	var (
+		q     *gocql.Query
+		hash  string
+		value []byte
+		errs  []error
+	)
+
+	q = s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
+	iter := q.WithContext(ctx).Iter()
+	chunkMap := map[string][]chunk.Chunk{}
+	for len(out) > 0 { // Wait for channel to clear before querying new metrics
+		time.Sleep(1 * time.Second)
+		continue
+	}
+	for iter.Scan(&hash, &value) {
+		userID, err := parseHash(hash)
+		if err != nil {
+			errs = append(errs, err)
+			continue
 		}
-		err := iter.Close()
+		if query.filterUserID && userID != query.userID { // User ID filtering must be done client side in cassandra
+			continue
+		}
+		c, err := chunk.ParseExternalKey(userID, hash)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		err = c.Decode(decodeContext, value)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		_, ok := chunkMap[userID+":"+c.Fingerprint.String()]
+		if !ok {
+			chunkMap[userID+":"+c.Fingerprint.String()] = []chunk.Chunk{}
+		}
+		chunkMap[userID+":"+c.Fingerprint.String()] = append(chunkMap[userID+":"+c.Fingerprint.String()], c)
+	}
+	err := iter.Close()
+	if err != nil {
+		return fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+	}
+	for _, err := range errs {
 		if err != nil {
 			return fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
 		}
-		for _, err := range errs {
-			if err != nil {
-				return fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
-			}
-		}
-		for _, chunks := range chunkMap {
-			select {
-			case <-ctx.Done():
-				return fmt.Errorf("stream canceled, current query %v_%v_%v, with user %v", query.tableName, query.tokenFrom, query.tokenTo, query.userID)
-			case out <- chunks:
-				continue
-			}
+	}
+	for _, chunks := range chunkMap {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("stream canceled, current query %v_%v_%v, with user %v", query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+		case out <- chunks:
+			continue
 		}
 	}
 	return nil

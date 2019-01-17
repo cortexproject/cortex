@@ -61,13 +61,13 @@ type Reader struct {
 	id                    string // ID is the configured as the reading prefix and the shards assigned to the reader
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 
-	storage      chunk.StorageClient
+	storage      chunk.ObjectClient
 	planner      Planner
 	chunkChannel chan []chunk.Chunk
 }
 
 // NewReader returns a Reader struct
-func NewReader(cfg ReaderConfig, storage chunk.StorageClient) (*Reader, error) {
+func NewReader(cfg ReaderConfig, storage chunk.ObjectClient) (*Reader, error) {
 	planner, err := NewPlanner(cfg.PlannerConfig)
 	if err != nil {
 		return nil, err

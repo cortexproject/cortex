@@ -17,11 +17,7 @@ const (
 	tableName = "test"
 )
 
-<<<<<<< HEAD
 type storageClientTest func(*testing.T, chunk.IndexClient, chunk.ObjectClient)
-=======
-type storageClientTest func(*testing.T, chunk.StorageClient, chunk.SchemaConfig)
->>>>>>> 975b006c... add stream chunks to storage interface
 
 func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 	var fixtures []testutils.Fixture

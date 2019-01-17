@@ -132,3 +132,8 @@ func (a s3ObjectClient) putS3Chunk(ctx context.Context, key string, buf []byte) 
 		return err
 	})
 }
+
+// NewStreamer returns a Streamer
+func (a s3ObjectClient) NewStreamer() chunk.Streamer {
+	return nil
+}

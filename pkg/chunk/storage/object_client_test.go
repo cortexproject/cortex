@@ -63,7 +63,7 @@ func TestChunksBasic(t *testing.T) {
 
 // TestStreamer ensures Streamer clients honors the userID batch option
 func TestStreamer(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client chunk.StorageClient, schema chunk.SchemaConfig) {
+	forAllFixtures(t, func(t *testing.T, _ chunk.IndexClient, client chunk.ObjectClient) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_, chunks, err := testutils.CreateChunks(0, 2000, model.Now())
@@ -76,6 +76,17 @@ func TestStreamer(t *testing.T) {
 		if batch == nil {
 			return
 		}
+		schema := chunk.SchemaConfig{
+			Configs: []chunk.PeriodConfig{{
+				IndexType: "null",
+				From:      model.Now().Add(2 * time.Hour),
+				ChunkTables: chunk.PeriodicTableConfig{
+					Prefix: "chunks",
+					Period: 10 * time.Minute,
+				},
+			}},
+		}
+
 		tablename := schema.ChunkTableFor(model.Now().Add(-time.Hour))
 		batch.Add(tablename, "userIDNew", 0, 240)
 	})

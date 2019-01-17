@@ -160,3 +160,25 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 
 	return output, nil
 }
+
+// NewStreamer returns a GCP Bigtable specific stream batch.
+// By design the batch needs a userID, Table, and two integers representing
+// the first two characters of the fingerprint of metrics which will be streamed.
+// stream. Shards are an integer between 0 and 240 that map onto 2 hex characters.
+// For Example:
+// 			Shard | Prefix
+//			    0 | 10
+//			    1 | 11
+//			  ... | ...
+//			   16 |
+//			  240 | ff
+//
+// Technically there are 256 combinations of 2 hex character (16^2). However,
+// fingerprints will not lead with a 0 character so 00->0f excluded, leading to
+// 240
+func (s *bigtableObjectClient) NewStreamer() chunk.Streamer {
+	return &bigtableStreamer{
+		client:  s.client,
+		queries: []bigtableStreamQuery{},
+	}
+}

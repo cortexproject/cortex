@@ -11,14 +11,14 @@ import (
 )
 
 // NewStorage makes a new table client based on the configuration.
-func NewStorage(name string, cfg storage.Config) (chunk.StorageClient, error) {
+func NewStorage(name string, cfg storage.Config) (chunk.ObjectClient, error) {
 	switch name {
 	case "inmemory":
 		return nil, fmt.Errorf("inmemory reader storage client not implemented currently")
 	case "aws", "aws-dynamo":
 		return nil, fmt.Errorf("inmemory reader storage client not implemented currently")
 	case "gcp", "gcp-columnkey":
-		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, chunk.SchemaConfig{})
+		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, chunk.SchemaConfig{})
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, chunk.SchemaConfig{})
 	default:

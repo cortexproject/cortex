@@ -85,7 +85,6 @@ func TestRingNormaliseMigration(t *testing.T) {
 			len(desc.Ingesters) == 1 &&
 			desc.Ingesters["ing2"].State == ACTIVE &&
 			len(desc.Ingesters["ing2"].Tokens) == 1 &&
-			desc.Ingesters["ing2"].Tokens[0] == token &&
-			len(desc.Tokens) == 0
+			desc.Ingesters["ing2"].Tokens[0] == token
 	})
 }

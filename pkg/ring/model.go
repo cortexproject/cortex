@@ -70,35 +70,28 @@ func (d *Desc) RemoveIngester(id string) {
 func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
 	var result []uint32
 
-	if normaliseTokens {
+	// If the ingester we are claiming from is normalising, blank out its tokens.
+	if fromDesc, found := d.Ingesters[from]; found {
+		fromDesc.Tokens = nil
+		d.Ingesters[from] = fromDesc
+	}
 
-		// If we are storing the tokens in a normalise form, we need to deal with
-		// the migration from denormalised by removing the tokens from the tokens
-		// list.
-		result = d.Ingesters[from].Tokens
-
-		for i := 0; i < len(d.Tokens); {
-			if d.Tokens[i].Ingester == from {
-				result = append(result, d.Tokens[i].Token)
-				d.Tokens = d.Tokens[:i+copy(d.Tokens[i:], d.Tokens[i+1:])]
-				continue
-			}
-			i++
+	// Update the denormalised ring, and get our new tokens from there
+	// In the normalised case we could take them from fromDesc.Tokens,
+	// but we need this code anyway for the migrate-from-denormalised case.
+	for i := 0; i < len(d.Tokens); i++ {
+		if d.Tokens[i].Ingester == from {
+			d.Tokens[i].Ingester = to
+			result = append(result, d.Tokens[i].Token)
 		}
+	}
 
+	// Update our normalised tokens
+	if normaliseTokens {
 		sort.Sort(uint32s(result))
 		ing := d.Ingesters[to]
 		ing.Tokens = result
 		d.Ingesters[to] = ing
-
-	} else {
-
-		for i := 0; i < len(d.Tokens); i++ {
-			if d.Tokens[i].Ingester == from {
-				d.Tokens[i].Ingester = to
-				result = append(result, d.Tokens[i].Token)
-			}
-		}
 	}
 
 	return result

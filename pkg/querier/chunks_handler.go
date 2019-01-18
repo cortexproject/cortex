@@ -61,7 +61,7 @@ func ChunksHandler(queryable storage.Queryable) http.Handler {
 		defer writer.Close()
 
 		for _, chunk := range chunks {
-			buf, err := chunk.Encode()
+			buf, err := chunk.Encoded()
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

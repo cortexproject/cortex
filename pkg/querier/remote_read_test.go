@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
@@ -88,7 +89,16 @@ type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	if sp == nil {
+		metrics := []metric.Metric{}
+		for _, row := range m.matrix {
+			metrics = append(metrics, metric.Metric{
+				Metric: row.Metric,
+			})
+		}
+		return metricsToSeriesSet(metrics), nil, nil
+	}
 	return matrixToSeriesSet(m.matrix), nil, nil
 }
 

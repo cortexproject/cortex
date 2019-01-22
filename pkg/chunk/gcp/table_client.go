@@ -3,9 +3,13 @@ package gcp
 import (
 	"context"
 
+	"io/ioutil"
+
 	"google.golang.org/grpc/codes"
 
 	"cloud.google.com/go/bigtable"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -20,6 +24,17 @@ type tableClient struct {
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
 	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
+
+	if cfg.KeyFile != "" {
+		jsonKey, err := ioutil.ReadFile(cfg.KeyFile)
+		if err != nil {
+			return nil, err
+		}
+
+		token, err := google.JWTConfigFromJSON(jsonKey, bigtable.AdminScope)
+		opts = append(opts, option.WithTokenSource(token.TokenSource(ctx)))
+	}
+
 	client, err := bigtable.NewAdminClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err

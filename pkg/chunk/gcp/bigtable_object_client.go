@@ -3,11 +3,14 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -23,6 +26,17 @@ type bigtableObjectClient struct {
 // Bigtable.
 func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
 	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
+
+	if cfg.KeyFile != "" {
+		jsonKey, err := ioutil.ReadFile(cfg.KeyFile)
+		if err != nil {
+			return nil, err
+		}
+
+		token, err := google.JWTConfigFromJSON(jsonKey, bigtable.Scope)
+		opts = append(opts, option.WithTokenSource(token.TokenSource(ctx)))
+	}
+
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err

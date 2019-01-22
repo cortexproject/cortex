@@ -3,13 +3,13 @@ package querier
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
@@ -91,13 +91,7 @@ type mockQuerier struct {
 
 func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	if sp == nil {
-		metrics := []metric.Metric{}
-		for _, row := range m.matrix {
-			metrics = append(metrics, metric.Metric{
-				Metric: row.Metric,
-			})
-		}
-		return metricsToSeriesSet(metrics), nil, nil
+		panic(fmt.Errorf("select params must be set"))
 	}
 	return matrixToSeriesSet(m.matrix), nil, nil
 }

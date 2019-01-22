@@ -1,4 +1,4 @@
-package migrate
+package planner
 
 import (
 	"flag"
@@ -8,8 +8,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-// PlanConfig is used to configure the Planner
-type PlanConfig struct {
+// Config is used to configure the Planner
+type Config struct {
 	FirstShard int
 	LastShard  int
 	BatchSize  int
@@ -26,7 +26,7 @@ type PlanConfig struct {
 // partition tokens.
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *PlanConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.FirstShard, "plan.firstShard", 0, "fist shard in range of shards to be migrated (0-240)")
 	f.IntVar(&cfg.LastShard, "plan.lastShard", 240, "last shard in range of shards to be migrated (0-240)")
 	f.IntVar(&cfg.BatchSize, "plan.batchsize", 1, "number of shards to stream per batch")
@@ -43,21 +43,21 @@ type Planner struct {
 	users      []string
 }
 
-// NewPlanner returns a new planner struct
-func NewPlanner(cfg PlanConfig) (Planner, error) {
+// New returns a new planner struct
+func New(cfg Config) (*Planner, error) {
 	if cfg.FirstShard < 0 || cfg.FirstShard > 240 {
-		return Planner{}, fmt.Errorf("plan.firstShard set to %v, must be in range 0-240", cfg.FirstShard)
+		return &Planner{}, fmt.Errorf("plan.firstShard set to %v, must be in range 0-240", cfg.FirstShard)
 	}
 	if cfg.LastShard < 0 || cfg.LastShard > 240 {
-		return Planner{}, fmt.Errorf("plan.lastShard set to %v, must be in range 0-240", cfg.LastShard)
+		return &Planner{}, fmt.Errorf("plan.lastShard set to %v, must be in range 0-240", cfg.LastShard)
 	}
 	if cfg.FirstShard > cfg.LastShard {
-		return Planner{}, fmt.Errorf("plan.lastShard (%v) is set to less than plan.from (%v)", cfg.LastShard, cfg.FirstShard)
+		return &Planner{}, fmt.Errorf("plan.lastShard (%v) is set to less than plan.from (%v)", cfg.LastShard, cfg.FirstShard)
 	}
 
 	userList := strings.Split(cfg.UserIDList, ",")
 	tableList := strings.Split(cfg.Tables, ",")
-	return Planner{
+	return &Planner{
 		firstShard: cfg.FirstShard,
 		lastShard:  cfg.LastShard,
 		users:      userList,

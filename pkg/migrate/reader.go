@@ -9,6 +9,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/migrate/mapper"
+	"github.com/cortexproject/cortex/pkg/migrate/planner"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/go-kit/kit/log/level"
@@ -40,7 +42,8 @@ type ReaderConfig struct {
 	Addr           string
 	BufferSize     int
 	ClientConfig   client.Config
-	PlannerConfig  PlanConfig
+	PlannerConfig  planner.Config
+	MapperConfig   mapper.Config
 	ReaderIDPrefix string
 	StorageClient  string
 }
@@ -49,6 +52,7 @@ type ReaderConfig struct {
 func (cfg *ReaderConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.PlannerConfig.RegisterFlags(f)
 	cfg.ClientConfig.RegisterFlags(f)
+	cfg.MapperConfig.RegisterFlags(f)
 	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "gcp", "Which storage client to use (gcp, cassandra).")
 	f.IntVar(&cfg.BufferSize, "reader.buffer-size", 10000, "number of chunk batches to buffer before forwarding")
 	f.StringVar(&cfg.Addr, "reader.forward-addr", "", "address of the chunk transfer endpoint")
@@ -62,22 +66,26 @@ type Reader struct {
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 
 	storage      chunk.ObjectClient
-	planner      Planner
+	planner      *planner.Planner
+	chunkMapper  *mapper.Mapper
 	chunkChannel chan []chunk.Chunk
 }
 
 // NewReader returns a Reader struct
 func NewReader(cfg ReaderConfig, storage chunk.ObjectClient) (*Reader, error) {
-	planner, err := NewPlanner(cfg.PlannerConfig)
+	planner, err := planner.New(cfg.PlannerConfig)
 	if err != nil {
 		return nil, err
 	}
-	id := cfg.ReaderIDPrefix + fmt.Sprintf("%d_%d", planner.firstShard, planner.lastShard)
+	id := cfg.ReaderIDPrefix + fmt.Sprintf("%d_%d", cfg.PlannerConfig.FirstShard, cfg.PlannerConfig.LastShard)
 	out := make(chan []chunk.Chunk, cfg.BufferSize)
+	chunkMapper, err := mapper.New(cfg.MapperConfig)
+
 	return &Reader{
 		cfg:                   cfg,
 		id:                    id,
 		planner:               planner,
+		chunkMapper:           chunkMapper,
 		storage:               storage,
 		ingesterClientFactory: client.MakeIngesterClient,
 		chunkChannel:          out,
@@ -148,6 +156,12 @@ func (r Reader) Forward(ctx context.Context) error {
 		level.Debug(util.Logger).Log("msg", "sending chunk batch", "num_chunks", len(chunks))
 		if len(chunks) == 0 {
 			continue
+		}
+		if r.chunkMapper != nil {
+			chunks, err = r.chunkMapper.MapChunks(chunks)
+			if err != nil {
+				return fmt.Errorf("unable to map chunks, %v", err)
+			}
 		}
 		wireChunks, err := chunkcompat.ToChunks(chunks)
 		if err != nil {

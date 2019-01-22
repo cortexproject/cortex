@@ -57,6 +57,17 @@ type CreateChunkOptions interface {
 
 type createChunkRequest struct {
 	userID string
+	from   model.Time
+}
+
+// From applies a new user ID to chunks created by CreateChunks
+func From(from model.Time) FromOpt { return FromOpt(from) }
+
+// FromOpt is used to set the from field of the chunks
+type FromOpt model.Time
+
+func (f FromOpt) set(req *createChunkRequest) {
+	req.from = model.Time(f)
 }
 
 // User applies a new user ID to chunks created by CreateChunks
@@ -73,6 +84,7 @@ func (u UserOpt) set(req *createChunkRequest) {
 func CreateChunks(startIndex, batchSize int, start model.Time, options ...CreateChunkOptions) ([]string, []chunk.Chunk, error) {
 	req := &createChunkRequest{
 		userID: "userID",
+		from:   model.Now(),
 	}
 	for _, opt := range options {
 		opt.set(req)
@@ -80,7 +92,7 @@ func CreateChunks(startIndex, batchSize int, start model.Time, options ...Create
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
-		chunk := dummyChunkFor(start, model.Metric{
+		chunk := dummyChunkFor(req.from, model.Metric{
 			model.MetricNameLabel: "foo",
 			"index":               model.LabelValue(strconv.Itoa(startIndex*batchSize + j)),
 		}, req.userID)

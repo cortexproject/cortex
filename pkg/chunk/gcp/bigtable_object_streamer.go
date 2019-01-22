@@ -10,6 +10,8 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 )
 
+// Stream forwards metrics to a golang channel, forwarded chunks must have the same
+// user ID
 func (b *bigtableStreamer) Stream(ctx context.Context, out chan []chunk.Chunk) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "Stream")
 	defer sp.Finish()

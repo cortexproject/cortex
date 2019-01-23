@@ -137,17 +137,29 @@ func (r *Reader) TransferData(ctx context.Context) error {
 // Forward reads batched chunks with the same metric from a channel and wires them
 // to a Migrate Writer using the TransferChunks service in the ingester protobuf package
 func (r Reader) Forward(ctx context.Context) error {
-	c, err := r.ingesterClientFactory(r.cfg.Addr, r.cfg.ClientConfig)
-	if err != nil {
-		return err
-	}
-	defer c.(io.Closer).Close()
+	var (
+		dryrun bool
+		cli    client.HealthAndIngesterClient
+		stream client.Ingester_TransferChunksClient
+		err    error
+	)
+	if r.cfg.Addr == "" {
+		level.Info(util.Logger).Log("msg", "no address set, dry run mode enabled")
+		dryrun = true
+	} else {
+		cli, err := r.ingesterClientFactory(r.cfg.Addr, r.cfg.ClientConfig)
+		if err != nil {
+			return err
+		}
+		defer cli.(io.Closer).Close()
 
-	ctx = user.InjectOrgID(ctx, "1")
-	stream, err := c.TransferChunks(ctx)
-	if err != nil {
-		return err
+		ctx = user.InjectOrgID(ctx, "1")
+		stream, err = cli.TransferChunks(ctx)
+		if err != nil {
+			return err
+		}
 	}
+
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: time.Second * 5,
 		MaxBackoff: time.Second * 360,
@@ -168,7 +180,11 @@ func (r Reader) Forward(ctx context.Context) error {
 			return fmt.Errorf("unable to serialize chunks, %v", err)
 		}
 		labels := client.ToLabelPairs(chunks[0].Metric)
-
+		if dryrun {
+			level.Info(util.Logger).Log("msg", "processed metrics", "num", len(chunks))
+			level.Debug(util.Logger).Log("chunks", chunks)
+			continue
+		}
 		for backoff.Ongoing() {
 			err = stream.Send(
 				&client.TimeSeriesChunk{
@@ -183,7 +199,7 @@ func (r Reader) Forward(ctx context.Context) error {
 				for backoff.Ongoing() {
 					streamErrors.WithLabelValues(r.id).Inc()
 					level.Info(util.Logger).Log("msg", "attempting to re-establish connection to writer", "try", backoff.NumRetries())
-					stream, err = c.TransferChunks(ctx)
+					stream, err = cli.TransferChunks(ctx)
 					if err != nil {
 						level.Error(util.Logger).Log("msg", "error initializing client", "err", err)
 						backoff.Wait()
@@ -204,6 +220,7 @@ func (r Reader) Forward(ctx context.Context) error {
 
 		sentChunks.WithLabelValues(r.id).Add(float64(len(chunks)))
 	}
+
 	_, err = stream.CloseAndRecv()
 	if err.Error() == "EOF" {
 		return nil

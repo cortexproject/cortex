@@ -3,6 +3,7 @@ package querier
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -88,7 +89,10 @@ type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	if sp == nil {
+		panic(fmt.Errorf("select params must be set"))
+	}
 	return matrixToSeriesSet(m.matrix), nil, nil
 }
 

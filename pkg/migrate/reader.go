@@ -80,6 +80,9 @@ func NewReader(cfg ReaderConfig, storage chunk.ObjectClient) (*Reader, error) {
 	id := cfg.ReaderIDPrefix + fmt.Sprintf("%d_%d", cfg.PlannerConfig.FirstShard, cfg.PlannerConfig.LastShard)
 	out := make(chan []chunk.Chunk, cfg.BufferSize)
 	chunkMapper, err := mapper.New(cfg.MapperConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Reader{
 		cfg:                   cfg,
@@ -182,7 +185,9 @@ func (r Reader) Forward(ctx context.Context) error {
 		labels := client.ToLabelPairs(chunks[0].Metric)
 		if dryrun {
 			level.Info(util.Logger).Log("msg", "processed metrics", "num", len(chunks))
-			level.Debug(util.Logger).Log("chunks", chunks)
+			for _, c := range chunks {
+				level.Debug(util.Logger).Log("chunk", c.Fingerprint.String(), "user", c.UserID)
+			}
 			continue
 		}
 		for backoff.Ongoing() {
@@ -221,10 +226,13 @@ func (r Reader) Forward(ctx context.Context) error {
 		sentChunks.WithLabelValues(r.id).Add(float64(len(chunks)))
 	}
 
-	_, err = stream.CloseAndRecv()
-	if err.Error() == "EOF" {
-		return nil
+	if !dryrun {
+		_, err = stream.CloseAndRecv()
+		if err.Error() == "EOF" {
+			return nil
+		}
+		return err
 	}
 
-	return err
+	return nil
 }

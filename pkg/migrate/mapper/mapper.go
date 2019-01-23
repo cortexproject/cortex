@@ -20,7 +20,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Mapper is used to update and reencode chunks with new User Ids
 type Mapper struct {
-	userMap map[string]string `yaml:"users,omitempty"`
+	Users map[string]string `yaml:"users,omitempty"`
 }
 
 // New returns a Mapper
@@ -28,7 +28,6 @@ func New(cfg Config) (*Mapper, error) {
 	if cfg.MapConfig == "" {
 		return nil, nil
 	}
-
 	return loadMapperConfig(cfg.MapConfig)
 }
 
@@ -36,7 +35,7 @@ func New(cfg Config) (*Mapper, error) {
 func (u *Mapper) MapChunks(chks []chunk.Chunk) ([]chunk.Chunk, error) {
 	remappedChunks := make([]chunk.Chunk, len(chks))
 	for i, c := range chks {
-		newID, ok := u.userMap[c.UserID]
+		newID, ok := u.Users[c.UserID]
 		if ok {
 			c = chunk.NewChunk(newID, c.Fingerprint, c.Metric, c.Data, c.From, c.Through)
 			_, err := c.Encode()

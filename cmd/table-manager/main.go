@@ -46,7 +46,11 @@ func main() {
 	if (tbmConfig.ChunkTables.WriteScale.Enabled ||
 		tbmConfig.IndexTables.WriteScale.Enabled ||
 		tbmConfig.ChunkTables.InactiveWriteScale.Enabled ||
-		tbmConfig.IndexTables.InactiveWriteScale.Enabled) &&
+		tbmConfig.IndexTables.InactiveWriteScale.Enabled ||
+		tbmConfig.ChunkTables.ReadScale.Enabled ||
+		tbmConfig.IndexTables.ReadScale.Enabled ||
+		tbmConfig.ChunkTables.InactiveReadScale.Enabled ||
+		tbmConfig.IndexTables.InactiveReadScale.Enabled) &&
 		(storageConfig.AWSStorageConfig.ApplicationAutoScaling.URL == nil && storageConfig.AWSStorageConfig.Metrics.URL == "") {
 		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling or Metrics URL has been provided")
 		os.Exit(1)

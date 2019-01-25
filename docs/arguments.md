@@ -100,6 +100,10 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters.  The new ring code can still read and write the old ring format, so is backwards compatible.
 
+- `-store.bigchunk-size-cap-bytes`
+
+   When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days.
+
 ## Ingester, Distributor & Querier limits.
 
 Cortex implements various limits on the requests it can process, in order to prevent a single tenant overwhelming the cluster.  There are various default global limits which apply to all tenants which can be set on the command line.  These limits can also be overridden on a per-tenant basis, using a configuration file.  Specify the filename for the override configuration file using the `-limits.per-user-override-config=<filename>` flag.  The override file will be re-read every 10 seconds by default - this can also be controlled using the `-limits.per-user-override-period=10s` flag.

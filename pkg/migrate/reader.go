@@ -56,7 +56,7 @@ func (cfg *ReaderConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientConfig.RegisterFlags(f)
 	cfg.MapperConfig.RegisterFlags(f)
 	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "gcp", "Which storage client to use (gcp, cassandra).")
-	f.IntVar(&cfg.BufferSize, "reader.buffer-size", 10000, "number of chunk batches to buffer before forwarding")
+	f.IntVar(&cfg.BufferSize, "reader.buffer-size", 1000, "number of chunk batches to buffer before forwarding")
 	f.StringVar(&cfg.Addr, "reader.forward-addr", "", "address of the chunk transfer endpoint")
 	f.StringVar(&cfg.ReaderIDPrefix, "reader.prefix", "reader_", "prefix used to identify reader when forwarding data to writer")
 }
@@ -147,15 +147,16 @@ func (r *Reader) TransferData(ctx context.Context) error {
 // to a Migrate Writer using the TransferChunks service in the ingester protobuf package
 func (r Reader) Forward(ctx context.Context) error {
 	var (
-		dryrun bool
-		cli    client.HealthAndIngesterClient
-		stream client.Ingester_TransferChunksClient
-		err    error
+		cli     client.HealthAndIngesterClient
+		stream  client.Ingester_TransferChunksClient
+		err     error
+		backoff = util.NewBackoff(ctx, util.BackoffConfig{
+			MinBackoff: time.Second * 5,
+			MaxBackoff: time.Second * 360,
+		})
 	)
-	if r.cfg.Addr == "" {
-		level.Info(util.Logger).Log("msg", "no address set, dry run mode enabled")
-		dryrun = true
-	} else {
+
+	if r.cfg.Addr != "" {
 		cli, err := r.ingesterClientFactory(r.cfg.Addr, r.cfg.ClientConfig)
 		if err != nil {
 			return err
@@ -167,79 +168,89 @@ func (r Reader) Forward(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		level.Info(util.Logger).Log("msg", "no address set, dry run mode enabled")
 	}
 
-	backoff := util.NewBackoff(ctx, util.BackoffConfig{
-		MinBackoff: time.Second * 5,
-		MaxBackoff: time.Second * 360,
-	})
-	for chunks := range r.chunkChannel {
-		level.Debug(util.Logger).Log("msg", "sending chunk batch", "num_chunks", len(chunks))
-		if len(chunks) == 0 {
-			continue
-		}
-		if r.chunkMapper != nil {
-			chunks, err = r.chunkMapper.MapChunks(chunks)
-			if err != nil {
-				return fmt.Errorf("unable to map chunks, %v", err)
-			}
-		}
-		wireChunks, err := chunkcompat.ToChunks(chunks)
-		if err != nil {
-			return fmt.Errorf("unable to serialize chunks, %v", err)
-		}
-		labels := client.ToLabelPairs(chunks[0].Metric)
-		if dryrun {
-			level.Info(util.Logger).Log("msg", "processed metrics", "num", len(chunks))
-			for _, c := range chunks {
-				level.Debug(util.Logger).Log("chunk", c.Fingerprint.String(), "user", c.UserID)
-			}
-			continue
-		}
-		for backoff.Ongoing() {
-			err = stream.Send(
-				&client.TimeSeriesChunk{
-					FromIngesterId: r.id,
-					UserId:         chunks[0].UserID,
-					Labels:         labels,
-					Chunks:         wireChunks,
-				},
-			)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "streaming error", "err", err)
-				for backoff.Ongoing() {
-					streamErrors.WithLabelValues(r.id).Inc()
-					level.Info(util.Logger).Log("msg", "attempting to re-establish connection to writer", "try", backoff.NumRetries())
-					stream, err = cli.TransferChunks(ctx)
-					if err != nil {
-						level.Error(util.Logger).Log("msg", "error initializing client", "err", err)
-						backoff.Wait()
-						continue
+	for {
+		select {
+		case <-ctx.Done():
+			level.Error(util.Logger).Log("msg", "shutting down forwarder")
+			return nil
+		case chunks, ok := <-r.chunkChannel:
+			if !ok {
+				if r.cfg.Addr != "" {
+					level.Info(util.Logger).Log("msg", "closing stream")
+					_, err = stream.CloseAndRecv()
+					if err.Error() == "EOF" {
+						return nil
 					}
-					break
+					return err
 				}
-				backoff.Reset()
+				return nil
+			}
+
+			if len(chunks) == 0 {
+				level.Warn(util.Logger).Log("msg", "ignoring empty chunk batch")
 				continue
 			}
-			break
-		}
+			level.Debug(util.Logger).Log("msg", "sending chunk batch", "num_chunks", len(chunks))
 
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "streaming error, unable to recover", "err", err)
-			return err
-		}
+			if r.chunkMapper != nil {
+				chunks, err = r.chunkMapper.MapChunks(chunks)
+				if err != nil {
+					return fmt.Errorf("unable to map chunks, %v", err)
+				}
+			}
 
-		sentChunks.WithLabelValues(r.id).Add(float64(len(chunks)))
+			wireChunks, err := chunkcompat.ToChunks(chunks)
+			if err != nil {
+				return fmt.Errorf("unable to serialize chunks, %v", err)
+			}
+			labels := client.ToLabelPairs(chunks[0].Metric)
+
+			if r.cfg.Addr == "" {
+				level.Info(util.Logger).Log("msg", "processed metrics", "num", len(chunks))
+				for _, c := range chunks {
+					level.Debug(util.Logger).Log("chunk", c.Fingerprint.String(), "user", c.UserID)
+				}
+				continue
+			}
+
+			for backoff.Ongoing() {
+				err = stream.Send(
+					&client.TimeSeriesChunk{
+						FromIngesterId: r.id,
+						UserId:         chunks[0].UserID,
+						Labels:         labels,
+						Chunks:         wireChunks,
+					},
+				)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "streaming error", "err", err)
+					for backoff.Ongoing() {
+						streamErrors.WithLabelValues(r.id).Inc()
+						level.Info(util.Logger).Log("msg", "attempting to re-establish connection to writer", "try", backoff.NumRetries())
+						stream, err = cli.TransferChunks(ctx)
+						if err != nil {
+							level.Error(util.Logger).Log("msg", "error initializing client", "err", err)
+							backoff.Wait()
+							continue
+						}
+						break
+					}
+					backoff.Reset()
+					continue
+				}
+				break
+			}
+
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "streaming error, unable to recover", "err", err)
+				return err
+			}
+
+			sentChunks.WithLabelValues(r.id).Add(float64(len(chunks)))
+		}
 	}
-
-	if !dryrun {
-		level.Info(util.Logger).Log("msg", "closing stream")
-		_, err = stream.CloseAndRecv()
-		if err.Error() == "EOF" {
-			return nil
-		}
-		return err
-	}
-
-	return nil
 }

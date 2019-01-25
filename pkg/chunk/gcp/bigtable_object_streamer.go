@@ -21,9 +21,6 @@ func (b *bigtableStreamer) Stream(ctx context.Context, out chan []chunk.Chunk) e
 		if err != nil {
 			return err
 		}
-		for len(out) != 0 {
-			continue
-		}
 	}
 	return nil
 }

@@ -100,15 +100,15 @@ func NewReader(cfg ReaderConfig, storage chunk.ObjectClient) (*Reader, error) {
 // TransferData initializes a batch stream from a storage client and
 // forwards metrics to writer endpoint
 func (r *Reader) TransferData(ctx context.Context) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "TransferData")
+	defer sp.Finish()
+	sp.LogFields(otlog.String("id", r.id))
+
 	batch := r.storage.NewStreamer()
 	r.planner.Plan(batch)
 	readCtx, cancel := context.WithCancel(ctx)
 
 	go func() {
-		sp, ctx := ot.StartSpanFromContext(ctx, "TransferData")
-		defer sp.Finish()
-		sp.LogFields(otlog.String("id", r.id))
-
 		size, err := batch.Size(ctx)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error estimating size of batch", "err", err)

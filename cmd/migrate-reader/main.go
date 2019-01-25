@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/tracing"
 	"google.golang.org/grpc"
 )
 
@@ -31,6 +32,10 @@ func main() {
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)
+
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	trace := tracing.NewFromEnv("migrate-reader")
+	defer trace.Close()
 
 	server, err := server.New(serverConfig)
 	if err != nil {

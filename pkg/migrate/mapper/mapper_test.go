@@ -15,7 +15,7 @@ import (
 )
 
 var mapper = &Mapper{
-	userMap: map[string]string{"1": "2"},
+	Users: map[string]string{"1": "2"},
 }
 
 func Test_Mapper_MapChunks(t *testing.T) {

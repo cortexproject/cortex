@@ -14,6 +14,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/go-kit/kit/log/level"
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
@@ -103,6 +105,10 @@ func (r *Reader) TransferData(ctx context.Context) error {
 	readCtx, cancel := context.WithCancel(ctx)
 
 	go func() {
+		sp, ctx := ot.StartSpanFromContext(ctx, "TransferData")
+		defer sp.Finish()
+		sp.LogFields(otlog.String("id", r.id))
+
 		size, err := batch.Size(ctx)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error estimating size of batch", "err", err)
@@ -227,6 +233,7 @@ func (r Reader) Forward(ctx context.Context) error {
 	}
 
 	if !dryrun {
+		level.Info(util.Logger).Log("msg", "closing stream")
 		_, err = stream.CloseAndRecv()
 		if err.Error() == "EOF" {
 			return nil

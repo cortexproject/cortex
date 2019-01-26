@@ -1,11 +1,11 @@
 package alertmanager
 
 import (
-	"net"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -34,7 +34,7 @@ type srvDiscovery struct {
 	service      string
 	hostname     string
 	pollInterval time.Duration
-	addresses    chan []*net.SRV
+	addresses    chan []*dns.SRV
 
 	stop chan struct{}
 	done chan struct{}
@@ -46,7 +46,7 @@ func newSRVDiscovery(service, hostname string, pollInterval time.Duration) *srvD
 		service:      service,
 		hostname:     hostname,
 		pollInterval: pollInterval,
-		addresses:    make(chan []*net.SRV),
+		addresses:    make(chan []*dns.SRV),
 		stop:         make(chan struct{}),
 		done:         make(chan struct{}),
 	}
@@ -61,8 +61,8 @@ func (s *srvDiscovery) Stop() {
 }
 
 func (s *srvDiscovery) updatePeers() {
-	var addrs []*net.SRV
-	_, addrs, err := net.LookupSRV(s.service, "tcp", s.hostname)
+	var addrs []*dns.SRV
+	addrs, err := util.LookupSRV(s.service, "tcp", s.hostname)
 	srvRequests.Inc()
 	if err != nil {
 		srvRequestFailures.Inc()

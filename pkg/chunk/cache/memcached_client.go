@@ -3,7 +3,6 @@ package cache
 import (
 	"flag"
 	"fmt"
-	"net"
 	"sort"
 	"sync"
 	"time"
@@ -100,7 +99,7 @@ func (c *memcachedClient) updateLoop(updateInterval time.Duration) error {
 // updateMemcacheServers sets a memcache server list from SRV records. SRV
 // priority & weight are ignored.
 func (c *memcachedClient) updateMemcacheServers() error {
-	_, addrs, err := net.LookupSRV(c.service, "tcp", c.hostname)
+	addrs, err := util.LookupSRV(c.service, "tcp", c.hostname)
 	if err != nil {
 		return err
 	}

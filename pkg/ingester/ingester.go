@@ -458,6 +458,25 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 	return resp, nil
 }
 
+// LabelNames return all the label names.
+func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+	state, ok, err := i.userStates.getViaContext(ctx)
+	if err != nil {
+		return nil, err
+	} else if !ok {
+		return &client.LabelNamesResponse{}, nil
+	}
+
+	resp := &client.LabelNamesResponse{}
+	for _, v := range state.index.LabelNames() {
+		resp.LabelNames = append(resp.LabelNames, string(v))
+	}
+
+	return resp, nil
+}
+
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
 	i.userStatesMtx.RLock()

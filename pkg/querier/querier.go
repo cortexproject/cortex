@@ -158,17 +158,20 @@ func (q querier) LabelValues(name string) ([]string, error) {
 }
 
 func (q querier) LabelNames() ([]string, error) {
-	labelNames := make([][]string, 0, len(q.queriers))
+	return q.distributor.LabelNames(q.ctx)
 
-	for _, qu := range q.queriers {
-		lns, err := qu.LabelNames()
-		if err != nil {
-			return nil, err
-		}
-		labelNames = append(labelNames, lns)
-	}
+	// TODO(codesome): Would the above make sense or the below?
+	// labelNames := make([][]string, 0, len(q.queriers))
 
-	return mergeLabelNameLists(labelNames), nil
+	// for _, qu := range q.queriers {
+	// 	lns, err := qu.LabelNames()
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	labelNames = append(labelNames, lns)
+	// }
+
+	// return util.MergeSortedStringLists(labelNames), nil
 }
 
 func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
@@ -181,41 +184,4 @@ func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, 
 
 func (querier) Close() error {
 	return nil
-}
-
-func mergeLabelNameLists(lnss [][]string) []string {
-	switch len(lnss) {
-	case 0:
-		return nil
-	case 1:
-		return lnss[0]
-	case 2:
-		return mergeTwoLabelNameLists(lnss[0], lnss[1])
-	default:
-		n := len(lnss) / 2
-		left := mergeLabelNameLists(lnss[:n])
-		right := mergeLabelNameLists(lnss[n:])
-		return mergeTwoLabelNameLists(left, right)
-	}
-}
-
-func mergeTwoLabelNameLists(a, b []string) []string {
-	result := make([]string, 0, len(a)+len(b))
-	i, j := 0, 0
-	for i < len(a) && j < len(b) {
-		if a[i] < b[j] {
-			result = append(result, a[i])
-			i++
-		} else if a[i] > b[j] {
-			result = append(result, b[j])
-			j++
-		} else {
-			result = append(result, b[j])
-			i++
-			j++
-		}
-	}
-	result = append(result, a[i:]...)
-	result = append(result, b[j:]...)
-	return result
 }

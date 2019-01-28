@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -459,12 +460,22 @@ func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	valueSet := make([][]string, 0, len(resps))
+	valueSet := map[string]struct{}{}
 	for _, resp := range resps {
-		valueSet = append(valueSet, resp.(*client.LabelNamesResponse).LabelNames)
+		for _, v := range resp.(*client.LabelNamesResponse).LabelNames {
+			valueSet[v] = struct{}{}
+		}
 	}
 
-	return util.MergeSortedStringLists(valueSet), nil
+	values := make([]string, 0, len(valueSet))
+	for v := range valueSet {
+		values = append(values, v)
+	}
+	sort.Slice(values, func(i, j int) bool {
+		return values[i] < values[j]
+	})
+
+	return values, nil
 }
 
 // MetricsForLabelMatchers gets the metrics that match said matchers

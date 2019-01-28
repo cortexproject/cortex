@@ -159,19 +159,6 @@ func (q querier) LabelValues(name string) ([]string, error) {
 
 func (q querier) LabelNames() ([]string, error) {
 	return q.distributor.LabelNames(q.ctx)
-
-	// TODO(codesome): Would the above make sense or the below?
-	// labelNames := make([][]string, 0, len(q.queriers))
-
-	// for _, qu := range q.queriers {
-	// 	lns, err := qu.LabelNames()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	labelNames = append(labelNames, lns)
-	// }
-
-	// return util.MergeSortedStringLists(labelNames), nil
 }
 
 func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {

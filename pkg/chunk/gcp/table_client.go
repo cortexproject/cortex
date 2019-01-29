@@ -75,11 +75,9 @@ func alreadyExistsError(err error) bool {
 }
 
 func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
-	if err := c.client.DeleteTable(ctx, name); err != nil {
-		return err
-	}
+	err := c.client.DeleteTable(ctx, name)
 
-	return nil
+	return err
 }
 
 func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {

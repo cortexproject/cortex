@@ -140,6 +140,7 @@ func (r *Reader) TransferData(ctx context.Context) error {
 		}
 	}
 
+	level.Info(util.Logger).Log("msg", "reader completed migration of chunks, shutting down reader")
 	return nil
 }
 

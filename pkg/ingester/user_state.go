@@ -66,6 +66,12 @@ type userState struct {
 
 const metricCounterShards = 128
 
+// DiscardedSamples metric labels
+const (
+	perUserSeriesLimit   = "per_user_series_limit"
+	perMetricSeriesLimit = "per_metric_series_limit"
+)
+
 type metricCounterShard struct {
 	mtx sync.Mutex
 	m   map[string]int
@@ -188,7 +194,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	// serially), and the overshoot in allowed series would be minimal.
 	if u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
 		u.fpLocker.Unlock(fp)
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, u.userID).Inc()
+		validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, u.userID).Inc()
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
 
@@ -200,7 +206,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 
 	if !u.canAddSeriesFor(string(metricName)) {
 		u.fpLocker.Unlock(fp)
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, u.userID).Inc()
+		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, u.userID).Inc()
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}
 

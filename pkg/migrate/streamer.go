@@ -75,6 +75,7 @@ func (s *streamClient) StreamChunks(ctx context.Context, chunks []chunk.Chunk) e
 }
 
 func (s *streamClient) Close() error {
+	defer s.cli.(io.Closer).Close()
 	level.Info(util.Logger).Log("msg", "closing stream")
 	_, err := s.stream.CloseAndRecv()
 	if err.Error() == "EOF" {
@@ -94,7 +95,6 @@ func newStreamer(ctx context.Context, id string, addr string, cfg client.Config)
 	if err != nil {
 		return nil, err
 	}
-	defer cli.(io.Closer).Close()
 
 	ctx = user.InjectOrgID(ctx, "1")
 	stream, err := cli.TransferChunks(ctx)

@@ -183,7 +183,10 @@ func (r Reader) Forward(ctx context.Context) error {
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "streaming chunks failed", "err", err, "# retries", backoff.NumRetries())
 					backoff.Wait()
+					continue
 				}
+				backoff.Reset()
+				break
 			}
 
 			if err != nil {

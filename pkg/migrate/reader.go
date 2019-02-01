@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -12,13 +11,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/migrate/mapper"
 	"github.com/cortexproject/cortex/pkg/migrate/planner"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/user"
 )
 
 var (
@@ -41,13 +38,14 @@ var (
 
 // ReaderConfig is a config for a Reader
 type ReaderConfig struct {
-	Addr           string
-	BufferSize     int
-	ClientConfig   client.Config
-	PlannerConfig  planner.Config
-	MapperConfig   mapper.Config
-	ReaderIDPrefix string
-	StorageClient  string
+	Addr                string
+	BufferSize          int
+	ClientConfig        client.Config
+	PlannerConfig       planner.Config
+	MapperConfig        mapper.Config
+	ReaderIDPrefix      string
+	StorageClient       string
+	ForwarderNumRetries int
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -59,13 +57,13 @@ func (cfg *ReaderConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.BufferSize, "reader.buffer-size", 1000, "number of chunk batches to buffer before forwarding")
 	f.StringVar(&cfg.Addr, "reader.forward-addr", "", "address of the chunk transfer endpoint")
 	f.StringVar(&cfg.ReaderIDPrefix, "reader.prefix", "reader_", "prefix used to identify reader when forwarding data to writer")
+	f.IntVar(&cfg.ForwarderNumRetries, "reader.num-forward-retries", 0, "number of times to try forwarding metrics before failing, infinite retries if set to less than 1")
 }
 
 // Reader collects and forwards chunks according to it's planner
 type Reader struct {
-	cfg                   ReaderConfig
-	id                    string // ID is the configured as the reading prefix and the shards assigned to the reader
-	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
+	cfg ReaderConfig
+	id  string // ID is the configured as the reading prefix and the shards assigned to the reader
 
 	storage      chunk.ObjectClient
 	planner      *planner.Planner
@@ -87,13 +85,12 @@ func NewReader(cfg ReaderConfig, storage chunk.ObjectClient) (*Reader, error) {
 	}
 
 	return &Reader{
-		cfg:                   cfg,
-		id:                    id,
-		planner:               planner,
-		chunkMapper:           chunkMapper,
-		storage:               storage,
-		ingesterClientFactory: client.MakeIngesterClient,
-		chunkChannel:          out,
+		cfg:          cfg,
+		id:           id,
+		planner:      planner,
+		chunkMapper:  chunkMapper,
+		storage:      storage,
+		chunkChannel: out,
 	}, nil
 }
 
@@ -147,30 +144,15 @@ func (r *Reader) TransferData(ctx context.Context) error {
 // Forward reads batched chunks with the same metric from a channel and wires them
 // to a Migrate Writer using the TransferChunks service in the ingester protobuf package
 func (r Reader) Forward(ctx context.Context) error {
-	var (
-		cli     client.HealthAndIngesterClient
-		stream  client.Ingester_TransferChunksClient
-		err     error
-		backoff = util.NewBackoff(ctx, util.BackoffConfig{
-			MinBackoff: time.Second * 5,
-			MaxBackoff: time.Second * 360,
-		})
-	)
+	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: time.Second * 5,
+		MaxBackoff: time.Second * 360,
+		MaxRetries: r.cfg.ForwarderNumRetries,
+	})
 
-	if r.cfg.Addr != "" {
-		cli, err := r.ingesterClientFactory(r.cfg.Addr, r.cfg.ClientConfig)
-		if err != nil {
-			return err
-		}
-		defer cli.(io.Closer).Close()
-
-		ctx = user.InjectOrgID(ctx, "1")
-		stream, err = cli.TransferChunks(ctx)
-		if err != nil {
-			return err
-		}
-	} else {
-		level.Info(util.Logger).Log("msg", "no address set, dry run mode enabled")
+	cli, err := newStreamer(ctx, r.id, r.cfg.Addr, r.cfg.ClientConfig)
+	if err != nil {
+		return err
 	}
 
 	for {
@@ -178,17 +160,9 @@ func (r Reader) Forward(ctx context.Context) error {
 		case <-ctx.Done():
 			level.Error(util.Logger).Log("msg", "shutting down forwarder")
 			return nil
-		case chunks, ok := <-r.chunkChannel:
-			if !ok {
-				if r.cfg.Addr != "" {
-					level.Info(util.Logger).Log("msg", "closing stream")
-					_, err = stream.CloseAndRecv()
-					if err.Error() == "EOF" {
-						return nil
-					}
-					return err
-				}
-				return nil
+		case chunks, open := <-r.chunkChannel:
+			if !open {
+				return cli.Close()
 			}
 
 			if len(chunks) == 0 {
@@ -204,46 +178,12 @@ func (r Reader) Forward(ctx context.Context) error {
 				}
 			}
 
-			wireChunks, err := chunkcompat.ToChunks(chunks)
-			if err != nil {
-				return fmt.Errorf("unable to serialize chunks, %v", err)
-			}
-			labels := client.ToLabelPairs(chunks[0].Metric)
-
-			if r.cfg.Addr == "" {
-				level.Info(util.Logger).Log("msg", "processed metrics", "num", len(chunks))
-				for _, c := range chunks {
-					level.Debug(util.Logger).Log("chunk", c.Fingerprint.String(), "user", c.UserID)
-				}
-				continue
-			}
-
 			for backoff.Ongoing() {
-				err = stream.Send(
-					&client.TimeSeriesChunk{
-						FromIngesterId: r.id,
-						UserId:         chunks[0].UserID,
-						Labels:         labels,
-						Chunks:         wireChunks,
-					},
-				)
+				err := cli.StreamChunks(ctx, chunks)
 				if err != nil {
-					level.Error(util.Logger).Log("msg", "streaming error", "err", err)
-					for backoff.Ongoing() {
-						streamErrors.WithLabelValues(r.id).Inc()
-						level.Info(util.Logger).Log("msg", "attempting to re-establish connection to writer", "try", backoff.NumRetries())
-						stream, err = cli.TransferChunks(ctx)
-						if err != nil {
-							level.Error(util.Logger).Log("msg", "error initializing client", "err", err)
-							backoff.Wait()
-							continue
-						}
-						break
-					}
-					backoff.Reset()
-					continue
+					level.Error(util.Logger).Log("msg", "streaming chunks failed", "err", err, "# retries", backoff.NumRetries())
+					backoff.Wait()
 				}
-				break
 			}
 
 			if err != nil {

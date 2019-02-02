@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/naming"
 
@@ -212,14 +211,9 @@ func (w *worker) process(ctx context.Context, c Frontend_ProcessClient) error {
 }
 
 func (w *worker) connect(address string) (FrontendClient, error) {
-	conn, err := grpc.Dial(
-		address,
-		grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-			middleware.ClientUserHeaderInterceptor,
-		)),
-		w.cfg.GRPCClientConfig.DialOption(),
-	)
+	opts := []grpc.DialOption{grpc.WithInsecure()}
+	opts = append(opts, w.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor}, nil)...)
+	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, err
 	}

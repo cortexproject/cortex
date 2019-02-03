@@ -39,6 +39,7 @@ type streamClient struct {
 	failed bool
 }
 
+// StreamChunks forwards cortex chunks
 func (s *streamClient) StreamChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var err error
 	if s.failed {
@@ -74,6 +75,7 @@ func (s *streamClient) StreamChunks(ctx context.Context, chunks []chunk.Chunk) e
 	return nil
 }
 
+// Close ends the stream client
 func (s *streamClient) Close() error {
 	defer s.cli.(io.Closer).Close()
 	level.Info(util.Logger).Log("msg", "closing stream")

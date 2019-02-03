@@ -1556,6 +1556,7 @@
     "github.com/weaveworks/mesh",
     "golang.org/x/net/context",
     "golang.org/x/net/context/ctxhttp",
+    "golang.org/x/oauth2/google",
     "golang.org/x/sys/unix",
     "golang.org/x/time/rate",
     "golang.org/x/tools/cover",

@@ -118,7 +118,7 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 			return err
 		}
 
-		start, end, err := firstAndLastTimes(chunk)
+		start, end, count, err := firstAndLastTimesAndCount(chunk)
 		if err != nil {
 			return err
 		}
@@ -126,6 +126,9 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 		b.chunks = append(b.chunks, chunk)
 		b.starts = append(b.starts, start)
 		b.ends = append(b.ends, end)
+		if i == numChunks-1 {
+			b.remainingSamples = samplesPerChunk - count
+		}
 	}
 	return nil
 }
@@ -302,11 +305,12 @@ func (it *bigchunkIterator) Err() error {
 	return nil
 }
 
-func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
+func firstAndLastTimesAndCount(c chunkenc.Chunk) (int64, int64, int, error) {
 	var (
 		first    int64
 		last     int64
 		firstSet bool
+		count    int
 		iter     = c.Iterator()
 	)
 	for iter.Next() {
@@ -316,6 +320,7 @@ func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
 			firstSet = true
 		}
 		last = t
+		count++
 	}
-	return first, last, iter.Err()
+	return first, last, count, iter.Err()
 }

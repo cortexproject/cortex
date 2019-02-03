@@ -50,7 +50,7 @@ func (u *Mapper) MapChunks(chks []chunk.Chunk) ([]chunk.Chunk, error) {
 		newID, ok := u.Users[c.UserID]
 		if ok {
 			c = chunk.NewChunk(newID, c.Fingerprint, c.Metric, c.Data, c.From, c.Through)
-			_, err := c.Encode()
+			err := c.Encode()
 			if err != nil {
 				return nil, err
 			}

@@ -35,6 +35,12 @@ func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 			return nil, err
 		}
 	}
+	if b.appender == nil {
+		var err error
+		if b.appender, err = b.chunks[len(b.chunks)-1].Appender(); err != nil {
+			return nil, err
+		}
+	}
 
 	b.appender.Append(int64(sample.Timestamp), float64(sample.Value))
 	b.remainingSamples--
@@ -58,16 +64,12 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	}
 
 	chunk := chunkenc.NewXORChunk()
-	appender, err := chunk.Appender()
-	if err != nil {
-		return err
-	}
 
 	b.starts = append(b.starts, int64(start))
 	b.ends = append(b.ends, int64(start))
 	b.chunks = append(b.chunks, chunk)
 
-	b.appender = appender
+	b.appender = nil
 	b.remainingSamples = samplesPerChunk
 	return nil
 }

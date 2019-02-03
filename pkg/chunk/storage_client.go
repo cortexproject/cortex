@@ -43,7 +43,7 @@ type ReadBatchIterator interface {
 
 // Streamer represents the configuration for streaming chunks
 type Streamer interface {
-	Add(string, string, int, int)
-	Stream(context.Context, chan []Chunk) error
-	Size(context.Context) (int, error)
+	Add(table string, users string, from int, to int)
+	Stream(ctx context.Context, forwardChan chan []Chunk) error
+	Size(ctx context.Context) (int, error)
 }

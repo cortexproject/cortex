@@ -2,23 +2,50 @@ package mapper
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
 	"reflect"
 	"testing"
 
-	"github.com/prometheus/common/model"
-
-	"github.com/stretchr/testify/require"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
-
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 )
+
+var exampleUserMap = []byte("users:\n  1: 2")
+
+func TestLoadMapperConfigs(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "users.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer os.Remove(tmpfile.Name()) // clean up
+
+	if _, err := tmpfile.Write(exampleUserMap); err != nil {
+		tmpfile.Close()
+		log.Fatal(err)
+	}
+
+	m, err := loadMapperConfig(tmpfile.Name())
+	require.NoError(t, err)
+
+	val, ok := m.Users["1"]
+	require.True(t, ok)
+	require.Equal(t, "2", val)
+
+	if err := tmpfile.Close(); err != nil {
+		log.Fatal(err)
+	}
+}
 
 var mapper = &Mapper{
 	Users: map[string]string{"1": "2"},
 }
 
-func Test_Mapper_MapChunks(t *testing.T) {
+func TestMapChunks(t *testing.T) {
 	now := model.Now()
 	_, input, _ := testutils.CreateChunks(1, 1, testutils.UserOpt("1"), testutils.From(now))
 	_, want, _ := testutils.CreateChunks(1, 1, testutils.UserOpt("2"), testutils.From(now))

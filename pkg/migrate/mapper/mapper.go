@@ -8,27 +8,39 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+// Map Config File
+// The map config file is a yaml file structed as:
+/*
+users:
+  user_original: user_mapped
+  ...
+  <user_id_src>: <user_id_dst>
+
+*/
+
 // Config is used to configure a migrate mapper
 type Config struct {
-	MapConfig string
+	MapConfigFile string
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.MapConfig, "mapper.config", "", "file name for reader mapping configs")
+	f.StringVar(&cfg.MapConfigFile, "mapper.config", "", "file name for reader mapping configs")
 }
 
 // Mapper is used to update and reencode chunks with new User Ids
+// It can also serve as a struct to map other aspects of chunks in
+// the future as more migration needs arise
 type Mapper struct {
 	Users map[string]string `yaml:"users,omitempty"`
 }
 
 // New returns a Mapper
 func New(cfg Config) (*Mapper, error) {
-	if cfg.MapConfig == "" {
+	if cfg.MapConfigFile == "" {
 		return nil, nil
 	}
-	return loadMapperConfig(cfg.MapConfig)
+	return loadMapperConfig(cfg.MapConfigFile)
 }
 
 // MapChunks updates and maps values onto an array of chunks

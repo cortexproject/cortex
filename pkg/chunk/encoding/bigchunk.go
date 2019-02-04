@@ -128,7 +128,7 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 		b.chunks = append(b.chunks, chunk)
 		b.starts = append(b.starts, start)
 		b.ends = append(b.ends, end)
-		if i == numChunks-1 {
+		if i == numChunks-1 && count < samplesPerChunk {
 			b.remainingSamples = samplesPerChunk - count
 		}
 	}

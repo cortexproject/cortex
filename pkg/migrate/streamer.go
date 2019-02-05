@@ -105,6 +105,7 @@ func newStreamer(ctx context.Context, id string, addr string, cfg client.Config)
 	}
 
 	return &streamClient{
+		id:     id,
 		cli:    cli,
 		stream: stream,
 	}, nil

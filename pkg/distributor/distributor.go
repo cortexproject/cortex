@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -446,6 +447,34 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 	for v := range valueSet {
 		values = append(values, v)
 	}
+	return values, nil
+}
+
+// LabelNames returns all of the label names.
+func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
+	req := &client.LabelNamesRequest{}
+	resps, err := d.forAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+		return client.LabelNames(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	valueSet := map[string]struct{}{}
+	for _, resp := range resps {
+		for _, v := range resp.(*client.LabelNamesResponse).LabelNames {
+			valueSet[v] = struct{}{}
+		}
+	}
+
+	values := make([]string, 0, len(valueSet))
+	for v := range valueSet {
+		values = append(values, v)
+	}
+	sort.Slice(values, func(i, j int) bool {
+		return values[i] < values[j]
+	})
+
 	return values, nil
 }
 

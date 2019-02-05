@@ -158,7 +158,7 @@ func (q querier) LabelValues(name string) ([]string, error) {
 }
 
 func (q querier) LabelNames() ([]string, error) {
-	return nil, nil
+	return q.distributor.LabelNames(q.ctx)
 }
 
 func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {

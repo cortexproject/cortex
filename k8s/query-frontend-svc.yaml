@@ -4,6 +4,8 @@ kind: Service
 metadata:
   name: query-frontend
 spec:
+  # clusterIP: None gives a "headless" service so DNS returns all endpoints.
+  clusterIP: None
   ports:
     - port: 9095
       name: grcp

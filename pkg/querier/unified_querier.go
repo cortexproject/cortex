@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -10,10 +11,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
+func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc, ingesterMaxQueryLookback time.Duration) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return &unifiedChunkQuerier{
-			stores: []ChunkStore{ds, cs},
+		ucq := &unifiedChunkQuerier{
+			stores: []ChunkStore{cs},
 			querier: querier{
 				ctx:         ctx,
 				mint:        mint,
@@ -26,7 +27,14 @@ func newUnifiedChunkQueryable(ds, cs ChunkStore, distributor Distributor, chunkI
 				mint:              mint,
 				maxt:              maxt,
 			},
-		}, nil
+		}
+
+		// Include ingester only if maxt is within ingesterMaxQueryLookback w.r.t. current time.
+		if ingesterMaxQueryLookback == 0 || maxt >= time.Now().Add(-ingesterMaxQueryLookback).UnixNano()/1e6 {
+			ucq.stores = append(ucq.stores, ds)
+		}
+
+		return ucq, nil
 	})
 }
 

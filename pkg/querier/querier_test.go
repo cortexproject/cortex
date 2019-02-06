@@ -149,38 +149,46 @@ func TestQuerier(t *testing.T) {
 }
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {
-	cfg := Config{
-		IngesterMaxQueryLookback: 1 * time.Hour,
-	}
-
 	testCases := []struct {
-		name        string
-		mint, maxt  time.Time
-		hitIngester bool
+		name                     string
+		mint, maxt               time.Time
+		hitIngester              bool
+		ingesterMaxQueryLookback time.Duration
 	}{
 		{
-			name:        "hit-test1",
-			mint:        time.Now().Add(-5 * time.Hour),
-			maxt:        time.Now().Add(1 * time.Hour),
-			hitIngester: true,
+			name:                     "hit-test1",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(1 * time.Hour),
+			hitIngester:              true,
+			ingesterMaxQueryLookback: 1 * time.Hour,
 		},
 		{
-			name:        "hit-test2",
-			mint:        time.Now().Add(-5 * time.Hour),
-			maxt:        time.Now().Add(-59 * time.Minute),
-			hitIngester: true,
+			name:                     "hit-test2",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(-59 * time.Minute),
+			hitIngester:              true,
+			ingesterMaxQueryLookback: 1 * time.Hour,
+		},
+		{ // Skipping ingester is disabled.
+			name:                     "hit-test2",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(-50 * time.Minute),
+			hitIngester:              true,
+			ingesterMaxQueryLookback: 0,
 		},
 		{
-			name:        "dont-hit-test1",
-			mint:        time.Now().Add(-5 * time.Hour),
-			maxt:        time.Now().Add(-100 * time.Minute),
-			hitIngester: false,
+			name:                     "dont-hit-test1",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(-100 * time.Minute),
+			hitIngester:              false,
+			ingesterMaxQueryLookback: 1 * time.Hour,
 		},
 		{
-			name:        "dont-hit-test2",
-			mint:        time.Now().Add(-5 * time.Hour),
-			maxt:        time.Now().Add(-61 * time.Minute),
-			hitIngester: false,
+			name:                     "dont-hit-test2",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(-61 * time.Minute),
+			hitIngester:              false,
+			ingesterMaxQueryLookback: 1 * time.Hour,
 		},
 	}
 
@@ -190,9 +198,11 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		MaxSamples:    1e6,
 		Timeout:       1 * time.Minute,
 	})
+	cfg := Config{}
 	for _, ingesterStreaming := range []bool{true, false} {
 		cfg.IngesterStreaming = ingesterStreaming
 		for _, c := range testCases {
+			cfg.IngesterMaxQueryLookback = c.ingesterMaxQueryLookback
 			t.Run(fmt.Sprintf("IngesterStreaming=%t,test=%s", cfg.IngesterStreaming, c.name), func(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}

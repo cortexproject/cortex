@@ -42,7 +42,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", false, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
-	f.DurationVar(&cfg.IngesterMaxQueryLookback, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester.")
+	f.DurationVar(&cfg.IngesterMaxQueryLookback, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -106,7 +106,7 @@ func NewQueryable(dq, cq storage.Queryable, distributor Distributor, ingesterMax
 		}
 
 		// Include ingester only if maxt is within ingesterMaxQueryLookback w.r.t. current time.
-		if maxt >= time.Now().Add(-ingesterMaxQueryLookback).UnixNano()/1e6 {
+		if ingesterMaxQueryLookback == 0 || maxt >= time.Now().Add(-ingesterMaxQueryLookback).UnixNano()/1e6 {
 			dqr, err := dq.Querier(ctx, mint, maxt)
 			if err != nil {
 				return nil, err

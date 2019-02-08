@@ -165,7 +165,6 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries in
 
 func TestIngesterAppend(t *testing.T) {
 	store, ing := newDefaultTestStore(t)
-
 	userIDs, testData := pushTestSamples(t, ing, 10, 1000)
 
 	// Read samples back via ingester queries.

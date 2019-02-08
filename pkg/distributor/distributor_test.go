@@ -106,6 +106,67 @@ func TestDistributorPush(t *testing.T) {
 	}
 }
 
+func TestDistributorPushHAInstances(t *testing.T) {
+	ctx = user.InjectOrgID(context.Background(), "user")
+
+	for i, tc := range []struct {
+		acceptedReplica  string
+		testReplica      string
+		cluster          string
+		samples          int
+		expectedResponse *client.WriteResponse
+		expectedCode     int32
+	}{
+		{
+			acceptedReplica:  "instance0",
+			testReplica:      "instance0",
+			cluster:          "cluster0",
+			samples:          5,
+			expectedResponse: success,
+		},
+		// The 202 indicates that we didn't accept this sample.
+		{
+			acceptedReplica: "instance2",
+			testReplica:     "instance0",
+			cluster:         "cluster0",
+			samples:         5,
+			expectedCode:    202,
+		},
+	} {
+		for _, shardByAllLabels := range []bool{true, false} {
+			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
+				d := prepare(t, 1, 1, 0, shardByAllLabels)
+				d.cfg.EnableHAReplicas = true
+				d.limits.Defaults.AcceptHASamples = true
+				codec := ring.ProtoCodec{Factory: ProtoReplicaDescFactory}
+				mock := ring.PrefixClient(ring.NewInMemoryKVClient(codec), "prefix")
+
+				r, err := newClusterTracker(HATrackerConfig{
+					KVStore:         ring.KVConfig{Mock: mock},
+					UpdateTimeout:   100 * time.Millisecond,
+					FailoverTimeout: time.Second,
+				})
+				assert.NoError(t, err)
+				d.replicas = r
+
+				userID, err := user.ExtractOrgID(ctx)
+				assert.NoError(t, err)
+				err = d.replicas.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
+				assert.NoError(t, err)
+
+				request := makeWriteRequestHA(tc.samples, tc.testReplica, tc.cluster)
+				response, err := d.Push(ctx, request)
+				assert.Equal(t, tc.expectedResponse, response)
+
+				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+				if ok {
+					assert.Equal(t, tc.expectedCode, httpResp.Code)
+				}
+			})
+		}
+	}
+}
+
 func TestDistributorPushQuery(t *testing.T) {
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	barMatcher := mustEqualMatcher("bar", "baz")
@@ -304,6 +365,31 @@ func makeWriteRequest(samples int) *client.WriteRequest {
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "bar", Value: "baz"},
 					{Name: "sample", Value: fmt.Sprintf("%d", i)},
+				},
+			},
+		}
+		ts.Samples = []client.Sample{
+			{
+				Value:       float64(i),
+				TimestampMs: int64(i),
+			},
+		}
+		request.Timeseries = append(request.Timeseries, ts)
+	}
+	return request
+}
+
+func makeWriteRequestHA(samples int, replica, cluster string) *client.WriteRequest {
+	request := &client.WriteRequest{}
+	for i := 0; i < samples; i++ {
+		ts := client.PreallocTimeseries{
+			TimeSeries: client.TimeSeries{
+				Labels: []client.LabelAdapter{
+					{Name: "__name__", Value: "foo"},
+					{Name: "bar", Value: "baz"},
+					{Name: "sample", Value: fmt.Sprintf("%d", i)},
+					{Name: "__replica__", Value: replica},
+					{Name: "cluster", Value: cluster},
 				},
 			},
 		}
@@ -602,5 +688,49 @@ func TestDistributorValidation(t *testing.T) {
 			_, err := d.Push(ctx, client.ToWriteRequest(tc.samples, client.API))
 			require.Equal(t, tc.err, err)
 		})
+	}
+}
+
+func TestRemoveReplicaLabel(t *testing.T) {
+	replicaLabel := "replica"
+	clusterLabel := "cluster"
+	cases := []struct {
+		labelsIn  []client.LabelAdapter
+		labelsOut []client.LabelAdapter
+	}{
+		// Replica label is present
+		{
+			labelsIn: []client.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: "replica", Value: replicaLabel},
+			},
+			labelsOut: []client.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+			},
+		},
+		// Replica label is not present
+		{
+			labelsIn: []client.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: "cluster", Value: clusterLabel},
+			},
+			labelsOut: []client.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: "cluster", Value: clusterLabel},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		removeReplicaLabel(replicaLabel, &c.labelsIn)
+		assert.Equal(t, c.labelsOut, c.labelsIn)
 	}
 }

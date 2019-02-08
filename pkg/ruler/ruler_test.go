@@ -31,12 +31,13 @@ func (m *mockRuleStore) GetAlerts(since configs.ID) (*client_config.ConfigsRespo
 }
 
 func defaultRulerConfig() Config {
-	consul := ring.NewInMemoryKVClient()
+	codec := ring.ProtoCodec{Factory: ring.ProtoDescFactory}
+	consul := ring.NewInMemoryKVClient(codec)
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	flagext.DefaultValues(&cfg.LifecyclerConfig)
 	cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
-	cfg.LifecyclerConfig.RingConfig.Mock = consul
+	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = consul
 	cfg.LifecyclerConfig.NumTokens = 1
 	cfg.LifecyclerConfig.FinalSleep = time.Duration(0)
 	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)

@@ -27,7 +27,8 @@ func (f *flushTransferer) TransferOut(ctx context.Context) error {
 func TestRingNormaliseMigration(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	ringConfig.Mock = NewInMemoryKVClient()
+	codec := ProtoCodec{Factory: ProtoDescFactory}
+	ringConfig.KVStore.Mock = NewInMemoryKVClient(codec)
 
 	r, err := New(ringConfig, "ingester")
 	require.NoError(t, err)

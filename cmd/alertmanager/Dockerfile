@@ -1,6 +1,7 @@
 FROM       alpine:3.8
 RUN        apk add --no-cache ca-certificates
 COPY       alertmanager /bin/alertmanager
+COPY       .migrations /migrations/
 EXPOSE     80
 ENTRYPOINT [ "/bin/alertmanager" ]
 

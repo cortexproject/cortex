@@ -65,18 +65,20 @@ func (cfg *Overrides) ValidateSample(userID string, metricName []byte, s client.
 // ValidateLabels returns an err if the labels are invalid.
 func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelPair) error {
 	metricName, err := extract.MetricNameFromLabelPairs(ls)
-	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
-	}
+	if cfg.EnforceMetricName(userID) {
+		if err != nil {
+			return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
+		}
 
-	if !model.IsValidMetricName(model.LabelValue(metricName)) {
-		return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
+		if !model.IsValidMetricName(model.LabelValue(metricName)) {
+			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
+		}
 	}
 
 	numLabelNames := len(ls)
 	if numLabelNames > cfg.MaxLabelNamesPerSeries(userID) {
 		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, metricName, numLabelNames, cfg.MaxLabelNamesPerSeries(userID))
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, client.FromLabelPairs(ls).String(), numLabelNames, cfg.MaxLabelNamesPerSeries(userID))
 	}
 
 	maxLabelNameLength := cfg.MaxLabelNameLength(userID)
@@ -100,7 +102,7 @@ func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelPair) error
 		}
 		if errTemplate != "" {
 			DiscardedSamples.WithLabelValues(reason, userID).Inc()
-			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, metricName)
+			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, client.FromLabelPairs(ls).String())
 		}
 	}
 	return nil

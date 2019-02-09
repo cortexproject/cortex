@@ -50,7 +50,7 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	}
 
 	if cfg.RateLimit > 0 {
-		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg.RateLimit, cfg.RateLimitBurst)}, unaryClientInterceptors...)
+		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
 	}
 
 	return []grpc.DialOption{

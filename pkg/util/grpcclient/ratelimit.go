@@ -8,8 +8,12 @@ import (
 )
 
 // NewRateLimiter creates a UnaryClientInterceptor for client side rate limiting.
-func NewRateLimiter(r float64, b int) grpc.UnaryClientInterceptor {
-	limiter := rate.NewLimiter(rate.Limit(r), b)
+func NewRateLimiter(cfg *Config) grpc.UnaryClientInterceptor {
+	burst := cfg.RateLimitBurst
+	if burst == 0 {
+		burst = int(cfg.RateLimit)
+	}
+	limiter := rate.NewLimiter(rate.Limit(cfg.RateLimit), burst)
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		limiter.Wait(ctx)
 		return invoker(ctx, method, req, reply, cc, opts...)

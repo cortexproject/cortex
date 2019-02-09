@@ -12,8 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -190,6 +188,26 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 // TransferOut finds an ingester in PENDING state and transfers our chunks to it.
 // Called as part of the ingester shutdown process.
 func (i *Ingester) TransferOut(ctx context.Context) error {
+	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 1 * time.Second,
+		MaxRetries: i.cfg.MaxTransferRetries,
+	})
+
+	for backoff.Ongoing() {
+		err := i.transferOut(ctx)
+		if err == nil {
+			return nil
+		}
+
+		level.Error(util.Logger).Log("msg", "transfer failed", "err", err)
+		backoff.Wait()
+	}
+
+	return backoff.Err()
+}
+
+func (i *Ingester) transferOut(ctx context.Context) error {
 	userStatesCopy := i.userStates.cp()
 	if len(userStatesCopy) == 0 {
 		level.Info(util.Logger).Log("msg", "nothing to transfer")
@@ -272,15 +290,7 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 			return nil, fmt.Errorf("no pending ingesters")
 		}
 
-		ingester := &ingesters[0]
-		c, err := i.cfg.ingesterClientFactory(ingester.Addr, i.clientConfig)
-		if err != nil {
-			return nil, err
-		}
-		defer c.Close()
-
-		_, err = c.Check(user.InjectOrgID(ctx, "0"), &grpc_health_v1.HealthCheckRequest{}, grpc.FailFast(true))
-		return ingester, err
+		return &ingesters[0], nil
 	}
 
 	deadline := time.NewTimer(i.cfg.SearchPendingFor)

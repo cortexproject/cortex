@@ -587,7 +587,7 @@ func TestDistributorValidation(t *testing.T) {
 				Timestamp: now,
 				Value:     2,
 			}},
-			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has 3 label names; limit 2"),
+			err: httpgrpc.Errorf(http.StatusBadRequest, `sample for 'testmetric{foo2="bar2", foo="bar"}' has 3 label names; limit 2`),
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {

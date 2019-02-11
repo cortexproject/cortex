@@ -55,7 +55,7 @@ func TestLen(t *testing.T) {
 var step = int(15 * time.Second / time.Millisecond)
 
 func TestChunk(t *testing.T) {
-	alwaysMarshalFullsizeChunks = false
+	alwaysMarshalFullsizeChunks = true
 	for _, tc := range []struct {
 		encoding   Encoding
 		maxSamples int
@@ -95,16 +95,20 @@ func mkChunk(t *testing.T, encoding Encoding, samples int) Chunk {
 	require.NoError(t, err)
 
 	for i := 0; i < samples; i++ {
-		chunks, err := chunk.Add(model.SamplePair{
-			Timestamp: model.Time(i * step),
-			Value:     model.SampleValue(i),
-		})
-		require.NoError(t, err)
-		require.Len(t, chunks, 1)
-		chunk = chunks[0]
+		chunk = addSample(t, chunk, i)
 	}
 
 	return chunk
+}
+
+func addSample(t *testing.T, chunk Chunk, i int) Chunk {
+	chunks, err := chunk.Add(model.SamplePair{
+		Timestamp: model.Time(i * step),
+		Value:     model.SampleValue(i),
+	})
+	require.NoError(t, err)
+	require.Len(t, chunks, 1)
+	return chunks[0]
 }
 
 // testChunkEncoding checks chunks roundtrip and contain all their samples.
@@ -120,16 +124,7 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 	err = chunk.UnmarshalFromBuf(bs1)
 	require.NoError(t, err)
 
-	// Check all the samples are in there.
-	iter := chunk.NewIterator()
-	for i := 0; i < samples; i++ {
-		require.True(t, iter.Scan())
-		sample := iter.Value()
-		require.EqualValues(t, model.Time(i*step), sample.Timestamp)
-		require.EqualValues(t, model.SampleValue(i), sample.Value)
-	}
-	require.False(t, iter.Scan())
-	require.NoError(t, iter.Err())
+	checkSamplesMatch(t, chunk, samples)
 
 	// Check the byte representation after another Marshall is the same.
 	buf = bytes.Buffer{}
@@ -138,6 +133,22 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 	bs2 := buf.Bytes()
 
 	require.Equal(t, bs1, bs2)
+
+	// Add one more sample
+	chunk = addSample(t, chunk, samples)
+	checkSamplesMatch(t, chunk, samples+1)
+}
+
+func checkSamplesMatch(t *testing.T, chunk Chunk, samples int) {
+	iter := chunk.NewIterator()
+	for i := 0; i < samples; i++ {
+		require.True(t, iter.Scan(), fmt.Sprintf("iteration %d", i))
+		sample := iter.Value()
+		require.EqualValues(t, model.Time(i*step), sample.Timestamp, fmt.Sprintf("iteration %d", i))
+		require.EqualValues(t, model.SampleValue(i), sample.Value)
+	}
+	require.False(t, iter.Scan())
+	require.NoError(t, iter.Err())
 }
 
 // testChunkSeek checks seek works as expected.

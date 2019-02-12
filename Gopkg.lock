@@ -1495,6 +1495,7 @@
     "golang.org/x/time/rate",
     "golang.org/x/tools/cover",
     "google.golang.org/api/option",
+    "google.golang.org/api/transport/http",
     "google.golang.org/grpc",
     "google.golang.org/grpc/codes",
     "google.golang.org/grpc/encoding/gzip",

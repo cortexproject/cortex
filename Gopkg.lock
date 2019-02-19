@@ -1432,6 +1432,7 @@
     "github.com/mattes/migrate/driver/postgres",
     "github.com/mattes/migrate/migrate",
     "github.com/mgutz/ansi",
+    "github.com/miekg/dns",
     "github.com/opentracing-contrib/go-grpc",
     "github.com/opentracing-contrib/go-stdlib/nethttp",
     "github.com/opentracing/opentracing-go",

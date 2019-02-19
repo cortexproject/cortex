@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/miekg/dns"
 )
 
@@ -31,15 +32,19 @@ func LookupSRV(service, proto, name string) ([]*dns.SRV, error) {
 	name = "_" + service + "._" + proto + "." + name
 	msg.SetQuestion(dns.Fqdn(name), dns.TypeSRV)
 
+	client := dns.Client{
+		Net: "tcp",
+	}
 	var result []*dns.SRV
 	dnsResolved := false
 	for _, serverAddr := range dnsServers {
-		resMsg, err := dns.Exchange(msg, serverAddr)
+		resMsg, _, err := client.Exchange(msg, serverAddr)
 		if err != nil {
+			level.Warn(Logger).Log("msg", "DNS exchange failed", "err", err)
 			continue
 		}
 		dnsResolved = true
-		for _, ans := range resMsg.Ns {
+		for _, ans := range resMsg.Answer {
 			if srvRecord, ok := ans.(*dns.SRV); ok {
 				result = append(result, srvRecord)
 			}

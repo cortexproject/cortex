@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -421,12 +422,44 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	return amConfig, nil
 }
 
+func (am *MultitenantAlertmanager) createTemplatesFile(userID, fn, content string) (bool, error) {
+	dir := filepath.Join(am.cfg.DataDir, "templates", userID, filepath.Dir(fn))
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
+	}
+
+	file := filepath.Join(dir, fn)
+	// Check if the template file already exists and if it has changed
+	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
+		return false, nil
+	}
+
+	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {
+		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", file, err)
+	}
+
+	return true, nil
+}
+
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Config) error {
 	_, hasExisting := am.alertmanagers[userID]
 	var amConfig *amconfig.Config
 	var err error
+	var hasTemplateChanges bool
+
+	for fn, content := range config.TemplateFiles {
+		hasChanged, err := am.createTemplatesFile(userID, fn, content)
+		if err != nil {
+			return err
+		}
+
+		if hasChanged {
+			hasTemplateChanges = true
+		}
+	}
 
 	if config.AlertmanagerConfig == "" {
 		if am.fallbackConfig == "" {
@@ -462,9 +495,9 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 		am.alertmanagersMtx.Lock()
 		am.alertmanagers[userID] = newAM
 		am.alertmanagersMtx.Unlock()
-	} else if am.cfgs[userID].AlertmanagerConfig != config.AlertmanagerConfig {
+	} else if am.cfgs[userID].AlertmanagerConfig != config.AlertmanagerConfig || hasTemplateChanges {
 		// If the config changed, apply the new one.
-		err := am.alertmanagers[userID].ApplyConfig(amConfig)
+		err := am.alertmanagers[userID].ApplyConfig(userID, amConfig)
 		if err != nil {
 			return fmt.Errorf("unable to apply Alertmanager config for user %v: %v", userID, err)
 		}
@@ -486,7 +519,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
 	}
 
-	if err := newAM.ApplyConfig(amConfig); err != nil {
+	if err := newAM.ApplyConfig(userID, amConfig); err != nil {
 		return nil, fmt.Errorf("unable to apply initial config for user %v: %v", userID, err)
 	}
 	return newAM, nil

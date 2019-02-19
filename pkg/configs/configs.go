@@ -72,6 +72,7 @@ func (v *RuleFormatVersion) UnmarshalJSON(data []byte) error {
 type Config struct {
 	// RulesFiles maps from a rules filename to file contents.
 	RulesConfig        RulesConfig
+	TemplateFiles      map[string]string
 	AlertmanagerConfig string
 }
 
@@ -81,6 +82,7 @@ type Config struct {
 type configCompat struct {
 	RulesFiles         map[string]string `json:"rules_files"`
 	RuleFormatVersion  RuleFormatVersion `json:"rule_format_version"`
+	TemplateFiles      map[string]string `json:"template_files"`
 	AlertmanagerConfig string            `json:"alertmanager_config"`
 }
 
@@ -89,6 +91,7 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	compat := &configCompat{
 		RulesFiles:         c.RulesConfig.Files,
 		RuleFormatVersion:  c.RulesConfig.FormatVersion,
+		TemplateFiles:      c.TemplateFiles,
 		AlertmanagerConfig: c.AlertmanagerConfig,
 	}
 
@@ -106,6 +109,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			Files:         compat.RulesFiles,
 			FormatVersion: compat.RuleFormatVersion,
 		},
+		TemplateFiles:      compat.TemplateFiles,
 		AlertmanagerConfig: compat.AlertmanagerConfig,
 	}
 	return nil

@@ -149,18 +149,20 @@ func New(cfg *Config) (*Alertmanager, error) {
 }
 
 // ApplyConfig applies a new configuration to an Alertmanager.
-func (am *Alertmanager) ApplyConfig(conf *config.Config) error {
+func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	var (
 		tmpl     *template.Template
 		pipeline notify.Stage
 	)
 
-	// TODO(cortex): How to support template files?
-	if len(conf.Templates) != 0 {
-		return fmt.Errorf("template files are not yet supported")
+	templateFiles := make([]string, len(conf.Templates), len(conf.Templates))
+	if len(conf.Templates) > 0 {
+		for i, t := range conf.Templates {
+			templateFiles[i] = filepath.Join(am.cfg.DataDir, "templates", userID, t)
+		}
 	}
 
-	tmpl, err := template.FromGlobs()
+	tmpl, err := template.FromGlobs(templateFiles...)
 	if err != nil {
 		return err
 	}

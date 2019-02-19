@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/alecthomas/template"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
@@ -57,6 +58,8 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		// be used.
 		{"get_rules", "GET", "/api/prom/configs/rules", a.getConfig},
 		{"set_rules", "POST", "/api/prom/configs/rules", a.setConfig},
+		{"get_templates", "GET", "/api/prom/configs/templates", a.getConfig},
+		{"set_templates", "POST", "/api/prom/configs/templates", a.setConfig},
 		{"get_alertmanager_config", "GET", "/api/prom/configs/alertmanager", a.getConfig},
 		{"set_alertmanager_config", "POST", "/api/prom/configs/alertmanager", a.setConfig},
 		{"validate_alertmanager_config", "POST", "/api/prom/configs/alertmanager/validate", a.validateAlertmanagerConfig},
@@ -124,6 +127,11 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return
 	}
+	if err := validateTemplateFiles(cfg); err != nil {
+		level.Error(logger).Log("msg", "invalid templates", "err", err)
+		http.Error(w, fmt.Sprintf("Invalid templates: %v", err), http.StatusBadRequest)
+		return
+	}
 	if err := a.db.SetConfig(userID, cfg); err != nil {
 		// XXX: Untested
 		level.Error(logger).Log("msg", "error storing config", "err", err)
@@ -162,10 +170,6 @@ func validateAlertmanagerConfig(cfg string) error {
 		return err
 	}
 
-	if len(amCfg.Templates) != 0 {
-		return fmt.Errorf("template files are not supported in Cortex yet")
-	}
-
 	for _, recv := range amCfg.Receivers {
 		if len(recv.EmailConfigs) != 0 {
 			return fmt.Errorf("email notifications are not supported in Cortex yet")
@@ -178,6 +182,16 @@ func validateAlertmanagerConfig(cfg string) error {
 func validateRulesFiles(c configs.Config) error {
 	_, err := c.RulesConfig.Parse()
 	return err
+}
+
+func validateTemplateFiles(c configs.Config) error {
+	for fn, content := range c.TemplateFiles {
+		if _, err := template.New(fn).Parse(content); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ConfigsView renders multiple configurations, mapping userID to configs.View.

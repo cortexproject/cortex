@@ -31,7 +31,7 @@ func BenchmarkRing(b *testing.B) {
 	r, err := New(Config{
 		Mock:              consul,
 		ReplicationFactor: 3,
-	})
+	}, "ingester")
 	if err != nil {
 		b.Fatal(err)
 	}

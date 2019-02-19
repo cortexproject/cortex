@@ -143,7 +143,7 @@ func (t *Cortex) stopServer() (err error) {
 }
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
-	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig)
+	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester")
 	if err != nil {
 		return
 	}
@@ -314,20 +314,17 @@ func (t *Cortex) stopTableManager() error {
 func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Querier.MaxConcurrent = cfg.Ruler.NumWorkers
 	cfg.Querier.Timeout = cfg.Ruler.GroupTimeout
+	cfg.Ruler.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor)
-	if err != nil {
-		return
-	}
 
 	rulesAPI, err := config_client.New(cfg.ConfigStore)
 	if err != nil {
 		return err
 	}
 
-	t.rulerServer, err = ruler.NewServer(cfg.Ruler, t.ruler, rulesAPI)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, rulesAPI)
 	if err != nil {
-		return err
+		return
 	}
 
 	// Only serve the API for setting & getting rules configs if we're not
@@ -340,11 +337,12 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 		}
 		a.RegisterRoutes(t.server.HTTP)
 	}
+
+	t.server.HTTP.Handle("/ruler_ring", t.ruler)
 	return
 }
 
 func (t *Cortex) stopRuler() error {
-	t.rulerServer.Stop()
 	t.ruler.Stop()
 	return nil
 }

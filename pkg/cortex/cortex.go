@@ -125,7 +125,6 @@ type Cortex struct {
 	tableManager *chunk.TableManager
 
 	ruler        *ruler.Ruler
-	rulerServer  *ruler.Server
 	configAPI    *api.API
 	configDB     db.DB
 	alertmanager *alertmanager.MultitenantAlertmanager

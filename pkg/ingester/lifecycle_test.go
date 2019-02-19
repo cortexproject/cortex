@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
@@ -19,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/ring/testutils"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -70,7 +69,7 @@ func TestIngesterRestart(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
 	})
 
 	{
@@ -82,7 +81,7 @@ func TestIngesterRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
 	})
 }
 
@@ -193,21 +192,6 @@ func TestIngesterBadTransfer(t *testing.T) {
 
 	// Check the ingester is still waiting.
 	require.Equal(t, ring.PENDING, ing.lifecycler.GetState())
-}
-
-func numTokens(c ring.KVClient, name string) int {
-	ringDesc, err := c.Get(context.Background(), ring.ConsulKey)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error reading consul", "err", err)
-		return 0
-	}
-	count := 0
-	for _, token := range ringDesc.(*ring.Desc).Tokens {
-		if token.Ingester == name {
-			count++
-		}
-	}
-	return count
 }
 
 type ingesterTransferChunkStreamMock struct {

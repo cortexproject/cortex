@@ -87,7 +87,7 @@ func TestReplicationStrategy(t *testing.T) {
 			Mock:              NewInMemoryKVClient(),
 			HeartbeatTimeout:  100 * time.Second,
 			ReplicationFactor: tc.RF,
-		})
+		}, "ingester")
 		require.NoError(t, err)
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {

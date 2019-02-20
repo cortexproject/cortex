@@ -355,7 +355,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		}
 		result.Timeseries = append(result.Timeseries, ts)
 		return nil
-	})
+	}, nil, 0)
 	queriedSeries.Observe(float64(numSeries))
 	queriedSamples.Observe(float64(numSamples))
 	return result, err
@@ -407,14 +407,14 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 			Chunks: wireChunks,
 		})
 
-		if len(batch) >= queryStreamBatchSize {
-			err = stream.Send(&client.QueryStreamResponse{
-				Timeseries: batch,
-			})
-			batch = batch[:0]
-		}
+		return nil
+	}, func(ctx context.Context) error {
+		err = stream.Send(&client.QueryStreamResponse{
+			Timeseries: batch,
+		})
+		batch = batch[:0]
 		return err
-	})
+	}, queryStreamBatchSize)
 	if err != nil {
 		return err
 	}
@@ -494,7 +494,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 				metrics[fp] = series.labels()
 			}
 			return nil
-		}); err != nil {
+		}, nil, 0); err != nil {
 			return nil, err
 		}
 	}

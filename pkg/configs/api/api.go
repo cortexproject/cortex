@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 
-	"github.com/alecthomas/template"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"

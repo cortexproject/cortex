@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -53,6 +54,7 @@ type Config struct {
 	SplitQueriesByDay       bool
 	AlignQueriesWithStep    bool
 	CacheResults            bool
+	CompressResponses       bool
 	resultsCacheConfig
 }
 
@@ -63,6 +65,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
+	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	cfg.resultsCacheConfig.RegisterFlags(f)
 }
 
@@ -136,8 +139,15 @@ func (f *Frontend) Close() {
 	}
 }
 
-// ServeHTTP serves HTTP requests.
-func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// Handler for HTTP requests.
+func (f *Frontend) Handler() http.Handler {
+	if f.cfg.CompressResponses {
+		return gziphandler.GzipHandler(http.HandlerFunc(f.handle))
+	}
+	return http.HandlerFunc(f.handle)
+}
+
+func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	resp, err := f.roundTripper.RoundTrip(r)
 	if err != nil {
 		server.WriteError(w, err)

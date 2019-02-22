@@ -52,6 +52,6 @@ func main() {
 	defer f.Close()
 
 	frontend.RegisterFrontendServer(server.GRPC, f)
-	server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(f))
+	server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(f.Handler()))
 	server.Run()
 }

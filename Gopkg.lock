@@ -58,6 +58,14 @@
   revision = "20f192218cf52a73397fa2df45bdda720f3e47c8"
 
 [[projects]]
+  digest = "1:af6e785bedb62fc2abb81977c58a7a44e5cf9f7e41b8d3c8dd4d872edea0ce08"
+  name = "github.com/NYTimes/gziphandler"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "dd0439581c7657cb652dfe5c71d7d48baf39541d"
+  version = "v1.1.1"
+
+[[projects]]
   branch = "master"
   digest = "1:5a91fc342af1f94bce8b760a80d5b709fe53ea10c870a5daf1dc7e9fada8525f"
   name = "github.com/armon/go-socks5"
@@ -1386,6 +1394,7 @@
     "cloud.google.com/go/bigtable/bttest",
     "cloud.google.com/go/storage",
     "github.com/Masterminds/squirrel",
+    "github.com/NYTimes/gziphandler",
     "github.com/armon/go-socks5",
     "github.com/aws/aws-sdk-go/aws",
     "github.com/aws/aws-sdk-go/aws/awserr",

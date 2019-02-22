@@ -157,7 +157,7 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 		Handler: middleware.Merge(
 			middleware.AuthenticateUser,
 			middleware.Tracer{},
-		).Wrap(frontend),
+		).Wrap(frontend.Handler()),
 	}
 	defer httpServer.Shutdown(context.Background())
 

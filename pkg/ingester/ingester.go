@@ -409,6 +409,9 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		return nil
 	}, func(ctx context.Context) error {
+		if len(batch) == 0 {
+			return nil
+		}
 		err = stream.Send(&client.QueryStreamResponse{
 			Timeseries: batch,
 		})
@@ -417,12 +420,6 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	}, queryStreamBatchSize)
 	if err != nil {
 		return err
-	}
-
-	if len(batch) > 0 {
-		err = stream.Send(&client.QueryStreamResponse{
-			Timeseries: batch,
-		})
 	}
 
 	queriedSeries.Observe(float64(numSeries))

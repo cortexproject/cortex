@@ -289,7 +289,7 @@ func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*gr
 		Context:     context.Background(),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
-		Logger:      gklog.NewNopLogger(),
+		Logger:      util.Logger,
 		Metrics:     r.metrics,
 	}
 	return newGroup(groupName, rls, appendable, opts), nil

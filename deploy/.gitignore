@@ -1,0 +1,5 @@
+go/
+gopath/
+vendor/
+deployments/
+tmp/

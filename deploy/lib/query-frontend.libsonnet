@@ -62,6 +62,9 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             // kube.libsonnet will use the first containerPort found
             // We want to ensure that the 'http' service is exposed
             spec+: {
+                # Use a headless service
+                # This allows all queriers to connect to all query-frontends if using more than 1 query-frontend
+                clusterIP: 'None',
                 ports: [
                     {
                         port: 80,

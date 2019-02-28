@@ -79,6 +79,15 @@ jobs:
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false
 
+    - store_artifacts:
+        path: pkg/querier/frontend/frontend.pb.go
+    - store_artifacts:
+        path: pkg/chunk/storage/caching_index_client.pb.go
+    - store_artifacts:
+        path: pkg/ring/ring.pb.go
+    - store_artifacts:
+        path: pkg/ingester/client/cortex.pb.go
+
     - run:
         name: Save Images
         command: make BUILD_IN_CONTAINER=false save-images

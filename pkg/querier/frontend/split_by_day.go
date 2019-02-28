@@ -6,6 +6,7 @@ import (
 )
 
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
+const maxParallelism = 14
 
 var splitByDayMiddleware = queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
 	return instrument("split_by_day").Wrap(splitByDay{
@@ -28,7 +29,7 @@ func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse,
 	// to line up the boundaries with step.
 	reqs := splitQuery(r)
 
-	reqResps, err := doRequests(ctx, s.next, reqs)
+	reqResps, err := doRequests(ctx, s.next, reqs, maxParallelism)
 	if err != nil {
 		return nil, err
 	}
@@ -72,21 +73,36 @@ type requestResponse struct {
 	resp *APIResponse
 }
 
-func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest) ([]requestResponse, error) {
+func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest, maxParallelism int) ([]requestResponse, error) {
 	// If one of the requests fail, we want to be able to cancel the rest of them.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Feed all requests to a bounded intermediate channel to limit parallelism.
+	intermediate := make(chan *QueryRangeRequest)
+	go func() {
+		for _, req := range reqs {
+			intermediate <- req
+		}
+		close(intermediate)
+	}()
+
 	respChan, errChan := make(chan requestResponse), make(chan error)
-	for _, req := range reqs {
-		go func(req *QueryRangeRequest) {
-			resp, err := downstream.Do(ctx, req)
-			if err != nil {
-				errChan <- err
-			} else {
-				respChan <- requestResponse{req, resp}
+	parallelism := maxParallelism
+	if parallelism > len(reqs) {
+		parallelism = len(reqs)
+	}
+	for i := 0; i < parallelism; i++ {
+		go func() {
+			for req := range intermediate {
+				resp, err := downstream.Do(ctx, req)
+				if err != nil {
+					errChan <- err
+				} else {
+					respChan <- requestResponse{req, resp}
+				}
 			}
-		}(req)
+		}()
 	}
 
 	resps := make([]requestResponse, 0, len(reqs))

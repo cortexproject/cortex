@@ -29,7 +29,7 @@ func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse,
 	// to line up the boundaries with step.
 	reqs := splitQuery(r)
 
-	reqResps, err := doRequests(ctx, s.next, reqs, maxParallelism)
+	reqResps, err := doRequests(ctx, s.next, reqs)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ type requestResponse struct {
 	resp *APIResponse
 }
 
-func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest, maxParallelism int) ([]requestResponse, error) {
+func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest) ([]requestResponse, error) {
 	// If one of the requests fail, we want to be able to cancel the rest of them.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

@@ -110,7 +110,7 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 		return response, nil, err
 	}
 
-	reqResps, err = doRequests(ctx, s.next, requests, len(requests))
+	reqResps, err = doRequests(ctx, s.next, requests)
 	if err != nil {
 		return nil, nil, err
 	}

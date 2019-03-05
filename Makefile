@@ -34,13 +34,16 @@ images:
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
+# Ensure a target for each image that needs a migration directory
+MIGRATION_DIRS := cmd/alertmanager/.migrations cmd/configs/.migrations cmd/ruler/.migrations cmd/lite/.migrations
+
 # Building binaries is now automated.  The convention is to build a binary
 # for every directory with main.go in it, in the ./cmd directory.
 MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
 GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
 define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS)
+$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS) $(MIGRATION_DIRS)
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
@@ -81,7 +84,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) lint test shell dep-check: build-image/$(UPTODATE)
+$(EXES) $(MIGRATION_DIRS) $(PROTO_GOS) lint test shell dep-check: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) time docker run $(RM) $(TTY) -i \
@@ -98,7 +101,7 @@ configs-integration-test: build-image/$(UPTODATE)
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
-		-v $(shell pwd)/cmd/configs/migrations:/migrations \
+		-v $(shell pwd)/pkg/configs/db/migrations:/migrations \
 		-e MIGRATIONS_DIR=/migrations \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
@@ -131,10 +134,15 @@ configs-integration-test:
 dep-check:
 	dep check
 
+%/.migrations:
+	# Ensure a each image that requires a migration dir has one in the build context
+	cp -r pkg/configs/db/migrations $@
+
 endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
+	rm -rf $(MIGRATION_DIRS)
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
 	go clean ./...
 

@@ -3,11 +3,9 @@ package main
 import (
 	"flag"
 	"net/http"
-	"os"
 
 	"google.golang.org/grpc"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
@@ -62,46 +60,28 @@ func main() {
 	util.InitLogger(&serverConfig)
 
 	r, err := ring.New(ringConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing ring", err)
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
 	overrides, err := validation.NewOverrides(limits)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing overrides", err)
 
 	dist, err := distributor.New(distributorConfig, clientConfig, overrides, r)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing distributor", err)
 	defer dist.Stop()
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 	server.HTTP.Handle("/ring", r)
 
 	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing storage client", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing storage client", err)
 	defer chunkStore.Stop()
 
 	worker, err := frontend.NewWorker(workerConfig, httpgrpc_server.NewServer(server.HTTPServer.Handler), util.Logger)
-	if err != nil {
-		level.Error(util.Logger).Log("err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("", err)
 	defer worker.Stop()
 
 	queryable, engine := querier.New(querierConfig, dist, chunkStore)

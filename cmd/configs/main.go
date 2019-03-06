@@ -2,9 +2,7 @@ package main
 
 import (
 	"flag"
-	"os"
 
-	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/configs/api"
@@ -33,19 +31,13 @@ func main() {
 	util.InitLogger(&serverConfig)
 
 	db, err := db.New(dbConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing database", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing database", err)
 	defer db.Close()
 
 	a := api.New(db)
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	a.RegisterRoutes(server.HTTP)

@@ -3,10 +3,8 @@ package main
 import (
 	"flag"
 	"math"
-	"os"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
@@ -35,17 +33,11 @@ func main() {
 	util.InitLogger(&serverConfig)
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	runner, err := correctness.NewRunner(runnerConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing runner", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing runner", err)
 	defer runner.Stop()
 
 	runner.Add(correctness.NewSimpleTestCase("now_seconds", func(t time.Time) float64 {

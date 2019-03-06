@@ -36,10 +36,7 @@ func main() {
 	util.InitLogger(&serverConfig)
 
 	err := schemaConfig.Load()
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error loading schema config", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("loading schema config", err)
 	// Assume the newest config is the one to use
 	lastConfig := &schemaConfig.Configs[len(schemaConfig.Configs)-1]
 
@@ -57,24 +54,15 @@ func main() {
 	}
 
 	tableClient, err := storage.NewTableClient(lastConfig.IndexType, storageConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing table client", err)
 
 	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, ingesterConfig.MaxChunkAge, tableClient)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table manager", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing table manager", err)
 	tableManager.Start()
 	defer tableManager.Stop()
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	server.Run()

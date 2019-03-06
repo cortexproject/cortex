@@ -15,14 +15,12 @@ package main
 
 import (
 	"flag"
-	"os"
 
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 )
@@ -43,18 +41,12 @@ func main() {
 	util.InitLogger(&serverConfig)
 
 	multiAM, err := alertmanager.NewMultitenantAlertmanager(&alertmanagerConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing MultitenantAlertmanager", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing MultitenantAlertmanager", err)
 	go multiAM.Run()
 	defer multiAM.Stop()
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	server.HTTP.PathPrefix("/status").Handler(multiAM.GetStatusHandler())

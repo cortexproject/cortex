@@ -3,9 +3,7 @@ package main
 import (
 	"flag"
 	"net/http"
-	"os"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -65,31 +63,19 @@ func main() {
 	defer trace.Close()
 
 	r, err := ring.New(ringConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing ring", err)
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
 	overrides, err := validation.NewOverrides(limits)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing overrides", err)
 
 	dist, err := distributor.New(distributorConfig, clientConfig, overrides, r)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing distributor", err)
 	defer dist.Stop()
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	// Administrator functions

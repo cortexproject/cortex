@@ -2,9 +2,7 @@ package main
 
 import (
 	"flag"
-	"os"
 
-	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -38,17 +36,11 @@ func main() {
 
 	serverConfig.GRPCOptions = append(serverConfig.GRPCOptions, grpc.MaxRecvMsgSize(maxMessageSize))
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	f, err := frontend.New(frontendConfig, util.Logger)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing frontend", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing frontend", err)
 	defer f.Close()
 
 	frontend.RegisterFrontendServer(server.GRPC, f)

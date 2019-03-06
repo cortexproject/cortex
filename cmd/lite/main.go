@@ -3,9 +3,7 @@ package main
 import (
 	"flag"
 	"net/http"
-	"os"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -59,60 +57,36 @@ func main() {
 	util.InitLogger(&serverConfig)
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	overrides, err := validation.NewOverrides(limitsConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing overrides", err)
 	schemaConfig.Load()
 	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
-	if err != nil {
-		level.Error(util.Logger).Log("err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("", err)
 	defer chunkStore.Stop()
 
 	r, err := ring.New(ingesterConfig.LifecyclerConfig.RingConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing ring", err)
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
 	dist, err := distributor.New(distributorConfig, ingesterClientConfig, overrides, r)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing distributor", err)
 	defer dist.Stop()
 
 	ingester, err := ingester.New(ingesterConfig, ingesterClientConfig, overrides, chunkStore)
-	if err != nil {
-		level.Error(util.Logger).Log("err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("", err)
 	defer ingester.Shutdown()
 
 	// Assume the newest config is the one to use
 	storeName := schemaConfig.Configs[len(schemaConfig.Configs)-1].IndexType
 	tableClient, err := storage.NewTableClient(storeName, storageConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table client", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing table client", err)
 
 	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, ingesterConfig.MaxChunkAge, tableClient)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing DynamoDB table manager", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing table manager", err)
 	tableManager.Start()
 	defer tableManager.Stop()
 
@@ -120,22 +94,13 @@ func main() {
 
 	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
 		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error initializing ruler config store", "err", err)
-			os.Exit(1)
-		}
+		util.CheckFatal("initializing ruler config store", err)
 		rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)
-			os.Exit(1)
-		}
+		util.CheckFatal("initializing ruler", err)
 		defer rlr.Stop()
 
 		rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error initializing ruler server", "err", err)
-			os.Exit(1)
-		}
+		util.CheckFatal("initializing ruler server", err)
 		defer rulerServer.Stop()
 	}
 
@@ -171,10 +136,7 @@ func main() {
 	// migration. See https://github.com/cortexproject/cortex/issues/619
 	if configStoreConfig.ConfigsAPIURL.URL == nil {
 		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
-			os.Exit(1)
-		}
+		util.CheckFatal("initializing public rules API", err)
 		a.RegisterRoutes(server.HTTP)
 	}
 

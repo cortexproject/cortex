@@ -3,9 +3,7 @@ package main
 import (
 	"flag"
 	"net/http"
-	"os"
 
-	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -76,29 +74,17 @@ func main() {
 	}
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	overrides, err := validation.NewOverrides(limits)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing overrides", err)
 	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
-	if err != nil {
-		level.Error(util.Logger).Log("err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("", err)
 	defer chunkStore.Stop()
 
 	ingester, err := ingester.New(ingesterConfig, clientConfig, overrides, chunkStore)
-	if err != nil {
-		level.Error(util.Logger).Log("err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("", err)
 	defer ingester.Shutdown()
 
 	client.RegisterIngesterServer(server.GRPC, ingester)

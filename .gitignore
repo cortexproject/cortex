@@ -8,6 +8,7 @@ cmd/ruler/ruler
 cmd/table-manager/table-manager
 cmd/lite/lite
 cmd/test-exporter/test-exporter
+cmd/cortex/cortex
 cmd/*/.migrations
 .uptodate
 .pkg

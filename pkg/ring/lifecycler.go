@@ -365,7 +365,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 
-		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", tokens)
+		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
 		return ringDesc, true, nil
 	})
 }

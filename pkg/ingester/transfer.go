@@ -108,14 +108,14 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		receivedChunks.Add(float64(len(descs)))
 	}
 
-	if fromIngesterID == "" {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
-		return fmt.Errorf("no ingester id")
-	}
-
 	if seriesReceived == 0 {
 		level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
 		return fmt.Errorf("no series")
+	}
+
+	if fromIngesterID == "" {
+		level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
+		return fmt.Errorf("no ingester id")
 	}
 
 	if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
@@ -136,7 +136,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "from_ingester", fromIngesterID, "err", err)
 		return err
 	}
-	level.Info(util.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID)
+	level.Info(util.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID, "series_received", seriesReceived)
 	return nil
 }
 
@@ -187,6 +187,12 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 // TransferOut finds an ingester in PENDING state and transfers our chunks to it.
 // Called as part of the ingester shutdown process.
 func (i *Ingester) TransferOut(ctx context.Context) error {
+	userStatesCopy := i.userStates.cp()
+	if len(userStatesCopy) == 0 {
+		level.Info(util.Logger).Log("msg", "nothing to transfer")
+		return nil
+	}
+
 	targetIngester, err := i.findTargetIngester(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
@@ -205,7 +211,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 		return err
 	}
 
-	for userID, state := range i.userStates.cp() {
+	for userID, state := range userStatesCopy {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
 

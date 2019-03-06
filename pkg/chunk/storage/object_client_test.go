@@ -26,7 +26,7 @@ func TestChunksBasic(t *testing.T) {
 		// Write a few batches of chunks.
 		written := []string{}
 		for i := 0; i < 5; i++ {
-			keys, chunks, err := testutils.CreateChunks(i, batchSize, model.Now())
+			keys, chunks, err := testutils.CreateChunks(i, batchSize, testutils.From(model.Now()))
 			require.NoError(t, err)
 			written = append(written, keys...)
 			err = client.PutChunks(ctx, chunks)
@@ -66,11 +66,6 @@ func TestStreamer(t *testing.T) {
 	forAllFixtures(t, func(t *testing.T, _ chunk.IndexClient, client chunk.ObjectClient) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_, chunks, err := testutils.CreateChunks(0, 2000, model.Now())
-		require.NoError(t, err)
-
-		err = client.PutChunks(ctx, chunks)
-		require.NoError(t, err)
 
 		batch := client.NewStreamer()
 		if batch == nil {
@@ -89,21 +84,14 @@ func TestStreamer(t *testing.T) {
 
 		tablename := schema.ChunkTableFor(model.Now().Add(-time.Hour))
 		batch.Add(tablename, "userIDNew", 0, 240)
-	})
-}
 
-// TestStreamChunksByUserID ensures StreamChunks clients honors the userID batch option
-func TestStreamChunksByUserID(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client chunk.StorageClient, schema chunk.SchemaConfig) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_, chunks, err := testutils.CreateChunks(0, 2000, model.Now())
+		_, chunks, err := testutils.CreateChunks(0, 2000)
 		require.NoError(t, err)
 
 		err = client.PutChunks(ctx, chunks)
 		require.NoError(t, err)
 
-		_, chunks, err = testutils.CreateChunks(0, 2000, model.Now(), testutils.User("userIDNew"))
+		_, chunks, err = testutils.CreateChunks(0, 2000, testutils.User("userIDNew"))
 		require.NoError(t, err)
 
 		err = client.PutChunks(ctx, chunks)

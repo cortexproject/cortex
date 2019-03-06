@@ -81,7 +81,7 @@ func (u UserOpt) set(req *createChunkRequest) {
 }
 
 // CreateChunks creates some chunks for testing
-func CreateChunks(startIndex, batchSize int, start model.Time, options ...CreateChunkOptions) ([]string, []chunk.Chunk, error) {
+func CreateChunks(startIndex, batchSize int, options ...CreateChunkOptions) ([]string, []chunk.Chunk, error) {
 	req := &createChunkRequest{
 		userID: "userID",
 		from:   model.Now(),

@@ -153,30 +153,35 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 	return l, nil
 }
 
-// IsReady is used to rate limit the number of ingesters that can be coming or
+// CheckReady is used to rate limit the number of ingesters that can be coming or
 // going at any one time, by only returning true if all ingesters are active.
-func (i *Lifecycler) IsReady(ctx context.Context) bool {
+// The state latches: once we have gone ready we don't go un-ready
+func (i *Lifecycler) CheckReady(ctx context.Context) error {
 	i.readyLock.Lock()
 	defer i.readyLock.Unlock()
 
 	if i.ready {
-		return true
+		return nil
 	}
 
 	// Ingester always take at least minReadyDuration to become ready to work
 	// around race conditions with ingesters exiting and updating the ring
 	if time.Now().Sub(i.startTime) < i.cfg.MinReadyDuration {
-		return false
+		return fmt.Errorf("Not ready: waiting for %v after startup", i.cfg.MinReadyDuration)
 	}
 
 	ringDesc, err := i.KVStore.Get(ctx, ConsulKey)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error talking to consul", "err", err)
-		return false
+		return fmt.Errorf("Not ready: error talking to consul: %s", err)
 	}
 
-	i.ready = i.ready || ringDesc.(*Desc).Ready(i.cfg.RingConfig.HeartbeatTimeout)
-	return i.ready
+	if err := ringDesc.(*Desc).Ready(i.cfg.RingConfig.HeartbeatTimeout); err != nil {
+		return err
+	}
+
+	i.ready = true
+	return nil
 }
 
 // GetState returns the state of this ingester.

@@ -176,6 +176,9 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("Not ready: error talking to consul: %s", err)
 	}
 
+	if len(i.getTokens()) == 0 {
+		return fmt.Errorf("Not ready: this ingester owns no tokens")
+	}
 	if err := ringDesc.(*Desc).Ready(i.cfg.RingConfig.HeartbeatTimeout); err != nil {
 		return err
 	}

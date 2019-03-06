@@ -14,7 +14,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/prometheus/common/model"
 )
 
 func TestChunksBasic(t *testing.T) {
@@ -71,18 +70,10 @@ func TestStreamer(t *testing.T) {
 		if batch == nil {
 			return
 		}
-		schema := chunk.SchemaConfig{
-			Configs: []chunk.PeriodConfig{{
-				IndexType: "null",
-				From:      model.Now().Add(2 * time.Hour),
-				ChunkTables: chunk.PeriodicTableConfig{
-					Prefix: "chunks",
-					Period: 10 * time.Minute,
-				},
-			}},
-		}
+		schema := testutils.DefaultSchemaConfig("")
 
-		tablename := schema.ChunkTableFor(model.Now().Add(-time.Hour))
+		tablename, err := schema.ChunkTableFor(model.Now().Add(-time.Hour))
+		require.NoError(t, err)
 		batch.Add(tablename, "userIDNew", 0, 240)
 
 		_, chunks, err := testutils.CreateChunks(0, 2000)

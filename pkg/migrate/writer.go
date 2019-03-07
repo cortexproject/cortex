@@ -183,6 +183,11 @@ func (w *Writer) QueryStream(*client.QueryRequest, client.Ingester_QueryStreamSe
 	return fmt.Errorf("not implemented")
 }
 
+// LabelNames return all the label names.
+func (w *Writer) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 // LabelValues is not implemented
 func (w *Writer) LabelValues(old_ctx.Context, *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	return nil, fmt.Errorf("not implemented")

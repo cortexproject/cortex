@@ -572,6 +572,6 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	if err := i.lifecycler.CheckReady(r.Context()); err == nil {
 		w.WriteHeader(http.StatusNoContent)
 	} else {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
 	}
 }

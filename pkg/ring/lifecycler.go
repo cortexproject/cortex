@@ -167,17 +167,17 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 	// Ingester always take at least minReadyDuration to become ready to work
 	// around race conditions with ingesters exiting and updating the ring
 	if time.Now().Sub(i.startTime) < i.cfg.MinReadyDuration {
-		return fmt.Errorf("Not ready: waiting for %v after startup", i.cfg.MinReadyDuration)
+		return fmt.Errorf("waiting for %v after startup", i.cfg.MinReadyDuration)
 	}
 
 	ringDesc, err := i.KVStore.Get(ctx, ConsulKey)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error talking to consul", "err", err)
-		return fmt.Errorf("Not ready: error talking to consul: %s", err)
+		return fmt.Errorf("error talking to consul: %s", err)
 	}
 
 	if len(i.getTokens()) == 0 {
-		return fmt.Errorf("Not ready: this ingester owns no tokens")
+		return fmt.Errorf("this ingester owns no tokens")
 	}
 	if err := ringDesc.(*Desc).Ready(i.cfg.RingConfig.HeartbeatTimeout); err != nil {
 		return err

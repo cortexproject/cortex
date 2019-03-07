@@ -121,9 +121,9 @@ func (d *Desc) Ready(heartbeatTimeout time.Duration) error {
 	numTokens := len(d.Tokens)
 	for id, ingester := range d.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
-			return fmt.Errorf("Not ready: ingester %s past heartbeat timeout", id)
+			return fmt.Errorf("ingester %s past heartbeat timeout", id)
 		} else if ingester.State != ACTIVE {
-			return fmt.Errorf("Not ready: ingester %s in state %v", id, ingester.State)
+			return fmt.Errorf("ingester %s in state %v", id, ingester.State)
 		}
 		numTokens += len(ingester.Tokens)
 	}

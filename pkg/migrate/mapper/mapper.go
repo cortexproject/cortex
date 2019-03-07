@@ -31,6 +31,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Mapper is used to update and reencode chunks with new User Ids
 // It can also serve as a struct to map other aspects of chunks in
 // the future as more migration needs arise
+// TODO: Add functionality to add/edit/drop labels
 type Mapper struct {
 	Users map[string]string `yaml:"users,omitempty"`
 }

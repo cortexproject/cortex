@@ -32,6 +32,13 @@ data:
           proxy_pass      http://distributor.default.svc.cluster.local$request_uri;
         }
 
+        location = /ring {
+          proxy_pass      http://distributor.cortex.svc.cluster.local$request_uri;
+        }
+        location = /all_user_stats {
+          proxy_pass      http://distributor.cortex.svc.cluster.local$request_uri;
+        }
+
         location ~ /api/prom/.* {
           proxy_pass      http://query-frontend.default.svc.cluster.local$request_uri;
         }

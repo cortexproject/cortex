@@ -1,4 +1,4 @@
-version: 2
+version: 2.1
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
@@ -38,6 +38,18 @@ workflows:
             only: master
           tags:
             only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+
+commands:
+  install-docker:
+    steps:
+    - run:
+        name: Install Docker client
+        command: |
+          set -x
+          VER="17.03.0-ce"
+          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+          mv /tmp/docker/* /usr/bin
 
 jobs:
   lint:
@@ -81,15 +93,7 @@ jobs:
     steps:
     - checkout
     - setup_remote_docker
-
-    - run:
-        name: Install Docker client
-        command: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          mv /tmp/docker/* /usr/bin
+    - install-docker
 
     - run:
         name: Build
@@ -120,15 +124,7 @@ jobs:
     steps:
     - checkout
     - setup_remote_docker
-
-    - run:
-        name: Install Docker client
-        command: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          mv /tmp/docker/* /usr/bin
+    - install-docker
 
     - restore_cache:
         key: v1-cortex-{{ .Branch }}-{{ .Revision }}

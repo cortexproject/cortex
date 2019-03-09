@@ -72,11 +72,17 @@ func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
 
 	if normaliseTokens {
 
+		// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
+		if fromDesc, found := d.Ingesters[from]; found {
+			result = fromDesc.Tokens
+			fromDesc.Tokens = nil
+			d.Ingesters[from] = fromDesc
+		}
+
 		// If we are storing the tokens in a normalise form, we need to deal with
 		// the migration from denormalised by removing the tokens from the tokens
 		// list.
-		result = d.Ingesters[from].Tokens
-
+		// When all ingesters are in normalised mode, d.Tokens is empty here
 		for i := 0; i < len(d.Tokens); {
 			if d.Tokens[i].Ingester == from {
 				result = append(result, d.Tokens[i].Token)

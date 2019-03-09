@@ -233,17 +233,6 @@ var amCfgValidationTests = []struct {
 		errContains: "yaml",
 	}, {
 		config: `
-        route:
-          receiver: noop
-        templates:
-        - "/path/to/file"
-
-        receivers:
-        - name: noop`,
-		shouldFail:  true,
-		errContains: "template files are not supported in Cortex yet",
-	}, {
-		config: `
         global:
           smtp_smarthost: localhost:25
           smtp_from: alertmanager@example.org

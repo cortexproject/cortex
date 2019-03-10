@@ -1,9 +1,11 @@
 package ingester
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 var (
@@ -42,6 +44,31 @@ var (
 		{Name: []byte("bar"), Value: []byte("foo")},
 	}
 )
+
+func (a labelPairs) copyValuesAndSort() labels.Labels {
+	c := make(labels.Labels, len(a))
+	// Since names and values may point into a much larger buffer,
+	// make a copy of all the names and values, in one block for efficiency
+	copyBytes := make([]byte, 0, len(a)*32) // guess at initial length
+	for _, pair := range a {
+		copyBytes = append(copyBytes, pair.Name...)
+		copyBytes = append(copyBytes, pair.Value...)
+	}
+	// Now we need to copy the byte slice into a string for the values to point into
+	copyString := string(copyBytes)
+	pos := 0
+	stringSlice := func(val []byte) string {
+		start := pos
+		pos += len(val)
+		return copyString[start:pos]
+	}
+	for i, pair := range a {
+		c[i].Name = stringSlice(pair.Name)
+		c[i].Value = stringSlice(pair.Value)
+	}
+	sort.Sort(c)
+	return c
+}
 
 func TestFPMapper(t *testing.T) {
 	sm := newSeriesMap()

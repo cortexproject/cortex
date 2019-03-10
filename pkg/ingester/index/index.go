@@ -24,7 +24,7 @@ type InvertedIndex struct {
 func New() *InvertedIndex {
 	shards := make([]indexShard, indexShards)
 	for i := 0; i < indexShards; i++ {
-		shards[i].idx = map[model.LabelName]map[model.LabelValue][]model.Fingerprint{}
+		shards[i].idx = map[model.LabelName]indexEntry{}
 	}
 	return &InvertedIndex{
 		shards: shards,
@@ -32,9 +32,9 @@ func New() *InvertedIndex {
 }
 
 // Add a fingerprint under the specified labels.
-func (ii *InvertedIndex) Add(labels []client.LabelPair, fp model.Fingerprint) {
+func (ii *InvertedIndex) Add(labels []client.LabelPair, fp model.Fingerprint) labels.Labels {
 	shard := &ii.shards[util.HashFP(fp)%indexShards]
-	shard.add(labels, fp)
+	return shard.add(labels, fp)
 }
 
 // Lookup all fingerprints for the provided matchers.
@@ -84,7 +84,12 @@ func (ii *InvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
 }
 
 // NB slice entries are sorted in fp order.
-type unlockIndex map[model.LabelName]map[model.LabelValue][]model.Fingerprint
+type indexEntry struct {
+	name model.LabelName
+	fps  map[model.LabelValue][]model.Fingerprint
+}
+
+type unlockIndex map[model.LabelName]indexEntry
 
 // This is the prevalent value for Intel and AMD CPUs as-at 2018.
 const cacheLineSize = 64
@@ -95,18 +100,24 @@ type indexShard struct {
 	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(unlockIndex{})]byte
 }
 
-func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) {
+// add metric to the index; return all the name/value pairs as strings from the index, sorted
+func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) labels.Labels {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
-	for _, pair := range metric {
+	internedLabels := make(labels.Labels, len(metric))
+
+	for i, pair := range metric {
 		value := model.LabelValue(pair.Value)
 		values, ok := shard.idx[model.LabelName(pair.Name)]
 		if !ok {
-			values = map[model.LabelValue][]model.Fingerprint{}
-			shard.idx[model.LabelName(pair.Name)] = values
+			values = indexEntry{
+				name: model.LabelName(pair.Name),
+				fps:  map[model.LabelValue][]model.Fingerprint{},
+			}
+			shard.idx[values.name] = values
 		}
-		fingerprints := values[value]
+		fingerprints := values.fps[value]
 		// Insert into the right position to keep fingerprints sorted
 		j := sort.Search(len(fingerprints), func(i int) bool {
 			return fingerprints[i] >= fp
@@ -114,8 +125,11 @@ func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) {
 		fingerprints = append(fingerprints, 0)
 		copy(fingerprints[j+1:], fingerprints[j:])
 		fingerprints[j] = fp
-		values[value] = fingerprints
+		values.fps[value] = fingerprints
+		internedLabels[i] = labels.Label{Name: string(values.name), Value: string(value)}
 	}
+	sort.Sort(internedLabels)
+	return internedLabels
 }
 
 func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint {
@@ -135,12 +149,12 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		}
 		var toIntersect model.Fingerprints
 		if matcher.Type == labels.MatchEqual {
-			fps := values[model.LabelValue(matcher.Value)]
+			fps := values.fps[model.LabelValue(matcher.Value)]
 			toIntersect = append(toIntersect, fps...) // deliberate copy
 		} else {
 			// accumulate the matching fingerprints (which are all distinct)
 			// then sort to maintain the invariant
-			for value, fps := range values {
+			for value, fps := range values.fps {
 				if matcher.Matches(string(value)) {
 					toIntersect = append(toIntersect, fps...)
 				}
@@ -178,8 +192,8 @@ func (shard *indexShard) labelValues(name model.LabelName) model.LabelValues {
 		return nil
 	}
 
-	results := make(model.LabelValues, 0, len(values))
-	for val := range values {
+	results := make(model.LabelValues, 0, len(values.fps))
+	for val := range values.fps {
 		results = append(results, val)
 	}
 
@@ -197,7 +211,7 @@ func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 		if !ok {
 			continue
 		}
-		fingerprints, ok := values[value]
+		fingerprints, ok := values.fps[value]
 		if !ok {
 			continue
 		}
@@ -208,12 +222,12 @@ func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 		fingerprints = fingerprints[:j+copy(fingerprints[j:], fingerprints[j+1:])]
 
 		if len(fingerprints) == 0 {
-			delete(values, value)
+			delete(values.fps, value)
 		} else {
-			values[value] = fingerprints
+			values.fps[value] = fingerprints
 		}
 
-		if len(values) == 0 {
+		if len(values.fps) == 0 {
 			delete(shard.idx, name)
 		} else {
 			shard.idx[name] = values

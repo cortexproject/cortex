@@ -257,13 +257,18 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 	memSeries.Dec()
 }
 
-// forSeriesMatching passes all series matching the given matchers to the provided callback.
-// Deals with locking and the quirks of zero-length matcher values.
-// There are 2 callbacks. callback1 is called for each series, where the lock is held.
-// callback2 is called at certain intervals specified by callback2Interval,
-// i.e. callback2() after callback2Interval calls of callback1().
-func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher, append func(context.Context, model.Fingerprint, *memorySeries) error,
-	send func(context.Context) error, batchSize int) error {
+// forSeriesMatching passes all series matching the given matchers to the
+// provided callback. Deals with locking and the quirks of zero-length matcher
+// values. There are 2 callbacks:
+// - The `add` callback is called for each series while the lock is held, and
+//   is intend to be used by the caller to build a batch.
+// - The `send` callback is called at certain intervals specified by batchSize
+//   with no locks held, and is intended to be used by the caller to send the
+//   built batches.
+func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher,
+	add func(context.Context, model.Fingerprint, *memorySeries) error,
+	send func(context.Context) error, batchSize int,
+) error {
 	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
 	defer log.Finish()
 
@@ -296,7 +301,7 @@ outer:
 			}
 		}
 
-		err := append(ctx, fp, series)
+		err := add(ctx, fp, series)
 		u.fpLocker.Unlock(fp)
 		if err != nil {
 			return err

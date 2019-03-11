@@ -2,9 +2,7 @@ package main
 
 import (
 	"flag"
-	"os"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
@@ -56,60 +54,36 @@ func main() {
 	util.InitLogger(&serverConfig)
 
 	overrides, err := validation.NewOverrides(limits)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing overrides", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing overrides", err)
 	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
-	if err != nil {
-		level.Error(util.Logger).Log("err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("", err)
 	defer chunkStore.Stop()
 
 	r, err := ring.New(ringConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ring", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing ring", err)
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
 	dist, err := distributor.New(distributorConfig, clientConfig, overrides, r)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing distributor", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing distributor", err)
 	defer dist.Stop()
 
 	querierConfig.MaxConcurrent = rulerConfig.NumWorkers
 	querierConfig.Timeout = rulerConfig.GroupTimeout
 	queryable, engine := querier.New(querierConfig, dist, chunkStore)
 	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ruler", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing ruler", err)
 	defer rlr.Stop()
 
 	rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing rules API", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing rules API", err)
 
 	rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing ruler server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing ruler server", err)
 	defer rulerServer.Stop()
 
 	server, err := server.New(serverConfig)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initializing server", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	// Only serve the API for setting & getting rules configs if we're not
@@ -117,10 +91,7 @@ func main() {
 	// migration. See https://github.com/cortexproject/cortex/issues/619
 	if configStoreConfig.ConfigsAPIURL.URL == nil {
 		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
-			os.Exit(1)
-		}
+		util.CheckFatal("initializing public rules API", err)
 		a.RegisterRoutes(server.HTTP)
 	}
 

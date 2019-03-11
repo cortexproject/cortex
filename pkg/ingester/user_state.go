@@ -232,17 +232,16 @@ func (u *userState) canAddSeriesFor(metric string) bool {
 	return true
 }
 
-func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
+func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 	u.fpToSeries.del(fp)
-	u.index.Delete(metric, fp)
+	u.index.Delete(labels.Labels(metric), fp)
 
-	metricNameB, err := extract.MetricNameFromLabelPairs(metric)
-	if err != nil {
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
 		// Series without a metric name should never be able to make it into
 		// the ingester's memory storage.
-		panic(err)
+		panic("No metric name label")
 	}
-	metricName := string(metricNameB)
 
 	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
 	shard.mtx.Lock()
@@ -286,7 +285,7 @@ outer:
 		}
 
 		for _, filter := range filters {
-			if !filter.Matches(string(series.metric.valueForName([]byte(filter.Name)))) {
+			if !filter.Matches(series.metric.Get(filter.Name)) {
 				u.fpLocker.Unlock(fp)
 				continue outer
 			}

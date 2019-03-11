@@ -344,7 +344,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		}
 
 		ts := client.TimeSeries{
-			Labels:  series.metric,
+			Labels:  client.FromLabelsToLabelPairs(series.metric),
 			Samples: make([]client.Sample, 0, len(values)),
 		}
 		for _, s := range values {
@@ -403,7 +403,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: series.metric,
+			Labels: client.FromLabelsToLabelPairs(series.metric),
 			Chunks: wireChunks,
 		})
 
@@ -491,7 +491,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 	for _, matchers := range matchersSet {
 		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *memorySeries) error {
 			if _, ok := metrics[fp]; !ok {
-				metrics[fp] = series.labels()
+				metrics[fp] = client.FromLabelsToLabelPairs(series.metric)
 			}
 			return nil
 		}); err != nil {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -23,7 +24,7 @@ func init() {
 }
 
 type memorySeries struct {
-	metric sortedLabelPairs
+	metric labels.Labels
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
 	chunkDescs []*desc
@@ -55,11 +56,6 @@ func newMemorySeries(m labelPairs) *memorySeries {
 		metric:   m.copyValuesAndSort(),
 		lastTime: model.Earliest,
 	}
-}
-
-// helper to extract the not-necessarily-sorted type used elsewhere, without casting everywhere.
-func (s *memorySeries) labels() labelPairs {
-	return labelPairs(s.metric)
 }
 
 // add adds a sample pair to the series. It returns the number of newly

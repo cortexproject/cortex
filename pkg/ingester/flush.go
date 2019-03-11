@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
 )
@@ -277,14 +276,14 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	sp.SetTag("organization", userID)
 
 	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
-	err := i.flushChunks(ctx, fp, client.FromLabelPairs(series.metric), chunks)
+	err := i.flushChunks(ctx, fp, labelsToMetric(series.metric), chunks)
 	if err != nil {
 		return err
 	}
 
 	userState.fpLocker.Lock(fp)
 	if immediate {
-		userState.removeSeries(fp, series.labels())
+		userState.removeSeries(fp, series.metric)
 		memoryChunks.Sub(float64(len(chunks)))
 	} else {
 		for i := 0; i < len(chunks); i++ {
@@ -310,7 +309,7 @@ func (i *Ingester) removeFlushedChunks(userState *userState, fp model.Fingerprin
 		}
 	}
 	if len(series.chunkDescs) == 0 {
-		userState.removeSeries(fp, series.labels())
+		userState.removeSeries(fp, series.metric)
 	}
 }
 

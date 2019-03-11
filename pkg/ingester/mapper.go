@@ -59,7 +59,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labelPairs) model.Fingerpr
 	s, ok := m.fpToSeries.get(fp)
 	if ok {
 		// FP exists in memory, but is it for the same metric?
-		if s.metric.equal(metric) {
+		if metric.equal(s.metric) {
 			// Yupp. We are done.
 			return fp
 		}

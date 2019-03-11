@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -115,19 +116,22 @@ func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
 	return result
 }
 
-// Ready is true when all ingesters are active and healthy.
-func (d *Desc) Ready(heartbeatTimeout time.Duration) bool {
+// Ready returns no error when all ingesters are active and healthy.
+func (d *Desc) Ready(heartbeatTimeout time.Duration) error {
 	numTokens := len(d.Tokens)
-	for _, ingester := range d.Ingesters {
+	for id, ingester := range d.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
-			return false
+			return fmt.Errorf("ingester %s past heartbeat timeout", id)
 		} else if ingester.State != ACTIVE {
-			return false
+			return fmt.Errorf("ingester %s in state %v", id, ingester.State)
 		}
 		numTokens += len(ingester.Tokens)
 	}
 
-	return numTokens > 0
+	if numTokens == 0 {
+		return fmt.Errorf("Not ready: no tokens in ring")
+	}
+	return nil
 }
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.

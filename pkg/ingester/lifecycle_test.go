@@ -96,7 +96,6 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.ClaimOnRollout = true
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
-	cfg1.SearchPendingFor = 1 * time.Second
 	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil)
 	require.NoError(t, err)
 
@@ -178,7 +177,6 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.Addr = "ingester1"
 	cfg.LifecyclerConfig.ClaimOnRollout = true
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
-	cfg.SearchPendingFor = 1 * time.Second
 	ing, err := New(cfg, defaultClientTestConfig(), limits, nil)
 	require.NoError(t, err)
 

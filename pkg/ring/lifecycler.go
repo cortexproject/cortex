@@ -33,7 +33,7 @@ var (
 	shutdownDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "cortex_shutdown_duration_seconds",
 		Help:    "Duration (in seconds) of cortex shutdown procedure (ie transfer or flush).",
-		Buckets: prometheus.DefBuckets,
+		Buckets: prometheus.ExponentialBuckets(10, 2, 8), // Biggest bucket is 10*2^(9-1) = 2560, or 42 mins.
 	}, []string{"op", "status"})
 )
 

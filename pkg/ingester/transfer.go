@@ -20,10 +20,6 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-const (
-	pendingSearchIterations = 10
-)
-
 var (
 	sentChunks = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_sent_chunks",
@@ -190,7 +186,7 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 func (i *Ingester) TransferOut(ctx context.Context) error {
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,
-		MaxBackoff: 1 * time.Second,
+		MaxBackoff: 5 * time.Second,
 		MaxRetries: i.cfg.MaxTransferRetries,
 	})
 
@@ -279,44 +275,15 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 
 // findTargetIngester finds an ingester in PENDING state.
 func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, error) {
-	findIngester := func(ctx context.Context) (*ring.IngesterDesc, error) {
-		ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
-		if err != nil {
-			return nil, err
-		}
-
-		ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
-		if len(ingesters) <= 0 {
-			return nil, fmt.Errorf("no pending ingesters")
-		}
-
-		return &ingesters[0], nil
+	ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
+	if err != nil {
+		return nil, err
 	}
 
-	deadline := time.NewTimer(i.cfg.SearchPendingFor)
-	defer deadline.Stop()
-
-	ticker := time.NewTicker(i.cfg.SearchPendingFor / pendingSearchIterations)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(ctx, i.cfg.SearchPendingFor/pendingSearchIterations)
-			ingester, err := findIngester(ctx)
-			cancel()
-			if err != nil {
-				level.Warn(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
-				continue
-			}
-			return ingester, nil
-
-		case <-deadline.C:
-			level.Warn(util.Logger).Log("msg", "Could not find pending ingester before deadline")
-			return nil, fmt.Errorf("could not find pending ingester before deadline")
-
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
+	ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
+	if len(ingesters) <= 0 {
+		return nil, fmt.Errorf("no pending ingesters")
 	}
+
+	return &ingesters[0], nil
 }

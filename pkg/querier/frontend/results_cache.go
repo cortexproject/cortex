@@ -209,7 +209,7 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	sp.LogFields(otlog.Int("bytes", len(bufs[0])))
 
 	if err := proto.Unmarshal(bufs[0], &resp); err != nil {
-		level.Error(util.Logger).Log("msg", "error unmarshaling cached value", "err", err)
+		level.Error(util.Logger).Log("msg", "error unmarshalling cached value", "err", err)
 		sp.LogFields(otlog.Error(err))
 		return nil, false
 	}

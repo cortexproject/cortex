@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"context"
+	"fmt"
 
 	"google.golang.org/grpc/codes"
 
@@ -62,18 +63,22 @@ func hasColumnFamily(infos []bigtable.FamilyInfo) bool {
 }
 
 func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
-	if err := c.client.CreateTable(ctx, desc.Name); err != nil {
+	splitKeys := []string{}
+	for i := 0; i < 256; i++ {
+		splitKeys = append(splitKeys, fmt.Sprintf("%02x", i))
+	}
+
+	if err := c.client.CreateTableFromConf(ctx, &bigtable.TableConf{
+		TableID:   desc.Name,
+		SplitKeys: splitKeys,
+		Families: map[string]bigtable.GCPolicy{
+			columnFamily: bigtable.NoGcPolicy(),
+		},
+	}); err != nil {
 		if !alreadyExistsError(err) {
 			return errors.Wrap(err, "client.CreateTable")
 		}
 	}
-
-	if err := c.client.CreateColumnFamily(ctx, desc.Name, columnFamily); err != nil {
-		if !alreadyExistsError(err) {
-			return errors.Wrap(err, "client.CreateColumnFamily")
-		}
-	}
-
 	return nil
 }
 

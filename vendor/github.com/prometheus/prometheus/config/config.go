@@ -107,9 +107,10 @@ var (
 		MinShards:         1,
 		MaxSamplesPerSend: 100,
 
-		// By default, buffer 100 batches, which at 100ms per batch is 10s. At
-		// 1000 shards, this will buffer 10M samples total.
-		Capacity:          100 * 100,
+		// Each shard will have a max of 10 samples pending in it's channel, plus the pending
+		// samples that have been enqueued. Theoretically we should only ever have about 110 samples
+		// per shard pending. At 1000 shards that's 110k.
+		Capacity:          10,
 		BatchSendDeadline: model.Duration(5 * time.Second),
 
 		// Max number of times to retry a batch on recoverable errors.
@@ -160,10 +161,7 @@ func resolveFilepaths(baseDir string, cfg *Config) {
 	}
 	sdPaths := func(cfg *sd_config.ServiceDiscoveryConfig) {
 		for _, kcfg := range cfg.KubernetesSDConfigs {
-			kcfg.BearerTokenFile = join(kcfg.BearerTokenFile)
-			kcfg.TLSConfig.CAFile = join(kcfg.TLSConfig.CAFile)
-			kcfg.TLSConfig.CertFile = join(kcfg.TLSConfig.CertFile)
-			kcfg.TLSConfig.KeyFile = join(kcfg.TLSConfig.KeyFile)
+			clientPaths(&kcfg.HTTPClientConfig)
 		}
 		for _, mcfg := range cfg.MarathonSDConfigs {
 			mcfg.AuthTokenFile = join(mcfg.AuthTokenFile)

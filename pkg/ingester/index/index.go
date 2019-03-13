@@ -86,7 +86,12 @@ func (ii *InvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
 // NB slice entries are sorted in fp order.
 type indexEntry struct {
 	name model.LabelName
-	fps  map[model.LabelValue][]model.Fingerprint
+	fps  map[model.LabelValue]indexValueEntry
+}
+
+type indexValueEntry struct {
+	value model.LabelValue
+	fps   []model.Fingerprint
 }
 
 type unlockIndex map[model.LabelName]indexEntry
@@ -108,25 +113,27 @@ func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) la
 	internedLabels := make(labels.Labels, len(metric))
 
 	for i, pair := range metric {
-		value := model.LabelValue(pair.Value)
 		values, ok := shard.idx[model.LabelName(pair.Name)]
 		if !ok {
 			values = indexEntry{
 				name: model.LabelName(pair.Name),
-				fps:  map[model.LabelValue][]model.Fingerprint{},
+				fps:  map[model.LabelValue]indexValueEntry{},
 			}
 			shard.idx[values.name] = values
 		}
-		fingerprints := values.fps[value]
+		fingerprints, ok := values.fps[model.LabelValue(pair.Value)]
+		if !ok {
+			fingerprints = indexValueEntry{value: model.LabelValue(pair.Value)}
+		}
 		// Insert into the right position to keep fingerprints sorted
-		j := sort.Search(len(fingerprints), func(i int) bool {
-			return fingerprints[i] >= fp
+		j := sort.Search(len(fingerprints.fps), func(i int) bool {
+			return fingerprints.fps[i] >= fp
 		})
-		fingerprints = append(fingerprints, 0)
-		copy(fingerprints[j+1:], fingerprints[j:])
-		fingerprints[j] = fp
-		values.fps[value] = fingerprints
-		internedLabels[i] = labels.Label{Name: string(values.name), Value: string(value)}
+		fingerprints.fps = append(fingerprints.fps, 0)
+		copy(fingerprints.fps[j+1:], fingerprints.fps[j:])
+		fingerprints.fps[j] = fp
+		values.fps[fingerprints.value] = fingerprints
+		internedLabels[i] = labels.Label{Name: string(values.name), Value: string(fingerprints.value)}
 	}
 	sort.Sort(internedLabels)
 	return internedLabels
@@ -150,13 +157,13 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		var toIntersect model.Fingerprints
 		if matcher.Type == labels.MatchEqual {
 			fps := values.fps[model.LabelValue(matcher.Value)]
-			toIntersect = append(toIntersect, fps...) // deliberate copy
+			toIntersect = append(toIntersect, fps.fps...) // deliberate copy
 		} else {
 			// accumulate the matching fingerprints (which are all distinct)
 			// then sort to maintain the invariant
 			for value, fps := range values.fps {
 				if matcher.Matches(string(value)) {
-					toIntersect = append(toIntersect, fps...)
+					toIntersect = append(toIntersect, fps.fps...)
 				}
 			}
 			sort.Sort(toIntersect)
@@ -216,12 +223,12 @@ func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 			continue
 		}
 
-		j := sort.Search(len(fingerprints), func(i int) bool {
-			return fingerprints[i] >= fp
+		j := sort.Search(len(fingerprints.fps), func(i int) bool {
+			return fingerprints.fps[i] >= fp
 		})
-		fingerprints = fingerprints[:j+copy(fingerprints[j:], fingerprints[j+1:])]
+		fingerprints.fps = fingerprints.fps[:j+copy(fingerprints.fps[j:], fingerprints.fps[j+1:])]
 
-		if len(fingerprints) == 0 {
+		if len(fingerprints.fps) == 0 {
 			delete(values.fps, value)
 		} else {
 			values.fps[value] = fingerprints

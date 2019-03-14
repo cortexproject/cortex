@@ -95,7 +95,7 @@ func main() {
 		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
-		false, // Disable admin APIs.
+		false,                              // Disable admin APIs.
 		util.Logger,
 		querier.DummyRulesRetriever{},
 		0, 0, // Remote read samples and concurrency limit.

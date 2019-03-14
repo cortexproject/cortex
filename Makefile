@@ -57,6 +57,7 @@ test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
 dep-check: protos
 configs-integration-test: $(PROTO_GOS)
+lint: $(PROTO_GOS)
 
 # And now what goes into each image
 build-image/$(UPTODATE): build-image/*

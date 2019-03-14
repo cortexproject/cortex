@@ -104,9 +104,20 @@ func (a labelPairs) equal(b labels.Labels) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for _, pair := range a {
-		v, found := valueForName(b, pair.Name)
-		if !found || v != string(pair.Value) {
+	// Check as many as we can where the two sets are in the same order
+	i := 0
+	for ; i < len(a); i++ {
+		if b[i].Name != string(a[i].Name) {
+			break
+		}
+		if b[i].Value != string(a[i].Value) {
+			return false
+		}
+	}
+	// Now check remaining values using binary search
+	for ; i < len(a); i++ {
+		v, found := valueForName(b, a[i].Name)
+		if !found || v != string(a[i].Value) {
 			return false
 		}
 	}

@@ -22,7 +22,7 @@ var dummyResponse = &APIResponse{
 		Result: []SampleStream{
 			{
 				Labels: []client.LabelPair{
-					{wire.Bytes("foo"), wire.Bytes("bar")},
+					{Name: wire.Bytes("foo"), Value: wire.Bytes("bar")},
 				},
 				Samples: []client.Sample{
 					{
@@ -51,7 +51,7 @@ func mkAPIResponse(start, end, step int64) *APIResponse {
 			Result: []SampleStream{
 				{
 					Labels: []client.LabelPair{
-						{wire.Bytes("foo"), wire.Bytes("bar")},
+						{Name: wire.Bytes("foo"), Value: wire.Bytes("bar")},
 					},
 					Samples: samples,
 				},

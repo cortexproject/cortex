@@ -83,7 +83,7 @@ var (
 			query: "foo",
 			step:  sampleRate * 4,
 			labels: labels.Labels{
-				labels.Label{"__name__", "foo"},
+				labels.Label{Name: "__name__", Value: "foo"},
 			},
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
@@ -111,7 +111,7 @@ var (
 			query: "foo",
 			step:  sampleRate * 4 * 10,
 			labels: labels.Labels{
-				labels.Label{"__name__", "foo"},
+				labels.Label{Name: "__name__", Value: "foo"},
 			},
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -17,10 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
-)
-
-const (
-	pendingSearchIterations = 10
 )
 
 var (
@@ -187,6 +184,26 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 // TransferOut finds an ingester in PENDING state and transfers our chunks to it.
 // Called as part of the ingester shutdown process.
 func (i *Ingester) TransferOut(ctx context.Context) error {
+	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 5 * time.Second,
+		MaxRetries: i.cfg.MaxTransferRetries,
+	})
+
+	for backoff.Ongoing() {
+		err := i.transferOut(ctx)
+		if err == nil {
+			return nil
+		}
+
+		level.Error(util.Logger).Log("msg", "transfer failed", "err", err)
+		backoff.Wait()
+	}
+
+	return backoff.Err()
+}
+
+func (i *Ingester) transferOut(ctx context.Context) error {
 	userStatesCopy := i.userStates.cp()
 	if len(userStatesCopy) == 0 {
 		level.Info(util.Logger).Log("msg", "nothing to transfer")
@@ -203,12 +220,12 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer c.(io.Closer).Close()
+	defer c.Close()
 
 	ctx = user.InjectOrgID(ctx, "-1")
 	stream, err := c.TransferChunks(ctx)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "TransferChunks")
 	}
 
 	for userID, state := range userStatesCopy {
@@ -223,7 +240,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			chunks, err := toWireChunks(pair.series.chunkDescs)
 			if err != nil {
 				state.fpLocker.Unlock(pair.fp)
-				return err
+				return errors.Wrap(err, "toWireChunks")
 			}
 
 			err = stream.Send(&client.TimeSeriesChunk{
@@ -234,7 +251,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			})
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "Send")
 			}
 
 			sentChunks.Add(float64(len(chunks)))
@@ -243,7 +260,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 
 	_, err = stream.CloseAndRecv()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "CloseAndRecv")
 	}
 
 	// Close & empty all the flush queues, to unblock waiting workers.
@@ -258,33 +275,15 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 
 // findTargetIngester finds an ingester in PENDING state.
 func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, error) {
-	findIngester := func() (*ring.IngesterDesc, error) {
-		ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
-		if err != nil {
-			return nil, err
-		}
-
-		ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
-		if len(ingesters) <= 0 {
-			return nil, fmt.Errorf("no pending ingesters")
-		}
-
-		return &ingesters[0], nil
+	ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
+	if err != nil {
+		return nil, err
 	}
 
-	deadline := time.Now().Add(i.cfg.SearchPendingFor)
-	for {
-		ingester, err := findIngester()
-		if err != nil {
-			level.Debug(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
-			if time.Now().Before(deadline) {
-				time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
-				continue
-			} else {
-				level.Warn(util.Logger).Log("msg", "Could not find pending ingester before deadline", "err", err)
-				return nil, err
-			}
-		}
-		return ingester, nil
+	ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
+	if len(ingesters) <= 0 {
+		return nil, fmt.Errorf("no pending ingesters")
 	}
+
+	return &ingesters[0], nil
 }

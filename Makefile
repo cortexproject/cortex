@@ -120,7 +120,8 @@ $(EXES):
 	protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint:
-	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
+	./tools/lint -notestpackage -novet -ignorespelling queriers -ignorespelling Queriers .
+	go vet ./pkg/...
 
 test:
 	./tools/test -netgo

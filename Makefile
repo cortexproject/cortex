@@ -122,7 +122,10 @@ $(EXES):
 
 lint:
 	./tools/lint -notestpackage -novet -ignorespelling queriers -ignorespelling Queriers .
-	go vet ./pkg/...
+
+	# -stdmethods=false disables checks for non-standard signatures for methods with familiar names.
+	# This is needed because the Prometheus storage interface requires a non-standard Seek() method.
+	go vet -stdmethods=false ./pkg/...
 
 test:
 	./tools/test -netgo

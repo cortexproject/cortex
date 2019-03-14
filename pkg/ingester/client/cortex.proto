@@ -47,6 +47,9 @@ message QueryRequest {
   int64 start_timestamp_ms = 1;
   int64 end_timestamp_ms = 2;
   repeated LabelMatcher matchers = 3;
+
+  uint32 shard_index = 4;
+  uint32 total_shards = 5;
 }
 
 message QueryResponse {

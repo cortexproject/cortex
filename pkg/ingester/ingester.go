@@ -329,7 +329,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
-	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
+	err = state.forSeriesMatching(ctx, matchers, 0, 0, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
@@ -388,7 +388,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// can iteratively merge them with entries coming from the chunk store.  But
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
-	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
+	err = state.forSeriesMatching(stream.Context(), matchers, req.ShardIndex, req.TotalShards, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
 		numSeries++
 		chunks := make([]*desc, 0, len(series.chunkDescs))
 		for _, chunk := range series.chunkDescs {
@@ -487,7 +487,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 	metrics := map[model.Fingerprint]labelPairs{}
 	for _, matchers := range matchersSet {
-		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *memorySeries) error {
+		if err := state.forSeriesMatching(ctx, matchers, 0, 0, func(ctx context.Context, fp model.Fingerprint, series *memorySeries) error {
 			if _, ok := metrics[fp]; !ok {
 				metrics[fp] = client.FromLabelsToLabelPairs(series.metric)
 			}

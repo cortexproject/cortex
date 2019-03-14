@@ -265,6 +265,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 //   with no locks held, and is intended to be used by the caller to send the
 //   built batches.
 func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher,
+	shardIndex, totalShards uint32,
 	add func(context.Context, model.Fingerprint, *memorySeries) error,
 	send func(context.Context) error, batchSize int,
 ) error {
@@ -284,6 +285,10 @@ outer:
 	for i, fp := range fps {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+
+		if totalShards != 0 && uint64(fp)%uint64(totalShards) != uint64(shardIndex) {
+			continue
 		}
 
 		u.fpLocker.Lock(fp)

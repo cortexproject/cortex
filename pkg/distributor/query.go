@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -125,29 +126,53 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *client.QueryRequest) ([]client.TimeSeriesChunk, error) {
 	// Fetch samples from multiple ingesters
 	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ing *ring.IngesterDesc) (interface{}, error) {
-		client, err := d.ingesterPool.GetClientFor(ing.Addr)
+		c, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
 		}
 		ingesterQueries.WithLabelValues(ing.Addr).Inc()
 
-		stream, err := client.(ingester_client.IngesterClient).QueryStream(ctx, req)
-		if err != nil {
-			ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
-			return nil, err
+		errs := make(chan error, d.cfg.QueryStreamShards)
+		results := make(chan []*client.QueryStreamResponse, d.cfg.QueryStreamShards)
+		for i := 0; i < d.cfg.QueryStreamShards; i++ {
+			go func(i int) {
+				req := proto.Clone(req).(*client.QueryRequest)
+				req.ShardIndex = uint32(i)
+				req.TotalShards = uint32(d.cfg.QueryStreamShards)
+
+				stream, err := c.(ingester_client.IngesterClient).QueryStream(ctx, req)
+				if err != nil {
+					ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
+					errs <- err
+					return
+				}
+				defer stream.CloseSend()
+
+				var result []*ingester_client.QueryStreamResponse
+				for {
+					series, err := stream.Recv()
+					if err == io.EOF {
+						break
+					} else if err != nil {
+						errs <- err
+						return
+					}
+					result = append(result, series)
+				}
+				results <- result
+			}(i)
 		}
-		defer stream.CloseSend()
 
 		var result []*ingester_client.QueryStreamResponse
-		for {
-			series, err := stream.Recv()
-			if err == io.EOF {
-				break
-			} else if err != nil {
+		for i := 0; i < d.cfg.QueryStreamShards; i++ {
+			select {
+			case r := <-results:
+				result = append(result, r...)
+			case err := <-errs:
 				return nil, err
 			}
-			result = append(result, series)
 		}
+
 		return result, nil
 	})
 	if err != nil {

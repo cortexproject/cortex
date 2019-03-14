@@ -104,7 +104,8 @@ type Config struct {
 	ExtraQueryDelay     time.Duration
 	LimiterReloadPeriod time.Duration
 
-	ShardByAllLabels bool
+	ShardByAllLabels  bool
+	QueryStreamShards int
 
 	// for testing
 	ingesterClientFactory client.Factory
@@ -120,6 +121,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
+	f.IntVar(&cfg.QueryStreamShards, "distributor.query-stream-shards", 1, "Number of parallel calls to use for queries to the ingesters.")
 }
 
 // New constructs a new Distributor

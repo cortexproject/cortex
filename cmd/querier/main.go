@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"net/http"
+	"regexp"
 
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/web/api/v1"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
@@ -98,6 +99,7 @@ func main() {
 		util.Logger,
 		querier.DummyRulesRetriever{},
 		0, 0, // Remote read samples and concurrency limit.
+		regexp.MustCompile(".*"),
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)

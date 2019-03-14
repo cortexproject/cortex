@@ -32,19 +32,23 @@
 
 [[constraint]]
   name = "github.com/prometheus/tsdb"
-  version = "0.2.0"
+  version = "0.6.1"
 
 [[override]]
   name = "k8s.io/client-go"
-  revision = "7d04d0e2a0a1a4d4a1cd6baa432a2301492e4e65"
+  revision = "a47917edff34c2c3f7be36398e3ebad6011ce05c"
 
 [[override]]
   name = "k8s.io/apimachinery"
-  revision = "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
+  revision = "2b1284ed4c93a43499e781493253e2ac5959c4fd"
+
+[[override]]
+  name = "k8s.io/api"
+  revision = "05914d821849570fba9eacfb29466f2d8d3cd229"
 
 [[override]]
   name = "github.com/Azure/azure-sdk-for-go"
-  revision = "bd73d950fa4440dae889bd9917bff7cef539f86e"
+  revision = "a1a2da0aba294fe51ba47119e652ff2f08a78afb"
 
 [[override]]
   name = "github.com/weaveworks/mesh"

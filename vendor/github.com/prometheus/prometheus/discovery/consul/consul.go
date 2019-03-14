@@ -131,7 +131,7 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	if strings.TrimSpace(c.Server) == "" {
-		return fmt.Errorf("Consul SD configuration requires a server address")
+		return fmt.Errorf("consul SD configuration requires a server address")
 	}
 	return nil
 }
@@ -267,7 +267,7 @@ func (d *Discovery) getDatacenter() error {
 
 	dc, ok := info["Config"]["Datacenter"].(string)
 	if !ok {
-		err := fmt.Errorf("Invalid value '%v' for Config.Datacenter", info["Config"]["Datacenter"])
+		err := fmt.Errorf("invalid value '%v' for Config.Datacenter", info["Config"]["Datacenter"])
 		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 		return err
 	}
@@ -342,12 +342,13 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 	level.Debug(d.logger).Log("msg", "Watching services", "tag", d.watchedTag)
 
 	t0 := time.Now()
-	srvs, meta, err := catalog.Services(&consul.QueryOptions{
+	opts := &consul.QueryOptions{
 		WaitIndex:  *lastIndex,
 		WaitTime:   watchTimeout,
 		AllowStale: d.allowStale,
 		NodeMeta:   d.watchedNodeMeta,
-	})
+	}
+	srvs, meta, err := catalog.Services(opts.WithContext(ctx))
 	elapsed := time.Since(t0)
 	rpcDuration.WithLabelValues("catalog", "services").Observe(elapsed.Seconds())
 
@@ -447,12 +448,13 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 	level.Debug(srv.logger).Log("msg", "Watching service", "service", srv.name, "tag", srv.tag)
 
 	t0 := time.Now()
-	nodes, meta, err := catalog.Service(srv.name, srv.tag, &consul.QueryOptions{
+	opts := &consul.QueryOptions{
 		WaitIndex:  *lastIndex,
 		WaitTime:   watchTimeout,
 		AllowStale: srv.discovery.allowStale,
 		NodeMeta:   srv.discovery.watchedNodeMeta,
-	})
+	}
+	nodes, meta, err := catalog.Service(srv.name, srv.tag, opts.WithContext(ctx))
 	elapsed := time.Since(t0)
 	rpcDuration.WithLabelValues("catalog", "service").Observe(elapsed.Seconds())
 

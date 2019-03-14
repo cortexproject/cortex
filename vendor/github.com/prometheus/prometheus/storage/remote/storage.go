@@ -19,9 +19,12 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/logging"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -32,26 +35,40 @@ type startTimeCallback func() (int64, error)
 // storage.Storage.
 type Storage struct {
 	logger log.Logger
-	mtx    sync.RWMutex
+	mtx    sync.Mutex
 
 	// For writes
-	queues []*QueueManager
+	walDir        string
+	queues        []*QueueManager
+	samplesIn     *ewmaRate
+	flushDeadline time.Duration
 
 	// For reads
 	queryables             []storage.Queryable
 	localStartTimeCallback startTimeCallback
-	flushDeadline          time.Duration
 }
 
 // NewStorage returns a remote.Storage.
-func NewStorage(l log.Logger, stCallback startTimeCallback, flushDeadline time.Duration) *Storage {
+func NewStorage(l log.Logger, reg prometheus.Registerer, stCallback startTimeCallback, walDir string, flushDeadline time.Duration) *Storage {
 	if l == nil {
 		l = log.NewNopLogger()
 	}
-	return &Storage{
-		logger:                 l,
+	s := &Storage{
+		logger:                 logging.Dedupe(l, 1*time.Minute),
 		localStartTimeCallback: stCallback,
 		flushDeadline:          flushDeadline,
+		samplesIn:              newEWMARate(ewmaWeight, shardUpdateDuration),
+		walDir:                 walDir,
+	}
+	go s.run()
+	return s
+}
+
+func (s *Storage) run() {
+	ticker := time.NewTicker(shardUpdateDuration)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.samplesIn.tick()
 	}
 }
 
@@ -61,7 +78,6 @@ func (s *Storage) ApplyConfig(conf *config.Config) error {
 	defer s.mtx.Unlock()
 
 	// Update write queues
-
 	newQueues := []*QueueManager{}
 	// TODO: we should only stop & recreate queues which have changes,
 	// as this can be quite disruptive.
@@ -76,6 +92,8 @@ func (s *Storage) ApplyConfig(conf *config.Config) error {
 		}
 		newQueues = append(newQueues, NewQueueManager(
 			s.logger,
+			s.walDir,
+			s.samplesIn,
 			rwConf.QueueConfig,
 			conf.GlobalConfig.ExternalLabels,
 			rwConf.WriteRelabelConfigs,
@@ -94,8 +112,7 @@ func (s *Storage) ApplyConfig(conf *config.Config) error {
 	}
 
 	// Update read clients
-
-	s.queryables = make([]storage.Queryable, 0, len(conf.RemoteReadConfigs))
+	queryables := make([]storage.Queryable, 0, len(conf.RemoteReadConfigs))
 	for i, rrConf := range conf.RemoteReadConfigs {
 		c, err := NewClient(i, &ClientConfig{
 			URL:              rrConf.URL,
@@ -114,8 +131,9 @@ func (s *Storage) ApplyConfig(conf *config.Config) error {
 		if !rrConf.ReadRecent {
 			q = PreferLocalStorageFilter(q, s.localStartTimeCallback)
 		}
-		s.queryables = append(s.queryables, q)
+		queryables = append(queryables, q)
 	}
+	s.queryables = queryables
 
 	return nil
 }

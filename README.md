@@ -18,7 +18,7 @@ API.
 Multi-tenant means it handles metrics from multiple independent
 Prometheus sources, keeping them separate.
 
-[Instrumenting Your App: Best Practises](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
+[Instrumenting Your App: Best Practices](https://www.weave.works/docs/cloud/latest/tasks/monitor/best-instrumenting/)
 
 ## Hosted Cortex (Prometheus as a service)
 
@@ -50,7 +50,7 @@ To build:
 make
 ```
 
-(By default the build runs in a Docker container, using an image built
+(By default, the build runs in a Docker container, using an image built
 with all the tools required. The source code is mounted from where you
 run `make` into the build container as a Docker volume.)
 
@@ -68,23 +68,23 @@ kubectl create -f ./k8s
 just built the images and they are available on the node(s) in your
 Kubernetes cluster)
 
-Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape it itself.  Try it:
+Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape itself.  Try it:
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
 
 ### Vendoring
 
-We use `dep` to vendor dependencies.  To fetch a new dependency, run:
+We use `dep` to vendor dependencies. To fetch a new dependency, run:
 
     dep ensure
 
 To update dependencies, run
 
-    dep ensure --update
+    dep ensure -update
 
 ## Further reading
 
-To learn more about Cortex, consult the following documents / talks:
+To learn more about Cortex, consult the following documents/talks:
 
 - [Original design document for Project Frankenstein](http://goo.gl/prdUYV)
 - PromCon 2016 Talk: "Project Frankenstein: Multitenant, Scale-Out Prometheus": [video](https://youtu.be/3Tb4Wc0kfCM), [slides](http://www.slideshare.net/weaveworks/project-frankenstein-a-multitenant-horizontally-scalable-prometheus-as-a-service)
@@ -93,7 +93,7 @@ To learn more about Cortex, consult the following documents / talks:
 
 ## <a name="help"></a>Getting Help
 
-If you have any questions regarding Cortex:
+If you have any questions about Cortex:
 
 - Ask a question on the [Cortex Slack channel](https://cloud-native.slack.com/messages/cortex/). To invite yourself to the CNCF Slack, visit http://slack.cncf.io/.
 - <a href="https://github.com/cortexproject/cortex/issues/new">File an issue.</a>

@@ -18,7 +18,7 @@ API.
 Multi-tenant means it handles metrics from multiple independent
 Prometheus sources, keeping them separate.
 
-[Instrumenting Your App: Best Practises](https://www.weave.works/docs/cloud/latest/concepts/prometheus-monitoring/)
+[Instrumenting Your App: Best Practices](https://www.weave.works/docs/cloud/latest/tasks/monitor/best-instrumenting/)
 
 ## Hosted Cortex (Prometheus as a service)
 

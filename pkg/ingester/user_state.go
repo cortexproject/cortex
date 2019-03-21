@@ -280,12 +280,14 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 	level.Debug(log).Log("series", len(fps))
 
 	// fps is sorted, lock them in order to prevent deadlocks
+	i := 0
 outer:
-	for i, fp := range fps {
+	for ; i < len(fps); i++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
+		fp := fps[i]
 		u.fpLocker.Lock(fp)
 		series, ok := u.fpToSeries.get(fp)
 		if !ok {
@@ -306,14 +308,14 @@ outer:
 			return err
 		}
 
-		if batchSize > 0 && i+1%batchSize == 0 && send != nil {
+		if batchSize > 0 && (i+1)%batchSize == 0 && send != nil {
 			if err = send(ctx); err != nil {
 				return nil
 			}
 		}
 	}
 
-	if send != nil {
+	if batchSize > 0 && i%batchSize > 0 && send != nil {
 		return send(ctx)
 	}
 	return nil

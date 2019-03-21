@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -14,7 +15,7 @@ import (
 // Test forSeriesMatching correctly batches up series.
 func TestForSeriesMatchingBatching(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
-	userIDs, _ := pushTestSamples(t, ing, 100, 100)
+	userIDs, _ := pushTestSamples(t, ing, 98, 100)
 
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
@@ -25,18 +26,23 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 		matcher, err := labels.NewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+")
 		require.NoError(t, err)
 
-		count := 0
+		total, batchSize, batchCount := 0, 0, 0
 		err = instance.forSeriesMatching(ctx, []*labels.Matcher{matcher},
 			func(_ context.Context, _ model.Fingerprint, s *memorySeries) error {
-				count++
+				total++
+				batchSize++
 				return nil
 			},
 			func(context.Context) error {
-				require.Equal(t, 10, count)
-				count = 0
+				fmt.Println(batchSize)
+				require.True(t, batchSize <= 10)
+				batchSize = 0
+				batchCount++
 				return nil
 			},
 			10)
 		require.NoError(t, err)
+		require.Equal(t, 98, total)
+		require.Equal(t, 10, batchCount)
 	}
 }

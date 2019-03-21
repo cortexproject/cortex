@@ -315,7 +315,7 @@ outer:
 		}
 	}
 
-	if batchSize > 0 && (i+1)%batchSize == 0 && send != nil {
+	if batchSize > 0 && i%batchSize > 0 && send != nil {
 		return send(ctx)
 	}
 	return nil

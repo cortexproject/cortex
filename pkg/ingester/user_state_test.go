@@ -12,7 +12,7 @@ import (
 )
 
 // Test forSeriesMatching correctly batches up series.
-func TestForSeriesMatching(t *testing.T) {
+func TestForSeriesMatchingBatching(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
 	userIDs, _ := pushTestSamples(t, ing, 100, 100)
 

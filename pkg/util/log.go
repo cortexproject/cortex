@@ -44,8 +44,8 @@ func InitLogger(cfg *server.Config) {
 		panic(err)
 	}
 
-	Logger = l
-	cfg.Log = logging.GoKit(l)
+	Logger = log.With(l, "caller", log.DefaultCaller)
+	cfg.Log = logging.GoKit(log.With(l, "caller", log.Caller(5)))
 }
 
 // PrometheusLogger exposes Prometheus counters for each of go-kit's log levels.
@@ -69,7 +69,7 @@ func NewPrometheusLogger(l logging.Level) (log.Logger, error) {
 	}
 
 	// DefaultCaller must be the last wrapper
-	logger = log.With(logger, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
+	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 	return logger, nil
 }
 

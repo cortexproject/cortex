@@ -442,8 +442,8 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 	}
 
 	resp := &client.LabelValuesResponse{}
-	for _, v := range state.index.LabelValues(model.LabelName(req.LabelName)) {
-		resp.LabelValues = append(resp.LabelValues, string(v))
+	for _, v := range state.index.LabelValues(req.LabelName) {
+		resp.LabelValues = append(resp.LabelValues, v)
 	}
 
 	return resp, nil
@@ -462,7 +462,7 @@ func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest
 
 	resp := &client.LabelNamesResponse{}
 	for _, v := range state.index.LabelNames() {
-		resp.LabelNames = append(resp.LabelNames, string(v))
+		resp.LabelNames = append(resp.LabelNames, v)
 	}
 
 	return resp, nil

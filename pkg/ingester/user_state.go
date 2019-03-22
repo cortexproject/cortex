@@ -213,9 +213,9 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	u.memSeriesCreatedTotal.Inc()
 	memSeries.Inc()
 
-	series = newMemorySeries(metric)
+	labels := u.index.Add(metric, fp)
+	series = newMemorySeries(labels)
 	u.fpToSeries.put(fp, series)
-	u.index.Add(metric, fp)
 
 	return fp, series, nil
 }

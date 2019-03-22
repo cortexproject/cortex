@@ -66,31 +66,6 @@ func (a *labelPairs) removeBlanks() {
 	}
 }
 
-func (a labelPairs) copyValuesAndSort() labels.Labels {
-	c := make(labels.Labels, len(a))
-	// Since names and values may point into a much larger buffer,
-	// make a copy of all the names and values, in one block for efficiency
-	copyBytes := make([]byte, 0, len(a)*32) // guess at initial length
-	for _, pair := range a {
-		copyBytes = append(copyBytes, pair.Name...)
-		copyBytes = append(copyBytes, pair.Value...)
-	}
-	// Now we need to copy the byte slice into a string for the values to point into
-	copyString := string(copyBytes)
-	pos := 0
-	stringSlice := func(val []byte) string {
-		start := pos
-		pos += len(val)
-		return copyString[start:pos]
-	}
-	for i, pair := range a {
-		c[i].Name = stringSlice(pair.Name)
-		c[i].Value = stringSlice(pair.Value)
-	}
-	sort.Sort(c)
-	return c
-}
-
 func valueForName(s labels.Labels, name []byte) (string, bool) {
 	pos := sort.Search(len(s), func(i int) bool { return s[i].Name >= string(name) })
 	if pos == len(s) || s[pos].Name != string(name) {

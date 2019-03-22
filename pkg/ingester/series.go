@@ -51,9 +51,9 @@ func (error *memorySeriesError) Error() string {
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m labelPairs) *memorySeries {
+func newMemorySeries(m labels.Labels) *memorySeries {
 	return &memorySeries{
-		metric:   m.copyValuesAndSort(),
+		metric:   m,
 		lastTime: model.Earliest,
 	}
 }

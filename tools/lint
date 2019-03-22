@@ -23,6 +23,7 @@ LINT_IGNORE_FILE=${LINT_IGNORE_FILE:-".lintignore"}
 IGNORE_LINT_COMMENT=
 IGNORE_SPELLINGS=
 PARALLEL=
+NOVET=
 while true; do
     case "$1" in
         -nocomment)
@@ -36,6 +37,10 @@ while true; do
         -ignorespelling)
             IGNORE_SPELLINGS="$2,$IGNORE_SPELLINGS"
             shift 2
+            ;;
+        -novet)
+            NOVET=1
+            shift 1
             ;;
         -p)
             PARALLEL=1
@@ -73,9 +78,11 @@ lint_go() {
         echo "${filename}: run gofmt -s -w ${filename}"
     fi
 
-    # -methods=false disables checks for non-standard signatures for methods with familiar names.
-    # This is needed because the Prometheus storage interface requires a non-standard Seek() method.
-    go tool vet -methods=false "${filename}" || lint_result=$?
+    if [ -z "$NOVET" ]; then
+        # -methods=false disables checks for non-standard signatures for methods with familiar names.
+        # This is needed because the Prometheus storage interface requires a non-standard Seek() method.
+        go tool vet -methods=false "${filename}" || lint_result=$?
+    fi
 
     # golint is completely optional.  If you don't like it
     # don't have it installed.

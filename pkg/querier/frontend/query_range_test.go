@@ -39,11 +39,11 @@ var (
 			Result: []SampleStream{
 				{
 					Labels: []client.LabelPair{
-						{wire.Bytes("foo"), wire.Bytes("bar")},
+						{Name: wire.Bytes("foo"), Value: wire.Bytes("bar")},
 					},
 					Samples: []client.Sample{
-						{137, 1536673680000},
-						{137, 1536673780000},
+						{Value: 137, TimestampMs: 1536673680000},
+						{Value: 137, TimestampMs: 1536673780000},
 					},
 				},
 			},
@@ -207,8 +207,8 @@ func TestMergeAPIResponses(t *testing.T) {
 							{
 								Labels: []client.LabelPair{},
 								Samples: []client.Sample{
-									{0, 0},
-									{1, 1},
+									{Value: 0, TimestampMs: 0},
+									{Value: 1, TimestampMs: 1},
 								},
 							},
 						},
@@ -221,8 +221,8 @@ func TestMergeAPIResponses(t *testing.T) {
 							{
 								Labels: []client.LabelPair{},
 								Samples: []client.Sample{
-									{2, 2},
-									{3, 3},
+									{Value: 2, TimestampMs: 2},
+									{Value: 3, TimestampMs: 3},
 								},
 							},
 						},
@@ -237,10 +237,10 @@ func TestMergeAPIResponses(t *testing.T) {
 						{
 							Labels: []client.LabelPair{},
 							Samples: []client.Sample{
-								{0, 0},
-								{1, 1},
-								{2, 2},
-								{3, 3},
+								{Value: 0, TimestampMs: 0},
+								{Value: 1, TimestampMs: 1},
+								{Value: 2, TimestampMs: 2},
+								{Value: 3, TimestampMs: 3},
 							},
 						},
 					},
@@ -262,10 +262,10 @@ func TestMergeAPIResponses(t *testing.T) {
 						{
 							Labels: []client.LabelPair{{Name: []byte("a"), Value: []byte("b")}, {Name: []byte("c"), Value: []byte("d")}},
 							Samples: []client.Sample{
-								{0, 0},
-								{1, 1000},
-								{2, 2000},
-								{3, 3000},
+								{Value: 0, TimestampMs: 0},
+								{Value: 1, TimestampMs: 1000},
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
 							},
 						},
 					},

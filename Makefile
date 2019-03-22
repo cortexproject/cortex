@@ -160,3 +160,14 @@ load-images:
 			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
 		fi \
 	done
+
+# Loads the built Docker images into the minikube environmen, and tags them with
+# "latest" so the k8s manifests shipped with this code work.
+prime-minikube: save-images
+	eval $$(minikube docker-env) ; \
+	for image_name in $(IMAGE_NAMES); do \
+		if ! echo $$image_name | grep build; then \
+			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+			docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest ; \
+		fi \
+	done

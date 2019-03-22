@@ -59,9 +59,20 @@ To run the test suite:
 make test
 ```
 
-To checkout Cortex in minikube:
+## Playing in `minikube`
+
+First, start `minikube`.
+
+You may need to load the Docker images into your minikube environment. There is
+a convenience rule in the Makefile to do this:
+
 ```
-kubectl create -f ./k8s
+make prime-minikube
+```
+
+Then run Cortex in minikube:
+```
+kubectl apply -f ./k8s
 ```
 
 (these manifests use `latest` tags, i.e. this will work if you have

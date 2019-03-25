@@ -24,7 +24,7 @@ type resultsCacheConfig struct {
 }
 
 func (cfg *resultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.cacheConfig.RegisterFlagsWithPrefix("", "", f)
+	cfg.cacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
 }
 

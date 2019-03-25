@@ -1,3 +1,37 @@
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: retrieval
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: retrieval
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: retrieval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: retrieval
+subjects:
+- kind: ServiceAccount
+  name: retrieval
+  namespace: default
 ---
 apiVersion: extensions/v1beta1
 kind: Deployment
@@ -10,15 +44,15 @@ spec:
       labels:
         name: retrieval
     spec:
+      serviceAccountName: retrieval
       containers:
       - name: retrieval
-        image: prom/prometheus:v1.4.1
+        image: prom/prometheus:v2.8.0
         imagePullPolicy: IfNotPresent
         args:
-        - -config.file=/etc/prometheus/prometheus.yml
-        - -web.listen-address=:80
+        - --config.file=/etc/prometheus/prometheus.yml
         ports:
-        - containerPort: 80
+        - containerPort: 9090
         volumeMounts:
         - name: config-volume
           mountPath: /etc/prometheus

@@ -341,7 +341,7 @@ func (t *Cortex) stopRuler() error {
 }
 
 func (t *Cortex) initConfigs(cfg *Config) (err error) {
-	t.configDB, err = db.New(cfg.ConfigDB)
+	t.configDB, err = db.New(cfg.ConfigStore.DBConfig)
 	if err != nil {
 		return
 	}

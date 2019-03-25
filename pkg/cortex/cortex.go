@@ -97,7 +97,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigStore.RegisterFlags(f)
-	c.ConfigDB.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	flag.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")

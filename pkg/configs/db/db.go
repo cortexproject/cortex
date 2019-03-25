@@ -16,6 +16,8 @@ type Config struct {
 	URI           string
 	MigrationsDir string
 	PasswordFile  string
+
+	Mock DB
 }
 
 // RegisterFlags adds the flags required to configure this to the given FlagSet.
@@ -59,6 +61,10 @@ type DB interface {
 
 // New creates a new database.
 func New(cfg Config) (DB, error) {
+	if cfg.Mock != nil {
+		return cfg.Mock, nil
+	}
+
 	u, err := url.Parse(cfg.URI)
 	if err != nil {
 		return nil, err

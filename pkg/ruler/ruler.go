@@ -31,6 +31,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -401,7 +402,7 @@ type Server struct {
 }
 
 // NewServer makes a new rule processing server.
-func NewServer(cfg Config, ruler *Ruler, rulesAPI RulesAPI) (*Server, error) {
+func NewServer(cfg Config, ruler *Ruler, rulesAPI client.Client) (*Server, error) {
 	// TODO: Separate configuration for polling interval.
 	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
 	if cfg.NumWorkers <= 0 {

@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/configs/api"
+	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -313,7 +314,7 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 		return
 	}
 
-	rulesAPI, err := ruler.NewRulesAPI(cfg.ConfigStore)
+	rulesAPI, err := config_client.New(cfg.ConfigStore)
 	if err != nil {
 		return err
 	}

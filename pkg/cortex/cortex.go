@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -68,8 +69,7 @@ type Config struct {
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
-	ConfigStore  ruler.ConfigStoreConfig                    `yaml:"config_store,omitempty"`
-	ConfigDB     db.Config                                  `yaml:"config_db,omitempty"`
+	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
 	Alertmanager alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 }
 

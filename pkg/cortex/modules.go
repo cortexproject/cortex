@@ -157,6 +157,11 @@ func (t *Cortex) initOverrides(cfg *Config) (err error) {
 	return err
 }
 
+func (t *Cortex) stopOverrides() error {
+	t.overrides.Stop()
+	return nil
+}
+
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
 	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring)
 	if err != nil {
@@ -392,6 +397,7 @@ var modules = map[moduleName]module{
 
 	Overrides: {
 		init: (*Cortex).initOverrides,
+		stop: (*Cortex).stopOverrides,
 	},
 
 	Distributor: {
@@ -407,7 +413,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Store, Server},
+		deps: []moduleName{Overrides, Store, Server},
 		init: (*Cortex).initIngester,
 		stop: (*Cortex).stopIngester,
 	},

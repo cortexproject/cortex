@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
 
@@ -35,7 +36,7 @@ func main() {
 
 	if configFile != "" {
 		if err := LoadConfig(configFile, &cfg); err != nil {
-			level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
+			fmt.Printf("error loading config from %s: %v\n", configFile, err)
 			os.Exit(1)
 		}
 	}

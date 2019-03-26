@@ -23,6 +23,11 @@ func TestNextDayBoundary(t *testing.T) {
 		{0, 1, millisecondPerDay - 1},
 		{0, 15 * seconds, millisecondPerDay - 15*seconds},
 		{1 * seconds, 15 * seconds, millisecondPerDay - (15-1)*seconds},
+		{14 * seconds, 15 * seconds, millisecondPerDay - (15-14)*seconds},
+		{0, 35 * seconds, millisecondPerDay - 20*seconds},
+		{1 * seconds, 35 * seconds, millisecondPerDay - (20-1)*seconds},
+		{20 * seconds, 35 * seconds, millisecondPerDay - 35*seconds},
+		{millisecondPerDay + 15*seconds, 35 * seconds, 2*millisecondPerDay - 5*seconds},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			require.Equal(t, tc.out, nextDayBoundary(tc.in, tc.step))

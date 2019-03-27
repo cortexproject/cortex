@@ -106,7 +106,7 @@ go test -i "${GO_TEST_ARGS[@]}" "${TESTDIRS[@]}"
 run_test() {
     local dir=$1
     if [ -z "$NO_GO_GET" ]; then
-        go get -t -tags "${TAGS[@]}" "$dir"
+        GO111MODULE=on go get -t -tags "${TAGS[@]}" "$dir"
     fi
 
     local GO_TEST_ARGS_RUN=("${GO_TEST_ARGS[@]}")
@@ -149,7 +149,7 @@ if [ -n "$PARALLEL" ]; then
 fi
 
 if [ -n "$SLOW" ] && [ -z "$COVERDIR" ]; then
-    go get github.com/weaveworks/tools/cover
+    GO111MODULE=on go get github.com/weaveworks/tools/cover
     cover "$coverdir"/* >profile.cov
     rm -rf "$coverdir"
     go tool cover -html=profile.cov -o=coverage.html

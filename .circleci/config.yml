@@ -34,7 +34,7 @@ jobs:
         command: make BUILD_IN_CONTAINER=false lint
     - run:
         name: Check vendor directory is consistent.
-        command: make BUILD_IN_CONTAINER=false dep-check
+        command: make BUILD_IN_CONTAINER=false mod-check
 
   test:
     <<: *defaults

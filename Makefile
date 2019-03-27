@@ -55,7 +55,7 @@ pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
-dep-check: protos
+mod-check: protos
 configs-integration-test: $(PROTO_GOS)
 lint: $(PROTO_GOS)
 
@@ -85,7 +85,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(MIGRATION_DIRS) $(PROTO_GOS) lint test shell dep-check: build-image/$(UPTODATE)
+$(EXES) $(MIGRATION_DIRS) $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) time docker run $(RM) $(TTY) -i \
@@ -136,8 +136,8 @@ shell:
 configs-integration-test:
 	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
 
-dep-check:
-	dep check
+mod-check:
+	GO111MODULE=on go mod verify
 
 %/.migrations:
 	# Ensure a each image that requires a migration dir has one in the build context

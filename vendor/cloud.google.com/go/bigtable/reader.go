@@ -152,8 +152,9 @@ func (cr *chunkReader) handleCellValue(cc *btpb.ReadRowsResponse_CellChunk) Row 
 
 		if cc.GetCommitRow() {
 			return cr.commitRow()
+		} else {
+			cr.state = rowInProgress
 		}
-		cr.state = rowInProgress
 	}
 
 	return nil

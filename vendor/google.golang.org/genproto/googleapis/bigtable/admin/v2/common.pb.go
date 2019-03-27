@@ -3,16 +3,24 @@
 
 package admin
 
-import proto "github.com/golang/protobuf/proto"
-import fmt "fmt"
-import math "math"
-import _ "google.golang.org/genproto/googleapis/api/annotations"
-import _ "github.com/golang/protobuf/ptypes/timestamp"
+import (
+	fmt "fmt"
+	proto "github.com/golang/protobuf/proto"
+	_ "github.com/golang/protobuf/ptypes/timestamp"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
+	math "math"
+)
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 // Storage media types for persisting Bigtable data.
 type StorageType int32
@@ -31,24 +39,30 @@ var StorageType_name = map[int32]string{
 	1: "SSD",
 	2: "HDD",
 }
+
 var StorageType_value = map[string]int32{
 	"STORAGE_TYPE_UNSPECIFIED": 0,
-	"SSD": 1,
-	"HDD": 2,
+	"SSD":                      1,
+	"HDD":                      2,
 }
 
 func (x StorageType) String() string {
 	return proto.EnumName(StorageType_name, int32(x))
 }
-func (StorageType) EnumDescriptor() ([]byte, []int) { return fileDescriptor2, []int{0} }
+
+func (StorageType) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_79ab584e3c858108, []int{0}
+}
 
 func init() {
 	proto.RegisterEnum("google.bigtable.admin.v2.StorageType", StorageType_name, StorageType_value)
 }
 
-func init() { proto.RegisterFile("google/bigtable/admin/v2/common.proto", fileDescriptor2) }
+func init() {
+	proto.RegisterFile("google/bigtable/admin/v2/common.proto", fileDescriptor_79ab584e3c858108)
+}
 
-var fileDescriptor2 = []byte{
+var fileDescriptor_79ab584e3c858108 = []byte{
 	// 270 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0xd0, 0xcf, 0x4b, 0xc3, 0x30,
 	0x14, 0x07, 0x70, 0x3b, 0x41, 0x21, 0xbb, 0x94, 0x9e, 0xc6, 0x28, 0x7a, 0xf2, 0xe2, 0x21, 0x81,

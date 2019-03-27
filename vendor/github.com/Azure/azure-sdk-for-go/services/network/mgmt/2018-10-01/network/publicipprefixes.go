@@ -199,7 +199,7 @@ func (client PublicIPPrefixesClient) DeleteResponder(resp *http.Response) (resul
 // Get gets the specified public IP prefix in a specified resource group.
 // Parameters:
 // resourceGroupName - the name of the resource group.
-// publicIPPrefixName - the name of the Public IP Prefix.
+// publicIPPrefixName - the name of the PublicIPPrefx.
 // expand - expands referenced resources.
 func (client PublicIPPrefixesClient) Get(ctx context.Context, resourceGroupName string, publicIPPrefixName string, expand string) (result PublicIPPrefix, err error) {
 	if tracing.IsEnabled() {

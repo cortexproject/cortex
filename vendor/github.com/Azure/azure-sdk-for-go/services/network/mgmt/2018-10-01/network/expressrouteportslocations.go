@@ -117,7 +117,7 @@ func (client ExpressRoutePortsLocationsClient) GetResponder(resp *http.Response)
 }
 
 // List retrieves all ExpressRoutePort peering locations. Does not return available bandwidths for each location.
-// Available bandwidths can only be obtained when retrieving a specific peering location.
+// Available bandwidths can only be obtained when retriving a specific peering location.
 func (client ExpressRoutePortsLocationsClient) List(ctx context.Context) (result ExpressRoutePortsLocationListResultPage, err error) {
 	if tracing.IsEnabled() {
 		ctx = tracing.StartSpan(ctx, fqdn+"/ExpressRoutePortsLocationsClient.List")

@@ -199,7 +199,7 @@ func (client ProfilesClient) DeleteResponder(resp *http.Response) (result autore
 // Get gets the specified network profile in a specified resource group.
 // Parameters:
 // resourceGroupName - the name of the resource group.
-// networkProfileName - the name of the Public IP Prefix.
+// networkProfileName - the name of the PublicIPPrefx.
 // expand - expands referenced resources.
 func (client ProfilesClient) Get(ctx context.Context, resourceGroupName string, networkProfileName string, expand string) (result Profile, err error) {
 	if tracing.IsEnabled() {

@@ -30,16 +30,6 @@ var (
 	)
 )
 
-// UserAgent returns a string containing the Go version, system architecture and OS, and the adal version.
-func UserAgent() string {
+func userAgent() string {
 	return ua
-}
-
-// AddToUserAgent adds an extension to the current user agent
-func AddToUserAgent(extension string) error {
-	if extension != "" {
-		ua = fmt.Sprintf("%s %s", ua, extension)
-		return nil
-	}
-	return fmt.Errorf("Extension was empty, User Agent remained as '%s'", ua)
 }

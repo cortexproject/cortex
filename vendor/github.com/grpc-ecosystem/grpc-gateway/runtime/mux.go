@@ -20,14 +20,13 @@ type HandlerFunc func(w http.ResponseWriter, r *http.Request, pathParams map[str
 // It matches http requests to patterns and invokes the corresponding handler.
 type ServeMux struct {
 	// handlers maps HTTP method to a list of handlers.
-	handlers                  map[string][]handler
-	forwardResponseOptions    []func(context.Context, http.ResponseWriter, proto.Message) error
-	marshalers                marshalerRegistry
-	incomingHeaderMatcher     HeaderMatcherFunc
-	outgoingHeaderMatcher     HeaderMatcherFunc
-	metadataAnnotators        []func(context.Context, *http.Request) metadata.MD
-	protoErrorHandler         ProtoErrorHandlerFunc
-	disablePathLengthFallback bool
+	handlers               map[string][]handler
+	forwardResponseOptions []func(context.Context, http.ResponseWriter, proto.Message) error
+	marshalers             marshalerRegistry
+	incomingHeaderMatcher  HeaderMatcherFunc
+	outgoingHeaderMatcher  HeaderMatcherFunc
+	metadataAnnotators     []func(context.Context, *http.Request) metadata.MD
+	protoErrorHandler      ProtoErrorHandlerFunc
 }
 
 // ServeMuxOption is an option that can be given to a ServeMux on construction.
@@ -100,13 +99,6 @@ func WithMetadata(annotator func(context.Context, *http.Request) metadata.MD) Se
 func WithProtoErrorHandler(fn ProtoErrorHandlerFunc) ServeMuxOption {
 	return func(serveMux *ServeMux) {
 		serveMux.protoErrorHandler = fn
-	}
-}
-
-// WithDisablePathLengthFallback returns a ServeMuxOption for disable path length fallback.
-func WithDisablePathLengthFallback() ServeMuxOption {
-	return func(serveMux *ServeMux) {
-		serveMux.disablePathLengthFallback = true
 	}
 }
 
@@ -185,7 +177,7 @@ func (s *ServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		components[l-1], verb = c[:idx], c[idx+1:]
 	}
 
-	if override := r.Header.Get("X-HTTP-Method-Override"); override != "" && s.isPathLengthFallback(r) {
+	if override := r.Header.Get("X-HTTP-Method-Override"); override != "" && isPathLengthFallback(r) {
 		r.Method = strings.ToUpper(override)
 		if err := r.ParseForm(); err != nil {
 			if s.protoErrorHandler != nil {
@@ -219,7 +211,7 @@ func (s *ServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			// X-HTTP-Method-Override is optional. Always allow fallback to POST.
-			if s.isPathLengthFallback(r) {
+			if isPathLengthFallback(r) {
 				if err := r.ParseForm(); err != nil {
 					if s.protoErrorHandler != nil {
 						_, outboundMarshaler := MarshalerForRequest(s, r)
@@ -258,8 +250,8 @@ func (s *ServeMux) GetForwardResponseOptions() []func(context.Context, http.Resp
 	return s.forwardResponseOptions
 }
 
-func (s *ServeMux) isPathLengthFallback(r *http.Request) bool {
-	return !s.disablePathLengthFallback && r.Method == "POST" && r.Header.Get("Content-Type") == "application/x-www-form-urlencoded"
+func isPathLengthFallback(r *http.Request) bool {
+	return r.Method == "POST" && r.Header.Get("Content-Type") == "application/x-www-form-urlencoded"
 }
 
 type handler struct {

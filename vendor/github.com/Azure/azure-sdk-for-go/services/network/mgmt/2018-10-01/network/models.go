@@ -4533,11 +4533,11 @@ type ApplicationGatewayWebApplicationFirewallConfiguration struct {
 	DisabledRuleGroups *[]ApplicationGatewayFirewallDisabledRuleGroup `json:"disabledRuleGroups,omitempty"`
 	// RequestBodyCheck - Whether allow WAF to check request Body.
 	RequestBodyCheck *bool `json:"requestBodyCheck,omitempty"`
-	// MaxRequestBodySize - Maximum request body size for WAF.
+	// MaxRequestBodySize - Maxium request body size for WAF.
 	MaxRequestBodySize *int32 `json:"maxRequestBodySize,omitempty"`
-	// MaxRequestBodySizeInKb - Maximum request body size in Kb for WAF.
+	// MaxRequestBodySizeInKb - Maxium request body size in Kb for WAF.
 	MaxRequestBodySizeInKb *int32 `json:"maxRequestBodySizeInKb,omitempty"`
-	// FileUploadLimitInMb - Maximum file upload size in Mb for WAF.
+	// FileUploadLimitInMb - Maxium file upload size in Mb for WAF.
 	FileUploadLimitInMb *int32 `json:"fileUploadLimitInMb,omitempty"`
 	// Exclusions - The exclusion list.
 	Exclusions *[]ApplicationGatewayFirewallExclusion `json:"exclusions,omitempty"`
@@ -6796,7 +6796,7 @@ type ConfigurationDiagnosticProfile struct {
 	Source *string `json:"source,omitempty"`
 	// Destination - Traffic destination. Accepted values are: '*', IP Address/CIDR, Service Tag.
 	Destination *string `json:"destination,omitempty"`
-	// DestinationPort - Traffic destination port. Accepted values are '*', port (for example, 3389) and port range (for example, 80-100).
+	// DestinationPort - Traffice destination port. Accepted values are '*', port (for example, 3389) and port range (for example, 80-100).
 	DestinationPort *string `json:"destinationPort,omitempty"`
 }
 
@@ -6907,7 +6907,7 @@ type ConnectionMonitorParameters struct {
 	MonitoringIntervalInSeconds *int32 `json:"monitoringIntervalInSeconds,omitempty"`
 }
 
-// ConnectionMonitorQueryResult list of connection states snapshots.
+// ConnectionMonitorQueryResult list of connection states snaphots.
 type ConnectionMonitorQueryResult struct {
 	autorest.Response `json:"-"`
 	// SourceStatus - Status of connection monitor source. Possible values include: 'Uknown', 'Active', 'Inactive'
@@ -7404,7 +7404,7 @@ func (cni *ContainerNetworkInterface) UnmarshalJSON(body []byte) error {
 	return nil
 }
 
-// ContainerNetworkInterfaceConfiguration container network interface configuration child resource.
+// ContainerNetworkInterfaceConfiguration container network interface configruation child resource.
 type ContainerNetworkInterfaceConfiguration struct {
 	// ContainerNetworkInterfaceConfigurationPropertiesFormat - Container network interface configuration properties.
 	*ContainerNetworkInterfaceConfigurationPropertiesFormat `json:"properties,omitempty"`
@@ -7602,7 +7602,7 @@ type ContainerNetworkInterfaceIPConfigurationPropertiesFormat struct {
 type ContainerNetworkInterfacePropertiesFormat struct {
 	// ContainerNetworkInterfaceConfiguration - Container network interface configuration from which this container network interface is created.
 	ContainerNetworkInterfaceConfiguration *ContainerNetworkInterfaceConfiguration `json:"containerNetworkInterfaceConfiguration,omitempty"`
-	// Container - Reference to the container to which this container network interface is attached.
+	// Container - Reference to the conatinaer to which this container network interface is attached.
 	Container *Container `json:"container,omitempty"`
 	// IPConfigurations - Reference to the ip configuration on this container nic.
 	IPConfigurations *[]ContainerNetworkInterfaceIPConfiguration `json:"ipConfigurations,omitempty"`
@@ -8115,17 +8115,17 @@ type EffectiveNetworkSecurityRule struct {
 	SourcePortRange *string `json:"sourcePortRange,omitempty"`
 	// DestinationPortRange - The destination port or range.
 	DestinationPortRange *string `json:"destinationPortRange,omitempty"`
-	// SourcePortRanges - The source port ranges. Expected values include a single integer between 0 and 65535, a range using '-' as separator (e.g. 100-400), or an asterisk (*)
+	// SourcePortRanges - The source port ranges. Expected values include a single integer between 0 and 65535, a range using '-' as seperator (e.g. 100-400), or an asterix (*)
 	SourcePortRanges *[]string `json:"sourcePortRanges,omitempty"`
-	// DestinationPortRanges - The destination port ranges. Expected values include a single integer between 0 and 65535, a range using '-' as separator (e.g. 100-400), or an asterisk (*)
+	// DestinationPortRanges - The destination port ranges. Expected values include a single integer between 0 and 65535, a range using '-' as seperator (e.g. 100-400), or an asterix (*)
 	DestinationPortRanges *[]string `json:"destinationPortRanges,omitempty"`
 	// SourceAddressPrefix - The source address prefix.
 	SourceAddressPrefix *string `json:"sourceAddressPrefix,omitempty"`
 	// DestinationAddressPrefix - The destination address prefix.
 	DestinationAddressPrefix *string `json:"destinationAddressPrefix,omitempty"`
-	// SourceAddressPrefixes - The source address prefixes. Expected values include CIDR IP ranges, Default Tags (VirtualNetwork, AzureLoadBalancer, Internet), System Tags, and the asterisk (*).
+	// SourceAddressPrefixes - The source address prefixes. Expected values include CIDR IP ranges, Default Tags (VirtualNetwork, AureLoadBalancer, Internet), System Tags, and the asterix (*).
 	SourceAddressPrefixes *[]string `json:"sourceAddressPrefixes,omitempty"`
-	// DestinationAddressPrefixes - The destination address prefixes. Expected values include CIDR IP ranges, Default Tags (VirtualNetwork, AzureLoadBalancer, Internet), System Tags, and the asterisk (*).
+	// DestinationAddressPrefixes - The destination address prefixes. Expected values include CIDR IP ranges, Default Tags (VirtualNetwork, AureLoadBalancer, Internet), System Tags, and the asterix (*).
 	DestinationAddressPrefixes *[]string `json:"destinationAddressPrefixes,omitempty"`
 	// ExpandedSourceAddressPrefix - The expanded source address prefix.
 	ExpandedSourceAddressPrefix *[]string `json:"expandedSourceAddressPrefix,omitempty"`
@@ -8723,154 +8723,6 @@ func (ercc *ExpressRouteCircuitConnection) UnmarshalJSON(body []byte) error {
 	return nil
 }
 
-// ExpressRouteCircuitConnectionListResult response for ListConnections API service call retrieves all
-// global reach connections that belongs to a Private Peering for an ExpressRouteCircuit.
-type ExpressRouteCircuitConnectionListResult struct {
-	autorest.Response `json:"-"`
-	// Value - The global reach connection associated with Private Peering in an ExpressRoute Circuit.
-	Value *[]ExpressRouteCircuitConnection `json:"value,omitempty"`
-	// NextLink - The URL to get the next set of results.
-	NextLink *string `json:"nextLink,omitempty"`
-}
-
-// ExpressRouteCircuitConnectionListResultIterator provides access to a complete listing of
-// ExpressRouteCircuitConnection values.
-type ExpressRouteCircuitConnectionListResultIterator struct {
-	i    int
-	page ExpressRouteCircuitConnectionListResultPage
-}
-
-// NextWithContext advances to the next value.  If there was an error making
-// the request the iterator does not advance and the error is returned.
-func (iter *ExpressRouteCircuitConnectionListResultIterator) NextWithContext(ctx context.Context) (err error) {
-	if tracing.IsEnabled() {
-		ctx = tracing.StartSpan(ctx, fqdn+"/ExpressRouteCircuitConnectionListResultIterator.NextWithContext")
-		defer func() {
-			sc := -1
-			if iter.Response().Response.Response != nil {
-				sc = iter.Response().Response.Response.StatusCode
-			}
-			tracing.EndSpan(ctx, sc, err)
-		}()
-	}
-	iter.i++
-	if iter.i < len(iter.page.Values()) {
-		return nil
-	}
-	err = iter.page.NextWithContext(ctx)
-	if err != nil {
-		iter.i--
-		return err
-	}
-	iter.i = 0
-	return nil
-}
-
-// Next advances to the next value.  If there was an error making
-// the request the iterator does not advance and the error is returned.
-// Deprecated: Use NextWithContext() instead.
-func (iter *ExpressRouteCircuitConnectionListResultIterator) Next() error {
-	return iter.NextWithContext(context.Background())
-}
-
-// NotDone returns true if the enumeration should be started or is not yet complete.
-func (iter ExpressRouteCircuitConnectionListResultIterator) NotDone() bool {
-	return iter.page.NotDone() && iter.i < len(iter.page.Values())
-}
-
-// Response returns the raw server response from the last page request.
-func (iter ExpressRouteCircuitConnectionListResultIterator) Response() ExpressRouteCircuitConnectionListResult {
-	return iter.page.Response()
-}
-
-// Value returns the current value or a zero-initialized value if the
-// iterator has advanced beyond the end of the collection.
-func (iter ExpressRouteCircuitConnectionListResultIterator) Value() ExpressRouteCircuitConnection {
-	if !iter.page.NotDone() {
-		return ExpressRouteCircuitConnection{}
-	}
-	return iter.page.Values()[iter.i]
-}
-
-// Creates a new instance of the ExpressRouteCircuitConnectionListResultIterator type.
-func NewExpressRouteCircuitConnectionListResultIterator(page ExpressRouteCircuitConnectionListResultPage) ExpressRouteCircuitConnectionListResultIterator {
-	return ExpressRouteCircuitConnectionListResultIterator{page: page}
-}
-
-// IsEmpty returns true if the ListResult contains no values.
-func (ercclr ExpressRouteCircuitConnectionListResult) IsEmpty() bool {
-	return ercclr.Value == nil || len(*ercclr.Value) == 0
-}
-
-// expressRouteCircuitConnectionListResultPreparer prepares a request to retrieve the next set of results.
-// It returns nil if no more results exist.
-func (ercclr ExpressRouteCircuitConnectionListResult) expressRouteCircuitConnectionListResultPreparer(ctx context.Context) (*http.Request, error) {
-	if ercclr.NextLink == nil || len(to.String(ercclr.NextLink)) < 1 {
-		return nil, nil
-	}
-	return autorest.Prepare((&http.Request{}).WithContext(ctx),
-		autorest.AsJSON(),
-		autorest.AsGet(),
-		autorest.WithBaseURL(to.String(ercclr.NextLink)))
-}
-
-// ExpressRouteCircuitConnectionListResultPage contains a page of ExpressRouteCircuitConnection values.
-type ExpressRouteCircuitConnectionListResultPage struct {
-	fn     func(context.Context, ExpressRouteCircuitConnectionListResult) (ExpressRouteCircuitConnectionListResult, error)
-	ercclr ExpressRouteCircuitConnectionListResult
-}
-
-// NextWithContext advances to the next page of values.  If there was an error making
-// the request the page does not advance and the error is returned.
-func (page *ExpressRouteCircuitConnectionListResultPage) NextWithContext(ctx context.Context) (err error) {
-	if tracing.IsEnabled() {
-		ctx = tracing.StartSpan(ctx, fqdn+"/ExpressRouteCircuitConnectionListResultPage.NextWithContext")
-		defer func() {
-			sc := -1
-			if page.Response().Response.Response != nil {
-				sc = page.Response().Response.Response.StatusCode
-			}
-			tracing.EndSpan(ctx, sc, err)
-		}()
-	}
-	next, err := page.fn(ctx, page.ercclr)
-	if err != nil {
-		return err
-	}
-	page.ercclr = next
-	return nil
-}
-
-// Next advances to the next page of values.  If there was an error making
-// the request the page does not advance and the error is returned.
-// Deprecated: Use NextWithContext() instead.
-func (page *ExpressRouteCircuitConnectionListResultPage) Next() error {
-	return page.NextWithContext(context.Background())
-}
-
-// NotDone returns true if the page enumeration should be started or is not yet complete.
-func (page ExpressRouteCircuitConnectionListResultPage) NotDone() bool {
-	return !page.ercclr.IsEmpty()
-}
-
-// Response returns the raw server response from the last page request.
-func (page ExpressRouteCircuitConnectionListResultPage) Response() ExpressRouteCircuitConnectionListResult {
-	return page.ercclr
-}
-
-// Values returns the slice of values for the current page or nil if there are no values.
-func (page ExpressRouteCircuitConnectionListResultPage) Values() []ExpressRouteCircuitConnection {
-	if page.ercclr.IsEmpty() {
-		return nil
-	}
-	return *page.ercclr.Value
-}
-
-// Creates a new instance of the ExpressRouteCircuitConnectionListResultPage type.
-func NewExpressRouteCircuitConnectionListResultPage(getNextPage func(context.Context, ExpressRouteCircuitConnectionListResult) (ExpressRouteCircuitConnectionListResult, error)) ExpressRouteCircuitConnectionListResultPage {
-	return ExpressRouteCircuitConnectionListResultPage{fn: getNextPage}
-}
-
 // ExpressRouteCircuitConnectionPropertiesFormat ...
 type ExpressRouteCircuitConnectionPropertiesFormat struct {
 	// ExpressRouteCircuitPeering - Reference to Express Route Circuit Private Peering Resource of the circuit initiating connection.
@@ -8883,7 +8735,7 @@ type ExpressRouteCircuitConnectionPropertiesFormat struct {
 	AuthorizationKey *string `json:"authorizationKey,omitempty"`
 	// CircuitConnectionStatus - Express Route Circuit Connection State. Possible values are: 'Connected' and 'Disconnected'. Possible values include: 'Connected', 'Connecting', 'Disconnected'
 	CircuitConnectionStatus CircuitConnectionStatus `json:"circuitConnectionStatus,omitempty"`
-	// ProvisioningState - Provisioning state of the circuit connection resource. Possible values are: 'Succeeded', 'Updating', 'Deleting', and 'Failed'.
+	// ProvisioningState - Provisioning state of the circuit connection resource. Possible values are: 'Succeded', 'Updating', 'Deleting', and 'Failed'.
 	ProvisioningState *string `json:"provisioningState,omitempty"`
 }
 
@@ -9171,7 +9023,7 @@ func (ercp *ExpressRouteCircuitPeering) UnmarshalJSON(body []byte) error {
 type ExpressRouteCircuitPeeringConfig struct {
 	// AdvertisedPublicPrefixes - The reference of AdvertisedPublicPrefixes.
 	AdvertisedPublicPrefixes *[]string `json:"advertisedPublicPrefixes,omitempty"`
-	// AdvertisedCommunities - The communities of bgp peering. Specified for microsoft peering
+	// AdvertisedCommunities - The communities of bgp peering. Spepcified for microsoft peering
 	AdvertisedCommunities *[]string `json:"advertisedCommunities,omitempty"`
 	// AdvertisedPublicPrefixesState - AdvertisedPublicPrefixState of the Peering resource. Possible values are 'NotConfigured', 'Configuring', 'Configured', and 'ValidationNeeded'. Possible values include: 'NotConfigured', 'Configuring', 'Configured', 'ValidationNeeded'
 	AdvertisedPublicPrefixesState ExpressRouteCircuitPeeringAdvertisedPublicPrefixState `json:"advertisedPublicPrefixesState,omitempty"`
@@ -11386,7 +11238,7 @@ type ExpressRoutePortPropertiesFormat struct {
 	Mtu *string `json:"mtu,omitempty"`
 	// Encapsulation - Encapsulation method on physical ports. Possible values include: 'Dot1Q', 'QinQ'
 	Encapsulation ExpressRoutePortsEncapsulation `json:"encapsulation,omitempty"`
-	// EtherType - Ether type of the physical port.
+	// EtherType - Ethertype of the physical port.
 	EtherType *string `json:"etherType,omitempty"`
 	// AllocationDate - Date of the physical port allocation to be used in Letter of Authorization.
 	AllocationDate *string `json:"allocationDate,omitempty"`
@@ -14485,9 +14337,9 @@ func (icp *IPConfigurationProfile) UnmarshalJSON(body []byte) error {
 	return nil
 }
 
-// IPConfigurationProfilePropertiesFormat IP configuration profile properties.
+// IPConfigurationProfilePropertiesFormat IP configruation profile properties.
 type IPConfigurationProfilePropertiesFormat struct {
-	// Subnet - The reference of the subnet resource to create a container network interface ip configuration.
+	// Subnet - The reference of the subnet resource to create a contatainer network interface ip configruation.
 	Subnet *Subnet `json:"subnet,omitempty"`
 	// ProvisioningState - The provisioning state of the resource.
 	ProvisioningState *string `json:"provisioningState,omitempty"`
@@ -17930,7 +17782,7 @@ type P2SVpnGatewayProperties struct {
 	P2SVpnServerConfiguration *SubResource `json:"p2SVpnServerConfiguration,omitempty"`
 	// VpnClientAddressPool - The reference of the address space resource which represents Address space for P2S VpnClient.
 	VpnClientAddressPool *AddressSpace `json:"vpnClientAddressPool,omitempty"`
-	// VpnClientConnectionHealth - All P2S VPN clients' connection health status.
+	// VpnClientConnectionHealth - All P2S vpnclients' connection health status.
 	VpnClientConnectionHealth *VpnClientConnectionHealth `json:"vpnClientConnectionHealth,omitempty"`
 }
 
@@ -18315,7 +18167,7 @@ func (pvsc *P2SVpnServerConfiguration) UnmarshalJSON(body []byte) error {
 
 // P2SVpnServerConfigurationProperties parameters for P2SVpnServerConfiguration
 type P2SVpnServerConfigurationProperties struct {
-	// Name - The name of the P2SVpnServerConfiguration that is unique within a VirtualWan in a resource group. This name can be used to access the resource along with Parent VirtualWan resource name.
+	// Name - The name of the P2SVpnServerConfiguration that is unique within a VirtualWan in a resource group. This name can be used to access the resource along with Paren VirtualWan resource name.
 	Name *string `json:"name,omitempty"`
 	// VpnProtocols - vpnProtocols for the P2SVpnServerConfiguration.
 	VpnProtocols *[]VpnGatewayTunnelingProtocol `json:"vpnProtocols,omitempty"`
@@ -18331,7 +18183,7 @@ type P2SVpnServerConfigurationProperties struct {
 	VpnClientIpsecPolicies *[]IpsecPolicy `json:"vpnClientIpsecPolicies,omitempty"`
 	// RadiusServerAddress - The radius server address property of the P2SVpnServerConfiguration resource for point to site client connection.
 	RadiusServerAddress *string `json:"radiusServerAddress,omitempty"`
-	// RadiusServerSecret - The radius secret property of the P2SVpnServerConfiguration resource for point to site client connection.
+	// RadiusServerSecret - The radius secret property of the P2SVpnServerConfiguration resource for for point to site client connection.
 	RadiusServerSecret *string `json:"radiusServerSecret,omitempty"`
 	// ProvisioningState - The provisioning state of the P2SVpnServerConfiguration resource. Possible values are: 'Updating', 'Deleting', and 'Failed'.
 	ProvisioningState *string        `json:"provisioningState,omitempty"`
@@ -22404,17 +22256,17 @@ type SecurityRulePropertiesFormat struct {
 	Description *string `json:"description,omitempty"`
 	// Protocol - Network protocol this rule applies to. Possible values are 'Tcp', 'Udp', and '*'. Possible values include: 'SecurityRuleProtocolTCP', 'SecurityRuleProtocolUDP', 'SecurityRuleProtocolAsterisk'
 	Protocol SecurityRuleProtocol `json:"protocol,omitempty"`
-	// SourcePortRange - The source port or range. Integer or range between 0 and 65535. Asterisk '*' can also be used to match all ports.
+	// SourcePortRange - The source port or range. Integer or range between 0 and 65535. Asterix '*' can also be used to match all ports.
 	SourcePortRange *string `json:"sourcePortRange,omitempty"`
-	// DestinationPortRange - The destination port or range. Integer or range between 0 and 65535. Asterisk '*' can also be used to match all ports.
+	// DestinationPortRange - The destination port or range. Integer or range between 0 and 65535. Asterix '*' can also be used to match all ports.
 	DestinationPortRange *string `json:"destinationPortRange,omitempty"`
-	// SourceAddressPrefix - The CIDR or source IP range. Asterisk '*' can also be used to match all source IPs. Default tags such as 'VirtualNetwork', 'AzureLoadBalancer' and 'Internet' can also be used. If this is an ingress rule, specifies where network traffic originates from.
+	// SourceAddressPrefix - The CIDR or source IP range. Asterix '*' can also be used to match all source IPs. Default tags such as 'VirtualNetwork', 'AzureLoadBalancer' and 'Internet' can also be used. If this is an ingress rule, specifies where network traffic originates from.
 	SourceAddressPrefix *string `json:"sourceAddressPrefix,omitempty"`
 	// SourceAddressPrefixes - The CIDR or source IP ranges.
 	SourceAddressPrefixes *[]string `json:"sourceAddressPrefixes,omitempty"`
 	// SourceApplicationSecurityGroups - The application security group specified as source.
 	SourceApplicationSecurityGroups *[]ApplicationSecurityGroup `json:"sourceApplicationSecurityGroups,omitempty"`
-	// DestinationAddressPrefix - The destination address prefix. CIDR or destination IP range. Asterisk '*' can also be used to match all source IPs. Default tags such as 'VirtualNetwork', 'AzureLoadBalancer' and 'Internet' can also be used.
+	// DestinationAddressPrefix - The destination address prefix. CIDR or destination IP range. Asterix '*' can also be used to match all source IPs. Default tags such as 'VirtualNetwork', 'AzureLoadBalancer' and 'Internet' can also be used.
 	DestinationAddressPrefix *string `json:"destinationAddressPrefix,omitempty"`
 	// DestinationAddressPrefixes - The destination address prefixes. CIDR or destination IP ranges.
 	DestinationAddressPrefixes *[]string `json:"destinationAddressPrefixes,omitempty"`
@@ -22428,7 +22280,7 @@ type SecurityRulePropertiesFormat struct {
 	Access SecurityRuleAccess `json:"access,omitempty"`
 	// Priority - The priority of the rule. The value can be between 100 and 4096. The priority number must be unique for each rule in the collection. The lower the priority number, the higher the priority of the rule.
 	Priority *int32 `json:"priority,omitempty"`
-	// Direction - The direction of the rule. The direction specifies if rule will be evaluated on incoming or outgoing traffic. Possible values are: 'Inbound' and 'Outbound'. Possible values include: 'SecurityRuleDirectionInbound', 'SecurityRuleDirectionOutbound'
+	// Direction - The direction of the rule. The direction specifies if rule will be evaluated on incoming or outcoming traffic. Possible values are: 'Inbound' and 'Outbound'. Possible values include: 'SecurityRuleDirectionInbound', 'SecurityRuleDirectionOutbound'
 	Direction SecurityRuleDirection `json:"direction,omitempty"`
 	// ProvisioningState - The provisioning state of the public IP resource. Possible values are: 'Updating', 'Deleting', and 'Failed'.
 	ProvisioningState *string `json:"provisioningState,omitempty"`
@@ -24748,7 +24600,7 @@ type VirtualNetworkGatewayConnectionListEntityPropertiesFormat struct {
 	VirtualNetworkGateway2 *VirtualNetworkConnectionGatewayReference `json:"virtualNetworkGateway2,omitempty"`
 	// LocalNetworkGateway2 - The reference to local network gateway resource.
 	LocalNetworkGateway2 *VirtualNetworkConnectionGatewayReference `json:"localNetworkGateway2,omitempty"`
-	// ConnectionType - Gateway connection type. Possible values are: 'IPsec','Vnet2Vnet','ExpressRoute', and 'VPNClient. Possible values include: 'IPsec', 'Vnet2Vnet', 'ExpressRoute', 'VPNClient'
+	// ConnectionType - Gateway connection type. Possible values are: 'Ipsec','Vnet2Vnet','ExpressRoute', and 'VPNClient. Possible values include: 'IPsec', 'Vnet2Vnet', 'ExpressRoute', 'VPNClient'
 	ConnectionType VirtualNetworkGatewayConnectionType `json:"connectionType,omitempty"`
 	// ConnectionProtocol - Connection protocol used for this connection. Possible values include: 'IKEv2', 'IKEv1'
 	ConnectionProtocol VirtualNetworkGatewayConnectionProtocol `json:"connectionProtocol,omitempty"`

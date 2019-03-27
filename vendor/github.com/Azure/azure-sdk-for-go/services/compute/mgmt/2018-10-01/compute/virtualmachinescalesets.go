@@ -1327,8 +1327,7 @@ func (client VirtualMachineScaleSetsClient) RedeployResponder(resp *http.Respons
 	return
 }
 
-// Reimage reimages (upgrade the operating system) one or more virtual machines in a VM scale set which don't have a
-// ephemeral OS disk, for virtual machines who have a ephemeral OS disk the virtual machine is reset to initial state.
+// Reimage reimages (upgrade the operating system) one or more virtual machines in a VM scale set.
 // Parameters:
 // resourceGroupName - the name of the resource group.
 // VMScaleSetName - the name of the VM scale set.

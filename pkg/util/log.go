@@ -69,7 +69,7 @@ func NewPrometheusLogger(l logging.Level) (log.Logger, error) {
 	}
 
 	// DefaultCaller must be the last wrapper
-	logger = log.With(logger, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
+	logger = log.With(logger, "ts", log.DefaultTimestamp, "caller", log.DefaultCaller)
 	return logger, nil
 }
 

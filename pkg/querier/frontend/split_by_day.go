@@ -63,9 +63,13 @@ func splitQuery(r *QueryRangeRequest) []*QueryRangeRequest {
 
 // Round up to the step before the next day boundary.
 func nextDayBoundary(t, step int64) int64 {
-	offsetToDayBoundary := step - (t % millisecondPerDay % step)
-	t = ((t / millisecondPerDay) + 1) * millisecondPerDay
-	return t - offsetToDayBoundary
+	startOfNextDay := ((t / millisecondPerDay) + 1) * millisecondPerDay
+	// ensure that target is a multiple of steps away from the start time
+	target := startOfNextDay - ((startOfNextDay - t) % step)
+	if target == startOfNextDay {
+		target -= step
+	}
+	return target
 }
 
 type requestResponse struct {

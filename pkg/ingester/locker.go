@@ -30,7 +30,7 @@ type paddedMutex struct {
 // the same mutex twice).
 type fingerprintLocker struct {
 	fpMtxs    []paddedMutex
-	numFpMtxs uint
+	numFpMtxs uint32
 }
 
 // newFingerprintLocker returns a new fingerprintLocker ready for use.  At least
@@ -41,7 +41,7 @@ func newFingerprintLocker(preallocatedMutexes int) *fingerprintLocker {
 	}
 	return &fingerprintLocker{
 		make([]paddedMutex, preallocatedMutexes),
-		uint(preallocatedMutexes),
+		uint32(preallocatedMutexes),
 	}
 }
 

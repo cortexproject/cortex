@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
@@ -162,7 +162,7 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = client.ToLabelPairs(stream.Metric)
+	s.Labels = client.FromMetricsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
 }
@@ -173,7 +173,7 @@ func (s *SampleStream) MarshalJSON() ([]byte, error) {
 		Metric model.Metric    `json:"metric"`
 		Values []client.Sample `json:"values"`
 	}{
-		Metric: client.FromLabelPairs(s.Labels),
+		Metric: client.FromLabelAdaptersToMetric(s.Labels),
 		Values: s.Samples,
 	}
 	return json.Marshal(stream)
@@ -278,7 +278,7 @@ func matrixMerge(resps []*APIResponse) []SampleStream {
 	output := map[string]*SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			metric := client.FromLabelPairsToLabels(stream.Labels).String()
+			metric := client.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
 				existing = &SampleStream{

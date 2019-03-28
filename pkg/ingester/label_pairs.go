@@ -13,34 +13,24 @@ import (
 
 // A series is uniquely identified by its set of label name/value
 // pairs, which may arrive in any order over the wire
-type labelPairs []client.LabelPair
-
-func labelsToMetric(s labels.Labels) model.Metric {
-	metric := make(model.Metric, len(s))
-	for _, l := range s {
-		metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-	}
-	return metric
-}
-
-var labelNameBytes = []byte(model.MetricNameLabel)
+type labelPairs []client.LabelAdapter
 
 func (a labelPairs) String() string {
 	var b strings.Builder
 
-	metricName, err := extract.MetricNameFromLabelPairs(a)
+	metricName, err := extract.MetricNameFromLabelAdapters(a)
 	numLabels := len(a) - 1
 	if err != nil {
 		numLabels = len(a)
 	}
-	b.Write(metricName)
+	b.WriteString(metricName)
 	b.WriteByte('{')
 	count := 0
 	for _, pair := range a {
-		if !pair.Name.Equal(labelNameBytes) {
-			b.Write(pair.Name)
+		if pair.Name != model.MetricNameLabel {
+			b.WriteString(pair.Name)
 			b.WriteString("=\"")
-			b.Write(pair.Value)
+			b.WriteString(pair.Value)
 			b.WriteByte('"')
 			count++
 			if count < numLabels {
@@ -66,9 +56,9 @@ func (a *labelPairs) removeBlanks() {
 	}
 }
 
-func valueForName(s labels.Labels, name []byte) (string, bool) {
-	pos := sort.Search(len(s), func(i int) bool { return s[i].Name >= string(name) })
-	if pos == len(s) || s[pos].Name != string(name) {
+func valueForName(s labels.Labels, name string) (string, bool) {
+	pos := sort.Search(len(s), func(i int) bool { return s[i].Name >= name })
+	if pos == len(s) || s[pos].Name != name {
 		return "", false
 	}
 	return s[pos].Value, true
@@ -92,7 +82,7 @@ func (a labelPairs) equal(b labels.Labels) bool {
 	// Now check remaining values using binary search
 	for ; i < len(a); i++ {
 		v, found := valueForName(b, a[i].Name)
-		if !found || v != string(a[i].Value) {
+		if !found || v != a[i].Value {
 			return false
 		}
 	}

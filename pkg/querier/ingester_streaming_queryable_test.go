@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/weaveworks/common/user"
 )
 
@@ -16,13 +15,13 @@ func TestIngesterStreaming(t *testing.T) {
 	d := &mockDistributor{
 		r: []client.TimeSeriesChunk{
 			{
-				Labels: []client.LabelPair{
-					{Name: wire.Bytes("bar"), Value: wire.Bytes("baz")},
+				Labels: []client.LabelAdapter{
+					{Name: "bar", Value: "baz"},
 				},
 			},
 			{
-				Labels: []client.LabelPair{
-					{Name: wire.Bytes("foo"), Value: wire.Bytes("bar")},
+				Labels: []client.LabelAdapter{
+					{Name: "foo", Value: "bar"},
 				},
 			},
 		},

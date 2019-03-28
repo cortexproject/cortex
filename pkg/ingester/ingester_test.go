@@ -23,7 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 )
@@ -156,6 +155,7 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries in
 		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID]), client.API))
 		require.NoError(t, err)
 	}
+
 	return userIDs, testData
 }
 
@@ -242,7 +242,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	defer ing.Shutdown()
 
 	m := labelPairs{
-		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
+		{Name: model.MetricNameLabel, Value: "testmetric"},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
 	err := ing.append(ctx, m, 1, 0, client.API)
@@ -273,9 +273,9 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 	defer ing.Shutdown()
 
 	lp := labelPairs{
-		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
-		{Name: []byte("foo"), Value: []byte("")},
-		{Name: []byte("bar"), Value: []byte("")},
+		{Name: model.MetricNameLabel, Value: "testmetric"},
+		{Name: "foo", Value: ""},
+		{Name: "bar", Value: ""},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
 	err := ing.append(ctx, lp, 1, 0, client.API)
@@ -443,8 +443,8 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 					Timeseries: []client.PreallocTimeseries{
 						{
 							TimeSeries: client.TimeSeries{
-								Labels: []client.LabelPair{
-									{Name: wire.Bytes("__name__"), Value: wire.Bytes(fmt.Sprintf("metric_%d", j))},
+								Labels: []client.LabelAdapter{
+									{Name: model.MetricNameLabel, Value: fmt.Sprintf("metric_%d", j)},
 								},
 								Samples: []client.Sample{
 									{TimestampMs: int64(j), Value: float64(j)},
@@ -479,7 +479,7 @@ func BenchmarkIngesterPush(b *testing.B) {
 		labels["cpu"] = model.LabelValue(fmt.Sprintf("cpu%02d", j))
 		ts = append(ts, client.PreallocTimeseries{
 			TimeSeries: client.TimeSeries{
-				Labels: client.ToLabelPairs(labels),
+				Labels: client.FromMetricsToLabelAdapters(labels),
 				Samples: []client.Sample{
 					{TimestampMs: 0, Value: float64(j)},
 				},

@@ -5,14 +5,14 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var dummyResponse = &APIResponse{
@@ -21,8 +21,8 @@ var dummyResponse = &APIResponse{
 		ResultType: matrix,
 		Result: []SampleStream{
 			{
-				Labels: []client.LabelPair{
-					{Name: wire.Bytes("foo"), Value: wire.Bytes("bar")},
+				Labels: []client.LabelAdapter{
+					{Name: "foo", Value: "bar"},
 				},
 				Samples: []client.Sample{
 					{
@@ -50,8 +50,8 @@ func mkAPIResponse(start, end, step int64) *APIResponse {
 			ResultType: matrix,
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelPair{
-						{Name: wire.Bytes("foo"), Value: wire.Bytes("bar")},
+					Labels: []client.LabelAdapter{
+						{Name: "foo", Value: "bar"},
 					},
 					Samples: samples,
 				},

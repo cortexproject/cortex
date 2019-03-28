@@ -23,7 +23,7 @@ func TestIndex(t *testing.T) {
 		{model.Metric{"foo": "baz", "flip": "flop"}, 1},
 		{model.Metric{"foo": "baz", "flip": "flap"}, 0},
 	} {
-		index.Add(client.ToLabelPairs(entry.m), entry.fp)
+		index.Add(client.FromMetricsToLabelAdapters(entry.m), entry.fp)
 	}
 
 	for _, tc := range []struct {

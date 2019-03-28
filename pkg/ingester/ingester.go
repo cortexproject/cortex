@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -345,7 +346,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		}
 
 		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelPairs(series.metric),
+			Labels:  client.FromLabelsToLabelAdapaters(series.metric),
 			Samples: make([]client.Sample, 0, len(values)),
 		}
 		for _, s := range values {
@@ -404,7 +405,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelPairs(series.metric),
+			Labels: client.FromLabelsToLabelAdapaters(series.metric),
 			Chunks: wireChunks,
 		})
 
@@ -485,11 +486,11 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 		return nil, err
 	}
 
-	metrics := map[model.Fingerprint]labelPairs{}
+	lss := map[model.Fingerprint]labels.Labels{}
 	for _, matchers := range matchersSet {
 		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *memorySeries) error {
-			if _, ok := metrics[fp]; !ok {
-				metrics[fp] = client.FromLabelsToLabelPairs(series.metric)
+			if _, ok := lss[fp]; !ok {
+				lss[fp] = series.metric
 			}
 			return nil
 		}, nil, 0); err != nil {
@@ -498,10 +499,10 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 	}
 
 	result := &client.MetricsForLabelMatchersResponse{
-		Metric: make([]*client.Metric, 0, len(metrics)),
+		Metric: make([]*client.Metric, 0, len(lss)),
 	}
-	for _, metric := range metrics {
-		result.Metric = append(result.Metric, &client.Metric{Labels: metric})
+	for _, ls := range lss {
+		result.Metric = append(result.Metric, &client.Metric{Labels: client.FromLabelsToLabelAdapaters(ls)})
 	}
 
 	return result, nil

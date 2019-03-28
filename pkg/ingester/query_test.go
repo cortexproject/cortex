@@ -17,7 +17,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 )
 
 func BenchmarkQueryStream(b *testing.B) {
@@ -50,10 +49,10 @@ func BenchmarkQueryStream(b *testing.B) {
 
 	for i := 0; i < numSeries; i++ {
 		labels := labelPairs{
-			{Name: wire.Bytes("__name__"), Value: wire.Bytes("node_cpu")},
-			{Name: wire.Bytes("job"), Value: wire.Bytes("node_exporter")},
-			{Name: wire.Bytes("instance"), Value: wire.Bytes(instances[i/numCPUs])},
-			{Name: wire.Bytes("cpu"), Value: wire.Bytes(cpus[i%numCPUs])},
+			{Name: model.MetricNameLabel, Value: "node_cpu"},
+			{Name: "job", Value: "node_exporter"},
+			{Name: "instance", Value: instances[i/numCPUs]},
+			{Name: "cpu", Value: cpus[i%numCPUs]},
 		}
 
 		state, fp, series, err := ing.userStates.getOrCreateSeries(ctx, labels)

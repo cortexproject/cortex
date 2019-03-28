@@ -35,7 +35,7 @@ const (
 	duplicateSample     = "multiple_values_for_timestamp"
 
 	// Number of timeseries to return in each batch of a QueryStream.
-	queryStreamBatchSize = 10
+	queryStreamBatchSize = 128
 )
 
 var (

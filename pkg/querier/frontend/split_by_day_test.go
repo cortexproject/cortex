@@ -20,13 +20,22 @@ func TestNextDayBoundary(t *testing.T) {
 	for i, tc := range []struct {
 		in, step, out int64
 	}{
+		// Smallest possible period is 1 millisecond
 		{0, 1, millisecondPerDay - 1},
+		// A more standard example
 		{0, 15 * seconds, millisecondPerDay - 15*seconds},
+		// Move start time forward 1 second; end time moves the same
 		{1 * seconds, 15 * seconds, millisecondPerDay - (15-1)*seconds},
+		// Move start time forward 14 seconds; end time moves the same
 		{14 * seconds, 15 * seconds, millisecondPerDay - (15-14)*seconds},
+		// Now some examples where the period does not divide evenly into a day:
+		// 1 day modulus 35 seconds = 20 seconds
 		{0, 35 * seconds, millisecondPerDay - 20*seconds},
+		// Move start time forward 1 second; end time moves the same
 		{1 * seconds, 35 * seconds, millisecondPerDay - (20-1)*seconds},
+		// If the end time lands exactly on midnight we stop one period before that
 		{20 * seconds, 35 * seconds, millisecondPerDay - 35*seconds},
+		// This example starts 35 seconds after the 5th one ends
 		{millisecondPerDay + 15*seconds, 35 * seconds, 2*millisecondPerDay - 5*seconds},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {

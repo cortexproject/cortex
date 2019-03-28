@@ -279,7 +279,7 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 
 	level.Debug(log).Log("series", len(fps))
 
-	// fps is sorted, lock them in order to prevent deadlocks
+	// We only hold one FP lock at once here, so no opportunity to deadlock.
 	i := 0
 outer:
 	for ; i < len(fps); i++ {

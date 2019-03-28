@@ -49,7 +49,6 @@ func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		result = append(result, fps...)
 	}
 
-	sort.Sort(fingerprints(result))
 	return result
 }
 

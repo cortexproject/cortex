@@ -25,7 +25,7 @@ type storageItem struct {
 type Writer struct {
 	WriterConfig
 
-	storage StorageClient
+	storage ObjectClient
 
 	group   sync.WaitGroup
 	pending sync.WaitGroup
@@ -44,7 +44,7 @@ func (cfg *WriterConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&cfg.writeBatchSize, "write-batch-size", 25, "Number of write requests to batch up")
 }
 
-func NewWriter(cfg WriterConfig, storage StorageClient) *Writer {
+func NewWriter(cfg WriterConfig, storage ObjectClient) *Writer {
 	writer := &Writer{
 		WriterConfig: cfg,
 		storage:      storage,

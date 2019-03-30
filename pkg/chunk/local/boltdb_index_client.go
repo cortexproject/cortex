@@ -117,6 +117,10 @@ func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 	return nil
 }
 
+func (s *boltIndexClient) BatchWriteNoRetry(ctx context.Context, batch chunk.WriteBatch) (chunk.WriteBatch, error) {
+	return nil, s.BatchWrite(ctx, batch)
+}
+
 func (b *boltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	return chunk_util.DoParallelQueries(ctx, b.query, queries, callback)
 }
@@ -185,6 +189,26 @@ func (b *boltWriteBatch) Add(tableName, hashValue string, rangeValue []byte, val
 	table[key] = value
 }
 
+func (b *boltWriteBatch) AddChunk(s chunk.ObjectClient, chunk chunk.Chunk, encoded []byte) {
+	panic("not implemented")
+}
+
+func (b *boltWriteBatch) AddBatch(a chunk.WriteBatch) {
+	panic("not implemented")
+}
+
+func (b *boltWriteBatch) AddDelete(tableName, hashValue string, rangeValue []byte) {
+	panic("not implemented")
+}
+
+func (b *boltWriteBatch) Len() int {
+	panic("not implemented")
+}
+
+func (b *boltWriteBatch) Take(undersizedOK bool) (chunk.WriteBatch, int) {
+	panic("not implemented")
+}
+
 type boltReadBatch struct {
 	rangeValue []byte
 	value      []byte
@@ -215,6 +239,10 @@ func (b *boltReadBatchIterator) RangeValue() []byte {
 
 func (b *boltReadBatchIterator) Value() []byte {
 	return b.value
+}
+
+func (b *boltReadBatchIterator) HashValue() string {
+	panic("not implemented")
 }
 
 func ensureDirectory(dir string) error {

@@ -7,6 +7,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -57,6 +58,10 @@ func newGCSObjectClient(cfg GCSConfig, schemaCfg chunk.SchemaConfig, client *sto
 
 func (s *gcsObjectClient) Stop() {
 	s.client.Close()
+}
+
+func (s *gcsObjectClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+	panic("not implemented")
 }
 
 func (s *gcsObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {

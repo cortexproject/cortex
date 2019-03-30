@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"path"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
@@ -69,4 +71,8 @@ func (f *fsObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 	}
 
 	return c, nil
+}
+
+func (s *fsObjectClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+	panic("not implemented")
 }

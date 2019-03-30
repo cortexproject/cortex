@@ -17,6 +17,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+var (
+	// EndMarkerInjectDelta determines how long after the last sample for a time serie within the
+	// lookback delta to inject a NaN marker to stop repeating buffered datapoints
+	EndMarkerDelta = 1 * time.Minute
+)
+
 // Config contains the configuration require to create a querier
 type Config struct {
 	MaxConcurrent            int
@@ -43,6 +49,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.IngesterMaxQueryLookback, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.DurationVar(&EndMarkerDelta, "querier.end-marker-delta", EndMarkerDelta, "How long after last sample to inject an end marker to avoid repeating buffered datapoints")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -179,4 +186,8 @@ func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, 
 
 func (querier) Close() error {
 	return nil
+}
+
+func durationMilliseconds(d time.Duration) int64 {
+	return int64(d / (time.Millisecond / time.Nanosecond))
 }

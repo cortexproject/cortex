@@ -17,11 +17,13 @@
 package querier
 
 import (
+	"math"
 	"sort"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -90,17 +92,22 @@ func (c *concreteSeriesIterator) Seek(t int64) bool {
 	c.cur = sort.Search(len(c.series.samples), func(n int) bool {
 		return c.series.samples[n].Timestamp >= model.Time(t)
 	})
-	return c.cur < len(c.series.samples)
+	return c.cur <= len(c.series.samples)
 }
 
 func (c *concreteSeriesIterator) At() (t int64, v float64) {
+	l := len(c.series.samples)
+	if c.cur >= l {
+		s := c.series.samples[l-1]
+		return int64(s.Timestamp) + durationMilliseconds(EndMarkerDelta), math.Float64frombits(value.StaleNaN)
+	}
 	s := c.series.samples[c.cur]
 	return int64(s.Timestamp), float64(s.Value)
 }
 
 func (c *concreteSeriesIterator) Next() bool {
 	c.cur++
-	return c.cur < len(c.series.samples)
+	return c.cur <= len(c.series.samples)
 }
 
 func (c *concreteSeriesIterator) Err() error {

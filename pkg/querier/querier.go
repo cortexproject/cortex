@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	// EndMarkerInjectDelta determines how long after the last sample for a time serie within the
+	// EndMarkerDelta determines how long after the last sample for a time serie within the
 	// lookback delta to inject a NaN marker to stop repeating buffered datapoints
 	EndMarkerDelta = 1 * time.Minute
 )

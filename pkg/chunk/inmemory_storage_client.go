@@ -351,7 +351,7 @@ func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, val
 	}{tableName, hashValue, rangeValue, value})
 }
 
-func (b *mockWriteBatch) AddChunk(s StorageClient, chunk Chunk, encoded []byte) {
+func (b *mockWriteBatch) AddChunk(s ObjectClient, chunk Chunk, encoded []byte) {
 	b.Add(chunkFakeTable, chunk.ExternalKey(), nil, encoded)
 }
 

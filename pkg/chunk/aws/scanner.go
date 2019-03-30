@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -16,8 +17,11 @@ import (
 // ScanTable reads the whole of a table on multiple goroutines in
 // parallel, calling back with batches of results on one of the
 // callbacks for each goroutine.
-func (a storageClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
-	tableName := a.schemaCfg.ChunkTableFor(from) // FIXME ignoring 'through'
+func (a dynamoDBStorageClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+	tableName, err := a.schemaCfg.ChunkTableFor(from) // FIXME ignoring 'through'
+	if err != nil {
+		return err
+	}
 	var outerErr error
 	projection := hashKey + "," + rangeKey
 	if withValue {
@@ -56,4 +60,8 @@ func (a storageClient) Scan(ctx context.Context, from, through model.Time, withV
 	// Wait until all reader segments have finished
 	readerGroup.Wait()
 	return outerErr
+}
+
+func (a s3ObjectClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+	return errors.New("not implemented")
 }

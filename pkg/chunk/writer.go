@@ -23,7 +23,8 @@ type WriterConfig struct {
 type Writer struct {
 	WriterConfig
 
-	storage ObjectClient
+	index  IndexClient
+	chunks ObjectClient
 
 	group   sync.WaitGroup
 	pending sync.WaitGroup
@@ -44,10 +45,11 @@ func (cfg *WriterConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewWriter creates a new Writer
-func NewWriter(cfg WriterConfig, storage ObjectClient) *Writer {
+func NewWriter(cfg WriterConfig, index IndexClient, chunks ObjectClient) *Writer {
 	writer := &Writer{
 		WriterConfig: cfg,
-		storage:      storage,
+		index:        index,
+		chunks:       chunks,
 		// Unbuffered chan so we can tell when batcher has received all items
 		Write:   make(chan WriteBatch),
 		retry:   make(chan WriteBatch, 100), // we should always accept retry data, to avoid deadlock
@@ -111,7 +113,7 @@ func (writer *Writer) writeLoop(ctx context.Context) {
 		}
 		batchLen := batch.Len()
 		level.Debug(util.Logger).Log("msg", "about to write", "num_requests", batchLen)
-		retry, err := writer.storage.BatchWriteNoRetry(ctx, batch)
+		retry, err := writer.index.BatchWriteNoRetry(ctx, batch)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "unable to write; dropping data", "err", err, "batch", batch)
 			writer.pending.Add(-batchLen)
@@ -131,7 +133,7 @@ func (writer *Writer) writeLoop(ctx context.Context) {
 func (writer *Writer) batcher() {
 	flushing := false
 	var queue, outBatch WriteBatch
-	queue = writer.storage.NewWriteBatch()
+	queue = writer.index.NewWriteBatch()
 	for {
 		queueLen := queue.Len()
 		writerQueueLength.Set(float64(queueLen)) // Prometheus metric

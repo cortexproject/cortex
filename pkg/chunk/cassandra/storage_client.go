@@ -169,7 +169,7 @@ func (b *writeBatch) Len() int {
 	return len(b.entries)
 }
 
-func (b *writeBatch) AddChunk(s chunk.StorageClient, chunk chunk.Chunk, encoded []byte) {
+func (b *writeBatch) AddChunk(s chunk.ObjectClient, chunk chunk.Chunk, encoded []byte) {
 	panic("not implemented")
 }
 
@@ -203,7 +203,7 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	return nil
 }
 
-func (s *storageClient) BatchWriteNoRetry(ctx context.Context, batch chunk.WriteBatch) (chunk.WriteBatch, error) {
+func (s *StorageClient) BatchWriteNoRetry(ctx context.Context, batch chunk.WriteBatch) (chunk.WriteBatch, error) {
 	return nil, s.BatchWrite(ctx, batch)
 }
 
@@ -339,6 +339,6 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	return input, err
 }
 
-func (s *storageClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+func (s *StorageClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
 	panic("not implemented")
 }

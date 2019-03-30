@@ -8,6 +8,7 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -40,6 +41,10 @@ func newBigtableObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, client *b
 
 func (s *bigtableObjectClient) Stop() {
 	s.client.Close()
+}
+
+func (s *bigtableObjectClient) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
+	panic("not implemented")
 }
 
 func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {

@@ -102,7 +102,7 @@ func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectCl
 	if err != nil {
 		return nil, err
 	}
-	writer := NewWriter(cfg.WriterConfig, storage)
+	writer := NewWriter(cfg.WriterConfig, index, chunks)
 
 	return &store{
 		cfg:     cfg,
@@ -140,11 +140,11 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	// Encode the chunk first - checksum is calculated as a side effect.
-	buf, err := chunk.Encode()
+	buf, err := chunk.Encoded()
 	if err != nil {
 		return err
 	}
-	batch := c.storage.NewWriteBatch()
+	batch := c.index.NewWriteBatch()
 	batch.AddChunk(c.storage, chunk, buf)
 	c.writer.Write <- batch
 

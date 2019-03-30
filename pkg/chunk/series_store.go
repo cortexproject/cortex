@@ -72,7 +72,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 	if err != nil {
 		return nil, err
 	}
-	writer := NewWriter(cfg.WriterConfig, storage)
+	writer := NewWriter(cfg.WriterConfig, index, chunks)
 
 	if cfg.CacheLookupsOlderThan != 0 {
 		schema = &schemaCaching{

@@ -33,7 +33,7 @@ type ObjectClient interface {
 // WriteBatch represents a batch of writes.
 type WriteBatch interface {
 	Add(tableName, hashValue string, rangeValue []byte, value []byte)
-	AddChunk(StorageClient, Chunk, []byte)
+	AddChunk(ObjectClient, Chunk, []byte)
 	AddDelete(tableName, hashValue string, rangeValue []byte)
 	AddBatch(WriteBatch)
 	Len() int

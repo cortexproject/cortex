@@ -12,7 +12,6 @@ import (
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -175,7 +174,7 @@ func (b bigtableWriteBatch) Len() int {
 	return result
 }
 
-func (b bigtableWriteBatch) AddChunk(s chunk.StorageClient, chunk chunk.Chunk, encoded []byte) {
+func (b bigtableWriteBatch) AddChunk(s chunk.ObjectClient, chunk chunk.Chunk, encoded []byte) {
 	panic("not implemented")
 }
 
@@ -367,10 +366,6 @@ func (c *columnKeyIterator) Value() []byte {
 	return c.items[c.i].Value
 }
 
-func (s *storageClientColumnKey) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
-	panic("not implemented")
-}
-
 func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
 	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
 }
@@ -416,10 +411,6 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 		return errors.WithStack(err)
 	}
 	return nil
-}
-
-func (s *storageClientV1) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result chunk.ReadBatch)) error {
-	panic("not implemented")
 }
 
 // rowBatch represents a batch of rows read from Bigtable.  As the

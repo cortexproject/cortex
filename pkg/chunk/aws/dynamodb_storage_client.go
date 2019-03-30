@@ -99,7 +99,6 @@ var (
 
 func init() {
 	dynamoRequestDuration.Register()
-	prometheus.MustRegister(dynamoRequestDuration)
 	prometheus.MustRegister(dynamoSentItems)
 	prometheus.MustRegister(dynamoThrottledItems)
 	prometheus.MustRegister(dynamoConsumedCapacity)
@@ -787,10 +786,10 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 }
 
 // FIXME: temporary hack passing in storageClient so we can get at the schemaCfg
-func (b dynamoDBWriteBatch) AddChunk(s chunk.StorageClient, chunk chunk.Chunk, encoded []byte) {
+func (b dynamoDBWriteBatch) AddChunk(s chunk.ObjectClient, chunk chunk.Chunk, encoded []byte) {
 	key := chunk.ExternalKey()
-	a := s.(storageClient)
-	table := a.schemaCfg.ChunkTableFor(chunk.From)
+	a := s.(dynamoDBStorageClient)
+	table, _ := a.schemaCfg.ChunkTableFor(chunk.From)
 	b.Add(table, key, placeholder, encoded)
 }
 

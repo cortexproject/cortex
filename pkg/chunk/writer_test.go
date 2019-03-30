@@ -12,7 +12,7 @@ import (
 	"github.com/weaveworks/common/test"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestWriter(t *testing.T) {
@@ -25,8 +25,8 @@ func TestWriter(t *testing.T) {
 	store := st.(CompositeStore).stores[0].Store.(*store)
 
 	var cfg WriterConfig
-	util.DefaultValues(&cfg)
-	writer := NewWriter(cfg, store.storage)
+	flagext.DefaultValues(&cfg)
+	writer := NewWriter(cfg, store.index, store.chunks)
 
 	sendChunk := func(chunk Chunk) {
 		// can't use writer to store chunks with mock storage as it isn't flexible enough

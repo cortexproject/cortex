@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -55,7 +56,7 @@ func main() {
 		reindexTablePrefix string
 	)
 
-	util.RegisterFlags(&storageConfig, &schemaConfig, &chunkStoreConfig)
+	flagext.RegisterFlags(&storageConfig, &schemaConfig, &chunkStoreConfig)
 	flag.StringVar(&address, "address", ":6060", "Address to listen on, for profiling, etc.")
 	flag.Int64Var(&week, "week", 0, "Week number to scan, e.g. 2497 (0 means current week)")
 	flag.IntVar(&segments, "segments", 1, "Number of segments to read in parallel")
@@ -242,9 +243,9 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 				}
 			} else {
 				if reEncodeChunks {
-					err = ch.ForceEncode()
+					err = ch.Encode()
 					if err != nil {
-						level.Error(util.Logger).Log("msg", "forceencode error", "err", err)
+						level.Error(util.Logger).Log("msg", "re-encode error", "err", err)
 						continue
 					}
 				}

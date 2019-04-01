@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -59,6 +60,20 @@ func TestRemoteReadHandler(t *testing.T) {
 	var response client.ReadResponse
 	err = proto.Unmarshal(responseBody, &response)
 	require.NoError(t, err)
+
+	// Remove any NaN samples, as they won't pass the equality check
+	for _, results := range response.Results {
+		tss := make([]client.TimeSeries, len(results.Timeseries))
+		for i, ts := range results.Timeseries {
+			for i := len(ts.Samples) - 1; i >= 0; i-- {
+				if math.IsNaN(ts.Samples[i].Value) {
+					ts.Samples = append(ts.Samples[:i], ts.Samples[i+1:]...)
+				}
+			}
+			tss[i] = ts
+		}
+		results.Timeseries = tss
+	}
 
 	expected := client.ReadResponse{
 		Results: []*client.QueryResponse{

@@ -92,7 +92,7 @@ func (c *concreteSeriesIterator) Seek(t int64) bool {
 	c.cur = sort.Search(len(c.series.samples), func(n int) bool {
 		return c.series.samples[n].Timestamp >= model.Time(t)
 	})
-	return c.cur <= len(c.series.samples)
+	return c.cur < len(c.series.samples)
 }
 
 func (c *concreteSeriesIterator) At() (t int64, v float64) {

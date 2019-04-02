@@ -44,10 +44,12 @@ func (s *streamClient) StreamChunks(ctx context.Context, chunks []chunk.Chunk) e
 	var err error
 	if s.failed {
 		level.Info(util.Logger).Log("msg", "attempting to re-establish connection to writer")
+		ctx = user.InjectOrgID(ctx, "1")
 		s.stream, err = s.cli.TransferChunks(ctx)
 		if err != nil {
+			level.Info(util.Logger).Log("msg", "attempt to reconnect to the writer failed", "err", err)
 			streamErrors.WithLabelValues(s.id).Inc()
-			return fmt.Errorf("stream unable to be re-initialized, %v", err)
+			return err
 		}
 		s.failed = false
 	}

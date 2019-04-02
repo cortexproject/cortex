@@ -39,6 +39,15 @@ type writeRequest struct {
 	orgID    string
 }
 
+func (w writeRequest) encodeChunks() error {
+	for i := range w.chunks {
+		_, err := w.chunks[i].Encoded()
+		if err != nil {
+			return err
+		}
+	}
+}
+
 // WriterConfig configures are Writer objects
 type WriterConfig struct {
 	storageEnabled bool
@@ -114,7 +123,15 @@ func (w *Writer) writeLoop(ctx context.Context, workerID int) {
 					level.Warn(util.Logger).Log("msg", "write loop closing, context canceled", "worker_id", workerID)
 					return
 				default:
-					err := w.chunkStore.Put(userCtx, req.chunks)
+					err := req.encodeChunks()
+					if err != nil {
+						writeErrors.WithLabelValues(req.readerID).Inc()
+						level.Error(util.Logger).Log("msg", "failed encode chunks for storage", "err", err, "retry_attempy", backoff.NumRetries(), "worker_id", workerID)
+						backoff.Wait()
+						continue
+					}
+
+					err = w.chunkStore.Put(userCtx, req.chunks)
 					if err != nil {
 						writeErrors.WithLabelValues(req.readerID).Inc()
 						level.Error(util.Logger).Log("msg", "failed to store chunks", "err", err, "retry_attempy", backoff.NumRetries(), "worker_id", workerID)

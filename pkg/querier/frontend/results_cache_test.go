@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var dummyResponse = &APIResponse{
@@ -153,6 +154,14 @@ func TestPartiton(t *testing.T) {
 			require.Equal(t, tc.expectedCachedResponse, resps)
 		})
 	}
+}
+
+func defaultOverrides(t *testing.T) *validation.Overrides {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides, err := validation.NewOverrides(limits)
+	require.NoError(t, err)
+	return overrides
 }
 
 func TestResultsCache(t *testing.T) {

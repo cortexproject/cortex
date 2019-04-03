@@ -160,6 +160,7 @@ func TestSplitByDay(t *testing.T) {
 				},
 			},
 		},
+		limits: defaultOverrides(t),
 	}
 
 	mergedResponse, err := mergeAPIResponses([]*APIResponse{

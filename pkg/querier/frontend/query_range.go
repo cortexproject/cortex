@@ -127,6 +127,11 @@ func encodeDurationMs(d int64) string {
 	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
 }
 
+func msToTime(t int64) time.Time {
+	const msPerS = int64(time.Second / time.Millisecond)
+	return time.Unix(t/msPerS, t%msPerS)
+}
+
 const statusSuccess = "success"
 
 func parseQueryRangeResponse(ctx context.Context, r *http.Response) (*APIResponse, error) {

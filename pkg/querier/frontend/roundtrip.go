@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 )
@@ -74,6 +76,7 @@ func merge(middlesware ...queryRangeMiddleware) queryRangeMiddleware {
 type queryRangeRoundTripper struct {
 	next                 http.RoundTripper
 	queryRangeMiddleware queryRangeHandler
+	limits               *validation.Overrides
 }
 
 func (q queryRangeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -84,6 +87,17 @@ func (q queryRangeRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 	request, err := parseQueryRangeRequest(r)
 	if err != nil {
 		return nil, err
+	}
+
+	userid, err := user.ExtractOrgID(r.Context())
+	if err != nil {
+		return nil, err
+	}
+
+	maxQueryLen := q.limits.MaxQueryLength(userid)
+	queryLen := msToTime(request.End).Sub(msToTime(request.Start))
+	if maxQueryLen != 0 && queryLen > maxQueryLen {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLen)
 	}
 
 	response, err := q.queryRangeMiddleware.Do(r.Context(), request)

@@ -27,20 +27,16 @@ var (
 	ErrNotSupported              = errors.New("pq: Unsupported command")
 	ErrInFailedTransaction       = errors.New("pq: Could not complete operation in a failed transaction")
 	ErrSSLNotSupported           = errors.New("pq: SSL is not enabled on the server")
-	ErrSSLKeyHasWorldPermissions = errors.New("pq: Private key file has group or world access. Permissions should be u=rw (0600) or less")
-	ErrCouldNotDetectUsername    = errors.New("pq: Could not detect default username. Please provide one explicitly")
+	ErrSSLKeyHasWorldPermissions = errors.New("pq: Private key file has group or world access. Permissions should be u=rw (0600) or less.")
+	ErrCouldNotDetectUsername    = errors.New("pq: Could not detect default username. Please provide one explicitly.")
 
 	errUnexpectedReady = errors.New("unexpected ReadyForQuery")
 	errNoRowsAffected  = errors.New("no RowsAffected available after the empty statement")
-	errNoLastInsertID  = errors.New("no LastInsertId available after the empty statement")
+	errNoLastInsertId  = errors.New("no LastInsertId available after the empty statement")
 )
 
-// Driver is the Postgres database driver.
 type Driver struct{}
 
-// Open opens a new connection to the database. name is a connection string.
-// Most users should only use it through database/sql package from the standard
-// library.
 func (d *Driver) Open(name string) (driver.Conn, error) {
 	return Open(name)
 }
@@ -82,8 +78,6 @@ func (s transactionStatus) String() string {
 	panic("not reached")
 }
 
-// Dialer is the dialer interface. It can be used to obtain more control over
-// how pq creates network connections.
 type Dialer interface {
 	Dial(network, address string) (net.Conn, error)
 	DialTimeout(network, address string, timeout time.Duration) (net.Conn, error)
@@ -137,7 +131,7 @@ type conn struct {
 }
 
 // Handle driver-side settings in parsed connection string.
-func (cn *conn) handleDriverSettings(o values) (err error) {
+func (c *conn) handleDriverSettings(o values) (err error) {
 	boolSetting := func(key string, val *bool) error {
 		if value, ok := o[key]; ok {
 			if value == "yes" {
@@ -151,14 +145,18 @@ func (cn *conn) handleDriverSettings(o values) (err error) {
 		return nil
 	}
 
-	err = boolSetting("disable_prepared_binary_result", &cn.disablePreparedBinaryResult)
+	err = boolSetting("disable_prepared_binary_result", &c.disablePreparedBinaryResult)
 	if err != nil {
 		return err
 	}
-	return boolSetting("binary_parameters", &cn.binaryParameters)
+	err = boolSetting("binary_parameters", &c.binaryParameters)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (cn *conn) handlePgpass(o values) {
+func (c *conn) handlePgpass(o values) {
 	// if a password was supplied, do not process .pgpass
 	if _, ok := o["password"]; ok {
 		return
@@ -167,16 +165,11 @@ func (cn *conn) handlePgpass(o values) {
 	if filename == "" {
 		// XXX this code doesn't work on Windows where the default filename is
 		// XXX %APPDATA%\postgresql\pgpass.conf
-		// Prefer $HOME over user.Current due to glibc bug: golang.org/issue/13470
-		userHome := os.Getenv("HOME")
-		if userHome == "" {
-			user, err := user.Current()
-			if err != nil {
-				return
-			}
-			userHome = user.HomeDir
+		user, err := user.Current()
+		if err != nil {
+			return
 		}
-		filename = filepath.Join(userHome, ".pgpass")
+		filename = filepath.Join(user.HomeDir, ".pgpass")
 	}
 	fileinfo, err := os.Stat(filename)
 	if err != nil {
@@ -236,22 +229,18 @@ func (cn *conn) handlePgpass(o values) {
 	}
 }
 
-func (cn *conn) writeBuf(b byte) *writeBuf {
-	cn.scratch[0] = b
+func (c *conn) writeBuf(b byte) *writeBuf {
+	c.scratch[0] = b
 	return &writeBuf{
-		buf: cn.scratch[:5],
+		buf: c.scratch[:5],
 		pos: 1,
 	}
 }
 
-// Open opens a new connection to the database. name is a connection string.
-// Most users should only use it through database/sql package from the standard
-// library.
 func Open(name string) (_ driver.Conn, err error) {
 	return DialOpen(defaultDialer{}, name)
 }
 
-// DialOpen opens a new connection to the database using a dialer.
 func DialOpen(d Dialer, name string) (_ driver.Conn, err error) {
 	// Handle any panics during connection initialization.  Note that we
 	// specifically do *not* want to use errRecover(), as that would turn any
@@ -321,8 +310,9 @@ func DialOpen(d Dialer, name string) (_ driver.Conn, err error) {
 		u, err := userCurrent()
 		if err != nil {
 			return nil, err
+		} else {
+			o["user"] = u
 		}
-		o["user"] = u
 	}
 
 	cn := &conn{
@@ -339,20 +329,7 @@ func DialOpen(d Dialer, name string) (_ driver.Conn, err error) {
 	if err != nil {
 		return nil, err
 	}
-
-	err = cn.ssl(o)
-	if err != nil {
-		return nil, err
-	}
-
-	// cn.startup panics on error. Make sure we don't leak cn.c.
-	panicking := true
-	defer func() {
-		if panicking {
-			cn.c.Close()
-		}
-	}()
-
+	cn.ssl(o)
 	cn.buf = bufio.NewReader(cn.c)
 	cn.startup(o)
 
@@ -360,7 +337,6 @@ func DialOpen(d Dialer, name string) (_ driver.Conn, err error) {
 	if timeout, ok := o["connect_timeout"]; ok && timeout != "0" {
 		err = cn.c.SetDeadline(time.Time{})
 	}
-	panicking = false
 	return cn, err
 }
 
@@ -530,17 +506,13 @@ func (cn *conn) checkIsInTransaction(intxn bool) {
 }
 
 func (cn *conn) Begin() (_ driver.Tx, err error) {
-	return cn.begin("")
-}
-
-func (cn *conn) begin(mode string) (_ driver.Tx, err error) {
 	if cn.bad {
 		return nil, driver.ErrBadConn
 	}
 	defer cn.errRecover(&err)
 
 	cn.checkIsInTransaction(false)
-	_, commandTag, err := cn.simpleExec("BEGIN" + mode)
+	_, commandTag, err := cn.simpleExec("BEGIN")
 	if err != nil {
 		return nil, err
 	}
@@ -722,7 +694,7 @@ var emptyRows noRows
 var _ driver.Result = noRows{}
 
 func (noRows) LastInsertId() (int64, error) {
-	return 0, errNoLastInsertID
+	return 0, errNoLastInsertId
 }
 
 func (noRows) RowsAffected() (int64, error) {
@@ -731,7 +703,7 @@ func (noRows) RowsAffected() (int64, error) {
 
 // Decides which column formats to use for a prepared statement.  The input is
 // an array of type oids, one element per result column.
-func decideColumnFormats(colTyps []fieldDesc, forceText bool) (colFmts []format, colFmtData []byte) {
+func decideColumnFormats(colTyps []oid.Oid, forceText bool) (colFmts []format, colFmtData []byte) {
 	if len(colTyps) == 0 {
 		return nil, colFmtDataAllText
 	}
@@ -743,8 +715,8 @@ func decideColumnFormats(colTyps []fieldDesc, forceText bool) (colFmts []format,
 
 	allBinary := true
 	allText := true
-	for i, t := range colTyps {
-		switch t.OID {
+	for i, o := range colTyps {
+		switch o {
 		// This is the list of types to use binary mode for when receiving them
 		// through a prepared statement.  If a type appears in this list, it
 		// must also be implemented in binaryDecode in encode.go.
@@ -864,15 +836,16 @@ func (cn *conn) query(query string, args []driver.Value) (_ *rows, err error) {
 		rows.colNames, rows.colFmts, rows.colTyps = cn.readPortalDescribeResponse()
 		cn.postExecuteWorkaround()
 		return rows, nil
+	} else {
+		st := cn.prepareTo(query, "")
+		st.exec(args)
+		return &rows{
+			cn:       cn,
+			colNames: st.colNames,
+			colTyps:  st.colTyps,
+			colFmts:  st.colFmts,
+		}, nil
 	}
-	st := cn.prepareTo(query, "")
-	st.exec(args)
-	return &rows{
-		cn:       cn,
-		colNames: st.colNames,
-		colTyps:  st.colTyps,
-		colFmts:  st.colFmts,
-	}, nil
 }
 
 // Implement the optional "Execer" interface for one-shot queries
@@ -899,16 +872,17 @@ func (cn *conn) Exec(query string, args []driver.Value) (res driver.Result, err 
 		cn.postExecuteWorkaround()
 		res, _, err = cn.readExecuteResponse("Execute")
 		return res, err
+	} else {
+		// Use the unnamed statement to defer planning until bind
+		// time, or else value-based selectivity estimates cannot be
+		// used.
+		st := cn.prepareTo(query, "")
+		r, err := st.Exec(args)
+		if err != nil {
+			panic(err)
+		}
+		return r, err
 	}
-	// Use the unnamed statement to defer planning until bind
-	// time, or else value-based selectivity estimates cannot be
-	// used.
-	st := cn.prepareTo(query, "")
-	r, err := st.Exec(args)
-	if err != nil {
-		panic(err)
-	}
-	return r, err
 }
 
 func (cn *conn) send(m *writeBuf) {
@@ -1033,35 +1007,30 @@ func (cn *conn) recv1() (t byte, r *readBuf) {
 	return t, r
 }
 
-func (cn *conn) ssl(o values) error {
-	upgrade, err := ssl(o)
-	if err != nil {
-		return err
-	}
-
+func (cn *conn) ssl(o values) {
+	upgrade := ssl(o)
 	if upgrade == nil {
 		// Nothing to do
-		return nil
+		return
 	}
 
 	w := cn.writeBuf(0)
 	w.int32(80877103)
-	if err = cn.sendStartupPacket(w); err != nil {
-		return err
+	if err := cn.sendStartupPacket(w); err != nil {
+		panic(err)
 	}
 
 	b := cn.scratch[:1]
-	_, err = io.ReadFull(cn.c, b)
+	_, err := io.ReadFull(cn.c, b)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	if b[0] != 'S' {
-		return ErrSSLNotSupported
+		panic(ErrSSLNotSupported)
 	}
 
-	cn.c, err = upgrade(cn.c)
-	return err
+	cn.c = upgrade(cn.c)
 }
 
 // isDriverSetting returns true iff a setting is purely for configuring the
@@ -1174,10 +1143,10 @@ const formatText format = 0
 const formatBinary format = 1
 
 // One result-column format code with the value 1 (i.e. all binary).
-var colFmtDataAllBinary = []byte{0, 1, 0, 1}
+var colFmtDataAllBinary []byte = []byte{0, 1, 0, 1}
 
 // No result-column format codes (i.e. all text).
-var colFmtDataAllText = []byte{0, 0}
+var colFmtDataAllText []byte = []byte{0, 0}
 
 type stmt struct {
 	cn         *conn
@@ -1185,7 +1154,7 @@ type stmt struct {
 	colNames   []string
 	colFmts    []format
 	colFmtData []byte
-	colTyps    []fieldDesc
+	colTyps    []oid.Oid
 	paramTyps  []oid.Oid
 	closed     bool
 }
@@ -1348,7 +1317,7 @@ type rows struct {
 	cn       *conn
 	finish   func()
 	colNames []string
-	colTyps  []fieldDesc
+	colTyps  []oid.Oid
 	colFmts  []format
 	done     bool
 	rb       readBuf
@@ -1366,12 +1335,7 @@ func (rs *rows) Close() error {
 		switch err {
 		case nil:
 		case io.EOF:
-			// rs.Next can return io.EOF on both 'Z' (ready for query) and 'T' (row
-			// description, used with HasNextResultSet). We need to fetch messages until
-			// we hit a 'Z', which is done by waiting for done to be set.
-			if rs.done {
-				return nil
-			}
+			return nil
 		default:
 			return err
 		}
@@ -1436,7 +1400,7 @@ func (rs *rows) Next(dest []driver.Value) (err error) {
 					dest[i] = nil
 					continue
 				}
-				dest[i] = decode(&conn.parameterStatus, rs.rb.next(l), rs.colTyps[i].OID, rs.colFmts[i])
+				dest[i] = decode(&conn.parameterStatus, rs.rb.next(l), rs.colTyps[i], rs.colFmts[i])
 			}
 			return
 		case 'T':
@@ -1461,8 +1425,7 @@ func (rs *rows) NextResultSet() error {
 //
 //    tblname := "my_table"
 //    data := "my_data"
-//    quoted := pq.QuoteIdentifier(tblname)
-//    err := db.Exec(fmt.Sprintf("INSERT INTO %s VALUES ($1)", quoted), data)
+//    err = db.Exec(fmt.Sprintf("INSERT INTO %s VALUES ($1)", pq.QuoteIdentifier(tblname)), data)
 //
 // Any double quotes in name will be escaped.  The quoted identifier will be
 // case sensitive when used in a query.  If the input string contains a zero
@@ -1543,7 +1506,7 @@ func (cn *conn) sendBinaryModeQuery(query string, args []driver.Value) {
 	cn.send(b)
 }
 
-func (cn *conn) processParameterStatus(r *readBuf) {
+func (c *conn) processParameterStatus(r *readBuf) {
 	var err error
 
 	param := r.string()
@@ -1554,13 +1517,13 @@ func (cn *conn) processParameterStatus(r *readBuf) {
 		var minor int
 		_, err = fmt.Sscanf(r.string(), "%d.%d.%d", &major1, &major2, &minor)
 		if err == nil {
-			cn.parameterStatus.serverVersion = major1*10000 + major2*100 + minor
+			c.parameterStatus.serverVersion = major1*10000 + major2*100 + minor
 		}
 
 	case "TimeZone":
-		cn.parameterStatus.currentLocation, err = time.LoadLocation(r.string())
+		c.parameterStatus.currentLocation, err = time.LoadLocation(r.string())
 		if err != nil {
-			cn.parameterStatus.currentLocation = nil
+			c.parameterStatus.currentLocation = nil
 		}
 
 	default:
@@ -1568,8 +1531,8 @@ func (cn *conn) processParameterStatus(r *readBuf) {
 	}
 }
 
-func (cn *conn) processReadyForQuery(r *readBuf) {
-	cn.txnStatus = transactionStatus(r.byte())
+func (c *conn) processReadyForQuery(r *readBuf) {
+	c.txnStatus = transactionStatus(r.byte())
 }
 
 func (cn *conn) readReadyForQuery() {
@@ -1584,9 +1547,9 @@ func (cn *conn) readReadyForQuery() {
 	}
 }
 
-func (cn *conn) processBackendKeyData(r *readBuf) {
-	cn.processID = r.int32()
-	cn.secretKey = r.int32()
+func (c *conn) processBackendKeyData(r *readBuf) {
+	c.processID = r.int32()
+	c.secretKey = r.int32()
 }
 
 func (cn *conn) readParseResponse() {
@@ -1604,7 +1567,7 @@ func (cn *conn) readParseResponse() {
 	}
 }
 
-func (cn *conn) readStatementDescribeResponse() (paramTyps []oid.Oid, colNames []string, colTyps []fieldDesc) {
+func (cn *conn) readStatementDescribeResponse() (paramTyps []oid.Oid, colNames []string, colTyps []oid.Oid) {
 	for {
 		t, r := cn.recv1()
 		switch t {
@@ -1630,7 +1593,7 @@ func (cn *conn) readStatementDescribeResponse() (paramTyps []oid.Oid, colNames [
 	}
 }
 
-func (cn *conn) readPortalDescribeResponse() (colNames []string, colFmts []format, colTyps []fieldDesc) {
+func (cn *conn) readPortalDescribeResponse() (colNames []string, colFmts []format, colTyps []oid.Oid) {
 	t, r := cn.recv1()
 	switch t {
 	case 'T':
@@ -1726,33 +1689,31 @@ func (cn *conn) readExecuteResponse(protocolState string) (res driver.Result, co
 	}
 }
 
-func parseStatementRowDescribe(r *readBuf) (colNames []string, colTyps []fieldDesc) {
+func parseStatementRowDescribe(r *readBuf) (colNames []string, colTyps []oid.Oid) {
 	n := r.int16()
 	colNames = make([]string, n)
-	colTyps = make([]fieldDesc, n)
+	colTyps = make([]oid.Oid, n)
 	for i := range colNames {
 		colNames[i] = r.string()
 		r.next(6)
-		colTyps[i].OID = r.oid()
-		colTyps[i].Len = r.int16()
-		colTyps[i].Mod = r.int32()
+		colTyps[i] = r.oid()
+		r.next(6)
 		// format code not known when describing a statement; always 0
 		r.next(2)
 	}
 	return
 }
 
-func parsePortalRowDescribe(r *readBuf) (colNames []string, colFmts []format, colTyps []fieldDesc) {
+func parsePortalRowDescribe(r *readBuf) (colNames []string, colFmts []format, colTyps []oid.Oid) {
 	n := r.int16()
 	colNames = make([]string, n)
 	colFmts = make([]format, n)
-	colTyps = make([]fieldDesc, n)
+	colTyps = make([]oid.Oid, n)
 	for i := range colNames {
 		colNames[i] = r.string()
 		r.next(6)
-		colTyps[i].OID = r.oid()
-		colTyps[i].Len = r.int16()
-		colTyps[i].Mod = r.int32()
+		colTyps[i] = r.oid()
+		r.next(6)
 		colFmts[i] = format(r.int16())
 	}
 	return

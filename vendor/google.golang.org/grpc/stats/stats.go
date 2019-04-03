@@ -24,9 +24,10 @@
 package stats // import "google.golang.org/grpc/stats"
 
 import (
-	"context"
 	"net"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 // RPCStats contains stats information about RPCs.

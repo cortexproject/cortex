@@ -19,8 +19,6 @@
 package transport
 
 import (
-	"context"
-	"fmt"
 	"io"
 	"math"
 	"net"
@@ -30,13 +28,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/internal/channelz"
-	"google.golang.org/grpc/internal/syscall"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
@@ -91,10 +89,10 @@ type http2Client struct {
 	maxSendHeaderListSize *uint32
 
 	bdpEst *bdpEstimator
-	// onPrefaceReceipt is a callback that client transport calls upon
+	// onSuccess is a callback that client transport calls upon
 	// receiving server preface to signal that a succefull HTTP2
 	// connection was established.
-	onPrefaceReceipt func()
+	onSuccess func()
 
 	maxConcurrentStreams  uint32
 	streamQuota           int64
@@ -123,7 +121,7 @@ func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error
 	if fn != nil {
 		return fn(ctx, addr)
 	}
-	return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	return dialContext(ctx, "tcp", addr)
 }
 
 func isTemporary(err error) bool {
@@ -145,7 +143,7 @@ func isTemporary(err error) bool {
 // newHTTP2Client constructs a connected ClientTransport to addr based on HTTP2
 // and starts to receive messages on it. Non-nil error returns if construction
 // fails.
-func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts ConnectOptions, onPrefaceReceipt func(), onGoAway func(GoAwayReason), onClose func()) (_ *http2Client, err error) {
+func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts ConnectOptions, onSuccess func(), onGoAway func(GoAwayReason), onClose func()) (_ *http2Client, err error) {
 	scheme := "http"
 	ctx, cancel := context.WithCancel(ctx)
 	defer func() {
@@ -167,21 +165,6 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 			conn.Close()
 		}
 	}(conn)
-	kp := opts.KeepaliveParams
-	// Validate keepalive parameters.
-	if kp.Time == 0 {
-		kp.Time = defaultClientKeepaliveTime
-	}
-	if kp.Timeout == 0 {
-		kp.Timeout = defaultClientKeepaliveTimeout
-	}
-	keepaliveEnabled := false
-	if kp.Time != infinity {
-		if err = syscall.SetTCPUserTimeout(conn, kp.Timeout); err != nil {
-			return nil, connectionErrorf(false, err, "transport: failed to set TCP_USER_TIMEOUT: %v", err)
-		}
-		keepaliveEnabled = true
-	}
 	var (
 		isSecure bool
 		authInfo credentials.AuthInfo
@@ -204,6 +187,14 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 			return nil, connectionErrorf(isTemporary(err), err, "transport: authentication handshake failed: %v", err)
 		}
 		isSecure = true
+	}
+	kp := opts.KeepaliveParams
+	// Validate keepalive parameters.
+	if kp.Time == 0 {
+		kp.Time = defaultClientKeepaliveTime
+	}
+	if kp.Timeout == 0 {
+		kp.Timeout = defaultClientKeepaliveTimeout
 	}
 	dynamicWindow := true
 	icwz := int32(initialWindowSize)
@@ -240,7 +231,7 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 		kp:                    kp,
 		statsHandler:          opts.StatsHandler,
 		initialWindowSize:     initialWindowSize,
-		onPrefaceReceipt:      onPrefaceReceipt,
+		onSuccess:             onSuccess,
 		nextID:                1,
 		maxConcurrentStreams:  defaultMaxStreamsClient,
 		streamQuota:           defaultMaxStreamsClient,
@@ -248,7 +239,6 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 		czData:                new(channelzData),
 		onGoAway:              onGoAway,
 		onClose:               onClose,
-		keepaliveEnabled:      keepaliveEnabled,
 	}
 	t.controlBuf = newControlBuffer(t.ctxDone)
 	if opts.InitialWindowSize >= defaultWindowSize {
@@ -275,9 +265,10 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 		t.statsHandler.HandleConn(t.ctx, connBegin)
 	}
 	if channelz.IsOn() {
-		t.channelzID = channelz.RegisterNormalSocket(t, opts.ChannelzParentID, fmt.Sprintf("%s -> %s", t.localAddr, t.remoteAddr))
+		t.channelzID = channelz.RegisterNormalSocket(t, opts.ChannelzParentID, "")
 	}
-	if t.keepaliveEnabled {
+	if t.kp.Time != infinity {
+		t.keepaliveEnabled = true
 		go t.keepalive()
 	}
 	// Start the reader goroutine for incoming message. Each transport has
@@ -322,9 +313,7 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 		}
 	}
 
-	if err := t.framer.writer.Flush(); err != nil {
-		return nil, err
-	}
+	t.framer.writer.Flush()
 	go func() {
 		t.loopy = newLoopyWriter(clientSide, t.framer, t.controlBuf, t.bdpEst)
 		err := t.loopy.run()
@@ -364,9 +353,6 @@ func (t *http2Client) newStream(ctx context.Context, callHdr *CallHdr) *Stream {
 			ctx:     s.ctx,
 			ctxDone: s.ctx.Done(),
 			recv:    s.buf,
-			closeStream: func(err error) {
-				t.CloseStream(s, err)
-			},
 		},
 		windowHandler: func(n int) {
 			t.updateWindow(s, uint32(n))
@@ -419,7 +405,7 @@ func (t *http2Client) createHeaderFields(ctx context.Context, callHdr *CallHdr) 
 	if dl, ok := ctx.Deadline(); ok {
 		// Send out timeout regardless its value. The server can detect timeout context by itself.
 		// TODO(mmukhi): Perhaps this field should be updated when actually writing out to the wire.
-		timeout := time.Until(dl)
+		timeout := dl.Sub(time.Now())
 		headerFields = append(headerFields, hpack.HeaderField{Name: "grpc-timeout", Value: encodeTimeout(timeout)})
 	}
 	for k, v := range authData {
@@ -785,7 +771,7 @@ func (t *http2Client) Close() error {
 		}
 		t.statsHandler.HandleConn(t.ctx, connEnd)
 	}
-	t.onClose()
+	go t.onClose()
 	return err
 }
 
@@ -1215,7 +1201,7 @@ func (t *http2Client) reader() {
 		t.Close() // this kicks off resetTransport, so must be last before return
 		return
 	}
-	t.onPrefaceReceipt()
+	t.onSuccess()
 	t.handleSettings(sf, true)
 
 	// loop to keep reading incoming messages on this transport.

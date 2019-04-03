@@ -1,6 +1,6 @@
 // +build !appengine
 // +build gc
-// +build !purego
+// +build !noasm
 
 #include "textflag.h"
 

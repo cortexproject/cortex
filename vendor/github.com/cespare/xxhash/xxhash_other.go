@@ -1,4 +1,4 @@
-// +build !amd64 appengine !gc purego
+// +build !amd64 appengine !gc noasm
 
 package xxhash
 

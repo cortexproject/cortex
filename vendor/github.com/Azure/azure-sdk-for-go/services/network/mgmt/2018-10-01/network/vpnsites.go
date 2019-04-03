@@ -196,7 +196,7 @@ func (client VpnSitesClient) DeleteResponder(resp *http.Response) (result autore
 	return
 }
 
-// Get retrieves the details of a VPNsite.
+// Get retrieves the details of a VPN site.
 // Parameters:
 // resourceGroupName - the resource group name of the VpnSite.
 // vpnSiteName - the name of the VpnSite being retrieved.

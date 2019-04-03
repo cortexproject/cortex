@@ -1345,8 +1345,7 @@ func (client VirtualMachinesClient) RedeployResponder(resp *http.Response) (resu
 	return
 }
 
-// Reimage reimages (upgrade the operating system) virtual machine. This operation is only supported for differencing
-// OS disks.
+// Reimage reimages the virtual machine which has an ephemeral OS disk back to its initial state.
 // Parameters:
 // resourceGroupName - the name of the resource group.
 // VMName - the name of the virtual machine.

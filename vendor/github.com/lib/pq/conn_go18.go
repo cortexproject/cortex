@@ -4,9 +4,8 @@ package pq
 
 import (
 	"context"
-	"database/sql"
 	"database/sql/driver"
-	"fmt"
+	"errors"
 	"io"
 	"io/ioutil"
 )
@@ -20,9 +19,6 @@ func (cn *conn) QueryContext(ctx context.Context, query string, args []driver.Na
 	finish := cn.watchCancel(ctx)
 	r, err := cn.query(query, list)
 	if err != nil {
-		if finish != nil {
-			finish()
-		}
 		return nil, err
 	}
 	r.finish = finish
@@ -45,30 +41,13 @@ func (cn *conn) ExecContext(ctx context.Context, query string, args []driver.Nam
 
 // Implement the "ConnBeginTx" interface
 func (cn *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	var mode string
-
-	switch sql.IsolationLevel(opts.Isolation) {
-	case sql.LevelDefault:
-		// Don't touch mode: use the server's default
-	case sql.LevelReadUncommitted:
-		mode = " ISOLATION LEVEL READ UNCOMMITTED"
-	case sql.LevelReadCommitted:
-		mode = " ISOLATION LEVEL READ COMMITTED"
-	case sql.LevelRepeatableRead:
-		mode = " ISOLATION LEVEL REPEATABLE READ"
-	case sql.LevelSerializable:
-		mode = " ISOLATION LEVEL SERIALIZABLE"
-	default:
-		return nil, fmt.Errorf("pq: isolation level not supported: %d", opts.Isolation)
+	if opts.Isolation != 0 {
+		return nil, errors.New("isolation levels not supported")
 	}
-
 	if opts.ReadOnly {
-		mode += " READ ONLY"
-	} else {
-		mode += " READ WRITE"
+		return nil, errors.New("read-only transactions not supported")
 	}
-
-	tx, err := cn.begin(mode)
+	tx, err := cn.Begin()
 	if err != nil {
 		return nil, err
 	}
@@ -108,10 +87,7 @@ func (cn *conn) cancel() error {
 		can := conn{
 			c: c,
 		}
-		err = can.ssl(cn.opts)
-		if err != nil {
-			return err
-		}
+		can.ssl(cn.opts)
 
 		w := can.writeBuf(0)
 		w.int32(80877102) // cancel request code

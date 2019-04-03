@@ -686,6 +686,10 @@ func (b *dynamoDBReadResponseIterator) RangeValue() []byte {
 	return b.items[b.i][rangeKey].B
 }
 
+func (b *dynamoDBReadResponseIterator) HashValue() []byte {
+	return b.items[b.i][hashKey].B
+}
+
 func (b *dynamoDBReadResponseIterator) Value() []byte {
 	chunkValue, ok := b.items[b.i][valueKey]
 	if !ok {

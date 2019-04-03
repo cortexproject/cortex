@@ -18,6 +18,12 @@ type Store interface {
 	Stop()
 }
 
+// Store2 because naming is hard
+type Store2 interface {
+	Store
+	Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error
+}
+
 // CompositeStore is a Store which delegates to various stores depending
 // on when they were activated.
 type CompositeStore struct {
@@ -72,6 +78,12 @@ func (c compositeStore) Put(ctx context.Context, chunks []Chunk) error {
 func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	return c.forStores(from, through, func(from, through model.Time, store Store) error {
 		return store.PutOne(ctx, from, through, chunk)
+	})
+}
+
+func (c compositeStore) Scan(ctx context.Context, from, through model.Time, withValue bool, callbacks []func(result ReadBatch)) error {
+	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+		return store.(Store2).Scan(ctx, from, through, withValue, callbacks)
 	})
 }
 

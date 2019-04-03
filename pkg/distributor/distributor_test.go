@@ -107,7 +107,7 @@ func TestDistributorPush(t *testing.T) {
 }
 
 func TestDistributorPushQuery(t *testing.T) {
-	nameMatcher := mustEqualMatcher("__name__", "foo")
+	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	barMatcher := mustEqualMatcher("bar", "baz")
 
 	type testcase struct {
@@ -219,7 +219,7 @@ func TestDistributorPushQuery(t *testing.T) {
 }
 
 func TestSlowQueries(t *testing.T) {
-	nameMatcher := mustEqualMatcher("__name__", "foo")
+	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	nIngesters := 3
 	for _, shardByAllLabels := range []bool{true, false} {
 		for happy := 0; happy <= nIngesters; happy++ {
@@ -300,10 +300,10 @@ func makeWriteRequest(samples int) *client.WriteRequest {
 	for i := 0; i < samples; i++ {
 		ts := client.PreallocTimeseries{
 			TimeSeries: client.TimeSeries{
-				Labels: []client.LabelPair{
-					{Name: []byte("__name__"), Value: []byte("foo")},
-					{Name: []byte("bar"), Value: []byte("baz")},
-					{Name: []byte("sample"), Value: []byte(fmt.Sprintf("%d", i))},
+				Labels: []client.LabelAdapter{
+					{Name: model.MetricNameLabel, Value: "foo"},
+					{Name: "bar", Value: "baz"},
+					{Name: "sample", Value: fmt.Sprintf("%d", i)},
 				},
 			},
 		}
@@ -323,9 +323,9 @@ func expectedResponse(start, end int) model.Matrix {
 	for i := start; i < end; i++ {
 		result = append(result, &model.SampleStream{
 			Metric: model.Metric{
-				"__name__": "foo",
-				"bar":      "baz",
-				"sample":   model.LabelValue(fmt.Sprintf("%d", i)),
+				model.MetricNameLabel: "foo",
+				"bar":                 "baz",
+				"sample":              model.LabelValue(fmt.Sprintf("%d", i)),
 			},
 			Values: []model.SamplePair{
 				{
@@ -529,11 +529,11 @@ func (i *mockIngester) AllUserStats(ctx context.Context, in *client.UserStatsReq
 	return &i.stats, nil
 }
 
-func match(labels []client.LabelPair, matchers []*labels.Matcher) bool {
+func match(labels []client.LabelAdapter, matchers []*labels.Matcher) bool {
 outer:
 	for _, matcher := range matchers {
 		for _, labels := range labels {
-			if matcher.Name == string(labels.Name) && matcher.Matches(string(labels.Value)) {
+			if matcher.Name == labels.Name && matcher.Matches(labels.Value) {
 				continue outer
 			}
 		}

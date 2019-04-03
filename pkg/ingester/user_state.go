@@ -129,7 +129,7 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 	return state, ok, nil
 }
 
-func (us *userStates) getOrCreateSeries(ctx context.Context, labels labelPairs) (*userState, model.Fingerprint, *memorySeries, error) {
+func (us *userStates) getOrCreateSeries(ctx context.Context, labels []client.LabelAdapter) (*userState, model.Fingerprint, *memorySeries, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("no user id")
@@ -198,7 +198,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
 
-	metricName, err := extract.MetricNameFromLabelPairs(metric)
+	metricName, err := extract.MetricNameFromLabelAdapters(metric)
 	if err != nil {
 		u.fpLocker.Unlock(fp)
 		return fp, nil, err
@@ -279,7 +279,7 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 
 	level.Debug(log).Log("series", len(fps))
 
-	// fps is sorted, lock them in order to prevent deadlocks
+	// We only hold one FP lock at once here, so no opportunity to deadlock.
 	i := 0
 outer:
 	for ; i < len(fps); i++ {

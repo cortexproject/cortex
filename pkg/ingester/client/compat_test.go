@@ -8,28 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/test"
 )
-
-func TestWriteRequest(t *testing.T) {
-	want := []model.Sample{}
-	for i := 0; i < 10; i++ {
-		want = append(want, model.Sample{
-			Metric: model.Metric{
-				model.MetricNameLabel: model.LabelValue(fmt.Sprintf("testmetric_%d", i)),
-				model.JobLabel:        "testjob",
-			},
-			Timestamp: model.Time(i),
-			Value:     model.SampleValue(float64(i)),
-		})
-	}
-
-	have := FromWriteRequest(ToWriteRequest(want, API))
-
-	if !reflect.DeepEqual(want, have) {
-		t.Fatalf(test.Diff(want, have))
-	}
-}
 
 func TestQueryRequest(t *testing.T) {
 	from, to := model.Time(int64(0)), model.Time(int64(10))

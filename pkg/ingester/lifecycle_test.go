@@ -155,7 +155,7 @@ func TestIngesterTransfer(t *testing.T) {
 	assert.Equal(t, &client.QueryResponse{
 		Timeseries: []client.TimeSeries{
 			{
-				Labels: client.ToLabelPairs(m),
+				Labels: client.FromMetricsToLabelAdapters(m),
 				Samples: []client.Sample{
 					{
 						Value:       456,

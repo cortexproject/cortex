@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
 )
@@ -276,7 +277,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	sp.SetTag("organization", userID)
 
 	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
-	err := i.flushChunks(ctx, fp, labelsToMetric(series.metric), chunks)
+	err := i.flushChunks(ctx, fp, client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapaters(series.metric)), chunks)
 	if err != nil {
 		return err
 	}

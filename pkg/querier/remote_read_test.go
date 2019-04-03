@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
@@ -65,11 +64,8 @@ func TestRemoteReadHandler(t *testing.T) {
 			{
 				Timeseries: []client.TimeSeries{
 					{
-						Labels: []client.LabelPair{
-							{
-								Name:  wire.Bytes([]byte("foo")),
-								Value: wire.Bytes([]byte("bar")),
-							},
+						Labels: []client.LabelAdapter{
+							{Name: "foo", Value: "bar"},
 						},
 						Samples: []client.Sample{
 							{Value: 0, TimestampMs: 0},

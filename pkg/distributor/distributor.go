@@ -1,13 +1,12 @@
 package distributor
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -185,37 +184,37 @@ func (d *Distributor) Stop() {
 	d.ingesterPool.Stop()
 }
 
-func (d *Distributor) tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {
+func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
 	if d.cfg.ShardByAllLabels {
 		return shardByAllLabels(userID, labels)
 	}
 
-	metricName, err := extract.MetricNameFromLabelPairs(labels)
+	metricName, err := extract.MetricNameFromLabelAdapters(labels)
 	if err != nil {
 		return 0, err
 	}
 	return shardByMetricName(userID, metricName), nil
 }
 
-func shardByMetricName(userID string, metricName []byte) uint32 {
-	h := fnv.New32()
-	h.Write([]byte(userID))
-	h.Write(metricName)
-	return h.Sum32()
+func shardByMetricName(userID string, metricName string) uint32 {
+	h := client.HashNew32()
+	h = client.HashAdd32(h, userID)
+	h = client.HashAdd32(h, metricName)
+	return h
 }
 
-func shardByAllLabels(userID string, labels []client.LabelPair) (uint32, error) {
-	h := fnv.New32()
-	h.Write([]byte(userID))
-	lastLabelName := []byte{}
+func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
+	h := client.HashNew32()
+	h = client.HashAdd32(h, userID)
+	var lastLabelName string
 	for _, label := range labels {
-		if bytes.Compare(lastLabelName, label.Name) >= 0 {
+		if strings.Compare(lastLabelName, label.Name) >= 0 {
 			return 0, fmt.Errorf("Labels not sorted")
 		}
-		h.Write(label.Name)
-		h.Write(label.Value)
+		h = client.HashAdd32(h, label.Name)
+		h = client.HashAdd32(h, label.Value)
 	}
-	return h.Sum32(), nil
+	return h, nil
 }
 
 // Push implements client.IngesterServer
@@ -242,7 +241,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			continue
 		}
 
-		metricName, _ := extract.MetricNameFromLabelPairs(ts.Labels)
+		metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
 		samples := make([]client.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
 			if err := d.limits.ValidateSample(userID, metricName, s); err != nil {

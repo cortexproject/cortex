@@ -19,52 +19,37 @@ var (
 	fp2  = model.Fingerprint(maxMappedFP + 2)
 	fp3  = model.Fingerprint(1)
 	cm11 = labelPairs{
-		{Name: []byte("foo"), Value: []byte("bar")},
-		{Name: []byte("dings"), Value: []byte("bumms")},
+		{Name: "foo", Value: "bar"},
+		{Name: "dings", Value: "bumms"},
 	}
 	cm12 = labelPairs{
-		{Name: []byte("bar"), Value: []byte("foo")},
+		{Name: "bar", Value: "foo"},
 	}
 	cm13 = labelPairs{
-		{Name: []byte("foo"), Value: []byte("bar")},
+		{Name: "foo", Value: "bar"},
 	}
 	cm21 = labelPairs{
-		{Name: []byte("foo"), Value: []byte("bumms")},
-		{Name: []byte("dings"), Value: []byte("bar")},
+		{Name: "foo", Value: "bumms"},
+		{Name: "dings", Value: "bar"},
 	}
 	cm22 = labelPairs{
-		{Name: []byte("dings"), Value: []byte("foo")},
-		{Name: []byte("bar"), Value: []byte("bumms")},
+		{Name: "dings", Value: "foo"},
+		{Name: "bar", Value: "bumms"},
 	}
 	cm31 = labelPairs{
-		{Name: []byte("bumms"), Value: []byte("dings")},
+		{Name: "bumms", Value: "dings"},
 	}
 	cm32 = labelPairs{
-		{Name: []byte("bumms"), Value: []byte("dings")},
-		{Name: []byte("bar"), Value: []byte("foo")},
+		{Name: "bumms", Value: "dings"},
+		{Name: "bar", Value: "foo"},
 	}
 )
 
 func (a labelPairs) copyValuesAndSort() labels.Labels {
 	c := make(labels.Labels, len(a))
-	// Since names and values may point into a much larger buffer,
-	// make a copy of all the names and values, in one block for efficiency
-	copyBytes := make([]byte, 0, len(a)*32) // guess at initial length
-	for _, pair := range a {
-		copyBytes = append(copyBytes, pair.Name...)
-		copyBytes = append(copyBytes, pair.Value...)
-	}
-	// Now we need to copy the byte slice into a string for the values to point into
-	copyString := string(copyBytes)
-	pos := 0
-	stringSlice := func(val []byte) string {
-		start := pos
-		pos += len(val)
-		return copyString[start:pos]
-	}
 	for i, pair := range a {
-		c[i].Name = stringSlice(pair.Name)
-		c[i].Value = stringSlice(pair.Value)
+		c[i].Name = pair.Name
+		c[i].Value = pair.Value
 	}
 	sort.Sort(c)
 	return c

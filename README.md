@@ -83,6 +83,8 @@ Cortex will sit behind an nginx instance exposed on port 30080.  A job is deploy
 
 http://192.168.99.100:30080/api/prom/api/v1/query?query=up
 
+If that doesn't work, your Minikube might be using a different ip address. Check with `minikube status`.
+
 ### Vendoring
 
 We use `dep` to vendor dependencies. To fetch a new dependency, run:

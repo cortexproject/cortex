@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -92,7 +93,7 @@ type request struct {
 }
 
 // New creates a new frontend.
-func New(cfg Config, log log.Logger) (*Frontend, error) {
+func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
@@ -105,10 +106,10 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 		queryRangeMiddleware = append(queryRangeMiddleware, stepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware(limits))
 	}
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.resultsCacheConfig)
+		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.resultsCacheConfig, limits)
 		if err != nil {
 			return nil, err
 		}
@@ -123,6 +124,7 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 			queryRangeMiddleware: merge(queryRangeMiddleware...).Wrap(&queryRangeTerminator{
 				next: roundTripper,
 			}),
+			limits: limits,
 		}
 	}
 	f.roundTripper = roundTripper

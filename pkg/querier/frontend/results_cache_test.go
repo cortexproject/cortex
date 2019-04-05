@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var dummyResponse = &APIResponse{
@@ -155,6 +156,14 @@ func TestPartiton(t *testing.T) {
 	}
 }
 
+func defaultOverrides(t *testing.T) *validation.Overrides {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides, err := validation.NewOverrides(limits)
+	require.NoError(t, err)
+	return overrides
+}
+
 func TestResultsCache(t *testing.T) {
 	calls := 0
 	rcm, err := newResultsCacheMiddleware(
@@ -162,7 +171,9 @@ func TestResultsCache(t *testing.T) {
 			cacheConfig: cache.Config{
 				Cache: cache.NewMockCache(),
 			},
-		})
+		},
+		defaultOverrides(t),
+	)
 	require.NoError(t, err)
 
 	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*APIResponse, error) {
@@ -193,7 +204,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg resultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.cacheConfig.Cache = cache.NewMockCache()
-	rcm, err := newResultsCacheMiddleware(cfg)
+	rcm, err := newResultsCacheMiddleware(cfg, defaultOverrides(t))
 	require.NoError(t, err)
 
 	req := parsedRequest.copy()

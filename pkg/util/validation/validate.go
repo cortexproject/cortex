@@ -22,6 +22,9 @@ const (
 	errTooOld            = "sample for '%s' has timestamp too old: %d"
 	errTooNew            = "sample for '%s' has timestamp too new: %d"
 
+	// ErrQueryTooLong is used in chunk store and query frontend.
+	ErrQueryTooLong = "invalid query, length > limit (%s > %s)"
+
 	greaterThanMaxSampleAge = "greater_than_max_sample_age"
 	maxLabelNamesPerSeries  = "max_label_names_per_series"
 	tooFarInFuture          = "too_far_in_future"

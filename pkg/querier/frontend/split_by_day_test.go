@@ -133,7 +133,8 @@ func TestSplitQuery(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			require.Equal(t, tc.expected, splitQuery(tc.input))
+			days := splitQuery(tc.input)
+			require.Equal(t, tc.expected, days)
 		})
 	}
 }
@@ -159,6 +160,7 @@ func TestSplitByDay(t *testing.T) {
 					next: http.DefaultTransport,
 				},
 			},
+			limits: defaultOverrides(t),
 		},
 		limits: defaultOverrides(t),
 	}

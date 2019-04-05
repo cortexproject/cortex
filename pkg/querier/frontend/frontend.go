@@ -106,10 +106,10 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 		queryRangeMiddleware = append(queryRangeMiddleware, stepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware(limits))
 	}
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.resultsCacheConfig)
+		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.resultsCacheConfig, limits)
 		if err != nil {
 			return nil, err
 		}

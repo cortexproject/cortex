@@ -242,6 +242,14 @@ func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	})
 }
 
+// MaxQueryParallelism returns the limit to the number of sub-queries the
+// frontend will process in parallel.
+func (o *Overrides) MaxQueryParallelism(userID string) int {
+	return o.getInt(userID, func(l *Limits) int {
+		return l.MaxQueryParallelism
+	})
+}
+
 // EnforceMetricName whether to enforce the presence of a metric name.
 func (o *Overrides) EnforceMetricName(userID string) bool {
 	return o.getBool(userID, func(l *Limits) bool {

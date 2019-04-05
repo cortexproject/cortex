@@ -171,7 +171,9 @@ func TestResultsCache(t *testing.T) {
 			cacheConfig: cache.Config{
 				Cache: cache.NewMockCache(),
 			},
-		})
+		},
+		defaultOverrides(t),
+	)
 	require.NoError(t, err)
 
 	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*APIResponse, error) {
@@ -202,7 +204,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg resultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.cacheConfig.Cache = cache.NewMockCache()
-	rcm, err := newResultsCacheMiddleware(cfg)
+	rcm, err := newResultsCacheMiddleware(cfg, defaultOverrides(t))
 	require.NoError(t, err)
 
 	req := parsedRequest.copy()

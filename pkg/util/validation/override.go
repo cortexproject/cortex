@@ -18,6 +18,12 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Whether the last overrides reload attempt was successful.",
 })
 
+// When we load YAML from disk, we want the various per-customer limits
+// to default to any values specified on the command line, not default
+// command line values.  This global contains those values.  I (Tom) cannot
+// find a nicer way I'm afraid.
+var defaultLimits Limits
+
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
 type Overrides struct {
@@ -29,6 +35,8 @@ type Overrides struct {
 
 // NewOverrides makes a new Overrides.
 func NewOverrides(defaults Limits) (*Overrides, error) {
+	defaultLimits = defaults
+
 	if defaults.PerTenantOverrideConfig == "" {
 		level.Info(util.Logger).Log("msg", "per-tenant overides disabled")
 		return &Overrides{

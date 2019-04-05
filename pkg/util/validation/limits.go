@@ -3,8 +3,6 @@ package validation
 import (
 	"flag"
 	"time"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -65,7 +63,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
-	flagext.DefaultValues(l)
+	*l = defaultLimits
 	type plain Limits
 	return unmarshal((*plain)(l))
 }

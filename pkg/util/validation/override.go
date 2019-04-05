@@ -267,3 +267,10 @@ func (o *Overrides) EnforceMetricName(userID string) bool {
 		return l.EnforceMetricName
 	})
 }
+
+// CardinalityLimit whether to enforce the presence of a metric name.
+func (o *Overrides) CardinalityLimit(userID string) int {
+	return o.getInt(userID, func(l *Limits) int {
+		return l.CardinalityLimit
+	})
+}

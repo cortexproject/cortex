@@ -56,11 +56,11 @@ func init() {
 type StoreConfig struct {
 	ChunkCacheConfig       cache.Config
 	WriteDedupeCacheConfig cache.Config
+	CardinaltiyCacheConfig cache.Config
 
-	MinChunkAge              time.Duration
-	CardinalityCacheSize     int
-	CardinalityCacheValidity time.Duration
-	CardinalityLimit         int
+	MinChunkAge time.Duration
+
+	CardinalityLimit int
 
 	CacheLookupsOlderThan time.Duration
 }
@@ -68,14 +68,16 @@ type StoreConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("", "Cache config for chunks. ", f)
-
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
+	cfg.CardinaltiyCacheConfig.RegisterFlagsWithPrefix("store.cardinality-cache.", "Cache config for cardinality limits. ", f)
 
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
-	f.IntVar(&cfg.CardinalityCacheSize, "store.cardinality-cache-size", 0, "Size of in-memory cardinality cache, 0 to disable.")
-	f.DurationVar(&cfg.CardinalityCacheValidity, "store.cardinality-cache-validity", 1*time.Hour, "Period for which entries in the cardinality cache are valid.")
 	f.IntVar(&cfg.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
+
+	// Deprecated.
+	f.Int("store.cardinality-cache-size", 0, "DEPRECATED. store.cardinality-cache.enable-fifocache and store.cardinality-cache.fifocache.size.")
+	f.Duration("store.cardinality-cache-validity", 1*time.Hour, "DEPRECATED. store.cardinality-cache.enable-fifocache and store.cardinality-cache.fifocache.duration.")
 }
 
 // store implements Store

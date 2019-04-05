@@ -16,4 +16,5 @@ pkg/ingester/client/cortex.pb.go
 pkg/querier/frontend/frontend.pb.go
 pkg/ring/ring.pb.go
 pkg/chunk/storage/caching_index_client.pb.go
+pkg/chunk/cardinality_cache.pb.go
 images/

@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -95,7 +96,7 @@ func (q queryRangeRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 	}
 
 	maxQueryLen := q.limits.MaxQueryLength(userid)
-	queryLen := msToTime(request.End).Sub(msToTime(request.Start))
+	queryLen := timestamp.Time(request.End).Sub(timestamp.Time(request.Start))
 	if maxQueryLen != 0 && queryLen > maxQueryLen {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLen)
 	}

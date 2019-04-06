@@ -56,7 +56,6 @@ func init() {
 type StoreConfig struct {
 	ChunkCacheConfig       cache.Config
 	WriteDedupeCacheConfig cache.Config
-	CardinaltiyCacheConfig cache.Config
 
 	MinChunkAge time.Duration
 
@@ -69,7 +68,6 @@ type StoreConfig struct {
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("", "Cache config for chunks. ", f)
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
-	cfg.CardinaltiyCacheConfig.RegisterFlagsWithPrefix("store.cardinality-cache.", "Cache config for cardinality limits. ", f)
 
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.IntVar(&cfg.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")

@@ -52,7 +52,7 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
-pkg/chunk/cardinality_cache.pb.go: pkg/chunk/cardinality_cache.proto
+pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)

@@ -34,13 +34,15 @@ func TestCachingStorageClientBasic(t *testing.T) {
 			}},
 		},
 	}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
 	queries := []chunk.IndexQuery{{
 		TableName: "table",
 		HashValue: "baz",
 	}}
-	err := client.QueryPages(context.Background(), queries, func(_ chunk.IndexQuery, _ chunk.ReadBatch) bool {
+	err = client.QueryPages(context.Background(), queries, func(_ chunk.IndexQuery, _ chunk.ReadBatch) bool {
 		return true
 	})
 	require.NoError(t, err)
@@ -63,15 +65,17 @@ func TestTempCachingStorageClient(t *testing.T) {
 			}},
 		},
 	}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 100*time.Millisecond)
+	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo"},
 		{TableName: "table", HashValue: "bar"},
 		{TableName: "table", HashValue: "baz"},
 	}
 	results := 0
-	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -119,15 +123,17 @@ func TestPermCachingStorageClient(t *testing.T) {
 			}},
 		},
 	}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 100*time.Millisecond)
+	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", Immutable: true},
 		{TableName: "table", HashValue: "bar", Immutable: true},
 		{TableName: "table", HashValue: "baz", Immutable: true},
 	}
 	results := 0
-	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -168,10 +174,12 @@ func TestPermCachingStorageClient(t *testing.T) {
 
 func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	store := &mockStore{}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
 	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
-	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		assert.False(t, batch.Iterator().Next())
 		return true
 	})
@@ -204,15 +212,17 @@ func TestCachingStorageClientCollision(t *testing.T) {
 			},
 		},
 	}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},
 	}
 
 	var results ReadBatch
-	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results.Entries = append(results.Entries, Entry{

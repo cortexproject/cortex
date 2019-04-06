@@ -10,11 +10,14 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+var CardinalityLimit = int64(5e6)
 
 var (
 	cacheCorruptErrs = promauto.NewCounter(prometheus.CounterOpts{
@@ -43,9 +46,10 @@ type cachingIndexClient struct {
 	chunk.IndexClient
 	cache    cache.Cache
 	validity time.Duration
+	limits   *validation.Overrides
 }
 
-func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration) chunk.IndexClient {
+func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits *validation.Overrides) chunk.IndexClient {
 	if c == nil {
 		return client
 	}
@@ -54,6 +58,7 @@ func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity tim
 		IndexClient: client,
 		cache:       cache.NewSnappy(c),
 		validity:    validity,
+		limits:      limits,
 	}
 }
 
@@ -76,6 +81,10 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 
 	batches, misses := s.cacheFetch(ctx, keys)
 	for _, batch := range batches {
+		if CardinalityLimit > 0 && batch.Cardinality > CardinalityLimit {
+			return chunk.ErrCardinalityExceeded
+		}
+
 		queries := queriesByKey[batch.Key]
 		for _, query := range queries {
 			callback(query, batch)
@@ -135,9 +144,20 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 		defer resultsMtx.Unlock()
 		keys := make([]string, 0, len(results))
 		batches := make([]ReadBatch, 0, len(results))
+		var cadinalityErr error
 		for key, batch := range results {
+			cardinality := int64(len(batch.Entries))
+			if CardinalityLimit > 0 && cardinality > CardinalityLimit {
+				batch.Cardinality = cardinality
+				batch.Entries = nil
+				cadinalityErr = chunk.ErrCardinalityExceeded
+			}
+
 			keys = append(keys, key)
 			batches = append(batches, batch)
+			if cadinalityErr != nil {
+				continue
+			}
 
 			queries := queriesByKey[key]
 			for _, query := range queries {
@@ -145,8 +165,8 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 			}
 		}
 		s.cacheStore(ctx, keys, batches)
+		return cadinalityErr
 	}
-	return nil
 }
 
 // Iterator implements chunk.ReadBatch.

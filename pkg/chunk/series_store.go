@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -24,7 +23,9 @@ import (
 )
 
 var (
-	errCardinalityExceeded = errors.New("cardinality limit exceeded")
+	// ErrCardinalityExceeded is returned when the user reads a row that
+	// is too large.
+	ErrCardinalityExceeded = errors.New("cardinality limit exceeded")
 
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
@@ -58,7 +59,6 @@ var (
 // seriesStore implements Store
 type seriesStore struct {
 	store
-	cardinalityCache cache.Cache
 	writeDedupeCache cache.Cache
 }
 
@@ -80,11 +80,6 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 		}
 	}
 
-	cardinalityCache, err := cache.New(cfg.CardinaltiyCacheConfig)
-	if err != nil {
-		return nil, err
-	}
-
 	return &seriesStore{
 		store: store{
 			cfg:     cfg,
@@ -94,7 +89,6 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 			limits:  limits,
 			Fetcher: fetcher,
 		},
-		cardinalityCache: cardinalityCache,
 		writeDedupeCache: writeDedupeCache,
 	}, nil
 }
@@ -216,7 +210,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			// series and the other returns only 10 (a few), we don't lookup the first one at all.
 			// We just manually filter through the 10 series again using "filterChunksByMatchers",
 			// saving us from looking up and intersecting a lot of series.
-			if err == errCardinalityExceeded {
+			if err == ErrCardinalityExceeded {
 				cardinalityExceededErrors++
 			} else {
 				lastErr = err
@@ -226,7 +220,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 
 	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
 	if cardinalityExceededErrors == len(matchers) {
-		return nil, errCardinalityExceeded
+		return nil, ErrCardinalityExceeded
 	} else if lastErr != nil {
 		return nil, lastErr
 	}
@@ -259,21 +253,11 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	}
 	level.Debug(log).Log("queries", len(queries))
 
-	if err := c.lookupCardinalityCache(ctx, queries); err != nil {
-		level.Error(log).Log("msg", "error from cardinality cache", "err", err)
-		return nil, err
-	}
-
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
 	level.Debug(log).Log("entries", len(entries))
-
-	c.updateCardinalityCache(ctx, queries, entries)
-	if len(entries) > c.cfg.CardinalityLimit {
-		return nil, errCardinalityExceeded
-	}
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
@@ -282,63 +266,6 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	level.Debug(log).Log("ids", len(ids))
 
 	return ids, nil
-}
-
-func (c *seriesStore) lookupCardinalityCache(ctx context.Context, queries []IndexQuery) error {
-	keys := make([]string, 0, len(queries))
-	reverse := make(map[string]string, len(queries))
-	for _, query := range queries {
-		hashed := cache.HashKey(query.HashValue)
-		keys = append(keys, hashed)
-		reverse[hashed] = query.HashValue
-	}
-
-	// We don't care about missing values in this case.
-	found, bufs, _ := c.cardinalityCache.Fetch(ctx, keys)
-	for i := 0; i < len(found); i++ {
-		var entry CardinalityCacheEntry
-		if err := proto.Unmarshal(bufs[i], &entry); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to unmarshal cardinality cache entry", "err", err)
-			continue
-		}
-
-		// Check for hash collisions.
-		if hashValue, ok := reverse[found[i]]; !ok || hashValue != entry.HashValue {
-			level.Error(util.Logger).Log("msg", "failed to unmarshal cardinality cache entry", "expected", hashValue, "found", entry.HashValue)
-			continue
-		}
-
-		if entry.Cardinality > uint64(c.cfg.CardinalityLimit) {
-			return errCardinalityExceeded
-		}
-	}
-
-	return nil
-}
-
-func (c *seriesStore) updateCardinalityCache(ctx context.Context, queries []IndexQuery, entries []IndexEntry) {
-	// We could all the entries for a given matcher (as defined by this set of
-	// queries). This will overcount for queries > 24hrs, but the query frontend
-	// splits by day so that should be okay.
-
-	// The hash key contains the userID, so we don't need additional sharding here.
-
-	keys := make([]string, 0, len(queries))
-	values := make([][]byte, 0, len(queries))
-	for _, query := range queries {
-		buf, err := proto.Marshal(&CardinalityCacheEntry{
-			HashValue:   query.HashValue,
-			Cardinality: uint64(len(entries)),
-		})
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to marshal cardinality cache entry", "err", err)
-			continue
-		}
-
-		keys = append(keys, cache.HashKey(query.HashValue))
-		values = append(values, buf)
-	}
-	c.cardinalityCache.Store(ctx, keys, values)
 }
 
 func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, seriesIDs []string) ([]string, error) {

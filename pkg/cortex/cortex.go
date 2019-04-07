@@ -4,10 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-
-	"github.com/cortexproject/cortex/pkg/alertmanager"
-	"github.com/cortexproject/cortex/pkg/configs/api"
-	"github.com/cortexproject/cortex/pkg/configs/db"
+	"os"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -16,11 +13,15 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc"
+	"gopkg.in/yaml.v2"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/configs/api"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -53,6 +54,7 @@ import (
 type Config struct {
 	Target      moduleName `yaml:"target,omitempty"`
 	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
+	PrintConfig bool       `yaml:"-"`
 
 	Server         server.Config            `yaml:"server,omitempty"`
 	Distributor    distributor.Config       `yaml:"distributor,omitempty"`
@@ -80,6 +82,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.ExcludeRequestInLog = true
 	f.Var(&c.Target, "target", "target module (default All)")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
+	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 
 	c.Server.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
@@ -126,7 +129,14 @@ type Cortex struct {
 
 // New makes a new Loki.
 func New(cfg Config) (*Cortex, error) {
-	cortex := Cortex{
+	if cfg.PrintConfig {
+		if err := yaml.NewEncoder(os.Stdout).Encode(&cfg); err != nil {
+			fmt.Println("Error encoding config:", err)
+		}
+		os.Exit(0)
+	}
+
+	cortex := &Cortex{
 		target: cfg.Target,
 	}
 

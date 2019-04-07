@@ -18,25 +18,27 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-type resultsCacheConfig struct {
-	cacheConfig       cache.Config
-	MaxCacheFreshness time.Duration
+// ResultsCacheConfig is the config for the results cache.
+type ResultsCacheConfig struct {
+	CacheConfig       cache.Config  `yaml:"cache"`
+	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
 }
 
-func (cfg *resultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.cacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
+// RegisterFlags registers flags.
+func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
 }
 
 type resultsCache struct {
-	cfg    resultsCacheConfig
+	cfg    ResultsCacheConfig
 	next   queryRangeHandler
 	cache  cache.Cache
 	limits *validation.Overrides
 }
 
-func newResultsCacheMiddleware(cfg resultsCacheConfig, limits *validation.Overrides) (queryRangeMiddleware, error) {
-	c, err := cache.New(cfg.cacheConfig)
+func newResultsCacheMiddleware(cfg ResultsCacheConfig, limits *validation.Overrides) (queryRangeMiddleware, error) {
+	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, err
 	}

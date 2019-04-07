@@ -2,6 +2,7 @@ FROM       alpine:3.8
 RUN        apk add --no-cache ca-certificates
 COPY       migrations /migrations/
 COPY       cortex /bin/cortex
+COPY       single-process-config.yaml /etc
 EXPOSE     80
 ENTRYPOINT [ "/bin/cortex" ]
 

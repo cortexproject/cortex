@@ -50,7 +50,7 @@ import (
 // - First argument for a components constructor should be its matching config
 //   object.
 
-// Config is the root config for Loki.
+// Config is the root config for Cortex.
 type Config struct {
 	Target      moduleName `yaml:"target,omitempty"`
 	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
@@ -127,7 +127,7 @@ type Cortex struct {
 	alertmanager *alertmanager.MultitenantAlertmanager
 }
 
-// New makes a new Loki.
+// New makes a new Cortex.
 func New(cfg Config) (*Cortex, error) {
 	if cfg.PrintConfig {
 		if err := yaml.NewEncoder(os.Stdout).Encode(&cfg); err != nil {
@@ -155,7 +155,7 @@ func New(cfg Config) (*Cortex, error) {
 		return nil, err
 	}
 
-	return &cortex, nil
+	return cortex, nil
 }
 
 func (t *Cortex) setupAuthMiddleware(cfg *Config) {
@@ -207,12 +207,12 @@ func (t *Cortex) initModule(cfg *Config, m moduleName) error {
 	return nil
 }
 
-// Run starts Loki running, and blocks until a signal is received.
+// Run starts Cortex running, and blocks until a signal is received.
 func (t *Cortex) Run() error {
 	return t.server.Run()
 }
 
-// Stop gracefully stops a Loki.
+// Stop gracefully stops a Cortex.
 func (t *Cortex) Stop() error {
 	t.server.Shutdown()
 	t.stop(t.target)

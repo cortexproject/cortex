@@ -369,6 +369,9 @@ func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 	go t.alertmanager.Run()
 
 	t.server.HTTP.PathPrefix("/status").Handler(t.alertmanager.GetStatusHandler())
+
+	// TODO this clashed with the queirer and the distributor, so we cannot
+	// run them in the same process.
 	t.server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
 	return
 }

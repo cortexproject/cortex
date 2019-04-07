@@ -52,21 +52,16 @@ func main() {
 	defer trace.Close()
 
 	t, err := cortex.New(cfg)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initialising cortex", "err", err)
-		os.Exit(1)
-	}
+	util.CheckFatal("initializing cortex", err)
 
 	level.Info(util.Logger).Log("msg", "Starting Cortex", "version", version.Info())
 
 	if err := t.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error running loki", "err", err)
+		level.Error(util.Logger).Log("msg", "error running Cortex", "err", err)
 	}
 
-	if err := t.Stop(); err != nil {
-		level.Error(util.Logger).Log("msg", "error stopping loki", "err", err)
-		os.Exit(1)
-	}
+	err = t.Stop()
+	util.CheckFatal("initializing cortex", err)
 }
 
 // LoadConfig read YAML-formatted config from filename into cfg.

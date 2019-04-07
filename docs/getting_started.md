@@ -8,7 +8,7 @@ See [the architecture doc](architecture.md) For more information about the micro
 
 Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (DynamoDB, Bigtable, Cassandra, S3, GCS etc).
 This document will focus on using local storage.
-Local storage is explicity not production ready at this time.
+Local storage is explicitly not production ready at this time.
 Cortex can also make use of external memcacheds for caching and although these are not mandatory, they should be used in production.
 
 ## Single instance, single process.

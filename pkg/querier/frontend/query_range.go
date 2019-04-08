@@ -94,10 +94,10 @@ func (q QueryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, er
 
 func (q QueryRangeRequest) logToSpan(ctx context.Context) {
 	if span := opentracing.SpanFromContext(ctx); span != nil {
-		span.LogFields(otlog.String("query", q.Query))
-		span.LogFields(otlog.String("start", timestamp.Time(q.Start).String()))
-		span.LogFields(otlog.String("end", timestamp.Time(q.End).String()))
-		span.LogFields(otlog.Int64("step (ms)", q.Step))
+		span.LogFields(otlog.String("query", q.Query),
+			otlog.String("start", timestamp.Time(q.Start).String()),
+			otlog.String("end", timestamp.Time(q.End).String()),
+			otlog.Int64("step (ms)", q.Step))
 	}
 }
 

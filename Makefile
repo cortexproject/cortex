@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos
+.PHONY: all test clean images protos exes generated
 .DEFAULT_GOAL := all
 
 # Boiler plate for bulding Docker containers.
@@ -41,9 +41,9 @@ MIGRATION_DIRS := cmd/alertmanager/.migrations cmd/configs/.migrations cmd/ruler
 # for every directory with main.go in it, in the ./cmd directory.
 MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
-GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
+GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -name '*.pb.go' -prune -o -type f -name '*.go' -print)
 define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS) $(MIGRATION_DIRS)
+$(1): $(dir $(1))/main.go $(GO_FILES) generated
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
@@ -53,7 +53,7 @@ pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
-all: $(UPTODATE_FILES)
+all: exes $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
 mod-check: protos
@@ -86,7 +86,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(MIGRATION_DIRS) $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
+exes $(EXES) generated $(MIGRATION_DIRS) $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) time docker run $(RM) $(TTY) -i \
@@ -114,6 +114,10 @@ configs-integration-test: build-image/$(UPTODATE)
 
 else
 
+generated: $(PROTO_GOS) $(MIGRATION_DIRS)
+
+exes: $(EXES)
+
 $(EXES):
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
@@ -140,8 +144,8 @@ configs-integration-test:
 mod-check:
 	GO111MODULE=on go mod download
 	GO111MODULE=on go mod verify
-	GO111MODULE=on go mod tidy 
-	GO111MODULE=on go mod vendor 
+	GO111MODULE=on go mod tidy
+	GO111MODULE=on go mod vendor
 	@git diff --exit-code -- go.sum go.mod vendor/
 
 %/.migrations:

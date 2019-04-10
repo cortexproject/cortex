@@ -146,7 +146,7 @@ func toWireChunks(descs []*desc) ([]client.Chunk, error) {
 			Encoding:         int32(d.C.Encoding()),
 		}
 
-		buf := bytes.NewBuffer(make([]byte, 0, encoding.ChunkLen))
+		buf := bytes.NewBuffer(make([]byte, 0, d.C.Size()))
 		if err := d.C.Marshal(buf); err != nil {
 			return nil, err
 		}
@@ -246,7 +246,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 			err = stream.Send(&client.TimeSeriesChunk{
 				FromIngesterId: i.lifecycler.ID,
 				UserId:         userID,
-				Labels:         client.FromLabelsToLabelPairs(pair.series.metric),
+				Labels:         client.FromLabelsToLabelAdapaters(pair.series.metric),
 				Chunks:         chunks,
 			})
 			state.fpLocker.Unlock(pair.fp)

@@ -22,7 +22,7 @@ func TestLabelPairsEqual(t *testing.T) {
 		{
 			name: "labelPairs nonblank; labels blank",
 			a: labelPairs{
-				{Name: []byte("foo"), Value: []byte("a")},
+				{Name: "foo", Value: "a"},
 			},
 			b:     labels.Labels{},
 			equal: false,
@@ -38,8 +38,8 @@ func TestLabelPairsEqual(t *testing.T) {
 		{
 			name: "same contents; labelPairs not sorted",
 			a: labelPairs{
-				{Name: []byte("foo"), Value: []byte("a")},
-				{Name: []byte("bar"), Value: []byte("b")},
+				{Name: "foo", Value: "a"},
+				{Name: "bar", Value: "b"},
 			},
 			b: labels.Labels{
 				{Name: "bar", Value: "b"},
@@ -50,8 +50,8 @@ func TestLabelPairsEqual(t *testing.T) {
 		{
 			name: "same contents",
 			a: labelPairs{
-				{Name: []byte("bar"), Value: []byte("b")},
-				{Name: []byte("foo"), Value: []byte("a")},
+				{Name: "bar", Value: "b"},
+				{Name: "foo", Value: "a"},
 			},
 			b: labels.Labels{
 				{Name: "bar", Value: "b"},
@@ -62,8 +62,8 @@ func TestLabelPairsEqual(t *testing.T) {
 		{
 			name: "same names, different value",
 			a: labelPairs{
-				{Name: []byte("bar"), Value: []byte("b")},
-				{Name: []byte("foo"), Value: []byte("c")},
+				{Name: "bar", Value: "b"},
+				{Name: "foo", Value: "c"},
 			},
 			b: labels.Labels{
 				{Name: "bar", Value: "b"},
@@ -74,8 +74,8 @@ func TestLabelPairsEqual(t *testing.T) {
 		{
 			name: "labels has one extra value",
 			a: labelPairs{
-				{Name: []byte("bar"), Value: []byte("b")},
-				{Name: []byte("foo"), Value: []byte("a")},
+				{Name: "bar", Value: "b"},
+				{Name: "foo", Value: "a"},
 			},
 			b: labels.Labels{
 				{Name: "bar", Value: "b"},
@@ -87,9 +87,9 @@ func TestLabelPairsEqual(t *testing.T) {
 		{
 			name: "labelPairs has one extra value",
 			a: labelPairs{
-				{Name: []byte("bar"), Value: []byte("b")},
-				{Name: []byte("foo"), Value: []byte("a")},
-				{Name: []byte("firble"), Value: []byte("c")},
+				{Name: "bar", Value: "b"},
+				{Name: "foo", Value: "a"},
+				{Name: "firble", Value: "c"},
 			},
 			b: labels.Labels{
 				{Name: "bar", Value: "b"},

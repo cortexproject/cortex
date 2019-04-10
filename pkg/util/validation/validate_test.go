@@ -57,7 +57,7 @@ func TestValidateLabels(t *testing.T) {
 		},
 	} {
 
-		err := overrides.ValidateLabels(userID, client.ToLabelPairs(c.metric))
+		err := overrides.ValidateLabels(userID, client.FromMetricsToLabelAdapters(c.metric))
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }

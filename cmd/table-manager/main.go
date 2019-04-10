@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"github.com/weaveworks/common/tracing"
 )
 
 func main() {
@@ -30,6 +31,11 @@ func main() {
 		schemaConfig   chunk.SchemaConfig
 		tbmConfig      chunk.TableManagerConfig
 	)
+
+	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+	trace := tracing.NewFromEnv("ingester")
+	defer trace.Close()
+
 	flagext.RegisterFlags(&ingesterConfig, &serverConfig, &storageConfig, &schemaConfig, &tbmConfig)
 	flag.Parse()
 

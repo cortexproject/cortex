@@ -33,7 +33,7 @@ func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeries
 
 	result := model.Matrix{}
 	for _, series := range serieses {
-		metric := client.FromLabelPairs(series.Labels)
+		metric := client.FromLabelAdaptersToMetric(series.Labels)
 		chunks, err := FromChunks("", metric, series.Chunks)
 		if err != nil {
 			return nil, err

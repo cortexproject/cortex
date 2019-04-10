@@ -22,7 +22,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/weaveworks/common/user"
 )
 
@@ -83,7 +82,7 @@ var (
 			query: "foo",
 			step:  sampleRate * 4,
 			labels: labels.Labels{
-				labels.Label{Name: "__name__", Value: "foo"},
+				labels.Label{Name: model.MetricNameLabel, Value: "foo"},
 			},
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
@@ -111,7 +110,7 @@ var (
 			query: "foo",
 			step:  sampleRate * 4 * 10,
 			labels: labels.Labels{
-				labels.Label{Name: "__name__", Value: "foo"},
+				labels.Label{Name: model.MetricNameLabel, Value: "foo"},
 			},
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
@@ -236,7 +235,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 	require.NoError(t, err)
 
 	tsc := client.TimeSeriesChunk{
-		Labels: []client.LabelPair{{Name: wire.Bytes(model.MetricNameLabel), Value: wire.Bytes("foo")}},
+		Labels: []client.LabelAdapter{{Name: model.MetricNameLabel, Value: "foo"}},
 		Chunks: chunks,
 	}
 	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)

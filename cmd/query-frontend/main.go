@@ -2,6 +2,10 @@ package main
 
 import (
 	"flag"
+	"os"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/go-kit/kit/log/level"
 
 	"google.golang.org/grpc"
 
@@ -23,8 +27,9 @@ func main() {
 		}
 		frontendConfig frontend.Config
 		maxMessageSize int
+		defaultLimits  validation.Limits
 	)
-	flagext.RegisterFlags(&serverConfig, &frontendConfig)
+	flagext.RegisterFlags(&serverConfig, &frontendConfig, &defaultLimits)
 	flag.IntVar(&maxMessageSize, "query-frontend.max-recv-message-size-bytes", 1024*1024*64, "Limit on the size of a grpc message this server can receive.")
 	flag.Parse()
 
@@ -39,7 +44,13 @@ func main() {
 	util.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
-	f, err := frontend.New(frontendConfig, util.Logger)
+	limits, err := validation.NewOverrides(defaultLimits)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to initialise limits", "err", err)
+		os.Exit(1)
+	}
+
+	f, err := frontend.New(frontendConfig, util.Logger, limits)
 	util.CheckFatal("initializing frontend", err)
 	defer f.Close()
 

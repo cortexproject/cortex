@@ -3,19 +3,25 @@ package frontend
 import (
 	"context"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/weaveworks/common/user"
 )
 
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
-const maxParallelism = 14
 
-var splitByDayMiddleware = queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
-	return instrument("split_by_day").Wrap(splitByDay{
-		next: next,
+func splitByDayMiddleware(limits *validation.Overrides) queryRangeMiddleware {
+	return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
+		return instrument("split_by_day").Wrap(splitByDay{
+			next:   next,
+			limits: limits,
+		})
 	})
-})
+}
 
 type splitByDay struct {
-	next queryRangeHandler
+	next   queryRangeHandler
+	limits *validation.Overrides
 }
 
 type response struct {
@@ -29,7 +35,7 @@ func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse,
 	// to line up the boundaries with step.
 	reqs := splitQuery(r)
 
-	reqResps, err := doRequests(ctx, s.next, reqs)
+	reqResps, err := doRequests(ctx, s.next, reqs, s.limits)
 	if err != nil {
 		return nil, err
 	}
@@ -63,9 +69,13 @@ func splitQuery(r *QueryRangeRequest) []*QueryRangeRequest {
 
 // Round up to the step before the next day boundary.
 func nextDayBoundary(t, step int64) int64 {
-	offsetToDayBoundary := step - (t % millisecondPerDay % step)
-	t = ((t / millisecondPerDay) + 1) * millisecondPerDay
-	return t - offsetToDayBoundary
+	startOfNextDay := ((t / millisecondPerDay) + 1) * millisecondPerDay
+	// ensure that target is a multiple of steps away from the start time
+	target := startOfNextDay - ((startOfNextDay - t) % step)
+	if target == startOfNextDay {
+		target -= step
+	}
+	return target
 }
 
 type requestResponse struct {
@@ -73,7 +83,12 @@ type requestResponse struct {
 	resp *APIResponse
 }
 
-func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest) ([]requestResponse, error) {
+func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest, limits *validation.Overrides) ([]requestResponse, error) {
+	userid, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// If one of the requests fail, we want to be able to cancel the rest of them.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -88,7 +103,7 @@ func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*Query
 	}()
 
 	respChan, errChan := make(chan requestResponse), make(chan error)
-	parallelism := maxParallelism
+	parallelism := limits.MaxQueryParallelism(userid)
 	if parallelism > len(reqs) {
 		parallelism = len(reqs)
 	}

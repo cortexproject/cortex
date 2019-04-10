@@ -16,7 +16,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 )
 
 const (
@@ -38,8 +37,8 @@ var (
 			ResultType: model.ValMatrix.String(),
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelPair{
-						{Name: wire.Bytes("foo"), Value: wire.Bytes("bar")},
+					Labels: []client.LabelAdapter{
+						{Name: "foo", Value: "bar"},
 					},
 					Samples: []client.Sample{
 						{Value: 137, TimestampMs: 1536673680000},
@@ -205,7 +204,7 @@ func TestMergeAPIResponses(t *testing.T) {
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
-								Labels: []client.LabelPair{},
+								Labels: []client.LabelAdapter{},
 								Samples: []client.Sample{
 									{Value: 0, TimestampMs: 0},
 									{Value: 1, TimestampMs: 1},
@@ -219,7 +218,7 @@ func TestMergeAPIResponses(t *testing.T) {
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
-								Labels: []client.LabelPair{},
+								Labels: []client.LabelAdapter{},
 								Samples: []client.Sample{
 									{Value: 2, TimestampMs: 2},
 									{Value: 3, TimestampMs: 3},
@@ -235,7 +234,7 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []client.LabelPair{},
+							Labels: []client.LabelAdapter{},
 							Samples: []client.Sample{
 								{Value: 0, TimestampMs: 0},
 								{Value: 1, TimestampMs: 1},
@@ -260,7 +259,7 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []client.LabelPair{{Name: []byte("a"), Value: []byte("b")}, {Name: []byte("c"), Value: []byte("d")}},
+							Labels: []client.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
 							Samples: []client.Sample{
 								{Value: 0, TimestampMs: 0},
 								{Value: 1, TimestampMs: 1000},

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -28,12 +29,13 @@ func (cfg *resultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 type resultsCache struct {
-	cfg   resultsCacheConfig
-	next  queryRangeHandler
-	cache cache.Cache
+	cfg    resultsCacheConfig
+	next   queryRangeHandler
+	cache  cache.Cache
+	limits *validation.Overrides
 }
 
-func newResultsCacheMiddleware(cfg resultsCacheConfig) (queryRangeMiddleware, error) {
+func newResultsCacheMiddleware(cfg resultsCacheConfig, limits *validation.Overrides) (queryRangeMiddleware, error) {
 	c, err := cache.New(cfg.cacheConfig)
 	if err != nil {
 		return nil, err
@@ -41,9 +43,10 @@ func newResultsCacheMiddleware(cfg resultsCacheConfig) (queryRangeMiddleware, er
 
 	return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
 		return &resultsCache{
-			cfg:   cfg,
-			next:  next,
-			cache: cache.NewSnappy(c),
+			cfg:    cfg,
+			next:   next,
+			cache:  cache.NewSnappy(c),
+			limits: limits,
 		}
 	}), nil
 }
@@ -110,7 +113,7 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 		return response, nil, err
 	}
 
-	reqResps, err = doRequests(ctx, s.next, requests)
+	reqResps, err = doRequests(ctx, s.next, requests, s.limits)
 	if err != nil {
 		return nil, nil, err
 	}

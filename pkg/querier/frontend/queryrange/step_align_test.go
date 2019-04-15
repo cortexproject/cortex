@@ -1,4 +1,4 @@
-package frontend
+package queryrange
 
 import (
 	"context"
@@ -10,15 +10,15 @@ import (
 
 func TestStepAlign(t *testing.T) {
 	for i, tc := range []struct {
-		input, expected *QueryRangeRequest
+		input, expected *Request
 	}{
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 0,
 				End:   100,
 				Step:  10,
 			},
-			expected: &QueryRangeRequest{
+			expected: &Request{
 				Start: 0,
 				End:   100,
 				Step:  10,
@@ -26,12 +26,12 @@ func TestStepAlign(t *testing.T) {
 		},
 
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 2,
 				End:   102,
 				Step:  10,
 			},
-			expected: &QueryRangeRequest{
+			expected: &Request{
 				Start: 0,
 				End:   100,
 				Step:  10,
@@ -39,9 +39,9 @@ func TestStepAlign(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			var result *QueryRangeRequest
+			var result *Request
 			s := stepAlign{
-				next: queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*APIResponse, error) {
+				next: HandlerFunc(func(_ context.Context, req *Request) (*APIResponse, error) {
 					result = req
 					return nil, nil
 				}),

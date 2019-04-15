@@ -1,4 +1,4 @@
-package frontend
+package queryrange
 
 import (
 	"context"
@@ -46,17 +46,17 @@ func TestNextDayBoundary(t *testing.T) {
 
 func TestSplitQuery(t *testing.T) {
 	for i, tc := range []struct {
-		input    *QueryRangeRequest
-		expected []*QueryRangeRequest
+		input    *Request
+		expected []*Request
 	}{
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 0,
 				End:   60 * 60 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []*QueryRangeRequest{
+			expected: []*Request{
 				{
 					Start: 0,
 					End:   60 * 60 * seconds,
@@ -66,13 +66,13 @@ func TestSplitQuery(t *testing.T) {
 			},
 		},
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 0,
 				End:   24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []*QueryRangeRequest{
+			expected: []*Request{
 				{
 					Start: 0,
 					End:   24 * 3600 * seconds,
@@ -82,13 +82,13 @@ func TestSplitQuery(t *testing.T) {
 			},
 		},
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 0,
 				End:   2 * 24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []*QueryRangeRequest{
+			expected: []*Request{
 				{
 					Start: 0,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
@@ -104,13 +104,13 @@ func TestSplitQuery(t *testing.T) {
 			},
 		},
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 3 * 3600 * seconds,
 				End:   3 * 24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []*QueryRangeRequest{
+			expected: []*Request{
 				{
 					Start: 3 * 3600 * seconds,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
@@ -152,26 +152,26 @@ func TestSplitByDay(t *testing.T) {
 	u, err := url.Parse(s.URL)
 	require.NoError(t, err)
 
-	roundtripper := queryRangeRoundTripper{
-		queryRangeMiddleware: splitByDay{
-			next: queryRangeTerminator{
-				next: singleHostRoundTripper{
+	roundtripper := RoundTripper{
+		handler: splitByDay{
+			next: ToRoundTripperMiddleware{
+				Next: singleHostRoundTripper{
 					host: u.Host,
 					next: http.DefaultTransport,
 				},
 			},
-			limits: defaultOverrides(t),
+			limits: fakeLimits{},
 		},
-		limits: defaultOverrides(t),
+		limits: fakeLimits{},
 	}
 
-	mergedResponse, err := mergeAPIResponses([]*APIResponse{
+	mergedResponse, err := MergeAPIResponses([]*APIResponse{
 		parsedResponse,
 		parsedResponse,
 	})
 	require.NoError(t, err)
 
-	mergedHTTPResponse, err := mergedResponse.toHTTPResponse(context.Background())
+	mergedHTTPResponse, err := mergedResponse.ToHTTPResponse(context.Background())
 	require.NoError(t, err)
 
 	mergedHTTPResponseBody, err := ioutil.ReadAll(mergedHTTPResponse.Body)

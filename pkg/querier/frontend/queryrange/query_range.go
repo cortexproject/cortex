@@ -1,4 +1,4 @@
-package frontend
+package queryrange
 
 import (
 	"bytes"
@@ -11,25 +11,28 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	jsoniter "github.com/json-iterator/go"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
-
-	client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
 )
+
+const statusSuccess = "success"
 
 var (
-	matrix                = model.ValMatrix.String()
-	json                  = jsoniter.ConfigCompatibleWithStandardLibrary
-	errUnexpectedResponse = httpgrpc.Errorf(http.StatusInternalServerError, "unexpected response type")
+	Matrix = model.ValMatrix.String()
+
+	json = jsoniter.ConfigCompatibleWithStandardLibrary
+
+	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
+	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
+	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 )
 
-func parseQueryRangeRequest(r *http.Request) (*QueryRangeRequest, error) {
-	var result QueryRangeRequest
+func ParseRequest(r *http.Request) (*Request, error) {
+	var result Request
 	var err error
 	result.Start, err = ParseTime(r.FormValue("start"))
 	if err != nil {
@@ -65,11 +68,11 @@ func parseQueryRangeRequest(r *http.Request) (*QueryRangeRequest, error) {
 	return &result, nil
 }
 
-func (q QueryRangeRequest) copy() QueryRangeRequest {
+func (q Request) Copy() Request {
 	return q
 }
 
-func (q QueryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, error) {
+func (q Request) ToHTTPRequest(ctx context.Context) (*http.Request, error) {
 	params := url.Values{
 		"start": []string{encodeTime(q.Start)},
 		"end":   []string{encodeTime(q.End)},
@@ -127,15 +130,13 @@ func encodeDurationMs(d int64) string {
 	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
 }
 
-const statusSuccess = "success"
-
-func parseQueryRangeResponse(ctx context.Context, r *http.Response) (*APIResponse, error) {
+func ParseResponse(ctx context.Context, r *http.Response) (*APIResponse, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
-	sp, _ := opentracing.StartSpanFromContext(ctx, "parseQueryRangeResponse")
+	sp, _ := opentracing.StartSpanFromContext(ctx, "ParseQueryRangeResponse")
 	defer sp.Finish()
 
 	buf, err := ioutil.ReadAll(r.Body)
@@ -179,13 +180,12 @@ func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	return json.Marshal(stream)
 }
 
-func (a *APIResponse) toHTTPResponse(ctx context.Context) (*http.Response, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.toHTTPResponse")
+func (a *APIResponse) ToHTTPResponse(ctx context.Context) (*http.Response, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
 
 	b, err := json.Marshal(a)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error marshalling json response", "err", err)
 		return nil, err
 	}
 
@@ -204,14 +204,14 @@ func (a *APIResponse) toHTTPResponse(ctx context.Context) (*http.Response, error
 func extract(start, end int64, extent Extent) *APIResponse {
 	return &APIResponse{
 		Status: statusSuccess,
-		Data: QueryRangeResponse{
+		Data: Response{
 			ResultType: extent.Response.Data.ResultType,
-			Result:     extractMatrix(start, end, extent.Response.Data.Result),
+			Result:     ExtractMatrix(start, end, extent.Response.Data.Result),
 		},
 	}
 }
 
-func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
+func ExtractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 	result := make([]SampleStream, 0, len(matrix))
 	for _, stream := range matrix {
 		extracted, ok := extractSampleStream(start, end, stream)
@@ -238,7 +238,7 @@ func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, b
 	return result, true
 }
 
-func mergeAPIResponses(responses []*APIResponse) (*APIResponse, error) {
+func MergeAPIResponses(responses []*APIResponse) (*APIResponse, error) {
 	// Merge the responses.
 	sort.Sort(byFirstTime(responses))
 
@@ -250,7 +250,7 @@ func mergeAPIResponses(responses []*APIResponse) (*APIResponse, error) {
 
 	return &APIResponse{
 		Status: statusSuccess,
-		Data: QueryRangeResponse{
+		Data: Response{
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(responses),
 		},

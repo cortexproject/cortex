@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/cortexproject/cortex/pkg/querier/frontend/queryrange"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
@@ -42,8 +42,13 @@ var (
 		Name:      "query_frontend_queue_length",
 		Help:      "Number of queries in the queue.",
 	})
+	queryRangeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "frontend_query_range_duration_seconds",
+		Help:      "Total time spent in seconds doing query range requests.",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"method", "status_code"})
 
-	errServerClosing  = httpgrpc.Errorf(http.StatusTeapot, "server closing down")
 	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 	errCanceled       = httpgrpc.Errorf(http.StatusInternalServerError, "context cancelled")
 )
@@ -56,7 +61,7 @@ type Config struct {
 	AlignQueriesWithStep    bool
 	CacheResults            bool
 	CompressResponses       bool
-	resultsCacheConfig
+	queryrange.ResultsCacheConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -67,7 +72,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
-	cfg.resultsCacheConfig.RegisterFlags(f)
+	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -101,33 +106,31 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 	}
 
 	// Stack up the pipeline of various query range middlewares.
-	queryRangeMiddleware := []queryRangeMiddleware{}
+	var ms []queryrange.Middleware
 	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(queryRangeMiddleware, stepAlignMiddleware)
+		ms = append(ms, queryrange.InstrumentMiddleware("step_align", queryRangeDuration), queryrange.StepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware(limits))
+		ms = append(ms, queryrange.InstrumentMiddleware("split_by_day", queryRangeDuration), queryrange.SplitByDayMiddleware(limits))
 	}
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.resultsCacheConfig, limits)
+		m, err := queryrange.NewResultsCacheMiddlewareFromConfig(log, cfg.ResultsCacheConfig, limits)
 		if err != nil {
 			return nil, err
 		}
-		queryRangeMiddleware = append(queryRangeMiddleware, instrument("results_cache"), queryCacheMiddleware)
+		ms = append(ms, queryrange.InstrumentMiddleware("results_cache", queryRangeDuration), m)
 	}
 
 	// Finally, if the user selected any query range middleware, stitch it in.
-	var roundTripper http.RoundTripper = f
-	if len(queryRangeMiddleware) > 0 {
-		roundTripper = &queryRangeRoundTripper{
-			next: roundTripper,
-			queryRangeMiddleware: merge(queryRangeMiddleware...).Wrap(&queryRangeTerminator{
-				next: roundTripper,
-			}),
-			limits: limits,
-		}
+	var rt http.RoundTripper = f
+	if len(ms) > 0 {
+		rt = queryrange.NewRoundTripper(
+			f,
+			queryrange.MergeMiddlewares(ms...).Wrap(&queryrange.ToRoundTripperMiddleware{Next: f}),
+			limits,
+		)
 	}
-	f.roundTripper = roundTripper
+	f.roundTripper = rt
 	f.cond = sync.NewCond(&f.mtx)
 	return f, nil
 }
@@ -216,6 +219,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 	}
 
 	var lastErr error
+	// TODO(bwplotka): Move it to separate retry middleware.
 	for tries := 0; tries < f.cfg.MaxRetries; tries++ {
 		if err := f.queueRequest(ctx, request); err != nil {
 			return nil, err

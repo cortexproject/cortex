@@ -46,6 +46,7 @@ func (w writeRequest) encodeChunks() error {
 			return err
 		}
 	}
+	return nil
 }
 
 // WriterConfig configures are Writer objects
@@ -165,7 +166,7 @@ func (w *Writer) TransferChunks(stream client.Ingester_TransferChunksServer) err
 			fromReaderID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing transfer chunks request from reader", "readerID", fromReaderID)
 		}
-		metric := client.FromLabelPairs(wireSeries.Labels)
+		metric := client.FromLabelAdaptersToMetric(wireSeries.Labels)
 		chunks, err := chunkcompat.FromChunks(wireSeries.UserId, metric, wireSeries.Chunks)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "unable to decode chunks from stream", "err", err, "readerID", fromReaderID)

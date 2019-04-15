@@ -58,7 +58,7 @@ func (s *streamClient) StreamChunks(ctx context.Context, chunks []chunk.Chunk) e
 	if err != nil {
 		return fmt.Errorf("unable to serialize chunks, %v", err)
 	}
-	labels := client.ToLabelPairs(chunks[0].Metric)
+	labels := client.FromMetricsToLabelAdapters(chunks[0].Metric)
 
 	err = s.stream.Send(
 		&client.TimeSeriesChunk{

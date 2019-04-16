@@ -8,11 +8,11 @@ NO_GO_GET=true
 TAGS=
 PARALLEL=
 RACE="-race -covermode=atomic"
-TIMEOUT=1m
+TIMEOUT=2m
 VERBOSE=
 
 usage() {
-    echo "$0 [-slow] [-in-container foo] [-netgo] [-(no-)go-get] [-timeout 1m]"
+    echo "$0 [-slow] [-in-container foo] [-netgo] [-(no-)go-get] [-timeout 2m]"
 }
 
 while [ $# -gt 0 ]; do

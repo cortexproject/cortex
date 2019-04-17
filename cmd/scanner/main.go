@@ -148,7 +148,7 @@ type ReadBatchHashIterator interface {
 	Next() bool
 	RangeValue() []byte
 	Value() []byte
-	HashValue() []byte
+	HashValue() string
 }
 
 func (h *handler) handlePage(page chunk.ReadBatch) {
@@ -156,7 +156,7 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 	decodeContext := chunk.NewDecodeContext()
 	for i := page.Iterator().(ReadBatchHashIterator); i.Next(); {
 		hashValue := i.HashValue()
-		org := orgFromHash(string(hashValue))
+		org := orgFromHash(hashValue)
 		if h.counts[org] == nil {
 			h.counts[org] = make(map[string]int)
 		}

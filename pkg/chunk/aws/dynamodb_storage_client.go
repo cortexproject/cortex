@@ -686,8 +686,8 @@ func (b *dynamoDBReadResponseIterator) RangeValue() []byte {
 	return b.items[b.i][rangeKey].B
 }
 
-func (b *dynamoDBReadResponseIterator) HashValue() []byte {
-	return b.items[b.i][hashKey].B
+func (b *dynamoDBReadResponseIterator) HashValue() string {
+	return aws.StringValue(b.items[b.i][hashKey].S)
 }
 
 func (b *dynamoDBReadResponseIterator) Value() []byte {

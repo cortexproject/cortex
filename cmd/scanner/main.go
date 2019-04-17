@@ -72,12 +72,16 @@ func main() {
 		week = time.Now().Unix() / secondsInWeek
 	}
 
+	schemaConfig.Load()
+
 	overrides := &validation.Overrides{}
 	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
 	checkFatal(err)
 	defer chunkStore.Stop()
 
-	tableName = "FIXME" //fmt.Sprintf("%s%d", schemaConfig.ChunkTables.Prefix, week)
+	tableTime := model.TimeFromUnix(week * secondsInWeek)
+	tableName, err = schemaConfig.ChunkTableFor(tableTime)
+	checkFatal(err)
 	fmt.Printf("table %s\n", tableName)
 
 	handlers := make([]handler, segments)
@@ -87,7 +91,6 @@ func main() {
 		callbacks[segment] = handlers[segment].handlePage
 	}
 
-	tableTime := model.TimeFromUnix(week * secondsInWeek)
 	err = chunkStore.(chunk.Store2).Scan(context.Background(), tableTime, tableTime, true, callbacks)
 	checkFatal(err)
 

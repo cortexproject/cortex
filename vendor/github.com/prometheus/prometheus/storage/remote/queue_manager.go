@@ -28,12 +28,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	pkgrelabel "github.com/prometheus/prometheus/pkg/relabel"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/relabel"
 	"github.com/prometheus/tsdb"
+	tsdbLabels "github.com/prometheus/tsdb/labels"
 )
 
 // String constants for instrumentation.
@@ -161,8 +161,8 @@ type QueueManager struct {
 	logger         log.Logger
 	flushDeadline  time.Duration
 	cfg            config.QueueConfig
-	externalLabels model.LabelSet
-	relabelConfigs []*pkgrelabel.Config
+	externalLabels labels.Labels
+	relabelConfigs []*relabel.Config
 	client         StorageClient
 	watcher        *WALWatcher
 
@@ -192,7 +192,7 @@ type QueueManager struct {
 }
 
 // NewQueueManager builds a new QueueManager.
-func NewQueueManager(logger log.Logger, walDir string, samplesIn *ewmaRate, cfg config.QueueConfig, externalLabels model.LabelSet, relabelConfigs []*pkgrelabel.Config, client StorageClient, flushDeadline time.Duration) *QueueManager {
+func NewQueueManager(logger log.Logger, walDir string, samplesIn *ewmaRate, cfg config.QueueConfig, externalLabels labels.Labels, relabelConfigs []*relabel.Config, client StorageClient, flushDeadline time.Duration) *QueueManager {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -322,33 +322,46 @@ func (t *QueueManager) Stop() {
 	defer level.Info(t.logger).Log("msg", "Remote storage stopped.")
 
 	close(t.quit)
+	t.wg.Wait()
+	// Wait for all QueueManager routines to end before stopping shards and WAL watcher. This
+	// is to ensure we don't end up executing a reshard and shards.stop() at the same time, which
+	// causes a closed channel panic.
 	t.shards.stop()
 	t.watcher.Stop()
-	t.wg.Wait()
+
+	// On shutdown, release the strings in the labels from the intern pool.
+	t.seriesMtx.Lock()
+	defer t.seriesMtx.Unlock()
+	for _, labels := range t.seriesLabels {
+		release(labels)
+	}
 }
 
 // StoreSeries keeps track of which series we know about for lookups when sending samples to remote.
 func (t *QueueManager) StoreSeries(series []tsdb.RefSeries, index int) {
 	temp := make(map[uint64][]prompb.Label, len(series))
 	for _, s := range series {
-		ls := make(model.LabelSet, len(s.Labels))
-		for _, label := range s.Labels {
-			ls[model.LabelName(label.Name)] = model.LabelValue(label.Value)
-		}
-		t.processExternalLabels(ls)
+		ls := processExternalLabels(s.Labels, t.externalLabels)
 		rl := relabel.Process(ls, t.relabelConfigs...)
 		if len(rl) == 0 {
 			t.droppedSeries[s.Ref] = struct{}{}
 			continue
 		}
-		temp[s.Ref] = labelsetToLabelsProto(rl)
+		temp[s.Ref] = labelsToLabelsProto(rl)
 	}
 
 	t.seriesMtx.Lock()
 	defer t.seriesMtx.Unlock()
 	for ref, labels := range temp {
-		t.seriesLabels[ref] = labels
 		t.seriesSegmentIndexes[ref] = index
+
+		// We should not ever be replacing a series labels in the map, but just
+		// in case we do we need to ensure we do not leak the replaced interned
+		// strings.
+		if orig, ok := t.seriesLabels[ref]; ok {
+			release(orig)
+		}
+		t.seriesLabels[ref] = labels
 	}
 }
 
@@ -363,18 +376,51 @@ func (t *QueueManager) SeriesReset(index int) {
 	// that were not also present in the checkpoint.
 	for k, v := range t.seriesSegmentIndexes {
 		if v < index {
-			delete(t.seriesLabels, k)
 			delete(t.seriesSegmentIndexes, k)
+			release(t.seriesLabels[k])
+			delete(t.seriesLabels, k)
 		}
 	}
 }
 
-func (t *QueueManager) processExternalLabels(ls model.LabelSet) {
-	for ln, lv := range t.externalLabels {
-		if _, ok := ls[ln]; !ok {
-			ls[ln] = lv
+func release(ls []prompb.Label) {
+	for _, l := range ls {
+		interner.release(l.Name)
+		interner.release(l.Value)
+	}
+}
+
+// processExternalLabels merges externalLabels into ls. If ls contains
+// a label in externalLabels, the value in ls wins.
+func processExternalLabels(ls tsdbLabels.Labels, externalLabels labels.Labels) labels.Labels {
+	i, j, result := 0, 0, make(labels.Labels, 0, len(ls)+len(externalLabels))
+	for i < len(ls) && j < len(externalLabels) {
+		if ls[i].Name < externalLabels[j].Name {
+			result = append(result, labels.Label{
+				Name:  ls[i].Name,
+				Value: ls[i].Value,
+			})
+			i++
+		} else if ls[i].Name > externalLabels[j].Name {
+			result = append(result, externalLabels[j])
+			j++
+		} else {
+			result = append(result, labels.Label{
+				Name:  ls[i].Name,
+				Value: ls[i].Value,
+			})
+			i++
+			j++
 		}
 	}
+	for ; i < len(ls); i++ {
+		result = append(result, labels.Label{
+			Name:  ls[i].Name,
+			Value: ls[i].Value,
+		})
+	}
+	result = append(result, externalLabels[j:]...)
+	return result
 }
 
 func (t *QueueManager) updateShardsLoop() {

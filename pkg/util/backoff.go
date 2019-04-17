@@ -74,7 +74,11 @@ func (b *Backoff) Wait() {
 	// Based on the "Full Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
 	// sleep = random_between(0, min(cap, base * 2 ** attempt))
 	if b.Ongoing() {
-		sleepTime := time.Duration(rand.Int63n(int64(b.duration)))
+		randTime := int64(0)
+		if b.duration != 0 {
+			randTime = rand.Int63n(int64(b.duration))
+		}
+		sleepTime := time.Duration(randTime)
 		select {
 		case <-b.ctx.Done():
 		case <-time.After(sleepTime):

@@ -7,6 +7,7 @@ import (
 )
 
 // ScanRequest is used to designate the scope of a chunk table scan
+// if Shard is set < 0, scan all shards
 type ScanRequest struct {
 	Table string
 	User  string

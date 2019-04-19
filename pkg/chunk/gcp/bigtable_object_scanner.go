@@ -70,8 +70,15 @@ func (s *scanner) Scan(ctx context.Context, req chunk.ScanRequest, out chan []ch
 }
 
 func generateBigtableScanQuery(req chunk.ScanRequest) bigtableScanQuery {
-	id := fmt.Sprintf("%v_%v_%v", req.Table, req.User, req.Shard)
-	prefix := fmt.Sprintf("%02x", req.Shard+15)
+	var id string
+	var prefix string
+	if req.Shard < 0 {
+		id = fmt.Sprintf("%v_%v_all", req.Table, req.User)
+		prefix = ""
+	} else {
+		id = fmt.Sprintf("%v_%v_%v", req.Table, req.User, req.Shard)
+		prefix = fmt.Sprintf("%02x", req.Shard+15)
+	}
 	return bigtableScanQuery{id, req.User, prefix, req.Table}
 }
 

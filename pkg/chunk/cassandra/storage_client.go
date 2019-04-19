@@ -398,23 +398,35 @@ func (s *scanner) Scan(ctx context.Context, req chunk.ScanRequest, out chan []ch
 }
 
 func generateScanQuery(req chunk.ScanRequest) scanQuery {
-	queryID := fmt.Sprintf("%v_%v_%v", req.Table, req.User, req.Shard)
-	shard := int64(req.Shard)
+	var (
+		id        string
+		tokenFrom string
+		tokenTo   string
+	)
+
+	if req.Shard < 0 {
+		id = fmt.Sprintf("%v_%v_all", req.Table, req.User)
+		tokenFrom = fmt.Sprintf("%d", getToken(0))
+		tokenTo = fmt.Sprintf("%d", getToken(240))
+	} else {
+		id = fmt.Sprintf("%v_%v_%v", req.Table, req.User, req.Shard)
+		shard := int64(req.Shard)
+		tokenFrom = fmt.Sprintf("%d", getToken(shard-1))
+		tokenTo = fmt.Sprintf("%d", getToken(shard))
+	}
 
 	var filterUserID = true
 	if req.User == "*" {
 		filterUserID = false
 	}
 
-	f := getToken(shard - 1)
-	t := getToken(shard)
 	return scanQuery{
-		id:           queryID,
+		id:           id,
 		filterUserID: filterUserID,
 		userID:       req.User,
 		tableName:    req.Table,
-		tokenFrom:    fmt.Sprintf("%d", f),
-		tokenTo:      fmt.Sprintf("%d", t),
+		tokenFrom:    tokenFrom,
+		tokenTo:      tokenTo,
 	}
 }
 

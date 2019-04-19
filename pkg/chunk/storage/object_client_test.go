@@ -74,7 +74,12 @@ func TestScanner(t *testing.T) {
 
 		tablename, err := schema.ChunkTableFor(model.Now().Add(-time.Hour))
 		require.NoError(t, err)
-		batch.Add(tablename, "userIDNew", 0, 240)
+
+		request := chunk.ScanRequest{
+			Table: tablename,
+			User:  "userIDNew",
+			Shard: -1,
+		}
 
 		_, chunks, err := testutils.CreateChunks(0, 2000)
 		require.NoError(t, err)
@@ -87,10 +92,6 @@ func TestScanner(t *testing.T) {
 
 		err = client.PutChunks(ctx, chunks)
 		require.NoError(t, err)
-
-		size, err := batch.Size(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, 2000, size)
 
 		var retrievedChunks []chunk.Chunk
 		var wg sync.WaitGroup
@@ -110,7 +111,7 @@ func TestScanner(t *testing.T) {
 			wg.Done()
 		}()
 
-		err = batch.Stream(context.Background(), out)
+		err = batch.Scan(context.Background(), request, out)
 		require.NoError(t, err)
 
 		close(out)

@@ -48,7 +48,7 @@ $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
-# Manually declared dependancies And what goes into each exe
+# Manually declared dependencies And what goes into each exe
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto

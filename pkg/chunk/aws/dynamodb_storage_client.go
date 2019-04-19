@@ -827,7 +827,7 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	return session.New(config), nil
 }
 
-// NewStreamer returns a Streamer
-func (a dynamoDBStorageClient) NewStreamer() chunk.Streamer {
+// NewScanner returns a Streamer
+func (a dynamoDBStorageClient) NewScanner() chunk.Scanner {
 	return nil
 }

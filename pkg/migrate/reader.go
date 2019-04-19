@@ -4,12 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/migrate/mapper"
-	"github.com/cortexproject/cortex/pkg/migrate/planner"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
@@ -41,11 +41,12 @@ type ReaderConfig struct {
 	Addr                string
 	BufferSize          int
 	ClientConfig        client.Config
-	PlannerConfig       planner.Config
+	PlannerConfig       chunk.PlannerConfig
 	MapperConfig        mapper.Config
 	ReaderIDPrefix      string
 	StorageClient       string
 	ForwarderNumRetries int
+	NumWorkers          int
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -58,6 +59,7 @@ func (cfg *ReaderConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Addr, "reader.forward-addr", "", "address of the chunk transfer endpoint")
 	f.StringVar(&cfg.ReaderIDPrefix, "reader.prefix", "reader_", "prefix used to identify reader when forwarding data to writer")
 	f.IntVar(&cfg.ForwarderNumRetries, "reader.num-forward-retries", 0, "number of times to try forwarding metrics before failing, infinite retries if set to less than 1")
+	f.IntVar(&cfg.NumWorkers, "reader.num-workers", 1, "number of scan batches to stream simultaneously")
 }
 
 // Reader collects and forwards chunks according to it's planner
@@ -65,32 +67,29 @@ type Reader struct {
 	cfg ReaderConfig
 	id  string // ID is the configured as the reading prefix and the shards assigned to the reader
 
-	storage      chunk.ObjectClient
-	planner      *planner.Planner
-	chunkMapper  *mapper.Mapper
-	chunkChannel chan []chunk.Chunk
+	storage     chunk.ObjectClient
+	planner     *chunk.Planner
+	chunkMapper *mapper.Mapper
 }
 
 // NewReader returns a Reader struct
 func NewReader(cfg ReaderConfig, storage chunk.ObjectClient) (*Reader, error) {
-	planner, err := planner.New(cfg.PlannerConfig)
+	planner, err := chunk.NewPlanner(cfg.PlannerConfig)
 	if err != nil {
 		return nil, err
 	}
 	id := cfg.ReaderIDPrefix + fmt.Sprintf("%d_%d", cfg.PlannerConfig.FirstShard, cfg.PlannerConfig.LastShard)
-	out := make(chan []chunk.Chunk, cfg.BufferSize)
 	chunkMapper, err := mapper.New(cfg.MapperConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Reader{
-		cfg:          cfg,
-		id:           id,
-		planner:      planner,
-		chunkMapper:  chunkMapper,
-		storage:      storage,
-		chunkChannel: out,
+		cfg:         cfg,
+		id:          id,
+		planner:     planner,
+		chunkMapper: chunkMapper,
+		storage:     storage,
 	}, nil
 }
 
@@ -101,31 +100,59 @@ func (r *Reader) TransferData(ctx context.Context) error {
 	defer sp.Finish()
 	sp.LogFields(otlog.String("id", r.id))
 
-	batch := r.storage.NewStreamer()
-	r.planner.Plan(batch)
+	scanner := r.storage.NewScanner()
+	scanRequests := r.planner.Plan()
 	readCtx, cancel := context.WithCancel(ctx)
 
+	chunkChan := make(chan []chunk.Chunk, r.cfg.BufferSize)
+	reqChan := make(chan chunk.ScanRequest)
+	errChan := make(chan error, r.cfg.NumWorkers)
+	var wg sync.WaitGroup
+
+	for i := 0; i < r.cfg.NumWorkers; i++ {
+		go func(ctx context.Context, reqChan chan chunk.ScanRequest) {
+			wg.Add(1)
+			defer wg.Done()
+			for req := range reqChan {
+				level.Info(util.Logger).Log("msg", "attempting  scan request", "table", req.Table, "user", req.User, "shard", req.Shard)
+				err := scanner.Scan(ctx, req, chunkChan)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "error streaming chunks", "err", err)
+					errChan <- fmt.Errorf("scan request failed, %v", req)
+					return
+				}
+				level.Info(util.Logger).Log("msg", "completed scan request", "table", req.Table, "user", req.User, "shard", req.Shard)
+			}
+		}(readCtx, reqChan)
+	}
+
 	go func() {
-		size, err := batch.Size(ctx)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error estimating size of batch", "err", err)
+	requestLoop:
+		for _, req := range scanRequests {
+			select {
+			case reqChan <- req:
+				continue
+			case err, _ := <-errChan:
+				level.Error(util.Logger).Log("msg", "error scanning metrics, attempting graceful shutdown", "err", err)
+				break requestLoop
+			}
 		}
-		totalChunks.WithLabelValues(r.id).Add(float64(size))
-		err = batch.Stream(readCtx, r.chunkChannel)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error streaming chunks", "err", err)
-		}
-		close(r.chunkChannel)
+
+		// Close the request channel and wait for all of the worker streams to complete
+		// then close the forward chunks channel
+		close(reqChan)
+		wg.Wait()
+		close(chunkChan)
 	}()
 
-	err := r.Forward(readCtx)
+	err := r.Forward(readCtx, chunkChan)
 	cancel()        // If the forwarding metrics errors out the reader will be canceled
 	if err != nil { // Loop to ensure streamchunks fails gracefully and returns a log of current progress
 		level.Error(util.Logger).Log("msg", "error forwarding metrics, attempting graceful shutdown", "err", err)
 		timer := time.NewTimer(time.Second * 60)
 		for {
 			select {
-			case _, ok := <-r.chunkChannel:
+			case _, ok := <-chunkChan:
 				if !ok {
 					return err
 				}
@@ -143,7 +170,7 @@ func (r *Reader) TransferData(ctx context.Context) error {
 
 // Forward reads batched chunks with the same metric from a channel and wires them
 // to a Migrate Writer using the TransferChunks service in the ingester protobuf package
-func (r Reader) Forward(ctx context.Context) error {
+func (r Reader) Forward(ctx context.Context, chunkChan chan []chunk.Chunk) error {
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: time.Second * 5,
 		MaxBackoff: time.Second * 360,
@@ -160,7 +187,7 @@ func (r Reader) Forward(ctx context.Context) error {
 		case <-ctx.Done():
 			level.Error(util.Logger).Log("msg", "shutting down forwarder")
 			return nil
-		case chunks, open := <-r.chunkChannel:
+		case chunks, open := <-chunkChan:
 			if !open {
 				return cli.Close()
 			}

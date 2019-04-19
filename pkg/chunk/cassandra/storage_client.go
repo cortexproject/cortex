@@ -320,40 +320,25 @@ func parseHash(hash string) (string, error) {
 	return parts[0], nil
 }
 
-type streamer struct {
-	queries []streamQuery
+type scanner struct {
 	session *gocql.Session
 }
 
-// NewStreamer returns a Streamer
-func (s *StorageClient) NewStreamer() chunk.Streamer {
-	return &streamer{
-		queries: []streamQuery{},
+// NewScanner returns a Streamer
+func (s *StorageClient) NewScanner() chunk.Scanner {
+	return &scanner{
 		session: s.session,
 	}
 }
 
 // TODO query errors should format with shard numbers not cassandra token values
-func (s *streamer) Stream(ctx context.Context, out chan []chunk.Chunk) error {
+func (s *scanner) Scan(ctx context.Context, req chunk.ScanRequest, out chan []chunk.Chunk) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "Stream")
 	defer sp.Finish()
 
-	for _, query := range s.queries {
-		err := s.streamQuery(ctx, query, out)
-		if err != nil {
-			return err
-		}
-		for len(out) != 0 {
-			continue
-		}
-	}
-	return nil
-}
+	query := generateScanQuery(req)
 
-func (s *streamer) streamQuery(ctx context.Context, query streamQuery, out chan []chunk.Chunk) error {
 	decodeContext := chunk.NewDecodeContext()
-	sp, ctx := ot.StartSpanFromContext(ctx, "streamQuery")
-	defer sp.Finish()
 	sp.LogFields(otlog.String("id", query.id))
 
 	var (
@@ -366,10 +351,7 @@ func (s *streamer) streamQuery(ctx context.Context, query streamQuery, out chan 
 	q = s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
 	iter := q.WithContext(ctx).Iter()
 	chunkMap := map[string][]chunk.Chunk{}
-	for len(out) > 0 { // Wait for channel to clear before querying new metrics
-		time.Sleep(1 * time.Second)
-		continue
-	}
+
 	for iter.Scan(&hash, &value) {
 		userID, err := parseHash(hash)
 		if err != nil {
@@ -415,62 +397,28 @@ func (s *streamer) streamQuery(ctx context.Context, query streamQuery, out chan 
 	return nil
 }
 
-// Add adds a query plan to a streamer
-func (s *streamer) Add(tableName, userID string, from, to int) {
-	queryID := fmt.Sprintf("%v_%v_%v_%v", tableName, userID, from, to)
+func generateScanQuery(req chunk.ScanRequest) scanQuery {
+	queryID := fmt.Sprintf("%v_%v_%v", req.Table, req.User, req.Shard)
+	shard := int64(req.Shard)
 
 	var filterUserID = true
-	if userID == "*" {
+	if req.User == "*" {
 		filterUserID = false
 	}
 
-	f := getToken(int64(from))
-	t := getToken(int64(to))
-	s.queries = append(s.queries, streamQuery{
+	f := getToken(shard - 1)
+	t := getToken(shard)
+	return scanQuery{
 		id:           queryID,
 		filterUserID: filterUserID,
-		userID:       userID,
-		tableName:    tableName,
+		userID:       req.User,
+		tableName:    req.Table,
 		tokenFrom:    fmt.Sprintf("%d", f),
 		tokenTo:      fmt.Sprintf("%d", t),
-	})
-}
-
-// Size adds a query plan to a Streamer
-func (s *streamer) Size(ctx context.Context) (int, error) {
-	n := 0
-	for _, query := range s.queries {
-		count := 0
-		var (
-			hash  string
-			value []byte
-			errs  []error
-		)
-		q := s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
-		iter := q.WithContext(ctx).Iter()
-		for iter.Scan(&hash, &value) {
-			if query.filterUserID {
-				userID, err := parseHash(hash)
-				if err != nil {
-					errs = append(errs, err)
-					continue
-				}
-				if userID != query.userID { // User ID filtering must be done client side in cassandra
-					continue
-				}
-			}
-			count++
-		}
-		err := iter.Close()
-		if err != nil {
-			return 0, fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
-		}
-		n += count
 	}
-	return n, nil
 }
 
-type streamQuery struct {
+type scanQuery struct {
 	id           string
 	filterUserID bool
 	userID       string

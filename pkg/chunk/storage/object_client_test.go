@@ -60,13 +60,13 @@ func TestChunksBasic(t *testing.T) {
 	})
 }
 
-// TestStreamer ensures Streamer clients honors the userID batch option
-func TestStreamer(t *testing.T) {
+// TestScanner ensures Streamer clients honors the userID batch option
+func TestScanner(t *testing.T) {
 	forAllFixtures(t, func(t *testing.T, _ chunk.IndexClient, client chunk.ObjectClient) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		batch := client.NewStreamer()
+		batch := client.NewScanner()
 		if batch == nil {
 			return
 		}

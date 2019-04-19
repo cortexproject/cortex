@@ -1,15 +1,20 @@
-package planner
+package chunk
 
 import (
 	"flag"
 	"fmt"
 	"strings"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-// Config is used to configure the Planner
-type Config struct {
+// ScanRequest is used to designate the scope of a chunk table scan
+type ScanRequest struct {
+	Table string
+	User  string
+	Shard int
+}
+
+// PlannerConfig is used to configure the Planner
+type PlannerConfig struct {
 	FirstShard int
 	LastShard  int
 	BatchSize  int
@@ -26,15 +31,14 @@ type Config struct {
 // partition tokens.
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.FirstShard, "plan.firstShard", 0, "fist shard in range of shards to be migrated (0-240)")
+func (cfg *PlannerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.IntVar(&cfg.FirstShard, "plan.firstShard", 1, "first shard in range of shards to be migrated (0-240)")
 	f.IntVar(&cfg.LastShard, "plan.lastShard", 240, "last shard in range of shards to be migrated (0-240)")
-	f.IntVar(&cfg.BatchSize, "plan.batchsize", 1, "number of shards to stream per batch")
 	f.StringVar(&cfg.UserIDList, "plan.users", "", "comma separated list of user ids, if empty all users will be queried")
 	f.StringVar(&cfg.Tables, "plan.tables", "", "comma separated list of tables to migrate")
 }
 
-// Planner plans the queries required for the migration
+// Planner plans the queries required for the migrations
 type Planner struct {
 	firstShard int
 	lastShard  int
@@ -43,8 +47,8 @@ type Planner struct {
 	users      []string
 }
 
-// New returns a new planner struct
-func New(cfg Config) (*Planner, error) {
+// NewPlanner returns a new planner struct
+func NewPlanner(cfg PlannerConfig) (*Planner, error) {
 	if cfg.FirstShard < 0 || cfg.FirstShard > 240 {
 		return &Planner{}, fmt.Errorf("plan.firstShard set to %v, must be in range 0-240", cfg.FirstShard)
 	}
@@ -62,23 +66,22 @@ func New(cfg Config) (*Planner, error) {
 		lastShard:  cfg.LastShard,
 		users:      userList,
 		tables:     tableList,
-		batchSize:  cfg.BatchSize,
 	}, nil
 }
 
 // Plan updates a Streamer with the correct queries for the planned migration
-func (p Planner) Plan(batch chunk.Streamer) {
+func (p Planner) Plan() []ScanRequest {
+	reqs := []ScanRequest{}
 	for _, table := range p.tables {
 		for _, user := range p.users {
-			for from := p.firstShard; from < p.lastShard; {
-				to := from + p.batchSize
-				if to > p.lastShard {
-					batch.Add(table, user, from, p.lastShard)
-				} else {
-					batch.Add(table, user, from, to)
-				}
-				from = to
+			for shard := p.firstShard; shard <= p.lastShard; shard++ {
+				reqs = append(reqs, ScanRequest{
+					Table: table,
+					User:  user,
+					Shard: shard,
+				})
 			}
 		}
 	}
+	return reqs
 }

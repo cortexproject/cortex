@@ -310,8 +310,8 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	return result, nil
 }
 
-// NewStreamer implements StorageClient
-func (m *MockStorage) NewStreamer() Streamer {
+// NewScanner implements StorageClient
+func (m *MockStorage) NewScanner() Scanner {
 	return nil
 }
 

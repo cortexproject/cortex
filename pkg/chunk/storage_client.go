@@ -21,7 +21,7 @@ type ObjectClient interface {
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
 
-	NewStreamer() Streamer
+	NewScanner() Scanner
 }
 
 // WriteBatch represents a batch of writes.
@@ -41,9 +41,7 @@ type ReadBatchIterator interface {
 	Value() []byte
 }
 
-// Streamer represents the configuration for streaming chunks
-type Streamer interface {
-	Add(table string, users string, from int, to int)
-	Stream(ctx context.Context, forwardChan chan []Chunk) error
-	Size(ctx context.Context) (int, error)
+// Scanner represents the configuration for scanning chunks
+type Scanner interface {
+	Scan(ctx context.Context, reqs ScanRequest, forwardChan chan []Chunk) error
 }

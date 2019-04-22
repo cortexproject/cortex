@@ -910,12 +910,12 @@
   revision = "a72b379d632eab4b49e4f4b2c765cfebf0a74796"
 
 [[projects]]
-  digest = "1:8e79da55d2a6a92374cc7ca5ce1a7739fe0a13ca04b6f8c806a50f1873138eff"
+  digest = "1:30bef1faf227592dcae9ced04b457efe84298d059b9a8398630d848c0f507e89"
   name = "github.com/sercand/kuberesolver"
   packages = ["."]
   pruneopts = "UT"
-  revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
-  version = "v1.0.0"
+  revision = "f0a61d5e8ca1bcc7a607d6de3dfd51467791db88"
+  version = "v2.1.0"
 
 [[projects]]
   digest = "1:d867dfa6751c8d7a435821ad3b736310c2ed68945d05b50fb9d23aee0540c8cc"
@@ -990,7 +990,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0b1e3d99a4914c79245fb7d8992db23596ed79848c078307db97a099a1899e62"
+  digest = "1:cc0ef0c583b7dcaf4168af51727f59e72b9638a76cb7e40e05c3b7b4b24cd37f"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -1010,7 +1010,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "c1808abf9c462ba088ef5c764053a316a58cde24"
+  revision = "87611edc252e21e7de58c08270384450b126b48a"
 
 [[projects]]
   digest = "1:efac30de93ca1ff38050f46dc34f1338ebc8778de488f919f79ad9e6188719d3"

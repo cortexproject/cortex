@@ -19,7 +19,7 @@ I1_ADDR=$(container_ip i1)
 wait_for "curl -s -f -m 3 $I1_ADDR/ready" "ingester ready"
 
 has_tokens_owned() {
-    curl -s -f -m 3 $1/metrics | grep -q 'cortex_ring_tokens_owned'
+    curl -s -f -m 3 $1/metrics | grep 'cortex_ring_tokens_owned' > /dev/null
 }
 DIST_ADDR=$(container_ip distributor)
 wait_for "has_tokens_owned $DIST_ADDR" "distributor to see ingester in ring"

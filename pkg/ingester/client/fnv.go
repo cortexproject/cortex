@@ -45,12 +45,12 @@ func hashAddByte(h uint64, b byte) uint64 {
 	return h
 }
 
-// HashNew32 initializies a new fnv64a hash value.
+// HashNew32 initializies a new fnv32 hash value.
 func HashNew32() uint32 {
 	return offset32
 }
 
-// HashAdd32 adds a string to a fnv64a hash value, returning the updated hash.
+// HashAdd32 adds a string to a fnv32 hash value, returning the updated hash.
 // Note this is the same algorithm as Go stdlib `sum32.Write()`
 func HashAdd32(h uint32, s string) uint32 {
 	for i := 0; i < len(s); i++ {

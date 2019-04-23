@@ -29,6 +29,7 @@ func hashNew() uint64 {
 }
 
 // hashAdd adds a string to a fnv64a hash value, returning the updated hash.
+// Note this is the same algorithm as Go stdlib `sum64a.Write()`
 func hashAdd(h uint64, s string) uint64 {
 	for i := 0; i < len(s); i++ {
 		h ^= uint64(s[i])
@@ -50,10 +51,11 @@ func HashNew32() uint32 {
 }
 
 // HashAdd32 adds a string to a fnv64a hash value, returning the updated hash.
+// Note this is the same algorithm as Go stdlib `sum32.Write()`
 func HashAdd32(h uint32, s string) uint32 {
 	for i := 0; i < len(s); i++ {
-		h ^= uint32(s[i])
 		h *= prime32
+		h ^= uint32(s[i])
 	}
 	return h
 }

@@ -1,36 +1,8 @@
 # Configs API
 
-The configs api provides API-driven multi-tenant approach to prometheus' Rule files and Alertmanager configs.
+The configs service provides an API-driven multi-tenant approach to handling various configuration files for prometheus. The service hosts an API where users can read and write Prometheus rule files, Alertmanager configuration files, and Alertmanager templates to a database.
 
-Each tenant has a single Rule file and Alertmanager Configuration. A POST operation will effectively replace the existing copy with the configs provided in the request body.
-
-Although Prometheus works with YAML files by default, these HTTP API's only accept JSON. You may convert your YAML to JSON using a tool such as [yaml2json](https://github.com/bronze1man/yaml2json).
-
-### Manage Rules
-
-`GET /api/prom/configs/rules` - Get current rule file
-
-`POST /api/prom/configs/rules` - Replace current rule file
-
-Returns and Accepts a JSON object representing a [Prometheus rule file](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules). 
-
-Example:
-
-```json
-{
-    "groups": [
-        {
-            "name": "example",
-            "rules": [
-                {
-                    "record": "job:http_inprogress_requests:sum",
-                    "expr": "sum(http_inprogress_requests) by (job)"
-                }
-            ]
-        }
-    ]
-}
-```
+Each tenant will have it's own set of rule files, Alertmanager config, and templates. A POST operation will effectively replace the existing copy with the configs provided in the request body.
 
 ### Manage Alertmanager
 
@@ -40,49 +12,68 @@ Example:
 
 `POST /api/prom/configs/alertmanager/validate` - Validate Alertmanager config
 
-Returns and Accepts a JSON object representing an [Alertmanager configuration file](https://prometheus.io/docs/alerting/configuration/#configuration-file). 
+Example Payload:
+
+```json
+{ 
+    "alertmanager_config": "<standard alertmanager.yaml config>"
+}
+```
+
+### Manage Rules
+
+`GET /api/prom/configs/rules` - Get current rule file
+
+`POST /api/prom/configs/rules` - Replace current rule file
 
 Example:
 
 ```json
 {
-    "global": {
-        "slack_api_url": "http://my.slack.com/webhook/url"
+    "rules_files": {
+        "rules.yaml": "<standard rules.yaml config>",
+        "rules2.yaml": "<standard rules.yaml config>",
     },
-    "route": {
-        "receiver": "default-receiver",
-        "group_wait": "30s",
-        "group_interval": "5m",
-        "repeat_interval": "4h",
-        "group_by": [ "cluster", "alertname" ],
-        "routes": [
-            {
-                "receiver": "database-pager",
-                "group_wait": "10s",
-                "match_re": {
-                    "service": "mysql|cassandra"
-                }
-            },
-            {
-                "receiver": "frontend-pager",
-                "group_by": [ "product", "environment" ],
-                "match": {
-                    "team": "frontend"
-                }
-            }
-        ]
+    "rule_format_version": "2",
+}
+```
+
+### Manage Templates
+
+`GET /api/prom/configs/templates` - Get current templates
+
+`POST /api/prom/configs/templates` - Replace current templates
+
+```json
+{
+    "template_files": {
+        "templates.tmpl": "<standard template file>",
+        "templates2.tmpl": "<standard template file>"
     }
 }
 ```
 
-**Note:** Template files and Email Notifications are not supported in Cortex yet.
+### Update All Files
 
+One can update all types of files together by combining the POST body. Any of the `POST /api/prom/configs/*` endpoints will update any files provided.
+
+The following content would update both the Alertmanager configuration and the Alertmanager templates:
+
+```json
+{
+    "alertmanager_config": "<new alertmanager config>",
+    "template_files": {
+        "templates.tmpl": "<new template file>",
+        "templates2.tmpl": "<standard template file>"
+    }
+}
+```
 
 ### Deactivate/Restore Configs
 
-`DELETE /api/prom/configs/deactivate` - Disable Alertmanager config & rule file
+`DELETE /api/prom/configs/deactivate` - Disable configs for a tenant
 
-`POST /api/prom/configs/restore` - Re-enable Alertmanager config & rule file
+`POST /api/prom/configs/restore` - Re-enable configs for a tenant
 
 These API endpoints will disable/enable the current Rule and Alertmanager configuration for a tenant.
 

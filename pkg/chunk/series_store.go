@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -189,6 +190,72 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time
 	chunksPerQuery.Observe(float64(len(chunks)))
 
 	return [][]Chunk{chunks}, []*Fetcher{c.store.Fetcher}, nil
+}
+
+// LabelNamesForMetricName retrieves all label names for a metric name.
+func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelNamesForMetricName")
+	defer log.Span.Finish()
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+	level.Debug(log).Log("metric", metricName)
+
+	// Fetch the series IDs from the index
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, nil)
+	if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("series-ids", len(seriesIDs))
+
+	// Lookup the series in the index to get the chunks.
+	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, seriesIDs)
+	if err != nil {
+		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
+		return nil, err
+	}
+	level.Debug(log).Log("chunk-ids", len(chunkIDs))
+
+	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
+	if err != nil {
+		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
+		return nil, err
+	}
+
+	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
+	filtered := filterChunksByTime(from, through, chunks)
+	filtered, keys := filterChunksByUniqueFingerPrint(filtered)
+	level.Debug(log).Log("Chunks post filtering", len(chunks))
+
+	chunksPerQuery.Observe(float64(len(filtered)))
+
+	// Now fetch the actual chunk data from Memcache / S3
+	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	if err != nil {
+		level.Error(log).Log("msg", "FetchChunks", "err", err)
+		return nil, err
+	}
+
+	var result []string
+	for _, c := range allChunks {
+		for _, l := range c.Metric {
+			if l.Name != model.MetricNameLabel {
+				result = append(result, string(l.Name))
+			}
+		}
+	}
+	sort.Strings(result)
+	result = uniqueStrings(result)
+	return result, nil
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {

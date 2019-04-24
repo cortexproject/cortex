@@ -79,25 +79,7 @@ func main() {
 		checkFatal(http.ListenAndServe(address, nil))
 	}()
 
-	deleteOrgs := map[int]struct{}{}
-	if deleteOrgsFile != "" {
-		content, err := ioutil.ReadFile(deleteOrgsFile)
-		checkFatal(err)
-		for _, arg := range strings.Fields(string(content)) {
-			org, err := strconv.Atoi(arg)
-			checkFatal(err)
-			deleteOrgs[org] = struct{}{}
-		}
-	}
-
-	includeOrgs := map[int]struct{}{}
-	if includeOrgsStr != "" {
-		for _, arg := range strings.Fields(includeOrgsStr) {
-			org, err := strconv.Atoi(arg)
-			checkFatal(err)
-			includeOrgs[org] = struct{}{}
-		}
-	}
+	deleteOrgs, includeOrgs := setupOrgs(deleteOrgsFile, includeOrgsStr)
 
 	secondsInWeek := int64(7 * 24 * time.Hour.Seconds())
 	if week == 0 {
@@ -145,6 +127,29 @@ func main() {
 		totals.accumulate(handlers[segment].summary)
 	}
 	totals.print(deleteOrgs)
+}
+
+func setupOrgs(deleteOrgsFile, includeOrgsStr string) (deleteOrgs, includeOrgs map[int]struct{}) {
+	deleteOrgs = map[int]struct{}{}
+	if deleteOrgsFile != "" {
+		content, err := ioutil.ReadFile(deleteOrgsFile)
+		checkFatal(err)
+		for _, arg := range strings.Fields(string(content)) {
+			org, err := strconv.Atoi(arg)
+			checkFatal(err)
+			deleteOrgs[org] = struct{}{}
+		}
+	}
+
+	includeOrgs = map[int]struct{}{}
+	if includeOrgsStr != "" {
+		for _, arg := range strings.Fields(includeOrgsStr) {
+			org, err := strconv.Atoi(arg)
+			checkFatal(err)
+			includeOrgs[org] = struct{}{}
+		}
+	}
+	return
 }
 
 /* TODO: delete v8 schema rows for all instances */

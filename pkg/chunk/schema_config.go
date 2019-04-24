@@ -211,8 +211,12 @@ func (cfg *SchemaConfig) Load() error {
 	if cfg.fileName == "" {
 		return cfg.translate()
 	}
+	return cfg.LoadFromFile(cfg.fileName)
+}
 
-	f, err := os.Open(cfg.fileName)
+// LoadFromFile loads from the specified yaml file
+func (cfg *SchemaConfig) LoadFromFile(fileName string) error {
+	f, err := os.Open(fileName)
 	if err != nil {
 		return err
 	}

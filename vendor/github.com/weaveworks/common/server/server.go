@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,25 +26,31 @@ import (
 
 // Config for a Server
 type Config struct {
-	MetricsNamespace string
-	HTTPListenPort   int
-	GRPCListenPort   int
+	MetricsNamespace string `yaml:"-"`
+	HTTPListenPort   int    `yaml:"http_listen_port"`
+	GRPCListenPort   int    `yaml:"grpc_listen_port"`
 
-	RegisterInstrumentation bool
-	ExcludeRequestInLog     bool
+	RegisterInstrumentation bool `yaml:"-"`
+	ExcludeRequestInLog     bool `yaml:"-"`
 
-	ServerGracefulShutdownTimeout time.Duration
-	HTTPServerReadTimeout         time.Duration
-	HTTPServerWriteTimeout        time.Duration
-	HTTPServerIdleTimeout         time.Duration
+	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`
+	HTTPServerReadTimeout         time.Duration `yaml:"http_server_read_timeout"`
+	HTTPServerWriteTimeout        time.Duration `yaml:"http_server_write_timeout"`
+	HTTPServerIdleTimeout         time.Duration `yaml:"http_server_idle_timeout"`
 
-	GRPCOptions          []grpc.ServerOption
-	GRPCMiddleware       []grpc.UnaryServerInterceptor
-	GRPCStreamMiddleware []grpc.StreamServerInterceptor
-	HTTPMiddleware       []middleware.Interface
+	GRPCOptions          []grpc.ServerOption            `yaml:"-"`
+	GRPCMiddleware       []grpc.UnaryServerInterceptor  `yaml:"-"`
+	GRPCStreamMiddleware []grpc.StreamServerInterceptor `yaml:"-"`
+	HTTPMiddleware       []middleware.Interface         `yaml:"-"`
 
-	LogLevel logging.Level
-	Log      logging.Interface
+	GPRCServerMaxRecvMsgSize       int  `yaml:"grpc_server_max_recv_msg_size"`
+	GRPCServerMaxSendMsgSize       int  `yaml:"grpc_server_max_send_msg_size"`
+	GPRCServerMaxConcurrentStreams uint `yaml:"grpc_server_max_concurrent_streams"`
+
+	LogLevel logging.Level     `yaml:"log_level"`
+	Log      logging.Interface `yaml:"-"`
+
+	PathPrefix string `yaml:"http_path_prefix"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -56,6 +62,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HTTPServerReadTimeout, "server.http-read-timeout", 30*time.Second, "Read timeout for HTTP server")
 	f.DurationVar(&cfg.HTTPServerWriteTimeout, "server.http-write-timeout", 30*time.Second, "Write timeout for HTTP server")
 	f.DurationVar(&cfg.HTTPServerIdleTimeout, "server.http-idle-timeout", 120*time.Second, "Idle timeout for HTTP server")
+	f.IntVar(&cfg.GPRCServerMaxRecvMsgSize, "server.grpc-max-recv-msg-size-bytes", 4*1024*1024, "Limit on the size of a gRPC message this server can receive (bytes).")
+	f.IntVar(&cfg.GRPCServerMaxSendMsgSize, "server.grpc-max-send-msg-size-bytes", 4*1024*1024, "Limit on the size of a gRPC message this server can send (bytes).")
+	f.UintVar(&cfg.GPRCServerMaxConcurrentStreams, "server.grpc-max-concurrent-streams", 100, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")
+	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
 	cfg.LogLevel.RegisterFlags(f)
 }
 
@@ -103,6 +113,8 @@ func New(cfg Config) (*Server, error) {
 		log = logging.NewLogrus(cfg.LogLevel)
 	}
 
+	log.WithField("http", httpListener.Addr()).WithField("grpc", grpcListener.Addr()).Infof("server listening on addresses")
+
 	// Setup gRPC server
 	serverLog := middleware.GRPCServerLog{
 		WithRequest: !cfg.ExcludeRequestInLog,
@@ -129,12 +141,20 @@ func New(cfg Config) (*Server, error) {
 		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
 			grpcStreamMiddleware...,
 		)),
+		grpc.MaxRecvMsgSize(cfg.GPRCServerMaxRecvMsgSize),
+		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
+		grpc.MaxConcurrentStreams(uint32(cfg.GPRCServerMaxConcurrentStreams)),
 	}
 	grpcOptions = append(grpcOptions, cfg.GRPCOptions...)
 	grpcServer := grpc.NewServer(grpcOptions...)
 
 	// Setup HTTP server
 	router := mux.NewRouter()
+	if cfg.PathPrefix != "" {
+		// Expect metrics and pprof handlers to be prefixed with server's path prefix.
+		// e.g. /loki/metrics or /loki/debug/pprof
+		router = router.PathPrefix(cfg.PathPrefix).Subrouter()
+	}
 	if cfg.RegisterInstrumentation {
 		RegisterInstrumentation(router)
 	}

@@ -1,9 +1,11 @@
 # file intended to be sourced by other shell scripts
 
+TEST_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
+
 COMMON_ARGS="-consul.hostname=consul:8500 -log.level=debug"
-STORAGE_ARGS="-chunk.storage-client=aws -dynamodb.periodic-table.from=2019-03-20 -dynamodb.chunk-table.from=2019-03-20 -dynamodb.url=dynamodb://u:p@dynamodb.cortex.:8000 -s3.url=placeholder"
+STORAGE_ARGS="-config-yaml=/tests/schema1.yaml -dynamodb.url=dynamodb://u:p@dynamodb.cortex.:8000"
 INGESTER_ARGS="$COMMON_ARGS $STORAGE_ARGS -ingester.num-tokens=4 -ingester.min-ready-duration=1s --ingester.final-sleep=0s -ingester.concurrent-flushes=5"
-RUN_ARGS="--net=cortex"
+RUN_ARGS="--net=cortex -v $TEST_DIR:/tests"
 
 # Execute command $1 repeatedly until it returns true; description in $2, optional repeat limit in $3
 wait_for() {

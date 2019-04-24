@@ -40,6 +40,7 @@ var (
 func main() {
 	var (
 		schemaConfig     chunk.SchemaConfig
+		rechunkConfig    chunk.SchemaConfig
 		storageConfig    storage.Config
 		chunkStoreConfig chunk.StoreConfig
 
@@ -52,8 +53,7 @@ func main() {
 		loglevel  string
 		address   string
 
-		rechunkTablePrefix string
-		reindexTablePrefix string
+		rechunkSchemaFile string
 	)
 
 	flagext.RegisterFlags(&storageConfig, &schemaConfig, &chunkStoreConfig)
@@ -63,8 +63,7 @@ func main() {
 	flag.StringVar(&deleteOrgsFile, "delete-orgs-file", "", "File containing IDs of orgs to delete")
 	flag.StringVar(&includeOrgsStr, "include-orgs", "", "IDs of orgs to include (space-separated)")
 	flag.StringVar(&loglevel, "log-level", "info", "Debug level: debug, info, warning, error")
-	flag.StringVar(&rechunkTablePrefix, "dynamodb.rechunk-prefix", "", "Prefix of new chunk table (blank to disable)")
-	flag.StringVar(&reindexTablePrefix, "dynamodb.reindex-prefix", "", "Prefix of new index table (blank to disable)")
+	flag.StringVar(&rechunkSchemaFile, "rechunk-yaml", "", "Yaml definition of new chunk tables (blank to disable)")
 	flag.BoolVar(&reEncodeChunks, "re-encode-chunks", false, "Enable re-encoding of chunks to save on storing zeros")
 
 	flag.Parse()
@@ -86,7 +85,8 @@ func main() {
 		week = time.Now().Unix() / secondsInWeek
 	}
 
-	schemaConfig.Load()
+	err := schemaConfig.Load()
+	checkFatal(err)
 
 	overrides := &validation.Overrides{}
 	chunkStore, err := storage.NewStore(storageConfig, chunkStoreConfig, schemaConfig, overrides)
@@ -94,12 +94,10 @@ func main() {
 	defer chunkStore.Stop()
 
 	var reindexStore chunk.Store
-	if reindexTablePrefix != "" || rechunkTablePrefix != "" {
-		reindexSchemaConfig := schemaConfig
-		//FIXME
-		//reindexSchemaConfig.ChunkTables.Prefix = rechunkTablePrefix
-		//reindexSchemaConfig.IndexTables.Prefix = reindexTablePrefix
-		reindexStore, err = storage.NewStore(storageConfig, chunkStoreConfig, reindexSchemaConfig, overrides)
+	if rechunkSchemaFile != "" {
+		err := rechunkConfig.LoadFromFile(rechunkSchemaFile)
+		checkFatal(err)
+		reindexStore, err = storage.NewStore(storageConfig, chunkStoreConfig, rechunkConfig, overrides)
 		checkFatal(err)
 	}
 
@@ -111,11 +109,11 @@ func main() {
 	handlers := make([]handler, segments)
 	callbacks := make([]func(result chunk.ReadBatch), segments)
 	for segment := 0; segment < segments; segment++ {
-		handlers[segment] = newHandler(reindexStore, rechunkTablePrefix, reindexTablePrefix, includeOrgs, deleteOrgs)
+		handlers[segment] = newHandler(reindexStore, tableName, includeOrgs, deleteOrgs)
 		callbacks[segment] = handlers[segment].handlePage
 	}
 
-	err = chunkStore.(chunk.Store2).Scan(context.Background(), tableTime, tableTime, reindexTablePrefix != "", callbacks)
+	err = chunkStore.(chunk.Store2).Scan(context.Background(), tableTime, tableTime, rechunkSchemaFile != "", callbacks)
 	checkFatal(err)
 
 	if reindexStore != nil {
@@ -189,26 +187,24 @@ func (s summary) print(deleteOrgs map[int]struct{}) {
 }
 
 type handler struct {
-	store              chunk.Store
-	tableName          string
-	pages              int
-	includeOrgs        map[int]struct{}
-	deleteOrgs         map[int]struct{}
-	reindexTablePrefix string
+	store       chunk.Store
+	tableName   string
+	pages       int
+	includeOrgs map[int]struct{}
+	deleteOrgs  map[int]struct{}
 	summary
 }
 
-func newHandler(store chunk.Store, tableName string, reindexTablePrefix string, includeOrgs map[int]struct{}, deleteOrgs map[int]struct{}) handler {
+func newHandler(store chunk.Store, tableName string, includeOrgs map[int]struct{}, deleteOrgs map[int]struct{}) handler {
 	if len(includeOrgs) == 0 {
 		includeOrgs = nil
 	}
 	return handler{
-		store:              store,
-		tableName:          tableName,
-		includeOrgs:        includeOrgs,
-		deleteOrgs:         deleteOrgs,
-		summary:            newSummary(),
-		reindexTablePrefix: reindexTablePrefix,
+		store:       store,
+		tableName:   tableName,
+		includeOrgs: includeOrgs,
+		deleteOrgs:  deleteOrgs,
+		summary:     newSummary(),
 	}
 }
 
@@ -251,13 +247,7 @@ func (h *handler) handlePage(page chunk.ReadBatch) {
 				continue
 			}
 			h.counts[org][string(ch.Metric[model.MetricNameLabel])]++
-			if h.tableName == "" { // just write index entries
-				/*err = h.store.IndexChunk(ctx, ch) FIXME
-				if err != nil {
-					level.Error(util.Logger).Log("msg", "indexing error", "err", err)
-					continue
-				}*/
-			} else {
+			{
 				if reEncodeChunks {
 					err = ch.Encode()
 					if err != nil {

@@ -56,6 +56,7 @@ pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_cl
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
+dep: protos
 dep-check: protos
 configs-integration-test: $(PROTO_GOS)
 lint: $(PROTO_GOS)
@@ -136,6 +137,9 @@ shell:
 
 configs-integration-test:
 	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
+
+dep:
+	dep ensure
 
 dep-check:
 	dep check

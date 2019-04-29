@@ -170,6 +170,10 @@ func (b *bigchunk) Size() int {
 }
 
 func (b *bigchunk) NewIterator() Iterator {
+	if len(b.chunks) == 0 {
+		return emptyIterator{}
+	}
+
 	return &bigchunkIterator{
 		bigchunk: b,
 		curr:     b.chunks[0].Iterator(),
@@ -332,3 +336,12 @@ func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
 	}
 	return first, last, iter.Err()
 }
+
+// emptyIterator has no samples.
+type emptyIterator struct{}
+
+func (emptyIterator) Scan() bool                    { return false }
+func (emptyIterator) FindAtOrAfter(model.Time) bool { return false }
+func (emptyIterator) Value() model.SamplePair       { return model.SamplePair{} }
+func (emptyIterator) Batch(size int) Batch          { return Batch{} }
+func (emptyIterator) Err() error                    { return nil }

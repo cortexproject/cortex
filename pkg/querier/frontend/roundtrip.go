@@ -89,6 +89,7 @@ func (q queryRangeRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 	if err != nil {
 		return nil, err
 	}
+	request.logToSpan(r.Context())
 
 	userid, err := user.ExtractOrgID(r.Context())
 	if err != nil {
@@ -126,6 +127,7 @@ func (q queryRangeTerminator) Do(ctx context.Context, r *QueryRangeRequest) (*AP
 		return nil, err
 	}
 
+	r.logToSpan(ctx)
 	response, err := q.next.RoundTrip(request)
 	if err != nil {
 		return nil, err

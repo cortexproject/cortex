@@ -111,14 +111,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 20*time.Minute, "Range of time to subtract from MaxChunkAge to spread out flushes")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-
-	// DEPRECATED, no-op
-	f.Duration("ingester.search-pending-for", 30*time.Second, "DEPRECATED. Time to spend searching for a pending ingester when shutting down.")
-	f.Bool("ingester.reject-old-samples", false, "DEPRECATED. Reject old samples.")
-	f.Duration("ingester.reject-old-samples.max-age", 0, "DEPRECATED. Maximum accepted sample age before rejecting.")
-	f.Int("ingester.validation.max-length-label-name", 0, "DEPRECATED. Maximum length accepted for label names.")
-	f.Int("ingester.validation.max-length-label-value", 0, "DEPRECATED. Maximum length accepted for label value. This setting also applies to the metric name.")
-	f.Int("ingester.max-label-names-per-series", 0, "DEPRECATED. Maximum number of label names per series.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x

@@ -1490,6 +1490,7 @@
     "github.com/opentracing-contrib/go-grpc",
     "github.com/opentracing-contrib/go-stdlib/nethttp",
     "github.com/opentracing/opentracing-go",
+    "github.com/opentracing/opentracing-go/ext",
     "github.com/opentracing/opentracing-go/log",
     "github.com/pkg/errors",
     "github.com/prometheus/alertmanager/api",

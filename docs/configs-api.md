@@ -98,9 +98,3 @@ will use the config with the highest number.
 These API endpoints will disable/enable the current Rule and Alertmanager configuration for a tenant.
 
 Note that setting a new config will effectively "re-enable" the Rules and Alertmanager configuration for a tenant.
-
-### Internal APIs
-
-`GET /private/api/prom/configs/rules` - Get current rule file
-
-`GET /private/api/prom/configs/alertmanager` - Get current Alertmanager config

@@ -131,7 +131,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 #### Validation Limits
 
-Limits describe all the limits for users; can be used to describe global default limits via flags, or per-user limits via yaml config.
+Limits describe all the limits for users (see [Ingester, Distributor & Querier limits](#ingester-distributor--querier-limits)); can be used to describe global default limits via flags, or per-user limits via yaml config.
 
 | Flag | Description | Default |
 | --- | --- | --- |

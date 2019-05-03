@@ -4,8 +4,7 @@
 
 - `-querier.max-concurrent`
 
-  The maximum number of top-level PromQL queries that will execute at the same time, per querier process.
-  If using the query frontend, this should be set to at least (`querier.worker-parallelism` \* number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.
+  The maximum number of top-level PromQL queries that will execute at the same time, per querier process. If using the query frontend, this should be set to at least (`querier.worker-parallelism` \* number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.
 
 - `-querier.query-parallelism`
 
@@ -31,8 +30,7 @@ The next three options only apply when the querier is used together with the Que
 
 - `-querier.worker-parallelism`
 
-  Number of simultaneous queries to process, per worker process.
-  See note on `-querier.max-concurrent`
+  Number of simultaneous queries to process, per worker process. See note on `-querier.max-concurrent`
 
 ## Querier and Ruler
 
@@ -48,8 +46,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 - `-querier.iterators`
 
-  This is similar to `-querier.batch-iterators` but less efficient.
-  If both `iterators` and `batch-iterators` are `true`, `batch-iterators` will take precedence.
+  This is similar to `-querier.batch-iterators` but less efficient. If both `iterators` and `batch-iterators` are `true`, `batch-iterators` will take precedence.
 
 - `-promql.lookback-delta`
 
@@ -89,20 +86,59 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
   **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 
-- `-distributor.extra-query-delay`
-  This is used by a component with an embedded distributor (Querier and Ruler) to control how long to wait until sending more than the minimum amount of queries needed for a successful response.
+- `-distributor.extra-query-delay` This is used by a component with an embedded distributor (Querier and Ruler) to control how long to wait until sending more than the minimum amount of queries needed for a successful response.
 
 ## Ingester
 
-- `-ingester.normalise-tokens`
+#### Ring Lifecycler Flags
 
-  Write out "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-ingester.num-tokens` | Number of tokens for each ingester. | `128` |
+| `-ingester.heartbeat-period` | Period at which to heartbeat to consul. | `5s` |
+| `-ingester.join-after` | Period to wait for a claim from another ingester; will join automatically after this. | `0s` |
+| `-ingester.min-ready-duration` | Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring. | `1m` |
+| `-ingester.claim-on-rollout` | Send chunks to PENDING ingesters on exit. | `false` |
+| `-ingester.normalise-tokens` | Store tokens in a normalised fashion to reduce allocations. | `false` |
+| `-ingester.final-sleep` | Duration to sleep for before exiting, to ensure metrics are scraped. | `30s` |
+| `-ingester.addr` | IP address to advertise in consul. | (empty string) |
+| `-ingester.port` | Port to advertise in consul (defaults to server.grpc-listen-port). | `0` |
+| `-ingester.id` | ID to register into consul. | (OS hostname) |
 
-  Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters. The new ring code can still read and write the old ring format, so is backwards compatible.
+#### General Flags
 
-- `-store.bigchunk-size-cap-bytes`
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-ingester.max-transfer-retries` | Number of times to try and transfer chunks before falling back to flushing. | `10` |
+| `-ingester.flush-period` | Period with which to attempt to flush chunks. | `1m` |
+| `-ingester.retain-period` | Period chunks will remain in memory after flushing. | `5m` |
+| `-ingester.flush-op-timeout` | Timeout for individual flush operations. | `1m` |
+| `-ingester.max-chunk-idle` | Maximum chunk idle time before flushing. | `5m` |
+| `-ingester.max-chunk-age` | How long chunks can stay in memory before they must be flushed into the underlying database. | `12h` |
+| `-ingester.chunk-age-jitter` | Range of time to subtract from MaxChunkAge to spread out flushes. | `20m` |
+| `-ingester.concurrent-flushes` | Number of concurrent goroutines flushing to the underlying time series database (DynamoDB, BigTable, etc). | `50` |
+| `-ingester.rate-update-period` | Period with which to update the per-user ingestion rates. | `15s` |
+| `-ingester.normalise-tokens` | Write out "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring. Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters. The new ring code can still read and write the old ring format, so is backwards compatible. | `15s` |
+| `-ingester.max-transfer-retries` | Number of times to try and transfer chunks before falling back to flushing. | `10` |
 
-  When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days.
+#### Chunk Flags
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-ingester.chunk-encoding` | Encoding version to use for chunks. | `DoubleDelta` |
+| `-store.fullsize-chunks` | When saving varbit chunks, pad to 1024 bytes. | `true` |
+| `-store.bigchunk-size-cap-bytes` | When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days. Set 0 for unlimited size. | `0` |
+
+#### Validation Limits
+
+Limits describe all the limits for users; can be used to describe global default limits via flags, or per-user limits via yaml config.
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-ingester.max-series-per-query` | The maximum number of series that a query can return. | `100000` |
+| `-ingester.max-samples-per-query` | The maximum number of samples that a query can return. | `1000000` |
+| `-ingester.max-series-per-user` | The maximum number of samples that a query can return. | `5000000` |
+| `-ingester.max-series-per-metric` | The maximum number of samples that a query can return. | `50000` |
 
 ## Ingester, Distributor & Querier limits.
 

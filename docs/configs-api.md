@@ -34,7 +34,7 @@ The following schema is used both when retrieving the current configs from the A
 
 `id` - should be incremented every time data is updated; Cortex will use the config with the highest number.
 
-`rule_format_version` - allows compatability for tenants with config in Prometheus V1 format. Pass "1" or "2" according to which Prometheus version you want to match.
+`rule_format_version` - allows compatibility for tenants with config in Prometheus V1 format. Pass "1" or "2" according to which Prometheus version you want to match.
 
 `config.alertmanager_config` - The contents of the alertmanager config file should be as described [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/), encoded as a single string to fit within the overall JSON payload.
 

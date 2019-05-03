@@ -128,6 +128,31 @@ The ingester query API was improved over time, but defaults to the old behaviour
 | `-ingester.chunk-encoding` | Encoding version to use for chunks. | `DoubleDelta` |
 | `-store.fullsize-chunks` | When saving varbit chunks, pad to 1024 bytes. | `true` |
 | `-store.bigchunk-size-cap-bytes` | When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days. Set 0 for unlimited size. | `0` |
+| `-bigtable.project` | Google BigTable project ID. | (empty string) |
+| `-bigtable.instance` | Google BigTable instance ID. | (empty string) |
+| `-gcs.bucketname` | Name of GCS bucket to put chunks in. | (empty string) |
+| `-gcs.chunk-buffer-size` | The size of the buffer that GCS client for each PUT request. 0 to disable buffering. | `0` |
+| `-dynamodb.url` | DynamoDB endpoint URL with escaped Key and Secret encoded. | (none) |
+| `-dynamodb.api-limit` | DynamoDB table management requests per second limit. | `2.0` |
+| `-applicationautoscaling.url` | ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded. | (none) |
+| `-dynamodb.chunk.gang.size` | Number of chunks to group together to parallelise fetches (zero to disable). | `10` |
+| `-dynamodb.chunk.get.max.parallelism` | Max number of chunk-get operations to start in parallel. | `32` |
+| `-dynamodb.min-backoff` | Minimum backoff time. | `100ms` |
+| `-dynamodb.max-backoff` | Maximum backoff time. | `50s` |
+| `-dynamodb.max-retries` | Maximum number of times to retry an operation. | `20` |
+| `-cassandra.addresses` | Comma-separated hostnames or ips of Cassandra instances. | (empty string) |
+| `-cassandra.port` | Port that Cassandra is running on. | `9042` |
+| `-cassandra.keyspace` | eyspace to use in Cassandra. | (empty string) |
+| `-cassandra.consistency` | Consistency level for Cassandra. | `QUORUM` |
+| `-cassandra.replication-factor` | Replication factor to use in Cassandra. | `1` |
+| `-cassandra.disable-initial-host-lookup` | Instruct the cassandra driver to not attempt to get host info from the system.peers table. | `false` |
+| `-cassandra.ssl` | Use SSL when connecting to cassandra instances. | `false` |
+| `-cassandra.host-verification` | Require SSL certificate validation. | `true` |
+| `-cassandra.ca-path` | Path to certificate file to verify the peer. | (empty string) |
+| `-cassandra.auth` | Enable password authentication when connecting to cassandra. | `false` |
+| `-cassandra.username` | Username to use when connecting to cassandra. | (empty string) |
+| `-cassandra.password` | Password to use when connecting to cassandra. | (empty string) |
+| `-cassandra.timeout` | Timeout when connecting to cassandra. | `600ms` |
 
 #### Validation Limits
 

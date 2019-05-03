@@ -22,7 +22,7 @@ Example Payload:
     "id": 99,
     "rule_format_version": "2",
     "config": {
-        "rules_files": { <see below> }
+        "rules_files": { <see below> },
         "alertmanager_config":"<standard alertmanager.yaml config>"
     }
 }
@@ -45,12 +45,12 @@ Example:
 {
     "id": 99,
     "config": {
-        "alertmanager_config":"<see above>"
+        "alertmanager_config":"<see above>",
         "rules_files": {
             "rules.yaml": "<standard rules.yaml config>",
             "rules2.yaml": "<standard rules.yaml config>",
         },
-    }
+    },
     "rule_format_version": "2",
 }
 ```
@@ -74,8 +74,8 @@ Prometheus version you want to match.
 {
     "id": 99,
     "config": {
-        "alertmanager_config":"<see above>"
-        "rules_files": { <see above> }
+        "alertmanager_config":"<see above>",
+        "rules_files": { <see above> },
         "template_files": {
             "templates.tmpl": "<standard template file>",
             "templates2.tmpl": "<standard template file>"

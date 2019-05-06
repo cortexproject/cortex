@@ -138,7 +138,11 @@ configs-integration-test:
 	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
 
 mod-check:
+	GO111MODULE=on go mod download
 	GO111MODULE=on go mod verify
+	GO111MODULE=on go mod tidy 
+	GO111MODULE=on go mod vendor 
+	@git diff --exit-code -- go.sum go.mod vendor/
 
 %/.migrations:
 	# Ensure a each image that requires a migration dir has one in the build context

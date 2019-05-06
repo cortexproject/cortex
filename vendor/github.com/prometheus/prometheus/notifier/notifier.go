@@ -30,6 +30,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -122,7 +123,7 @@ type Manager struct {
 // Options are the configurable parameters of a Handler.
 type Options struct {
 	QueueCapacity  int
-	ExternalLabels model.LabelSet
+	ExternalLabels labels.Labels
 	RelabelConfigs []*relabel.Config
 	// Used for sending HTTP requests to the Alertmanager.
 	Do func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error)
@@ -351,9 +352,9 @@ func (n *Manager) Send(alerts ...*Alert) {
 	for _, a := range alerts {
 		lb := labels.NewBuilder(a.Labels)
 
-		for ln, lv := range n.opts.ExternalLabels {
-			if a.Labels.Get(string(ln)) == "" {
-				lb.Set(string(ln), string(lv))
+		for _, l := range n.opts.ExternalLabels {
+			if a.Labels.Get(l.Name) == "" {
+				lb.Set(l.Name, l.Value)
 			}
 		}
 
@@ -511,7 +512,7 @@ func (n *Manager) sendOne(ctx context.Context, c *http.Client, url string, b []b
 
 	// Any HTTP status 2xx is OK.
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("bad response status %v", resp.Status)
+		return errors.Errorf("bad response status %s", resp.Status)
 	}
 	return err
 }
@@ -662,7 +663,7 @@ func alertmanagerFromGroup(tg *targetgroup.Group, cfg *config.AlertmanagerConfig
 			case "https":
 				addr = addr + ":443"
 			default:
-				return nil, nil, fmt.Errorf("invalid scheme: %q", cfg.Scheme)
+				return nil, nil, errors.Errorf("invalid scheme: %q", cfg.Scheme)
 			}
 			lb.Set(model.AddressLabel, addr)
 		}

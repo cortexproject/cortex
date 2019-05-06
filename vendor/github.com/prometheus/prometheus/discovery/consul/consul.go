@@ -25,10 +25,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
-	"github.com/mwitkow/go-conntrack"
+	conntrack "github.com/mwitkow/go-conntrack"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/util/strutil"
 )
@@ -113,9 +115,8 @@ type SDConfig struct {
 	// The list of services for which targets are discovered.
 	// Defaults to all services if empty.
 	Services []string `yaml:"services,omitempty"`
-	// An optional tag used to filter instances inside a service. A single tag is supported
-	// here to match the Consul API.
-	ServiceTag string `yaml:"tag,omitempty"`
+	// A list of tags used to filter instances inside a service. Services must contain all tags in the list.
+	ServiceTags []string `yaml:"tags,omitempty"`
 	// Desired node metadata.
 	NodeMeta map[string]string `yaml:"node_meta,omitempty"`
 
@@ -131,7 +132,7 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	if strings.TrimSpace(c.Server) == "" {
-		return fmt.Errorf("consul SD configuration requires a server address")
+		return errors.New("consul SD configuration requires a server address")
 	}
 	return nil
 }
@@ -152,7 +153,7 @@ type Discovery struct {
 	clientDatacenter string
 	tagSeparator     string
 	watchedServices  []string // Set of services which will be discovered.
-	watchedTag       string   // A tag used to filter instances of a service.
+	watchedTags      []string // Tags used to filter instances of a service.
 	watchedNodeMeta  map[string]string
 	allowStale       bool
 	refreshInterval  time.Duration
@@ -202,7 +203,7 @@ func NewDiscovery(conf *SDConfig, logger log.Logger) (*Discovery, error) {
 		client:           client,
 		tagSeparator:     conf.TagSeparator,
 		watchedServices:  conf.Services,
-		watchedTag:       conf.ServiceTag,
+		watchedTags:      conf.ServiceTags,
 		watchedNodeMeta:  conf.NodeMeta,
 		allowStale:       conf.AllowStale,
 		refreshInterval:  time.Duration(conf.RefreshInterval),
@@ -238,16 +239,20 @@ func (d *Discovery) shouldWatchFromName(name string) bool {
 // *all* services. Details in https://github.com/prometheus/prometheus/pull/3814
 func (d *Discovery) shouldWatchFromTags(tags []string) bool {
 	// If there's no fixed set of watched tags, we watch everything.
-	if d.watchedTag == "" {
+	if len(d.watchedTags) == 0 {
 		return true
 	}
 
-	for _, tag := range tags {
-		if d.watchedTag == tag {
-			return true
+tagOuter:
+	for _, wtag := range d.watchedTags {
+		for _, tag := range tags {
+			if wtag == tag {
+				continue tagOuter
+			}
 		}
+		return false
 	}
-	return false
+	return true
 }
 
 // Get the local datacenter if not specified.
@@ -267,7 +272,7 @@ func (d *Discovery) getDatacenter() error {
 
 	dc, ok := info["Config"]["Datacenter"].(string)
 	if !ok {
-		err := fmt.Errorf("invalid value '%v' for Config.Datacenter", info["Config"]["Datacenter"])
+		err := errors.Errorf("invalid value '%v' for Config.Datacenter", info["Config"]["Datacenter"])
 		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 		return err
 	}
@@ -306,7 +311,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 	}
 	d.initialize(ctx)
 
-	if len(d.watchedServices) == 0 || d.watchedTag != "" {
+	if len(d.watchedServices) == 0 || len(d.watchedTags) != 0 {
 		// We need to watch the catalog.
 		ticker := time.NewTicker(d.refreshInterval)
 
@@ -324,7 +329,6 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 				<-ticker.C
 			}
 		}
-
 	} else {
 		// We only have fully defined services.
 		for _, name := range d.watchedServices {
@@ -339,7 +343,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 // entire list of services.
 func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, lastIndex *uint64, services map[string]func()) error {
 	catalog := d.client.Catalog()
-	level.Debug(d.logger).Log("msg", "Watching services", "tag", d.watchedTag)
+	level.Debug(d.logger).Log("msg", "Watching services", "tags", d.watchedTags)
 
 	t0 := time.Now()
 	opts := &consul.QueryOptions{
@@ -403,7 +407,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 // consulService contains data belonging to the same service.
 type consulService struct {
 	name         string
-	tag          string
+	tags         []string
 	labels       model.LabelSet
 	discovery    *Discovery
 	client       *consul.Client
@@ -417,7 +421,7 @@ func (d *Discovery) watchService(ctx context.Context, ch chan<- []*targetgroup.G
 		discovery: d,
 		client:    d.client,
 		name:      name,
-		tag:       d.watchedTag,
+		tags:      d.watchedTags,
 		labels: model.LabelSet{
 			serviceLabel:    model.LabelValue(name),
 			datacenterLabel: model.LabelValue(d.clientDatacenter),
@@ -445,7 +449,7 @@ func (d *Discovery) watchService(ctx context.Context, ch chan<- []*targetgroup.G
 
 // Get updates for a service.
 func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Group, catalog *consul.Catalog, lastIndex *uint64) error {
-	level.Debug(srv.logger).Log("msg", "Watching service", "service", srv.name, "tag", srv.tag)
+	level.Debug(srv.logger).Log("msg", "Watching service", "service", srv.name, "tags", srv.tags)
 
 	t0 := time.Now()
 	opts := &consul.QueryOptions{
@@ -454,7 +458,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 		AllowStale: srv.discovery.allowStale,
 		NodeMeta:   srv.discovery.watchedNodeMeta,
 	}
-	nodes, meta, err := catalog.Service(srv.name, srv.tag, opts.WithContext(ctx))
+	nodes, meta, err := catalog.ServiceMultipleTags(srv.name, srv.tags, opts.WithContext(ctx))
 	elapsed := time.Since(t0)
 	rpcDuration.WithLabelValues("catalog", "service").Observe(elapsed.Seconds())
 
@@ -467,7 +471,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 	}
 
 	if err != nil {
-		level.Error(srv.logger).Log("msg", "Error refreshing service", "service", srv.name, "tag", srv.tag, "err", err)
+		level.Error(srv.logger).Log("msg", "Error refreshing service", "service", srv.name, "tags", srv.tags, "err", err)
 		rpcFailuresCount.Inc()
 		time.Sleep(retryInterval)
 		return err

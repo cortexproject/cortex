@@ -460,12 +460,12 @@
   revision = "e80d13ce29ede4452c43dea11e79b9bc8a15b478"
 
 [[projects]]
-  digest = "1:556f03819077d174e5491b4eeefc54a1e99d4aaf579340ddf8afeeea403311e2"
+  digest = "1:9537873f2fc92467f451178506405fae087efc624d8d92644042209a03a2bfa0"
   name = "github.com/hashicorp/consul"
   packages = ["api"]
   pruneopts = "UT"
-  revision = "5174058f0d2bda63fa5198ab96c33d9a909c58ed"
-  version = "v1.1.0"
+  revision = "ea5210a30e154f4da9a4c8e729b45b8ce7b9b92c"
+  version = "v1.4.4"
 
 [[projects]]
   branch = "master"
@@ -630,6 +630,14 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "b8bc1bf767474819792c23f32d8286a45736f1c6"
+
+[[projects]]
+  digest = "1:53bc4cd4914cd7cd52139990d5170d6dc99067ae31c56530621b18b35fc30318"
+  name = "github.com/mitchellh/mapstructure"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "3536a929edddb9a5b34bd6861dc4a9647cb459fe"
+  version = "v1.1.2"
 
 [[projects]]
   digest = "1:33422d238f147d247752996a26574ac48dcf472976eda7f5134015f06bf16563"
@@ -813,7 +821,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:eab118024df118a477db459dbfae04277e3746c0fadab76d747978dd1ec61587"
+  digest = "1:c2505350924e214125e1d24dea2b44d09ebc2a945d5cf63c84a5a4ddfc01096a"
   name = "github.com/prometheus/prometheus"
   packages = [
     "config",
@@ -828,6 +836,7 @@
     "discovery/kubernetes",
     "discovery/marathon",
     "discovery/openstack",
+    "discovery/refresh",
     "discovery/targetgroup",
     "discovery/triton",
     "discovery/zookeeper",
@@ -843,7 +852,6 @@
     "pkg/value",
     "prompb",
     "promql",
-    "relabel",
     "rules",
     "scrape",
     "storage",
@@ -858,7 +866,7 @@
     "web/api/v1",
   ]
   pruneopts = "UT"
-  revision = "59369491cfdfe8dcb325723d6d28a837887a07b9"
+  revision = "3cc5f9d880625e0bf51acb857e565c33b59c1e6a"
 
 [[projects]]
   digest = "1:7aa5ae0ef5452ce26522f16677edee5016afeaa689f77e62e6b46374463b1884"
@@ -902,12 +910,12 @@
   revision = "a72b379d632eab4b49e4f4b2c765cfebf0a74796"
 
 [[projects]]
-  digest = "1:8e79da55d2a6a92374cc7ca5ce1a7739fe0a13ca04b6f8c806a50f1873138eff"
+  digest = "1:30bef1faf227592dcae9ced04b457efe84298d059b9a8398630d848c0f507e89"
   name = "github.com/sercand/kuberesolver"
   packages = ["."]
   pruneopts = "UT"
-  revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
-  version = "v1.0.0"
+  revision = "f0a61d5e8ca1bcc7a607d6de3dfd51467791db88"
+  version = "v2.1.0"
 
 [[projects]]
   digest = "1:d867dfa6751c8d7a435821ad3b736310c2ed68945d05b50fb9d23aee0540c8cc"
@@ -982,7 +990,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0b1e3d99a4914c79245fb7d8992db23596ed79848c078307db97a099a1899e62"
+  digest = "1:cc0ef0c583b7dcaf4168af51727f59e72b9638a76cb7e40e05c3b7b4b24cd37f"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -1002,7 +1010,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "c1808abf9c462ba088ef5c764053a316a58cde24"
+  revision = "87611edc252e21e7de58c08270384450b126b48a"
 
 [[projects]]
   digest = "1:efac30de93ca1ff38050f46dc34f1338ebc8778de488f919f79ad9e6188719d3"
@@ -1145,7 +1153,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0e13ca917a2d5a8514514aa95324dd7a95df5906f9aee9c2bfa4dc0b3cb65602"
+  digest = "1:103b5e1f31ec642764c1b4832f4d91f0f5af7a38fae35bf4ce9b4373992ee532"
   name = "google.golang.org/api"
   packages = [
     "cloudresourcemanager/v1",
@@ -1165,7 +1173,7 @@
     "transport/http/internal/propagation",
   ]
   pruneopts = "UT"
-  revision = "6142e720c068c6cd71f2258e007ff1991572e1d5"
+  revision = "9e7f2a839bfefc34110ebbc321850d5a7ad1ebd4"
 
 [[projects]]
   digest = "1:3aed0ef9f09da309b563842e8535d4f4be9610cdf2b561a2f0dc38500ba5e0f2"
@@ -1482,6 +1490,7 @@
     "github.com/opentracing-contrib/go-grpc",
     "github.com/opentracing-contrib/go-stdlib/nethttp",
     "github.com/opentracing/opentracing-go",
+    "github.com/opentracing/opentracing-go/ext",
     "github.com/opentracing/opentracing-go/log",
     "github.com/pkg/errors",
     "github.com/prometheus/alertmanager/api",

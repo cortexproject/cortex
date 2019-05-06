@@ -46,7 +46,7 @@ jobs:
 
   integration:
     docker:
-    - image: cortexproject/build-image:switch-imports-f7f4e51d7
+    - image: cortexproject/build-image:master-b645241c
     - image: circleci/postgres:9.6.2-alpine
       environment:
         POSTGRES_DB: configs_test

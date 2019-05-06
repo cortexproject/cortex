@@ -29,9 +29,11 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/pkg/errors"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+
+	"github.com/prometheus/prometheus/discovery/refresh"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/util/strutil"
 )
@@ -53,26 +55,13 @@ const (
 	authMethodManagedIdentity = "ManagedIdentity"
 )
 
-var (
-	azureSDRefreshFailuresCount = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "prometheus_sd_azure_refresh_failures_total",
-			Help: "Number of Azure-SD refresh failures.",
-		})
-	azureSDRefreshDuration = prometheus.NewSummary(
-		prometheus.SummaryOpts{
-			Name: "prometheus_sd_azure_refresh_duration_seconds",
-			Help: "The duration of a Azure-SD refresh in seconds.",
-		})
-
-	// DefaultSDConfig is the default Azure SD configuration.
-	DefaultSDConfig = SDConfig{
-		Port:                 80,
-		RefreshInterval:      model.Duration(5 * time.Minute),
-		Environment:          azure.PublicCloud.Name,
-		AuthenticationMethod: authMethodOAuth,
-	}
-)
+// DefaultSDConfig is the default Azure SD configuration.
+var DefaultSDConfig = SDConfig{
+	Port:                 80,
+	RefreshInterval:      model.Duration(5 * time.Minute),
+	Environment:          azure.PublicCloud.Name,
+	AuthenticationMethod: authMethodOAuth,
+}
 
 // SDConfig is the configuration for Azure based service discovery.
 type SDConfig struct {
@@ -88,7 +77,7 @@ type SDConfig struct {
 
 func validateAuthParam(param, name string) error {
 	if len(param) == 0 {
-		return fmt.Errorf("azure SD configuration requires a %s", name)
+		return errors.Errorf("azure SD configuration requires a %s", name)
 	}
 	return nil
 }
@@ -119,24 +108,17 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	if c.AuthenticationMethod != authMethodOAuth && c.AuthenticationMethod != authMethodManagedIdentity {
-		return fmt.Errorf("unknown authentication_type %q. Supported types are %q or %q", c.AuthenticationMethod, authMethodOAuth, authMethodManagedIdentity)
+		return errors.Errorf("unknown authentication_type %q. Supported types are %q or %q", c.AuthenticationMethod, authMethodOAuth, authMethodManagedIdentity)
 	}
 
 	return nil
 }
 
-func init() {
-	prometheus.MustRegister(azureSDRefreshDuration)
-	prometheus.MustRegister(azureSDRefreshFailuresCount)
-}
-
-// Discovery periodically performs Azure-SD requests. It implements
-// the Discoverer interface.
 type Discovery struct {
-	cfg      *SDConfig
-	interval time.Duration
-	port     int
-	logger   log.Logger
+	*refresh.Discovery
+	logger log.Logger
+	cfg    *SDConfig
+	port   int
 }
 
 // NewDiscovery returns a new AzureDiscovery which periodically refreshes its targets.
@@ -144,42 +126,18 @@ func NewDiscovery(cfg *SDConfig, logger log.Logger) *Discovery {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
-	return &Discovery{
-		cfg:      cfg,
-		interval: time.Duration(cfg.RefreshInterval),
-		port:     cfg.Port,
-		logger:   logger,
+	d := &Discovery{
+		cfg:    cfg,
+		port:   cfg.Port,
+		logger: logger,
 	}
-}
-
-// Run implements the Discoverer interface.
-func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
-	ticker := time.NewTicker(d.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		tg, err := d.refresh(ctx)
-		if err != nil {
-			level.Error(d.logger).Log("msg", "Unable to refresh during Azure discovery", "err", err)
-		} else {
-			select {
-			case <-ctx.Done():
-			case ch <- []*targetgroup.Group{tg}:
-			}
-		}
-
-		select {
-		case <-ticker.C:
-		case <-ctx.Done():
-			return
-		}
-	}
+	d.Discovery = refresh.NewDiscovery(
+		logger,
+		"azure",
+		time.Duration(cfg.RefreshInterval),
+		d.refresh,
+	)
+	return d
 }
 
 // azureClient represents multiple Azure Resource Manager providers.
@@ -252,14 +210,14 @@ type azureResource struct {
 
 // virtualMachine represents an Azure virtual machine (which can also be created by a VMSS)
 type virtualMachine struct {
-	ID             string
-	Name           string
-	Type           string
-	Location       string
-	OsType         string
-	ScaleSet       string
-	Tags           map[string]*string
-	NetworkProfile compute.NetworkProfile
+	ID                string
+	Name              string
+	Type              string
+	Location          string
+	OsType            string
+	ScaleSet          string
+	Tags              map[string]*string
+	NetworkInterfaces []string
 }
 
 // Create a new azureResource object from an ID string.
@@ -270,7 +228,7 @@ func newAzureResourceFromID(id string, logger log.Logger) (azureResource, error)
 	// /subscriptions/SUBSCRIPTION_ID/resourceGroups/RESOURCE_GROUP/providers/PROVIDER/TYPE/NAME/TYPE/NAME
 	s := strings.Split(id, "/")
 	if len(s) != 9 && len(s) != 11 {
-		err := fmt.Errorf("invalid ID '%s'. Refusing to create azureResource", id)
+		err := errors.Errorf("invalid ID '%s'. Refusing to create azureResource", id)
 		level.Error(logger).Log("err", err)
 		return azureResource{}, err
 	}
@@ -281,25 +239,17 @@ func newAzureResourceFromID(id string, logger log.Logger) (azureResource, error)
 	}, nil
 }
 
-func (d *Discovery) refresh(ctx context.Context) (tg *targetgroup.Group, err error) {
+func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	defer level.Debug(d.logger).Log("msg", "Azure discovery completed")
 
-	t0 := time.Now()
-	defer func() {
-		azureSDRefreshDuration.Observe(time.Since(t0).Seconds())
-		if err != nil {
-			azureSDRefreshFailuresCount.Inc()
-		}
-	}()
-	tg = &targetgroup.Group{}
 	client, err := createAzureClient(*d.cfg)
 	if err != nil {
-		return nil, fmt.Errorf("could not create Azure client: %s", err)
+		return nil, errors.Wrap(err, "could not create Azure client")
 	}
 
 	machines, err := client.getVMs(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("could not get virtual machines: %s", err)
+		return nil, errors.Wrap(err, "could not get virtual machines")
 	}
 
 	level.Debug(d.logger).Log("msg", "Found virtual machines during Azure discovery.", "count", len(machines))
@@ -307,13 +257,13 @@ func (d *Discovery) refresh(ctx context.Context) (tg *targetgroup.Group, err err
 	// Load the vms managed by scale sets.
 	scaleSets, err := client.getScaleSets(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("could not get virtual machine scale sets: %s", err)
+		return nil, errors.Wrap(err, "could not get virtual machine scale sets")
 	}
 
 	for _, scaleSet := range scaleSets {
 		scaleSetVms, err := client.getScaleSetVMs(ctx, scaleSet)
 		if err != nil {
-			return nil, fmt.Errorf("could not get virtual machine scale set vms: %s", err)
+			return nil, errors.Wrap(err, "could not get virtual machine scale set vms")
 		}
 		machines = append(machines, scaleSetVms...)
 	}
@@ -359,10 +309,11 @@ func (d *Discovery) refresh(ctx context.Context) (tg *targetgroup.Group, err err
 			}
 
 			// Get the IP address information via separate call to the network provider.
-			for _, nic := range *vm.NetworkProfile.NetworkInterfaces {
-				networkInterface, err := client.getNetworkInterfaceByID(ctx, *nic.ID)
+			for _, nicID := range vm.NetworkInterfaces {
+				networkInterface, err := client.getNetworkInterfaceByID(ctx, nicID)
+
 				if err != nil {
-					level.Error(d.logger).Log("msg", "Unable to get network interface", "name", *nic.ID, "err", err)
+					level.Error(d.logger).Log("msg", "Unable to get network interface", "name", nicID, "err", err)
 					ch <- target{labelSet: nil, err: err}
 					// Get out of this routine because we cannot continue without a network interface.
 					return
@@ -392,7 +343,7 @@ func (d *Discovery) refresh(ctx context.Context) (tg *targetgroup.Group, err err
 						}
 						// If we made it here, we don't have a private IP which should be impossible.
 						// Return an empty target and error to ensure an all or nothing situation.
-						err = fmt.Errorf("unable to find a private IP for VM %s", vm.Name)
+						err = errors.Errorf("unable to find a private IP for VM %s", vm.Name)
 						ch <- target{labelSet: nil, err: err}
 						return
 					}
@@ -404,38 +355,32 @@ func (d *Discovery) refresh(ctx context.Context) (tg *targetgroup.Group, err err
 	wg.Wait()
 	close(ch)
 
+	var tg targetgroup.Group
 	for tgt := range ch {
 		if tgt.err != nil {
-			return nil, fmt.Errorf("unable to complete Azure service discovery: %s", err)
+			return nil, errors.Wrap(err, "unable to complete Azure service discovery")
 		}
 		if tgt.labelSet != nil {
 			tg.Targets = append(tg.Targets, tgt.labelSet)
 		}
 	}
 
-	return tg, nil
+	return []*targetgroup.Group{&tg}, nil
 }
 
 func (client *azureClient) getVMs(ctx context.Context) ([]virtualMachine, error) {
 	var vms []virtualMachine
 	result, err := client.vm.ListAll(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("could not list virtual machines: %s", err)
+		return nil, errors.Wrap(err, "could not list virtual machines")
 	}
-
-	for _, vm := range result.Values() {
-		vms = append(vms, mapFromVM(vm))
-	}
-
-	// If we still have results, keep going until we have no more.
 	for result.NotDone() {
-		err = result.NextWithContext(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("could not list virtual machines: %s", err)
-		}
-
 		for _, vm := range result.Values() {
 			vms = append(vms, mapFromVM(vm))
+		}
+		err = result.NextWithContext(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not list virtual machines")
 		}
 	}
 
@@ -446,16 +391,14 @@ func (client *azureClient) getScaleSets(ctx context.Context) ([]compute.VirtualM
 	var scaleSets []compute.VirtualMachineScaleSet
 	result, err := client.vmss.ListAll(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("could not list virtual machine scale sets: %s", err)
+		return nil, errors.Wrap(err, "could not list virtual machine scale sets")
 	}
-	scaleSets = append(scaleSets, result.Values()...)
-
 	for result.NotDone() {
+		scaleSets = append(scaleSets, result.Values()...)
 		err = result.NextWithContext(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("could not list virtual machine scale sets: %s", err)
+			return nil, errors.Wrap(err, "could not list virtual machine scale sets")
 		}
-		scaleSets = append(scaleSets, result.Values()...)
 	}
 
 	return scaleSets, nil
@@ -467,26 +410,20 @@ func (client *azureClient) getScaleSetVMs(ctx context.Context, scaleSet compute.
 	r, err := newAzureResourceFromID(*scaleSet.ID, nil)
 
 	if err != nil {
-		return nil, fmt.Errorf("could not parse scale set ID: %s", err)
+		return nil, errors.Wrap(err, "could not parse scale set ID")
 	}
 
 	result, err := client.vmssvm.List(ctx, r.ResourceGroup, *(scaleSet.Name), "", "", "")
 	if err != nil {
-		return nil, fmt.Errorf("could not list virtual machine scale set vms: %s", err)
+		return nil, errors.Wrap(err, "could not list virtual machine scale set vms")
 	}
-
-	for _, vm := range result.Values() {
-		vms = append(vms, mapFromVMScaleSetVM(vm, *scaleSet.Name))
-	}
-
 	for result.NotDone() {
-		err = result.NextWithContext(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("could not list virtual machine scale set vms: %s", err)
-		}
-
 		for _, vm := range result.Values() {
 			vms = append(vms, mapFromVMScaleSetVM(vm, *scaleSet.Name))
+		}
+		err = result.NextWithContext(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not list virtual machine scale set vms")
 		}
 	}
 
@@ -496,40 +433,54 @@ func (client *azureClient) getScaleSetVMs(ctx context.Context, scaleSet compute.
 func mapFromVM(vm compute.VirtualMachine) virtualMachine {
 	osType := string(vm.StorageProfile.OsDisk.OsType)
 	tags := map[string]*string{}
+	networkInterfaces := []string{}
 
 	if vm.Tags != nil {
 		tags = vm.Tags
 	}
 
+	if vm.NetworkProfile != nil {
+		for _, vmNIC := range *(vm.NetworkProfile.NetworkInterfaces) {
+			networkInterfaces = append(networkInterfaces, *vmNIC.ID)
+		}
+	}
+
 	return virtualMachine{
-		ID:             *(vm.ID),
-		Name:           *(vm.Name),
-		Type:           *(vm.Type),
-		Location:       *(vm.Location),
-		OsType:         osType,
-		ScaleSet:       "",
-		Tags:           tags,
-		NetworkProfile: *(vm.NetworkProfile),
+		ID:                *(vm.ID),
+		Name:              *(vm.Name),
+		Type:              *(vm.Type),
+		Location:          *(vm.Location),
+		OsType:            osType,
+		ScaleSet:          "",
+		Tags:              tags,
+		NetworkInterfaces: networkInterfaces,
 	}
 }
 
 func mapFromVMScaleSetVM(vm compute.VirtualMachineScaleSetVM, scaleSetName string) virtualMachine {
 	osType := string(vm.StorageProfile.OsDisk.OsType)
 	tags := map[string]*string{}
+	networkInterfaces := []string{}
 
 	if vm.Tags != nil {
 		tags = vm.Tags
 	}
 
+	if vm.NetworkProfile != nil {
+		for _, vmNIC := range *(vm.NetworkProfile.NetworkInterfaces) {
+			networkInterfaces = append(networkInterfaces, *vmNIC.ID)
+		}
+	}
+
 	return virtualMachine{
-		ID:             *(vm.ID),
-		Name:           *(vm.Name),
-		Type:           *(vm.Type),
-		Location:       *(vm.Location),
-		OsType:         osType,
-		ScaleSet:       scaleSetName,
-		Tags:           tags,
-		NetworkProfile: *(vm.NetworkProfile),
+		ID:                *(vm.ID),
+		Name:              *(vm.Name),
+		Type:              *(vm.Type),
+		Location:          *(vm.Location),
+		OsType:            osType,
+		ScaleSet:          scaleSetName,
+		Tags:              tags,
+		NetworkInterfaces: networkInterfaces,
 	}
 }
 

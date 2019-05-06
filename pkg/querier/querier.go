@@ -27,6 +27,11 @@ type Config struct {
 	MaxSamples               int
 	IngesterMaxQueryLookback time.Duration
 
+	// The default evaluation interval for the promql engine.
+	// Needs to be configured for subqueries to work as it is the default
+	// step if not specified.
+	DefaultEvaluationInterval time.Duration
+
 	// For testing, to prevent re-registration of metrics in the promql engine.
 	metricsRegisterer prometheus.Registerer
 }
@@ -43,6 +48,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", false, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.IngesterMaxQueryLookback, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	cfg.metricsRegisterer = prometheus.DefaultRegisterer
 }
 
@@ -79,6 +85,7 @@ func New(cfg Config, distributor Distributor, chunkStore ChunkStore) (storage.Qu
 		return newLazyQuerier(querier), nil
 	})
 
+	promql.SetDefaultEvaluationInterval(cfg.DefaultEvaluationInterval)
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:        util.Logger,
 		Reg:           cfg.metricsRegisterer,

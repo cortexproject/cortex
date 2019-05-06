@@ -60,7 +60,7 @@ func (m *Operation) Reset()         { *m = Operation{} }
 func (m *Operation) String() string { return proto.CompactTextString(m) }
 func (*Operation) ProtoMessage()    {}
 func (*Operation) Descriptor() ([]byte, []int) {
-	return fileDescriptor_operations_6e3ea16d34200c2d, []int{0}
+	return fileDescriptor_operations_e03d010aa0ab3f7f, []int{0}
 }
 func (m *Operation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Operation.Unmarshal(m, b)
@@ -212,7 +212,8 @@ func _Operation_OneofSizer(msg proto.Message) (n int) {
 	return n
 }
 
-// The request message for [Operations.GetOperation][google.longrunning.Operations.GetOperation].
+// The request message for
+// [Operations.GetOperation][google.longrunning.Operations.GetOperation].
 type GetOperationRequest struct {
 	// The name of the operation resource.
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -225,7 +226,7 @@ func (m *GetOperationRequest) Reset()         { *m = GetOperationRequest{} }
 func (m *GetOperationRequest) String() string { return proto.CompactTextString(m) }
 func (*GetOperationRequest) ProtoMessage()    {}
 func (*GetOperationRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_operations_6e3ea16d34200c2d, []int{1}
+	return fileDescriptor_operations_e03d010aa0ab3f7f, []int{1}
 }
 func (m *GetOperationRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetOperationRequest.Unmarshal(m, b)
@@ -252,7 +253,8 @@ func (m *GetOperationRequest) GetName() string {
 	return ""
 }
 
-// The request message for [Operations.ListOperations][google.longrunning.Operations.ListOperations].
+// The request message for
+// [Operations.ListOperations][google.longrunning.Operations.ListOperations].
 type ListOperationsRequest struct {
 	// The name of the operation collection.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
@@ -271,7 +273,7 @@ func (m *ListOperationsRequest) Reset()         { *m = ListOperationsRequest{} }
 func (m *ListOperationsRequest) String() string { return proto.CompactTextString(m) }
 func (*ListOperationsRequest) ProtoMessage()    {}
 func (*ListOperationsRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_operations_6e3ea16d34200c2d, []int{2}
+	return fileDescriptor_operations_e03d010aa0ab3f7f, []int{2}
 }
 func (m *ListOperationsRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ListOperationsRequest.Unmarshal(m, b)
@@ -319,7 +321,8 @@ func (m *ListOperationsRequest) GetPageToken() string {
 	return ""
 }
 
-// The response message for [Operations.ListOperations][google.longrunning.Operations.ListOperations].
+// The response message for
+// [Operations.ListOperations][google.longrunning.Operations.ListOperations].
 type ListOperationsResponse struct {
 	// A list of operations that matches the specified filter in the request.
 	Operations []*Operation `protobuf:"bytes,1,rep,name=operations,proto3" json:"operations,omitempty"`
@@ -334,7 +337,7 @@ func (m *ListOperationsResponse) Reset()         { *m = ListOperationsResponse{}
 func (m *ListOperationsResponse) String() string { return proto.CompactTextString(m) }
 func (*ListOperationsResponse) ProtoMessage()    {}
 func (*ListOperationsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_operations_6e3ea16d34200c2d, []int{3}
+	return fileDescriptor_operations_e03d010aa0ab3f7f, []int{3}
 }
 func (m *ListOperationsResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ListOperationsResponse.Unmarshal(m, b)
@@ -368,7 +371,8 @@ func (m *ListOperationsResponse) GetNextPageToken() string {
 	return ""
 }
 
-// The request message for [Operations.CancelOperation][google.longrunning.Operations.CancelOperation].
+// The request message for
+// [Operations.CancelOperation][google.longrunning.Operations.CancelOperation].
 type CancelOperationRequest struct {
 	// The name of the operation resource to be cancelled.
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -381,7 +385,7 @@ func (m *CancelOperationRequest) Reset()         { *m = CancelOperationRequest{}
 func (m *CancelOperationRequest) String() string { return proto.CompactTextString(m) }
 func (*CancelOperationRequest) ProtoMessage()    {}
 func (*CancelOperationRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_operations_6e3ea16d34200c2d, []int{4}
+	return fileDescriptor_operations_e03d010aa0ab3f7f, []int{4}
 }
 func (m *CancelOperationRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CancelOperationRequest.Unmarshal(m, b)
@@ -408,7 +412,8 @@ func (m *CancelOperationRequest) GetName() string {
 	return ""
 }
 
-// The request message for [Operations.DeleteOperation][google.longrunning.Operations.DeleteOperation].
+// The request message for
+// [Operations.DeleteOperation][google.longrunning.Operations.DeleteOperation].
 type DeleteOperationRequest struct {
 	// The name of the operation resource to be deleted.
 	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -421,7 +426,7 @@ func (m *DeleteOperationRequest) Reset()         { *m = DeleteOperationRequest{}
 func (m *DeleteOperationRequest) String() string { return proto.CompactTextString(m) }
 func (*DeleteOperationRequest) ProtoMessage()    {}
 func (*DeleteOperationRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_operations_6e3ea16d34200c2d, []int{5}
+	return fileDescriptor_operations_e03d010aa0ab3f7f, []int{5}
 }
 func (m *DeleteOperationRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_DeleteOperationRequest.Unmarshal(m, b)
@@ -492,8 +497,9 @@ type OperationsClient interface {
 	// other methods to check whether the cancellation succeeded or whether the
 	// operation completed despite cancellation. On successful cancellation,
 	// the operation is not deleted; instead, it becomes an operation with
-	// an [Operation.error][google.longrunning.Operation.error] value with a [google.rpc.Status.code][google.rpc.Status.code] of 1,
-	// corresponding to `Code.CANCELLED`.
+	// an [Operation.error][google.longrunning.Operation.error] value with a
+	// [google.rpc.Status.code][google.rpc.Status.code] of 1, corresponding to
+	// `Code.CANCELLED`.
 	CancelOperation(ctx context.Context, in *CancelOperationRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 }
 
@@ -566,8 +572,9 @@ type OperationsServer interface {
 	// other methods to check whether the cancellation succeeded or whether the
 	// operation completed despite cancellation. On successful cancellation,
 	// the operation is not deleted; instead, it becomes an operation with
-	// an [Operation.error][google.longrunning.Operation.error] value with a [google.rpc.Status.code][google.rpc.Status.code] of 1,
-	// corresponding to `Code.CANCELLED`.
+	// an [Operation.error][google.longrunning.Operation.error] value with a
+	// [google.rpc.Status.code][google.rpc.Status.code] of 1, corresponding to
+	// `Code.CANCELLED`.
 	CancelOperation(context.Context, *CancelOperationRequest) (*empty.Empty, error)
 }
 
@@ -673,10 +680,10 @@ var _Operations_serviceDesc = grpc.ServiceDesc{
 }
 
 func init() {
-	proto.RegisterFile("google/longrunning/operations.proto", fileDescriptor_operations_6e3ea16d34200c2d)
+	proto.RegisterFile("google/longrunning/operations.proto", fileDescriptor_operations_e03d010aa0ab3f7f)
 }
 
-var fileDescriptor_operations_6e3ea16d34200c2d = []byte{
+var fileDescriptor_operations_e03d010aa0ab3f7f = []byte{
 	// 597 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0xc1, 0x6e, 0xd3, 0x4c,
 	0x10, 0xae, 0xd3, 0xb4, 0x4a, 0xa6, 0xff, 0x4f, 0xa4, 0x85, 0xba, 0xc6, 0x25, 0x22, 0x32, 0x08,

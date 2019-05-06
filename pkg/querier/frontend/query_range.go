@@ -16,6 +16,7 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
 	client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -89,6 +90,15 @@ func (q QueryRangeRequest) toHTTPRequest(ctx context.Context) (*http.Request, er
 	}
 
 	return req.WithContext(ctx), nil
+}
+
+func (q QueryRangeRequest) logToSpan(ctx context.Context) {
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		span.LogFields(otlog.String("query", q.Query),
+			otlog.String("start", timestamp.Time(q.Start).String()),
+			otlog.String("end", timestamp.Time(q.End).String()),
+			otlog.Int64("step (ms)", q.Step))
+	}
 }
 
 // ParseTime parses the string into an int64, milliseconds since epoch.

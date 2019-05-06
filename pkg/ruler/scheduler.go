@@ -245,29 +245,29 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 	// if deleted remove from map, otherwise - update map
 	if config.IsDeleted() {
 		delete(s.cfgs, userID)
-	} else {
-		s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
+		s.Unlock()
+		return
 	}
+	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
 	s.Unlock()
-	if !config.IsDeleted() {
-		evalTime := s.computeNextEvalTime(hasher, now, userID)
-		workItems := []workItem{}
-		for group, rules := range rulesByGroup {
-			level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", group, "num_rules", len(rules))
-			g, err := s.groupFn(userID, group, rules)
-			if err != nil {
-				// XXX: similarly to above if a user has a working configuration and
-				// for some reason we cannot create a group for the new one we'll use
-				// the last known working configuration
-				level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", group, "err", err)
-				return
-			}
-			workItems = append(workItems, workItem{userID, group, g, evalTime, generation})
-		}
 
-		for _, i := range workItems {
-			s.addWorkItem(i)
+	evalTime := s.computeNextEvalTime(hasher, now, userID)
+	workItems := []workItem{}
+	for group, rules := range rulesByGroup {
+		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", group, "num_rules", len(rules))
+		g, err := s.groupFn(userID, group, rules)
+		if err != nil {
+			// XXX: similarly to above if a user has a working configuration and
+			// for some reason we cannot create a group for the new one we'll use
+			// the last known working configuration
+			level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", group, "err", err)
+			return
 		}
+		workItems = append(workItems, workItem{userID, group, g, evalTime, generation})
+	}
+
+	for _, i := range workItems {
+		s.addWorkItem(i)
 	}
 }
 

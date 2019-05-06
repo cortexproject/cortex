@@ -3,7 +3,7 @@ module github.com/cortexproject/cortex
 go 1.12
 
 require (
-	cloud.google.com/go v0.28.0
+	cloud.google.com/go v0.35.0
 	github.com/Azure/azure-sdk-for-go v26.3.0+incompatible // indirect
 	github.com/Azure/go-autorest v11.5.1+incompatible // indirect
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
@@ -28,7 +28,6 @@ require (
 	github.com/golang/protobuf v1.2.0
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
 	github.com/google/gofuzz v0.0.0-20161122191042-44d81051d367 // indirect
-	github.com/google/martian v2.1.0+incompatible // indirect
 	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/gophercloud/gophercloud v0.0.0-20190307220656-fe1ba5ce12dd // indirect
 	github.com/gorilla/context v0.0.0-20160226214623-1ea25387ff6f // indirect
@@ -78,11 +77,10 @@ require (
 	go.etcd.io/bbolt v1.3.2 // indirect
 	go.uber.org/atomic v1.3.2 // indirect
 	golang.org/x/net v0.0.0-20181220203305-927f97764cc3
-	golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890 // indirect
 	golang.org/x/sys v0.0.0-20190209173611-3b5209105503
-	golang.org/x/time v0.0.0-20170424234030-8be79e1e0910
+	golang.org/x/time v0.0.0-20181108054448-85acf8d2951c
 	golang.org/x/tools v0.0.0-20190114222345-bf090417da8b
-	google.golang.org/api v0.0.0-20181203233308-6142e720c068
+	google.golang.org/api v0.1.0
 	google.golang.org/grpc v1.19.0
 	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect

@@ -87,8 +87,8 @@ If that doesn't work, your Minikube might be using a different ip address. Check
 
 ### Dependency management
 
-We uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages. This requires a working Go e
-nvironment with version 1.11 or greater, git and [bzr](http://wiki.bazaar.canonical.com/Download) installed.
+We uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
+This requires a working Go environment with version 1.11 or greater, git and [bzr](http://wiki.bazaar.canonical.com/Download) installed.
 
 To add or update a new dependency, use the `go get` command:
 

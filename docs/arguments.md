@@ -214,7 +214,7 @@ If you want to use Google Cloud Productssuch as GCS and/or BigTable these flags 
 
 #### Chunk Schema Flags
 
-In the course of time while developing Cortex we figured out there are better ways (more efficient, resilient against failures, etc.) to store data in the underyling Database. By then you had billings of records on disk with the one of the older schemas. Therefore we introduced the "from" tag which indicates the timeframe in which each schema has been used. You can move to a new schema by switching to it at midnight UTC and updating your configuration accordingly.
+In the course of time while developing Cortex we figured out there are better ways (more efficient, resilient against failures, etc.) to store data in the underlying Database. By then you had billings of records on disk with the one of the older schemas. Therefore we introduced the "from" tag which indicates the timeframe in which each schema has been used. You can move to a new schema by switching to it at midnight UTC and updating your configuration accordingly.
 
 | Flag | Description | Default |
 | --- | --- | --- |

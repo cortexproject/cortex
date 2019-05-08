@@ -59,7 +59,7 @@ func (i ingesterQueryable) Get(ctx context.Context, from, through model.Time, ma
 			continue
 		}
 
-		metric := client.FromLabelAdaptersToMetric(result.Labels)
+		metric := client.FromLabelAdaptersToLabels(result.Labels)
 		cs, err := chunkcompat.FromChunks(userID, metric, result.Chunks)
 		if err != nil {
 			return nil, promql.ErrStorage{Err: err}

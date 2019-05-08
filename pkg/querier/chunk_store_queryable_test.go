@@ -50,8 +50,8 @@ func makeMockChunkStore(t require.TestingT, numChunks int, encoding promchunk.En
 }
 
 func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, encoding promchunk.Encoding) chunk.Chunk {
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
+	metric := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
 	}
 	pc, err := promchunk.NewForEncoding(encoding)
 	require.NoError(t, err)

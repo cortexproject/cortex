@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
 )
@@ -277,7 +277,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	sp.SetTag("organization", userID)
 
 	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
-	err := i.flushChunks(ctx, fp, client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapaters(series.metric)), chunks)
+	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
 		return err
 	}
@@ -314,7 +314,7 @@ func (i *Ingester) removeFlushedChunks(userState *userState, fp model.Fingerprin
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*desc) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric labels.Labels, chunkDescs []*desc) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err

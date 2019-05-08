@@ -252,6 +252,18 @@ func FastFingerprint(ls []LabelAdapter) model.Fingerprint {
 	return model.Fingerprint(result)
 }
 
+// Fingerprint runs the same algorithm as Prometheus labelSetToFingerprint()
+func Fingerprint(labels labels.Labels) model.Fingerprint {
+	sum := hashNew()
+	for _, label := range labels {
+		sum = hashAddString(sum, label.Name)
+		sum = hashAddByte(sum, model.SeparatorByte)
+		sum = hashAddString(sum, label.Value)
+		sum = hashAddByte(sum, model.SeparatorByte)
+	}
+	return model.Fingerprint(sum)
+}
+
 // MarshalJSON implements json.Marshaler.
 func (s Sample) MarshalJSON() ([]byte, error) {
 	t, err := json.Marshal(model.Time(s.TimestampMs))

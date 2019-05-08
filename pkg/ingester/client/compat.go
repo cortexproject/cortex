@@ -12,6 +12,8 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -209,11 +211,7 @@ func FromLabelsToLabelAdapaters(ls labels.Labels) []LabelAdapter {
 // FromLabelAdaptersToMetric converts []LabelAdapter to a model.Metric.
 // Don't do this on any performance sensitive paths.
 func FromLabelAdaptersToMetric(ls []LabelAdapter) model.Metric {
-	result := make(model.Metric, len(ls))
-	for _, l := range ls {
-		result[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-	}
-	return result
+	return util.LabelsToMetric(FromLabelAdaptersToLabels(ls))
 }
 
 // FromMetricsToLabelAdapters converts model.Metric to []LabelAdapter.

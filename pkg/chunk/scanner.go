@@ -18,7 +18,6 @@ type ScanRequest struct {
 type PlannerConfig struct {
 	FirstShard int
 	LastShard  int
-	BatchSize  int
 	UserIDList string
 	Tables     string
 }
@@ -43,7 +42,6 @@ func (cfg *PlannerConfig) RegisterFlags(f *flag.FlagSet) {
 type Planner struct {
 	firstShard int
 	lastShard  int
-	batchSize  int
 	tables     []string
 	users      []string
 }

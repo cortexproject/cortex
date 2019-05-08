@@ -1,5 +1,9 @@
 # Cortex Arguments Explained
 
+We use Viper for configuration management. All below described flags can be configured via YAML or by setting those flags. If you want to pass these configurations via YAML files you must lookup the key names in the code. Please take note that the set defaults do not represent recommended settings. Instead they have been set to whatever was first supported in Cortex and have not been changed to ensure backwards compatibility.
+
+Viper supports parsing of durations from strings. When you are asked to configure a duration you can for instance set "5h" which equals a 5 hour duration.
+
 ## Querier
 
 - `-querier.max-concurrent`
@@ -99,8 +103,9 @@ The ingester query API was improved over time, but defaults to the old behaviour
 | `-ingester.join-after` | Period to wait for a claim from another ingester; will join automatically after this. | `0s` |
 | `-ingester.min-ready-duration` | Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring. | `1m` |
 | `-ingester.claim-on-rollout` | Send chunks to PENDING ingesters on exit. | `false` |
-| `-ingester.normalise-tokens` | Store tokens in a normalised fashion to reduce allocations. | `false` |
+| `-ingester.normalise-tokens` | Write out "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring. Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters. The new ring code can still read and write the old ring format, so is backwards compatible. | `false` |
 | `-ingester.final-sleep` | Duration to sleep for before exiting, to ensure metrics are scraped. | `30s` |
+| `-ingester.interface` | Name of network interface to read address from. | (no default) |
 | `-ingester.addr` | IP address to advertise in consul. | (empty string) |
 | `-ingester.port` | Port to advertise in consul (defaults to server.grpc-listen-port). | `0` |
 | `-ingester.id` | ID to register into consul. | (OS hostname) |
@@ -118,8 +123,103 @@ The ingester query API was improved over time, but defaults to the old behaviour
 | `-ingester.chunk-age-jitter` | Range of time to subtract from MaxChunkAge to spread out flushes. | `20m` |
 | `-ingester.concurrent-flushes` | Number of concurrent goroutines flushing to the underlying time series database (DynamoDB, BigTable, etc). | `50` |
 | `-ingester.rate-update-period` | Period with which to update the per-user ingestion rates. | `15s` |
-| `-ingester.normalise-tokens` | Write out "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring. Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters. The new ring code can still read and write the old ring format, so is backwards compatible. | `15s` |
-| `-ingester.max-transfer-retries` | Number of times to try and transfer chunks before falling back to flushing. | `10` |
+
+#### Chunk Store Flags
+
+Flags with the prefix `-store.index-cache-read.` represent the cache config for reading index entries.
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-store.min-chunk-age` | Minimum time between chunk update and being saved to the store. | `0` |
+| `-store.index-cache-read.memcache.write-back-goroutines` | How many goroutines to use to write back to memcache. | `10` |
+| `-store.index-cache-read.memcache.write-back-buffer` | How many chunks to buffer for background write back. | `10000` |
+| `-store.index-cache-read.memcached.expiration` | How long keys stay in the memcache. | `0` |
+| `-store.index-cache-read.memcached.batchsize` | How many keys to fetch in each batch. | `0` |
+| `-store.index-cache-read.memcached.parallelism` | Maximum active requests to memcache. | `100` |
+| `-store.index-cache-read.memcached.hostname` | Hostname for memcached service to use when caching chunks. If empty, no memcached will be used. | (empty string) |
+| `-store.index-cache-read.memcached.service` | SRV service used to discover memcache servers. | `memcached` |
+| `-store.index-cache-read.memcached.max-idle-conns` | Maximum number of idle connections in pool. | `16` |
+| `-store.index-cache-read.memcached.timeout` | Maximum time to wait before giving up on memcached requests. | `100ms` |
+| `-store.index-cache-read.memcached.update-interval` | Period with which to poll DNS for memcache servers. | `1m` |
+| `-store.index-cache-read.diskcache.path` | Path to file used to cache chunks. | `/var/run/chunks` |
+| `-store.index-cache-read.diskcache.size` | Size of file (bytes). | `1024*1024*1024` |
+| `-store.index-cache-read.fifocache.size` | The number of entries to cache. | `0` |
+| `-store.index-cache-read.fifocache.duration` | The expiry duration for the cache. | `0` |
+| `-store.index-cache-read.cache.enable-diskcache` | Enable on-disk cache. | `false` |
+| `-store.index-cache-read.cache.enable-fifocache` | Enable in-memory cache. | `false` |
+| `-store.index-cache-read.cache.default-validity` | The default validity of entries for caches unless overridden. | `0` |
+| `-store.cache-lookups-older-than` | Cache index entries older than this period. 0 to disable. | `0` |
+
+**AWS Config**
+
+If you want to use AWS Products such as S3 and/or DynamoDB these flags can be set to configure the storage.
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-dynamodb.url` | DynamoDB endpoint URL with escaped Key and Secret encoded. If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation. | (no default) |
+| `-dynamodb.api-limit` |  | (no default) |
+| `-dynamodb.` | DynamoDB table management requests per second limit. | `2.0` |
+| `-applicationautoscaling.url` | ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded. | (no default) |
+| `-dynamodb.chunk.gang.size` | Number of chunks to group together to parallelise fetches (zero to disable). | `10` |
+| `-dynamodb.chunk.get.max.parallelism` | Max number of chunk-get operations to start in parallel. | `32` |
+| `-dynamodb.min-backoff` | Minimum backoff time. | `100ms` |
+| `-dynamodb.max-backoff` | Maximum backoff time. | `50s` |
+| `-dynamodb.max-retries` | Maximum number of times to retry an operation. | `20` |
+| `-dynamodb.min-backoff` | Minimum backoff time | `100ms` |
+| `-s3.url` | S3 endpoint URL with escaped Key and Secret encoded. If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation. | (no default) |
+
+**GCP Config**
+
+If you want to use Google Cloud Productssuch as GCS and/or BigTable these flags can be set to configure the storage.
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-bigtable.project` | Bigtable project ID. | (no default) |
+| `-bigtable.instance` | Bigtable instance ID. | (no default) |
+| `-bigtable.grpc-max-recv-msg-size` | gRPC client max receive message size (bytes). | `100<<20` |
+| `-bigtable.grpc-max-send-msg-size` | gRPC client max send message size (bytes). | `16<<20` |
+| `-bigtable.grpc-use-gzip-compression` | Use compression when sending messages. | `false` |
+| `-bigtable.grpc-client-rate-limit` | Rate limit for gRPC client; 0 means disabled. | `0` |
+| `-bigtable.grpc-client-rate-limit-burst` | Rate limit burst for gRPC client. | `0` |
+| `-bigtable.backoff-on-ratelimits` | Enable backoff and retry when we hit ratelimits. | `false` |
+| `-bigtable.backoff-min-period` | Minimum delay when backing off. | `100ms` |
+| `-bigtable.backoff-max-period` | Maximum delay when backing off. | `10s` |
+| `-bigtable.backoff-retries` | Number of times to backoff and retry before failing. | `10` |
+| `-gcs.bucketname` | Name of GCS bucket to put chunks in. | (empty string) |
+| `-gcs.chunk-buffer-size` | The size of the buffer that GCS client for each PUT request. 0 to disable buffering. | `0` |
+
+**Cassandra Config**
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-cassandra.addresses` | Comma-separated hostnames or ips of Cassandra instances. | (empty string) |
+| `-cassandra.port` | Port that Cassandra is running on. | `9042` |
+| `-cassandra.keyspace` | Keyspace to use in Cassandra. | (empty string) |
+| `-cassandra.consistency` | Consistency level for Cassandra. | `QUORUM` |
+| `-cassandra.replication-factor` | Replication factor to use in Cassandra. | `1` |
+| `-cassandra.disable-initial-host-lookup` | Instruct the cassandra driver to not attempt to get host info from the system.peers table. | `false` |
+| `-cassandra.ssl` | Use SSL when connecting to cassandra instances. | `false` |
+| `-cassandra.host-verification` | Require SSL certificate validation. | `false` |
+| `-cassandra.ca-path` | Path to certificate file to verify the peer. | (empty string) |
+| `-cassandra.auth` | Enable password authentication when connecting to cassandra. | `false` |
+| `-cassandra.username` | Username to use when connecting to cassandra. | (empty string) |
+| `-cassandra.password` | Password to use when connecting to cassandra. | (empty string) |
+| `-cassandra.timeout` | Timeout when connecting to cassandra. | 600ms |
+
+**File System Config**
+
+| Flag                     | Description                   | Default        |
+| ------------------------ | ----------------------------- | -------------- |
+| `-local.chunk-directory` | Directory to store chunks in. | (empty string) |
+
+#### Chunk Schema Flags
+
+In the course of time while developing Cortex we figured out there are better ways (more efficient, resilient against failures, etc.) to store data in the underyling Database. By then you had billings of records on disk with the one of the older schemas. Therefore we introduced the "from" tag which indicates the timeframe in which each schema has been used. You can move to a new schema by switching to it at midnight UTC and updating your configuration accordingly.
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-chunk.storage-client` | Which storage client to use (one of `aws` (aliases: `aws-dynamo`, `dynamo`), `gcp`, `gcp-columnkey` (alias: `bigtable`), `bigtable-hashed`, `cassandra`, `boltdb`, `inmemory` ) | `aws` |
+| `-store.cache-lookups-older-than` | Cache index entries older than this period. 0 to disable. | 0 |
 
 #### Chunk Flags
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/configs/api"
@@ -69,6 +70,7 @@ type Config struct {
 	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
 	Frontend       frontend.Config          `yaml:"frontend,omitempty"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Encoding       encoding.Config          // No yaml for this, it only works with flags.
 
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
@@ -97,6 +99,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Worker.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
+	c.Encoding.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigStore.RegisterFlags(f)
@@ -165,13 +168,17 @@ func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 		}
 		cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
 			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+				switch info.FullMethod {
 				// Don't check auth header on TransferChunks, as we weren't originally
 				// sending it and this could cause transfers to fail on update.
-				if info.FullMethod == "/cortex.Ingester/TransferChunks" {
+				//
+				// Also don't check auth /frontend.Frontend/Process, as this handles
+				// queries for multiple users.
+				case "/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process":
 					return handler(srv, ss)
+				default:
+					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 				}
-
-				return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 			},
 		}
 		t.httpAuthMiddleware = middleware.AuthenticateUser

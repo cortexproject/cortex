@@ -434,6 +434,7 @@ var modules = map[moduleName]module{
 	},
 
 	TableManager: {
+		deps: []moduleName{Server},
 		init: (*Cortex).initTableManager,
 		stop: (*Cortex).stopTableManager,
 	},

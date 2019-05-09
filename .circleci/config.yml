@@ -3,7 +3,7 @@ version: 2
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: cortexproject/build-image:master-b645241c 
+    - image: cortexproject/build-image:master-f752b8431
   working_directory: /go/src/github.com/cortexproject/cortex
 
 workflows:

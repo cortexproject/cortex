@@ -85,15 +85,30 @@ http://192.168.99.100:30080/api/prom/api/v1/query?query=up
 
 If that doesn't work, your Minikube might be using a different ip address. Check with `minikube status`.
 
-### Vendoring
+### Dependency management
 
-We use `dep` to vendor dependencies. To fetch a new dependency, run:
+We uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
+This requires a working Go environment with version 1.11 or greater, git and [bzr](http://wiki.bazaar.canonical.com/Download) installed.
 
-    dep ensure
+To add or update a new dependency, use the `go get` command:
 
-To update dependencies, run
+```bash
+# Pick the latest tagged release.
+go get example.com/some/module/pkg
 
-    dep ensure -update
+# Pick a specific version.
+go get example.com/some/module/pkg@vX.Y.Z
+```
+
+Tidy up the `go.mod` and `go.sum` files:
+
+```bash
+go mod tidy
+git add go.mod go.sum
+git commit
+```
+
+You have to commit the changes to `go.mod` and `go.sum` before submitting the pull request.
 
 ## Further reading
 

@@ -382,7 +382,6 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
 	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
-		numSeries++
 		chunks := make([]*desc, 0, len(series.chunkDescs))
 		for _, chunk := range series.chunkDescs {
 			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
@@ -390,6 +389,11 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 			}
 		}
 
+		if len(chunks) == 0 {
+			return nil
+		}
+
+		numSeries++
 		wireChunks, err := toWireChunks(chunks)
 		if err != nil {
 			return err

@@ -123,11 +123,15 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 }
 
 func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.MatchType, n, v string) (model.Matrix, *client.QueryRequest, error) {
+	return runTestQueryTimes(ctx, t, ing, ty, n, v, model.Earliest, model.Latest)
+}
+
+func runTestQueryTimes(ctx context.Context, t *testing.T, ing *Ingester, ty labels.MatchType, n, v string, start, end model.Time) (model.Matrix, *client.QueryRequest, error) {
 	matcher, err := labels.NewMatcher(ty, n, v)
 	if err != nil {
 		return nil, nil, err
 	}
-	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+	req, err := client.ToQueryRequest(start, end, []*labels.Matcher{matcher})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -185,6 +189,31 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via chunk store.
 	ing.Shutdown()
 	store.checkData(t, userIDs, testData)
+}
+
+func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
+	_, ing := newDefaultTestStore(t)
+
+	userIDs, _ := pushTestSamples(t, ing, 10, 1000)
+
+	// Read samples back via ingester queries.
+	for _, userID := range userIDs {
+		ctx := user.InjectOrgID(context.Background(), userID)
+		_, req, err := runTestQueryTimes(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+", model.Latest.Add(-15*time.Second), model.Latest)
+		require.NoError(t, err)
+
+		s := stream{
+			ctx: ctx,
+		}
+		err = ing.QueryStream(req, &s)
+		require.NoError(t, err)
+
+		// Nothing should be selected.
+		require.Equal(t, 0, len(s.responses))
+	}
+
+	// Read samples back via chunk store.
+	ing.Shutdown()
 }
 
 func TestIngesterIdleFlush(t *testing.T) {

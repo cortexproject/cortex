@@ -325,6 +325,9 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	}
 
 	t.rulerServer, err = ruler.NewServer(cfg.Ruler, t.ruler, rulesAPI)
+	if err != nil {
+		return err
+	}
 
 	// Only serve the API for setting & getting rules configs if we're not
 	// serving configs from the configs API. Allows for smoother
@@ -440,7 +443,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ruler: {
-		deps: []moduleName{Distributor},
+		deps: []moduleName{Distributor, Store},
 		init: (*Cortex).initRuler,
 		stop: (*Cortex).stopRuler,
 	},

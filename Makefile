@@ -101,9 +101,9 @@ configs-integration-test: build-image/$(UPTODATE)
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
 		-v $(shell pwd)/cmd/cortex/migrations:/migrations \
-		-e MIGRATIONS_DIR=/migrations \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
+		-e DB_ADDR=configs-db.cortex.local \
 		$(IMAGE_PREFIX)build-image $@; \
 	status=$$?; \
 	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
@@ -136,7 +136,7 @@ shell:
 	bash
 
 configs-integration-test:
-	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
+	/bin/bash -c "go test -v -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
 
 mod-check:
 	GO111MODULE=on go mod download
@@ -167,7 +167,7 @@ load-images:
 		fi \
 	done
 
-# Loads the built Docker images into the minikube environmen, and tags them with
+# Loads the built Docker images into the minikube environment, and tags them with
 # "latest" so the k8s manifests shipped with this code work.
 prime-minikube: save-images
 	eval $$(minikube docker-env) ; \

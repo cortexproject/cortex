@@ -19,7 +19,7 @@ import (
 )
 
 func init() {
-	prometheus.MustRegister(version.NewCollector("loki"))
+	prometheus.MustRegister(version.NewCollector("cortex"))
 }
 
 func main() {
@@ -48,7 +48,7 @@ func main() {
 	util.InitEvents(eventSampleRate)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace := tracing.NewFromEnv(cfg.Target.String())
+	trace := tracing.NewFromEnv("cortex-" + cfg.Target.String())
 	defer trace.Close()
 
 	t, err := cortex.New(cfg)

@@ -70,7 +70,7 @@ type Config struct {
 	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
 	Frontend       frontend.Config          `yaml:"frontend,omitempty"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
-	Encoding       encoding.Config          // No yaml for this, it only works with flags.
+	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`

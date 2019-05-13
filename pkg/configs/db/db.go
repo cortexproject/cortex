@@ -17,6 +17,7 @@ type Config struct {
 	MigrationsDir string
 	PasswordFile  string
 
+	// Allow injection of mock DBs for unit testing.
 	Mock DB
 }
 

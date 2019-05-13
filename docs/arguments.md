@@ -157,8 +157,7 @@ If you want to use AWS Products such as S3 and/or DynamoDB these flags can be se
 | Flag | Description | Default |
 | --- | --- | --- |
 | `-dynamodb.url` | DynamoDB endpoint URL with escaped Key and Secret encoded. If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation. | (no default) |
-| `-dynamodb.api-limit` |  | (no default) |
-| `-dynamodb.` | DynamoDB table management requests per second limit. | `2.0` |
+| `-dynamodb.api-limit` | DynamoDB table management requests per second limit. | `2.0` |
 | `-applicationautoscaling.url` | ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded. | (no default) |
 | `-dynamodb.chunk.gang.size` | Number of chunks to group together to parallelise fetches (zero to disable). | `10` |
 | `-dynamodb.chunk.get.max.parallelism` | Max number of chunk-get operations to start in parallel. | `32` |

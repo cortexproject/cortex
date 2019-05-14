@@ -365,7 +365,7 @@ func (t *Cortex) stopConfigs() error {
 }
 
 func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
-	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager)
+	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, cfg.ConfigStore)
 	if err != nil {
 		return
 	}
@@ -455,6 +455,7 @@ var modules = map[moduleName]module{
 	},
 
 	AlertManager: {
+		deps: []moduleName{Server},
 		init: (*Cortex).initAlertmanager,
 		stop: (*Cortex).stopAlertmanager,
 	},

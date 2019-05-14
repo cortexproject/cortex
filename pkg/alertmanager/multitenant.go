@@ -168,12 +168,10 @@ func counts(counts map[string]int, keys []string) string {
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
-	DataDir       string
-	Retention     time.Duration
-	ExternalURL   flagext.URLValue
-	ConfigsAPIURL flagext.URLValue
-	PollInterval  time.Duration
-	ClientTimeout time.Duration
+	DataDir      string
+	Retention    time.Duration
+	ExternalURL  flagext.URLValue
+	PollInterval time.Duration
 
 	MeshListenAddr string
 	MeshHWAddr     string
@@ -196,12 +194,10 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	flag.Var(&cfg.ExternalURL, "alertmanager.web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.")
 
-	flag.Var(&cfg.ConfigsAPIURL, "alertmanager.configs.url", "URL of configs API server.")
 	flag.StringVar(&cfg.FallbackConfigFile, "alertmanager.configs.fallback", "", "Filename of fallback config to use if none specified for instance.")
 	flag.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
 	flag.StringVar(&cfg.AutoSlackRoot, "alertmanager.configs.auto-slack-root", "", "Root of URL to generate if config is "+autoSlackURL)
 	flag.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
-	flag.DurationVar(&cfg.ClientTimeout, "alertmanager.configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 
 	flag.StringVar(&cfg.MeshListenAddr, "alertmanager.mesh.listen-address", net.JoinHostPort("0.0.0.0", strconv.Itoa(mesh.Port)), "Mesh listen address")
 	flag.StringVar(&cfg.MeshHWAddr, "alertmanager.mesh.hardware-address", mustHardwareAddr(), "MAC address, i.e. Mesh peer ID")
@@ -242,16 +238,13 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg configs_client.Config) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
 	}
 
-	configsAPI, err := configs_client.New(configs_client.Config{
-		ConfigsAPIURL: cfg.ConfigsAPIURL,
-		ClientTimeout: cfg.ClientTimeout,
-	})
+	configsAPI, err := configs_client.New(cfgCfg)
 	if err != nil {
 		return nil, err
 	}

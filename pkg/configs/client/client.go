@@ -37,7 +37,7 @@ func New(cfg Config) (Client, error) {
 		}, nil
 	}
 
-	db, err := db.NewRulesDB(cfg.DBConfig)
+	db, err := db.New(cfg.DBConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*Confi
 }
 
 type dbStore struct {
-	db db.RulesDB
+	db db.DB
 }
 
 // GetRules implements ConfigClient.
@@ -126,8 +126,21 @@ func (d dbStore) GetRules(since configs.ID) (map[string]configs.VersionedRulesCo
 
 // GetAlerts implements ConfigClient.
 func (d dbStore) GetAlerts(since configs.ID) (*ConfigsResponse, error) {
-	// TODO implement this!
-	return nil, nil
+	var resp map[string]configs.View
+	var err error
+	if since == 0 {
+		resp, err = d.db.GetAllConfigs()
+
+	}
+	resp, err = d.db.GetConfigs(since)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ConfigsResponse{
+		since:   since,
+		Configs: resp,
+	}, nil
 }
 
 // ConfigsResponse is a response from server for GetConfigs.

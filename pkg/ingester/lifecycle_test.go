@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kvstore"
+	"github.com/cortexproject/cortex/pkg/ring/kvstore/consul"
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -31,8 +32,7 @@ import (
 const userID = "1"
 
 func defaultIngesterTestConfig() Config {
-	codec := kvstore.ProtoCodec{Factory: ring.ProtoDescFactory}
-	consul := ring.NewInMemoryKVClient(codec)
+	consul := consul.NewInMemoryKVClient(ring.GetCodec())
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.FlushCheckPeriod = 99999 * time.Hour

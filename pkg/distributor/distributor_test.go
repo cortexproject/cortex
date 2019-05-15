@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kvstore"
+	"github.com/cortexproject/cortex/pkg/ring/kvstore/consul"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -140,7 +141,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 				d.cfg.EnableHAReplicas = true
 				d.limits.Defaults.AcceptHASamples = true
 				codec := kvstore.ProtoCodec{Factory: ProtoReplicaDescFactory}
-				mock := ring.PrefixClient(ring.NewInMemoryKVClient(codec), "prefix")
+				mock := consul.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
 
 				r, err := newClusterTracker(HATrackerConfig{
 					KVStore:         ring.KVConfig{Mock: mock},

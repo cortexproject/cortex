@@ -1,4 +1,4 @@
-package ring
+package consul
 
 import (
 	"context"
@@ -22,8 +22,8 @@ const (
 	longPollDuration = 10 * time.Second
 )
 
-// ConsulConfig to create a ConsulClient
-type ConsulConfig struct {
+// Config to create a ConsulClient
+type Config struct {
 	Host              string
 	Prefix            string
 	ACLToken          string
@@ -33,7 +33,7 @@ type ConsulConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 // If prefix is not an empty string it should end with a period.
-func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
 	f.StringVar(&cfg.Prefix, prefix+"consul.prefix", "collectors/", "Prefix for keys in Consul. Should end with a /.")
 	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
@@ -51,11 +51,11 @@ type kv interface {
 type consulClient struct {
 	kv
 	codec kvstore.Codec
-	cfg   ConsulConfig
+	cfg   Config
 }
 
 // NewConsulClient returns a new ConsulClient.
-func NewConsulClient(cfg ConsulConfig, codec kvstore.Codec) (kvstore.KVClient, error) {
+func NewConsulClient(cfg Config, codec kvstore.Codec) (kvstore.KVClient, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
 		Token:   cfg.ACLToken,

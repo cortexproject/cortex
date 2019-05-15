@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ring/kvstore"
+	"github.com/cortexproject/cortex/pkg/ring/kvstore/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -59,8 +59,7 @@ func checkNormalised(d interface{}, id string) bool {
 func TestRingNormaliseMigration(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	codec := kvstore.ProtoCodec{Factory: ProtoDescFactory}
-	ringConfig.KVStore.Mock = NewInMemoryKVClient(codec)
+	ringConfig.KVStore.Mock = consul.NewInMemoryKVClient(GetCodec())
 
 	r, err := New(ringConfig, "ingester")
 	require.NoError(t, err)

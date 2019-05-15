@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/cortexproject/cortex/pkg/ring/kvstore"
+	"github.com/cortexproject/cortex/pkg/ring/kvstore/consul"
 )
 
 var inmemoryStoreInit sync.Once
@@ -14,8 +15,8 @@ var inmemoryStore kvstore.KVClient
 // KVConfig is config for a KVStore currently used by ring and HA tracker,
 // where store can be consul or inmemory.
 type KVConfig struct {
-	Store  string       `yaml:"store,omitempty"`
-	Consul ConsulConfig `yaml:"consul,omitempty"`
+	Store  string        `yaml:"store,omitempty"`
+	Consul consul.Config `yaml:"consul,omitempty"`
 
 	Mock kvstore.KVClient
 }
@@ -49,16 +50,20 @@ func NewKVStore(cfg KVConfig, codec kvstore.Codec) (kvstore.KVClient, error) {
 
 	switch cfg.Store {
 	case "consul":
-		codec := kvstore.ProtoCodec{Factory: ProtoDescFactory}
-		return NewConsulClient(cfg.Consul, codec)
+		return consul.NewConsulClient(cfg.Consul, codec)
 	case "inmemory":
 		// If we use the in-memory store, make sure everyone gets the same instance
 		// within the same process.
 		inmemoryStoreInit.Do(func() {
-			inmemoryStore = NewInMemoryKVClient(codec)
+			inmemoryStore = consul.NewInMemoryKVClient(codec)
 		})
 		return inmemoryStore, nil
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", cfg.Store)
 	}
+}
+
+// GetCodec returns the codec used to encode and decode data being put by ring.
+func GetCodec() kvstore.Codec {
+	return kvstore.ProtoCodec{Factory: ProtoDescFactory}
 }

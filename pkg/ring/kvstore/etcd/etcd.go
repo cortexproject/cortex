@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kvstore"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/etcd-io/etcd/clientv3"
 	"github.com/go-kit/kit/log/level"
@@ -19,7 +19,7 @@ type Config struct {
 }
 
 // New makes a new Client.
-func New(cfg Config, codec ring.Codec) (*Client, error) {
+func New(cfg Config, codec kvstore.Codec) (*Client, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
@@ -35,15 +35,15 @@ func New(cfg Config, codec ring.Codec) (*Client, error) {
 	}, nil
 }
 
-// Client implements ring.KVClient for Etdc.
+// Client implements ring.KVClient for etcd.
 type Client struct {
 	cfg   Config
-	codec ring.Codec
+	codec kvstore.Codec
 	cli   *clientv3.Client
 }
 
 // CAS implements ring.KVClient.
-func (c *Client) CAS(ctx context.Context, key string, f ring.CASCallback) error {
+func (c *Client) CAS(ctx context.Context, key string, f kvstore.CASCallback) error {
 	var revision int64
 
 	for i := 0; i < c.cfg.Retries; i++ {

@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/cortexproject/cortex/pkg/ring/kvstore"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -78,7 +79,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 type Ring struct {
 	name     string
 	cfg      Config
-	KVClient KVClient
+	KVClient kvstore.KVClient
 	done     chan struct{}
 	quit     context.CancelFunc
 
@@ -96,7 +97,7 @@ func New(cfg Config, name string) (*Ring, error) {
 	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
-	codec := ProtoCodec{Factory: ProtoDescFactory}
+	codec := kvstore.ProtoCodec{Factory: ProtoDescFactory}
 	store, err := NewKVStore(cfg.KVStore, codec)
 	if err != nil {
 		return nil, err

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
@@ -18,7 +19,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kvstore"
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -28,7 +31,7 @@ import (
 const userID = "1"
 
 func defaultIngesterTestConfig() Config {
-	codec := ring.ProtoCodec{Factory: ring.ProtoDescFactory}
+	codec := kvstore.ProtoCodec{Factory: ring.ProtoDescFactory}
 	consul := ring.NewInMemoryKVClient(codec)
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
@@ -202,6 +205,21 @@ func TestIngesterBadTransfer(t *testing.T) {
 
 	// Check the ingester is still waiting.
 	require.Equal(t, ring.PENDING, ing.lifecycler.GetState())
+}
+
+func numTokens(c kvstore.KVClient, name string) int {
+	ringDesc, err := c.Get(context.Background(), ring.ConsulKey)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error reading consul", "err", err)
+		return 0
+	}
+	count := 0
+	for _, token := range ringDesc.(*ring.Desc).Tokens {
+		if token.Ingester == name {
+			count++
+		}
+	}
+	return count
 }
 
 type ingesterTransferChunkStreamMock struct {

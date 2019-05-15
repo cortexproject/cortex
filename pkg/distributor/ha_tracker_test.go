@@ -13,6 +13,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kvstore"
 )
 
 var (
@@ -101,7 +102,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	replica := "r1"
 	start := mtime.Now()
 
-	codec := ring.ProtoCodec{Factory: ProtoReplicaDescFactory}
+	codec := kvstore.ProtoCodec{Factory: ProtoReplicaDescFactory}
 	mock := ring.PrefixClient(ring.NewInMemoryKVClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		KVStore:         ring.KVConfig{Mock: mock},
@@ -233,7 +234,7 @@ func TestCheckReplicaWriteTimeout(t *testing.T) {
 	cluster := "c1"
 	user := "user"
 
-	codec := ring.ProtoCodec{Factory: ProtoReplicaDescFactory}
+	codec := kvstore.ProtoCodec{Factory: ProtoReplicaDescFactory}
 	mock := ring.PrefixClient(ring.NewInMemoryKVClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		KVStore:         ring.KVConfig{Mock: mock},
@@ -284,7 +285,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	cluster := "c1"
 	user := "user"
 
-	codec := ring.ProtoCodec{Factory: ProtoReplicaDescFactory}
+	codec := kvstore.ProtoCodec{Factory: ProtoReplicaDescFactory}
 	mock := ring.PrefixClient(ring.NewInMemoryKVClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		KVStore:         ring.KVConfig{Mock: mock},

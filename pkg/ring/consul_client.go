@@ -12,6 +12,7 @@ import (
 	consul "github.com/hashicorp/consul/api"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
 
+	"github.com/cortexproject/cortex/pkg/ring/kvstore"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
@@ -49,12 +50,12 @@ type kv interface {
 
 type consulClient struct {
 	kv
-	codec Codec
+	codec kvstore.Codec
 	cfg   ConsulConfig
 }
 
 // NewConsulClient returns a new ConsulClient.
-func NewConsulClient(cfg ConsulConfig, codec Codec) (KVClient, error) {
+func NewConsulClient(cfg ConsulConfig, codec kvstore.Codec) (kvstore.KVClient, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
 		Token:   cfg.ACLToken,
@@ -68,7 +69,7 @@ func NewConsulClient(cfg ConsulConfig, codec Codec) (KVClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	var c KVClient = &consulClient{
+	var c kvstore.KVClient = &consulClient{
 		kv:    consulMetrics{client.KV()},
 		codec: codec,
 		cfg:   cfg,
@@ -88,13 +89,13 @@ var (
 
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
-func (c *consulClient) CAS(ctx context.Context, key string, f CASCallback) error {
+func (c *consulClient) CAS(ctx context.Context, key string, f kvstore.CASCallback) error {
 	return instrument.CollectedRequest(ctx, "CAS loop", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return c.cas(ctx, key, f)
 	})
 }
 
-func (c *consulClient) cas(ctx context.Context, key string, f CASCallback) error {
+func (c *consulClient) cas(ctx context.Context, key string, f kvstore.CASCallback) error {
 	var (
 		index   = uint64(0)
 		retries = 10
@@ -280,17 +281,17 @@ func (c *consulClient) Get(ctx context.Context, key string) (interface{}, error)
 
 type prefixedConsulClient struct {
 	prefix string
-	consul KVClient
+	consul kvstore.KVClient
 }
 
 // PrefixClient takes a ConsulClient and forces a prefix on all its operations.
-func PrefixClient(client KVClient, prefix string) KVClient {
+func PrefixClient(client kvstore.KVClient, prefix string) kvstore.KVClient {
 	return &prefixedConsulClient{prefix, client}
 }
 
 // CAS atomically modifies a value in a callback. If the value doesn't exist,
 // you'll get 'nil' as an argument to your callback.
-func (c *prefixedConsulClient) CAS(ctx context.Context, key string, f CASCallback) error {
+func (c *prefixedConsulClient) CAS(ctx context.Context, key string, f kvstore.CASCallback) error {
 	return c.consul.CAS(ctx, c.prefix+key, f)
 }
 

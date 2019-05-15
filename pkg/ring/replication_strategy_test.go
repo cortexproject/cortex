@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ring/kvstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,7 +83,7 @@ func TestReplicationStrategy(t *testing.T) {
 		for i := 0; i < tc.DeadIngesters; i++ {
 			ingesters = append(ingesters, IngesterDesc{})
 		}
-		codec := ProtoCodec{Factory: ProtoDescFactory}
+		codec := kvstore.ProtoCodec{Factory: ProtoDescFactory}
 		r, err := New(Config{
 			KVStore: KVConfig{
 				Mock: NewInMemoryKVClient(codec),

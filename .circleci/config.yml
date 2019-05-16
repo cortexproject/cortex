@@ -56,7 +56,7 @@ jobs:
     - checkout
     - run:
         name: Integration Test
-        command: MIGRATIONS_DIR=$(pwd)/pkg/configs/db/migrations make BUILD_IN_CONTAINER=false configs-integration-test
+        command: MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IN_CONTAINER=false configs-integration-test
 
   build:
     <<: *defaults

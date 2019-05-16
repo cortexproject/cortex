@@ -16,8 +16,8 @@ import (
 	"github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/instrument"
 )
 
 var backoffConfig = util.BackoffConfig{
@@ -33,7 +33,7 @@ const (
 var (
 	totalConfigs = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "configs",
+		Name:      "scheduler_configs_total",
 		Help:      "How many configs the scheduler knows about.",
 	})
 	configUpdates = prometheus.NewCounter(prometheus.CounterOpts{
@@ -41,16 +41,9 @@ var (
 		Name:      "scheduler_config_updates_total",
 		Help:      "How many config updates the scheduler has made.",
 	})
-	configsRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "configs_request_duration_seconds",
-		Help:      "Time spent requesting configs.",
-		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"}))
 )
 
 func init() {
-	configsRequestDuration.Register()
 	prometheus.MustRegister(totalConfigs)
 	prometheus.MustRegister(configUpdates)
 }
@@ -90,7 +83,7 @@ type userConfig struct {
 type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
 
 type scheduler struct {
-	rulesAPI           RulesAPI
+	rulesAPI           client.Client
 	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
@@ -106,7 +99,7 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) scheduler {
+func newScheduler(rulesAPI client.Client, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) scheduler {
 	return scheduler{
 		rulesAPI:           rulesAPI,
 		evaluationInterval: evaluationInterval,
@@ -177,12 +170,8 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 	s.Lock()
 	configID := s.latestConfig
 	s.Unlock()
-	var cfgs map[string]configs.VersionedRulesConfig
-	err := instrument.CollectedRequest(context.Background(), "Configs.GetConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-		var err error
-		cfgs, err = s.rulesAPI.GetConfigs(configID) // Warning: this will produce an incorrect result if the configID ever overflows
-		return err
-	})
+
+	cfgs, err := s.rulesAPI.GetRules(configID) // Warning: this will produce an incorrect result if the configID ever overflows
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "scheduler: configs server poll failed", "err", err)
 		return nil, err
@@ -191,6 +180,18 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 	s.latestConfig = getLatestConfigID(cfgs, configID)
 	s.Unlock()
 	return cfgs, nil
+}
+
+// getLatestConfigID gets the latest configs ID.
+// max [latest, max (map getID cfgs)]
+func getLatestConfigID(cfgs map[string]configs.VersionedRulesConfig, latest configs.ID) configs.ID {
+	ret := latest
+	for _, config := range cfgs {
+		if config.ID > ret {
+			ret = config.ID
+		}
+	}
+	return ret
 }
 
 // computeNextEvalTime Computes when a user's rules should be next evaluated, based on how far we are through an evaluation cycle

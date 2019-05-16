@@ -34,9 +34,6 @@ images:
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
-# Ensure a target for each image that needs a migration directory
-MIGRATION_DIRS := cmd/alertmanager/.migrations cmd/configs/.migrations cmd/ruler/.migrations cmd/lite/.migrations
-
 # Building binaries is now automated.  The convention is to build a binary
 # for every directory with main.go in it, in the ./cmd directory.
 MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
@@ -86,7 +83,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-exes $(EXES) generated $(MIGRATION_DIRS) $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
+exes $(EXES) generated $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) time docker run $(RM) $(TTY) -i \
@@ -103,10 +100,10 @@ configs-integration-test: build-image/$(UPTODATE)
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
-		-v $(shell pwd)/pkg/configs/db/migrations:/migrations \
-		-e MIGRATIONS_DIR=/migrations \
+		-v $(shell pwd)/cmd/cortex/migrations:/migrations \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
+		-e DB_ADDR=configs-db.cortex.local \
 		$(IMAGE_PREFIX)build-image $@; \
 	status=$$?; \
 	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
@@ -139,7 +136,7 @@ shell:
 	bash
 
 configs-integration-test:
-	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
+	/bin/bash -c "go test -v -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
 
 mod-check:
 	GO111MODULE=on go mod download
@@ -148,15 +145,10 @@ mod-check:
 	GO111MODULE=on go mod vendor
 	@git diff --exit-code -- go.sum go.mod vendor/
 
-%/.migrations:
-	# Ensure a each image that requires a migration dir has one in the build context
-	cp -r pkg/configs/db/migrations $@
-
 endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(MIGRATION_DIRS)
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
 	go clean ./...
 
@@ -175,7 +167,7 @@ load-images:
 		fi \
 	done
 
-# Loads the built Docker images into the minikube environmen, and tags them with
+# Loads the built Docker images into the minikube environment, and tags them with
 # "latest" so the k8s manifests shipped with this code work.
 prime-minikube: save-images
 	eval $$(minikube docker-env) ; \

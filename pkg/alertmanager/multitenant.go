@@ -19,14 +19,13 @@ import (
 	"github.com/go-kit/kit/log/level"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/mesh"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	configs_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/mesh"
 )
 
 var backoffConfig = util.BackoffConfig{
@@ -93,15 +92,9 @@ const (
 var (
 	totalConfigs = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "configs",
+		Name:      "alertmanager_configs_total",
 		Help:      "How many configs the multitenant alertmanager knows about.",
 	})
-	configsRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "configs_request_duration_seconds",
-		Help:      "Time spent requesting configs.",
-		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"}))
 	totalPeers = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "mesh_peers",
@@ -112,7 +105,6 @@ var (
 )
 
 func init() {
-	configsRequestDuration.Register()
 	prometheus.MustRegister(totalConfigs)
 	prometheus.MustRegister(totalPeers)
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
@@ -176,12 +168,10 @@ func counts(counts map[string]int, keys []string) string {
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
-	DataDir       string
-	Retention     time.Duration
-	ExternalURL   flagext.URLValue
-	ConfigsAPIURL flagext.URLValue
-	PollInterval  time.Duration
-	ClientTimeout time.Duration
+	DataDir      string
+	Retention    time.Duration
+	ExternalURL  flagext.URLValue
+	PollInterval time.Duration
 
 	MeshListenAddr string
 	MeshHWAddr     string
@@ -204,12 +194,10 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	flag.Var(&cfg.ExternalURL, "alertmanager.web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.")
 
-	flag.Var(&cfg.ConfigsAPIURL, "alertmanager.configs.url", "URL of configs API server.")
 	flag.StringVar(&cfg.FallbackConfigFile, "alertmanager.configs.fallback", "", "Filename of fallback config to use if none specified for instance.")
 	flag.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
 	flag.StringVar(&cfg.AutoSlackRoot, "alertmanager.configs.auto-slack-root", "", "Root of URL to generate if config is "+autoSlackURL)
 	flag.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
-	flag.DurationVar(&cfg.ClientTimeout, "alertmanager.configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 
 	flag.StringVar(&cfg.MeshListenAddr, "alertmanager.mesh.listen-address", net.JoinHostPort("0.0.0.0", strconv.Itoa(mesh.Port)), "Mesh listen address")
 	flag.StringVar(&cfg.MeshHWAddr, "alertmanager.mesh.hardware-address", mustHardwareAddr(), "MAC address, i.e. Mesh peer ID")
@@ -226,7 +214,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
-	configsAPI configs_client.AlertManagerConfigsAPI
+	configsAPI configs_client.Client
 
 	// The fallback config is stored as a string and parsed every time it's needed
 	// because we mutate the parsed results and don't want those changes to take
@@ -250,20 +238,19 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg configs_client.Config) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
 	}
 
-	mrouter := initMesh(cfg.MeshListenAddr, cfg.MeshHWAddr, cfg.MeshNickname, cfg.MeshPassword)
-
-	mrouter.Start()
-
-	configsAPI := configs_client.AlertManagerConfigsAPI{
-		URL:     cfg.ConfigsAPIURL.URL,
-		Timeout: cfg.ClientTimeout,
+	configsAPI, err := configs_client.New(cfgCfg)
+	if err != nil {
+		return nil, err
 	}
+
+	mrouter := initMesh(cfg.MeshListenAddr, cfg.MeshHWAddr, cfg.MeshNickname, cfg.MeshPassword)
+	mrouter.Start()
 
 	var fallbackConfig []byte
 	if cfg.FallbackConfigFile != "" {
@@ -364,12 +351,7 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 // poll the configuration server. Not re-entrant.
 func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
 	configID := am.latestConfig
-	var cfgs *configs_client.ConfigsResponse
-	err := instrument.CollectedRequest(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-		var err error
-		cfgs, err = am.configsAPI.GetConfigs(configID)
-		return err
-	})
+	cfgs, err := am.configsAPI.GetAlerts(configID)
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: configs server poll failed", "err", err)
 		return nil, err
@@ -471,7 +453,7 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 			return fmt.Errorf("unable to load fallback configuration for %v: %v", userID, err)
 		}
 	} else {
-		amConfig, err = configs_client.AlertmanagerConfigFromConfig(config)
+		amConfig, err = alertmanagerConfigFromConfig(config)
 		if err != nil && hasExisting {
 			// XXX: This means that if a user has a working configuration and
 			// they submit a broken one, we'll keep processing the last known
@@ -504,6 +486,15 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 	}
 	am.cfgs[userID] = config
 	return nil
+}
+
+// alertmanagerConfigFromConfig returns the Alertmanager config from the Cortex configuration.
+func alertmanagerConfigFromConfig(c configs.Config) (*amconfig.Config, error) {
+	cfg, err := amconfig.Load(c.AlertmanagerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing Alertmanager config: %s", err)
+	}
+	return cfg, nil
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {

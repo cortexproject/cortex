@@ -78,10 +78,10 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	LifecyclerConfig ring.LifecyclerConfig
+	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
 	// Config for transferring chunks.
-	MaxTransferRetries int
+	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
 
 	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration
@@ -206,8 +206,6 @@ func (i *Ingester) loop() {
 
 // Shutdown beings the process to stop this ingester.
 func (i *Ingester) Shutdown() {
-	i.limits.Stop()
-
 	// First wait for our flush loop to stop.
 	close(i.quit)
 	i.done.Wait()

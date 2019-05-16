@@ -16,16 +16,29 @@ import (
 
 var (
 	done          chan error
+	dbAddr        string
+	migrationsDir string
 	errRollback   = fmt.Errorf("Rolling back test data")
-	migrationsDir = os.Getenv("MIGRATIONS_DIR")
 )
+
+func init() {
+	dbAddr = os.Getenv("DB_ADDR")
+	if dbAddr == "" {
+		dbAddr = "127.0.0.1"
+	}
+
+	migrationsDir = os.Getenv("MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		migrationsDir = "/migrations"
+	}
+}
 
 // Setup sets up stuff for testing, creating a new database
 func Setup(t *testing.T) db.DB {
 	require.NoError(t, logging.Setup("debug"))
 	// Don't use db.MustNew, here so we can do a transaction around the whole test, to rollback.
 	pg, err := postgres.New(
-		"postgres://postgres@127.0.0.1/configs_test?sslmode=disable",
+		fmt.Sprintf("postgres://postgres@%s/configs_test?sslmode=disable", dbAddr),
 		migrationsDir,
 	)
 	require.NoError(t, err)

@@ -95,15 +95,15 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling bool
-	BillingConfig billing.Config
-	PoolConfig    ingester_client.PoolConfig
+	EnableBilling bool                       `yaml:"enable_billing,omitempty"`
+	BillingConfig billing.Config             `yaml:"billing,omitempty"`
+	PoolConfig    ingester_client.PoolConfig `yaml:"pool,omitempty"`
 
-	RemoteTimeout       time.Duration
-	ExtraQueryDelay     time.Duration
-	LimiterReloadPeriod time.Duration
+	RemoteTimeout       time.Duration `yaml:"remote_timeout,omitempty"`
+	ExtraQueryDelay     time.Duration `yaml:"extra_queue_delay,omitempty"`
+	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period,omitempty"`
 
-	ShardByAllLabels bool
+	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
 
 	// for testing
 	ingesterClientFactory client.Factory
@@ -180,7 +180,6 @@ func (d *Distributor) loop() {
 // Stop stops the distributor's maintenance loop.
 func (d *Distributor) Stop() {
 	close(d.quit)
-	d.limits.Stop()
 	d.ingesterPool.Stop()
 }
 

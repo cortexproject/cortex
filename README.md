@@ -31,15 +31,16 @@ You can also read [an overview of Cortex's architecture](docs/architecture.md) a
 
 To learn more about Cortex, consult the following documents & talks:
 
-- Dev 2018 KubeCon talk; "[Cortex: Infinitely Scalable Prometheus][kubecon-2018-talk]" [video][kubecon-2018-video], [slide][kubecon-2018-slides]
+- Dev 2018 KubeCon talk; "[Cortex: Infinitely Scalable Prometheus][kubecon-2018-talk]" [video][kubecon-2018-video], ([slide][kubecon-2018-slides])
 - Dec 2018 CNCF blog post; "[Cortex: a multi-tenant, horizontally scalable Prometheus-as-a-Service][cncf-2018-blog]"
-- Nov 2018 CloudNative London meetup talk; "Cortex: Horizontally Scalable, Highly Available Prometheus" [slides][cloudnative-london-2018-slides]
-- Nov 2018 CNCF TOC Presentation; "Horizontally Scalable, Multi-tenant Prometheus" [slides][cncf-toc-presentation]
-- Aug 2017 PromCon talk; "[Cortex: Prometheus as a Service, One Year On][promcon-2017-talk]" [videos][promcon-2017-video], [slides][promcon-2017-slides]
-- June 2017 Prometheus London meetup talk; "Cortex: open-source, horizontally-scalable, distributed Prometheus" [video][prometheus-london-2017-video]
-- Dec 2016 KubeCon talk; "Weave Cortex: Multi-tenant, horizontally scalable Prometheus as a Service" [video][kubecon-2016-video], [slides][kubecon-2016-slides]
-- Aug 2016 PromCon talk; "Project Frankenstein: Multitenant, Scale-Out Prometheus": [video][promcon-2016-video], [slides][promcon-2016-slides]
-- [The original design document for Project Frankenstein](http://goo.gl/prdUYV)
+- Nov 2018 CloudNative London meetup talk; "Cortex: Horizontally Scalable, Highly Available Prometheus" ([slides][cloudnative-london-2018-slides])
+- Nov 2018 CNCF TOC Presentation; "Horizontally Scalable, Multi-tenant Prometheus" ([slides][cncf-toc-presentation])
+- Aug 2017 PromCon talk; "[Cortex: Prometheus as a Service, One Year On][promcon-2017-talk]" ([videos][promcon-2017-video], [slides][promcon-2017-slides])
+- July 2017 design doc; "[Cortex Query Optimisations][cortex-query-optimisation-2017]"
+- June 2017 Prometheus London meetup talk; "Cortex: open-source, horizontally-scalable, distributed Prometheus" ([video][prometheus-london-2017-video])
+- Dec 2016 KubeCon talk; "Weave Cortex: Multi-tenant, horizontally scalable Prometheus as a Service" ([video][kubecon-2016-video], [slides][kubecon-2016-slides])
+- Aug 2016 PromCon talk; "Project Frankenstein: Multitenant, Scale-Out Prometheus": ([video][promcon-2016-video], [slides][promcon-2016-slides])
+- June 2018 design document; "[Project Frankenstein: A Multi Tenant, Scale Out Prometheus](http://goo.gl/prdUYV)"
 
 [kubecon-2018-talk]: https://kccna18.sched.com/event/GrXL/cortex-infinitely-scalable-prometheus-bryan-boreham-weaveworks
 [kubecon-2018-video]: https://www.youtube.com/watch?v=iyN40FsRQEo
@@ -51,6 +52,7 @@ To learn more about Cortex, consult the following documents & talks:
 [promcon-2017-talk]: https://promcon.io/2017-munich/talks/cortex-prometheus-as-a-service-one-year-on/
 [promcon-2017-video]: https://www.youtube.com/watch?v=_8DmPW4iQBQ
 [promcon-2017-slides]: https://promcon.io/2017-munich/slides/cortex-prometheus-as-a-service-one-year-on.pdf
+[cortex-query-optimisation-2017]: https://docs.google.com/document/d/1lsvSkv0tiAMPQv-V8vI2LZ8f4i9JuTRsuPI_i-XcAqY
 [kubecon-2016-video]: https://www.youtube.com/watch?v=9Uctgnazfwk
 [kubecon-2016-slides]: http://www.slideshare.net/weaveworks/weave-cortex-multitenant-horizontally-scalable-prometheus-as-a-service
 [promcon-2016-video]: https://youtu.be/3Tb4Wc0kfCM

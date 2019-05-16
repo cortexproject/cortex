@@ -37,6 +37,7 @@ To learn more about Cortex, consult the following documents & talks:
 - Dec 2018 CNCF blog post; "[Cortex: a multi-tenant, horizontally scalable Prometheus-as-a-Service][cncf-2018-blog]"
 - Nov 2018 CloudNative London meetup talk; "Cortex: Horizontally Scalable, Highly Available Prometheus" ([slides][cloudnative-london-2018-slides])
 - Nov 2018 CNCF TOC Presentation; "Horizontally Scalable, Multi-tenant Prometheus" ([slides][cncf-toc-presentation])
+- Sept 2018 blog post; "[What is Cortex?][what-is-cortex]"
 - Aug 2018 PromCon panel; "[Prometheus Long-Term Storage Approaches][promcon-2018-panel]" ([video][promcon-2018-video])
 - Aug 2017 PromCon talk; "[Cortex: Prometheus as a Service, One Year On][promcon-2017-talk]" ([videos][promcon-2017-video], [slides][promcon-2017-slides], write up [part 1][promcon-2017-writeup-1], [part 2][promcon-2017-writeup-2], [part 3][promcon-2017-writeup-3])
 - July 2017 design doc; "[Cortex Query Optimisations][cortex-query-optimisation-2017]"
@@ -54,6 +55,7 @@ To learn more about Cortex, consult the following documents & talks:
 [cloudnative-london-2018-slides]: https://www.slideshare.net/grafana/cortex-horizontally-scalable-highly-available-prometheus
 [cncf-2018-blog]: https://www.cncf.io/blog/2018/12/18/cortex-a-multi-tenant-horizontally-scalable-prometheus-as-a-service/
 [cncf-toc-presentation]: https://docs.google.com/presentation/d/190oIFgujktVYxWZLhLYN4q8p9dtQYoe4sxHgn4deBSI/edit#slide=id.g3b8e2d6f7e_0_6
+[what-is-cortex]: https://medium.com/weaveworks/what-is-cortex-2c30bcbd247d
 [promcon-2018-panel]: https://promcon.io/2018-munich/talks/panel-discussion-prometheus-long-term-storage-approaches/
 [promcon-2018-video]: https://www.youtube.com/watch?v=3pTG_N8yGSU
 [prometheus-london-2017-video]: https://www.youtube.com/watch?v=Xi4jq2IUbLs

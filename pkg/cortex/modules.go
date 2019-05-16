@@ -298,12 +298,8 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 		return err
 	}
 
-	var bucketClient chunk.BucketClient
-	if cfg.Storage.FSConfig.Directory != "" {
-		var err error
-		bucketClient, err = storage.NewBucketClient("filesystem", cfg.Storage)
-		util.CheckFatal("initializing bucket client", err)
-	}
+	bucketClient, err := storage.NewBucketClient(cfg.Storage)
+	util.CheckFatal("initializing bucket client", err)
 
 	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient, bucketClient)
 	if err != nil {

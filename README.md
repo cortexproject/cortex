@@ -5,13 +5,13 @@
 <a href="https://goreportcard.com/report/github.com/cortexproject/cortex"><img src="https://goreportcard.com/badge/github.com/cortexproject/cortex" alt="Go Report Card" /></a>
 <a href="https://cloud-native.slack.com/messages/cortex/"><img src="https://img.shields.io/badge/join%20slack-%23cortex-brightgreen.svg" alt="Slack" /></a>
 
-# Cortex: horizontally scalable, highly available, multi-tenant, long term storage for  Prometheus.
+# Cortex: horizontally scalable, highly available, multi-tenant, long term storage for Prometheus.
 
 Cortex provides horizontally scalable, highly available, multi-tenant, long term storage for
 [Prometheus](https://prometheus.io).
 
-- **Horizontally scalable:** Cortex can run across multiple machines in a cluster, exceeding the throughput and storage of a single machine.  This enables you to send the metrics from multiple Prometheus servers to a single Cortex cluster and run "globally aggregated" queries across all data in a single place.
-- **Highly available:** When run in a cluster, Cortex can replicate data between machines.  This allows you to survive machine failure without gaps in your graphs.
+- **Horizontally scalable:** Cortex can run across multiple machines in a cluster, exceeding the throughput and storage of a single machine. This enables you to send the metrics from multiple Prometheus servers to a single Cortex cluster and run "globally aggregated" queries across all data in a single place.
+- **Highly available:** When run in a cluster, Cortex can replicate data between machines. This allows you to survive machine failure without gaps in your graphs.
 - **Multi-tenant:** Cortex can isolate data and queries from multiple different independent
 Prometheus sources in a single cluster, allowing untrusted parties to share the same cluster.
 - **Long term storage:** Cortex supports Amazon DynamoDB, Google Bigtable, Cassandra, S3 and GCS for long term storage of metric data.  This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.

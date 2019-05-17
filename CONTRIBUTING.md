@@ -37,7 +37,7 @@ make test
 First, start `minikube`.
 
 You may need to load the Docker images into your minikube environment. There is
-a convenience rule in the Makefile to do this:
+a convenient rule in the Makefile to do this:
 
 ```
 make prime-minikube
@@ -77,7 +77,8 @@ Tidy up the `go.mod` and `go.sum` files:
 
 ```bash
 go mod tidy
-git add go.mod go.sum
+go mod vendor
+git add go.mod go.sum vendor
 git commit
 ```
 

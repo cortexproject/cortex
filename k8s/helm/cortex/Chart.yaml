@@ -1,0 +1,13 @@
+name: cortex
+version: 0.0.1
+appVersion: 0.0.1
+kubeVersion: "^1.10.0-0"
+description: "Cortex: A multitenant, horizontally scalable Prometheus as a Service."
+home: https://github.com/cortexproject/
+icon: https://github.com/cortexproject/cortex/blob/master/imgs/logo.png?raw=true
+sources:
+  - https://github.com/cortexproject/cortex
+maintainers:
+  - name: Cortex Maintainers
+    email: cortex-users@lists.cncf.io
+engine: gotpl

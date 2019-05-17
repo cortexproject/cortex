@@ -21,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
@@ -62,9 +63,9 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		return err
 	}
 	for _, chunk := range chunks {
-		for k, v := range chunk.Metric {
-			if v == "" {
-				return fmt.Errorf("Chunk has blank label %q", k)
+		for _, v := range chunk.Metric {
+			if v.Value == "" {
+				return fmt.Errorf("Chunk has blank label %q", v.Name)
 			}
 		}
 	}
@@ -501,7 +502,7 @@ func BenchmarkIngesterPush(b *testing.B) {
 	)
 
 	// Construct a set of realistic-looking samples, all with slightly different label sets
-	labels := chunk.BenchmarkMetric.Clone()
+	labels := util.LabelsToMetric(chunk.BenchmarkLabels).Clone()
 	ts := make([]client.PreallocTimeseries, 0, series)
 	for j := 0; j < series; j++ {
 		labels["cpu"] = model.LabelValue(fmt.Sprintf("cpu%02d", j))

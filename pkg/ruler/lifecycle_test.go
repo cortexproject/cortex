@@ -22,7 +22,7 @@ func TestRulerShutdown(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost")
 	})
 }
 
@@ -39,7 +39,7 @@ func TestRulerRestart(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost")
 	})
 
 	{
@@ -51,6 +51,6 @@ func TestRulerRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost")
 	})
 }

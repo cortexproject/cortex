@@ -28,13 +28,14 @@ import (
 const userID = "1"
 
 func defaultIngesterTestConfig() Config {
-	consul := ring.NewInMemoryKVClient()
+	codec := ring.ProtoCodec{Factory: ring.ProtoDescFactory}
+	consul := ring.NewInMemoryKVClient(codec)
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
-	cfg.LifecyclerConfig.RingConfig.Mock = consul
+	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = consul
 	cfg.LifecyclerConfig.NumTokens = 1
 	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
 	cfg.LifecyclerConfig.Addr = "localhost"
@@ -69,7 +70,7 @@ func TestIngesterRestart(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost")
 	})
 
 	{
@@ -81,7 +82,7 @@ func TestIngesterRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost")
 	})
 }
 
@@ -122,7 +123,7 @@ func TestIngesterTransfer(t *testing.T) {
 
 	// Start a second ingester, but let it go into PENDING
 	cfg2 := defaultIngesterTestConfig()
-	cfg2.LifecyclerConfig.RingConfig.Mock = cfg1.LifecyclerConfig.RingConfig.Mock
+	cfg2.LifecyclerConfig.RingConfig.KVStore.Mock = cfg1.LifecyclerConfig.RingConfig.KVStore.Mock
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second

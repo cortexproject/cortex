@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos
+.PHONY: all test clean images protos exes generated
 .DEFAULT_GOAL := all
 
 # Boiler plate for bulding Docker containers.
@@ -34,29 +34,26 @@ images:
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
-# Ensure a target for each image that needs a migration directory
-MIGRATION_DIRS := cmd/alertmanager/.migrations cmd/configs/.migrations cmd/ruler/.migrations cmd/lite/.migrations
-
 # Building binaries is now automated.  The convention is to build a binary
 # for every directory with main.go in it, in the ./cmd directory.
 MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
-GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
+GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -name '*.pb.go' -prune -o -type f -name '*.go' -print)
 define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS) $(MIGRATION_DIRS)
+$(1): $(dir $(1))/main.go $(GO_FILES) generated
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
-# Manually declared dependancies And what goes into each exe
+# Manually declared dependencies And what goes into each exe
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
-all: $(UPTODATE_FILES)
+all: exes $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
-dep-check: protos
+mod-check: protos
 configs-integration-test: $(PROTO_GOS)
 lint: $(PROTO_GOS)
 
@@ -86,7 +83,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(MIGRATION_DIRS) $(PROTO_GOS) lint test shell dep-check: build-image/$(UPTODATE)
+exes $(EXES) generated $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) time docker run $(RM) $(TTY) -i \
@@ -103,16 +100,20 @@ configs-integration-test: build-image/$(UPTODATE)
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
-		-v $(shell pwd)/pkg/configs/db/migrations:/migrations \
-		-e MIGRATIONS_DIR=/migrations \
+		-v $(shell pwd)/cmd/cortex/migrations:/migrations \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
+		-e DB_ADDR=configs-db.cortex.local \
 		$(IMAGE_PREFIX)build-image $@; \
 	status=$$?; \
 	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
 	exit $$status
 
 else
+
+generated: $(PROTO_GOS) $(MIGRATION_DIRS)
+
+exes: $(EXES)
 
 $(EXES):
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -135,20 +136,19 @@ shell:
 	bash
 
 configs-integration-test:
-	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
+	/bin/bash -c "go test -v -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
 
-dep-check:
-	dep check
-
-%/.migrations:
-	# Ensure a each image that requires a migration dir has one in the build context
-	cp -r pkg/configs/db/migrations $@
+mod-check:
+	GO111MODULE=on go mod download
+	GO111MODULE=on go mod verify
+	GO111MODULE=on go mod tidy
+	GO111MODULE=on go mod vendor
+	@git diff --exit-code -- go.sum go.mod vendor/
 
 endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(MIGRATION_DIRS)
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
 	go clean ./...
 
@@ -167,7 +167,7 @@ load-images:
 		fi \
 	done
 
-# Loads the built Docker images into the minikube environmen, and tags them with
+# Loads the built Docker images into the minikube environment, and tags them with
 # "latest" so the k8s manifests shipped with this code work.
 prime-minikube: save-images
 	eval $$(minikube docker-env) ; \

@@ -1,14 +1,5 @@
-cmd/alertmanager/alertmanager
-cmd/configs/configs
-cmd/distributor/distributor
-cmd/ingester/ingester
-cmd/querier/querier
-cmd/query-frontend/query-frontend
-cmd/ruler/ruler
-cmd/table-manager/table-manager
-cmd/lite/lite
 cmd/test-exporter/test-exporter
-cmd/*/.migrations
+cmd/cortex/cortex
 .uptodate
 .pkg
 .cache

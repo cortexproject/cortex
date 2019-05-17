@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -34,7 +35,7 @@ func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeries
 	result := model.Matrix{}
 	for _, series := range serieses {
 		metric := client.FromLabelAdaptersToMetric(series.Labels)
-		chunks, err := FromChunks("", metric, series.Chunks)
+		chunks, err := FromChunks("", client.FromLabelAdaptersToLabels(series.Labels), series.Chunks)
 		if err != nil {
 			return nil, err
 		}
@@ -57,7 +58,7 @@ func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeries
 }
 
 // FromChunks converts []client.Chunk to []chunk.Chunk.
-func FromChunks(userID string, metric model.Metric, in []client.Chunk) ([]chunk.Chunk, error) {
+func FromChunks(userID string, metric labels.Labels, in []client.Chunk) ([]chunk.Chunk, error) {
 	out := make([]chunk.Chunk, 0, len(in))
 	for _, i := range in {
 		o, err := prom_chunk.NewForEncoding(prom_chunk.Encoding(byte(i.Encoding)))

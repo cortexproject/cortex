@@ -13,6 +13,7 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -86,6 +87,9 @@ type Distributor struct {
 	limits        *validation.Overrides
 	billingClient *billing.Client
 
+	// For handling HA replicas.
+	replicas *haTracker
+
 	// Per-user rate limiters.
 	ingestLimitersMtx sync.RWMutex
 	ingestLimiters    map[string]*rate.Limiter
@@ -95,15 +99,18 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling bool
-	BillingConfig billing.Config
-	PoolConfig    ingester_client.PoolConfig
+	EnableBilling bool                       `yaml:"enable_billing,omitempty"`
+	BillingConfig billing.Config             `yaml:"billing,omitempty"`
+	PoolConfig    ingester_client.PoolConfig `yaml:"pool,omitempty"`
 
-	RemoteTimeout       time.Duration
-	ExtraQueryDelay     time.Duration
-	LimiterReloadPeriod time.Duration
+	EnableHAReplicas bool            `yaml:"enable_ha_pairs,omitempty"`
+	HATrackerConfig  HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
-	ShardByAllLabels bool
+	RemoteTimeout       time.Duration `yaml:"remote_timeout,omitempty"`
+	ExtraQueryDelay     time.Duration `yaml:"extra_queue_delay,omitempty"`
+	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period,omitempty"`
+
+	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
 
 	// for testing
 	ingesterClientFactory client.Factory
@@ -113,8 +120,10 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
+	cfg.HATrackerConfig.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
+	f.BoolVar(&cfg.EnableHAReplicas, "distributor.accept-ha-labels", false, "Accept samples from Prometheus HA replicas gracefully (requires labels).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
@@ -151,6 +160,14 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		quit:           make(chan struct{}),
 	}
 
+	if cfg.EnableHAReplicas {
+		replicas, err := newClusterTracker(cfg.HATrackerConfig)
+		if err != nil {
+			return nil, err
+		}
+		d.replicas = replicas
+	}
+
 	go d.loop()
 
 	return d, nil
@@ -180,8 +197,10 @@ func (d *Distributor) loop() {
 // Stop stops the distributor's maintenance loop.
 func (d *Distributor) Stop() {
 	close(d.quit)
-	d.limits.Stop()
 	d.ingesterPool.Stop()
+	if d.cfg.EnableHAReplicas {
+		d.replicas.stop()
+	}
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
@@ -217,6 +236,44 @@ func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, erro
 	return h, nil
 }
 
+// Remove the replica label from a slice of LabelPairs if it exists.
+func removeReplicaLabel(replica string, labels *[]client.LabelAdapter) {
+	for i := 0; i < len(*labels); i++ {
+		pair := (*labels)[i]
+		if pair.Name == replica {
+			*labels = append((*labels)[:i], (*labels)[i+1:]...)
+			return
+		}
+	}
+}
+
+// Returns a boolean that indicates whether or not we want to remove the replica label going forward,
+// and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
+// nil for the error means accept the sample.
+func (d *Distributor) checkSample(ctx context.Context, userID string, ts client.PreallocTimeseries) (bool, error) {
+	cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), ts.Labels)
+
+	// If the sample doesn't have either HA label, accept it.
+	// At the moment we want to accept these samples by default.
+	if cluster == "" || replica == "" {
+		return false, nil
+	}
+
+	// At this point we know we have both HA labels, we should lookup
+	// the cluster/instance here to see if we want to accept this sample.
+	err := d.replicas.checkReplica(ctx, userID, cluster, replica)
+	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
+	if err != nil { // Don't accept the sample.
+		// Any response code other than 202, or no response code at all, indicates an actual error
+		// and not just rejection of the sample because of non-matching replica values.
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
+			level.Error(util.Logger).Log("msg", "rejecting sample", "error", err)
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
@@ -225,12 +282,26 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 
 	var lastPartialErr error
+	removeReplica := false
+
+	if d.cfg.EnableHAReplicas && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
+		removeReplica, err = d.checkSample(ctx, userID, req.Timeseries[0])
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Build slice of sampleTrackers, one per timeseries.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
 	numSamples := 0
 	for _, ts := range req.Timeseries {
+		// If we found both the cluster and replica labels, we only want to include the cluster label when
+		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+		// series we're trying to dedupe when HA tracking moves over to a different replica.
+		if removeReplica {
+			removeReplicaLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+		}
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
 			return nil, err

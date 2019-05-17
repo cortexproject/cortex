@@ -167,8 +167,8 @@ func defaultOverrides(t *testing.T) *validation.Overrides {
 func TestResultsCache(t *testing.T) {
 	calls := 0
 	rcm, err := newResultsCacheMiddleware(
-		resultsCacheConfig{
-			cacheConfig: cache.Config{
+		ResultsCacheConfig{
+			CacheConfig: cache.Config{
 				Cache: cache.NewMockCache(),
 			},
 		},
@@ -201,9 +201,9 @@ func TestResultsCache(t *testing.T) {
 }
 
 func TestResultsCacheRecent(t *testing.T) {
-	var cfg resultsCacheConfig
+	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
-	cfg.cacheConfig.Cache = cache.NewMockCache()
+	cfg.CacheConfig.Cache = cache.NewMockCache()
 	rcm, err := newResultsCacheMiddleware(cfg, defaultOverrides(t))
 	require.NoError(t, err)
 

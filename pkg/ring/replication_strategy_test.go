@@ -82,12 +82,14 @@ func TestReplicationStrategy(t *testing.T) {
 		for i := 0; i < tc.DeadIngesters; i++ {
 			ingesters = append(ingesters, IngesterDesc{})
 		}
-
+		codec := ProtoCodec{Factory: ProtoDescFactory}
 		r, err := New(Config{
-			Mock:              NewInMemoryKVClient(),
+			KVStore: KVConfig{
+				Mock: NewInMemoryKVClient(codec),
+			},
 			HeartbeatTimeout:  100 * time.Second,
 			ReplicationFactor: tc.RF,
-		})
+		}, "ingester")
 		require.NoError(t, err)
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {

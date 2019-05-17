@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
@@ -40,8 +41,8 @@ func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
 }
 
 func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) chunk.Chunk {
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
+	metric := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
 	}
 	pc, err := promchunk.NewForEncoding(enc)
 	require.NoError(t, err)

@@ -128,16 +128,4 @@ The interface works somewhat differently across the supported databases:
 
 A set of schemas are used to map the matchers and label sets used on reads and writes to the chunk store into appropriate operations on the index. Schemas have been added as Cortex has evolved, mainly in an attempt to better load balance writes and improve query performance.
 
-> The current schema recommendation is the **v6 schema**.
-
-## See also
-
-For more details on Cortex's architecture, we recommend reading/watching:
-
-- "[Project Frankenstein: A multi tenant, scale out Prometheus](https://docs.google.com/document/d/1C7yhMnb1x2sfeoe45f4mnnKConvroWhJ8KQZwIHJOuw/edit#heading=h.nimsq29kl184)" (the original design doc)
-- "[Multitenant, Scale-Out Prometheus](https://promcon.io/2016-berlin/talks/multitenant-scale-out-prometheus/)" (PromCon 2016 talk)
-- "Weave Cortex: Multi-tenant, horizontally scalable Prometheus as a Service" (KubeCon Prometheus Day talk) [slides](http://www.slideshare.net/weaveworks/weave-cortex-multitenant-horizontally-scalable-prometheus-as-a-service) [video](https://www.youtube.com/watch?v=9Uctgnazfwk)
-- "[Cortex: Prometheus as a Service, One Year On](https://promcon.io/2017-munich/talks/cortex-prometheus-as-a-service-one-year-on/)" (PromCon 2017 Talk)
-- "Horizontally Scalable, Multi-tenant Prometheus" [slides](https://docs.google.com/presentation/d/190oIFgujktVYxWZLhLYN4q8p9dtQYoe4sxHgn4deBSI/edit#slide=id.g3b8e2d6f7e_0_6) (CNCF TOC Presentation)
-- [Cortex Query Woes](https://docs.google.com/document/d/1lsvSkv0tiAMPQv-V8vI2LZ8f4i9JuTRsuPI_i-XcAqY) provides details on Cortex query optimizations.
-- [Cortex: Horizontally Scalable, Highly Available Prometheus Monitoring](https://speakerdeck.com/grafana/cortex-horizontally-scalable-highly-available-prometheus-monitoring) (Presentation at Cloud Native London Meetup, Nov 2018)
+> The current schema recommendation is the **v10 schema**.

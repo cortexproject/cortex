@@ -16,6 +16,9 @@ type Config struct {
 	URI           string
 	MigrationsDir string
 	PasswordFile  string
+
+	// Allow injection of mock DBs for unit testing.
+	Mock DB
 }
 
 // RegisterFlags adds the flags required to configure this to the given FlagSet.
@@ -25,10 +28,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.PasswordFile, "database.password-file", "", "File containing password (username goes in URI)")
 }
 
-// RulesDB has ruler-specific DB interfaces.
-type RulesDB interface {
+// DB is the interface for the database.
+type DB interface {
 	// GetRulesConfig gets the user's ruler config
 	GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
+
 	// SetRulesConfig does a compare-and-swap (CAS) on the user's rules config.
 	// `oldConfig` must precisely match the current config in order to change the config to `newConfig`.
 	// Will return `true` if the config was updated, `false` otherwise.
@@ -36,14 +40,10 @@ type RulesDB interface {
 
 	// GetAllRulesConfigs gets all of the ruler configs
 	GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error)
+
 	// GetRulesConfigs gets all of the configs that have been added or have
 	// changed since the provided config.
 	GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error)
-}
-
-// DB is the interface for the database.
-type DB interface {
-	RulesDB
 
 	GetConfig(userID string) (configs.View, error)
 	SetConfig(userID string, cfg configs.Config) error
@@ -59,6 +59,10 @@ type DB interface {
 
 // New creates a new database.
 func New(cfg Config) (DB, error) {
+	if cfg.Mock != nil {
+		return cfg.Mock, nil
+	}
+
 	u, err := url.Parse(cfg.URI)
 	if err != nil {
 		return nil, err
@@ -88,13 +92,4 @@ func New(cfg Config) (DB, error) {
 		return nil, err
 	}
 	return traced{timed{d}}, nil
-}
-
-// NewRulesDB creates a new rules config database.
-func NewRulesDB(cfg Config) (RulesDB, error) {
-	db, err := New(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return db, err
 }

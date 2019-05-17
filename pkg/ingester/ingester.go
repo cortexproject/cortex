@@ -78,10 +78,10 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	LifecyclerConfig ring.LifecyclerConfig
+	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
 	// Config for transferring chunks.
-	MaxTransferRetries int
+	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
 
 	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration
@@ -111,14 +111,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 20*time.Minute, "Range of time to subtract from MaxChunkAge to spread out flushes")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to the underlying timeseries database.")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-
-	// DEPRECATED, no-op
-	f.Duration("ingester.search-pending-for", 30*time.Second, "DEPRECATED. Time to spend searching for a pending ingester when shutting down.")
-	f.Bool("ingester.reject-old-samples", false, "DEPRECATED. Reject old samples.")
-	f.Duration("ingester.reject-old-samples.max-age", 0, "DEPRECATED. Maximum accepted sample age before rejecting.")
-	f.Int("ingester.validation.max-length-label-name", 0, "DEPRECATED. Maximum length accepted for label names.")
-	f.Int("ingester.validation.max-length-label-value", 0, "DEPRECATED. Maximum length accepted for label value. This setting also applies to the metric name.")
-	f.Int("ingester.max-label-names-per-series", 0, "DEPRECATED. Maximum number of label names per series.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -172,7 +164,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	var err error
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
 	if err != nil {
 		return nil, err
 	}
@@ -214,8 +206,6 @@ func (i *Ingester) loop() {
 
 // Shutdown beings the process to stop this ingester.
 func (i *Ingester) Shutdown() {
-	i.limits.Stop()
-
 	// First wait for our flush loop to stop.
 	close(i.quit)
 	i.done.Wait()
@@ -390,7 +380,6 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
 	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
-		numSeries++
 		chunks := make([]*desc, 0, len(series.chunkDescs))
 		for _, chunk := range series.chunkDescs {
 			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
@@ -398,6 +387,11 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 			}
 		}
 
+		if len(chunks) == 0 {
+			return nil
+		}
+
+		numSeries++
 		wireChunks, err := toWireChunks(chunks)
 		if err != nil {
 			return err

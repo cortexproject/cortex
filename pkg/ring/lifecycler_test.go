@@ -27,9 +27,10 @@ func (f *flushTransferer) TransferOut(ctx context.Context) error {
 func TestRingNormaliseMigration(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	ringConfig.Mock = NewInMemoryKVClient()
+	codec := ProtoCodec{Factory: ProtoDescFactory}
+	ringConfig.KVStore.Mock = NewInMemoryKVClient(codec)
 
-	r, err := New(ringConfig)
+	r, err := New(ringConfig, "ingester")
 	require.NoError(t, err)
 	defer r.Stop()
 
@@ -45,7 +46,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	lifecyclerConfig1.FinalSleep = 0
 
 	ft := &flushTransferer{}
-	l1, err := NewLifecycler(lifecyclerConfig1, ft)
+	l1, err := NewLifecycler(lifecyclerConfig1, ft, "ingester")
 	require.NoError(t, err)
 
 	// Check this ingester joined, is active, and has one token.
@@ -70,7 +71,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	lifecyclerConfig2.ID = "ing2"
 	lifecyclerConfig1.FinalSleep = 0
 
-	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{})
+	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester")
 	require.NoError(t, err)
 
 	// This will block until l1 has successfully left the ring.

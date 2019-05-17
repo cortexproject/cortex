@@ -58,7 +58,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		ChunkTables:         fixtureProvisionConfig(2, chunkWriteScale, inactiveWriteScale),
 	}
 
-	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 		ChunkTables:         fixtureReadProvisionConfig(chunkReadScale, inactiveReadScale),
 	}
 
-	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -472,6 +472,10 @@ func (m *mockPrometheus) Flags(ctx context.Context) (promV1.FlagsResult, error) 
 
 func (m *mockPrometheus) Snapshot(ctx context.Context, skipHead bool) (promV1.SnapshotResult, error) {
 	return promV1.SnapshotResult{}, errors.New("not implemented")
+}
+
+func (m *mockPrometheus) Rules(ctx context.Context) (promV1.RulesResult, error) {
+	return promV1.RulesResult{}, errors.New("not implemented")
 }
 
 func (m *mockPrometheus) Targets(ctx context.Context) (promV1.TargetsResult, error) {

@@ -164,14 +164,6 @@ func metricToLabels(m model.Metric) labels.Labels {
 	return ls
 }
 
-func labelsToMetric(ls labels.Labels) model.Metric {
-	m := make(model.Metric, len(ls))
-	for _, l := range ls {
-		m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-	}
-	return m
-}
-
 type byLabels []storage.Series
 
 func (b byLabels) Len() int           { return len(b) }

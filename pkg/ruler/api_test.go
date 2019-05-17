@@ -15,6 +15,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/api"
+	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/db/dbtest"
 	"github.com/weaveworks/common/user"
@@ -28,7 +29,7 @@ var (
 	app        *API
 	database   db.DB
 	counter    int
-	privateAPI RulesAPI
+	privateAPI client.Client
 )
 
 // setup sets up the environment for the tests.
@@ -36,7 +37,14 @@ func setup(t *testing.T) {
 	database = dbtest.Setup(t)
 	app = NewAPI(database)
 	counter = 0
-	privateAPI = dbStore{db: database}
+	var err error
+	privateAPI, err = client.New(client.Config{
+		DBConfig: db.Config{
+			URI:  "mock", // trigger client.NewConfigClient to use the mock DB.
+			Mock: database,
+		},
+	})
+	require.NoError(t, err)
 }
 
 // cleanup cleans up the environment after a test.
@@ -339,7 +347,7 @@ func Test_GetAllConfigs_Empty(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	configs, err := privateAPI.GetConfigs(0)
+	configs, err := privateAPI.GetRules(0)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, 0, len(configs))
 }
@@ -353,7 +361,7 @@ func Test_GetAllConfigs(t *testing.T) {
 	config := makeRulerConfig(configs.RuleFormatV2)
 	view := post(t, userID, configs.RulesConfig{}, config)
 
-	found, err := privateAPI.GetConfigs(0)
+	found, err := privateAPI.GetRules(0)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID: view,
@@ -371,7 +379,7 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 	config2 := post(t, userID, config1.Config, makeRulerConfig(configs.RuleFormatV2))
 	lastCreated := post(t, userID, config2.Config, makeRulerConfig(configs.RuleFormatV2))
 
-	found, err := privateAPI.GetConfigs(0)
+	found, err := privateAPI.GetRules(0)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID: lastCreated,
@@ -387,7 +395,7 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 	userID3 := makeUserID()
 	config3 := post(t, userID3, configs.RulesConfig{}, makeRulerConfig(configs.RuleFormatV2))
 
-	found, err := privateAPI.GetConfigs(config2.ID)
+	found, err := privateAPI.GetRules(config2.ID)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID3: config3,
@@ -432,7 +440,7 @@ func Test_AlertmanagerConfig_NotInAllConfigs(t *testing.T) {
             - name: noop`)
 	postAlertmanagerConfig(t, makeUserID(), config)
 
-	found, err := privateAPI.GetConfigs(0)
+	found, err := privateAPI.GetRules(0)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{}, found)
 }

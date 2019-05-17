@@ -174,7 +174,7 @@ func TestTableManager(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +432,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 			InactiveThroughputOnDemandMode: true,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +515,7 @@ func TestTableManagerTags(t *testing.T) {
 				IndexTables: PeriodicTableConfig{},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -539,7 +539,7 @@ func TestTableManagerTags(t *testing.T) {
 				},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -593,7 +593,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

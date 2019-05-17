@@ -21,6 +21,8 @@ import (
 const (
 	readLabel  = "read"
 	writeLabel = "write"
+
+	bucketRetentionEnforcementInterval = 12 * time.Hour
 )
 
 var (
@@ -112,22 +114,25 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	client      TableClient
-	cfg         TableManagerConfig
-	schemaCfg   SchemaConfig
-	maxChunkAge time.Duration
-	done        chan struct{}
-	wait        sync.WaitGroup
+	client       TableClient
+	cfg          TableManagerConfig
+	schemaCfg    SchemaConfig
+	maxChunkAge  time.Duration
+	done         chan struct{}
+	wait         sync.WaitGroup
+	bucketClient BucketClient
 }
 
 // NewTableManager makes a new TableManager
-func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient) (*TableManager, error) {
+func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
+	objectClient BucketClient) (*TableManager, error) {
 	return &TableManager{
-		cfg:         cfg,
-		schemaCfg:   schemaCfg,
-		maxChunkAge: maxChunkAge,
-		client:      tableClient,
-		done:        make(chan struct{}),
+		cfg:          cfg,
+		schemaCfg:    schemaCfg,
+		maxChunkAge:  maxChunkAge,
+		client:       tableClient,
+		done:         make(chan struct{}),
+		bucketClient: objectClient,
 	}, nil
 }
 
@@ -135,6 +140,11 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
+
+	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled == true {
+		m.wait.Add(1)
+		go m.bucketRetentionLoop()
+	}
 }
 
 // Stop the TableManager
@@ -162,6 +172,26 @@ func (m *TableManager) loop() {
 				return m.SyncTables(ctx)
 			}); err != nil {
 				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
+			}
+		case <-m.done:
+			return
+		}
+	}
+}
+
+func (m *TableManager) bucketRetentionLoop() {
+	defer m.wait.Done()
+
+	ticker := time.NewTicker(bucketRetentionEnforcementInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			err := m.bucketClient.DeleteChunksBefore(context.Background(), mtime.Now().Add(-m.cfg.RetentionPeriod))
+
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 			}
 		case <-m.done:
 			return

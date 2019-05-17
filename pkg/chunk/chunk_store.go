@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -183,6 +184,10 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	return c.getMetricNameChunks(ctx, from, through, matchers, metricName)
 }
 
+func (c *store) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
 func (c *store) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName, labelName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
@@ -304,7 +309,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	level.Debug(log).Log("Chunks in index", len(chunks))
 
 	// Filter out chunks that are not in the selected time range.
-	filtered, keys := filterChunksByTime(from, through, chunks)
+	filtered := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
@@ -315,6 +320,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
+	keys := keysFromChunks(filtered)
 	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		return nil, promql.ErrStorage{Err: err}

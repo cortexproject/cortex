@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos exes
+.PHONY: all test clean images protos exes generated helm
 .DEFAULT_GOAL := all
 
 # Boiler plate for bulding Docker containers.
@@ -185,3 +185,8 @@ prime-minikube: save-images
 			docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest ; \
 		fi \
 	done
+
+helm:
+	helm lint k8s/helm/cortex
+	helm dependency build k8s/helm/cortex 
+	helm package k8s/helm/cortex 

@@ -1,0 +1,19 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ template "cortex.fullname" . }}
+  labels:
+    app: {{ template "cortex.name" . }}
+    chart: {{ template "cortex.chart" . }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "cortex.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "cortex.serviceAccountName" . }}
+{{- end }}
+

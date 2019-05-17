@@ -1,7 +1,6 @@
 package ruler
 
 import (
-	"flag"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -11,20 +10,42 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+	client_config "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
 )
 
-func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
-	var cfg Config
-	fs := flag.NewFlagSet("test", flag.PanicOnError)
-	cfg.RegisterFlags(fs)
-	fs.Parse(nil)
-	cfg.AlertmanagerURL.Set(alertmanagerURL)
-	cfg.AlertmanagerDiscovery = false
+type mockRuleStore struct{}
 
+func (m *mockRuleStore) GetRules(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+	return map[string]configs.VersionedRulesConfig{}, nil
+}
+
+func (m *mockRuleStore) GetAlerts(since configs.ID) (*client_config.ConfigsResponse, error) {
+	return nil, nil
+}
+
+func defaultRulerConfig() Config {
+	consul := ring.NewInMemoryKVClient()
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg.LifecyclerConfig)
+	cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
+	cfg.LifecyclerConfig.RingConfig.Mock = consul
+	cfg.LifecyclerConfig.NumTokens = 1
+	cfg.LifecyclerConfig.FinalSleep = time.Duration(0)
+	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
+	cfg.LifecyclerConfig.Addr = "localhost"
+	cfg.LifecyclerConfig.ID = "localhost"
+	return cfg
+}
+
+func newTestRuler(t *testing.T, cfg Config) *Ruler {
 	// TODO: Populate distributor and chunk store arguments to enable
 	// other kinds of tests.
 
@@ -34,7 +55,7 @@ func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
 		Timeout:       2 * time.Minute,
 	})
 	queryable := querier.NewQueryable(nil, nil, nil, 0)
-	ruler, err := NewRuler(cfg, engine, queryable, nil)
+	ruler, err := NewRuler(cfg, engine, queryable, nil, &mockRuleStore{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +73,11 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	r := newTestRuler(t, ts.URL)
+	cfg := defaultRulerConfig()
+	cfg.AlertmanagerURL.Set(ts.URL)
+	cfg.AlertmanagerDiscovery = false
+
+	r := newTestRuler(t, cfg)
 	n, err := r.getOrCreateNotifier("1")
 	if err != nil {
 		t.Fatal(err)

@@ -28,13 +28,13 @@ type ConsulConfig struct {
 	ConsistentReads   bool
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Host, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
-	f.StringVar(&cfg.Prefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
-	f.StringVar(&cfg.ACLToken, "consul.acltoken", "", "ACL Token used to interact with Consul.")
-	f.DurationVar(&cfg.HTTPClientTimeout, "consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
-	f.BoolVar(&cfg.ConsistentReads, "consul.consistent-reads", true, "Enable consistent reads to consul.")
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *ConsulConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
+	f.StringVar(&cfg.Prefix, prefix+"consul.prefix", "collectors/", "Prefix for keys in Consul.")
+	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
+	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
+	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to consul.")
 }
 
 type kv interface {

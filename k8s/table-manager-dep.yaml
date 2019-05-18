@@ -15,6 +15,7 @@ spec:
         image: quay.io/cortexproject/table-manager
         imagePullPolicy: IfNotPresent
         args:
+        - -target=table-manager
         - -server.http-listen-port=80
         - -dynamodb.original-table-name=cortex
         - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000

@@ -15,6 +15,7 @@ spec:
         image: quay.io/cortexproject/distributor
         imagePullPolicy: IfNotPresent
         args:
+        - -target=distributor
         - -log.level=debug
         - -server.http-listen-port=80
         - -consul.hostname=consul.default.svc.cluster.local:8500

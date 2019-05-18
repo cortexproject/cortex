@@ -78,7 +78,7 @@ func (m moduleName) String() string {
 	case Configs:
 		return "configs"
 	case AlertManager:
-		return "alert-manager"
+		return "alertmanager"
 	case All:
 		return "all"
 	default:

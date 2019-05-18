@@ -9,10 +9,11 @@ GIT_REVISION := $(shell git rev-parse HEAD)
 UPTODATE := .uptodate
 
 # Building Docker images is now automated. The convention is every directory
-# with a Dockerfile in it builds an image calls quay.io/weaveworks/<dirname>.
+# with a Dockerfile in it builds an image calls quay.io/cortexproject/<dirname>.
 # Dependencies (i.e. things that go in the image) still need to be explicitly
 # declared.
 %/$(UPTODATE): %/Dockerfile
+	@echo
 	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
 	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
 	touch $@
@@ -50,14 +51,12 @@ pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
-all: exes $(UPTODATE_FILES)
+all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
 mod-check: protos
 configs-integration-test: $(PROTO_GOS)
 lint: $(PROTO_GOS)
-
-# And now what goes into each image
 build-image/$(UPTODATE): build-image/*
 
 # All the boiler plate for building golang follows:
@@ -86,7 +85,9 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 exes $(EXES) generated $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) time docker run $(RM) $(TTY) -i \
+	@echo
+	@echo ">>>> Entering build container: $@"
+	@$(SUDO) time docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
@@ -96,7 +97,9 @@ configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
-	$(SUDO) docker run $(RM) $(TTY) -i \
+	@echo
+	@echo ">>>> Entering build container: $@"
+	@$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \

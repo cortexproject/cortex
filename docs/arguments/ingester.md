@@ -20,7 +20,6 @@
 
 | Flag | Description | Default |
 | --- | --- | --- |
-| `-ingester.max-concurrent-streams` | Limit on the number of concurrent streams for gRPC calls (0 = unlimited). | `1000` |
 | `-event.sample-rate` | How often to sample observability events (0 = never). | `0` |
 | `-ingester.max-transfer-retries` | Number of times to try and transfer chunks before falling back to flushing. | `10` |
 | `-ingester.flush-period` | Period with which to attempt to flush chunks. | `1m` |
@@ -142,19 +141,22 @@ Limits describe all the limits for users (see [Ingester, Distributor & Querier l
 
 | Flag | Description | Default |
 | --- | --- | --- |
-| `-distributor.ingestion-rate-limit` | The maximum number of series that a query can return. | `100000` |
-| `-distributor.ingestion-burst-size` | The maximum number of series that a query can return. | `100000` |
-| `-validation.max-length-label-name` | The maximum number of series that a query can return. | `100000` |
-| `-validation.max-length-label-value` | The maximum number of series that a query can return. | `100000` |
-| `-validation.max-label-names-per-series` | The maximum number of series that a query can return. | `100000` |
+| `-distributor.ingestion-rate-limit` | Per-user ingestion rate limit in samples per second. | `25000` |
+| `-distributor.ingestion-burst-size` | Per-user allowed ingestion burst size (in number of samples). Will be reset every -distributor.limiter-reload-period. | `50000` |
+| `-distributor.accept-ha-samples` | Per-user flag to enable handling of samples with external labels for identifying replicas in an HA Prometheus setup. | `false` |
+| `-ha-tracker.replica` | Prometheus label to look for in samples to identify a Proemtheus HA replica. | `__replica__` |
+| `-ha-tracker.cluster` | Prometheus label to look for in samples to identify a Poemtheus HA cluster. | `cluster` |
+| `-validation.max-length-label-name` | Maximum length accepted for label names. | `1024` |
+| `-validation.max-length-label-value` | Maximum length accepted for label value. This setting also applies to the metric name. | `2048` |
+| `-validation.max-label-names-per-series` | Maximum number of label names per series. | `30` |
 | `-validation.reject-old-sample` | Reject old samples. | `false` |
 | `-validation.reject-old-samples.max-age` | Maximum accepted sample age before rejecting. | `14*24h` |
 | `-validation.create-grace-period` | Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time. | `10m` |
 | `-validation.enforce-metric-name` | Enforce every sample has a metric name. | `true` |
 | `-ingester.max-series-per-query` | The maximum number of series that a query can return. | `100000` |
 | `-ingester.max-samples-per-query` | The maximum number of samples that a query can return. | `1000000` |
-| `-ingester.max-series-per-user` | The maximum number of samples that a query can return. | `5000000` |
-| `-ingester.max-series-per-metric` | The maximum number of samples that a query can return. | `50000` |
+| `-ingester.max-series-per-user` | Maximum number of active series per user. | `5000000` |
+| `-ingester.max-series-per-metric` | "Maximum number of active series per metric name. | `50000` |
 | `-store.query-chunk-limit` | Maximum number of chunks that can be fetched in a single query. | `2e6` |
 | `-store.max-query-length` | Limit to length of chunk store queries, 0 to disable. | `0` |
 | `-store.max-query-parallelism` | Maximum number of queries will be scheduled in parallel by the frontend. | `14` |

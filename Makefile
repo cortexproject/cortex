@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos exes generated
+.PHONY: all test clean images protos exes
 .DEFAULT_GOAL := all
 
 # Boiler plate for bulding Docker containers.
@@ -41,7 +41,7 @@ MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
 GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -name '*.pb.go' -prune -o -type f -name '*.go' -print)
 define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) generated
+$(1): $(dir $(1))/main.go $(GO_FILES) protos
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
@@ -82,7 +82,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-exes $(EXES) generated $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -113,8 +113,6 @@ configs-integration-test: build-image/$(UPTODATE)
 	exit $$status
 
 else
-
-generated: $(PROTO_GOS) $(MIGRATION_DIRS)
 
 exes: $(EXES)
 
@@ -152,7 +150,7 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
+	rm -rf $(UPTODATE_FILES) $(EXES) .cache
 	go clean ./...
 
 save-images:

@@ -16,7 +16,6 @@ Cortex can also make use of external memcacheds for caching and although these a
 For simplicity & to get started, we'll run it as a single process with no dependencies:
 
 ```sh
-$ make protos # Build all the protobuffer definitions.
 $ go build ./cmd/cortex
 $ ./cortex -config.file=./cmd/cortex/single-process-config.yaml
 ```

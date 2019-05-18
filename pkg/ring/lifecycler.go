@@ -149,8 +149,9 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 		flushTransferer: flushTransferer,
 		KVStore:         store,
 
-		Addr: fmt.Sprintf("%s:%d", addr, port),
-		ID:   cfg.ID,
+		Addr:     fmt.Sprintf("%s:%d", addr, port),
+		ID:       cfg.ID,
+		RingName: name,
 
 		quit:      make(chan struct{}),
 		actorChan: make(chan func()),

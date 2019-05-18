@@ -31,6 +31,23 @@
 | `-ingester.concurrent-flushes` | Number of concurrent goroutines flushing to the underlying time series database (DynamoDB, BigTable, etc). | `50` |
 | `-ingester.rate-update-period` | Period with which to update the per-user ingestion rates. | `15s` |
 
+#### Server Flags
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-server.http-listen-port` | HTTP server listen port. | `80` |
+| `-server.grpc-listen-port` | gRPC server listen port. | `9095` |
+| `-server.register-instrumentation` | Register the intrumentation handlers (/metrics etc). | `true` |
+| `-server.graceful-shutdown-timeout` | Timeout for graceful shutdowns | `30s` |
+| `-server.http-read-timeout` | Read timeout for HTTP server | `30s` |
+| `-server.http-write-timeout` | Write timeout for HTTP server | `30s` |
+| `-server.http-idle-timeout` | Idle timeout for HTTP server | `120s` |
+| `-server.grpc-max-recv-msg-size-bytes` | Limit on the size of a gRPC message this server can receive (bytes). | `4*1024*1024` |
+| `-server.grpc-max-send-msg-size-bytes` | Limit on the size of a gRPC message this server can send (bytes). | `4*1024*1024` |
+| `-server.grpc-max-concurrent-streams` | Limit on the number of concurrent streams for gRPC calls (0 = unlimited) | `100` |
+| `-server.path-prefix` | Base path to serve all API routes from (e.g. /v1/) | (empty string) |
+| `-log.level` | Only log messages with the given severity or above. Valid levels: [debug, info, warn, error] | `info` |
+
 #### Chunk Encoding Flags
 
 | Flag | Description | Default |

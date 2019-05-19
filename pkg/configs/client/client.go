@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,10 +18,10 @@ import (
 type Client interface {
 	// GetRules returns all Cortex configurations from a configs API server
 	// that have been updated after the given configs.ID was last updated.
-	GetRules(since configs.ID) (map[string]configs.VersionedRulesConfig, error)
+	GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error)
 
 	// GetAlerts fetches all the alerts that have changes since since.
-	GetAlerts(since configs.ID) (*ConfigsResponse, error)
+	GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error)
 }
 
 // New creates a new ConfigClient.
@@ -55,7 +56,7 @@ type configsClient struct {
 }
 
 // GetRules implements ConfigClient.
-func (c configsClient) GetRules(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (c configsClient) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -76,7 +77,7 @@ func (c configsClient) GetRules(since configs.ID) (map[string]configs.VersionedR
 }
 
 // GetAlerts implements ConfigClient.
-func (c configsClient) GetAlerts(since configs.ID) (*ConfigsResponse, error) {
+func (c configsClient) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -117,22 +118,22 @@ type dbStore struct {
 }
 
 // GetRules implements ConfigClient.
-func (d dbStore) GetRules(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (d dbStore) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	if since == 0 {
-		return d.db.GetAllRulesConfigs()
+		return d.db.GetAllRulesConfigs(ctx)
 	}
-	return d.db.GetRulesConfigs(since)
+	return d.db.GetRulesConfigs(ctx, since)
 }
 
 // GetAlerts implements ConfigClient.
-func (d dbStore) GetAlerts(since configs.ID) (*ConfigsResponse, error) {
+func (d dbStore) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
 	var resp map[string]configs.View
 	var err error
 	if since == 0 {
-		resp, err = d.db.GetAllConfigs()
+		resp, err = d.db.GetAllConfigs(ctx)
 
 	}
-	resp, err = d.db.GetConfigs(since)
+	resp, err = d.db.GetConfigs(ctx, since)
 	if err != nil {
 		return nil, err
 	}

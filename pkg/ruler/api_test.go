@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -347,7 +348,7 @@ func Test_GetAllConfigs_Empty(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	configs, err := privateAPI.GetRules(0)
+	configs, err := privateAPI.GetRules(context.Background(), 0)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, 0, len(configs))
 }
@@ -361,7 +362,7 @@ func Test_GetAllConfigs(t *testing.T) {
 	config := makeRulerConfig(configs.RuleFormatV2)
 	view := post(t, userID, configs.RulesConfig{}, config)
 
-	found, err := privateAPI.GetRules(0)
+	found, err := privateAPI.GetRules(context.Background(), 0)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID: view,
@@ -379,7 +380,7 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 	config2 := post(t, userID, config1.Config, makeRulerConfig(configs.RuleFormatV2))
 	lastCreated := post(t, userID, config2.Config, makeRulerConfig(configs.RuleFormatV2))
 
-	found, err := privateAPI.GetRules(0)
+	found, err := privateAPI.GetRules(context.Background(), 0)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID: lastCreated,
@@ -395,7 +396,7 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 	userID3 := makeUserID()
 	config3 := post(t, userID3, configs.RulesConfig{}, makeRulerConfig(configs.RuleFormatV2))
 
-	found, err := privateAPI.GetRules(config2.ID)
+	found, err := privateAPI.GetRules(context.Background(), config2.ID)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID3: config3,
@@ -440,7 +441,7 @@ func Test_AlertmanagerConfig_NotInAllConfigs(t *testing.T) {
             - name: noop`)
 	postAlertmanagerConfig(t, makeUserID(), config)
 
-	found, err := privateAPI.GetRules(0)
+	found, err := privateAPI.GetRules(context.Background(), 0)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{}, found)
 }

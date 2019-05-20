@@ -82,7 +82,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -146,12 +146,18 @@ mod-check:
 	GO111MODULE=on go mod vendor
 	@git diff --exit-code -- go.sum go.mod vendor/
 
+check-protos: clean-protos protos
+	@git diff --exit-code -- $(PROTO_GOS)
+
 endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) .cache
 	go clean ./...
+
+clean-protos:
+	rm -rf $(PROTO_GOS)
 
 save-images:
 	@mkdir -p images

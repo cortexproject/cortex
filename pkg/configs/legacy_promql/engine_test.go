@@ -78,25 +78,6 @@ func TestQueryConcurrency(t *testing.T) {
 	}
 }
 
-func TestQueryTimeout(t *testing.T) {
-	engine := NewEngine(nil, nil, 20, 5*time.Millisecond)
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	defer cancelCtx()
-
-	query := engine.newTestQuery(func(ctx context.Context) error {
-		time.Sleep(50 * time.Millisecond)
-		return contextDone(ctx, "test statement execution")
-	})
-
-	res := query.Exec(ctx)
-	if res.Err == nil {
-		t.Fatalf("expected timeout error but got none")
-	}
-	if _, ok := res.Err.(ErrQueryTimeout); res.Err != nil && !ok {
-		t.Fatalf("expected timeout error but got: %s", res.Err)
-	}
-}
-
 func TestQueryCancel(t *testing.T) {
 	engine := NewEngine(nil, nil, 10, 10*time.Second)
 	ctx, cancelCtx := context.WithCancel(context.Background())

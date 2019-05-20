@@ -35,6 +35,9 @@ jobs:
     - run:
         name: Check vendor directory is consistent.
         command: make BUILD_IN_CONTAINER=false mod-check
+    - run:
+        name: Check protos are consistent.
+        command: make BUILD_IN_CONTAINER=false check-protos
 
   test:
     <<: *defaults

@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos exes generated
+.PHONY: all test clean images protos exes
 .DEFAULT_GOAL := all
 
 # Boiler plate for bulding Docker containers.
@@ -9,10 +9,11 @@ GIT_REVISION := $(shell git rev-parse HEAD)
 UPTODATE := .uptodate
 
 # Building Docker images is now automated. The convention is every directory
-# with a Dockerfile in it builds an image calls quay.io/weaveworks/<dirname>.
+# with a Dockerfile in it builds an image calls quay.io/cortexproject/<dirname>.
 # Dependencies (i.e. things that go in the image) still need to be explicitly
 # declared.
 %/$(UPTODATE): %/Dockerfile
+	@echo
 	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
 	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
 	touch $@
@@ -40,7 +41,7 @@ MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
 GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -name '*.pb.go' -prune -o -type f -name '*.go' -print)
 define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) generated
+$(1): $(dir $(1))/main.go $(GO_FILES) protos
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
@@ -50,14 +51,13 @@ pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
-all: exes $(UPTODATE_FILES)
+pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
+all: $(UPTODATE_FILES)
 test: $(PROTO_GOS)
 protos: $(PROTO_GOS)
 mod-check: protos
 configs-integration-test: $(PROTO_GOS)
 lint: $(PROTO_GOS)
-
-# And now what goes into each image
 build-image/$(UPTODATE): build-image/*
 
 # All the boiler plate for building golang follows:
@@ -83,10 +83,12 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-exes $(EXES) generated $(PROTO_GOS) lint test shell mod-check: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) time docker run $(RM) $(TTY) -i \
+	@echo
+	@echo ">>>> Entering build container: $@"
+	@$(SUDO) time docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
@@ -96,7 +98,9 @@ configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
-	$(SUDO) docker run $(RM) $(TTY) -i \
+	@echo
+	@echo ">>>> Entering build container: $@"
+	@$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
@@ -110,8 +114,6 @@ configs-integration-test: build-image/$(UPTODATE)
 	exit $$status
 
 else
-
-generated: $(PROTO_GOS) $(MIGRATION_DIRS)
 
 exes: $(EXES)
 
@@ -145,12 +147,18 @@ mod-check:
 	GO111MODULE=on go mod vendor
 	@git diff --exit-code -- go.sum go.mod vendor/
 
+check-protos: clean-protos protos
+	@git diff --exit-code -- $(PROTO_GOS)
+
 endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
+	rm -rf $(UPTODATE_FILES) $(EXES) .cache
 	go clean ./...
+
+clean-protos:
+	rm -rf $(PROTO_GOS)
 
 save-images:
 	@mkdir -p images

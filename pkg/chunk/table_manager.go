@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,11 @@ const (
 	readLabel  = "read"
 	writeLabel = "write"
 
+	indexLabel   = "index"
+	chunkLabel   = "chunk"
+	highestLabel = "highest"
+	lowestLabel  = "lowest"
+
 	bucketRetentionEnforcementInterval = 12 * time.Hour
 )
 
@@ -39,11 +45,29 @@ var (
 		Name:      "dynamo_table_capacity_units",
 		Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
+	retentionPeriodConfig = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "retention_period",
+		Help:      "Configured retention period",
+	})
+	tableNumber = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_number",
+		Help:      "Min or Max table number for chunks or index kind",
+	}, []string{"extreme", "kind"})
+	tablePeriodConfig = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_period",
+		Help:      "Configured table period for chunks or index kind",
+	}, []string{"extreme", "kind"})
 )
 
 func init() {
 	prometheus.MustRegister(tableCapacity)
 	syncTableDuration.Register()
+	prometheus.MustRegister(retentionPeriodConfig)
+	prometheus.MustRegister(tableNumber)
+	prometheus.MustRegister(tablePeriodConfig)
 }
 
 // TableManagerConfig holds config for a TableManager
@@ -199,6 +223,100 @@ func (m *TableManager) loop(ctx context.Context) error {
 	}
 }
 
+func (m *TableManager) setRetentionMetrics() error {
+	if m.cfg.RetentionPeriod > 0 && m.cfg.RetentionDeletesEnabled {
+		tables, err := m.client.ListTables(context.Background())
+		if err != nil {
+			return err
+		}
+
+		// Collecting prefixes for index and chunk tables
+		indexTablePrefixes := map[string]time.Duration{}
+		chunkTablePrefixes := map[string]time.Duration{}
+		for _, cfg := range m.schemaCfg.Configs {
+			if cfg.IndexTables.Prefix != "" {
+				indexTablePrefixes[cfg.IndexTables.Prefix] = cfg.IndexTables.Period
+			}
+			if cfg.ChunkTables.Prefix != "" {
+				chunkTablePrefixes[cfg.ChunkTables.Prefix] = cfg.IndexTables.Period
+			}
+		}
+
+		lowestIndexTableNumber := -1
+		lowestIndexTablePeriod := time.Duration(0)
+		highestIndexTableNumber := 0
+		highestIndexTablePeriod := time.Duration(0)
+
+		lowestChunkTableNumber := -1
+		lowestChunkTablePeriod := time.Duration(0)
+		highestChunkTableNumber := -1
+		highestChunkTablePeriod := time.Duration(0)
+
+		// Finding min and max table number for index and chunk tables
+		for _, table := range tables {
+			for indexTablePrefix := range indexTablePrefixes {
+				if strings.HasPrefix(table, indexTablePrefix) {
+					tableNumber, err := strconv.Atoi(strings.Split(table, indexTablePrefix)[1])
+					if err != nil {
+						return err
+					}
+					if lowestIndexTableNumber == -1 || lowestIndexTableNumber > tableNumber {
+						lowestIndexTableNumber = tableNumber
+						lowestIndexTablePeriod = indexTablePrefixes[indexTablePrefix]
+					}
+					if highestIndexTableNumber > tableNumber {
+						highestIndexTableNumber = tableNumber
+						highestIndexTablePeriod = indexTablePrefixes[indexTablePrefix]
+					}
+				}
+			}
+
+			for chunkTablePrefix := range chunkTablePrefixes {
+				if strings.HasPrefix(table, chunkTablePrefix) {
+					tableNumber, err := strconv.Atoi(strings.Split(table, chunkTablePrefix)[1])
+					if err != nil {
+						return err
+					}
+					if lowestChunkTableNumber == -1 || lowestChunkTableNumber > tableNumber {
+						lowestChunkTableNumber = tableNumber
+						lowestChunkTablePeriod = indexTablePrefixes[chunkTablePrefix]
+					}
+					if highestChunkTableNumber > tableNumber {
+						highestChunkTableNumber = tableNumber
+						highestIndexTablePeriod = indexTablePrefixes[chunkTablePrefix]
+					}
+				}
+			}
+		}
+
+		if len(indexTablePrefixes) != 0 {
+			if lowestIndexTableNumber == -1 {
+				lowestIndexTableNumber = 0
+			}
+
+			tableNumber.WithLabelValues(lowestLabel, indexLabel).Set(float64(lowestIndexTableNumber))
+			tablePeriodConfig.WithLabelValues(lowestLabel, indexLabel).Set(float64(lowestIndexTablePeriod))
+			tableNumber.WithLabelValues(highestLabel, indexLabel).Set(float64(highestIndexTableNumber))
+			tablePeriodConfig.WithLabelValues(highestLabel, indexLabel).Set(float64(highestIndexTablePeriod))
+		}
+
+		if len(chunkTablePrefixes) != 0 {
+			if lowestChunkTableNumber == -1 {
+				lowestChunkTableNumber = 0
+			}
+
+			tableNumber.WithLabelValues(lowestLabel, chunkLabel).Set(float64(lowestChunkTableNumber))
+			tablePeriodConfig.WithLabelValues(lowestLabel, chunkLabel).Set(float64(lowestChunkTablePeriod))
+			tableNumber.WithLabelValues(highestLabel, chunkLabel).Set(float64(highestChunkTableNumber))
+			tablePeriodConfig.WithLabelValues(highestLabel, chunkLabel).Set(float64(highestChunkTablePeriod))
+		}
+
+		retentionPeriodConfig.Set(float64(m.cfg.RetentionPeriod))
+	}
+
+	return nil
+}
+
 // single iteration of bucket retention loop
 func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
 	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
@@ -228,6 +346,10 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 
 	if err := m.createTables(ctx, toCreate); err != nil {
 		return err
+	}
+
+	if err := m.setRetentionMetrics(); err != nil {
+		level.Error(util.Logger).Log("msg", "error setting retention metrics", "err", err)
 	}
 
 	return m.updateTables(ctx, toCheckThroughput)

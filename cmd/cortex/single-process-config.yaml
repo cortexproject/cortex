@@ -41,7 +41,8 @@ ingester:
 
     # Use an in memory ring store, so we don't need to launch a Consul.
     ring:
-      store: inmemory
+      kvstore:
+        store: inmemory
       replication_factor: 1
 
 # Use local storage - BoltDB for the index, and the filesystem

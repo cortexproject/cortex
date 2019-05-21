@@ -86,7 +86,7 @@ livenessProbe:
 nodeSelector: {}
 
 ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
-## `enabled` enabled persistant volumes.
+## `enabled` enabled persistent volumes.
 ## Use `existingClaim` to use an existing volume claim, if not defined a `PersistentVolumeClaim`
 ## will be created with the `size`, `storageClassName` and `accessModes` defined.
 persistence:

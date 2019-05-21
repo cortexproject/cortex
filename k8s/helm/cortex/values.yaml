@@ -86,9 +86,9 @@ livenessProbe:
 nodeSelector: {}
 
 ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
-## If you set enabled as "True", you need :
-## - create a pv which above 10Gi and has same namespace with cortex
-## - keep storageClassName same with below setting
+## `enabled` enabled persistant volumes.
+## Use `existingClaim` to use an existing volume claim, if not defined a `PersistentVolumeClaim`
+## will be created with the `size`, `storageClassName` and `accessModes` defined.
 persistence:
   enabled: false
   accessModes:

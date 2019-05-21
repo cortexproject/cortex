@@ -15,6 +15,7 @@ spec:
         image: quay.io/cortexproject/configs
         imagePullPolicy: IfNotPresent
         args:
+        - -target=configs
         - -server.http-listen-port=80
         - -database.uri=postgres://postgres@configs-db.default.svc.cluster.local/configs?sslmode=disable
         - -database.migrations=/migrations

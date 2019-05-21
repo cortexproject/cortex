@@ -15,6 +15,7 @@ spec:
         image: quay.io/cortexproject/query-frontend
         imagePullPolicy: IfNotPresent
         args:
+        - -target=query-frontend
         - -log.level=debug
         - -server.http-listen-port=80
         - -server.grpc-listen-port=9095

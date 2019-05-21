@@ -37,6 +37,7 @@ spec:
         image: quay.io/cortexproject/ingester
         imagePullPolicy: IfNotPresent
         args:
+        - -target=ingester
         - -ingester.join-after=30s
         - -ingester.claim-on-rollout=true
         - -consul.hostname=consul.default.svc.cluster.local:8500

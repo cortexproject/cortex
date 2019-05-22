@@ -1,3 +1,4 @@
+{{ if not .Values.distributedMode.enabled }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -102,3 +103,4 @@ spec:
           storage: {{ .Values.persistence.size | quote }}
       storageClassName: {{ .Values.persistence.storageClassName }}
   {{- end }}
+{{- end }}

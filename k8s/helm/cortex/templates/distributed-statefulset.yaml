@@ -1,0 +1,112 @@
+{{ if .Values.distributedMode.enabled }}
+{{ $root := . }}
+{{ range $role, $settings := .Values.distributedMode.statefulSets }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "cortex.fullname" $root }}-{{$role}}
+  labels:
+    app: {{ template "cortex.name" $root }}
+    chart: {{ template "cortex.chart" $root }}
+    role: {{ $role }}
+    release: {{ $root.Release.Name }}
+    heritage: {{ $root.Release.Service }}
+  annotations:
+    {{- toYaml $root.Values.annotations | nindent 4 }}
+spec:
+  podManagementPolicy: {{ $root.Values.podManagementPolicy }}
+  replicas: {{ $settings.replicas }}
+  selector:
+    matchLabels:
+      app: {{ template "cortex.name" $root }}
+      release: {{ $root.Release.Name }}
+      role: {{ $role }}
+  serviceName: {{ template "cortex.fullname" $root }}-headless
+  updateStrategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "cortex.name" $root }}
+        name: {{ template "cortex.name" $root }}
+        release: {{ $root.Release.Name }}
+        {{- with $root.Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") $root | sha256sum }}
+        {{- with $root.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ template "cortex.serviceAccountName" $root }}
+    {{- if $root.Values.priorityClassName }}
+      priorityClassName: {{ $root.Values.priorityClassName }}
+    {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.securityContext | nindent 8 }}
+      containers:
+        - name: {{ $root.Chart.Name }}-{{ $role }}
+          image: "{{ $root.Values.image.repository }}:{{ $root.Values.image.tag }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          args:
+            - "-config.file=/etc/cortex/cortex.yaml"
+          {{- range $key, $value := $settings.extraArgs }}
+            - "-{{ $key }}={{ $value }}"
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cortex
+            - name: storage
+              mountPath: "/data"
+              subPath: {{ .Values.persistence.subPath }}
+          ports:
+            - name: http-metrics
+              containerPort: {{ $settings.http_listen_port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml $root.Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $root.Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml $settings.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+          env:
+            - name: JAEGER_AGENT_HOST
+              value: "{{ .Values.tracing.jaegerAgentHost }}"
+      nodeSelector:
+        {{- toYaml $root.nodeSelector | nindent 8 }}
+      affinity:
+        {{- toYaml $root.affinity | nindent 8 }}
+      tolerations:
+        {{- toYaml $root.tolerations | nindent 8 }}
+      terminationGracePeriodSeconds: {{ $settings.terminationGracePeriodSeconds | default "30" }}
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ template "cortex.fullname" $root }}
+  {{- if not $root.Values.persistence.enabled }}
+        - name: storage
+          emptyDir: {}
+  {{- else if $root.Values.persistence.existingClaim }}
+        - name: storage
+          persistentVolumeClaim:
+            claimName: {{ $root.Values.persistence.existingClaim }}
+  {{- else }}
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+      annotations:
+        {{- toYaml $root.Values.persistence.annotations | nindent 8 }}
+    spec:
+      accessModes:
+        {{- toYaml $root.Values.persistence.accessModes | nindent 8 }}
+      resources:
+        requests:
+          storage: {{ $root.Values.persistence.size | quote }}
+      storageClassName: {{ $root.Values.persistence.storageClassName }}
+  {{- end }}
+{{- end }}  
+{{- end }}

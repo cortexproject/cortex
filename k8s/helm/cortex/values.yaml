@@ -71,6 +71,58 @@ image:
   tag: master-d0f8944c
   pullPolicy: Always # Always pull while in BETA
 
+
+distributedMode:
+  enabled: false
+  deployments:
+    distributor:
+      replicas: 1
+      enableService: true
+      serviceType: ClusterIP   
+      http_listen_port: 8800   
+      resources: {}      
+    configs:
+      replicas: 1
+      enableService: true
+      serviceType: ClusterIP
+      http_listen_port: 8801
+      resources: {}      
+    ingester:
+      replicas: 1
+      enableService: false   
+      http_listen_port: 8802   
+      terminationGracePeriodSeconds: 2400 
+      resources: {}       
+    querier:
+      replicas: 1
+      enableService: true
+      serviceType: ClusterIP
+      http_listen_port: 8803
+      resources: {}
+    query-frontend:
+      replicas: 1
+      enableService: true
+      serviceType: ClusterIP
+      http_listen_port: 8804
+      resources: {}      
+    ruler:
+      replicas: 1
+      enableService: false 
+      http_listen_port: 8805     
+      resources: {}      
+    table-manager:
+      replicas: 1
+      enableService: false    
+      http_listen_port: 8806  
+      resources: {}   
+  statefulsets:
+    alertmanager:   
+      replicas: 1
+      enableService: true
+      http_listen_port: 8807
+      serviceType: None
+      resources: {}
+
 ## Additional Cortex container arguments, e.g. log level (debug, info, warn, error)
 extraArgs: {}
   # log.level: debug

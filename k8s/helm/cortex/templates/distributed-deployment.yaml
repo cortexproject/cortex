@@ -30,6 +30,7 @@ spec:
       labels:
         app: {{ template "cortex.name" $root }}
         name: {{ template "cortex.name" $root }}
+        role: {{ $role }}        
         release: {{ $root.Release.Name }}
         {{- with $root.Values.podLabels }}
         {{- toYaml . | nindent 8 }}
@@ -59,9 +60,16 @@ spec:
             - name: config
               mountPath: /etc/cortex
           ports:
+          {{- if $settings.http_listen_port }}
             - name: http-metrics
               containerPort: {{ $settings.http_listen_port }}
               protocol: TCP
+          {{- end }}
+          {{- if $settings.grpc_listen_port }}
+            - name: grpc
+              containerPort: {{ $settings.grpc_listen_port }}
+              protocol: TCP
+          {{- end }}
           livenessProbe:
             {{- toYaml $root.Values.livenessProbe | nindent 12 }}
           readinessProbe:
@@ -84,6 +92,5 @@ spec:
         - name: config
           secret:
             secretName: {{ template "cortex.fullname" $root }} 
-  {{- end }}
 {{- end }}  
 {{- end }}

@@ -90,7 +90,8 @@ distributedMode:
     ingester:
       replicas: 1
       enableService: false   
-      http_listen_port: 8802   
+      http_listen_port: 8802 
+      grpc_listen_port: 9095  
       terminationGracePeriodSeconds: 2400 
       resources: {}       
     querier:

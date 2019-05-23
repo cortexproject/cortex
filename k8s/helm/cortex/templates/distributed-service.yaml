@@ -1,0 +1,17 @@
+{{ if .Values.distributedMode.enabled }}
+{{ $root := . }}
+{{ range $role, $settings := .Values.distributedMode.deployments }}
+{{ if .enableService}}
+---
+{{ $context := dict "root" $root "role" $role "settings" $settings}}
+{{ template "cortex.service" $context }}
+{{- end }} 
+{{- end }} 
+{{ range $role, $settings := .Values.distributedMode.statefulsets }}
+{{ if .enableService}}
+---
+{{ $context := dict "root" $root "role" $role "settings" $settings}}
+{{ template "cortex.service" $context }}
+{{- end }} 
+{{- end }} 
+{{- end }} #if .Values.distributedMode.enabled

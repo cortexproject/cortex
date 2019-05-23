@@ -25,11 +25,6 @@ const (
 	readLabel  = "read"
 	writeLabel = "write"
 
-	indexLabel   = "index"
-	chunkLabel   = "chunk"
-	highestLabel = "highest"
-	lowestLabel  = "lowest"
-
 	bucketRetentionEnforcementInterval = 12 * time.Hour
 )
 
@@ -50,24 +45,36 @@ var (
 		Name:      "retention_period",
 		Help:      "Configured retention period",
 	})
-	tableNumber = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	minIndexTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "table_number",
-		Help:      "Min or Max table number for chunks or index kind",
-	}, []string{"extreme", "kind"})
-	tablePeriodConfig = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name:      "min_index_table_number",
+		Help:      "Min table number for index",
+	})
+	minChunkTableNumber = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "table_period",
-		Help:      "Configured table period for chunks or index kind",
-	}, []string{"extreme", "kind"})
+		Name:      "min_chunk_table_number",
+		Help:      "Min table number for chunks",
+	})
+	indexTablePeriodConfigSec = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "index_table_period_config_sec",
+		Help:      "Configured table period for index table in seconds",
+	})
+	chunksTablePeriodConfigSec = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "chunks_table_period_config_sec",
+		Help:      "Configured table period for chunks table in seconds",
+	})
 )
 
 func init() {
 	prometheus.MustRegister(tableCapacity)
 	syncTableDuration.Register()
 	prometheus.MustRegister(retentionPeriodConfig)
-	prometheus.MustRegister(tableNumber)
-	prometheus.MustRegister(tablePeriodConfig)
+	prometheus.MustRegister(minIndexTableNumber)
+	prometheus.MustRegister(minChunkTableNumber)
+	prometheus.MustRegister(indexTablePeriodConfigSec)
+	prometheus.MustRegister(chunksTablePeriodConfigSec)
 }
 
 // TableManagerConfig holds config for a TableManager
@@ -238,19 +245,15 @@ func (m *TableManager) setRetentionMetrics() error {
 				indexTablePrefixes[cfg.IndexTables.Prefix] = cfg.IndexTables.Period
 			}
 			if cfg.ChunkTables.Prefix != "" {
-				chunkTablePrefixes[cfg.ChunkTables.Prefix] = cfg.IndexTables.Period
+				chunkTablePrefixes[cfg.ChunkTables.Prefix] = cfg.ChunkTables.Period
 			}
 		}
 
 		lowestIndexTableNumber := -1
-		lowestIndexTablePeriod := time.Duration(0)
-		highestIndexTableNumber := 0
-		highestIndexTablePeriod := time.Duration(0)
+		indexTablePeriod := time.Duration(0)
 
 		lowestChunkTableNumber := -1
-		lowestChunkTablePeriod := time.Duration(0)
-		highestChunkTableNumber := -1
-		highestChunkTablePeriod := time.Duration(0)
+		chunkTablePeriod := time.Duration(0)
 
 		// Finding min and max table number for index and chunk tables
 		for _, table := range tables {
@@ -262,11 +265,7 @@ func (m *TableManager) setRetentionMetrics() error {
 					}
 					if lowestIndexTableNumber == -1 || lowestIndexTableNumber > tableNumber {
 						lowestIndexTableNumber = tableNumber
-						lowestIndexTablePeriod = indexTablePrefixes[indexTablePrefix]
-					}
-					if highestIndexTableNumber > tableNumber {
-						highestIndexTableNumber = tableNumber
-						highestIndexTablePeriod = indexTablePrefixes[indexTablePrefix]
+						indexTablePeriod = indexTablePrefixes[indexTablePrefix]
 					}
 				}
 			}
@@ -279,11 +278,7 @@ func (m *TableManager) setRetentionMetrics() error {
 					}
 					if lowestChunkTableNumber == -1 || lowestChunkTableNumber > tableNumber {
 						lowestChunkTableNumber = tableNumber
-						lowestChunkTablePeriod = indexTablePrefixes[chunkTablePrefix]
-					}
-					if highestChunkTableNumber > tableNumber {
-						highestChunkTableNumber = tableNumber
-						highestIndexTablePeriod = indexTablePrefixes[chunkTablePrefix]
+						chunkTablePeriod = indexTablePrefixes[chunkTablePrefix]
 					}
 				}
 			}
@@ -294,10 +289,8 @@ func (m *TableManager) setRetentionMetrics() error {
 				lowestIndexTableNumber = 0
 			}
 
-			tableNumber.WithLabelValues(lowestLabel, indexLabel).Set(float64(lowestIndexTableNumber))
-			tablePeriodConfig.WithLabelValues(lowestLabel, indexLabel).Set(float64(lowestIndexTablePeriod))
-			tableNumber.WithLabelValues(highestLabel, indexLabel).Set(float64(highestIndexTableNumber))
-			tablePeriodConfig.WithLabelValues(highestLabel, indexLabel).Set(float64(highestIndexTablePeriod))
+			minIndexTableNumber.Set(float64(lowestIndexTableNumber))
+			indexTablePeriodConfigSec.Set(float64(indexTablePeriod / time.Second))
 		}
 
 		if len(chunkTablePrefixes) != 0 {
@@ -305,10 +298,8 @@ func (m *TableManager) setRetentionMetrics() error {
 				lowestChunkTableNumber = 0
 			}
 
-			tableNumber.WithLabelValues(lowestLabel, chunkLabel).Set(float64(lowestChunkTableNumber))
-			tablePeriodConfig.WithLabelValues(lowestLabel, chunkLabel).Set(float64(lowestChunkTablePeriod))
-			tableNumber.WithLabelValues(highestLabel, chunkLabel).Set(float64(highestChunkTableNumber))
-			tablePeriodConfig.WithLabelValues(highestLabel, chunkLabel).Set(float64(highestChunkTablePeriod))
+			minChunkTableNumber.Set(float64(lowestChunkTableNumber))
+			chunksTablePeriodConfigSec.Set(float64(chunkTablePeriod / time.Second))
 		}
 
 		retentionPeriodConfig.Set(float64(m.cfg.RetentionPeriod))

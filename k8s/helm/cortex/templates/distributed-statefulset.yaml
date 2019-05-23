@@ -24,7 +24,7 @@ spec:
       role: {{ $role }}
   serviceName: {{ template "cortex.fullname" $root }}-headless
   updateStrategy:
-    {{- toYaml .Values.updateStrategy | nindent 4 }}
+    {{- toYaml $root.Values.updateStrategy | nindent 4 }}
   template:
     metadata:
       labels:
@@ -83,7 +83,7 @@ spec:
             readOnlyRootFilesystem: true
           env:
             - name: JAEGER_AGENT_HOST
-              value: "{{ .Values.tracing.jaegerAgentHost }}"
+              value: "{{ $root.Values.tracing.jaegerAgentHost }}"
       nodeSelector:
         {{- toYaml $root.nodeSelector | nindent 8 }}
       affinity:

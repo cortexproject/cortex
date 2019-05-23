@@ -1,6 +1,6 @@
 {{ if .Values.distributedMode.enabled }}
 {{ $root := . }}
-{{ range $role, $settings := .Values.distributedMode.statefulSets }}
+{{ range $role, $settings := .Values.distributedMode.statefulsets }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -61,7 +61,7 @@ spec:
               mountPath: /etc/cortex
             - name: storage
               mountPath: "/data"
-              subPath: {{ .Values.persistence.subPath }}
+              subPath: {{ $root.Values.persistence.subPath }}
           ports:
           {{- if $settings.http_listen_port }}
             - name: http-metrics

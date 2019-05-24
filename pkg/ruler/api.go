@@ -301,7 +301,7 @@ func (a *API) rules(w http.ResponseWriter, r *http.Request) {
 
 	res := &RuleDiscovery{RuleGroups: []*RuleGroup{}}
 	for i, grp := range ruleGroups {
-		meta := strings.SplitN(i, ";", 1)
+		meta := strings.SplitN(i, ";", 2)
 		if len(meta) != 2 {
 			level.Warn(logger).Log("msg", "rulegroup does not have filename and group name", "key", i)
 			continue

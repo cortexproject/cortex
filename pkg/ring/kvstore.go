@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 )
@@ -48,7 +47,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	if prefix == "" {
 		prefix = "ring."
 	}
-	flagext.StringVarOnce(f, &cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, inmemory).")
+	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, inmemory).")
 }
 
 // CASCallback is the type of the callback to CAS.  If err is nil, out must be non-nil.

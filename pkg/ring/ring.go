@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -62,12 +61,17 @@ type Config struct {
 	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet.
+// RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.KVStore.RegisterFlagsWithPrefix("", f)
+	cfg.RegisterFlagsWithPrefix("", f)
+}
 
-	flagext.DurationVarOnce(f, &cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
-	flagext.IntVarOnce(f, &cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.KVStore.RegisterFlagsWithPrefix(prefix, f)
+
+	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
+	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 }
 
 // Ring holds the information about the members of the consistent hash ring.

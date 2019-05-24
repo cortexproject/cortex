@@ -13,7 +13,6 @@ import (
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 )
@@ -31,14 +30,14 @@ type ConsulConfig struct {
 	ConsistentReads   bool
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet.
+// RegisterFlags adds the flags required to config this to the given FlagSet
 // If prefix is not an empty string it should end with a period.
 func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
-	flagext.StringVarOnce(f, &cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
-	flagext.StringVarOnce(f, &cfg.Prefix, prefix+"consul.prefix", "collectors/", "Prefix for keys in Consul. Should end with a /.")
-	flagext.StringVarOnce(f, &cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
-	flagext.DurationVarOnce(f, &cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
-	flagext.BoolVarOnce(f, &cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to consul.")
+	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
+	f.StringVar(&cfg.Prefix, prefix+"consul.prefix", "collectors/", "Prefix for keys in Consul. Should end with a /.")
+	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
+	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
+	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to consul.")
 }
 
 type kv interface {

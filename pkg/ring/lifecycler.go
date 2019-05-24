@@ -41,7 +41,7 @@ var (
 type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring,omitempty"`
 
-	// Config for the ingester lifecycle control.
+	// Config for the ingester lifecycle control
 	ListenPort       *int
 	NumTokens        int           `yaml:"num_tokens,omitempty"`
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
@@ -52,21 +52,21 @@ type LifecyclerConfig struct {
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
 
-	// For testing, you can override the address and ID of this ingester.
+	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address"`
 	Port           int
 	ID             string
 	SkipUnregister bool
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet.
+// RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.RingConfig.RegisterFlags(f)
+	cfg.RingConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
 	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")

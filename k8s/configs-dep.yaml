@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: configs
-        image: quay.io/cortexproject/configs
+        image: quay.io/cortexproject/cortex
         imagePullPolicy: IfNotPresent
         args:
         - -target=configs

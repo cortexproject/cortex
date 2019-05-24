@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: table-manager
-        image: quay.io/cortexproject/table-manager
+        image: quay.io/cortexproject/cortex
         imagePullPolicy: IfNotPresent
         args:
         - -target=table-manager

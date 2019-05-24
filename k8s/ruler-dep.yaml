@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: ruler
-        image: quay.io/cortexproject/ruler
+        image: quay.io/cortexproject/cortex
         imagePullPolicy: IfNotPresent
         args:
         - -target=ruler

@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: querier
-        image: quay.io/cortexproject/querier
+        image: quay.io/cortexproject/cortex
         imagePullPolicy: IfNotPresent
         args:
         - -target=querier

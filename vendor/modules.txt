@@ -217,13 +217,6 @@ github.com/lann/ps
 # github.com/lib/pq v1.0.0
 github.com/lib/pq
 github.com/lib/pq/oid
-# github.com/mattes/migrate v1.3.1
-github.com/mattes/migrate/driver/postgres
-github.com/mattes/migrate/migrate
-github.com/mattes/migrate/driver
-github.com/mattes/migrate/file
-github.com/mattes/migrate/migrate/direction
-github.com/mattes/migrate/pipe
 # github.com/mattn/go-colorable v0.0.9
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.3
@@ -552,8 +545,16 @@ google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/internal/syscall
 # gopkg.in/fsnotify/fsnotify.v1 v1.4.7
 gopkg.in/fsnotify/fsnotify.v1
+# gopkg.in/golang-migrate/migrate.v1 v1.3.2
+gopkg.in/golang-migrate/migrate.v1/driver/postgres
+gopkg.in/golang-migrate/migrate.v1/migrate
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
+# gopkg.in/mattes/migrate.v1 v1.3.2
+gopkg.in/mattes/migrate.v1/driver
+gopkg.in/mattes/migrate.v1/file
+gopkg.in/mattes/migrate.v1/migrate/direction
+gopkg.in/mattes/migrate.v1/pipe
 # gopkg.in/yaml.v2 v2.2.2
 gopkg.in/yaml.v2
 # k8s.io/api v0.0.0-20181213150558-05914d821849

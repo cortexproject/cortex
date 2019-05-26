@@ -11,10 +11,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lib/pq"
-	_ "github.com/lib/pq"                         // Import the postgres sql driver
-	_ "github.com/mattes/migrate/driver/postgres" // Import the postgres migrations driver
-	"github.com/mattes/migrate/migrate"
+	_ "github.com/lib/pq" // Import the postgres sql driver
 	"github.com/pkg/errors"
+	_ "gopkg.in/golang-migrate/migrate.v1/driver/postgres" // Import the postgres migrations driver
+	"gopkg.in/golang-migrate/migrate.v1/migrate"
 )
 
 const (

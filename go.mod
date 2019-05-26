@@ -41,7 +41,6 @@ require (
 	github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/lib/pq v1.0.0
-	github.com/mattes/migrate v1.3.1
 	github.com/mattn/go-sqlite3 v1.10.0 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b
 	github.com/oklog/oklog v0.2.2 // indirect
@@ -78,6 +77,8 @@ require (
 	google.golang.org/api v0.4.0
 	google.golang.org/grpc v1.19.1
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
+	gopkg.in/golang-migrate/migrate.v1 v1.3.2
+	gopkg.in/mattes/migrate.v1 v1.3.2 // indirect
 	gopkg.in/yaml.v2 v2.2.2
 	k8s.io/klog v0.2.0 // indirect
 )

@@ -1,8 +1,6 @@
 # Cortex Arguments Explained
 
-We use Viper for configuration management. All below described flags can be configured via YAML or by setting those flags. If you want to pass these configurations via YAML files you must lookup the key names in the code. Please take note that the set defaults do not represent recommended settings. Instead they have been set to whatever was first supported in Cortex and have not been changed to ensure backwards compatibility.
-
-Viper supports parsing of durations from strings. When you are asked to configure a duration you can for instance set "5h" which equals a 5 hour duration.
+Most config options can be configured via YAML or by setting flags. If you want to pass these configurations via YAML files you must lookup the key names in the code as they are not yet documented. Please take note that the set defaults do not represent recommended settings. Instead they have been set to whatever was first supported in Cortex and have not been changed to ensure backwards compatibility.
 
 ## Querier
 

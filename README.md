@@ -16,7 +16,7 @@ Cortex provides horizontally scalable, highly available, multi-tenant, long term
 Prometheus sources in a single cluster, allowing untrusted parties to share the same cluster.
 - **Long term storage:** Cortex supports Amazon DynamoDB, Google Bigtable, Cassandra, S3 and GCS for long term storage of metric data.  This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
 
-Cortex is a [CNCF](https://cncf.io) sandbox project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [GrafanaCloud](https://grafana.com/cloud).
+Cortex is a [CNCF](https://cncf.io) sandbox project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
 Cortex is a primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, with a Prometheus-compatible query API.
 
 ## Documentation
@@ -104,8 +104,8 @@ in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/ove
 
 [Instrumenting Your App: Best Practices](https://www.weave.works/docs/cloud/latest/tasks/monitor/best-instrumenting/)
 
-### GrafanaCloud
+### Grafana Cloud
 
-To use Cortex as part of Grafana Cloud, sign up for [GrafanaCloud](https://grafana.com/cloud)
+To use Cortex as part of Grafana Cloud, sign up for [Grafana Cloud](https://grafana.com/cloud)
 by clicking "Log In" in the top right and then "Sign Up Now".  Cortex is included
 as part of the Starter and Basic Hosted Grafana plans.

@@ -8,6 +8,9 @@ Set `-target=ingester` to run Cortex's single binary as ingester. The below argu
 | --- | --- | --- |
 | `-event.sample-rate` | How often to sample observability events (0 = never). | `0` |
 | `-config.file` | Configuration file to load. | (empty string) |
+| `-target` | Name of the target module to run with this binary (e. g. ingester, table-manager,...) | `all` |
+| `-auth.enabled` | Set to false to disable auth. | `true` |
+| `-print.config` | Print the config and exit. | `false` |
 | `-ingester.max-transfer-retries` | Number of times to try and transfer chunks before falling back to flushing. | `10` |
 | `-ingester.flush-period` | Period with which to attempt to flush chunks. | `1m` |
 | `-ingester.retain-period` | Period chunks will remain in memory after flushing. | `5m` |

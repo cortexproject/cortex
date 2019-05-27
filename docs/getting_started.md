@@ -23,7 +23,7 @@ $ ./cortex -config.file=./docs/single-process-config.yaml
 This starts a single Cortex node storing chunks and index to your local filesystem in `/tmp/cortex`.
 It is not intended for production use.
 
-Add the following to your prometheus config:
+Add the following to your Prometheus config (documentation/examples/prometheus.yml in Prometheus repo):
 
 ```yaml
 remote_write:
@@ -110,7 +110,7 @@ In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add 
 In this last demo we'll show how Cortex can replicate data among three nodes,
 and demonstrate Cortex can tolerate a node failure without affecting reads and writes.
 
-First clean up the last demo and run a new consul and gradana:
+First clean up the last demo and run a new Consul and Grafana:
 
 ```sh
 $ docker rm -f cortex1 cortex2 consul grafana

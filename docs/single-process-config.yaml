@@ -45,7 +45,7 @@ ingester:
     ring:
       kvstore:
         store: inmemory
-      replication_factor: 3
+      replication_factor: 1
 
 # Use local storage - BoltDB for the index, and the filesystem
 # for the chunks.

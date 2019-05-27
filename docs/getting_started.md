@@ -151,7 +151,7 @@ $ docker run -d --name=cortex3 --network=cortex \
     -consul.hostname=consul:8500
 ```
 
-And have Promethues send data to the first replica:
+And have Prometheus send data to the first replica:
 
 ```sh
 $ ./prometheus --config.file=./documentation/examples/prometheus.yml

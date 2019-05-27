@@ -2,22 +2,6 @@
 
 Set `-target=ingester` to run Cortex's single binary as ingester. The below arguments can be set to configure the ingester.
 
-#### Ring Lifecycler Flags
-
-| Flag | Description | Default |
-| --- | --- | --- |
-| `-ingester.num-tokens` | Number of tokens for each ingester. | `128` |
-| `-ingester.heartbeat-period` | Period at which to heartbeat to consul. | `5s` |
-| `-ingester.join-after` | Period to wait for a claim from another ingester; will join automatically after this. | `0s` |
-| `-ingester.min-ready-duration` | Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring. | `1m` |
-| `-ingester.claim-on-rollout` | Send chunks to PENDING ingesters on exit. | `false` |
-| `-ingester.normalise-tokens` | Write out "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring. Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters. The new ring code can still read and write the old ring format, so is backwards compatible. | `false` |
-| `-ingester.final-sleep` | Duration to sleep for before exiting, to ensure metrics are scraped. | `30s` |
-| `-ingester.interface` | Name of network interface to read address from. | (no default) |
-| `-ingester.addr` | IP address to advertise in consul. | (empty string) |
-| `-ingester.port` | Port to advertise in consul (defaults to server.grpc-listen-port). | `0` |
-| `-ingester.id` | ID to register into consul. | (OS hostname) |
-
 #### General Flags
 
 | Flag | Description | Default |
@@ -33,6 +17,22 @@ Set `-target=ingester` to run Cortex's single binary as ingester. The below argu
 | `-ingester.chunk-age-jitter` | Range of time to subtract from MaxChunkAge to spread out flushes. | `20m` |
 | `-ingester.concurrent-flushes` | Number of concurrent goroutines flushing to the underlying time series database (DynamoDB, BigTable, etc). | `50` |
 | `-ingester.rate-update-period` | Period with which to update the per-user ingestion rates. | `15s` |
+
+#### Ring Lifecycler Flags
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `-ingester.num-tokens` | Number of tokens for each ingester. | `128` |
+| `-ingester.heartbeat-period` | Period at which to heartbeat to consul. | `5s` |
+| `-ingester.join-after` | Period to wait for a claim from another ingester; will join automatically after this. | `0s` |
+| `-ingester.min-ready-duration` | Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring. | `1m` |
+| `-ingester.claim-on-rollout` | Send chunks to PENDING ingesters on exit. | `false` |
+| `-ingester.normalise-tokens` | Write out "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring. Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters. The new ring code can still read and write the old ring format, so is backwards compatible. | `false` |
+| `-ingester.final-sleep` | Duration to sleep for before exiting, to ensure metrics are scraped. | `30s` |
+| `-ingester.interface` | Name of network interface to read address from. | (no default) |
+| `-ingester.addr` | IP address to advertise in consul. | (empty string) |
+| `-ingester.port` | Port to advertise in consul (defaults to server.grpc-listen-port). | `0` |
+| `-ingester.id` | ID to register into consul. | (OS hostname) |
 
 #### Server Flags
 

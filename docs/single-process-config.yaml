@@ -31,7 +31,9 @@ ingester:
   #chunk_idle_period: 15m
 
   lifecycler:
-    address: 127.0.0.1
+    # The address to advertise for this ingester.  Will be autodiscovered by
+    # looking up address on eth0 or en0; can be specified if this fails.
+    # address: 127.0.0.1
 
     # We want to start immediately and flush on shutdown.
     join_after: 0
@@ -43,7 +45,7 @@ ingester:
     ring:
       kvstore:
         store: inmemory
-      replication_factor: 1
+      replication_factor: 3
 
 # Use local storage - BoltDB for the index, and the filesystem
 # for the chunks.

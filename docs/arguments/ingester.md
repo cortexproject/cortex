@@ -1,5 +1,7 @@
 # Ingester Arguments
 
+Set `-target=ingester` to run Cortex's single binary as ingester. The below arguments can be set to configure the ingester.
+
 #### Ring Lifecycler Flags
 
 | Flag | Description | Default |
@@ -21,6 +23,7 @@
 | Flag | Description | Default |
 | --- | --- | --- |
 | `-event.sample-rate` | How often to sample observability events (0 = never). | `0` |
+| `-config.file` | Configuration file to load. | (empty string) |
 | `-ingester.max-transfer-retries` | Number of times to try and transfer chunks before falling back to flushing. | `10` |
 | `-ingester.flush-period` | Period with which to attempt to flush chunks. | `1m` |
 | `-ingester.retain-period` | Period chunks will remain in memory after flushing. | `5m` |
@@ -146,6 +149,8 @@ If you want to use Google Cloud Productssuch as GCS and/or BigTable these flags 
 #### Chunk Schema Flags
 
 In the course of time while developing Cortex we figured out there are better ways (more efficient, resilient against failures, etc.) to store data in the underlying Database. By then you had billings of records on disk with the one of the older schemas. Therefore we introduced the "from" tag which indicates the timeframe in which each schema has been used. You can move to a new schema by switching to it at midnight UTC and updating your configuration accordingly.
+
+**Note:** Configuring the schema is (as of writing this doc) only possible via the yaml config file.
 
 | Flag | Description | Default |
 | --- | --- | --- |

@@ -120,6 +120,7 @@ type Ruler struct {
 
 	scheduler *scheduler
 	workers   []worker
+	workerWG  *sync.WaitGroup
 
 	lifecycler *ring.Lifecycler
 	ring       *ring.Ring
@@ -148,6 +149,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		alertURL:    cfg.ExternalURL.URL,
 		notifierCfg: ncfg,
 		notifiers:   map[string]*rulerNotifier{},
+		workerWG:    &sync.WaitGroup{},
 	}
 
 	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
@@ -187,6 +189,7 @@ func (r *Ruler) run() {
 }
 
 // Stop stops the Ruler.
+// Each function of the ruler is terminated before leaving the ring
 func (r *Ruler) Stop() {
 	r.notifiersMtx.Lock()
 	for _, n := range r.notifiers {
@@ -194,13 +197,16 @@ func (r *Ruler) Stop() {
 	}
 	r.notifiersMtx.Unlock()
 
+	level.Info(util.Logger).Log("msg", "ruler shutting down scheduler")
 	r.scheduler.Stop()
-	for _, w := range r.workers {
-		w.Stop()
-	}
+
+	level.Info(util.Logger).Log("msg", "waiting for workers to finish")
+	r.workerWG.Wait()
 
 	if r.cfg.EnableSharding {
+		level.Info(util.Logger).Log("msg", "attempting shutdown lifecycle")
 		r.lifecycler.Shutdown()
+		level.Info(util.Logger).Log("msg", "shutting down the ring")
 		r.ring.Stop()
 	}
 }

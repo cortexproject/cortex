@@ -16,9 +16,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/tsdb/fileutil"
-	"golang.org/x/sys/unix"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/mmap"
 )
 
 var (
@@ -102,7 +102,7 @@ func newDiskcache(cfg DiskcacheConfig) (*Diskcache, error) {
 		return nil, errors.Wrap(err, "stat")
 	}
 
-	buf, err := unix.Mmap(int(f.Fd()), 0, int(info.Size()), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
+	buf, err := mmap.Mmap(f.Fd(), 0, int(info.Size()), mmap.READ|mmap.WRITE, mmap.SHARED)
 	if err != nil {
 		f.Close()
 		return nil, err
@@ -122,7 +122,7 @@ func newDiskcache(cfg DiskcacheConfig) (*Diskcache, error) {
 
 // Stop closes the file.
 func (d *Diskcache) Stop() error {
-	if err := unix.Munmap(d.buf); err != nil {
+	if err := mmap.Unmap(d.buf); err != nil {
 		return err
 	}
 	return d.f.Close()

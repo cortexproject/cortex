@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Mmap creates a new mmap
 func Mmap(fd uintptr, offset int64, length int, inprot, inflags int) ([]byte, error) {
 	if inflags != SHARED {
 		return nil, errors.New("flags other than mmap.SHARED are not implemented")
@@ -26,6 +27,7 @@ func Mmap(fd uintptr, offset int64, length int, inprot, inflags int) ([]byte, er
 	return buf, nil
 }
 
+// Unmap removes the mmap
 func Unmap(buf []byte) error {
 	return unix.Munmap(buf)
 }

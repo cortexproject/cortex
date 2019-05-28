@@ -1,3 +1,7 @@
+// Package mmap implements a portable mmap interface which works on UNIX alikes and especially windows.
+// common.go:   used by all platforms
+// unix.go:     basic wrapper around unix.Mmap()
+// windows.go:  same API as the unix one, but entirely different because of .. Windows
 package mmap
 
 const (
@@ -12,5 +16,3 @@ const (
 	// Write changes back to original file
 	SHARED = 0
 )
-
-type MMap []byte

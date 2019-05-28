@@ -17,6 +17,16 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// mmap on Windows is a two-step process.
+// First, we call CreateFileMapping to get a handle.
+// Then, we call MapviewToFile to get an actual pointer into memory.
+// Because we want to emulate a POSIX-style mmap, we don't want to expose
+// the handle -- only the pointer. We also want to return only a byte slice,
+// not a struct, so it's convenient to manipulate.
+
+// winmmap is required because we need to store more data on windows than what can be put into a []byte
+type winmmap []byte
+
 type addrinfo struct {
 	file     windows.Handle
 	mapview  windows.Handle
@@ -26,6 +36,7 @@ type addrinfo struct {
 var handleLock sync.Mutex
 var handleMap = map[uintptr]*addrinfo{}
 
+// Mmap creates a new mmap (windows version)
 func Mmap(fd uintptr, offset int64, length int, inprot, inflags int) ([]byte, error) {
 	prot := uint32(windows.PAGE_READONLY)
 	flags := uint32(windows.FILE_MAP_READ)
@@ -37,6 +48,10 @@ func Mmap(fd uintptr, offset int64, length int, inprot, inflags int) ([]byte, er
 		writable = true
 	}
 
+	// The maximum size is the area of the file, starting from 0,
+	// that we wish to allow to be mappable. It is the sum of
+	// the length the user requested, plus the offset where that length
+	// is starting from. This does not map the data into memory.
 	maxSizeHigh := uint32((offset + int64(length)) >> 32)
 	maxSizeLow := uint32((offset + int64(length)) & 0xFFFFFFFF)
 
@@ -45,6 +60,8 @@ func Mmap(fd uintptr, offset int64, length int, inprot, inflags int) ([]byte, er
 		return nil, os.NewSyscallError("CreateFileMapping", errno)
 	}
 
+	// Actually map a view of the data into memory. The view's size
+	// is the length the user requested.
 	fileOffsetHigh := uint32(offset >> 32)
 	fileOffsetLow := uint32(offset & 0xFFFFFFFF)
 
@@ -61,7 +78,7 @@ func Mmap(fd uintptr, offset int64, length int, inprot, inflags int) ([]byte, er
 	}
 	handleLock.Unlock()
 
-	m := MMap{}
+	m := winmmap{}
 	dh := m.header()
 	dh.Data = addr
 	dh.Len = length
@@ -70,16 +87,16 @@ func Mmap(fd uintptr, offset int64, length int, inprot, inflags int) ([]byte, er
 	return m, nil
 }
 
-func (m *MMap) header() *reflect.SliceHeader {
+func (m *winmmap) header() *reflect.SliceHeader {
 	return (*reflect.SliceHeader)(unsafe.Pointer(m))
 }
 
-func (m *MMap) addrLen() (uintptr, uintptr) {
+func (m *winmmap) addrLen() (uintptr, uintptr) {
 	header := m.header()
 	return header.Data, uintptr(header.Len)
 }
 
-func (m MMap) flush() error {
+func (m winmmap) flush() error {
 	addr, len := m.addrLen()
 	errno := windows.FlushViewOfFile(addr, len)
 	if errno != nil {
@@ -103,7 +120,8 @@ func (m MMap) flush() error {
 	return nil
 }
 
-func Unmap(buf MMap) error {
+// Unmap remotes the mmap
+func Unmap(buf winmmap) error {
 	if err := buf.flush(); err != nil {
 		return err
 	}

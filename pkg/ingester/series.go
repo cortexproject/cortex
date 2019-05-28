@@ -2,7 +2,11 @@ package ingester
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -24,6 +28,7 @@ func init() {
 }
 
 type memorySeries struct {
+	userID string
 	metric labels.Labels
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
@@ -40,19 +45,11 @@ type memorySeries struct {
 	lastSampleValue    model.SampleValue
 }
 
-type memorySeriesError struct {
-	message   string
-	errorType string
-}
-
-func (error *memorySeriesError) Error() string {
-	return error.message
-}
-
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m labels.Labels) *memorySeries {
+func newMemorySeries(userID string, m labels.Labels) *memorySeries {
 	return &memorySeries{
+		userID:   userID,
 		metric:   m,
 		lastTime: model.Earliest,
 	}
@@ -62,7 +59,12 @@ func newMemorySeries(m labels.Labels) *memorySeries {
 // completed chunks (which are now eligible for persistence).
 //
 // The caller must have locked the fingerprint of the series.
-func (s *memorySeries) add(v model.SamplePair) error {
+func (s *memorySeries) add(ts int64, vs float64) error {
+	v := model.SamplePair{
+		Timestamp: model.Time(ts),
+		Value:     model.SampleValue(vs),
+	}
+
 	// Don't report "no-op appends", i.e. where timestamp and sample
 	// value are the same as for the last append, as they are a
 	// common occurrence when using client-side timestamps
@@ -73,16 +75,12 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		return nil
 	}
 	if v.Timestamp == s.lastTime {
-		return &memorySeriesError{
-			message:   fmt.Sprintf("sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value),
-			errorType: "new-value-for-timestamp",
-		}
+		validation.DiscardedSamples.WithLabelValues("new-value-for-timestamp", s.userID).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, "sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value)
 	}
 	if v.Timestamp < s.lastTime {
-		return &memorySeriesError{
-			message:   fmt.Sprintf("sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp),
-			errorType: "sample-out-of-order",
-		}
+		validation.DiscardedSamples.WithLabelValues("sample-out-of-order", s.userID).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, "sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp)
 	}
 
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {

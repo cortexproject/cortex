@@ -53,6 +53,9 @@ type Series interface {
 
 	// Iterator returns a new iterator of the data of the series.
 	Iterator() SeriesIterator
+
+	// Chunks returns a copy of the compressed chunks that make up this series.
+	Chunks() []chunks.Meta
 }
 
 // querier aggregates querying results from time blocks within
@@ -332,15 +335,6 @@ func PostingsForMatchers(ix IndexReader, ms ...labels.Matcher) (index.Postings, 
 	it := index.Intersect(its...)
 
 	for _, n := range notIts {
-		if _, ok := n.(*index.ListPostings); !ok {
-			// Best to pre-calculate the merged lists via next rather than have a ton
-			// of seeks in Without.
-			pl, err := index.ExpandPostings(n)
-			if err != nil {
-				return nil, err
-			}
-			n = index.NewListPostings(pl)
-		}
 		it = index.Without(it, n)
 	}
 
@@ -808,6 +802,10 @@ func (s *chunkSeries) Iterator() SeriesIterator {
 	return newChunkSeriesIterator(s.chunks, s.intervals, s.mint, s.maxt)
 }
 
+func (s *chunkSeries) Chunks() []chunks.Meta {
+	return s.chunks
+}
+
 // SeriesIterator iterates over the data of a time series.
 type SeriesIterator interface {
 	// Seek advances the iterator forward to the given timestamp.
@@ -834,6 +832,14 @@ func (s *chainedSeries) Labels() labels.Labels {
 
 func (s *chainedSeries) Iterator() SeriesIterator {
 	return newChainedSeriesIterator(s.series...)
+}
+
+func (s *chainedSeries) Chunks() []chunks.Meta {
+	var chunks []chunks.Meta
+	for _, s := range s.series {
+		chunks = append(s.Chunks())
+	}
+	return chunks
 }
 
 // chainedSeriesIterator implements a series iterater over a list
@@ -905,6 +911,14 @@ func (s *verticalChainedSeries) Labels() labels.Labels {
 
 func (s *verticalChainedSeries) Iterator() SeriesIterator {
 	return newVerticalMergeSeriesIterator(s.series...)
+}
+
+func (s *verticalChainedSeries) Chunks() []chunks.Meta {
+	var chunks []chunks.Meta
+	for _, s := range s.series {
+		chunks = append(s.Chunks())
+	}
+	return chunks
 }
 
 // verticalMergeSeriesIterator implements a series iterater over a list

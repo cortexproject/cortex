@@ -2,17 +2,20 @@ package ingester
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"sync"
+	"unsafe"
+
+	"github.com/prometheus/tsdb"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdbLabels "github.com/prometheus/tsdb/labels"
 	"github.com/segmentio/fasthash/fnv1a"
 
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -20,17 +23,18 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+)
+
+// DiscardedSamples metric labels
+const (
+	perUserSeriesLimit   = "per_user_series_limit"
+	perMetricSeriesLimit = "per_metric_series_limit"
 )
 
 var (
 	memSeries = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_ingester_memory_series",
 		Help: "The current number of series in memory.",
-	})
-	memUsers = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_memory_users",
-		Help: "The current number of users in memory.",
 	})
 	memSeriesCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ingester_memory_series_created_total",
@@ -41,12 +45,6 @@ var (
 		Help: "The total number of series that were removed per user.",
 	}, []string{"user"})
 )
-
-type userStates struct {
-	states sync.Map
-	limits *validation.Overrides
-	cfg    Config
-}
 
 type userState struct {
 	limits              *validation.Overrides
@@ -62,115 +60,112 @@ type userState struct {
 
 	memSeriesCreatedTotal prometheus.Counter
 	memSeriesRemovedTotal prometheus.Counter
+
+	tsdb *tsdb.DB
 }
 
-const metricCounterShards = 128
-
-// DiscardedSamples metric labels
-const (
-	perUserSeriesLimit   = "per_user_series_limit"
-	perMetricSeriesLimit = "per_metric_series_limit"
-)
-
-type metricCounterShard struct {
-	mtx sync.Mutex
-	m   map[string]int
-}
-
-func newUserStates(limits *validation.Overrides, cfg Config) *userStates {
-	return &userStates{
-		limits: limits,
-		cfg:    cfg,
+func newUserState(cfg Config, userID string, limits *validation.Overrides) *userState {
+	seriesInMetric := make([]metricCounterShard, 0, metricCounterShards)
+	for i := 0; i < metricCounterShards; i++ {
+		seriesInMetric = append(seriesInMetric, metricCounterShard{
+			m: map[string]int{},
+		})
 	}
+
+	// Speculatively create a userState object and try to store it
+	// in the map.  Another goroutine may have got there before
+	// us, in which case this userState will be discarded
+	state := &userState{
+		userID:              userID,
+		limits:              limits,
+		fpToSeries:          newSeriesMap(),
+		fpLocker:            newFingerprintLocker(16 * 1024),
+		index:               index.New(),
+		ingestedAPISamples:  newEWMARate(0.2, cfg.RateUpdatePeriod),
+		ingestedRuleSamples: newEWMARate(0.2, cfg.RateUpdatePeriod),
+		seriesInMetric:      seriesInMetric,
+
+		memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
+		memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
+	}
+	state.mapper = newFPMapper(state.fpToSeries)
+	return state
 }
 
-func (us *userStates) cp() map[string]*userState {
-	states := map[string]*userState{}
-	us.states.Range(func(key, value interface{}) bool {
-		states[key.(string)] = value.(*userState)
-		return true
-	})
-	return states
+func (u *userState) append(ctx context.Context, req *client.WriteRequest) error {
+	return nil
 }
 
-func (us *userStates) gc() {
-	us.states.Range(func(key, value interface{}) bool {
-		state := value.(*userState)
-		if state.fpToSeries.length() == 0 {
-			us.states.Delete(key)
+func (u *userState) legacyAppend(ctx context.Context, req *client.WriteRequest) error {
+	var lastPartialErr error
+	for _, ts := range req.Timeseries {
+		for _, s := range ts.Samples {
+			err := u.legacyAppendInternal(ctx, ts.Labels, s.TimestampMs, s.Value, req.Source)
+			if err == nil {
+				continue
+			}
+
+			ingestedSamplesFail.Inc()
+			if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
+				switch httpResp.Code {
+				case http.StatusBadRequest, http.StatusTooManyRequests:
+					lastPartialErr = err
+					continue
+				}
+			}
+
+			return err
 		}
-		return true
-	})
-}
-
-func (us *userStates) updateRates() {
-	us.states.Range(func(key, value interface{}) bool {
-		state := value.(*userState)
-		state.ingestedAPISamples.tick()
-		state.ingestedRuleSamples.tick()
-		return true
-	})
-}
-
-func (us *userStates) get(userID string) (*userState, bool) {
-	state, ok := us.states.Load(userID)
-	if !ok {
-		return nil, ok
 	}
-	return state.(*userState), ok
+	return lastPartialErr
 }
 
-func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
-	userID, err := user.ExtractOrgID(ctx)
+func (u *userState) legacyAppendInternal(ctx context.Context, labels labelPairs, timestamp int64, value float64, source client.WriteRequest_SourceEnum) error {
+	labels.removeBlanks()
+
+	fp, series, err := u.getSeries(labels)
 	if err != nil {
-		return nil, false, fmt.Errorf("no user id")
+		return err
 	}
-	state, ok := us.get(userID)
-	return state, ok, nil
+	defer u.fpLocker.Unlock(fp)
+
+	prevNumChunks := len(series.chunkDescs)
+	if err := series.add(timestamp, value); err != nil {
+		return err
+	}
+
+	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+	ingestedSamples.Inc()
+	switch source {
+	case client.RULE:
+		u.ingestedRuleSamples.inc()
+	case client.API:
+		fallthrough
+	default:
+		u.ingestedAPISamples.inc()
+	}
+
+	return err
 }
 
-func (us *userStates) getOrCreateSeries(ctx context.Context, labels []client.LabelAdapter) (*userState, model.Fingerprint, *memorySeries, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, 0, nil, fmt.Errorf("no user id")
+func (u *userState) tsdbAppend(ctx context.Context, req *client.WriteRequest) error {
+	appender := u.tsdb.Appender()
+
+	for _, series := range req.Timeseries {
+		for _, sample := range series.Samples {
+			pairs := labelPairs(series.Labels)
+			pairs.removeBlanks()
+			labels := client.FromLabelAdaptersToLabels(series.Labels)
+			tsbdLabels := *(*tsdbLabels.Labels)(unsafe.Pointer(&labels))
+
+			_, err := appender.Add(tsbdLabels, sample.TimestampMs, sample.Value)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
-	state, ok := us.get(userID)
-	if !ok {
-
-		seriesInMetric := make([]metricCounterShard, 0, metricCounterShards)
-		for i := 0; i < metricCounterShards; i++ {
-			seriesInMetric = append(seriesInMetric, metricCounterShard{
-				m: map[string]int{},
-			})
-		}
-
-		// Speculatively create a userState object and try to store it
-		// in the map.  Another goroutine may have got there before
-		// us, in which case this userState will be discarded
-		state = &userState{
-			userID:              userID,
-			limits:              us.limits,
-			fpToSeries:          newSeriesMap(),
-			fpLocker:            newFingerprintLocker(16 * 1024),
-			index:               index.New(),
-			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			seriesInMetric:      seriesInMetric,
-
-			memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
-			memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
-		}
-		state.mapper = newFPMapper(state.fpToSeries)
-		stored, ok := us.states.LoadOrStore(userID, state)
-		if !ok {
-			memUsers.Inc()
-		}
-		state = stored.(*userState)
-	}
-
-	fp, series, err := state.getSeries(labels)
-	return state, fp, series, err
+	return appender.Commit()
 }
 
 func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeries, error) {
@@ -214,7 +209,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	memSeries.Inc()
 
 	labels := u.index.Add(metric, fp)
-	series = newMemorySeries(labels)
+	series = newMemorySeries(u.userID, labels)
 	u.fpToSeries.put(fp, series)
 
 	return fp, series, nil
@@ -319,4 +314,84 @@ outer:
 		return send(ctx)
 	}
 	return nil
+}
+
+func (u *userState) tsdbQuery(
+	ctx context.Context, req *client.QueryRequest,
+	add func(context.Context, labels.Labels, ...encoding.Chunk) error,
+	send func(context.Context) error, batchSize int,
+) error {
+	from, through, matchers, err := client.FromQueryRequest(req)
+	if err != nil {
+		return err
+	}
+
+	querier, err := u.tsdb.Querier(int64(from), int64(through))
+	if err != nil {
+		return err
+	}
+
+	seriesSet, err := querier.Select(convertMatchers(matchers)...)
+	if err != nil {
+		return err
+	}
+
+	i := 0
+	for ; seriesSet.Next(); i++ {
+		series := seriesSet.At()
+		tsdbChunks := series.Chunks()
+		bigchunk := encoding.NewBigchunk()
+		bigchunk.AddSmallChunks(tsdbChunks)
+		tsdbLabels := series.Labels()
+		labels := *(*labels.Labels)(unsafe.Pointer(&tsdbLabels))
+
+		if err := add(ctx, labels, bigchunk); err != nil {
+			return err
+		}
+
+		if batchSize > 0 && (i+1)%batchSize == 0 && send != nil {
+			if err = send(ctx); err != nil {
+				return nil
+			}
+		}
+	}
+
+	if batchSize > 0 && i%batchSize > 0 && send != nil {
+		return send(ctx)
+	}
+
+	return seriesSet.Err()
+}
+
+func convertMatchers(oms []*labels.Matcher) []tsdbLabels.Matcher {
+	ms := make([]tsdbLabels.Matcher, 0, len(oms))
+	for _, om := range oms {
+		ms = append(ms, convertMatcher(om))
+	}
+	return ms
+}
+
+func convertMatcher(m *labels.Matcher) tsdbLabels.Matcher {
+	switch m.Type {
+	case labels.MatchEqual:
+		return tsdbLabels.NewEqualMatcher(m.Name, m.Value)
+
+	case labels.MatchNotEqual:
+		return tsdbLabels.Not(tsdbLabels.NewEqualMatcher(m.Name, m.Value))
+
+	case labels.MatchRegexp:
+		res, err := tsdbLabels.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
+		if err != nil {
+			panic(err)
+		}
+		return res
+
+	case labels.MatchNotRegexp:
+		res, err := tsdbLabels.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
+		if err != nil {
+			panic(err)
+		}
+		return tsdbLabels.Not(res)
+	}
+	panic("storage.convertMatcher: invalid matcher type")
 }

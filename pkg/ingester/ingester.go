@@ -223,75 +223,20 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	var lastPartialErr error
-
-	for _, ts := range req.Timeseries {
-		for _, s := range ts.Samples {
-			err := i.append(ctx, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
-			if err == nil {
-				continue
-			}
-
-			ingestedSamplesFail.Inc()
-			if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-				switch httpResp.Code {
-				case http.StatusBadRequest, http.StatusTooManyRequests:
-					lastPartialErr = err
-					continue
-				}
-			}
-
-			return nil, err
-		}
-	}
-
-	return &client.WriteResponse{}, lastPartialErr
-}
-
-func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
-	labels.removeBlanks()
-
 	i.stopLock.RLock()
 	defer i.stopLock.RUnlock()
 	if i.stopped {
-		return fmt.Errorf("ingester stopping")
+		return nil, fmt.Errorf("ingester stopping")
 	}
 
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, labels)
+	u, err := i.userStates.getOrCreate(ctx)
 	if err != nil {
-		return err
-	}
-	defer func() {
-		state.fpLocker.Unlock(fp)
-	}()
-
-	prevNumChunks := len(series.chunkDescs)
-	if err := series.add(model.SamplePair{
-		Value:     value,
-		Timestamp: timestamp,
-	}); err != nil {
-		if mse, ok := err.(*memorySeriesError); ok {
-			validation.DiscardedSamples.WithLabelValues(mse.errorType, state.userID).Inc()
-			// Use a dumb string template to avoid the message being parsed as a template
-			err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
-		}
-		return err
+		return nil, err
 	}
 
-	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-	ingestedSamples.Inc()
-	switch source {
-	case client.RULE:
-		state.ingestedRuleSamples.inc()
-	case client.API:
-		fallthrough
-	default:
-		state.ingestedAPISamples.inc()
-	}
-
-	return err
+	return &client.WriteResponse{}, u.append(ctx, req)
 }
 
 // Query implements service.IngesterServer

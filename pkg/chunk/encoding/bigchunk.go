@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/tsdb/chunks"
 )
 
 const samplesPerChunk = 120
@@ -22,18 +23,19 @@ type smallChunk struct {
 
 // bigchunk is a set of prometheus/tsdb chunks.  It grows over time and has no
 // upperbound on number of samples it can contain.
-type bigchunk struct {
+type Bigchunk struct {
 	chunks []smallChunk
 
 	appender         chunkenc.Appender
 	remainingSamples int
 }
 
-func newBigchunk() *bigchunk {
-	return &bigchunk{}
+// NewBigchunk makes a new Bigchunk.
+func NewBigchunk() *Bigchunk {
+	return &Bigchunk{}
 }
 
-func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
+func (b *Bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 	if b.remainingSamples == 0 {
 		if bigchunkSizeCapBytes > 0 && b.Size() > bigchunkSizeCapBytes {
 			return addToOverflowChunk(b, sample)
@@ -50,7 +52,7 @@ func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 }
 
 // addNextChunk adds a new XOR "subchunk" to the internal list of chunks.
-func (b *bigchunk) addNextChunk(start model.Time) error {
+func (b *Bigchunk) addNextChunk(start model.Time) error {
 	// To save memory, we "compact" the previous chunk - the array backing the slice
 	// will be upto 2x too big, and we can save this space.
 	const chunkCapacityExcess = 32 // don't bother copying if it's within this range
@@ -84,7 +86,7 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	return nil
 }
 
-func (b *bigchunk) Marshal(wio io.Writer) error {
+func (b *Bigchunk) Marshal(wio io.Writer) error {
 	w := writer{wio}
 	if err := w.WriteVarInt16(uint16(len(b.chunks))); err != nil {
 		return err
@@ -101,12 +103,12 @@ func (b *bigchunk) Marshal(wio io.Writer) error {
 	return nil
 }
 
-func (b *bigchunk) MarshalToBuf(buf []byte) error {
+func (b *Bigchunk) MarshalToBuf(buf []byte) error {
 	writer := bytes.NewBuffer(buf)
 	return b.Marshal(writer)
 }
 
-func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
+func (b *Bigchunk) UnmarshalFromBuf(buf []byte) error {
 	r := reader{buf: buf}
 	numChunks, err := r.ReadUint16()
 	if err != nil {
@@ -144,15 +146,15 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 	return nil
 }
 
-func (b *bigchunk) Encoding() Encoding {
-	return Bigchunk
+func (b *Bigchunk) Encoding() Encoding {
+	return BigChunk
 }
 
-func (b *bigchunk) Utilization() float64 {
+func (b *Bigchunk) Utilization() float64 {
 	return 1.0
 }
 
-func (b *bigchunk) Len() int {
+func (b *Bigchunk) Len() int {
 	sum := 0
 	for _, c := range b.chunks {
 		sum += c.NumSamples()
@@ -160,7 +162,7 @@ func (b *bigchunk) Len() int {
 	return sum
 }
 
-func (b *bigchunk) Size() int {
+func (b *Bigchunk) Size() int {
 	sum := 2 // For the number of sub chunks.
 	for _, c := range b.chunks {
 		sum += 2 // For the length of the sub chunk.
@@ -169,14 +171,14 @@ func (b *bigchunk) Size() int {
 	return sum
 }
 
-func (b *bigchunk) NewIterator() Iterator {
+func (b *Bigchunk) NewIterator() Iterator {
 	return &bigchunkIterator{
-		bigchunk: b,
+		Bigchunk: b,
 		curr:     b.chunks[0].Iterator(),
 	}
 }
 
-func (b *bigchunk) Slice(start, end model.Time) Chunk {
+func (b *Bigchunk) Slice(start, end model.Time) Chunk {
 	i, j := 0, len(b.chunks)
 	for k := 0; k < len(b.chunks); k++ {
 		if b.chunks[k].end < int64(start) {
@@ -187,8 +189,20 @@ func (b *bigchunk) Slice(start, end model.Time) Chunk {
 			break
 		}
 	}
-	return &bigchunk{
+	return &Bigchunk{
 		chunks: b.chunks[i:j],
+	}
+}
+
+func (b *Bigchunk) AddSmallChunks(cs []chunks.Meta) {
+	scs := make([]smallChunk, len(cs), 0)
+	for _, c := range cs {
+		xoc := c.Chunk.(*chunkenc.XORChunk)
+		scs = append(scs, smallChunk{
+			XORChunk: xoc,
+			start:    c.MinTime,
+			end:      c.MaxTime,
+		})
 	}
 }
 
@@ -227,7 +241,7 @@ func (r *reader) ReadBytes(count int) ([]byte, error) {
 }
 
 type bigchunkIterator struct {
-	*bigchunk
+	*Bigchunk
 
 	curr chunkenc.Iterator
 	i    int

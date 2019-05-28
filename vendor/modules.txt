@@ -343,17 +343,17 @@ github.com/prometheus/prometheus/discovery/zookeeper
 github.com/prometheus/prometheus/discovery/refresh
 github.com/prometheus/prometheus/pkg/logging
 github.com/prometheus/prometheus/util/treecache
-# github.com/prometheus/tsdb v0.7.2-0.20190506134726-2ae028114c89
+# github.com/prometheus/tsdb v0.8.0
 github.com/prometheus/tsdb/fileutil
 github.com/prometheus/tsdb/chunkenc
-github.com/prometheus/tsdb/labels
 github.com/prometheus/tsdb
-github.com/prometheus/tsdb/wal
+github.com/prometheus/tsdb/labels
 github.com/prometheus/tsdb/chunks
 github.com/prometheus/tsdb/encoding
 github.com/prometheus/tsdb/errors
 github.com/prometheus/tsdb/goversion
 github.com/prometheus/tsdb/index
+github.com/prometheus/tsdb/wal
 # github.com/samuel/go-zookeeper v0.0.0-20161028232340-1d7be4effb13
 github.com/samuel/go-zookeeper/zk
 # github.com/satori/go.uuid v1.2.0

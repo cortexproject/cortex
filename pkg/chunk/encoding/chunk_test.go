@@ -62,7 +62,7 @@ func TestChunk(t *testing.T) {
 	}{
 		{DoubleDelta, 989},
 		{Varbit, 2048},
-		{Bigchunk, 4096},
+		{BigChunk, 4096},
 	} {
 		for samples := tc.maxSamples / 10; samples < tc.maxSamples; samples += tc.maxSamples / 10 {
 

@@ -82,27 +82,29 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			fromIngesterID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
 		}
-		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
-		descs, err := fromWireChunks(wireSeries.Chunks)
-		if err != nil {
-			return err
-		}
+		/*
+			userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
+			descs, err := fromWireChunks(wireSeries.Chunks)
+			if err != nil {
+				return err
+			}
 
-		state, fp, series, err := userStates.getOrCreateSeries(userCtx, wireSeries.Labels)
-		if err != nil {
-			return err
-		}
-		prevNumChunks := len(series.chunkDescs)
+			state, fp, series, err := userStates.getOrCreateSeries(userCtx, wireSeries.Labels)
+			if err != nil {
+				return err
+			}
+			prevNumChunks := len(series.chunkDescs)
 
-		err = series.setChunks(descs)
-		state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
-		if err != nil {
-			return err
-		}
+			err = series.setChunks(descs)
+			state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
+			if err != nil {
+				return err
+			}
 
-		seriesReceived++
-		memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-		receivedChunks.Add(float64(len(descs)))
+			seriesReceived++
+			memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+			receivedChunks.Add(float64(len(descs)))
+		*/
 	}
 
 	if seriesReceived == 0 {

@@ -30,7 +30,7 @@ func BenchmarkQueryStream(b *testing.B) {
 		numCPUs    = 32
 	)
 
-	encoding.DefaultEncoding = encoding.Bigchunk
+	encoding.DefaultEncoding = encoding.BigChunk
 	limits.MaxSeriesPerMetric = numSeries
 	limits.MaxSeriesPerQuery = numSeries
 	cfg.FlushCheckPeriod = 15 * time.Minute
@@ -55,14 +55,14 @@ func BenchmarkQueryStream(b *testing.B) {
 			{Name: "cpu", Value: cpus[i%numCPUs]},
 		}
 
-		state, fp, series, err := ing.userStates.getOrCreateSeries(ctx, labels)
+		state, err := ing.userStates.getOrCreate(ctx)
+		require.NoError(b, err)
+
+		fp, series, err := state.getSeries(labels)
 		require.NoError(b, err)
 
 		for j := 0; j < numSamples; j++ {
-			err = series.add(model.SamplePair{
-				Value:     model.SampleValue(float64(i)),
-				Timestamp: model.Time(int64(i)),
-			})
+			err = series.add(int64(i), float64(i))
 			require.NoError(b, err)
 		}
 

@@ -266,6 +266,22 @@ func (s *stream) Send(response *client.QueryStreamResponse) error {
 	return nil
 }
 
+func WriteRequest(ls labelPairs, ts int64, v float64) *client.WriteRequest {
+	return &client.WriteRequest{
+		Timeseries: []client.PreallocTimeseries{
+			{
+				TimeSeries: client.TimeSeries{
+					Labels: ls,
+					Samples: []client.Sample{
+						{TimestampMs: ts, Value: v},
+					},
+				},
+			},
+		},
+		Source: client.API,
+	}
+}
+
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
 	defer ing.Shutdown()
@@ -274,22 +290,22 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "testmetric"},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, m, 1, 0, client.API)
+	_, err := ing.Push(ctx, WriteRequest(m, 1, 0))
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, m, 1, 0, client.API)
+	_, err = ing.Push(ctx, WriteRequest(m, 1, 0))
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, m, 0, 0, client.API)
+	_, err = ing.Push(ctx, WriteRequest(m, 0, 0))
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, m, 1, 1, client.API)
+	_, err = ing.Push(ctx, WriteRequest(m, 1, 1))
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
@@ -307,7 +323,7 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 		{Name: "bar", Value: ""},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, lp, 1, 0, client.API)
+	_, err := ing.Push(ctx, WriteRequest(lp, 1, 0))
 	require.NoError(t, err)
 
 	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")

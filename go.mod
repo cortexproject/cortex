@@ -57,7 +57,7 @@ require (
 	github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829
 	github.com/prometheus/common v0.3.0
 	github.com/prometheus/prometheus v0.0.0-20190417125241-3cc5f9d88062
-	github.com/prometheus/tsdb v0.7.2-0.20190506134726-2ae028114c89
+	github.com/prometheus/tsdb v0.8.0
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
 	github.com/stretchr/testify v1.3.0

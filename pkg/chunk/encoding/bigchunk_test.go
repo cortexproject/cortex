@@ -10,7 +10,7 @@ import (
 )
 
 func TestSliceBiggerChunk(t *testing.T) {
-	var c Chunk = newBigchunk()
+	var c Chunk = NewBigchunk()
 	for i := 0; i < 12*3600/15; i++ {
 		cs, err := c.Add(model.SamplePair{
 			Timestamp: model.Time(i * step),
@@ -60,7 +60,7 @@ func TestSliceBiggerChunk(t *testing.T) {
 
 func BenchmarkBiggerChunkMemory(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		var c Chunk = newBigchunk()
+		var c Chunk = NewBigchunk()
 		for i := 0; i < 12*3600/15; i++ {
 			cs, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(i * step),
@@ -70,12 +70,12 @@ func BenchmarkBiggerChunkMemory(b *testing.B) {
 			c = cs[0]
 		}
 
-		c.(*bigchunk).printSize()
+		c.(*Bigchunk).printSize()
 	}
 }
 
 // printSize calculates various sizes of the chunk when encoded, and in memory.
-func (b *bigchunk) printSize() {
+func (b *Bigchunk) printSize() {
 	var buf bytes.Buffer
 	b.Marshal(&buf)
 

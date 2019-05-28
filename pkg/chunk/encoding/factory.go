@@ -39,7 +39,7 @@ const (
 	// Varbit encoding
 	Varbit
 	// Bigchunk encoding
-	Bigchunk
+	BigChunk
 )
 
 type encoding struct {
@@ -66,10 +66,10 @@ var encodings = map[Encoding]encoding{
 			return newVarbitChunk(varbitZeroEncoding)
 		},
 	},
-	Bigchunk: {
+	BigChunk: {
 		Name: "Bigchunk",
 		New: func() Chunk {
-			return newBigchunk()
+			return NewBigchunk()
 		},
 	},
 }

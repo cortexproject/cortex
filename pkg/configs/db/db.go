@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -31,28 +32,28 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // DB is the interface for the database.
 type DB interface {
 	// GetRulesConfig gets the user's ruler config
-	GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
+	GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error)
 
 	// SetRulesConfig does a compare-and-swap (CAS) on the user's rules config.
 	// `oldConfig` must precisely match the current config in order to change the config to `newConfig`.
 	// Will return `true` if the config was updated, `false` otherwise.
-	SetRulesConfig(userID string, oldConfig, newConfig configs.RulesConfig) (bool, error)
+	SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig configs.RulesConfig) (bool, error)
 
 	// GetAllRulesConfigs gets all of the ruler configs
-	GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error)
+	GetAllRulesConfigs(ctx context.Context) (map[string]configs.VersionedRulesConfig, error)
 
 	// GetRulesConfigs gets all of the configs that have been added or have
 	// changed since the provided config.
-	GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error)
+	GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error)
 
-	GetConfig(userID string) (configs.View, error)
-	SetConfig(userID string, cfg configs.Config) error
+	GetConfig(ctx context.Context, userID string) (configs.View, error)
+	SetConfig(ctx context.Context, userID string, cfg configs.Config) error
 
-	GetAllConfigs() (map[string]configs.View, error)
-	GetConfigs(since configs.ID) (map[string]configs.View, error)
+	GetAllConfigs(ctx context.Context) (map[string]configs.View, error)
+	GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error)
 
-	DeactivateConfig(userID string) error
-	RestoreConfig(userID string) error
+	DeactivateConfig(ctx context.Context, userID string) error
+	RestoreConfig(ctx context.Context, userID string) error
 
 	Close() error
 }

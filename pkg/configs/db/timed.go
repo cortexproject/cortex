@@ -35,86 +35,106 @@ func (t timed) errorCode(err error) string {
 	}
 }
 
-func (t timed) timeRequest(method string, f func(context.Context) error) error {
-	return instrument.CollectedRequest(context.TODO(), method, databaseRequestDuration, t.errorCode, f)
-}
-
-func (t timed) GetConfig(userID string) (cfg configs.View, err error) {
-	t.timeRequest("GetConfig", func(_ context.Context) error {
-		cfg, err = t.d.GetConfig(userID)
+func (t timed) GetConfig(ctx context.Context, userID string) (configs.View, error) {
+	var cfg configs.View
+	err := instrument.CollectedRequest(ctx, "DB.GetConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		cfg, err = t.d.GetConfig(ctx, userID) // Warning: this will produce an incorrect result if the configID ever overflows
 		return err
 	})
-	return
+	return cfg, err
 }
 
-func (t timed) SetConfig(userID string, cfg configs.Config) (err error) {
-	return t.timeRequest("SetConfig", func(_ context.Context) error {
-		return t.d.SetConfig(userID, cfg)
+func (t timed) SetConfig(ctx context.Context, userID string, cfg configs.Config) error {
+	return instrument.CollectedRequest(ctx, "DB.SetConfig", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		return t.d.SetConfig(ctx, userID, cfg) // Warning: this will produce an incorrect result if the configID ever overflows
 	})
 }
 
-func (t timed) GetAllConfigs() (cfgs map[string]configs.View, err error) {
-	t.timeRequest("GetAllConfigs", func(_ context.Context) error {
-		cfgs, err = t.d.GetAllConfigs()
+func (t timed) GetAllConfigs(ctx context.Context) (map[string]configs.View, error) {
+	var (
+		cfgs map[string]configs.View
+		err  error
+	)
+	instrument.CollectedRequest(ctx, "DB.GetAllConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		cfgs, err = t.d.GetAllConfigs(ctx)
 		return err
 	})
-	return
+
+	return cfgs, err
 }
 
-func (t timed) GetConfigs(since configs.ID) (cfgs map[string]configs.View, err error) {
-	t.timeRequest("GetConfigs", func(_ context.Context) error {
-		cfgs, err = t.d.GetConfigs(since)
+func (t timed) GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error) {
+	var (
+		cfgs map[string]configs.View
+	)
+	err := instrument.CollectedRequest(ctx, "DB.GetConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		cfgs, err = t.d.GetConfigs(ctx, since)
 		return err
 	})
-	return
+
+	return cfgs, err
 }
 
-func (t timed) DeactivateConfig(userID string) (err error) {
-	return t.timeRequest("DeactivateConfig", func(_ context.Context) error {
-		return t.d.DeactivateConfig(userID)
+func (t timed) DeactivateConfig(ctx context.Context, userID string) error {
+	return instrument.CollectedRequest(ctx, "DB.DeactivateConfig", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		return t.d.DeactivateConfig(ctx, userID)
 	})
 }
 
-func (t timed) RestoreConfig(userID string) (err error) {
-	return t.timeRequest("RestoreConfig", func(_ context.Context) error {
-		return t.d.RestoreConfig(userID)
+func (t timed) RestoreConfig(ctx context.Context, userID string) (err error) {
+	return instrument.CollectedRequest(ctx, "DB.RestoreConfig", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		return t.d.RestoreConfig(ctx, userID)
 	})
 }
 
 func (t timed) Close() error {
-	return t.timeRequest("Close", func(_ context.Context) error {
+	return instrument.CollectedRequest(context.Background(), "DB.Close", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return t.d.Close()
 	})
 }
 
-func (t timed) GetRulesConfig(userID string) (cfg configs.VersionedRulesConfig, err error) {
-	t.timeRequest("GetRulesConfig", func(_ context.Context) error {
-		cfg, err = t.d.GetRulesConfig(userID)
+func (t timed) GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error) {
+	var cfg configs.VersionedRulesConfig
+	err := instrument.CollectedRequest(ctx, "DB.GetRulesConfig", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		cfg, err = t.d.GetRulesConfig(ctx, userID)
 		return err
 	})
-	return
+
+	return cfg, err
 }
 
-func (t timed) SetRulesConfig(userID string, oldCfg, newCfg configs.RulesConfig) (updated bool, err error) {
-	t.timeRequest("SetRulesConfig", func(_ context.Context) error {
-		updated, err = t.d.SetRulesConfig(userID, oldCfg, newCfg)
+func (t timed) SetRulesConfig(ctx context.Context, userID string, oldCfg, newCfg configs.RulesConfig) (bool, error) {
+	var updated bool
+	err := instrument.CollectedRequest(ctx, "DB.SetRulesConfig", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		updated, err = t.d.SetRulesConfig(ctx, userID, oldCfg, newCfg)
 		return err
 	})
-	return
+
+	return updated, err
 }
 
-func (t timed) GetAllRulesConfigs() (cfgs map[string]configs.VersionedRulesConfig, err error) {
-	t.timeRequest("GetAllRulesConfigs", func(_ context.Context) error {
-		cfgs, err = t.d.GetAllRulesConfigs()
+func (t timed) GetAllRulesConfigs(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
+	var cfgs map[string]configs.VersionedRulesConfig
+	err := instrument.CollectedRequest(ctx, "DB.GetAllRulesConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		cfgs, err = t.d.GetAllRulesConfigs(ctx)
 		return err
 	})
-	return
+
+	return cfgs, err
 }
 
-func (t timed) GetRulesConfigs(since configs.ID) (cfgs map[string]configs.VersionedRulesConfig, err error) {
-	t.timeRequest("GetRulesConfigs", func(_ context.Context) error {
-		cfgs, err = t.d.GetRulesConfigs(since)
+func (t timed) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+	var cfgs map[string]configs.VersionedRulesConfig
+	err := instrument.CollectedRequest(ctx, "DB.GetRulesConfigs", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		cfgs, err = t.d.GetRulesConfigs(ctx, since)
 		return err
 	})
-	return
+
+	return cfgs, err
 }

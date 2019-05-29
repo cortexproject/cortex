@@ -61,7 +61,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := util.WithContext(r.Context(), util.Logger)
 
-	cfg, err := a.db.GetRulesConfig(userID)
+	cfg, err := a.db.GetRulesConfig(r.Context(), userID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "No configuration", http.StatusNotFound)
 		return
@@ -105,7 +105,7 @@ func (a *API) casConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := a.db.SetRulesConfig(userID, updateReq.OldConfig, updateReq.NewConfig)
+	updated, err := a.db.SetRulesConfig(r.Context(), userID, updateReq.OldConfig, updateReq.NewConfig)
 	if err != nil {
 		level.Error(logger).Log("msg", "error storing config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

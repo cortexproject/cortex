@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -22,11 +23,11 @@ import (
 
 type mockRuleStore struct{}
 
-func (m *mockRuleStore) GetRules(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (m *mockRuleStore) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	return map[string]configs.VersionedRulesConfig{}, nil
 }
 
-func (m *mockRuleStore) GetAlerts(since configs.ID) (*client_config.ConfigsResponse, error) {
+func (m *mockRuleStore) GetAlerts(ctx context.Context, since configs.ID) (*client_config.ConfigsResponse, error) {
 	return nil, nil
 }
 

@@ -47,6 +47,8 @@ $ docker run -d --name=grafana -p 3000:3000 grafana/grafana
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/api/prom`).
 
+**To clean up:** press CTRL-C in both terminals (for Cortex and Promrtheus) and run `docker rm -f grafana`.
+
 ## Horizontally scale out
 
 Next we're going to show how you can run a scale out Cortex cluster using Docker.
@@ -105,27 +107,27 @@ $ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://cortex2:9009/api/prom`).
 
-## High availability with replication
+**To clean up:** CTRL-C the Prometheus process and run:
+
+```
+$ docker rm -f cortex1 cortex2 consul grafana
+$ docker network remote cortex
+```
+
+## High availability with repication
 
 In this last demo we'll show how Cortex can replicate data among three nodes,
 and demonstrate Cortex can tolerate a node failure without affecting reads and writes.
 
-First clean up the last demo and run a new Consul and Grafana:
+First, create a network and run a new Consul and Grafana:
 
 ```sh
-$ docker rm -f cortex1 cortex2 consul grafana
+$ docker network create cortex
 $ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 consul
 $ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
 ```
 
-Next update the `single-process-config.yaml` file to set replication factor to 3:
-
-```yaml
-    ring:
-      replication_factor: 3
-```
-
-Finally, launch 3 Cortex nodes:
+Finally, launch 3 Cortex nodes with replication factor 3:
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \
@@ -134,24 +136,32 @@ $ docker run -d --name=cortex1 --network=cortex \
     quay.io/cortexproject/cortex \
     -config.file=/etc/single-process-config.yaml \
     -ring.store=consul \
-    -consul.hostname=consul:8500
+    -consul.hostname=consul:8500 \
+    -distributor.replication-factor=3
 $ docker run -d --name=cortex2 --network=cortex \
     -v $(pwd)/docs/single-process-config.yaml:/etc/single-process-config.yaml \
     -p 9002:9009 \
     quay.io/cortexproject/cortex \
     -config.file=/etc/single-process-config.yaml \
     -ring.store=consul \
-    -consul.hostname=consul:8500
+    -consul.hostname=consul:8500 \
+    -distributor.replication-factor=3
 $ docker run -d --name=cortex3 --network=cortex \
     -v $(pwd)/docs/single-process-config.yaml:/etc/single-process-config.yaml \
     -p 9003:9009 \
     quay.io/cortexproject/cortex \
     -config.file=/etc/single-process-config.yaml \
     -ring.store=consul \
-    -consul.hostname=consul:8500
+    -consul.hostname=consul:8500 \
+    -distributor.replication-factor=3
 ```
 
-And have Prometheus send data to the first replica:
+Configure Prometheus to send data to the first replica:
+
+```yaml
+remote_write:
+- url: http://localhost:9001/api/prom/push
+```
 
 ```sh
 $ ./prometheus --config.file=./documentation/examples/prometheus.yml
@@ -167,3 +177,10 @@ $ docker rm -f cortex2
 ```
 
 You should see writes and queries continue to work without error.
+
+**To clean up:** CTRL-C the Prometheus process and run:
+
+```
+$ docker rm -f cortex1 cortex2 cortex3 consul grafana
+$ docker network remote cortex
+```

@@ -100,6 +100,12 @@ jobs:
         paths:
         - images/
 
+    - run:
+        name: Build on Windows
+        command: |
+          export GOOS=windows
+          make BUILD_IN_CONTAINER=false exes
+
   deploy:
     <<: *defaults
     steps:

@@ -10,6 +10,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	migrate "github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // Import the postgres migrations driver
 	"github.com/lib/pq"
 	_ "github.com/lib/pq" // Import the postgres sql driver
 	"github.com/pkg/errors"
@@ -74,10 +76,15 @@ func New(uri, migrationsDir string) (DB, error) {
 
 	if migrationsDir != "" {
 		level.Info(util.Logger).Log("msg", "running database migrations...")
-		if errs, ok := migrate.UpSync(uri, migrationsDir); !ok {
-			for _, err := range errs {
-				level.Error(util.Logger).Log("err", err)
-			}
+
+		m, err := migrate.New(uri, migrationsDir)
+		if err != nil {
+			level.Error(util.Logger).Log("err", err)
+		}
+
+		migrationErr := m.Up()
+		if migrationErr != nil {
+			level.Error(util.Logger).Log("err", migrationErr)
 			return DB{}, errors.New("database migrations failed")
 		}
 	}

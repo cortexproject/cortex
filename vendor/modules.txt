@@ -1,4 +1,4 @@
-# cloud.google.com/go v0.35.0
+# cloud.google.com/go v0.37.4
 cloud.google.com/go/bigtable
 cloud.google.com/go/bigtable/bttest
 cloud.google.com/go/storage
@@ -6,10 +6,10 @@ cloud.google.com/go/bigtable/internal/gax
 cloud.google.com/go/bigtable/internal/option
 cloud.google.com/go/iam
 cloud.google.com/go/internal/optional
+cloud.google.com/go/internal/trace
 cloud.google.com/go/longrunning
 cloud.google.com/go/longrunning/autogen
 cloud.google.com/go/internal
-cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
 cloud.google.com/go/compute/metadata
 # contrib.go.opencensus.io/exporter/ocagent v0.4.12
@@ -37,7 +37,7 @@ github.com/alecthomas/units
 github.com/armon/go-metrics
 # github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 github.com/armon/go-socks5
-# github.com/aws/aws-sdk-go v1.15.90
+# github.com/aws/aws-sdk-go v1.17.7
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/awserr
 github.com/aws/aws-sdk-go/aws/client
@@ -56,15 +56,16 @@ github.com/aws/aws-sdk-go/aws/client/metadata
 github.com/aws/aws-sdk-go/internal/sdkrand
 github.com/aws/aws-sdk-go/aws/awsutil
 github.com/aws/aws-sdk-go/aws/corehandlers
+github.com/aws/aws-sdk-go/aws/credentials/processcreds
 github.com/aws/aws-sdk-go/aws/credentials/stscreds
 github.com/aws/aws-sdk-go/aws/csm
 github.com/aws/aws-sdk-go/aws/defaults
 github.com/aws/aws-sdk-go/internal/ini
 github.com/aws/aws-sdk-go/internal/shareddefaults
 github.com/aws/aws-sdk-go/aws/signer/v4
+github.com/aws/aws-sdk-go/private/protocol
 github.com/aws/aws-sdk-go/private/protocol/jsonrpc
 github.com/aws/aws-sdk-go/aws/crr
-github.com/aws/aws-sdk-go/private/protocol
 github.com/aws/aws-sdk-go/internal/s3err
 github.com/aws/aws-sdk-go/private/protocol/eventstream
 github.com/aws/aws-sdk-go/private/protocol/eventstream/eventstreamapi
@@ -108,7 +109,7 @@ github.com/dgrijalva/jwt-go
 github.com/etcd-io/bbolt
 # github.com/fluent/fluent-logger-golang v1.2.1
 github.com/fluent/fluent-logger-golang/fluent
-# github.com/fsouza/fake-gcs-server v1.3.0
+# github.com/fsouza/fake-gcs-server v1.7.0
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
 # github.com/go-kit/kit v0.8.0
@@ -116,7 +117,7 @@ github.com/go-kit/kit/log/level
 github.com/go-kit/kit/log
 # github.com/go-logfmt/logfmt v0.4.0
 github.com/go-logfmt/logfmt
-# github.com/gocql/gocql v0.0.0-20180113133114-697e7c57f99b
+# github.com/gocql/gocql v0.0.0-20190301043612-f6df8288f9b4
 github.com/gocql/gocql
 github.com/gocql/gocql/internal/lru
 github.com/gocql/gocql/internal/murmur
@@ -131,6 +132,11 @@ github.com/gogo/protobuf/sortkeys
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
 # github.com/gogo/status v1.0.3
 github.com/gogo/status
+# github.com/golang-migrate/migrate/v4 v4.3.1
+github.com/golang-migrate/migrate/v4
+github.com/golang-migrate/migrate/v4/database/postgres
+github.com/golang-migrate/migrate/v4/database
+github.com/golang-migrate/migrate/v4/source
 # github.com/golang/protobuf v1.3.1
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes/duration
@@ -151,7 +157,7 @@ github.com/golang/snappy
 github.com/google/btree
 # github.com/google/gofuzz v0.0.0-20161122191042-44d81051d367
 github.com/google/gofuzz
-# github.com/googleapis/gax-go/v2 v2.0.3
+# github.com/googleapis/gax-go/v2 v2.0.4
 github.com/googleapis/gax-go/v2
 # github.com/googleapis/gnostic v0.2.0
 github.com/googleapis/gnostic/OpenAPIv2
@@ -170,9 +176,7 @@ github.com/gophercloud/gophercloud/openstack/utils
 github.com/gophercloud/gophercloud/openstack/compute/v2/flavors
 github.com/gophercloud/gophercloud/openstack/compute/v2/images
 github.com/gophercloud/gophercloud/openstack/identity/v2/tenants
-# github.com/gorilla/context v1.1.1
-github.com/gorilla/context
-# github.com/gorilla/mux v1.6.2
+# github.com/gorilla/mux v1.7.1
 github.com/gorilla/mux
 # github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7
 github.com/gregjones/httpcache
@@ -187,10 +191,14 @@ github.com/grpc-ecosystem/grpc-gateway/internal
 github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul v1.4.4
 github.com/hashicorp/consul/api
+# github.com/hashicorp/errwrap v1.0.0
+github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.1
 github.com/hashicorp/go-cleanhttp
 # github.com/hashicorp/go-immutable-radix v1.0.0
 github.com/hashicorp/go-immutable-radix
+# github.com/hashicorp/go-multierror v1.0.0
+github.com/hashicorp/go-multierror
 # github.com/hashicorp/go-rootcerts v0.0.0-20160503143440-6bb64b370b90
 github.com/hashicorp/go-rootcerts
 # github.com/hashicorp/golang-lru v0.5.1
@@ -198,7 +206,7 @@ github.com/hashicorp/golang-lru/simplelru
 github.com/hashicorp/golang-lru
 # github.com/hashicorp/serf v0.8.2
 github.com/hashicorp/serf/coordinate
-# github.com/jmespath/go-jmespath v0.0.0-20160803190731-bd40a432e4c7
+# github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 github.com/jmespath/go-jmespath
 # github.com/jonboulle/clockwork v0.1.0
 github.com/jonboulle/clockwork
@@ -206,7 +214,7 @@ github.com/jonboulle/clockwork
 github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.2.0
 github.com/julienschmidt/httprouter
-# github.com/konsorten/go-windows-terminal-sequences v1.0.1
+# github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515
 github.com/kr/logfmt
@@ -355,7 +363,7 @@ github.com/satori/go.uuid
 github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver v2.1.0+incompatible
 github.com/sercand/kuberesolver
-# github.com/sirupsen/logrus v1.2.0
+# github.com/sirupsen/logrus v1.4.1
 github.com/sirupsen/logrus
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/require
@@ -405,35 +413,35 @@ github.com/weaveworks/mesh
 # github.com/weaveworks/promrus v1.2.0
 github.com/weaveworks/promrus
 # go.opencensus.io v0.21.0
-go.opencensus.io/trace
 go.opencensus.io/plugin/ochttp
-go.opencensus.io/internal
-go.opencensus.io/trace/internal
-go.opencensus.io/trace/tracestate
+go.opencensus.io/trace
 go.opencensus.io/plugin/ocgrpc
 go.opencensus.io/plugin/ochttp/propagation/b3
 go.opencensus.io/stats
 go.opencensus.io/stats/view
 go.opencensus.io/tag
 go.opencensus.io/trace/propagation
-go.opencensus.io
+go.opencensus.io/internal
+go.opencensus.io/trace/internal
+go.opencensus.io/trace/tracestate
 go.opencensus.io/metric/metricdata
 go.opencensus.io/stats/internal
 go.opencensus.io/internal/tagencoding
 go.opencensus.io/metric/metricproducer
+go.opencensus.io
 go.opencensus.io/resource
 go.opencensus.io/plugin/ochttp/propagation/tracecontext
-# golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
+# golang.org/x/crypto v0.0.0-20190426145343-a29dc8fdc734
 golang.org/x/crypto/nacl/box
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/salsa20/salsa
 golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/poly1305
-golang.org/x/crypto/ssh/terminal
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
-# golang.org/x/net v0.0.0-20190311183353-d8887717615a
+golang.org/x/crypto/ssh/terminal
+# golang.org/x/net v0.0.0-20190424112056-4829fb13d2c6
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/trace
@@ -447,27 +455,27 @@ golang.org/x/net/idna
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
-# golang.org/x/oauth2 v0.0.0-20190226205417-e64efc72b421
+# golang.org/x/oauth2 v0.0.0-20190402181905-9f3314589c9a
 golang.org/x/oauth2
 golang.org/x/oauth2/google
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6
+# golang.org/x/sync v0.0.0-20190423024810-112230192c58
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20190222072716-a9d3bda3a223
+# golang.org/x/sys v0.0.0-20190426135247-a129542de9ae
 golang.org/x/sys/unix
 golang.org/x/sys/cpu
 golang.org/x/sys/windows
-# golang.org/x/text v0.3.1-0.20180807135948-17ff2d5776d2
+# golang.org/x/text v0.3.2
 golang.org/x/text/secure/bidirule
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/transform
-# golang.org/x/time v0.0.0-20181108054448-85acf8d2951c
+# golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 golang.org/x/time/rate
-# golang.org/x/tools v0.0.0-20190312170243-e65039ee4138
+# golang.org/x/tools v0.0.0-20190425222832-ad9eeb80039a
 golang.org/x/tools/cover
 # google.golang.org/api v0.4.0
 google.golang.org/api/option
@@ -485,7 +493,7 @@ google.golang.org/api/gensupport
 google.golang.org/api/googleapi/internal/uritemplates
 google.golang.org/api/compute/v1
 google.golang.org/api/support/bundler
-# google.golang.org/appengine v1.4.0
+# google.golang.org/appengine v1.5.0
 google.golang.org/appengine/urlfetch
 google.golang.org/appengine
 google.golang.org/appengine/socket
@@ -498,17 +506,17 @@ google.golang.org/appengine/internal/base
 google.golang.org/appengine/internal/datastore
 google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
-# google.golang.org/genproto v0.0.0-20190307195333-5fe7a883aa19
+# google.golang.org/genproto v0.0.0-20190425155659-357c62f0e4bb
 google.golang.org/genproto/googleapis/bigtable/admin/v2
 google.golang.org/genproto/googleapis/bigtable/v2
 google.golang.org/genproto/protobuf/field_mask
+google.golang.org/genproto/googleapis/iam/v1
 google.golang.org/genproto/googleapis/longrunning
 google.golang.org/genproto/googleapis/rpc/status
-google.golang.org/genproto/googleapis/iam/v1
-google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/rpc/code
+google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/httpbody
-# google.golang.org/grpc v1.19.1
+# google.golang.org/grpc v1.20.1
 google.golang.org/grpc
 google.golang.org/grpc/codes
 google.golang.org/grpc/status
@@ -525,6 +533,7 @@ google.golang.org/grpc/encoding/proto
 google.golang.org/grpc/grpclog
 google.golang.org/grpc/internal
 google.golang.org/grpc/internal/backoff
+google.golang.org/grpc/internal/balancerload
 google.golang.org/grpc/internal/binarylog
 google.golang.org/grpc/internal/channelz
 google.golang.org/grpc/internal/envconfig

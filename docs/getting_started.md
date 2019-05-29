@@ -105,7 +105,7 @@ $ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://cortex2:9009/api/prom`).
 
-## High availability with repication
+## High availability with replication
 
 In this last demo we'll show how Cortex can replicate data among three nodes,
 and demonstrate Cortex can tolerate a node failure without affecting reads and writes.

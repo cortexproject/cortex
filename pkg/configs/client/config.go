@@ -49,21 +49,21 @@ type instrumented struct {
 	next Client
 }
 
-func (i instrumented) GetRules(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (i instrumented) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	var cfgs map[string]configs.VersionedRulesConfig
 	err := instrument.CollectedRequest(context.Background(), "Configs.GetConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
-		cfgs, err = i.next.GetRules(since) // Warning: this will produce an incorrect result if the configID ever overflows
+		cfgs, err = i.next.GetRules(ctx, since) // Warning: this will produce an incorrect result if the configID ever overflows
 		return err
 	})
 	return cfgs, err
 }
 
-func (i instrumented) GetAlerts(since configs.ID) (*ConfigsResponse, error) {
+func (i instrumented) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
 	var cfgs *ConfigsResponse
 	err := instrument.CollectedRequest(context.Background(), "Configs.GetConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
-		cfgs, err = i.next.GetAlerts(since) // Warning: this will produce an incorrect result if the configID ever overflows
+		cfgs, err = i.next.GetAlerts(ctx, since) // Warning: this will produce an incorrect result if the configID ever overflows
 		return err
 	})
 	return cfgs, err

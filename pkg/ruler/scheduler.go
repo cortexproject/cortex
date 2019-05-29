@@ -170,7 +170,7 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 	configID := s.latestConfig
 	s.Unlock()
 
-	cfgs, err := s.ruleStore.GetRules(configID) // Warning: this will produce an incorrect result if the configID ever overflows
+	cfgs, err := s.ruleStore.GetRules(context.Background(), configID) // Warning: this will produce an incorrect result if the configID ever overflows
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "scheduler: configs server poll failed", "err", err)
 		return nil, err

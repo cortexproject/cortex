@@ -554,16 +554,8 @@ google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/internal/syscall
 # gopkg.in/fsnotify/fsnotify.v1 v1.4.7
 gopkg.in/fsnotify/fsnotify.v1
-# gopkg.in/golang-migrate/migrate.v1 v1.3.2
-gopkg.in/golang-migrate/migrate.v1/driver/postgres
-gopkg.in/golang-migrate/migrate.v1/migrate
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
-# gopkg.in/mattes/migrate.v1 v1.3.2
-gopkg.in/mattes/migrate.v1/driver
-gopkg.in/mattes/migrate.v1/file
-gopkg.in/mattes/migrate.v1/migrate/direction
-gopkg.in/mattes/migrate.v1/pipe
 # gopkg.in/yaml.v2 v2.2.2
 gopkg.in/yaml.v2
 # k8s.io/api v0.0.0-20181213150558-05914d821849

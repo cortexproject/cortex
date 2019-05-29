@@ -544,12 +544,8 @@ gopkg.in/fsnotify.v1 v1.4.7/go.mod h1:Tz8NjZHkW78fSQdbUxIjBTcgA1z1m8ZHf0WmKUhAMy
 gopkg.in/fsnotify/fsnotify.v1 v1.3.1/go.mod h1:Fyux9zXlo4rWoMSIzpn9fDAYjalPqJ/K1qJ27s+7ltE=
 gopkg.in/fsnotify/fsnotify.v1 v1.4.7 h1:XNNYLJHt73EyYiCZi6+xjupS9CpvmiDgjPTAjrBlQbo=
 gopkg.in/fsnotify/fsnotify.v1 v1.4.7/go.mod h1:Fyux9zXlo4rWoMSIzpn9fDAYjalPqJ/K1qJ27s+7ltE=
-gopkg.in/golang-migrate/migrate.v1 v1.3.2 h1:vV2+sIFU5CgRZ/qgolCvyIcEArrDKUQqQTVuudM7LM0=
-gopkg.in/golang-migrate/migrate.v1 v1.3.2/go.mod h1:g0x3e0rkn/rhp8Z3Y6WMA7QxgjKmOvEvaYBxT4YLix8=
 gopkg.in/inf.v0 v0.9.1 h1:73M5CoZyi3ZLMOyDlQh031Cx6N9NDJ2Vvfl76EDAgDc=
 gopkg.in/inf.v0 v0.9.1/go.mod h1:cWUDdTG/fYaXco+Dcufb5Vnc6Gp2YChqWtbxRZE0mXw=
-gopkg.in/mattes/migrate.v1 v1.3.2 h1:tWus4MPMhDY/htX+NCvASiQVRU2pj4Jyj4T8AIv6vUw=
-gopkg.in/mattes/migrate.v1 v1.3.2/go.mod h1:9MM/XKbic94WtsLpsWJqUBGrOE+x9nxBI8hfKAfSAF0=
 gopkg.in/resty.v1 v1.12.0/go.mod h1:mDo4pnntr5jdWRML875a/NmxYqAlA73dVijT2AXvQQo=
 gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 h1:uRGJdciOHaEIrze2W8Q3AKkepLTh2hOroT7a+7czfdQ=
 gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7/go.mod h1:dt/ZhP58zS4L8KSrWDmTeBkI65Dw0HsyUHuEVlX15mw=

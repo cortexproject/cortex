@@ -129,7 +129,7 @@ func TestChunkCodec(t *testing.T) {
 const fixedTimestamp = model.Time(1557654321000)
 
 func encodeForCompatibilityTest(t *testing.T) {
-	dummy := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.Bigchunk, 1)
+	dummy := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.BigChunk, 1)
 	encoded, err := dummy.Encoded()
 	require.NoError(t, err)
 	fmt.Printf("%q\n%q\n", dummy.ExternalKey(), encoded)
@@ -142,7 +142,7 @@ func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
 	have, err := ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:38eb373c")
 	require.NoError(t, err)
 	require.NoError(t, have.Decode(decodeContext, rawData))
-	want := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.Bigchunk, 1)
+	want := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.BigChunk, 1)
 	// We can't just compare these two chunks, since the Bigchunk internals are different on construction and read-in.
 	// Compare the serialised version instead
 	require.NoError(t, have.Encode())

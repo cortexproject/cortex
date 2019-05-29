@@ -94,6 +94,8 @@ type Config struct {
 
 	RateUpdatePeriod time.Duration
 
+	UseTSDB bool
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
@@ -265,8 +267,8 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
-	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
-		values, err := series.samplesForRange(from, through)
+	err = state.query(ctx, req, func(ctx context.Context, labels labels.Labels, chunks ...*desc) error {
+		values, err := samplesForRange(chunks, from, through)
 		if err != nil {
 			return err
 		}
@@ -281,7 +283,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		}
 
 		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapaters(series.metric),
+			Labels:  client.FromLabelsToLabelAdapaters(labels),
 			Samples: make([]client.Sample, 0, len(values)),
 		}
 		for _, s := range values {
@@ -324,13 +326,13 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// can iteratively merge them with entries coming from the chunk store.  But
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
-	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
-		chunks := make([]*desc, 0, len(series.chunkDescs))
+	err = state.query(stream.Context(), req, func(ctx context.Context, labels labels.Labels, chunks ...*desc) error {
+		/*chunks := make([]*desc, 0, len(chunks))
 		for _, chunk := range series.chunkDescs {
 			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
 				chunks = append(chunks, chunk.slice(from, through))
 			}
-		}
+		}*/
 
 		if len(chunks) == 0 {
 			return nil
@@ -344,7 +346,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelAdapaters(series.metric),
+			Labels: client.FromLabelsToLabelAdapaters(labels),
 			Chunks: wireChunks,
 		})
 
@@ -427,9 +429,14 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 
 	lss := map[model.Fingerprint]labels.Labels{}
 	for _, matchers := range matchersSet {
-		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *memorySeries) error {
+		req := client.QueryRequest{
+			Matchers: matchers,
+		}
+
+		if err := state.query(ctx, &req, func(ctx context.Context, labels labels.Labels, _ ...*desc) error {
+			fp := labels.Fingerprint()
 			if _, ok := lss[fp]; !ok {
-				lss[fp] = series.metric
+				lss[fp] = labels
 			}
 			return nil
 		}, nil, 0); err != nil {
@@ -512,4 +519,19 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
 	}
+}
+
+func samplesForRange(chunks []*desc, from, through model.Time) ([]model.SamplePair, error) {
+	var values []model.SamplePair
+	for i := 0; i <= len(chunks); i++ {
+		chunk := chunks[i]
+		it := chunk.C.NewIterator()
+		for {
+			values = append(values, it.Value())
+			if !it.Scan() {
+				break
+			}
+		}
+	}
+	return values, nil
 }

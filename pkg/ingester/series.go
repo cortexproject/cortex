@@ -3,7 +3,6 @@ package ingester
 import (
 	"fmt"
 	"net/http"
-	"sort"
 
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
@@ -13,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
 var (
@@ -153,45 +151,6 @@ func (s *memorySeries) firstTime() model.Time {
 // series has no chunk descriptors.
 func (s *memorySeries) head() *desc {
 	return s.chunkDescs[len(s.chunkDescs)-1]
-}
-
-func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.SamplePair, error) {
-	// Find first chunk with start time after "from".
-	fromIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
-		return s.chunkDescs[i].FirstTime.After(from)
-	})
-	// Find first chunk with start time after "through".
-	throughIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
-		return s.chunkDescs[i].FirstTime.After(through)
-	})
-	if fromIdx == len(s.chunkDescs) {
-		// Even the last chunk starts before "from". Find out if the
-		// series ends before "from" and we don't need to do anything.
-		lt := s.chunkDescs[len(s.chunkDescs)-1].LastTime
-		if lt.Before(from) {
-			return nil, nil
-		}
-	}
-	if fromIdx > 0 {
-		fromIdx--
-	}
-	if throughIdx == len(s.chunkDescs) {
-		throughIdx--
-	}
-	var values []model.SamplePair
-	in := metric.Interval{
-		OldestInclusive: from,
-		NewestInclusive: through,
-	}
-	for idx := fromIdx; idx <= throughIdx; idx++ {
-		cd := s.chunkDescs[idx]
-		chValues, err := encoding.RangeValues(cd.C.NewIterator(), in)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, chValues...)
-	}
-	return values, nil
 }
 
 func (s *memorySeries) setChunks(descs []*desc) error {

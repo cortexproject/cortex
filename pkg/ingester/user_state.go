@@ -47,6 +47,7 @@ var (
 )
 
 type userState struct {
+	cfg                 Config
 	limits              *validation.Overrides
 	userID              string
 	fpLocker            *fingerprintLocker
@@ -76,6 +77,7 @@ func newUserState(cfg Config, userID string, limits *validation.Overrides) *user
 	// in the map.  Another goroutine may have got there before
 	// us, in which case this userState will be discarded
 	state := &userState{
+		cfg:                 cfg,
 		userID:              userID,
 		limits:              limits,
 		fpToSeries:          newSeriesMap(),
@@ -93,7 +95,11 @@ func newUserState(cfg Config, userID string, limits *validation.Overrides) *user
 }
 
 func (u *userState) append(ctx context.Context, req *client.WriteRequest) error {
-	return nil
+	if u.cfg.UseTSDB {
+		return u.tsdbAppend(ctx, req)
+	} else {
+		return u.legacyAppend(ctx, req)
+	}
 }
 
 func (u *userState) legacyAppend(ctx context.Context, req *client.WriteRequest) error {
@@ -251,22 +257,28 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 	memSeries.Dec()
 }
 
-// forSeriesMatching passes all series matching the given matchers to the
-// provided callback. Deals with locking and the quirks of zero-length matcher
-// values. There are 2 callbacks:
-// - The `add` callback is called for each series while the lock is held, and
-//   is intend to be used by the caller to build a batch.
-// - The `send` callback is called at certain intervals specified by batchSize
-//   with no locks held, and is intended to be used by the caller to send the
-//   built batches.
-func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher,
-	add func(context.Context, model.Fingerprint, *memorySeries) error,
+func (u *userState) query(
+	ctx context.Context, req *client.QueryRequest,
+	add func(context.Context, labels.Labels, ...*desc) error,
 	send func(context.Context) error, batchSize int,
 ) error {
-	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
+	return u.legacyQuery(ctx, req, add, send, batchSize)
+}
+
+func (u *userState) legacyQuery(
+	ctx context.Context, req *client.QueryRequest,
+	add func(context.Context, labels.Labels, ...*desc) error,
+	send func(context.Context) error, batchSize int,
+) error {
+	log, ctx := spanlogger.New(ctx, "legacyQuery")
 	defer log.Finish()
 
-	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
+	from, through, matchers, err := client.FromQueryRequest(req)
+	if err != nil {
+		return err
+	}
+
+	filters, matchers := util.SplitFiltersAndMatchers(matchers)
 	fps := u.index.Lookup(matchers)
 	if len(fps) > u.limits.MaxSeriesPerQuery(u.userID) {
 		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
@@ -297,7 +309,14 @@ outer:
 			}
 		}
 
-		err := add(ctx, fp, series)
+		chunks := make([]*desc, 0, len(series.chunkDescs))
+		for _, chunk := range series.chunkDescs {
+			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
+				chunks = append(chunks, chunk)
+			}
+		}
+
+		err := add(ctx, series.metric, chunks...)
 		u.fpLocker.Unlock(fp)
 		if err != nil {
 			return err
@@ -318,9 +337,12 @@ outer:
 
 func (u *userState) tsdbQuery(
 	ctx context.Context, req *client.QueryRequest,
-	add func(context.Context, labels.Labels, ...encoding.Chunk) error,
+	add func(context.Context, labels.Labels, ...*desc) error,
 	send func(context.Context) error, batchSize int,
 ) error {
+	log, ctx := spanlogger.New(ctx, "tsdbQuery")
+	defer log.Finish()
+
 	from, through, matchers, err := client.FromQueryRequest(req)
 	if err != nil {
 		return err
@@ -338,14 +360,22 @@ func (u *userState) tsdbQuery(
 
 	i := 0
 	for ; seriesSet.Next(); i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		series := seriesSet.At()
 		tsdbChunks := series.Chunks()
 		bigchunk := encoding.NewBigchunk()
 		bigchunk.AddSmallChunks(tsdbChunks)
 		tsdbLabels := series.Labels()
 		labels := *(*labels.Labels)(unsafe.Pointer(&tsdbLabels))
+		desc := desc{
+			C: bigchunk,
+			//			FirstTime: .
+		}
 
-		if err := add(ctx, labels, bigchunk); err != nil {
+		if err := add(ctx, labels, &desc); err != nil {
 			return err
 		}
 
@@ -361,6 +391,10 @@ func (u *userState) tsdbQuery(
 	}
 
 	return seriesSet.Err()
+}
+
+func (u *userState) labelNames() []string {
+	return u.index.LabelNames()
 }
 
 func convertMatchers(oms []*labels.Matcher) []tsdbLabels.Matcher {

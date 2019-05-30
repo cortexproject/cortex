@@ -36,28 +36,17 @@ type Worker interface {
 type worker struct {
 	scheduler *scheduler
 	ruler     *Ruler
-
-	quit chan struct{}
-	done chan struct{}
 }
 
 func newWorker(ruler *Ruler) worker {
 	return worker{
 		scheduler: ruler.scheduler,
 		ruler:     ruler,
-		quit:      make(chan struct{}),
-		done:      make(chan struct{}),
 	}
 }
 
 func (w *worker) Run() {
-	defer close(w.done)
 	for {
-		select {
-		case <-w.quit:
-			return
-		default:
-		}
 		waitStart := time.Now()
 		blockedWorkers.Inc()
 		level.Debug(util.Logger).Log("msg", "waiting for next work item")
@@ -75,9 +64,4 @@ func (w *worker) Run() {
 		w.scheduler.workItemDone(*item)
 		level.Debug(util.Logger).Log("msg", "item handed back to queue", "item", item)
 	}
-}
-
-func (w *worker) Stop() {
-	close(w.quit)
-	<-w.done
 }

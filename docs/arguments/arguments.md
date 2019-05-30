@@ -1,8 +1,40 @@
-# Ingester Arguments
+# Arguments
 
-Set `-target=ingester` to run Cortex's single binary as ingester. The below arguments can be set to configure the ingester.
+Most config options can be configured via YAML or by setting flags. If you want to pass these configurations via YAML files you must lookup the key names in the code as they are not yet documented. Please take note that the set defaults do not represent recommended settings. Instead they have been set to whatever was first supported in Cortex and have not been changed to ensure backwards compatibility.
+
+In Cortex there are several packages shared across multiple microservices (such as the the HTTP server package). Therefore we document all existent flags grouped by package. Some of these packages may accept a flag prefix which is dependent on the module you are running.
+
+### Module flag
+
+You can run all Cortex components in a single binary or as separate microservices.
+
+#### Single binary
+
+For development purposes and getting started one may want to run it as single process. Instead of using flags you should take a look at this config file: https://github.com/cortexproject/cortex/blob/master/cmd/cortex/single-process-config.yaml .
+
+#### Microservices
+
+Since Cortex is packaged as single binary we must tell it the module name it should run as. The appropriate flag for this is the `-target` flag. Valid module names are:
+
+- `ring`
+- `overrides`
+- `server`
+- `distributor`
+- `store`
+- `ingester`
+- `querier`
+- `query-frontend`
+- `table-manager`
+- `ruler`
+- `configs`
+- `alertmanager`
+- `all` (default option - All in one module)
+
+For instance set `-target=ingester` to run the container as ingester.
 
 #### General Flags
+
+These flags apply to all modules.
 
 | Flag | Description | Default |
 | --- | --- | --- |
@@ -11,6 +43,13 @@ Set `-target=ingester` to run Cortex's single binary as ingester. The below argu
 | `-target` | Name of the target module to run with this binary (e. g. ingester, table-manager,...) | `all` |
 | `-auth.enabled` | Set to false to disable auth. | `true` |
 | `-print.config` | Print the config and exit. | `false` |
+
+#### Ingester flags
+
+These flags only apply to the ingester module.
+
+| Flag | Description | Default |
+| --- | --- | --- |
 | `-ingester.max-transfer-retries` | Number of times to try and transfer chunks before falling back to flushing. | `10` |
 | `-ingester.flush-period` | Period with which to attempt to flush chunks. | `1m` |
 | `-ingester.retain-period` | Period chunks will remain in memory after flushing. | `5m` |
@@ -23,19 +62,27 @@ Set `-target=ingester` to run Cortex's single binary as ingester. The below argu
 
 #### Ring Lifecycler Flags
 
+These flags apply to the ingester module.
+
+Prefix can be: `ingester` Prefix\* does not apply for `ingester`. You must use `-ring.heartbeat-timeout` instead of the expected `-ingester.ring.heartbeat-timeout`.
+
 | Flag | Description | Default |
 | --- | --- | --- |
-| `-ingester.num-tokens` | Number of tokens for each ingester. | `128` |
-| `-ingester.heartbeat-period` | Period at which to heartbeat to consul. | `5s` |
-| `-ingester.join-after` | Period to wait for a claim from another ingester; will join automatically after this. | `0s` |
-| `-ingester.min-ready-duration` | Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring. | `1m` |
-| `-ingester.claim-on-rollout` | Send chunks to PENDING ingesters on exit. | `false` |
-| `-ingester.normalise-tokens` | Write out "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring. Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters. The new ring code can still read and write the old ring format, so is backwards compatible. | `false` |
-| `-ingester.final-sleep` | Duration to sleep for before exiting, to ensure metrics are scraped. | `30s` |
-| `-ingester.interface` | Name of network interface to read address from. | (no default) |
-| `-ingester.addr` | IP address to advertise in consul. | (empty string) |
-| `-ingester.port` | Port to advertise in consul (defaults to server.grpc-listen-port). | `0` |
-| `-ingester.id` | ID to register into consul. | (OS hostname) |
+| `-{prefix*}.ring.heartbeat-timeout` | The heartbeat timeout after which ingesters are skipped for reads/writes. | `1m` |
+| `-{prefix*}.distributor.replication-factor` | The number of ingesters to write to and read from. | `3` |
+| `-{prefix*}.` |  |
+| `-ring.store` | Backend storage to use for the ring (consul, inmemory). | `consul` |
+| `-{prefix}.num-tokens` | Number of tokens for each ingester. | `128` |
+| `-{prefix}.heartbeat-period` | Period at which to heartbeat to consul. | `5s` |
+| `-{prefix}.join-after` | Period to wait for a claim from another ingester; will join automatically after this. | `0s` |
+| `-{prefix}.min-ready-duration` | Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring. | `1m` |
+| `-{prefix}.claim-on-rollout` | Send chunks to PENDING ingesters on exit. | `false` |
+| `-{prefix}.normalise-tokens` | Write out "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring. Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters. The new ring code can still read and write the old ring format, so is backwards compatible. | `false` |
+| `-{prefix}.final-sleep` | Duration to sleep for before exiting, to ensure metrics are scraped. | `30s` |
+| `-{prefix}.lifecycler.interface` | Name of network interface to read address from. | `eth0,en0` |
+| `-{prefix}.lifecycler.addr` | IP address to advertise in consul. | (empty string) |
+| `-{prefix}.lifecycler.port` | Port to advertise in consul (defaults to server.grpc-listen-port). | `0` |
+| `-{prefix}.lifecycler.id` | ID to register into consul. | (OS hostname) |
 
 #### Server Flags
 

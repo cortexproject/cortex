@@ -46,10 +46,6 @@ func newWorker(ruler *Ruler) worker {
 }
 
 func (w *worker) Run() {
-	// Register worker with ruler wait group and report done when returned
-	w.ruler.workerWG.Add(1)
-	defer w.ruler.workerWG.Done()
-
 	for {
 		waitStart := time.Now()
 		blockedWorkers.Inc()

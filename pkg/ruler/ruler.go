@@ -119,7 +119,6 @@ type Ruler struct {
 	notifierCfg *config.Config
 
 	scheduler *scheduler
-	workers   []worker
 	workerWG  *sync.WaitGroup
 
 	lifecycler *ring.Lifecycler
@@ -168,24 +167,22 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		}
 	}
 
-	workers := make([]worker, cfg.NumWorkers)
 	for i := 0; i < cfg.NumWorkers; i++ {
-		workers[i] = newWorker(ruler)
+		// initialize each worker in a function that signals when
+		// the worker has completed
+		ruler.workerWG.Add(1)
+		go func() {
+			w := newWorker(ruler)
+			w.Run()
+			ruler.workerWG.Done()
+		}()
 	}
 
-	ruler.workers = workers
-	go ruler.run()
+	go ruler.scheduler.Run()
+
+	level.Info(util.Logger).Log("msg", "ruler up and running")
 
 	return ruler, nil
-}
-
-// Run the ruler.
-func (r *Ruler) run() {
-	go r.scheduler.Run()
-	for _, w := range r.workers {
-		go w.Run()
-	}
-	level.Info(util.Logger).Log("msg", "ruler up and running")
 }
 
 // Stop stops the Ruler.
@@ -197,7 +194,7 @@ func (r *Ruler) Stop() {
 	}
 	r.notifiersMtx.Unlock()
 
-	level.Info(util.Logger).Log("msg", "ruler shutting down scheduler")
+	level.Info(util.Logger).Log("msg", "shutting down rules scheduler")
 	r.scheduler.Stop()
 
 	level.Info(util.Logger).Log("msg", "waiting for workers to finish")

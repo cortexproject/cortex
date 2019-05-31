@@ -271,7 +271,29 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-	} {
+		// Merging of samples where there is overlap.
+		{
+			input: []*APIResponse{
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"]]}]}}`),
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
+			},
+			expected: &APIResponse{
+				Status: statusSuccess,
+				Data: QueryRangeResponse{
+					ResultType: matrix,
+					Result: []SampleStream{
+						{
+							Labels: []client.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []client.Sample{
+								{Value: 1, TimestampMs: 1000},
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
+							},
+						},
+					},
+				},
+			},
+		}} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			output, err := mergeAPIResponses(tc.input)
 			require.NoError(t, err)

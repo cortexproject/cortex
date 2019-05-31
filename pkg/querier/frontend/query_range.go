@@ -295,6 +295,13 @@ func matrixMerge(resps []*APIResponse) []SampleStream {
 					Labels: stream.Labels,
 				}
 			}
+			// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
+			// The prometheus API is inclusive of start and end timestamps.
+			if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
+				if existing.Samples[len(existing.Samples)-1].TimestampMs == stream.Samples[0].TimestampMs {
+					stream.Samples = stream.Samples[1:]
+				}
+			}
 			existing.Samples = append(existing.Samples, stream.Samples...)
 			output[metric] = existing
 		}

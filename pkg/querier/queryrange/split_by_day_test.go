@@ -152,7 +152,7 @@ func TestSplitByDay(t *testing.T) {
 	u, err := url.Parse(s.URL)
 	require.NoError(t, err)
 
-	roundtripper := RoundTripper{
+	roundtripper := roundTripper{
 		handler: splitByDay{
 			next: ToRoundTripperMiddleware{
 				Next: singleHostRoundTripper{
@@ -165,13 +165,13 @@ func TestSplitByDay(t *testing.T) {
 		limits: fakeLimits{},
 	}
 
-	mergedResponse, err := MergeAPIResponses([]*APIResponse{
+	mergedResponse, err := mergeAPIResponses([]*APIResponse{
 		parsedResponse,
 		parsedResponse,
 	})
 	require.NoError(t, err)
 
-	mergedHTTPResponse, err := mergedResponse.ToHTTPResponse(context.Background())
+	mergedHTTPResponse, err := mergedResponse.toHTTPResponse(context.Background())
 	require.NoError(t, err)
 
 	mergedHTTPResponseBody, err := ioutil.ReadAll(mergedHTTPResponse.Body)

@@ -24,16 +24,14 @@ import (
 const statusSuccess = "success"
 
 var (
-	Matrix = model.ValMatrix.String()
-
-	json = jsoniter.ConfigCompatibleWithStandardLibrary
-
+	matrix            = model.ValMatrix.String()
+	json              = jsoniter.ConfigCompatibleWithStandardLibrary
 	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 )
 
-func ParseRequest(r *http.Request) (*Request, error) {
+func parseRequest(r *http.Request) (*Request, error) {
 	var result Request
 	var err error
 	result.Start, err = ParseTime(r.FormValue("start"))
@@ -70,11 +68,11 @@ func ParseRequest(r *http.Request) (*Request, error) {
 	return &result, nil
 }
 
-func (q Request) Copy() Request {
+func (q Request) copy() Request {
 	return q
 }
 
-func (q Request) ToHTTPRequest(ctx context.Context) (*http.Request, error) {
+func (q Request) toHTTPRequest(ctx context.Context) (*http.Request, error) {
 	params := url.Values{
 		"start": []string{encodeTime(q.Start)},
 		"end":   []string{encodeTime(q.End)},
@@ -96,6 +94,8 @@ func (q Request) ToHTTPRequest(ctx context.Context) (*http.Request, error) {
 	return req.WithContext(ctx), nil
 }
 
+// LogToSpan writes information about this request to the OpenTracing span
+// in the context, if there is one.
 func (q Request) LogToSpan(ctx context.Context) {
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		span.LogFields(otlog.String("query", q.Query),
@@ -141,7 +141,7 @@ func encodeDurationMs(d int64) string {
 	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
 }
 
-func ParseResponse(ctx context.Context, r *http.Response) (*APIResponse, error) {
+func parseResponse(ctx context.Context, r *http.Response) (*APIResponse, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
@@ -191,7 +191,7 @@ func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	return json.Marshal(stream)
 }
 
-func (a *APIResponse) ToHTTPResponse(ctx context.Context) (*http.Response, error) {
+func (a *APIResponse) toHTTPResponse(ctx context.Context) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
 
@@ -217,12 +217,12 @@ func extract(start, end int64, extent Extent) *APIResponse {
 		Status: statusSuccess,
 		Data: Response{
 			ResultType: extent.Response.Data.ResultType,
-			Result:     ExtractMatrix(start, end, extent.Response.Data.Result),
+			Result:     extractMatrix(start, end, extent.Response.Data.Result),
 		},
 	}
 }
 
-func ExtractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
+func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 	result := make([]SampleStream, 0, len(matrix))
 	for _, stream := range matrix {
 		extracted, ok := extractSampleStream(start, end, stream)
@@ -249,7 +249,7 @@ func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, b
 	return result, true
 }
 
-func MergeAPIResponses(responses []*APIResponse) (*APIResponse, error) {
+func mergeAPIResponses(responses []*APIResponse) (*APIResponse, error) {
 	// Merge the responses.
 	sort.Sort(byFirstTime(responses))
 

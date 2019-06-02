@@ -17,13 +17,13 @@ func BenchmarkMarshalling(b *testing.B) {
 	require.NoError(b, err)
 
 	for n := 0; n < b.N; n++ {
-		apiResp, err := ParseResponse(context.Background(), &http.Response{
+		apiResp, err := parseResponse(context.Background(), &http.Response{
 			StatusCode: 200,
 			Body:       ioutil.NopCloser(bytes.NewReader(buf)),
 		})
 		require.NoError(b, err)
 
-		resp, err := apiResp.ToHTTPResponse(context.Background())
+		resp, err := apiResp.toHTTPResponse(context.Background())
 		require.NoError(b, err)
 
 		buf2, err := ioutil.ReadAll(resp.Body)

@@ -4,6 +4,8 @@ import (
 	"context"
 )
 
+// StepAlignMiddleware aligns the start and end of request to the step to
+// improved the cacheability of the query results.
 var StepAlignMiddleware = MiddlewareFunc(func(next Handler) Handler {
 	return stepAlign{
 		next: next,

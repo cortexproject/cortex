@@ -35,7 +35,7 @@ func TestRoundTrip(t *testing.T) {
 		host: u.Host,
 		next: http.DefaultTransport,
 	}
-	roundtripper := RoundTripper{
+	roundtripper := roundTripper{
 		next: downstream,
 		handler: ToRoundTripperMiddleware{
 			Next: downstream,

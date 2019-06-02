@@ -7,6 +7,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 )
 
+// InstrumentMiddleware can be inserted into the middleware chain to expose timing information.
 func InstrumentMiddleware(name string, queryRangeDuration *prometheus.HistogramVec) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return HandlerFunc(func(ctx context.Context, req *Request) (*APIResponse, error) {

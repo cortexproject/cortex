@@ -28,6 +28,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+// Limits allows us to specify per-tenant runtime limits on the behaviour of
+// the query handling code.
 type Limits interface {
 	MaxQueryLength(string) time.Duration
 	MaxQueryParallelism(string) int
@@ -36,10 +38,12 @@ type Limits interface {
 // HandlerFunc is like http.HandlerFunc, but for Handler.
 type HandlerFunc func(context.Context, *Request) (*APIResponse, error)
 
+// Do implements Handler.
 func (q HandlerFunc) Do(ctx context.Context, req *Request) (*APIResponse, error) {
 	return q(ctx, req)
 }
 
+// Handler is like http.Handle, but specifically for Prometheus query_range calls.
 type Handler interface {
 	Do(context.Context, *Request) (*APIResponse, error)
 }
@@ -47,10 +51,12 @@ type Handler interface {
 // MiddlewareFunc is like http.HandlerFunc, but for Middleware.
 type MiddlewareFunc func(Handler) Handler
 
+// Wrap implements Middleware.
 func (q MiddlewareFunc) Wrap(h Handler) Handler {
 	return q(h)
 }
 
+// Middleware is a higher order Handler.
 type Middleware interface {
 	Wrap(Handler) Handler
 }
@@ -66,26 +72,28 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 	})
 }
 
-type RoundTripper struct {
+type roundTripper struct {
 	next    http.RoundTripper
 	handler Handler
 	limits  Limits
 }
 
-func NewRoundTripper(next http.RoundTripper, handler Handler, limits Limits) RoundTripper {
-	return RoundTripper{
+// NewRoundTripper wraps a QueryRange Handler and allows it to send requests
+// to a http.Roundtripper.
+func NewRoundTripper(next http.RoundTripper, handler Handler, limits Limits) http.RoundTripper {
+	return roundTripper{
 		next:    next,
 		handler: handler,
 		limits:  limits,
 	}
 }
 
-func (q RoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	if !strings.HasSuffix(r.URL.Path, "/query_range") {
 		return q.next.RoundTrip(r)
 	}
 
-	request, err := ParseRequest(r)
+	request, err := parseRequest(r)
 	if err != nil {
 		return nil, err
 	}
@@ -106,15 +114,17 @@ func (q RoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	return response.ToHTTPResponse(r.Context())
+	return response.toHTTPResponse(r.Context())
 }
 
+// ToRoundTripperMiddleware not quite sure what this does.
 type ToRoundTripperMiddleware struct {
 	Next http.RoundTripper
 }
 
+// Do implements Handler.
 func (q ToRoundTripperMiddleware) Do(ctx context.Context, r *Request) (*APIResponse, error) {
-	request, err := r.ToHTTPRequest(ctx)
+	request, err := r.toHTTPRequest(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -129,5 +139,5 @@ func (q ToRoundTripperMiddleware) Do(ctx context.Context, r *Request) (*APIRespo
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	return ParseResponse(ctx, response)
+	return parseResponse(ctx, response)
 }

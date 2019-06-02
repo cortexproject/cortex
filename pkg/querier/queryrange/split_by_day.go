@@ -9,6 +9,7 @@ import (
 
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
 
+// SplitByDayMiddleware creates a new Middleware that splits requests by day.
 func SplitByDayMiddleware(limits Limits) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return splitByDay{
@@ -38,7 +39,7 @@ func (s splitByDay) Do(ctx context.Context, r *Request) (*APIResponse, error) {
 		resps = append(resps, reqResp.resp)
 	}
 
-	return MergeAPIResponses(resps)
+	return mergeAPIResponses(resps)
 }
 
 func splitQuery(r *Request) []*Request {

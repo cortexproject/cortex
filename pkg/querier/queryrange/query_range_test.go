@@ -59,14 +59,14 @@ func TestRequest(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 			r = r.WithContext(ctx)
 
-			req, err := ParseRequest(r)
+			req, err := parseRequest(r)
 			if err != nil {
 				require.EqualValues(t, tc.expectedErr, err)
 				return
 			}
 			require.EqualValues(t, tc.expected, req)
 
-			rdash, err := req.ToHTTPRequest(context.Background())
+			rdash, err := req.toHTTPRequest(context.Background())
 			require.NoError(t, err)
 			require.EqualValues(t, tc.url, rdash.RequestURI)
 		})
@@ -89,7 +89,7 @@ func TestResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := ParseResponse(context.Background(), response)
+			resp, err := parseResponse(context.Background(), response)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, resp)
 
@@ -99,7 +99,7 @@ func TestResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp2, err := resp.ToHTTPResponse(context.Background())
+			resp2, err := resp.toHTTPResponse(context.Background())
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -124,7 +124,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			input: []*APIResponse{
 				{
 					Data: Response{
-						ResultType: Matrix,
+						ResultType: matrix,
 						Result:     []SampleStream{},
 					},
 				},
@@ -132,7 +132,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			expected: &APIResponse{
 				Status: statusSuccess,
 				Data: Response{
-					ResultType: Matrix,
+					ResultType: matrix,
 					Result:     []SampleStream{},
 				},
 			},
@@ -143,13 +143,13 @@ func TestMergeAPIResponses(t *testing.T) {
 			input: []*APIResponse{
 				{
 					Data: Response{
-						ResultType: Matrix,
+						ResultType: matrix,
 						Result:     []SampleStream{},
 					},
 				},
 				{
 					Data: Response{
-						ResultType: Matrix,
+						ResultType: matrix,
 						Result:     []SampleStream{},
 					},
 				},
@@ -157,7 +157,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			expected: &APIResponse{
 				Status: statusSuccess,
 				Data: Response{
-					ResultType: Matrix,
+					ResultType: matrix,
 					Result:     []SampleStream{},
 				},
 			},
@@ -168,7 +168,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			input: []*APIResponse{
 				{
 					Data: Response{
-						ResultType: Matrix,
+						ResultType: matrix,
 						Result: []SampleStream{
 							{
 								Labels: []client.LabelAdapter{},
@@ -182,7 +182,7 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 				{
 					Data: Response{
-						ResultType: Matrix,
+						ResultType: matrix,
 						Result: []SampleStream{
 							{
 								Labels: []client.LabelAdapter{},
@@ -198,7 +198,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			expected: &APIResponse{
 				Status: statusSuccess,
 				Data: Response{
-					ResultType: Matrix,
+					ResultType: matrix,
 					Result: []SampleStream{
 						{
 							Labels: []client.LabelAdapter{},
@@ -223,7 +223,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			expected: &APIResponse{
 				Status: statusSuccess,
 				Data: Response{
-					ResultType: Matrix,
+					ResultType: matrix,
 					Result: []SampleStream{
 						{
 							Labels: []client.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
@@ -247,7 +247,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			expected: &APIResponse{
 				Status: statusSuccess,
 				Data: Response{
-					ResultType: Matrix,
+					ResultType: matrix,
 					Result: []SampleStream{
 						{
 							Labels: []client.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
@@ -262,7 +262,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		}} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			output, err := MergeAPIResponses(tc.input)
+			output, err := mergeAPIResponses(tc.input)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
 		})

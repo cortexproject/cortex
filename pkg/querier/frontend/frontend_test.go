@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,34 +34,6 @@ const (
 func TestFrontend(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Hello World"))
-	})
-	test := func(addr string) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
-		require.NoError(t, err)
-		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
-		require.NoError(t, err)
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode)
-
-		body, err := ioutil.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		assert.Equal(t, "Hello World", string(body))
-	}
-	testFrontend(t, handler, test)
-}
-
-func TestFrontendRetries(t *testing.T) {
-	try := int32(0)
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if atomic.AddInt32(&try, 1) == 5 {
-			w.Write([]byte("Hello World"))
-			return
-		}
-
-		w.WriteHeader(http.StatusInternalServerError)
 	})
 	test := func(addr string) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)

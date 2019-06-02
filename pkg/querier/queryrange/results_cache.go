@@ -32,39 +32,33 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
 }
 
-type resultsCacheMiddleware struct {
-	logger            log.Logger
-	maxCacheFreshness time.Duration
-	next              Handler
-	cache             cache.Cache
-	limits            Limits
+type resultsCache struct {
+	logger log.Logger
+	cfg    ResultsCacheConfig
+	next   Handler
+	cache  cache.Cache
+	limits Limits
 }
 
-// NewResultsCacheMiddlewareFromConfig creates results cache middleware from config.
-func NewResultsCacheMiddlewareFromConfig(logger log.Logger, cfg ResultsCacheConfig, limits Limits) (Middleware, error) {
+// NewResultsCacheMiddleware creates results cache middleware from config.
+func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits) (Middleware, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewResultsCacheMiddleware(logger, cache.NewSnappy(c), cfg.MaxCacheFreshness, limits)
-}
-
-// NewResultsCacheMiddleware creates results cache middleware using given cache client.
-// NOTE: It is recommend to wrap it with cache.NewSnappy(..).
-func NewResultsCacheMiddleware(logger log.Logger, cacheClient cache.Cache, maxCacheFreshness time.Duration, limits Limits) (Middleware, error) {
 	return MiddlewareFunc(func(next Handler) Handler {
-		return &resultsCacheMiddleware{
-			logger:            logger,
-			maxCacheFreshness: maxCacheFreshness,
-			next:              next,
-			cache:             cacheClient,
-			limits:            limits,
+		return &resultsCache{
+			logger: logger,
+			cfg:    cfg,
+			next:   next,
+			cache:  c,
+			limits: limits,
 		}
 	}), nil
 }
 
-func (s resultsCacheMiddleware) Do(ctx context.Context, r *Request) (*APIResponse, error) {
+func (s resultsCache) Do(ctx context.Context, r *Request) (*APIResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -77,7 +71,7 @@ func (s resultsCacheMiddleware) Do(ctx context.Context, r *Request) (*APIRespons
 		response *APIResponse
 	)
 
-	maxCacheTime := int64(model.Now().Add(-s.maxCacheFreshness))
+	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
 	if r.Start > maxCacheTime {
 		return s.next.Do(ctx, r)
 	}
@@ -97,7 +91,7 @@ func (s resultsCacheMiddleware) Do(ctx context.Context, r *Request) (*APIRespons
 	return response, err
 }
 
-func (s resultsCacheMiddleware) handleMiss(ctx context.Context, r *Request) (*APIResponse, []Extent, error) {
+func (s resultsCache) handleMiss(ctx context.Context, r *Request) (*APIResponse, []Extent, error) {
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
@@ -114,7 +108,7 @@ func (s resultsCacheMiddleware) handleMiss(ctx context.Context, r *Request) (*AP
 	return response, extents, nil
 }
 
-func (s resultsCacheMiddleware) handleHit(ctx context.Context, r *Request, extents []Extent) (*APIResponse, []Extent, error) {
+func (s resultsCache) handleHit(ctx context.Context, r *Request, extents []Extent) (*APIResponse, []Extent, error) {
 	var (
 		reqResps []requestResponse
 		err      error
@@ -124,7 +118,7 @@ func (s resultsCacheMiddleware) handleHit(ctx context.Context, r *Request, exten
 
 	requests, responses := partition(r, extents)
 	if len(requests) == 0 {
-		response, err := MergeAPIResponses(responses)
+		response, err := mergeAPIResponses(responses)
 		// No downstream requests so no need to write back to the cache.
 		return response, nil, err
 	}
@@ -160,7 +154,7 @@ func (s resultsCacheMiddleware) handleHit(ctx context.Context, r *Request, exten
 
 		accumulator.TraceId = jaegerTraceID(ctx)
 		accumulator.End = extents[i].End
-		accumulator.Response, err = MergeAPIResponses([]*APIResponse{accumulator.Response, extents[i].Response})
+		accumulator.Response, err = mergeAPIResponses([]*APIResponse{accumulator.Response, extents[i].Response})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -168,7 +162,7 @@ func (s resultsCacheMiddleware) handleHit(ctx context.Context, r *Request, exten
 	}
 	mergedExtents = append(mergedExtents, accumulator)
 
-	response, err := MergeAPIResponses(responses)
+	response, err := mergeAPIResponses(responses)
 	return response, mergedExtents, err
 }
 
@@ -186,7 +180,7 @@ func partition(req *Request, extents []Extent) ([]*Request, []*APIResponse) {
 
 		// If there is a bit missing at the front, make a request for that.
 		if start < extent.Start {
-			r := req.Copy()
+			r := req.copy()
 			r.Start = start
 			r.End = extent.Start
 			requests = append(requests, &r)
@@ -198,7 +192,7 @@ func partition(req *Request, extents []Extent) ([]*Request, []*APIResponse) {
 	}
 
 	if start < req.End {
-		r := req.Copy()
+		r := req.copy()
 		r.Start = start
 		r.End = req.End
 		requests = append(requests, &r)
@@ -207,8 +201,8 @@ func partition(req *Request, extents []Extent) ([]*Request, []*APIResponse) {
 	return requests, cachedResponses
 }
 
-func (s resultsCacheMiddleware) filterRecentExtents(req *Request, extents []Extent) []Extent {
-	maxCacheTime := (int64(model.Now().Add(-s.maxCacheFreshness)) / req.Step) * req.Step
+func (s resultsCache) filterRecentExtents(req *Request, extents []Extent) []Extent {
+	maxCacheTime := (int64(model.Now().Add(-s.cfg.MaxCacheFreshness)) / req.Step) * req.Step
 	for i := range extents {
 		// Never cache data for the latest freshness period.
 		if extents[i].End > maxCacheTime {
@@ -219,7 +213,7 @@ func (s resultsCacheMiddleware) filterRecentExtents(req *Request, extents []Exte
 	return extents
 }
 
-func (s resultsCacheMiddleware) get(ctx context.Context, key string) ([]Extent, bool) {
+func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	found, bufs, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
 	if len(found) != 1 {
 		return nil, false
@@ -244,7 +238,7 @@ func (s resultsCacheMiddleware) get(ctx context.Context, key string) ([]Extent, 
 	return resp.Extents, true
 }
 
-func (s resultsCacheMiddleware) put(ctx context.Context, key string, extents []Extent) {
+func (s resultsCache) put(ctx context.Context, key string, extents []Extent) {
 	buf, err := proto.Marshal(&CachedResponse{
 		Key:     key,
 		Extents: extents,

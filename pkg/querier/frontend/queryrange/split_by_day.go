@@ -1,36 +1,29 @@
-package frontend
+package queryrange
 
 import (
 	"context"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/user"
 )
 
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
 
-func splitByDayMiddleware(limits *validation.Overrides) queryRangeMiddleware {
-	return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
-		return instrument("split_by_day").Wrap(splitByDay{
+func SplitByDayMiddleware(limits Limits) Middleware {
+	return MiddlewareFunc(func(next Handler) Handler {
+		return splitByDay{
 			next:   next,
 			limits: limits,
-		})
+		}
 	})
 }
 
 type splitByDay struct {
-	next   queryRangeHandler
-	limits *validation.Overrides
+	next   Handler
+	limits Limits
 }
 
-type response struct {
-	req  QueryRangeRequest
-	resp *APIResponse
-	err  error
-}
-
-func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
+func (s splitByDay) Do(ctx context.Context, r *Request) (*APIResponse, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
 	reqs := splitQuery(r)
@@ -45,18 +38,18 @@ func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse,
 		resps = append(resps, reqResp.resp)
 	}
 
-	return mergeAPIResponses(resps)
+	return MergeAPIResponses(resps)
 }
 
-func splitQuery(r *QueryRangeRequest) []*QueryRangeRequest {
-	reqs := []*QueryRangeRequest{}
+func splitQuery(r *Request) []*Request {
+	var reqs []*Request
 	for start := r.Start; start < r.End; start = nextDayBoundary(start, r.Step) + r.Step {
 		end := nextDayBoundary(start, r.Step)
 		if end+r.Step >= r.End {
 			end = r.End
 		}
 
-		reqs = append(reqs, &QueryRangeRequest{
+		reqs = append(reqs, &Request{
 			Path:  r.Path,
 			Start: start,
 			End:   end,
@@ -79,11 +72,11 @@ func nextDayBoundary(t, step int64) int64 {
 }
 
 type requestResponse struct {
-	req  *QueryRangeRequest
+	req  *Request
 	resp *APIResponse
 }
 
-func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*QueryRangeRequest, limits *validation.Overrides) ([]requestResponse, error) {
+func doRequests(ctx context.Context, downstream Handler, reqs []*Request, limits Limits) ([]requestResponse, error) {
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -94,7 +87,7 @@ func doRequests(ctx context.Context, downstream queryRangeHandler, reqs []*Query
 	defer cancel()
 
 	// Feed all requests to a bounded intermediate channel to limit parallelism.
-	intermediate := make(chan *QueryRangeRequest)
+	intermediate := make(chan *Request)
 	go func() {
 		for _, req := range reqs {
 			intermediate <- req

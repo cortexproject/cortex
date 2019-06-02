@@ -1,4 +1,4 @@
-package frontend
+package queryrange
 
 import (
 	"bytes"
@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -18,42 +17,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
-const (
-	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
-	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
-)
-
-var (
-	parsedRequest = &QueryRangeRequest{
-		Path:  "/api/v1/query_range",
-		Start: 1536673680 * 1e3,
-		End:   1536716898 * 1e3,
-		Step:  120 * 1e3,
-		Query: "sum(container_memory_rss) by (namespace)",
-	}
-	parsedResponse = &APIResponse{
-		Status: "success",
-		Data: QueryRangeResponse{
-			ResultType: model.ValMatrix.String(),
-			Result: []SampleStream{
-				{
-					Labels: []client.LabelAdapter{
-						{Name: "foo", Value: "bar"},
-					},
-					Samples: []client.Sample{
-						{Value: 137, TimestampMs: 1536673680000},
-						{Value: 137, TimestampMs: 1536673780000},
-					},
-				},
-			},
-		},
-	}
-)
-
-func TestQueryRangeRequest(t *testing.T) {
+func TestRequest(t *testing.T) {
 	for i, tc := range []struct {
 		url         string
-		expected    *QueryRangeRequest
+		expected    *Request
 		expectedErr error
 	}{
 		{
@@ -92,21 +59,21 @@ func TestQueryRangeRequest(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 			r = r.WithContext(ctx)
 
-			req, err := parseQueryRangeRequest(r)
+			req, err := ParseRequest(r)
 			if err != nil {
 				require.EqualValues(t, tc.expectedErr, err)
 				return
 			}
 			require.EqualValues(t, tc.expected, req)
 
-			rdash, err := req.toHTTPRequest(context.Background())
+			rdash, err := req.ToHTTPRequest(context.Background())
 			require.NoError(t, err)
 			require.EqualValues(t, tc.url, rdash.RequestURI)
 		})
 	}
 }
 
-func TestQueryRangeResponse(t *testing.T) {
+func TestResponse(t *testing.T) {
 	for i, tc := range []struct {
 		body     string
 		expected *APIResponse
@@ -122,7 +89,7 @@ func TestQueryRangeResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := parseQueryRangeResponse(context.Background(), response)
+			resp, err := ParseResponse(context.Background(), response)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, resp)
 
@@ -132,7 +99,7 @@ func TestQueryRangeResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp2, err := resp.toHTTPResponse(context.Background())
+			resp2, err := resp.ToHTTPResponse(context.Background())
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -156,16 +123,16 @@ func TestMergeAPIResponses(t *testing.T) {
 		{
 			input: []*APIResponse{
 				{
-					Data: QueryRangeResponse{
-						ResultType: matrix,
+					Data: Response{
+						ResultType: Matrix,
 						Result:     []SampleStream{},
 					},
 				},
 			},
 			expected: &APIResponse{
 				Status: statusSuccess,
-				Data: QueryRangeResponse{
-					ResultType: matrix,
+				Data: Response{
+					ResultType: Matrix,
 					Result:     []SampleStream{},
 				},
 			},
@@ -175,22 +142,22 @@ func TestMergeAPIResponses(t *testing.T) {
 		{
 			input: []*APIResponse{
 				{
-					Data: QueryRangeResponse{
-						ResultType: matrix,
+					Data: Response{
+						ResultType: Matrix,
 						Result:     []SampleStream{},
 					},
 				},
 				{
-					Data: QueryRangeResponse{
-						ResultType: matrix,
+					Data: Response{
+						ResultType: Matrix,
 						Result:     []SampleStream{},
 					},
 				},
 			},
 			expected: &APIResponse{
 				Status: statusSuccess,
-				Data: QueryRangeResponse{
-					ResultType: matrix,
+				Data: Response{
+					ResultType: Matrix,
 					Result:     []SampleStream{},
 				},
 			},
@@ -200,8 +167,8 @@ func TestMergeAPIResponses(t *testing.T) {
 		{
 			input: []*APIResponse{
 				{
-					Data: QueryRangeResponse{
-						ResultType: matrix,
+					Data: Response{
+						ResultType: Matrix,
 						Result: []SampleStream{
 							{
 								Labels: []client.LabelAdapter{},
@@ -214,8 +181,8 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 				{
-					Data: QueryRangeResponse{
-						ResultType: matrix,
+					Data: Response{
+						ResultType: Matrix,
 						Result: []SampleStream{
 							{
 								Labels: []client.LabelAdapter{},
@@ -230,8 +197,8 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 			expected: &APIResponse{
 				Status: statusSuccess,
-				Data: QueryRangeResponse{
-					ResultType: matrix,
+				Data: Response{
+					ResultType: Matrix,
 					Result: []SampleStream{
 						{
 							Labels: []client.LabelAdapter{},
@@ -255,8 +222,8 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 			expected: &APIResponse{
 				Status: statusSuccess,
-				Data: QueryRangeResponse{
-					ResultType: matrix,
+				Data: Response{
+					ResultType: Matrix,
 					Result: []SampleStream{
 						{
 							Labels: []client.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
@@ -279,8 +246,8 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 			expected: &APIResponse{
 				Status: statusSuccess,
-				Data: QueryRangeResponse{
-					ResultType: matrix,
+				Data: Response{
+					ResultType: Matrix,
 					Result: []SampleStream{
 						{
 							Labels: []client.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
@@ -295,17 +262,17 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		}} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			output, err := mergeAPIResponses(tc.input)
+			output, err := MergeAPIResponses(tc.input)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
 		})
 	}
 }
 
-func mustParse(t *testing.T, apiResponse string) *APIResponse {
+func mustParse(t *testing.T, response string) *APIResponse {
 	var resp APIResponse
 	// Needed as goimports automatically add a json import otherwise.
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
-	require.NoError(t, json.Unmarshal([]byte(apiResponse), &resp))
+	require.NoError(t, json.Unmarshal([]byte(response), &resp))
 	return &resp
 }

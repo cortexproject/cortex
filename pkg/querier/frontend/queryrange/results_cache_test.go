@@ -1,25 +1,58 @@
-package frontend
+package queryrange
 
 import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+const (
+	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
+	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+)
+
+var (
+	parsedRequest = &Request{
+		Path:  "/api/v1/query_range",
+		Start: 1536673680 * 1e3,
+		End:   1536716898 * 1e3,
+		Step:  120 * 1e3,
+		Query: "sum(container_memory_rss) by (namespace)",
+	}
+	parsedResponse = &APIResponse{
+		Status: "success",
+		Data: Response{
+			ResultType: model.ValMatrix.String(),
+			Result: []SampleStream{
+				{
+					Labels: []client.LabelAdapter{
+						{Name: "foo", Value: "bar"},
+					},
+					Samples: []client.Sample{
+						{Value: 137, TimestampMs: 1536673680000},
+						{Value: 137, TimestampMs: 1536673780000},
+					},
+				},
+			},
+		},
+	}
 )
 
 var dummyResponse = &APIResponse{
 	Status: statusSuccess,
-	Data: QueryRangeResponse{
-		ResultType: matrix,
+	Data: Response{
+		ResultType: Matrix,
 		Result: []SampleStream{
 			{
 				Labels: []client.LabelAdapter{
@@ -37,7 +70,7 @@ var dummyResponse = &APIResponse{
 }
 
 func mkAPIResponse(start, end, step int64) *APIResponse {
-	samples := []client.Sample{}
+	var samples []client.Sample
 	for i := start; i <= end; i += step {
 		samples = append(samples, client.Sample{
 			TimestampMs: int64(i),
@@ -47,8 +80,8 @@ func mkAPIResponse(start, end, step int64) *APIResponse {
 
 	return &APIResponse{
 		Status: statusSuccess,
-		Data: QueryRangeResponse{
-			ResultType: matrix,
+		Data: Response{
+			ResultType: Matrix,
 			Result: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{
@@ -71,14 +104,14 @@ func mkExtent(start, end int64) Extent {
 
 func TestPartiton(t *testing.T) {
 	for i, tc := range []struct {
-		input                  *QueryRangeRequest
+		input                  *Request
 		prevCachedResponse     []Extent
-		expectedRequests       []*QueryRangeRequest
+		expectedRequests       []*Request
 		expectedCachedResponse []*APIResponse
 	}{
 		// 1. Test a complete hit.
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 0,
 				End:   100,
 			},
@@ -92,14 +125,14 @@ func TestPartiton(t *testing.T) {
 
 		// Test with a complete miss.
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 0,
 				End:   100,
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(110, 210),
 			},
-			expectedRequests: []*QueryRangeRequest{{
+			expectedRequests: []*Request{{
 				Start: 0,
 				End:   100,
 			}},
@@ -108,14 +141,14 @@ func TestPartiton(t *testing.T) {
 
 		// Test a partial hit.
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 0,
 				End:   100,
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(50, 100),
 			},
-			expectedRequests: []*QueryRangeRequest{
+			expectedRequests: []*Request{
 				{
 					Start: 0,
 					End:   50,
@@ -128,7 +161,7 @@ func TestPartiton(t *testing.T) {
 
 		// Test multiple partial hits.
 		{
-			input: &QueryRangeRequest{
+			input: &Request{
 				Start: 100,
 				End:   200,
 			},
@@ -136,7 +169,7 @@ func TestPartiton(t *testing.T) {
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
-			expectedRequests: []*QueryRangeRequest{
+			expectedRequests: []*Request{
 				{
 					Start: 120,
 					End:   160,
@@ -156,27 +189,30 @@ func TestPartiton(t *testing.T) {
 	}
 }
 
-func defaultOverrides(t *testing.T) *validation.Overrides {
-	var limits validation.Limits
-	flagext.DefaultValues(&limits)
-	overrides, err := validation.NewOverrides(limits)
-	require.NoError(t, err)
-	return overrides
+type fakeLimits struct{}
+
+func (fakeLimits) MaxQueryLength(string) time.Duration {
+	return 0 // Disable.
+}
+
+func (fakeLimits) MaxQueryParallelism(string) int {
+	return 14 // Flag default.
 }
 
 func TestResultsCache(t *testing.T) {
 	calls := 0
-	rcm, err := newResultsCacheMiddleware(
+	rcm, err := NewResultsCacheMiddlewareFromConfig(
+		log.NewNopLogger(),
 		ResultsCacheConfig{
 			CacheConfig: cache.Config{
 				Cache: cache.NewMockCache(),
 			},
 		},
-		defaultOverrides(t),
+		fakeLimits{},
 	)
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*APIResponse, error) {
+	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req *Request) (*APIResponse, error) {
 		calls++
 		return parsedResponse, nil
 	}))
@@ -193,7 +229,7 @@ func TestResultsCache(t *testing.T) {
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing request with new end time should do one more query.
-	req := parsedRequest.copy()
+	req := parsedRequest.Copy()
 	req.End += 100
 	resp, err = rc.Do(ctx, &req)
 	require.NoError(t, err)
@@ -204,15 +240,15 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, err := newResultsCacheMiddleware(cfg, defaultOverrides(t))
+	rcm, err := NewResultsCacheMiddlewareFromConfig(log.NewNopLogger(), cfg, fakeLimits{})
 	require.NoError(t, err)
 
-	req := parsedRequest.copy()
+	req := parsedRequest.Copy()
 	req.End = int64(model.Now())
 	req.Start = req.End - (60 * 1e3)
 
 	calls := 0
-	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, r *QueryRangeRequest) (*APIResponse, error) {
+	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, r *Request) (*APIResponse, error) {
 		calls++
 		assert.Equal(t, r, &req)
 		return parsedResponse, nil

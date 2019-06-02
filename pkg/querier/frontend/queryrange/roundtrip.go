@@ -13,83 +13,82 @@
 //
 // Mostly lifted from prometheus/web/api/v1/api.go.
 
-package frontend
+package queryrange
 
 import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/prometheus/prometheus/pkg/timestamp"
-
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var (
-	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
-	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
-)
-
-// RoundTripperFunc is like http.HandlerFunc, but for http.RoundTripper.
-type RoundTripperFunc func(*http.Request) (*http.Response, error)
-
-// RoundTrip implements http.RoundTripper.
-func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return fn(req)
+type Limits interface {
+	MaxQueryLength(string) time.Duration
+	MaxQueryParallelism(string) int
 }
 
-// queryRangeHandlerFunc is like http.HandlerFunc, but for queryRangeHandler.
-type queryRangeHandlerFunc func(context.Context, *QueryRangeRequest) (*APIResponse, error)
+// HandlerFunc is like http.HandlerFunc, but for Handler.
+type HandlerFunc func(context.Context, *Request) (*APIResponse, error)
 
-func (q queryRangeHandlerFunc) Do(ctx context.Context, req *QueryRangeRequest) (*APIResponse, error) {
+func (q HandlerFunc) Do(ctx context.Context, req *Request) (*APIResponse, error) {
 	return q(ctx, req)
 }
 
-type queryRangeHandler interface {
-	Do(context.Context, *QueryRangeRequest) (*APIResponse, error)
+type Handler interface {
+	Do(context.Context, *Request) (*APIResponse, error)
 }
 
-// queryRangeMiddlewareFunc is like http.HandlerFunc, but for queryRangeMiddleware.
-type queryRangeMiddlewareFunc func(queryRangeHandler) queryRangeHandler
+// MiddlewareFunc is like http.HandlerFunc, but for Middleware.
+type MiddlewareFunc func(Handler) Handler
 
-func (q queryRangeMiddlewareFunc) Wrap(h queryRangeHandler) queryRangeHandler {
+func (q MiddlewareFunc) Wrap(h Handler) Handler {
 	return q(h)
 }
 
-type queryRangeMiddleware interface {
-	Wrap(queryRangeHandler) queryRangeHandler
+type Middleware interface {
+	Wrap(Handler) Handler
 }
 
-// merge produces a middleware that applies multiple middlesware in turn;
+// MergeMiddlewares produces a middleware that applies multiple middleware in turn;
 // ie Merge(f,g,h).Wrap(handler) == f.Wrap(g.Wrap(h.Wrap(handler)))
-func merge(middlesware ...queryRangeMiddleware) queryRangeMiddleware {
-	return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
-		for i := len(middlesware) - 1; i >= 0; i-- {
-			next = middlesware[i].Wrap(next)
+func MergeMiddlewares(middleware ...Middleware) Middleware {
+	return MiddlewareFunc(func(next Handler) Handler {
+		for i := len(middleware) - 1; i >= 0; i-- {
+			next = middleware[i].Wrap(next)
 		}
 		return next
 	})
 }
 
-type queryRangeRoundTripper struct {
-	next                 http.RoundTripper
-	queryRangeMiddleware queryRangeHandler
-	limits               *validation.Overrides
+type RoundTripper struct {
+	next    http.RoundTripper
+	handler Handler
+	limits  Limits
 }
 
-func (q queryRangeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+func NewRoundTripper(next http.RoundTripper, handler Handler, limits Limits) RoundTripper {
+	return RoundTripper{
+		next:    next,
+		handler: handler,
+		limits:  limits,
+	}
+}
+
+func (q RoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	if !strings.HasSuffix(r.URL.Path, "/query_range") {
 		return q.next.RoundTrip(r)
 	}
 
-	request, err := parseQueryRangeRequest(r)
+	request, err := ParseRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	request.logToSpan(r.Context())
 
 	userid, err := user.ExtractOrgID(r.Context())
 	if err != nil {
@@ -102,23 +101,20 @@ func (q queryRangeRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLen)
 	}
 
-	response, err := q.queryRangeMiddleware.Do(r.Context(), request)
+	response, err := q.handler.Do(r.Context(), request)
 	if err != nil {
 		return nil, err
 	}
 
-	return response.toHTTPResponse(r.Context())
+	return response.ToHTTPResponse(r.Context())
 }
 
-type queryRangeTerminator struct {
-	next     http.RoundTripper
-	nextGRPC interface {
-		RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error)
-	}
+type ToRoundTripperMiddleware struct {
+	Next http.RoundTripper
 }
 
-func (q queryRangeTerminator) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
-	request, err := r.toHTTPRequest(ctx)
+func (q ToRoundTripperMiddleware) Do(ctx context.Context, r *Request) (*APIResponse, error) {
+	request, err := r.ToHTTPRequest(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -127,12 +123,11 @@ func (q queryRangeTerminator) Do(ctx context.Context, r *QueryRangeRequest) (*AP
 		return nil, err
 	}
 
-	r.logToSpan(ctx)
-	response, err := q.next.RoundTrip(request)
+	response, err := q.Next.RoundTrip(request)
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
-	return parseQueryRangeResponse(ctx, response)
+	return ParseResponse(ctx, response)
 }

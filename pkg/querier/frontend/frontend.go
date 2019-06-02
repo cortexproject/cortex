@@ -12,16 +12,17 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/querier/frontend/queryrange"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -42,6 +43,12 @@ var (
 		Name:      "query_frontend_queue_length",
 		Help:      "Number of queries in the queue.",
 	})
+	queryRangeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "frontend_query_range_duration_seconds",
+		Help:      "Total time spent in seconds doing query range requests.",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"method", "status_code"})
 
 	errServerClosing  = httpgrpc.Errorf(http.StatusTeapot, "server closing down")
 	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
@@ -50,13 +57,13 @@ var (
 
 // Config for a Frontend.
 type Config struct {
-	MaxOutstandingPerTenant int  `yaml:"max_outstanding_per_tenant"`
-	MaxRetries              int  `yaml:"max_retries"`
-	SplitQueriesByDay       bool `yaml:"split_queries_by_day"`
-	AlignQueriesWithStep    bool `yaml:"align_queries_with_step"`
-	CacheResults            bool `yaml:"cache_results"`
-	CompressResponses       bool `yaml:"compress_responses"`
-	ResultsCacheConfig      `yaml:"results_cache"`
+	MaxOutstandingPerTenant       int  `yaml:"max_outstanding_per_tenant"`
+	MaxRetries                    int  `yaml:"max_retries"`
+	SplitQueriesByDay             bool `yaml:"split_queries_by_day"`
+	AlignQueriesWithStep          bool `yaml:"align_queries_with_step"`
+	CacheResults                  bool `yaml:"cache_results"`
+	CompressResponses             bool `yaml:"compress_responses"`
+	queryrange.ResultsCacheConfig `yaml:"results_cache"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -101,33 +108,31 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 	}
 
 	// Stack up the pipeline of various query range middlewares.
-	queryRangeMiddleware := []queryRangeMiddleware{}
+	var ms []queryrange.Middleware
 	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(queryRangeMiddleware, stepAlignMiddleware)
+		ms = append(ms, queryrange.InstrumentMiddleware("step_align", queryRangeDuration), queryrange.StepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware(limits))
+		ms = append(ms, queryrange.InstrumentMiddleware("split_by_day", queryRangeDuration), queryrange.SplitByDayMiddleware(limits))
 	}
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.ResultsCacheConfig, limits)
+		queryCacheMiddleware, err := queryrange.NewResultsCacheMiddlewareFromConfig(log, cfg.ResultsCacheConfig, limits)
 		if err != nil {
 			return nil, err
 		}
-		queryRangeMiddleware = append(queryRangeMiddleware, instrument("results_cache"), queryCacheMiddleware)
+		ms = append(ms, queryrange.InstrumentMiddleware("results_cache", queryRangeDuration), queryCacheMiddleware)
 	}
 
 	// Finally, if the user selected any query range middleware, stitch it in.
-	var roundTripper http.RoundTripper = f
-	if len(queryRangeMiddleware) > 0 {
-		roundTripper = &queryRangeRoundTripper{
-			next: roundTripper,
-			queryRangeMiddleware: merge(queryRangeMiddleware...).Wrap(&queryRangeTerminator{
-				next: roundTripper,
-			}),
-			limits: limits,
-		}
+	var rt http.RoundTripper = f
+	if len(ms) > 0 {
+		rt = queryrange.NewRoundTripper(
+			f,
+			queryrange.MergeMiddlewares(ms...).Wrap(&queryrange.ToRoundTripperMiddleware{Next: f}),
+			limits,
+		)
 	}
-	f.roundTripper = roundTripper
+	f.roundTripper = rt
 	f.cond = sync.NewCond(&f.mtx)
 	return f, nil
 }
@@ -219,6 +224,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 	}
 
 	var lastErr error
+	// TODO(bwplotka): Move it to separate retry middleware.
 	for tries := 0; tries < f.cfg.MaxRetries; tries++ {
 		if err := f.queueRequest(ctx, request); err != nil {
 			return nil, err

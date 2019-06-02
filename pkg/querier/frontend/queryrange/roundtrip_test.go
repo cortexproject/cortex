@@ -1,4 +1,4 @@
-package frontend
+package queryrange
 
 import (
 	"context"
@@ -35,12 +35,12 @@ func TestRoundTrip(t *testing.T) {
 		host: u.Host,
 		next: http.DefaultTransport,
 	}
-	roundtripper := queryRangeRoundTripper{
+	roundtripper := RoundTripper{
 		next: downstream,
-		queryRangeMiddleware: queryRangeTerminator{
-			next: downstream,
+		handler: ToRoundTripperMiddleware{
+			Next: downstream,
 		},
-		limits: defaultOverrides(t),
+		limits: fakeLimits{},
 	}
 
 	for i, tc := range []struct {

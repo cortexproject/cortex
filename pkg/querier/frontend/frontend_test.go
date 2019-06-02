@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -21,9 +20,16 @@ import (
 	"github.com/uber/jaeger-client-go/config"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
-	"github.com/weaveworks/common/user"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+const (
+	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
+	responseBody = `{"status":"success","data":{"resultType":"Matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 func TestFrontend(t *testing.T) {
@@ -156,8 +162,16 @@ func TestFrontendCancel(t *testing.T) {
 	testFrontend(t, handler, test)
 }
 
+func defaultOverrides(t *testing.T) *validation.Overrides {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides, err := validation.NewOverrides(limits)
+	require.NoError(t, err)
+	return overrides
+}
+
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
-	logger := log.NewNopLogger() //log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger := log.NewNopLogger()
 
 	var (
 		config       Config

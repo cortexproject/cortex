@@ -1,25 +1,17 @@
-package frontend
+package queryrange
 
 import (
 	"context"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	instr "github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/instrument"
 )
 
-var queryRangeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "cortex",
-	Name:      "frontend_query_range_duration_seconds",
-	Help:      "Total time spent in seconds doing query range requests.",
-	Buckets:   prometheus.DefBuckets,
-}, []string{"method", "status_code"})
-
-func instrument(name string) queryRangeMiddleware {
-	return queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
-		return queryRangeHandlerFunc(func(ctx context.Context, req *QueryRangeRequest) (*APIResponse, error) {
+func InstrumentMiddleware(name string, queryRangeDuration *prometheus.HistogramVec) Middleware {
+	return MiddlewareFunc(func(next Handler) Handler {
+		return HandlerFunc(func(ctx context.Context, req *Request) (*APIResponse, error) {
 			var resp *APIResponse
-			err := instr.TimeRequestHistogram(ctx, name, queryRangeDuration, func(ctx context.Context) error {
+			err := instrument.TimeRequestHistogram(ctx, name, queryRangeDuration, func(ctx context.Context) error {
 				var err error
 				resp, err = next.Do(ctx, req)
 				return err

@@ -53,11 +53,10 @@ pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 all: $(UPTODATE_FILES)
-test: $(PROTO_GOS)
-protos: $(PROTO_GOS)
+test: protos
 mod-check: protos
-configs-integration-test: $(PROTO_GOS)
-lint: $(PROTO_GOS)
+configs-integration-test: protos
+lint: protos
 build-image/$(UPTODATE): build-image/*
 
 # All the boiler plate for building golang follows:
@@ -120,6 +119,8 @@ exes: $(EXES)
 $(EXES):
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
+
+protos: $(PROTO_GOS)
 
 %.pb.go:
 	protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)

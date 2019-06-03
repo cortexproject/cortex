@@ -1073,9 +1073,9 @@ func (m *ProcessRequest) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0xa
 		i++
 		i = encodeVarintFrontend(dAtA, i, uint64(m.HttpRequest.Size()))
-		n1, err1 := m.HttpRequest.MarshalTo(dAtA[i:])
-		if err1 != nil {
-			return 0, err1
+		n1, err := m.HttpRequest.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
 		}
 		i += n1
 	}
@@ -1083,9 +1083,9 @@ func (m *ProcessRequest) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintFrontend(dAtA, i, uint64(m.QueryRangeRequest.Size()))
-		n2, err2 := m.QueryRangeRequest.MarshalTo(dAtA[i:])
-		if err2 != nil {
-			return 0, err2
+		n2, err := m.QueryRangeRequest.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
 		}
 		i += n2
 	}
@@ -1111,9 +1111,9 @@ func (m *ProcessResponse) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0xa
 		i++
 		i = encodeVarintFrontend(dAtA, i, uint64(m.HttpResponse.Size()))
-		n3, err3 := m.HttpResponse.MarshalTo(dAtA[i:])
-		if err3 != nil {
-			return 0, err3
+		n3, err := m.HttpResponse.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
 		}
 		i += n3
 	}
@@ -1121,9 +1121,9 @@ func (m *ProcessResponse) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintFrontend(dAtA, i, uint64(m.ApiResponse.Size()))
-		n4, err4 := m.ApiResponse.MarshalTo(dAtA[i:])
-		if err4 != nil {
-			return 0, err4
+		n4, err := m.ApiResponse.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
 		}
 		i += n4
 	}
@@ -1169,9 +1169,9 @@ func (m *QueryRangeRequest) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0x2a
 	i++
 	i = encodeVarintFrontend(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdDuration(m.Timeout)))
-	n5, err5 := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Timeout, dAtA[i:])
-	if err5 != nil {
-		return 0, err5
+	n5, err := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Timeout, dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
 	i += n5
 	if len(m.Query) > 0 {
@@ -1207,9 +1207,9 @@ func (m *APIResponse) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0x12
 	i++
 	i = encodeVarintFrontend(dAtA, i, uint64(m.Data.Size()))
-	n6, err6 := m.Data.MarshalTo(dAtA[i:])
-	if err6 != nil {
-		return 0, err6
+	n6, err := m.Data.MarshalTo(dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
 	i += n6
 	if len(m.ErrorType) > 0 {
@@ -1370,9 +1370,9 @@ func (m *Extent) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0x1a
 		i++
 		i = encodeVarintFrontend(dAtA, i, uint64(m.Response.Size()))
-		n7, err7 := m.Response.MarshalTo(dAtA[i:])
-		if err7 != nil {
-			return 0, err7
+		n7, err := m.Response.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
 		}
 		i += n7
 	}
@@ -1570,7 +1570,7 @@ func (this *ProcessRequest) String() string {
 	}
 	s := strings.Join([]string{`&ProcessRequest{`,
 		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
-		`QueryRangeRequest:` + strings.Replace(this.QueryRangeRequest.String(), "QueryRangeRequest", "QueryRangeRequest", 1) + `,`,
+		`QueryRangeRequest:` + strings.Replace(fmt.Sprintf("%v", this.QueryRangeRequest), "QueryRangeRequest", "QueryRangeRequest", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1581,7 +1581,7 @@ func (this *ProcessResponse) String() string {
 	}
 	s := strings.Join([]string{`&ProcessResponse{`,
 		`HttpResponse:` + strings.Replace(fmt.Sprintf("%v", this.HttpResponse), "HTTPResponse", "httpgrpc.HTTPResponse", 1) + `,`,
-		`ApiResponse:` + strings.Replace(this.ApiResponse.String(), "APIResponse", "APIResponse", 1) + `,`,
+		`ApiResponse:` + strings.Replace(fmt.Sprintf("%v", this.ApiResponse), "APIResponse", "APIResponse", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1595,7 +1595,7 @@ func (this *QueryRangeRequest) String() string {
 		`Start:` + fmt.Sprintf("%v", this.Start) + `,`,
 		`End:` + fmt.Sprintf("%v", this.End) + `,`,
 		`Step:` + fmt.Sprintf("%v", this.Step) + `,`,
-		`Timeout:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timeout), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
+		`Timeout:` + strings.Replace(strings.Replace(this.Timeout.String(), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
 		`}`,
 	}, "")
@@ -1618,14 +1618,9 @@ func (this *QueryRangeResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForResult := "[]SampleStream{"
-	for _, f := range this.Result {
-		repeatedStringForResult += strings.Replace(strings.Replace(f.String(), "SampleStream", "SampleStream", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForResult += "}"
 	s := strings.Join([]string{`&QueryRangeResponse{`,
 		`ResultType:` + fmt.Sprintf("%v", this.ResultType) + `,`,
-		`Result:` + repeatedStringForResult + `,`,
+		`Result:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Result), "SampleStream", "SampleStream", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1634,14 +1629,9 @@ func (this *SampleStream) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForSamples := "[]Sample{"
-	for _, f := range this.Samples {
-		repeatedStringForSamples += fmt.Sprintf("%v", f) + ","
-	}
-	repeatedStringForSamples += "}"
 	s := strings.Join([]string{`&SampleStream{`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
-		`Samples:` + repeatedStringForSamples + `,`,
+		`Samples:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Samples), "Sample", "client.Sample", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1650,14 +1640,9 @@ func (this *CachedResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForExtents := "[]Extent{"
-	for _, f := range this.Extents {
-		repeatedStringForExtents += strings.Replace(strings.Replace(f.String(), "Extent", "Extent", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForExtents += "}"
 	s := strings.Join([]string{`&CachedResponse{`,
 		`Key:` + fmt.Sprintf("%v", this.Key) + `,`,
-		`Extents:` + repeatedStringForExtents + `,`,
+		`Extents:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Extents), "Extent", "Extent", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1669,7 +1654,7 @@ func (this *Extent) String() string {
 	s := strings.Join([]string{`&Extent{`,
 		`Start:` + fmt.Sprintf("%v", this.Start) + `,`,
 		`End:` + fmt.Sprintf("%v", this.End) + `,`,
-		`Response:` + strings.Replace(this.Response.String(), "APIResponse", "APIResponse", 1) + `,`,
+		`Response:` + strings.Replace(fmt.Sprintf("%v", this.Response), "APIResponse", "APIResponse", 1) + `,`,
 		`}`,
 	}, "")
 	return s

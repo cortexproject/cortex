@@ -114,7 +114,7 @@ $ docker rm -f cortex1 cortex2 consul grafana
 $ docker network remote cortex
 ```
 
-## High availability with repication
+## High availability with replication
 
 In this last demo we'll show how Cortex can replicate data among three nodes,
 and demonstrate Cortex can tolerate a node failure without affecting reads and writes.

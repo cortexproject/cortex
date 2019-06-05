@@ -187,6 +187,17 @@ func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint) flushReason {
 		return noFlush
 	}
 
+	if i.cfg.SpreadFlushes {
+		now := model.Now()
+		// Map from the fingerprint hash to a fixed point in the cycle of period MaxChunkAge
+		startOfCycle := now.Add(-(now.Sub(model.Time(0)) % i.cfg.MaxChunkAge))
+		slot := startOfCycle.Add(time.Duration(fp) % i.cfg.MaxChunkAge)
+		// If that point is now, to the resolution of FlushCheckPeriod, flush the chunk.
+		if slot >= now && slot < now.Add(i.cfg.FlushCheckPeriod) {
+			return reasonAged
+		}
+		// If we missed the slot due to timing it will get caught by the MaxChunkAge check below, some time later.
+	}
 	// Adjust max age slightly to spread flushes out over time
 	var jitter time.Duration
 	if i.cfg.ChunkAgeJitter != 0 {

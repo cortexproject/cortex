@@ -2,20 +2,30 @@ package etcd
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring/kvstore"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/etcd-io/etcd/clientv3"
 	"github.com/go-kit/kit/log/level"
 )
 
 // Config for a new etcd.Client.
 type Config struct {
-	Endpoints   []string
-	DialTimeout time.Duration
-	Retries     int
+	Endpoints   []string      `yaml:"endpoints"`
+	DialTimeout time.Duration `yaml:"dial_timeout"`
+	MaxRetries  int           `yaml:"max_retries"`
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
+	cfg.Endpoints = []string{}
+	f.Var((*flagext.Strings)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
+	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
+	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
 }
 
 // New makes a new Client.
@@ -46,7 +56,7 @@ type Client struct {
 func (c *Client) CAS(ctx context.Context, key string, f kvstore.CASCallback) error {
 	var revision int64
 
-	for i := 0; i < c.cfg.Retries; i++ {
+	for i := 0; i < c.cfg.MaxRetries; i++ {
 		resp, err := c.cli.Get(ctx, key)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting key", "key", key, "err", err)
@@ -121,6 +131,36 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 				}
 
 				if !f(out) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// WatchPrefix implements ring.KVClient.
+func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, interface{}) bool) {
+	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 1 * time.Minute,
+	})
+	for backoff.Ongoing() {
+		watchChan := c.cli.Watch(ctx, key, clientv3.WithPrefix())
+		for {
+			resp, ok := <-watchChan
+			if !ok {
+				break
+			}
+			backoff.Reset()
+
+			for _, event := range resp.Events {
+				out, err := c.codec.Decode(event.Kv.Value)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+					continue
+				}
+
+				if !f(string(event.Kv.Key), out) {
 					return
 				}
 			}

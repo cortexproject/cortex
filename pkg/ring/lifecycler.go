@@ -65,7 +65,7 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
 func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.RingConfig.RegisterFlagsWithPrefix(prefix, f)
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kvstore"
 	"github.com/cortexproject/cortex/pkg/ring/kvstore/consul"
+	"github.com/cortexproject/cortex/pkg/ring/kvstore/etcd"
 )
 
 var inmemoryStoreInit sync.Once
@@ -17,6 +18,7 @@ var inmemoryStore kvstore.KVClient
 type KVConfig struct {
 	Store  string        `yaml:"store,omitempty"`
 	Consul consul.Config `yaml:"consul,omitempty"`
+	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
 
 	Mock kvstore.KVClient
 }
@@ -32,10 +34,11 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// At the moment we have consul.<flag-name>, and ring.store, going forward it would
 	// be easier to have everything under ring, so ring.consul.<flag-name>
 	cfg.Consul.RegisterFlags(f, prefix)
+	cfg.Etcd.RegisterFlags(f, prefix)
 	if prefix == "" {
 		prefix = "ring."
 	}
-	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, inmemory).")
+	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, etcd, inmemory).")
 }
 
 // CASCallback is the type of the callback to CAS.  If err is nil, out must be non-nil.
@@ -58,6 +61,8 @@ func NewKVStore(cfg KVConfig, codec kvstore.Codec) (kvstore.KVClient, error) {
 			inmemoryStore = consul.NewInMemoryKVClient(codec)
 		})
 		return inmemoryStore, nil
+	case "etcd":
+		return etcd.New(cfg.Etcd, codec)
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", cfg.Store)
 	}

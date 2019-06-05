@@ -277,9 +277,6 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 		return err
 	}
 
-	// Assume the newest config is the one to use
-	lastConfig := &cfg.Schema.Configs[len(cfg.Schema.Configs)-1]
-
 	if (cfg.TableManager.ChunkTables.WriteScale.Enabled ||
 		cfg.TableManager.IndexTables.WriteScale.Enabled ||
 		cfg.TableManager.ChunkTables.InactiveWriteScale.Enabled ||
@@ -293,15 +290,27 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, cfg.Storage)
-	if err != nil {
-		return err
+	var tableClients []chunk.TableClient
+	// Creating TableClient for each PeriodConfig in the Schema.
+	for i, config := range cfg.Schema.Configs {
+		tableClient, err := storage.NewTableClient(config.IndexType, cfg.Storage)
+		if err != nil {
+			if i == len(cfg.Schema.Configs)-1 {
+				// Assume the newest(last) config is the one to use for adding/updating tables.
+				// Hence return error only for that config.
+				return err
+			}
+			tableClients = append(tableClients, nil)
+			level.Error(util.Logger).Log("msg", "error in creating TableClient")
+			continue
+		}
+		tableClients = append(tableClients, tableClient)
 	}
 
 	bucketClient, err := storage.NewBucketClient(cfg.Storage)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClient, bucketClient)
+	t.tableManager, err = chunk.NewTableManager(cfg.TableManager, cfg.Schema, cfg.Ingester.MaxChunkAge, tableClients, bucketClient)
 	if err != nil {
 		return err
 	}

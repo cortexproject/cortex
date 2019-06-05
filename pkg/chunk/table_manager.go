@@ -114,7 +114,7 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	client       TableClient
+	clients      []TableClient // TableClient for each config in SchemaConfig.Configs, in same order.
 	cfg          TableManagerConfig
 	schemaCfg    SchemaConfig
 	maxChunkAge  time.Duration
@@ -124,13 +124,13 @@ type TableManager struct {
 }
 
 // NewTableManager makes a new TableManager
-func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
+func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClients []TableClient,
 	objectClient BucketClient) (*TableManager, error) {
 	return &TableManager{
 		cfg:          cfg,
 		schemaCfg:    schemaCfg,
 		maxChunkAge:  maxChunkAge,
-		client:       tableClient,
+		clients:      tableClients,
 		done:         make(chan struct{}),
 		bucketClient: objectClient,
 	}, nil
@@ -189,7 +189,6 @@ func (m *TableManager) bucketRetentionLoop() {
 		select {
 		case <-ticker.C:
 			err := m.bucketClient.DeleteChunksBefore(context.Background(), mtime.Now().Add(-m.cfg.RetentionPeriod))
-
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 			}
@@ -205,20 +204,31 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
 	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", len(expected))
 
-	toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, expected)
-	if err != nil {
-		return err
+	for i, client := range m.clients {
+		toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, client, expected)
+		if err != nil {
+			return err
+		}
+
+		if err := m.deleteTables(ctx, client, toDelete); err != nil {
+			if i == len(m.clients)-1 {
+				return err
+			}
+			level.Error(util.Logger).Log("msg", "error in deleting tables from TableClient")
+		}
+
+		if i == len(m.clients)-1 {
+			if err := m.createTables(ctx, client, toCreate); err != nil {
+				return err
+			}
+
+			if err := m.updateTables(ctx, client, toCheckThroughput); err != nil {
+				return err
+			}
+		}
 	}
 
-	if err := m.deleteTables(ctx, toDelete); err != nil {
-		return err
-	}
-
-	if err := m.createTables(ctx, toCreate); err != nil {
-		return err
-	}
-
-	return m.updateTables(ctx, toCheckThroughput)
+	return nil
 }
 
 func (m *TableManager) calculateExpectedTables() []TableDesc {
@@ -292,8 +302,8 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 }
 
 // partitionTables works out tables that need to be created vs tables that need to be updated
-func (m *TableManager) partitionTables(ctx context.Context, descriptions []TableDesc) ([]TableDesc, []TableDesc, []TableDesc, error) {
-	tables, err := m.client.ListTables(ctx)
+func (m *TableManager) partitionTables(ctx context.Context, client TableClient, descriptions []TableDesc) ([]TableDesc, []TableDesc, []TableDesc, error) {
+	tables, err := client.ListTables(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -344,10 +354,10 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 	return toCreate, toCheck, toDelete, nil
 }
 
-func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
+func (m *TableManager) createTables(ctx context.Context, client TableClient, descriptions []TableDesc) error {
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
-		err := m.client.CreateTable(ctx, desc)
+		err := client.CreateTable(ctx, desc)
 		if err != nil {
 			return err
 		}
@@ -355,7 +365,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 	return nil
 }
 
-func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDesc) error {
+func (m *TableManager) deleteTables(ctx context.Context, client TableClient, descriptions []TableDesc) error {
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
 		if !m.cfg.RetentionDeletesEnabled {
@@ -363,7 +373,7 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDes
 		}
 
 		level.Info(util.Logger).Log("msg", "deleting table", "table", desc.Name)
-		err := m.client.DeleteTable(ctx, desc.Name)
+		err := client.DeleteTable(ctx, desc.Name)
 		if err != nil {
 			return err
 		}
@@ -371,10 +381,10 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDes
 	return nil
 }
 
-func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
+func (m *TableManager) updateTables(ctx context.Context, client TableClient, descriptions []TableDesc) error {
 	for _, expected := range descriptions {
 		level.Debug(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
-		current, isActive, err := m.client.DescribeTable(ctx, expected.Name)
+		current, isActive, err := client.DescribeTable(ctx, expected.Name)
 		if err != nil {
 			return err
 		}
@@ -396,7 +406,7 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			continue
 		}
 
-		err = m.client.UpdateTable(ctx, current, expected)
+		err = client.UpdateTable(ctx, current, expected)
 		if err != nil {
 			return err
 		}

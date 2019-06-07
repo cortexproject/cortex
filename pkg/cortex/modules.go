@@ -168,7 +168,6 @@ func (t *Cortex) initDistributor(cfg *Config) (err error) {
 		return
 	}
 
-	t.server.HTTP.HandleFunc("/user_stats", t.distributor.UserStatsHandler)
 	t.server.HTTP.HandleFunc("/all_user_stats", t.distributor.AllUserStatsHandler)
 	t.server.HTTP.Handle("/api/prom/push", t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.distributor.PushHandler)))
 	return
@@ -209,6 +208,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	subrouter.Path("/read").Handler(t.httpAuthMiddleware.Wrap(querier.RemoteReadHandler(queryable)))
 	subrouter.Path("/validate_expr").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.distributor.ValidateExprHandler)))
 	subrouter.Path("/chunks").Handler(t.httpAuthMiddleware.Wrap(querier.ChunksHandler(queryable)))
+	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(t.distributor.UserStatsHandler)))
 	return
 }
 

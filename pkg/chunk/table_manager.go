@@ -201,23 +201,28 @@ func (m *TableManager) bucketRetentionLoop() {
 // SyncTables will calculate the tables expected to exist, create those that do
 // not and update those that need it.  It is exposed for testing.
 func (m *TableManager) SyncTables(ctx context.Context) error {
-	expected := m.calculateExpectedTables()
-	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", len(expected))
-
 	for i, client := range m.clients {
+		lastClient := i == len(m.clients)-1
+		expected := m.calculateExpectedTables(i)
+		if lastClient {
+			level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", len(expected))
+		} else {
+			level.Info(util.Logger).Log("msg", "synching tables [old config]", "num_expected_tables", len(expected), "expected_tables", len(expected))
+		}
+
 		toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, client, expected)
 		if err != nil {
 			return err
 		}
 
 		if err := m.deleteTables(ctx, client, toDelete); err != nil {
-			if i == len(m.clients)-1 {
+			if lastClient {
 				return err
 			}
 			level.Error(util.Logger).Log("msg", "error in deleting tables from TableClient")
 		}
 
-		if i == len(m.clients)-1 {
+		if lastClient {
 			if err := m.createTables(ctx, client, toCreate); err != nil {
 				return err
 			}
@@ -231,69 +236,72 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 	return nil
 }
 
-func (m *TableManager) calculateExpectedTables() []TableDesc {
+// calculateExpectedTables returns the expected tables from specified config.
+// i is the index of the config in m.schemaCfg.Configs.
+// This i also corresponds to the ith TableClient in m.clients.
+func (m *TableManager) calculateExpectedTables(i int) []TableDesc {
 	result := []TableDesc{}
+	if i < 0 || i >= len(m.schemaCfg.Configs) {
+		return result
+	}
 
-	for i, config := range m.schemaCfg.Configs {
-		if config.From.Time.Time().After(mtime.Now()) {
-			continue
+	config := m.schemaCfg.Configs[i]
+
+	if config.From.Time.Time().After(mtime.Now()) {
+		return result
+	}
+	if config.IndexTables.Period == 0 { // non-periodic table
+
+		table := TableDesc{
+			Name:              config.IndexTables.Prefix,
+			ProvisionedRead:   m.cfg.IndexTables.InactiveReadThroughput,
+			ProvisionedWrite:  m.cfg.IndexTables.InactiveWriteThroughput,
+			UseOnDemandIOMode: m.cfg.IndexTables.InactiveThroughputOnDemandMode,
+			Tags:              config.IndexTables.Tags,
 		}
-		if config.IndexTables.Period == 0 { // non-periodic table
-			if len(result) > 0 && result[len(result)-1].Name == config.IndexTables.Prefix {
-				continue // already got a non-periodic table with this name
-			}
+		isActive := true
+		if i+1 < len(m.schemaCfg.Configs) {
+			var (
+				endTime         = m.schemaCfg.Configs[i+1].From.Unix()
+				gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
+				maxChunkAgeSecs = int64(m.maxChunkAge / time.Second)
+				now             = mtime.Now().Unix()
+			)
+			if now >= endTime+gracePeriodSecs+maxChunkAgeSecs {
+				isActive = false
 
-			table := TableDesc{
-				Name:              config.IndexTables.Prefix,
-				ProvisionedRead:   m.cfg.IndexTables.InactiveReadThroughput,
-				ProvisionedWrite:  m.cfg.IndexTables.InactiveWriteThroughput,
-				UseOnDemandIOMode: m.cfg.IndexTables.InactiveThroughputOnDemandMode,
-				Tags:              config.IndexTables.Tags,
 			}
-			isActive := true
-			if i+1 < len(m.schemaCfg.Configs) {
-				var (
-					endTime         = m.schemaCfg.Configs[i+1].From.Unix()
-					gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
-					maxChunkAgeSecs = int64(m.maxChunkAge / time.Second)
-					now             = mtime.Now().Unix()
-				)
-				if now >= endTime+gracePeriodSecs+maxChunkAgeSecs {
-					isActive = false
-
-				}
+		}
+		if isActive {
+			table.ProvisionedRead = m.cfg.IndexTables.ProvisionedReadThroughput
+			table.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
+			table.UseOnDemandIOMode = m.cfg.IndexTables.ProvisionedThroughputOnDemandMode
+			if m.cfg.IndexTables.WriteScale.Enabled {
+				table.WriteScale = m.cfg.IndexTables.WriteScale
+				table.UseOnDemandIOMode = false
 			}
-			if isActive {
-				table.ProvisionedRead = m.cfg.IndexTables.ProvisionedReadThroughput
-				table.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
-				table.UseOnDemandIOMode = m.cfg.IndexTables.ProvisionedThroughputOnDemandMode
-				if m.cfg.IndexTables.WriteScale.Enabled {
-					table.WriteScale = m.cfg.IndexTables.WriteScale
-					table.UseOnDemandIOMode = false
-				}
-				if m.cfg.IndexTables.ReadScale.Enabled {
-					table.ReadScale = m.cfg.IndexTables.ReadScale
-					table.UseOnDemandIOMode = false
-				}
+			if m.cfg.IndexTables.ReadScale.Enabled {
+				table.ReadScale = m.cfg.IndexTables.ReadScale
+				table.UseOnDemandIOMode = false
 			}
-			result = append(result, table)
-		} else {
-			endTime := mtime.Now().Add(m.cfg.CreationGracePeriod)
-			if i+1 < len(m.schemaCfg.Configs) {
-				nextFrom := m.schemaCfg.Configs[i+1].From.Time.Time()
-				if endTime.After(nextFrom) {
-					endTime = nextFrom
-				}
+		}
+		result = append(result, table)
+	} else {
+		endTime := mtime.Now().Add(m.cfg.CreationGracePeriod)
+		if i+1 < len(m.schemaCfg.Configs) {
+			nextFrom := m.schemaCfg.Configs[i+1].From.Time.Time()
+			if endTime.After(nextFrom) {
+				endTime = nextFrom
 			}
-			endModelTime := model.TimeFromUnix(endTime.Unix())
-			result = append(result, config.IndexTables.periodicTables(
-				config.From.Time, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
+		}
+		endModelTime := model.TimeFromUnix(endTime.Unix())
+		result = append(result, config.IndexTables.periodicTables(
+			config.From.Time, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
+		)...)
+		if config.ChunkTables.Prefix != "" {
+			result = append(result, config.ChunkTables.periodicTables(
+				config.From.Time, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
 			)...)
-			if config.ChunkTables.Prefix != "" {
-				result = append(result, config.ChunkTables.periodicTables(
-					config.From.Time, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
-				)...)
-			}
 		}
 	}
 

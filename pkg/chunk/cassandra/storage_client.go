@@ -36,6 +36,24 @@ type Config struct {
 	ConnectTimeout           time.Duration `yaml:"connect_timeout,omitempty"`
 }
 
+type PasswordAuthenticator struct {
+	Username string
+	Password string
+}
+
+func (p PasswordAuthenticator) Challenge(req []byte) ([]byte, gocql.Authenticator, error) {
+	resp := make([]byte, 2+len(p.Username)+len(p.Password))
+	resp[0] = 0
+	copy(resp[1:], p.Username)
+	resp[len(p.Username)+1] = 0
+	copy(resp[2+len(p.Username):], p.Password)
+	return resp, nil, nil
+}
+
+func (p PasswordAuthenticator) Success(data []byte) error {
+	return nil
+}
+
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Addresses, "cassandra.addresses", "", "Comma-separated hostnames or IPs of Cassandra instances.")
@@ -88,7 +106,7 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) {
 		}
 	}
 	if cfg.Auth {
-		cluster.Authenticator = gocql.PasswordAuthenticator{
+		cluster.Authenticator = PasswordAuthenticator{
 			Username: cfg.Username,
 			Password: cfg.Password,
 		}

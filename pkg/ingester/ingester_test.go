@@ -93,7 +93,7 @@ func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matr
 		ss := model.SampleStream{
 			Metric: model.Metric{
 				model.MetricNameLabel: model.LabelValue(fmt.Sprintf("testmetric_%d", i)),
-				model.JobLabel:        "testjob",
+				model.JobLabel:        model.LabelValue(fmt.Sprintf("testjob%d", i%2)),
 			},
 			Values: make([]model.SamplePair, 0, samplesPerSeries),
 		}

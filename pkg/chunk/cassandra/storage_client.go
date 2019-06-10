@@ -36,27 +36,6 @@ type Config struct {
 	ConnectTimeout           time.Duration `yaml:"connect_timeout,omitempty"`
 }
 
-// PasswordAuthenticator creates the gocql Authenticator object
-type passwordAuthenticator struct {
-	Username string
-	Password string
-}
-
-// Challenge implements the Authenticator interface for gocql
-func (p passwordAuthenticator) Challenge(req []byte) ([]byte, gocql.Authenticator, error) {
-	resp := make([]byte, 2+len(p.Username)+len(p.Password))
-	resp[0] = 0
-	copy(resp[1:], p.Username)
-	resp[len(p.Username)+1] = 0
-	copy(resp[2+len(p.Username):], p.Password)
-	return resp, nil, nil
-}
-
-// Success implementes the Authenticator interface for gqcql
-func (p PasswordAuthenticator) Success(data []byte) error {
-	return nil
-}
-
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Addresses, "cassandra.addresses", "", "Comma-separated hostnames or IPs of Cassandra instances.")
@@ -140,6 +119,27 @@ func (cfg *Config) createKeyspace() error {
 		 }`,
 		cfg.Keyspace, cfg.ReplicationFactor)).Exec()
 	return errors.WithStack(err)
+}
+
+// PasswordAuthenticator creates the gocql Authenticator object
+type PasswordAuthenticator struct {
+	Username string
+	Password string
+}
+
+// Challenge implements the Authenticator interface for gocql
+func (p PasswordAuthenticator) Challenge(req []byte) ([]byte, gocql.Authenticator, error) {
+	resp := make([]byte, 2+len(p.Username)+len(p.Password))
+	resp[0] = 0
+	copy(resp[1:], p.Username)
+	resp[len(p.Username)+1] = 0
+	copy(resp[2+len(p.Username):], p.Password)
+	return resp, nil, nil
+}
+
+// Success implements the Authenticator interface for gqcql
+func (p PasswordAuthenticator) Success(data []byte) error {
+	return nil
 }
 
 // StorageClient implements chunk.IndexClient and chunk.ObjectClient for Cassandra.

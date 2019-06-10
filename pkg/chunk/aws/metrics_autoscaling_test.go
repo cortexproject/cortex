@@ -17,6 +17,17 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	mockProm := mockPrometheus{}
 
+	clientOld := dynamoTableClient{
+		DynamoDB: dynamoDB,
+		autoscale: &metricsData{
+			promAPI: &mockProm,
+			cfg: MetricsAutoScalingConfig{
+				TargetQueueLen: 100000,
+				ScaleUpFactor:  1.2,
+			},
+			tableLastUpdated: make(map[string]time.Time),
+		},
+	}
 	client := dynamoTableClient{
 		DynamoDB: dynamoDB,
 		autoscale: &metricsData{
@@ -58,7 +69,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		ChunkTables:         fixtureProvisionConfig(2, chunkWriteScale, inactiveWriteScale),
 	}
 
-	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,6 +187,18 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	mockProm := mockPrometheus{}
 
+	clientOld := dynamoTableClient{
+		DynamoDB: dynamoDB,
+		autoscale: &metricsData{
+			promAPI: &mockProm,
+			cfg: MetricsAutoScalingConfig{
+				TargetQueueLen: 100000,
+				ScaleUpFactor:  1.2,
+			},
+			tableLastUpdated:     make(map[string]time.Time),
+			tableReadLastUpdated: make(map[string]time.Time),
+		},
+	}
 	client := dynamoTableClient{
 		DynamoDB: dynamoDB,
 		autoscale: &metricsData{
@@ -216,7 +239,7 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 		ChunkTables:         fixtureReadProvisionConfig(chunkReadScale, inactiveReadScale),
 	}
 
-	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

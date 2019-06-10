@@ -120,6 +120,8 @@ var inactiveScalingConfig = AutoScalingConfig{
 }
 
 func TestTableManager(t *testing.T) {
+	clientOld1 := newMockTableClient()
+	clientOld2 := newMockTableClient()
 	client := newMockTableClient()
 
 	cfg := SchemaConfig{
@@ -174,7 +176,7 @@ func TestTableManager(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, []TableClient{client}, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, []TableClient{clientOld1, clientOld2, client}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,6 +305,7 @@ func TestTableManager(t *testing.T) {
 }
 
 func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
+	clientOld := newMockTableClient()
 	client := newMockTableClient()
 
 	cfg := SchemaConfig{
@@ -344,7 +347,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, []TableClient{client}, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, []TableClient{clientOld, client}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,6 +392,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 }
 
 func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
+	clientOld := newMockTableClient()
 	client := newMockTableClient()
 
 	cfg := SchemaConfig{
@@ -432,7 +436,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 			InactiveThroughputOnDemandMode: true,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, []TableClient{client}, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, []TableClient{clientOld, client}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

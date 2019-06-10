@@ -142,6 +142,10 @@ func test(t *testing.T, client dynamoTableClient, tableManager *chunk.TableManag
 func TestTableManagerAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	applicationAutoScaling := newMockApplicationAutoScaling()
+	clientOld := dynamoTableClient{
+		DynamoDB:  dynamoDB,
+		autoscale: &awsAutoscale{ApplicationAutoScaling: applicationAutoScaling},
+	}
 	client := dynamoTableClient{
 		DynamoDB:  dynamoDB,
 		autoscale: &awsAutoscale{ApplicationAutoScaling: applicationAutoScaling},
@@ -167,7 +171,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are created with autoscale
 	{
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -186,7 +190,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		tbm.IndexTables.WriteScale.OutCooldown = 200
 		tbm.ChunkTables.WriteScale.TargetValue = 90.0
 
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -205,7 +209,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		tbm.IndexTables.WriteScale.OutCooldown = 200
 		tbm.ChunkTables.WriteScale.TargetValue = 90.0
 
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -225,7 +229,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		tbm.IndexTables.WriteScale.Enabled = false
 		tbm.ChunkTables.WriteScale.Enabled = false
 
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,6 +248,10 @@ func TestTableManagerAutoScaling(t *testing.T) {
 func TestTableManagerInactiveAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	applicationAutoScaling := newMockApplicationAutoScaling()
+	clientOld := dynamoTableClient{
+		DynamoDB:  dynamoDB,
+		autoscale: &awsAutoscale{ApplicationAutoScaling: applicationAutoScaling},
+	}
 	client := dynamoTableClient{
 		DynamoDB:  dynamoDB,
 		autoscale: &awsAutoscale{ApplicationAutoScaling: applicationAutoScaling},
@@ -270,7 +278,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 
 	// Check legacy and latest tables do not autoscale with inactive autoscale enabled.
 	{
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -286,7 +294,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 
 	// Check inactive tables are autoscaled even if there are less than the limit.
 	{
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -303,7 +311,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 
 	// Check inactive tables past the limit do not autoscale but the latest N do.
 	{
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{client, client}, nil)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, []chunk.TableClient{clientOld, client}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

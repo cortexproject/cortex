@@ -36,12 +36,14 @@ type Config struct {
 	ConnectTimeout           time.Duration `yaml:"connect_timeout,omitempty"`
 }
 
-type PasswordAuthenticator struct {
+// PasswordAuthenticator creates the gocql Authenticator object
+type passwordAuthenticator struct {
 	Username string
 	Password string
 }
 
-func (p PasswordAuthenticator) Challenge(req []byte) ([]byte, gocql.Authenticator, error) {
+// Challenge implements the Authenticator interface for gocql
+func (p passwordAuthenticator) Challenge(req []byte) ([]byte, gocql.Authenticator, error) {
 	resp := make([]byte, 2+len(p.Username)+len(p.Password))
 	resp[0] = 0
 	copy(resp[1:], p.Username)
@@ -50,6 +52,7 @@ func (p PasswordAuthenticator) Challenge(req []byte) ([]byte, gocql.Authenticato
 	return resp, nil, nil
 }
 
+// Success implementes the Authenticator interface for gqcql
 func (p PasswordAuthenticator) Success(data []byte) error {
 	return nil
 }

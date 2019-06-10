@@ -3,6 +3,7 @@ package frontend
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -200,6 +201,17 @@ func (w *worker) process(ctx context.Context, c Frontend_ProcessClient) error {
 					Body: []byte(err.Error()),
 				}
 			}
+		}
+
+		if len(response.Body) >= w.cfg.GRPCClientConfig.MaxSendMsgSize {
+			errMsg := fmt.Sprintf("the response is larger than the max (%d vs %d)", len(response.Body), w.cfg.GRPCClientConfig.MaxSendMsgSize)
+
+			// This makes sure the request is not retried, else a 500 is sent and we retry the large query again.
+			response = &httpgrpc.HTTPResponse{
+				Code: http.StatusRequestEntityTooLarge,
+				Body: []byte(errMsg),
+			}
+			level.Error(w.log).Log("msg", "error processing query", "err", errMsg)
 		}
 
 		if err := c.Send(&ProcessResponse{

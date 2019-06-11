@@ -3,12 +3,9 @@ package cortex
 import (
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -141,15 +138,6 @@ func New(cfg Config) (*Cortex, error) {
 
 	cortex := &Cortex{
 		target: cfg.Target,
-	}
-
-	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
-		return r.URL.RequestURI()
-	})
-	cfg.Server.HTTPMiddleware = []middleware.Interface{
-		middleware.Func(func(handler http.Handler) http.Handler {
-			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
-		}),
 	}
 
 	cortex.setupAuthMiddleware(&cfg)

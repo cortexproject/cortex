@@ -209,18 +209,13 @@ func (t *Cortex) Run() error {
 
 // Stop gracefully stops a Cortex.
 func (t *Cortex) Stop() error {
-	t.server.Shutdown()
-	t.stop(t.target)
-	return nil
-}
-
-func (t *Cortex) stop(m moduleName) {
-	t.stopModule(m)
-	deps := orderedDeps(m)
+	t.stopModule(t.target)
+	deps := orderedDeps(t.target)
 	// iterate over our deps in reverse order and call stopModule
 	for i := len(deps) - 1; i >= 0; i-- {
 		t.stopModule(deps[i])
 	}
+	return nil
 }
 
 func (t *Cortex) stopModule(m moduleName) {

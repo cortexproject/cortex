@@ -75,7 +75,7 @@ func NewConsulClient(cfg Config, codec kvstore.Codec) (kvstore.KVClient, error) 
 		cfg:   cfg,
 	}
 	if cfg.Prefix != "" {
-		c = PrefixClient(c, cfg.Prefix)
+		c = kvstore.PrefixClient(c, cfg.Prefix)
 	}
 	return c, nil
 }
@@ -277,41 +277,4 @@ func (c *consulClient) Get(ctx context.Context, key string) (interface{}, error)
 		return nil, nil
 	}
 	return c.codec.Decode(kvp.Value)
-}
-
-type prefixedConsulClient struct {
-	prefix string
-	consul kvstore.KVClient
-}
-
-// PrefixClient takes a ConsulClient and forces a prefix on all its operations.
-func PrefixClient(client kvstore.KVClient, prefix string) kvstore.KVClient {
-	return &prefixedConsulClient{prefix, client}
-}
-
-// CAS atomically modifies a value in a callback. If the value doesn't exist,
-// you'll get 'nil' as an argument to your callback.
-func (c *prefixedConsulClient) CAS(ctx context.Context, key string, f kvstore.CASCallback) error {
-	return c.consul.CAS(ctx, c.prefix+key, f)
-}
-
-// WatchKey watches a key.
-func (c *prefixedConsulClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
-	c.consul.WatchKey(ctx, c.prefix+key, f)
-}
-
-// WatchPrefix watches a prefix. For a prefix client it appends the prefix argument to the clients prefix.
-func (c *prefixedConsulClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
-	c.consul.WatchPrefix(ctx, fmt.Sprintf("%s%s", c.prefix, prefix), func(k string, i interface{}) bool {
-		return f(strings.TrimPrefix(k, c.prefix), i)
-	})
-}
-
-// PutBytes writes bytes to Consul.
-func (c *prefixedConsulClient) PutBytes(ctx context.Context, key string, buf []byte) error {
-	return c.consul.PutBytes(ctx, c.prefix+key, buf)
-}
-
-func (c *prefixedConsulClient) Get(ctx context.Context, key string) (interface{}, error) {
-	return c.consul.Get(ctx, c.prefix+key)
 }

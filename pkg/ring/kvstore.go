@@ -19,6 +19,7 @@ type KVConfig struct {
 	Store  string        `yaml:"store,omitempty"`
 	Consul consul.Config `yaml:"consul,omitempty"`
 	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
+	Prefix string        `yaml:"prefix,omitempty"`
 
 	Mock kvstore.KVClient
 }
@@ -38,6 +39,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	if prefix == "" {
 		prefix = "ring."
 	}
+	f.StringVar(&cfg.Prefix, prefix+"prefix", "", "The prefix for the keys in the store. Should end with a /.")
 	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, etcd, inmemory).")
 }
 
@@ -51,21 +53,33 @@ func NewKVStore(cfg KVConfig, codec kvstore.Codec) (kvstore.KVClient, error) {
 		return cfg.Mock, nil
 	}
 
+	var kvclient kvstore.KVClient
+	var err error
+
 	switch cfg.Store {
 	case "consul":
-		return consul.NewConsulClient(cfg.Consul, codec)
+		kvclient, err = consul.NewConsulClient(cfg.Consul, codec)
 	case "inmemory":
 		// If we use the in-memory store, make sure everyone gets the same instance
 		// within the same process.
 		inmemoryStoreInit.Do(func() {
-			inmemoryStore = consul.NewInMemoryKVClient(codec)
+			kvclient = consul.NewInMemoryKVClient(codec)
 		})
-		return inmemoryStore, nil
 	case "etcd":
-		return etcd.New(cfg.Etcd, codec)
+		kvclient, err = etcd.New(cfg.Etcd, codec)
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", cfg.Store)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.Prefix != "" {
+		kvclient = kvstore.PrefixClient(kvclient, cfg.Prefix)
+	}
+
+	return kvclient, nil
 }
 
 // GetCodec returns the codec used to encode and decode data being put by ring.

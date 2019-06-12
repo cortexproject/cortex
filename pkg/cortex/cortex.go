@@ -221,7 +221,6 @@ func (t *Cortex) Run() error {
 
 // Stop gracefully stops a Cortex.
 func (t *Cortex) Stop() error {
-	t.server.Shutdown()
 	t.stop(t.target)
 	return nil
 }

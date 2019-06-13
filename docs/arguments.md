@@ -92,6 +92,38 @@ The ingester query API was improved over time, but defaults to the old behaviour
 - `-distributor.extra-query-delay`
    This is used by a component with an embedded distributor (Querier and Ruler) to control how long to wait until sending more than the minimum amount of queries needed for a successful response.
 
+- `distributor.accept-ha-samples`
+   Per-user flag to enable handling of samples with external labels for identifying replicas in an HA Prometheus setup. This defaults to false, and is technically defined in the Distributor limits.
+
+- `distributor.accept-ha-labels` 
+   Accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessarry internal data structures for the HA handling are created. The option `accept-ha-samples` is still needed to enable ingestion of HA samples per user ID until that flag is defaulted to true. The cfg option is `&cfg.EnableHAReplicas` so the naming here is a bit confusing.
+
+### HA Tracker
+
+HA tracking has two of it's own flags:
+- `ha-tracker.cluster`
+   Prometheus label to look for in samples to identify a Prometheus HA cluster. (default "cluster")
+- `ha-tracker.replica`
+   Prometheus label to look for in samples to identify a Prometheus HA replica. (default "__replica__")
+
+It also talks to a KVStore and has it's own copies of the same flags used by the Distributor to connect to for the ring.
+- `ha-tracker.consul.acltoken`
+   ACL Token used to interact with Consul.
+- `ha-tracker.consul.client-timeout`
+   HTTP timeout when talking to consul (default 20s)
+- `ha-tracker.consul.consistent-reads`
+   Enable consistent reads to consul. (default true)
+- `ha-tracker.consul.hostname`
+   Hostname and port of Consul. (default "localhost:8500")
+- `ha-tracker.consul.prefix`
+   Prefix for keys in Consul. Should end with a /. (default "collectors/")
+- `ha-tracker.failover-timeout`
+   If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout (default 30s)
+- `ha-tracker.store`
+   Backend storage to use for the ring (consul, inmemory). (default "consul")
+- `ha-tracker.update-timeout`
+   Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp. (default 15s)
+
 ## Ingester
 
 - `-ingester.normalise-tokens`

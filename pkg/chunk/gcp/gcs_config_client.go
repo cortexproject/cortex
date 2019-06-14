@@ -35,7 +35,7 @@ type ConfigDBConfig struct {
 }
 
 // RegisterFlags registers flags.
-func (cfg ConfigDBConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *ConfigDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, "gcs.configdb.bucketname", "", "Name of GCS bucket rule and alert configurations in")
 }
 
@@ -52,8 +52,9 @@ func NewConfigClient(ctx context.Context, cfg ConfigDBConfig) (*ConfigClient, er
 	}
 
 	bucket := client.Bucket(cfg.BucketName)
-	if bucket == nil {
-		return nil, fmt.Errorf("bucket %v does not exist", cfg.BucketName)
+	_, err = bucket.Attrs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to access bucket %v, %v", cfg.BucketName, err)
 	}
 	return &ConfigClient{
 		cfg:        cfg,

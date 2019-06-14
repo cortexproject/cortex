@@ -13,9 +13,9 @@ import (
 
 // Config configures the database.
 type Config struct {
-	Type           string
-	PostgresConfig postgres.Config
-	GCSConfig      gcp.ConfigDBConfig
+	Type     string             `yaml:"type"`
+	PostGres postgres.Config    `yaml:"postgres,omitempty"`
+	GCS      gcp.ConfigDBConfig `yaml:"gcs,omitempty"`
 
 	// Allow injection of mock DBs for unit testing.
 	Mock DB
@@ -24,8 +24,8 @@ type Config struct {
 // RegisterFlags adds the flags required to configure this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.Type, "configdb.type", "postgres", "Config database backend to utilize, (postgres, memory, gcp)")
-	cfg.PostgresConfig.RegisterFlags(f)
-	cfg.GCSConfig.RegisterFlags(f)
+	cfg.PostGres.RegisterFlags(f)
+	cfg.GCS.RegisterFlags(f)
 }
 
 // DB is the interface for the database.
@@ -79,9 +79,9 @@ func New(cfg Config) (DB, error) {
 	case "memory":
 		d, err = memory.New()
 	case "postgres":
-		d, err = postgres.New(cfg.PostgresConfig)
+		d, err = postgres.New(cfg.PostGres)
 	case "gcs":
-		d, err = gcp.NewConfigClient(context.TODO(), cfg.GCSConfig)
+		d, err = gcp.NewConfigClient(context.TODO(), cfg.GCS)
 	default:
 		return nil, fmt.Errorf("Unknown database type: %s", cfg.Type)
 	}

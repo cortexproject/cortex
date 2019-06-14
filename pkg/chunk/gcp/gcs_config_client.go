@@ -111,7 +111,15 @@ func (g *ConfigClient) SetRulesConfig(ctx context.Context, userID string, oldCon
 		return false, err
 	}
 
-	writer := g.bucket.Object(rulePrefix + userID).If(storage.Conditions{GenerationMatch: int64(current.ID)}).NewWriter(ctx)
+	objHandle := g.bucket.Object(rulePrefix + userID)
+
+	if current.Config.Files != nil {
+		objHandle = objHandle.If(storage.Conditions{GenerationMatch: int64(current.ID)})
+	} else {
+		objHandle = objHandle.If(storage.Conditions{DoesNotExist: true})
+	}
+
+	writer := objHandle.NewWriter(ctx)
 	if _, err := writer.Write(cfgBytes); err != nil {
 		return false, err
 	}

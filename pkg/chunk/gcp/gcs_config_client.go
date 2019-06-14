@@ -70,6 +70,9 @@ func (g *ConfigClient) GetRulesConfig(ctx context.Context, userID string) (confi
 
 func (g *ConfigClient) getRulesConfig(ctx context.Context, ruleObj string) (configs.VersionedRulesConfig, error) {
 	reader, err := g.bucket.Object(ruleObj).NewReader(ctx)
+	if err == storage.ErrObjectNotExist {
+		return configs.VersionedRulesConfig{}, nil
+	}
 	if err != nil {
 		return configs.VersionedRulesConfig{}, err
 	}

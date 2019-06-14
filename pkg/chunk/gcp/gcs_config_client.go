@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"google.golang.org/api/iterator"
-
 	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"google.golang.org/api/iterator"
 )
 
 const (
@@ -71,6 +72,7 @@ func (g *ConfigClient) GetRulesConfig(ctx context.Context, userID string) (confi
 func (g *ConfigClient) getRulesConfig(ctx context.Context, ruleObj string) (configs.VersionedRulesConfig, error) {
 	reader, err := g.bucket.Object(ruleObj).NewReader(ctx)
 	if err == storage.ErrObjectNotExist {
+		level.Debug(util.Logger).Log("msg", "rule config does not exist", "name", ruleObj)
 		return configs.VersionedRulesConfig{}, nil
 	}
 	if err != nil {
@@ -169,16 +171,17 @@ func (g *ConfigClient) GetRules(ctx context.Context) (map[string]configs.Version
 	ruleMap := map[string]configs.VersionedRulesConfig{}
 	for {
 		objAttrs, err := objs.Next()
-
 		if err == iterator.Done {
 			break
 		}
+		level.Debug(util.Logger).Log("msg", "checking gcs config", "config", objAttrs.Name)
 
 		if err != nil {
 			return nil, err
 		}
 
 		if objAttrs.Updated.After(g.lastPolled) {
+			level.Debug(util.Logger).Log("msg", "adding updated gcs config", "config", objAttrs.Name)
 			rls, err := g.getRulesConfig(ctx, objAttrs.Name)
 			if err != nil {
 				return nil, err

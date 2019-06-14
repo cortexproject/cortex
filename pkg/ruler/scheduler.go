@@ -166,7 +166,7 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 
 // poll the configuration server. Not re-entrant.
 func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
-	cfgs, err := s.poller.GetRules(context.Background()) // Warning: this will produce an incorrect result if the configID ever overflows
+	cfgs, err := s.poller.GetRules(context.Background())
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "scheduler: configs server poll failed", "err", err)
 		return nil, err

@@ -102,7 +102,7 @@ func (g *ConfigClient) SetRulesConfig(ctx context.Context, userID string, oldCon
 	// The supplied oldConfig must match the current config. If no config
 	// exists, then oldConfig must be nil. Otherwise, it must exactly
 	// equal the existing config.
-	if oldConfig.Equal(current.Config) {
+	if current.Config.Files != nil && !oldConfig.Equal(current.Config) {
 		return false, errors.New("old config provided does not match what is currently stored")
 	}
 

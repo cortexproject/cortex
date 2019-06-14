@@ -86,7 +86,7 @@ func (g *ConfigClient) getRulesConfig(ctx context.Context, ruleObj string) (conf
 	}
 
 	config := configs.VersionedRulesConfig{}
-	err = json.Unmarshal(buf, &config)
+	err = json.Unmarshal(buf, &config.Config)
 	if err != nil {
 		return configs.VersionedRulesConfig{}, err
 	}

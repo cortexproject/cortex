@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs"
@@ -14,49 +15,43 @@ import (
 	"github.com/go-kit/kit/log/level"
 )
 
-// Client is what the ruler and altermanger needs from a config store to process rules.
-type Client interface {
-	// GetRules returns all Cortex configurations from a configs API server
-	// that have been updated after the given configs.ID was last updated.
-	GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error)
-
-	// GetAlerts fetches all the alerts that have changes since since.
-	GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error)
-}
-
 // New creates a new ConfigClient.
-func New(cfg Config) (Client, error) {
+func New(cfg Config) (db.Poller, error) {
 	// All of this falderal is to allow for a smooth transition away from
 	// using the configs server and toward directly connecting to the database.
 	// See https://github.com/cortexproject/cortex/issues/619
 	if cfg.ConfigsAPIURL.URL != nil {
 		return instrumented{
-			next: configsClient{
+			next: &configsClient{
 				URL:     cfg.ConfigsAPIURL.URL,
 				Timeout: cfg.ClientTimeout,
 			},
 		}, nil
 	}
 
-	db, err := db.New(cfg.DBConfig)
+	poller, err := db.New(cfg.DBConfig)
 	if err != nil {
 		return nil, err
 	}
-	return instrumented{
-		next: dbStore{
-			db: db,
-		},
-	}, nil
+	return poller, nil
 }
 
 // configsClient allows retrieving recording and alerting rules from the configs server.
 type configsClient struct {
 	URL     *url.URL
 	Timeout time.Duration
+
+	sync.RWMutex
+	latestRules  configs.ID
+	latestAlerts configs.ID
 }
 
 // GetRules implements ConfigClient.
-func (c configsClient) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (c *configsClient) GetRules(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
+	c.RLock()
+	since := c.latestRules
+	c.RUnlock()
+
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -73,17 +68,35 @@ func (c configsClient) GetRules(ctx context.Context, since configs.ID) (map[stri
 			configs[id] = *cfg
 		}
 	}
+
+	c.Lock()
+	c.latestRules = response.GetLatestConfigID()
+	c.Unlock()
+
 	return configs, nil
 }
 
 // GetAlerts implements ConfigClient.
-func (c configsClient) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
+func (c *configsClient) GetAlerts(ctx context.Context) (map[string]configs.View, error) {
+	c.RLock()
+	since := c.latestAlerts
+	c.RUnlock()
+
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
 	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.URL.String(), suffix)
-	return doRequest(endpoint, c.Timeout, since)
+	response, err := doRequest(endpoint, c.Timeout, since)
+	if err != nil {
+		return nil, err
+	}
+
+	c.Lock()
+	c.latestAlerts = response.GetLatestConfigID()
+	c.Unlock()
+
+	return response.Configs, nil
 }
 
 func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*ConfigsResponse, error) {
@@ -111,37 +124,6 @@ func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*Confi
 
 	config.since = since
 	return &config, nil
-}
-
-type dbStore struct {
-	db db.DB
-}
-
-// GetRules implements ConfigClient.
-func (d dbStore) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	if since == 0 {
-		return d.db.GetAllRulesConfigs(ctx)
-	}
-	return d.db.GetRulesConfigs(ctx, since)
-}
-
-// GetAlerts implements ConfigClient.
-func (d dbStore) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
-	var resp map[string]configs.View
-	var err error
-	if since == 0 {
-		resp, err = d.db.GetAllConfigs(ctx)
-
-	}
-	resp, err = d.db.GetConfigs(ctx, since)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ConfigsResponse{
-		since:   since,
-		Configs: resp,
-	}, nil
 }
 
 // ConfigsResponse is a response from server for GetConfigs.

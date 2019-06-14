@@ -36,7 +36,11 @@ func (cfg *GCSConfig) RegisterFlags(f *flag.FlagSet) {
 
 // NewGCSObjectClient makes a new chunk.ObjectClient that writes chunks to GCS.
 func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+<<<<<<< HEAD
 	option, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
+=======
+	option, err := gcsInstrumentation(ctx, "chunk")
+>>>>>>> c48b40de... basic version of gcs backed ruler
 	if err != nil {
 		return nil, err
 	}

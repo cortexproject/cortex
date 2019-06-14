@@ -22,7 +22,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
-	"github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -130,7 +130,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, rulesAPI client.Client) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, poller db.Poller) (*Ruler, error) {
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
@@ -151,7 +151,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		workerWG:    &sync.WaitGroup{},
 	}
 
-	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
+	ruler.scheduler = newScheduler(poller, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
 
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler

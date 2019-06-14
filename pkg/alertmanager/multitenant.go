@@ -24,6 +24,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	configs_client "github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -214,7 +215,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
-	configsAPI configs_client.Client
+	configsAPI db.Poller
 
 	// The fallback config is stored as a string and parsed every time it's needed
 	// because we mutate the parsed results and don't want those changes to take
@@ -350,16 +351,12 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 
 // poll the configuration server. Not re-entrant.
 func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
-	configID := am.latestConfig
-	cfgs, err := am.configsAPI.GetAlerts(context.Background(), configID)
+	cfgs, err := am.configsAPI.GetAlerts(context.Background())
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: configs server poll failed", "err", err)
 		return nil, err
 	}
-	am.latestMutex.Lock()
-	am.latestConfig = cfgs.GetLatestConfigID()
-	am.latestMutex.Unlock()
-	return cfgs.Configs, nil
+	return cfgs, nil
 }
 
 func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.View) {

@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/configs"
-	config_client "github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -85,7 +85,7 @@ type userConfig struct {
 type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
 
 type scheduler struct {
-	ruleStore          config_client.Client
+	poller             db.Poller
 	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
@@ -99,9 +99,9 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(ruleStore config_client.Client, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
+func newScheduler(poller db.Poller, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
 	return &scheduler{
-		ruleStore:          ruleStore,
+		poller:             poller,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
@@ -166,31 +166,12 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 
 // poll the configuration server. Not re-entrant.
 func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
-	s.Lock()
-	configID := s.latestConfig
-	s.Unlock()
-
-	cfgs, err := s.ruleStore.GetRules(context.Background(), configID) // Warning: this will produce an incorrect result if the configID ever overflows
+	cfgs, err := s.poller.GetRules(context.Background()) // Warning: this will produce an incorrect result if the configID ever overflows
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "scheduler: configs server poll failed", "err", err)
 		return nil, err
 	}
-	s.Lock()
-	s.latestConfig = getLatestConfigID(cfgs, configID)
-	s.Unlock()
 	return cfgs, nil
-}
-
-// getLatestConfigID gets the latest configs ID.
-// max [latest, max (map getID cfgs)]
-func getLatestConfigID(cfgs map[string]configs.VersionedRulesConfig, latest configs.ID) configs.ID {
-	ret := latest
-	for _, config := range cfgs {
-		if config.ID > ret {
-			ret = config.ID
-		}
-	}
-	return ret
 }
 
 // computeNextEvalTime Computes when a user's rules should be next evaluated, based on how far we are through an evaluation cycle
@@ -214,12 +195,9 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	hasher := fnv.New64a()
-	s.Lock()
-	generation := s.latestConfig
-	s.Unlock()
 
 	for userID, config := range cfgs {
-		s.addUserConfig(now, hasher, generation, userID, config)
+		s.addUserConfig(now, hasher, userID, config)
 	}
 
 	configUpdates.Add(float64(len(cfgs)))
@@ -229,7 +207,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	totalConfigs.Set(float64(lenCfgs))
 }
 
-func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation configs.ID, userID string, config configs.VersionedRulesConfig) {
+func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, userID string, config configs.VersionedRulesConfig) {
 	rulesByGroup, err := config.Config.Parse()
 	if err != nil {
 		// XXX: This means that if a user has a working configuration and
@@ -248,7 +226,7 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 		s.Unlock()
 		return
 	}
-	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
+	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: config.ID}
 	s.Unlock()
 
 	ringHasher := fnv.New32a()
@@ -267,7 +245,7 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 		ringHasher.Reset()
 		ringHasher.Write([]byte(userID + ":" + group))
 		hash := ringHasher.Sum32()
-		workItems = append(workItems, workItem{userID, group, hash, g, evalTime, generation})
+		workItems = append(workItems, workItem{userID, group, hash, g, evalTime, config.ID})
 	}
 	for _, i := range workItems {
 		totalRuleGroups.Inc()

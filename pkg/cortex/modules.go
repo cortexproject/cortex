@@ -320,12 +320,12 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
-	rulesAPI, err := config_client.New(cfg.ConfigStore)
+	poller, err := config_client.New(cfg.ConfigStore)
 	if err != nil {
 		return err
 	}
 
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, rulesAPI)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, poller)
 	if err != nil {
 		return
 	}

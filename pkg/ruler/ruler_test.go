@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/cortexproject/cortex/pkg/configs"
-	client_config "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -25,12 +24,12 @@ import (
 
 type mockRuleStore struct{}
 
-func (m *mockRuleStore) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (m *mockRuleStore) GetRules(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
 	return map[string]configs.VersionedRulesConfig{}, nil
 }
 
-func (m *mockRuleStore) GetAlerts(ctx context.Context, since configs.ID) (*client_config.ConfigsResponse, error) {
-	return nil, nil
+func (m *mockRuleStore) GetAlerts(ctx context.Context) (map[string]configs.View, error) {
+	return map[string]configs.View{}, nil
 }
 
 func defaultRulerConfig() Config {

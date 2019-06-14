@@ -296,3 +296,21 @@ type VersionedRulesConfig struct {
 func (vr VersionedRulesConfig) IsDeleted() bool {
 	return !vr.DeletedAt.IsZero()
 }
+
+func GetLatestConfigID(cfgs map[string]View, latest ID) ID {
+	for _, config := range cfgs {
+		if config.ID > latest {
+			latest = config.ID
+		}
+	}
+	return latest
+}
+
+func GetLatestRulesID(cfgs map[string]VersionedRulesConfig, latest ID) ID {
+	for _, config := range cfgs {
+		if config.ID > latest {
+			latest = config.ID
+		}
+	}
+	return latest
+}

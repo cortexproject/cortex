@@ -138,3 +138,26 @@ func (t timed) GetRulesConfigs(ctx context.Context, since configs.ID) (map[strin
 
 	return cfgs, err
 }
+
+func (t timed) GetRules(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
+	var cfgs map[string]configs.VersionedRulesConfig
+	err := instrument.CollectedRequest(ctx, "DB.GetRules", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		cfgs, err = t.d.GetRules(ctx)
+		return err
+	})
+
+	return cfgs, err
+}
+
+func (t timed) GetAlerts(ctx context.Context) (map[string]configs.View, error) {
+	var (
+		cfgs map[string]configs.View
+	)
+	err := instrument.CollectedRequest(ctx, "DB.GetAlerts", databaseRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		cfgs, err = t.d.GetAlerts(ctx)
+		return err
+	})
+	return cfgs, err
+}

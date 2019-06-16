@@ -111,7 +111,7 @@ In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add 
 
 ```
 $ docker rm -f cortex1 cortex2 consul grafana
-$ docker network remote cortex
+$ docker network remove cortex
 ```
 
 ## High availability with replication
@@ -182,5 +182,5 @@ You should see writes and queries continue to work without error.
 
 ```
 $ docker rm -f cortex1 cortex2 cortex3 consul grafana
-$ docker network remote cortex
+$ docker network remove cortex
 ```

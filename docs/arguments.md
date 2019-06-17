@@ -95,8 +95,8 @@ The ingester query API was improved over time, but defaults to the old behaviour
 - `distributor.accept-ha-samples`
    Per-user flag to enable handling of samples with external labels for identifying replicas in an HA Prometheus setup. This defaults to false, and is technically defined in the Distributor limits.
 
-- `distributor.accept-ha-labels` 
-   Accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessarry internal data structures for the HA handling are created. The option `accept-ha-samples` is still needed to enable ingestion of HA samples per user ID until that flag is defaulted to true. The cfg option is `&cfg.EnableHAReplicas` so the naming here is a bit confusing.
+- `distributor.enable-ha-tracker` 
+   Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `accept-ha-samples` is still needed to enable ingestion of HA samples per user ID until that flag is defaulted to true.
 
 ### HA Tracker
 
@@ -105,6 +105,11 @@ HA tracking has two of it's own flags:
    Prometheus label to look for in samples to identify a Prometheus HA cluster. (default "cluster")
 - `ha-tracker.replica`
    Prometheus label to look for in samples to identify a Prometheus HA replica. (default "__replica__")
+
+It's reasonable to assume people probably already have a `cluster` label, or something similar. If not, they should add one along with `__replica__`
+via external labels in their Prometheus config.
+
+HA Tracking looks for the two labels (which can be overwritten per user)
 
 It also talks to a KVStore and has it's own copies of the same flags used by the Distributor to connect to for the ring.
 - `ha-tracker.consul.acltoken`

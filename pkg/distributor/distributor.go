@@ -103,8 +103,8 @@ type Config struct {
 	BillingConfig billing.Config             `yaml:"billing,omitempty"`
 	PoolConfig    ingester_client.PoolConfig `yaml:"pool,omitempty"`
 
-	EnableHAReplicas bool            `yaml:"enable_ha_pairs,omitempty"`
-	HATrackerConfig  HATrackerConfig `yaml:"ha_tracker,omitempty"`
+	EnableHATracker bool            `yaml:"enable_ha_tracker,omitempty"`
+	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
 	RemoteTimeout       time.Duration `yaml:"remote_timeout,omitempty"`
 	ExtraQueryDelay     time.Duration `yaml:"extra_queue_delay,omitempty"`
@@ -123,7 +123,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.HATrackerConfig.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
-	f.BoolVar(&cfg.EnableHAReplicas, "distributor.accept-ha-labels", false, "Accept samples from Prometheus HA replicas gracefully (requires labels).")
+	f.BoolVar(&cfg.EnableHATracker, "distributor.enable-ha-tracker", false, "Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
@@ -160,7 +160,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		quit:           make(chan struct{}),
 	}
 
-	if cfg.EnableHAReplicas {
+	if cfg.EnableHATracker {
 		replicas, err := newClusterTracker(cfg.HATrackerConfig)
 		if err != nil {
 			return nil, err
@@ -198,7 +198,7 @@ func (d *Distributor) loop() {
 func (d *Distributor) Stop() {
 	close(d.quit)
 	d.ingesterPool.Stop()
-	if d.cfg.EnableHAReplicas {
+	if d.cfg.EnableHATracker {
 		d.replicas.stop()
 	}
 }
@@ -284,7 +284,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	var lastPartialErr error
 	removeReplica := false
 
-	if d.cfg.EnableHAReplicas && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
+	if d.cfg.EnableHATracker && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		removeReplica, err = d.checkSample(ctx, userID, req.Timeseries[0])
 		if err != nil {
 			return nil, err

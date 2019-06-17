@@ -101,3 +101,51 @@ func TestRingNormaliseMigration(t *testing.T) {
 			d.(*Desc).Ingesters["ing2"].Tokens[0] == token
 	})
 }
+
+type nopFlushTransferer struct{}
+
+func (f *nopFlushTransferer) StopIncomingRequests() {}
+func (f *nopFlushTransferer) Flush()                {}
+func (f *nopFlushTransferer) TransferOut(ctx context.Context) error {
+	panic("should not be called")
+}
+
+func TestRingRestart(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	codec := ProtoCodec{Factory: ProtoDescFactory}
+	ringConfig.KVStore.Mock = NewInMemoryKVClient(codec)
+
+	r, err := New(ringConfig, "ingester")
+	require.NoError(t, err)
+	defer r.Stop()
+
+	// Add an 'ingester' with normalised tokens.
+	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
+	lifecyclerConfig1.NormaliseTokens = true
+	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester")
+	require.NoError(t, err)
+
+	// Check this ingester joined, is active, and has one token.
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		require.NoError(t, err)
+		return checkNormalised(d, "ing1")
+	})
+
+	token := l1.tokens[0]
+
+	// Add a second ingester with the same settings, so it will think it has restarted
+	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester")
+	require.NoError(t, err)
+
+	// Check the new ingester picked up the same token
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		require.NoError(t, err)
+		l2Tokens := l2.getTokens()
+		return checkNormalised(d, "ing1") &&
+			len(l2Tokens) == 1 &&
+			l2Tokens[0] == token
+	})
+}

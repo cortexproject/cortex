@@ -250,12 +250,12 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, from, through model
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("Chunks in index", len(chunks))
+	level.Debug(log).Log("msg", "Chunks in index", "chunks", len(chunks))
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
-	filtered, keys := filterChunksByUniqueFingerPrint(filtered)
-	level.Debug(log).Log("Chunks post filtering", len(chunks))
+	filtered, keys := filterChunksByUniqueFingerprint(filtered)
+	level.Debug(log).Log("msg", "Chunks post filtering", "chunks", len(chunks))
 
 	// Now fetch the actual chunk data from Memcache / S3
 	allChunks, err := c.FetchChunks(ctx, filtered, keys)

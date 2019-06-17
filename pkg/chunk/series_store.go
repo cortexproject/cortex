@@ -233,7 +233,7 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, from, through
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
-	filtered, keys := filterChunksByUniqueFingerPrint(filtered)
+	filtered, keys := filterChunksByUniqueFingerprint(filtered)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
 	chunksPerQuery.Observe(float64(len(filtered)))

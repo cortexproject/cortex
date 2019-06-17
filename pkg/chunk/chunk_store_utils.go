@@ -36,7 +36,7 @@ func keysFromChunks(chunks []Chunk) []string {
 	return keys
 }
 
-func filterChunksByUniqueFingerPrint(chunks []Chunk) ([]Chunk, []string) {
+func filterChunksByUniqueFingerprint(chunks []Chunk) ([]Chunk, []string) {
 	filtered := make([]Chunk, 0, len(chunks))
 	keys := make([]string, 0, len(chunks))
 	uniqueFp := map[model.Fingerprint]struct{}{}

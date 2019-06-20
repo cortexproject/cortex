@@ -5,7 +5,7 @@ set -o nounset
 set -o pipefail
 
 IMAGES=$(make images)
-IMAGE_TAG=$(./tools/image-tag)
+IMAGE_TAG=${IMAGE_TAG:-$(./tools/image-tag)}
 QUAY_PREFIX=quay.io/
 NO_QUAY=
 

@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cortex
+
+images:
+  - name: quay.io/cortexproject/cortex
+    newTag: master-a7cedef6
+
+resources:
+- namespace.yaml
+- alertmanager-dep.yaml
+- alertmanager-svc.yaml
+- configs-db-dep.yaml
+- configs-db-svc.yaml
+- configs-dep.yaml
+- configs-svc.yaml
+- consul-dep.yaml
+- consul-svc.yaml
+- distributor-dep.yaml
+- distributor-svc.yaml
+- dynamodb-dep.yaml
+- dynamodb-svc.yaml
+- ingester-dep.yaml
+- ingester-svc.yaml
+- memcached-dep.yaml
+- memcached-svc.yaml
+- nginx-config.yaml
+- nginx-dep.yaml
+- nginx-svc.yaml
+- querier-dep.yaml
+- querier-svc.yaml
+- query-frontend-dep.yaml
+- query-frontend-svc.yaml
+- retrieval-config.yaml
+- retrieval-dep.yaml
+- retrieval-svc.yaml
+- ruler-dep.yaml
+- ruler-svc.yaml
+- s3-dep.yaml
+- s3-svc.yaml
+- table-manager-dep.yaml
+- table-manager-svc.yaml

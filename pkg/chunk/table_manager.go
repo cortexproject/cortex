@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"sort"
@@ -123,9 +124,14 @@ type TableManager struct {
 	bucketClient BucketClient
 }
 
-// NewTableManager makes a new TableManager
+// NewTableManager makes a new TableManager.
+// The i'th TableClient in 'tableClients' should correspond to the i'th PeriodConfig in schemaCfg.Config.
+// The TableClient for the last client should not be nil.
 func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClients []TableClient,
 	objectClient BucketClient) (*TableManager, error) {
+	if len(schemaCfg.Configs) != len(tableClients) {
+		return nil, errors.New("Mismatch in number of PeriodConfig and TableClient")
+	}
 	return &TableManager{
 		cfg:          cfg,
 		schemaCfg:    schemaCfg,
@@ -202,6 +208,9 @@ func (m *TableManager) bucketRetentionLoop() {
 // not and update those that need it.  It is exposed for testing.
 func (m *TableManager) SyncTables(ctx context.Context) error {
 	for i, client := range m.clients {
+		if client == nil {
+			continue
+		}
 		lastClient := i == len(m.clients)-1
 		expected := m.calculateExpectedTables(i)
 		if lastClient {
@@ -245,9 +254,15 @@ func (m *TableManager) calculateExpectedTables(idx int) []TableDesc {
 		return result
 	}
 
-	// Collect tables from the first config till idx'th config.
-	for i, config := range m.schemaCfg.Configs[:idx+1] {
+	// Use only the idx'th config for idx'th client.
+	startIdx := idx
+	if idx == len(m.schemaCfg.Configs)-1 {
+		// For the last client, collect tables from all the configs.
+		startIdx = 0
+	}
+	for i, config := range m.schemaCfg.Configs[startIdx : idx+1] {
 		if config.From.Time.Time().After(mtime.Now()) {
+			sort.Sort(byName(result))
 			return result
 		}
 		if config.IndexTables.Period == 0 { // non-periodic table

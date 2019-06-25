@@ -21,8 +21,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/configs/api"
-	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	config_storage "github.com/cortexproject/cortex/pkg/configs/storage"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -320,12 +320,12 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
-	poller, err := config_client.New(cfg.ConfigStore)
+	store, err := config_storage.New(cfg.ConfigStore)
 	if err != nil {
 		return err
 	}
 
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, poller)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, store)
 	if err != nil {
 		return
 	}
@@ -333,11 +333,8 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	// Only serve the API for setting & getting rules configs if we're not
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if cfg.ConfigStore.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(cfg.ConfigStore.DBConfig)
-		if err != nil {
-			return err
-		}
+	if cfg.ConfigStore.BackendType != "client" {
+		a := ruler.NewAPI(store)
 		a.RegisterRoutes(t.server.HTTP)
 	}
 
@@ -351,7 +348,7 @@ func (t *Cortex) stopRuler() error {
 }
 
 func (t *Cortex) initConfigs(cfg *Config) (err error) {
-	t.configDB, err = db.New(cfg.ConfigStore.DBConfig)
+	t.configDB, err = db.New(cfg.ConfigStore.ClientConfig.DBConfig)
 	if err != nil {
 		return
 	}
@@ -367,14 +364,27 @@ func (t *Cortex) stopConfigs() error {
 }
 
 func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
-	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, cfg.ConfigStore)
+	store, err := config_storage.New(cfg.ConfigStore)
+	if err != nil {
+		return err
+	}
+
+	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, store)
 	if err != nil {
 		return
 	}
+
+	// Only serve the API for setting & getting alert configs if we're not
+	// serving configs from the configs API. Allows for smoother
+	// migration. See https://github.com/cortexproject/cortex/issues/619
+	if cfg.ConfigStore.BackendType != "client" {
+		a := alertmanager.NewAPI(store)
+		a.RegisterRoutes(t.server.HTTP)
+	}
+
 	go t.alertmanager.Run()
 
 	t.server.HTTP.PathPrefix("/status").Handler(t.alertmanager.GetStatusHandler())
-
 	// TODO this clashed with the queirer and the distributor, so we cannot
 	// run them in the same process.
 	t.server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))

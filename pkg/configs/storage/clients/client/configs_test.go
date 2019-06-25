@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/configs"
+	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
 	"github.com/stretchr/testify/assert"
 )
 

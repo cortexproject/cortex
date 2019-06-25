@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/configs"
+	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 )
@@ -71,14 +71,4 @@ func (t traced) GetAllRulesConfigs(ctx context.Context) (cfgs map[string]configs
 func (t traced) GetRulesConfigs(ctx context.Context, since configs.ID) (cfgs map[string]configs.VersionedRulesConfig, err error) {
 	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
 	return t.d.GetRulesConfigs(ctx, since)
-}
-
-func (t traced) GetRules(ctx context.Context) (cfgs map[string]configs.VersionedRulesConfig, err error) {
-	defer func() { t.trace("GetRules", cfgs, err) }()
-	return t.d.GetRules(ctx)
-}
-
-func (t traced) GetAlerts(ctx context.Context) (cfgs map[string]configs.View, err error) {
-	defer func() { t.trace("GetAlerts", cfgs, err) }()
-	return t.d.GetAlerts(ctx)
 }

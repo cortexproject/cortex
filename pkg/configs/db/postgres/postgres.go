@@ -4,15 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"io/ioutil"
-	"net/url"
-	"sync"
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/cortexproject/cortex/pkg/configs"
+	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lib/pq"
@@ -38,27 +34,10 @@ var (
 	}
 )
 
-type Config struct {
-	URI           string
-	MigrationsDir string
-	PasswordFile  string
-}
-
-// RegisterFlags adds the flags required to configure this to the given FlagSet.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.URI, "database.uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found")
-	flag.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
-	flag.StringVar(&cfg.PasswordFile, "database.password-file", "", "File containing password (username goes in URI)")
-}
-
 // DB is a postgres db, for dev and production
 type DB struct {
 	dbProxy
 	squirrel.StatementBuilderType
-
-	sync.RWMutex
-	latestAlertPoll configs.ID
-	latestRulePoll  configs.ID
 }
 
 type dbProxy interface {
@@ -84,53 +63,35 @@ func dbWait(db *sql.DB) error {
 }
 
 // New creates a new postgres DB
-func New(cfg Config) (*DB, error) {
-	uri, err := url.Parse(cfg.URI)
+func New(uri, migrationsDir string) (DB, error) {
+	db, err := sql.Open("postgres", uri)
 	if err != nil {
-		return nil, err
-	}
-
-	if len(cfg.PasswordFile) != 0 {
-		if uri.User == nil {
-			return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
-		}
-		passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
-		if err != nil {
-			return nil, fmt.Errorf("Could not read database password file: %v", err)
-		}
-		uri.User = url.UserPassword(uri.User.Username(), string(passwordBytes))
-	}
-
-	db, err := sql.Open("postgres", uri.String())
-	if err != nil {
-		return nil, errors.Wrap(err, "cannot open postgres db")
+		return DB{}, errors.Wrap(err, "cannot open postgres db")
 	}
 
 	if err := dbWait(db); err != nil {
-		return nil, errors.Wrap(err, "cannot establish db connection")
+		return DB{}, errors.Wrap(err, "cannot establish db connection")
 	}
 
-	if cfg.MigrationsDir != "" {
+	if migrationsDir != "" {
 		level.Info(util.Logger).Log("msg", "running database migrations...")
-		if errs, ok := migrate.UpSync(uri.String(), cfg.MigrationsDir); !ok {
+		if errs, ok := migrate.UpSync(uri, migrationsDir); !ok {
 			for _, err := range errs {
 				level.Error(util.Logger).Log("err", err)
 			}
-			return nil, errors.New("database migrations failed")
+			return DB{}, errors.New("database migrations failed")
 		}
 	}
 
-	return &DB{
+	return DB{
 		dbProxy:              db,
 		StatementBuilderType: statementBuilder(db),
-		latestAlertPoll:      -1,
-		latestRulePoll:       -1,
 	}, err
 }
 
 var statementBuilder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith
 
-func (d *DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error) {
+func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, error) {
 	rows, err := d.Select("id", "owner_id", "config", "deleted_at").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
@@ -162,7 +123,7 @@ func (d *DB) findConfigs(filter squirrel.Sqlizer) (map[string]configs.View, erro
 }
 
 // GetConfig gets a configuration.
-func (d *DB) GetConfig(ctx context.Context, userID string) (configs.View, error) {
+func (d DB) GetConfig(ctx context.Context, userID string) (configs.View, error) {
 	var cfgView configs.View
 	var cfgBytes []byte
 	var deletedAt pq.NullTime
@@ -181,7 +142,7 @@ func (d *DB) GetConfig(ctx context.Context, userID string) (configs.View, error)
 }
 
 // SetConfig sets a configuration.
-func (d *DB) SetConfig(ctx context.Context, userID string, cfg configs.Config) error {
+func (d DB) SetConfig(ctx context.Context, userID string, cfg configs.Config) error {
 	if !cfg.RulesConfig.FormatVersion.IsValid() {
 		return fmt.Errorf("invalid rule format version %v", cfg.RulesConfig.FormatVersion)
 	}
@@ -198,12 +159,12 @@ func (d *DB) SetConfig(ctx context.Context, userID string, cfg configs.Config) e
 }
 
 // GetAllConfigs gets all of the configs.
-func (d *DB) GetAllConfigs(ctx context.Context) (map[string]configs.View, error) {
+func (d DB) GetAllConfigs(ctx context.Context) (map[string]configs.View, error) {
 	return d.findConfigs(allConfigs)
 }
 
 // GetConfigs gets all of the configs that have changed recently.
-func (d *DB) GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error) {
+func (d DB) GetConfigs(ctx context.Context, since configs.ID) (map[string]configs.View, error) {
 	return d.findConfigs(squirrel.And{
 		allConfigs,
 		squirrel.Gt{"id": since},
@@ -211,7 +172,7 @@ func (d *DB) GetConfigs(ctx context.Context, since configs.ID) (map[string]confi
 }
 
 // GetRulesConfig gets the latest alertmanager config for a user.
-func (d *DB) GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error) {
+func (d DB) GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error) {
 	current, err := d.GetConfig(ctx, userID)
 	if err != nil {
 		return configs.VersionedRulesConfig{}, err
@@ -224,9 +185,9 @@ func (d *DB) GetRulesConfig(ctx context.Context, userID string) (configs.Version
 }
 
 // SetRulesConfig sets the current alertmanager config for a user.
-func (d *DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
+func (d DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newConfig configs.RulesConfig) (bool, error) {
 	updated := false
-	err := d.Transaction(func(tx *DB) error {
+	err := d.Transaction(func(tx DB) error {
 		current, err := d.GetConfig(ctx, userID)
 		if err != nil && err != sql.ErrNoRows {
 			return err
@@ -249,7 +210,7 @@ func (d *DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newCo
 
 // findRulesConfigs helps GetAllRulesConfigs and GetRulesConfigs retrieve the
 // set of all active rules configurations across all our users.
-func (d *DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {
+func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.VersionedRulesConfig, error) {
 	rows, err := d.Select("id", "owner_id", "config ->> 'rules_files'", "config ->> 'rule_format_version'", "deleted_at").
 		Options("DISTINCT ON (owner_id)").
 		From("configs").
@@ -300,12 +261,12 @@ func (d *DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]configs.Versi
 }
 
 // GetAllRulesConfigs gets all alertmanager configs for all users.
-func (d *DB) GetAllRulesConfigs(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
+func (d DB) GetAllRulesConfigs(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
 	return d.findRulesConfigs(allConfigs)
 }
 
 // GetRulesConfigs gets all the alertmanager configs that have changed since a given config.
-func (d *DB) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (d DB) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	return d.findRulesConfigs(squirrel.And{
 		allConfigs,
 		squirrel.Gt{"id": since},
@@ -315,7 +276,7 @@ func (d *DB) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]
 // SetDeletedAtConfig sets a deletedAt for configuration
 // by adding a single new row with deleted_at set
 // the same as SetConfig is actually insert
-func (d *DB) SetDeletedAtConfig(ctx context.Context, userID string, deletedAt pq.NullTime, cfg configs.Config) error {
+func (d DB) SetDeletedAtConfig(ctx context.Context, userID string, deletedAt pq.NullTime, cfg configs.Config) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -328,7 +289,7 @@ func (d *DB) SetDeletedAtConfig(ctx context.Context, userID string, deletedAt pq
 }
 
 // DeactivateConfig deactivates a configuration.
-func (d *DB) DeactivateConfig(ctx context.Context, userID string) error {
+func (d DB) DeactivateConfig(ctx context.Context, userID string) error {
 	cfg, err := d.GetConfig(ctx, userID)
 	if err != nil {
 		return err
@@ -337,7 +298,7 @@ func (d *DB) DeactivateConfig(ctx context.Context, userID string) error {
 }
 
 // RestoreConfig restores configuration.
-func (d *DB) RestoreConfig(ctx context.Context, userID string) error {
+func (d DB) RestoreConfig(ctx context.Context, userID string) error {
 	cfg, err := d.GetConfig(ctx, userID)
 	if err != nil {
 		return err
@@ -347,7 +308,7 @@ func (d *DB) RestoreConfig(ctx context.Context, userID string) error {
 
 // Transaction runs the given function in a postgres transaction. If fn returns
 // an error the txn will be rolled back.
-func (d *DB) Transaction(f func(*DB) error) error {
+func (d DB) Transaction(f func(DB) error) error {
 	if _, ok := d.dbProxy.(*sql.Tx); ok {
 		// Already in a nested transaction
 		return f(d)
@@ -357,7 +318,7 @@ func (d *DB) Transaction(f func(*DB) error) error {
 	if err != nil {
 		return err
 	}
-	err = f(&DB{
+	err = f(DB{
 		dbProxy:              tx,
 		StatementBuilderType: statementBuilder(tx),
 	})
@@ -372,47 +333,11 @@ func (d *DB) Transaction(f func(*DB) error) error {
 }
 
 // Close finishes using the db
-func (d *DB) Close() error {
+func (d DB) Close() error {
 	if db, ok := d.dbProxy.(interface {
 		Close() error
 	}); ok {
 		return db.Close()
 	}
 	return nil
-}
-
-// GetRules returns all the rule groups added since the previous poll
-func (d *DB) GetRules(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
-	d.RLock()
-	since := d.latestRulePoll
-	d.RUnlock()
-
-	rls, err := d.GetRulesConfigs(ctx, since)
-	if err != nil {
-		return nil, err
-	}
-
-	d.Lock()
-	d.latestRulePoll = configs.GetLatestRulesID(rls, since)
-	d.Unlock()
-
-	return rls, nil
-}
-
-// GetAlerts returns all the alerts configs added since the previous poll
-func (d *DB) GetAlerts(ctx context.Context) (map[string]configs.View, error) {
-	d.RLock()
-	since := d.latestAlertPoll
-	d.RUnlock()
-
-	cfgs, err := d.GetConfigs(ctx, since)
-	if err != nil {
-		return nil, err
-	}
-
-	d.Lock()
-	d.latestAlertPoll = configs.GetLatestConfigID(cfgs, since)
-	d.Unlock()
-
-	return cfgs, nil
 }

@@ -18,8 +18,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/configs/api"
-	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	config_storage "github.com/cortexproject/cortex/pkg/configs/storage"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -70,7 +70,7 @@ type Config struct {
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
-	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
+	ConfigStore  config_storage.Config                      `yaml:"config_store,omitempty"`
 	Alertmanager alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 }
 

@@ -1,13 +1,15 @@
 package ruler
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/ruler/rulegroup"
 	"github.com/prometheus/prometheus/rules"
+	"github.com/stretchr/testify/assert"
 )
 
 type fakeHasher struct {
@@ -44,7 +46,7 @@ func TestSchedulerComputeNextEvalTime(t *testing.T) {
 		// We use the fake hasher to give us control over the hash output
 		// so that we can test the wrap-around behaviour of the modulo
 		fakeUserID := strconv.FormatInt(hashResult, 10)
-		return s.computeNextEvalTime(&h, time.Unix(0, now), fakeUserID).UnixNano()
+		return computeNextEvalTime(&h, time.Unix(0, now), 15, fakeUserID).UnixNano()
 	}
 	{
 		cycleStartTime := int64(30)
@@ -71,27 +73,43 @@ func TestSchedulerComputeNextEvalTime(t *testing.T) {
 func TestSchedulerRulesOverlap(t *testing.T) {
 	s := newScheduler(nil, 15, 15, nil)
 	userID := "bob"
-	groupName := "test"
+	groupOne := "test1"
+	groupTwo := "test2"
 	next := time.Now()
 
-	ruleSet := []rules.Rule{
-		nil,
+	ruleSetsOne := []configs.RuleGroup{
+		rulegroup.NewRuleGroup(groupOne, "default", userID, []rules.Rule{nil}),
 	}
-	ruleSets := map[string][]rules.Rule{}
-	ruleSets[groupName] = ruleSet
 
-	cfg := userConfig{generation: 1, rules: ruleSets}
-	s.cfgs[userID] = cfg
-	w1 := workItem{userID: userID, groupName: groupName, scheduled: next, generation: cfg.generation}
-	s.workItemDone(w1)
-	item := s.q.Dequeue().(workItem)
-	assert.Equal(t, w1.generation, item.generation)
+	ruleSetsTwo := []configs.RuleGroup{
+		rulegroup.NewRuleGroup(groupTwo, "default", userID, []rules.Rule{nil}),
+	}
+	userChanOne := make(chan struct{})
+	userChanTwo := make(chan struct{})
 
-	w0 := workItem{userID: userID, groupName: groupName, scheduled: next, generation: cfg.generation - 1}
-	s.workItemDone(w1)
+	cfgOne := userConfig{rules: ruleSetsOne, done: userChanOne}
+	cfgTwo := userConfig{rules: ruleSetsTwo, done: userChanTwo}
+
+	s.updateUserConfig(context.Background(), cfgOne)
+	w0 := workItem{userID: userID, groupName: groupOne, scheduled: next, done: userChanOne}
 	s.workItemDone(w0)
+	item := s.q.Dequeue().(workItem)
+	assert.Equal(t, item.groupName, groupOne)
+
+	// create a new workitem for the updated ruleset
+	w1 := workItem{userID: userID, groupName: groupTwo, scheduled: next, done: userChanTwo}
+
+	// Apply the new config, scheduling the previous config to be dropped
+	s.updateUserConfig(context.Background(), cfgTwo)
+
+	// Reschedule the old config first, then the new config
+	s.workItemDone(w0)
+	s.workItemDone(w1)
+
+	// Ensure the old config was dropped due to the done channel being closed
+	// when the new user config was updated
 	item = s.q.Dequeue().(workItem)
-	assert.Equal(t, w1.generation, item.generation)
+	assert.Equal(t, item.groupName, groupTwo)
 
 	s.q.Close()
 	assert.Equal(t, nil, s.q.Dequeue())

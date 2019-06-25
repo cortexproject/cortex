@@ -9,16 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/jonboulle/clockwork"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/rules"
-
-	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/configs/db"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var backoffConfig = util.BackoffConfig{
@@ -50,12 +47,13 @@ var (
 )
 
 type workItem struct {
-	userID     string
-	groupName  string
-	hash       uint32
-	group      *group
-	scheduled  time.Time
-	generation configs.ID // a monotonically increasing number used to spot out of date work items
+	userID    string
+	groupName string
+	hash      uint32
+	group     *group
+	scheduled time.Time
+
+	done chan struct{}
 }
 
 // Key implements ScheduledItem
@@ -70,7 +68,7 @@ func (w workItem) Scheduled() time.Time {
 
 // Defer returns a work item with updated rules, rescheduled to a later time.
 func (w workItem) Defer(interval time.Duration) workItem {
-	return workItem{w.userID, w.groupName, w.hash, w.group, w.scheduled.Add(interval), w.generation}
+	return workItem{w.userID, w.groupName, w.hash, w.group, w.scheduled.Add(interval), w.done}
 }
 
 func (w workItem) String() string {
@@ -78,30 +76,30 @@ func (w workItem) String() string {
 }
 
 type userConfig struct {
-	rules      map[string][]rules.Rule
-	generation configs.ID // a monotonically increasing number used to spot out of date work items
+	done  chan struct{}
+	id    string
+	rules []configs.RuleGroup
 }
 
 type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
 
 type scheduler struct {
-	poller             db.Poller
+	store              configs.RuleStore
 	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
 	pollInterval time.Duration // how often we check for new config
 
-	cfgs         map[string]userConfig // all rules for all users
-	latestConfig configs.ID            // # of last update received from config
-	groupFn      groupFactory          // function to create a new group
+	cfgs    map[string]userConfig // all rules for all users
+	groupFn groupFactory          // function to create a new group
 	sync.RWMutex
 	done chan struct{}
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(poller db.Poller, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
+func newScheduler(store configs.RuleStore, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
 	return &scheduler{
-		poller:             poller,
+		store:              store,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
@@ -116,13 +114,16 @@ func newScheduler(poller db.Poller, evaluationInterval, pollInterval time.Durati
 func (s *scheduler) Run() {
 	level.Debug(util.Logger).Log("msg", "scheduler started")
 
-	// Load initial set of all configurations before polling for new ones.
-	s.addNewConfigs(time.Now(), s.loadAllConfigs())
+	err := s.updateConfigs(context.TODO())
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "scheduler: error updating rule groups", "err", err)
+	}
+
 	ticker := time.NewTicker(s.pollInterval)
 	for {
 		select {
-		case now := <-ticker.C:
-			err := s.updateConfigs(now)
+		case <-ticker.C:
+			err := s.updateConfigs(context.TODO())
 			if err != nil {
 				level.Warn(util.Logger).Log("msg", "scheduler: error updating configs", "err", err)
 			}
@@ -140,43 +141,80 @@ func (s *scheduler) Stop() {
 	level.Debug(util.Logger).Log("msg", "scheduler stopped")
 }
 
-// Load the full set of configurations from the server, retrying with backoff
-// until we can get them.
-func (s *scheduler) loadAllConfigs() map[string]configs.VersionedRulesConfig {
-	backoff := util.NewBackoff(context.Background(), backoffConfig)
-	for {
-		cfgs, err := s.poll()
-		if err == nil {
-			level.Debug(util.Logger).Log("msg", "scheduler: initial configuration load", "num_configs", len(cfgs))
-			return cfgs
-		}
-		level.Warn(util.Logger).Log("msg", "scheduler: error fetching all configurations, backing off", "err", err)
-		backoff.Wait()
-	}
-}
-
-func (s *scheduler) updateConfigs(now time.Time) error {
-	cfgs, err := s.poll()
+func (s *scheduler) updateConfigs(ctx context.Context) error {
+	cfgs, err := s.store.PollRules(ctx)
 	if err != nil {
 		return err
 	}
-	s.addNewConfigs(now, cfgs)
+
+	for user, cfg := range cfgs {
+		s.addUserConfig(ctx, user, cfg)
+	}
+
 	return nil
 }
 
-// poll the configuration server. Not re-entrant.
-func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
-	cfgs, err := s.poller.GetRules(context.Background())
-	if err != nil {
-		level.Warn(util.Logger).Log("msg", "scheduler: configs server poll failed", "err", err)
-		return nil, err
+func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []configs.RuleGroup) {
+	now := time.Now()
+	hasher := fnv.New64a()
+
+	level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_groups", len(rgs))
+
+	// create a new userchan for rulegroups of this user
+	userChan := make(chan struct{})
+
+	ringHasher := fnv.New32a()
+	evalTime := computeNextEvalTime(hasher, now, float64(s.evaluationInterval.Nanoseconds()), userID)
+	workItems := []workItem{}
+	for _, rg := range rgs {
+		rules, err := rg.Rules(ctx)
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", rg.Name(), "err", err)
+			return
+		}
+
+		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", rg.Name(), "num_rules", len(rules))
+		g, err := s.groupFn(userID, rg.Name(), rules)
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", rg.Name(), "err", err)
+			return
+		}
+
+		ringHasher.Reset()
+		ringHasher.Write([]byte(rg.Name()))
+		hash := ringHasher.Sum32()
+		workItems = append(workItems, workItem{userID, rg.Name(), hash, g, evalTime, userChan})
 	}
-	return cfgs, nil
+
+	s.updateUserConfig(ctx, userConfig{
+		id:    userID,
+		rules: rgs,
+		done:  userChan,
+	})
+
+	for _, i := range workItems {
+		s.addWorkItem(i)
+	}
+
+	totalRuleGroups.Add(float64(len(workItems)))
+}
+
+func (s *scheduler) updateUserConfig(ctx context.Context, cfg userConfig) {
+	// Retreive any previous configuration and update to the new configuration
+	s.Lock()
+	curr, exists := s.cfgs[cfg.id]
+	s.cfgs[cfg.id] = cfg
+	s.Unlock()
+
+	if exists {
+		close(curr.done) // If a previous configuration exists, ensure it is closed
+	}
+
+	return
 }
 
 // computeNextEvalTime Computes when a user's rules should be next evaluated, based on how far we are through an evaluation cycle
-func (s *scheduler) computeNextEvalTime(hasher hash.Hash64, now time.Time, userID string) time.Time {
-	intervalNanos := float64(s.evaluationInterval.Nanoseconds())
+func computeNextEvalTime(hasher hash.Hash64, now time.Time, intervalNanos float64, userID string) time.Time {
 	// Compute how far we are into the current evaluation cycle
 	currentEvalCyclePoint := math.Mod(float64(now.UnixNano()), intervalNanos)
 
@@ -189,68 +227,6 @@ func (s *scheduler) computeNextEvalTime(hasher hash.Hash64, now time.Time, userI
 		float64(hasher.Sum64())+intervalNanos-currentEvalCyclePoint,
 		intervalNanos)
 	return now.Add(time.Duration(int64(offset)))
-}
-
-func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.VersionedRulesConfig) {
-	// TODO: instrument how many configs we have, both valid & invalid.
-	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
-	hasher := fnv.New64a()
-
-	for userID, config := range cfgs {
-		s.addUserConfig(now, hasher, userID, config)
-	}
-
-	configUpdates.Add(float64(len(cfgs)))
-	s.Lock()
-	lenCfgs := len(s.cfgs)
-	s.Unlock()
-	totalConfigs.Set(float64(lenCfgs))
-}
-
-func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, userID string, config configs.VersionedRulesConfig) {
-	rulesByGroup, err := config.Config.Parse()
-	if err != nil {
-		// XXX: This means that if a user has a working configuration and
-		// they submit a broken one, we'll keep processing the last known
-		// working configuration, and they'll never know.
-		// TODO: Provide a way of deleting / cancelling recording rules.
-		level.Warn(util.Logger).Log("msg", "scheduler: invalid Cortex configuration", "user_id", userID, "err", err)
-		return
-	}
-
-	level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_groups", len(rulesByGroup), "is_deleted", config.IsDeleted())
-	s.Lock()
-	// if deleted remove from map, otherwise - update map
-	if config.IsDeleted() {
-		delete(s.cfgs, userID)
-		s.Unlock()
-		return
-	}
-	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: config.ID}
-	s.Unlock()
-
-	ringHasher := fnv.New32a()
-	evalTime := s.computeNextEvalTime(hasher, now, userID)
-	workItems := []workItem{}
-	for group, rules := range rulesByGroup {
-		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", group, "num_rules", len(rules))
-		g, err := s.groupFn(userID, group, rules)
-		if err != nil {
-			// XXX: similarly to above if a user has a working configuration and
-			// for some reason we cannot create a group for the new one we'll use
-			// the last known working configuration
-			level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", group, "err", err)
-			return
-		}
-		ringHasher.Reset()
-		ringHasher.Write([]byte(userID + ":" + group))
-		hash := ringHasher.Sum32()
-		workItems = append(workItems, workItem{userID, group, hash, g, evalTime, config.ID})
-	}
-	for _, i := range workItems {
-		totalRuleGroups.Inc()
-		s.addWorkItem(i)
-	}
 }
 
 func (s *scheduler) addWorkItem(i workItem) {
@@ -285,21 +261,14 @@ func (s *scheduler) nextWorkItem() *workItem {
 
 // workItemDone marks the given item as being ready to be rescheduled.
 func (s *scheduler) workItemDone(i workItem) {
-	s.Lock()
-	config, found := s.cfgs[i.userID]
-	var currentRules []rules.Rule
-	if found {
-		currentRules = config.rules[i.groupName]
-	}
-	s.Unlock()
-	if !found || len(currentRules) == 0 || i.generation < config.generation {
-		// Warning: this test will produce an incorrect result if the generation ever overflows
-		level.Debug(util.Logger).Log("msg", "scheduler: stopping item", "user_id", i.userID, "group", i.groupName, "found", found, "len", len(currentRules))
-		totalRuleGroups.Dec()
+	select {
+	case <-i.done:
+		// Unschedule the work item
+		level.Debug(util.Logger).Log("msg", "scheduler: work item dropped", "item", i)
 		return
+	default:
+		next := i.Defer(s.evaluationInterval)
+		level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", next.scheduled.Format(timeLogFormat))
+		s.addWorkItem(next)
 	}
-
-	next := i.Defer(s.evaluationInterval)
-	level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", next.scheduled.Format(timeLogFormat))
-	s.addWorkItem(next)
 }

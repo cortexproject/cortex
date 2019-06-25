@@ -13,8 +13,8 @@ import (
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
 )

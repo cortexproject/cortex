@@ -1,42 +1,33 @@
 package ruler
 
 import (
-	"database/sql"
-	"encoding/json"
-	"fmt"
+	"errors"
+	"io/ioutil"
 	"net/http"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/gorilla/mux"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 
 	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v2"
 )
 
-// API implements the configs api.
+var (
+	ErrNoNamespace = errors.New("a namespace must be provided in the url")
+	ErrNoGroupName = errors.New("a matching group name must be provided in the url")
+)
+
+// API is used to provided endpoints to directly interact with the ruler
 type API struct {
-	db db.DB
-	http.Handler
+	store configs.RuleStore
 }
 
-// NewAPIFromConfig makes a new API from our database config.
-func NewAPIFromConfig(cfg db.Config) (*API, error) {
-	db, err := db.New(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return NewAPI(db), nil
-}
-
-// NewAPI creates a new API.
-func NewAPI(db db.DB) *API {
-	a := &API{db: db}
-	r := mux.NewRouter()
-	a.RegisterRoutes(r)
-	a.Handler = r
-	return a
+// NewAPI returns a ruler API
+func NewAPI(store configs.RuleStore) *API {
+	return &API{store}
 }
 
 // RegisterRoutes registers the configs API HTTP routes with the provided Router.
@@ -45,74 +36,190 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		name, method, path string
 		handler            http.HandlerFunc
 	}{
-		{"get_rules", "GET", "/api/prom/rules", a.getConfig},
-		{"cas_rules", "POST", "/api/prom/rules", a.casConfig},
+		{"list_rules", "GET", "/api/prom/rules", a.listRules},
+		{"list_rules_namespace", "GET", "/api/prom/rules/{namespace}/", a.listRules},
+		{"get_rulegroup", "GET", "/api/prom/rules/{namespace}/{groupName}", a.getRuleGroup},
+		{"set_namespace", "POST", "/api/prom/rules/{namespace}/", a.setRuleNamespace},
+		{"set_rulegroup", "POST", "/api/prom/rules/{namespace}/", a.setRuleNamespace},
+		{"delete_rulegroup", "DELETE", "/api/prom/rules/{namespace}/{groupName}", a.deleteRuleGroup},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}
 }
 
-// getConfig returns the request configuration.
-func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
+func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+
 	logger := util.WithContext(r.Context(), util.Logger)
-
-	cfg, err := a.db.GetRulesConfig(r.Context(), userID)
-	if err == sql.ErrNoRows {
-		http.Error(w, "No configuration", http.StatusNotFound)
-		return
-	} else if err != nil {
-		level.Error(logger).Log("msg", "error getting config", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(cfg); err != nil {
-		level.Error(logger).Log("msg", "error encoding config", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-type configUpdateRequest struct {
-	OldConfig configs.RulesConfig `json:"old_config"`
-	NewConfig configs.RulesConfig `json:"new_config"`
-}
-
-func (a *API) casConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-	logger := util.WithContext(r.Context(), util.Logger)
-
-	var updateReq configUpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
-		level.Error(logger).Log("msg", "error decoding json body", "err", err)
+		level.Error(logger).Log("err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if _, err = updateReq.NewConfig.Parse(); err != nil {
-		level.Error(logger).Log("msg", "invalid rules", "err", err)
-		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
+	if userID == "" {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	updated, err := a.db.SetRulesConfig(r.Context(), userID, updateReq.OldConfig, updateReq.NewConfig)
+	vars := mux.Vars(r)
+
+	rgs, err := a.store.ListRuleGroups(r.Context(), configs.RuleStoreConditions{
+		UserID:    userID,
+		Namespace: vars["namespace"],
+	})
+
 	if err != nil {
-		level.Error(logger).Log("msg", "error storing config", "err", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	d, err := yaml.Marshal(&rgs)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !updated {
-		http.Error(w, "Supplied configuration doesn't match current configuration", http.StatusConflict)
+
+	w.Header().Set("Content-Type", "application/yaml")
+	if err := yaml.NewEncoder(w).Encode(d); err != nil {
+		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *API) getRuleGroup(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func (a *API) setRuleNamespace(w http.ResponseWriter, r *http.Request) {
+	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	logger := util.WithContext(r.Context(), util.Logger)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if userID == "" {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+
+	namespace, set := vars["namespace"]
+	if !set {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, ErrNoNamespace.Error(), http.StatusBadRequest)
+		return
+	}
+
+	payload, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	rgs := []rulefmt.RuleGroup{}
+	err = yaml.Unmarshal(payload, &rgs)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for _, rg := range rgs {
+		a.store.SetRuleGroup(r.Context(), userID, namespace, rg)
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
+	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	logger := util.WithContext(r.Context(), util.Logger)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if userID == "" {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+
+	namespace, set := vars["namespace"]
+	if !set {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, ErrNoNamespace.Error(), http.StatusBadRequest)
+		return
+	}
+
+	groupName, set := vars["groupName"]
+	if !set {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, ErrNoGroupName.Error(), http.StatusBadRequest)
+		return
+	}
+
+	payload, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	rg := rulefmt.RuleGroup{}
+	err = yaml.Unmarshal(payload, &rg)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Set the group name to match the name provided in
+	// the url
+	rg.Name = groupName
+	errs := configs.ValidateRuleGroup(rg)
+	if len(errs) > 0 {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, errs[0].Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = a.store.SetRuleGroup(r.Context(), userID, namespace, rg)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *API) deleteRuleGroup(w http.ResponseWriter, r *http.Request) {
+
 }

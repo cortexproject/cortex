@@ -4,27 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/configs"
+	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
 )
 
 // DB is an in-memory database for testing, and local development
 type DB struct {
 	cfgs map[string]configs.View
 	id   uint
-
-	sync.RWMutex
-	latestPoll configs.ID
 }
 
 // New creates a new in-memory database
-func New() (*DB, error) {
+func New(_, _ string) (*DB, error) {
 	return &DB{
-		cfgs:       map[string]configs.View{},
-		id:         0,
-		latestPoll: -1,
+		cfgs: map[string]configs.View{},
+		id:   0,
 	}, nil
 }
 
@@ -146,39 +141,5 @@ func (d *DB) GetRulesConfigs(ctx context.Context, since configs.ID) (map[string]
 			cfgs[user] = *cfg
 		}
 	}
-	return cfgs, nil
-}
-
-func (d *DB) GetRules(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
-	d.RLock()
-	since := d.latestPoll
-	d.RUnlock()
-
-	rls, err := d.GetRulesConfigs(ctx, since)
-	if err != nil {
-		return nil, err
-	}
-
-	d.Lock()
-	d.latestPoll = configs.GetLatestRulesID(rls, since)
-	d.Unlock()
-
-	return rls, nil
-}
-
-func (d *DB) GetAlerts(ctx context.Context) (map[string]configs.View, error) {
-	d.RLock()
-	since := d.latestPoll
-	d.RUnlock()
-
-	cfgs, err := d.GetConfigs(ctx, since)
-	if err != nil {
-		return nil, err
-	}
-
-	d.Lock()
-	d.latestPoll = configs.GetLatestConfigID(cfgs, since)
-	d.Unlock()
-
 	return cfgs, nil
 }

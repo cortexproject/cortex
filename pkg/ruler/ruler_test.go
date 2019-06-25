@@ -4,11 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/cortexproject/cortex/pkg/configs"
@@ -22,14 +24,91 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-type mockRuleStore struct{}
+type mockRuleStore struct {
+	rules map[string]rulefmt.RuleGroup
 
-func (m *mockRuleStore) GetRules(ctx context.Context) (map[string]configs.VersionedRulesConfig, error) {
-	return map[string]configs.VersionedRulesConfig{}, nil
+	pollPayload map[string][]configs.RuleGroup
 }
 
-func (m *mockRuleStore) GetAlerts(ctx context.Context) (map[string]configs.View, error) {
-	return map[string]configs.View{}, nil
+func (m *mockRuleStore) PollRules(ctx context.Context) (map[string][]configs.RuleGroup, error) {
+	pollPayload := m.pollPayload
+	m.pollPayload = map[string][]configs.RuleGroup{}
+	return pollPayload, nil
+}
+
+func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) ([]configs.RuleNamespace, error) {
+	groupPrefix := userID + ":"
+
+	namespaces := []string{}
+	nss := []configs.RuleNamespace{}
+	for n := range m.rules {
+		if strings.HasPrefix(n, groupPrefix) {
+			components := strings.Split(n, ":")
+			if len(components) != 3 {
+				continue
+			}
+			namespaces = append(namespaces, components[1])
+		}
+	}
+
+	if len(namespaces) == 0 {
+		return nss, configs.ErrUserNotFound
+	}
+
+	for _, n := range namespaces {
+		ns, err := m.getRuleNamespace(ctx, userID, n)
+		if err != nil {
+			continue
+		}
+
+		nss = append(nss, ns)
+	}
+
+	return nss, nil
+}
+
+func (m *mockRuleStore) getRuleNamespace(ctx context.Context, userID string, namespace string) (configs.RuleNamespace, error) {
+	groupPrefix := userID + ":" + namespace + ":"
+
+	ns := configs.RuleNamespace{
+		Namespace: namespace,
+		Groups:    []rulefmt.RuleGroup{},
+	}
+	for n, g := range m.rules {
+		if strings.HasPrefix(n, groupPrefix) {
+			ns.Groups = append(ns.Groups, g)
+		}
+	}
+
+	if len(ns.Groups) == 0 {
+		return ns, configs.ErrGroupNamespaceNotFound
+	}
+
+	return ns, nil
+}
+
+func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (rulefmt.RuleGroup, error) {
+	groupID := userID + ":" + namespace + ":" + group
+	g, ok := m.rules[groupID]
+
+	if !ok {
+		return rulefmt.RuleGroup{}, configs.ErrGroupNotFound
+	}
+
+	return g, nil
+
+}
+
+func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group rulefmt.RuleGroup) error {
+	groupID := userID + ":" + namespace + ":" + group.Name
+	m.rules[groupID] = group
+	return nil
+}
+
+func (m *mockRuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
+	groupID := userID + ":" + namespace + ":" + group
+	delete(m.rules, groupID)
+	return nil
 }
 
 func defaultRulerConfig() Config {

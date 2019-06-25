@@ -4,18 +4,19 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net/url"
 
-	"github.com/cortexproject/cortex/pkg/chunk/gcp"
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/db/memory"
 	"github.com/cortexproject/cortex/pkg/configs/db/postgres"
+	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
 )
 
 // Config configures the database.
 type Config struct {
-	Type     string             `yaml:"type"`
-	PostGres postgres.Config    `yaml:"postgres,omitempty"`
-	GCS      gcp.ConfigDBConfig `yaml:"gcs,omitempty"`
+	URI           string
+	MigrationsDir string
+	PasswordFile  string
 
 	// Allow injection of mock DBs for unit testing.
 	Mock DB
@@ -23,15 +24,13 @@ type Config struct {
 
 // RegisterFlags adds the flags required to configure this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.Type, "configdb.type", "postgres", "Config database backend to utilize, (postgres, memory, gcp)")
-	cfg.PostGres.RegisterFlags(f)
-	cfg.GCS.RegisterFlags(f)
+	flag.StringVar(&cfg.URI, "database.uri", "postgres://postgres@configs-db.weave.local/configs?sslmode=disable", "URI where the database can be found (for dev you can use memory://)")
+	flag.StringVar(&cfg.MigrationsDir, "database.migrations", "", "Path where the database migration files can be found")
+	flag.StringVar(&cfg.PasswordFile, "database.password-file", "", "File containing password (username goes in URI)")
 }
 
 // DB is the interface for the database.
 type DB interface {
-	Poller
-
 	// GetRulesConfig gets the user's ruler config
 	GetRulesConfig(ctx context.Context, userID string) (configs.VersionedRulesConfig, error)
 
@@ -59,31 +58,36 @@ type DB interface {
 	Close() error
 }
 
-// Poller is the interface for getting recently updated rules from the database
-type Poller interface {
-	GetRules(ctx context.Context) (map[string]configs.VersionedRulesConfig, error)
-	GetAlerts(ctx context.Context) (map[string]configs.View, error)
-}
-
 // New creates a new database.
 func New(cfg Config) (DB, error) {
 	if cfg.Mock != nil {
 		return cfg.Mock, nil
 	}
 
-	var (
-		d   DB
-		err error
-	)
-	switch cfg.Type {
+	u, err := url.Parse(cfg.URI)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(cfg.PasswordFile) != 0 {
+		if u.User == nil {
+			return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
+		}
+		passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
+		if err != nil {
+			return nil, fmt.Errorf("Could not read database password file: %v", err)
+		}
+		u.User = url.UserPassword(u.User.Username(), string(passwordBytes))
+	}
+
+	var d DB
+	switch u.Scheme {
 	case "memory":
-		d, err = memory.New()
+		d, err = memory.New(u.String(), cfg.MigrationsDir)
 	case "postgres":
-		d, err = postgres.New(cfg.PostGres)
-	case "gcs":
-		d, err = gcp.NewConfigClient(context.TODO(), cfg.GCS)
+		d, err = postgres.New(u.String(), cfg.MigrationsDir)
 	default:
-		return nil, fmt.Errorf("Unknown database type: %s", cfg.Type)
+		return nil, fmt.Errorf("Unknown database type: %s", u.Scheme)
 	}
 	if err != nil {
 		return nil, err

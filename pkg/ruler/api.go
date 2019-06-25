@@ -36,7 +36,7 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		name, method, path string
 		handler            http.HandlerFunc
 	}{
-		{"list_rules", "GET", "/api/prom/rules", a.listRules},
+		{"list_rules", "GET", "/api/prom/rules/", a.listRules},
 		{"list_rules_namespace", "GET", "/api/prom/rules/{namespace}/", a.listRules},
 		{"get_rulegroup", "GET", "/api/prom/rules/{namespace}/{groupName}", a.getRuleGroup},
 		{"set_namespace", "POST", "/api/prom/rules/{namespace}/", a.setRuleNamespace},
@@ -69,6 +69,7 @@ func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 
+	level.Debug(logger).Log("msg", "retrieving rule groups from rule store", "userID", userID)
 	rgs, err := a.store.ListRuleGroups(r.Context(), configs.RuleStoreConditions{
 		UserID:    userID,
 		Namespace: vars["namespace"],
@@ -79,20 +80,22 @@ func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
+
 	d, err := yaml.Marshal(&rgs)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/yaml")
-	if err := yaml.NewEncoder(w).Encode(d); err != nil {
 		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/yaml")
+	w.Write(d)
+	if _, err := w.Write(d); err != nil {
+		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (a *API) getRuleGroup(w http.ResponseWriter, r *http.Request) {

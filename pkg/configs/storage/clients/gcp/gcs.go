@@ -260,12 +260,11 @@ func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.Ru
 		}
 
 		if obj.Name == options.Namespace && options.Namespace != "" {
-
+			level.Debug(util.Logger).Log("msg", "listing rule groups", "namespace", obj.Name)
 			ns, err := g.getRuleNamespace(ctx, options.UserID, obj.Name)
 			if err != nil {
 				return []configs.RuleNamespace{}, err
 			}
-
 			nss = append(nss, ns)
 		}
 	}

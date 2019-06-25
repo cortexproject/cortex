@@ -70,13 +70,11 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/yaml")
-	if err := yaml.NewEncoder(w).Encode(d); err != nil {
+	if _, err := w.Write(d); err != nil {
 		level.Error(logger).Log("msg", "error marshalling yaml alertmanager config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
 }
 
 func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {

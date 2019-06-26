@@ -156,3 +156,9 @@ Valid fields are (with their corresponding flags for default values):
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 
   Limits on the number of timeseries and samples returns by a single ingester during a query.
+
+## Storage
+
+- `s3.force-path-style`
+
+  Set this to `true` to force the request to use path-style addressing (`http://s3.amazonaws.com/BUCKET/KEY`). By default, the S3 client will use virtual hosted bucket addressing when possible (`http://BUCKET.s3.amazonaws.com/KEY`).

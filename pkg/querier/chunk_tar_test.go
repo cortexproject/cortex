@@ -20,41 +20,43 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-func TestChunkTar(t *testing.T) {
-	chunksFilename := os.Getenv("CHUNKS")
-	if len(chunksFilename) == 0 {
-		return
+func getTarDataFromEnv(t testing.TB) (query string, from, through time.Time, step time.Duration, store ChunkStore) {
+	var (
+		err            error
+		chunksFilename = os.Getenv("CHUNKS")
+		userID         = os.Getenv("USERID")
+	)
+	query = os.Getenv("QUERY")
+
+	if len(chunksFilename) == 0 || len(userID) == 0 || len(query) == 0 {
+		return query, from, through, step, store
 	}
-
-	query := os.Getenv("QUERY")
-	if len(query) == 0 {
-		return
-	}
-
-	userID := os.Getenv("USERID")
-	if len(query) == 0 {
-		return
-	}
-
-	from, err := parseTime(os.Getenv("FROM"))
-	require.NoError(t, err)
-
-	through, err := parseTime(os.Getenv("THROUGH"))
-	require.NoError(t, err)
-
-	step, err := parseDuration(os.Getenv("STEP"))
-	require.NoError(t, err)
 
 	chunks, err := loadChunks(userID, chunksFilename)
 	require.NoError(t, err)
 
-	store := mockChunkStore{chunks}
+	from, err = parseTime(os.Getenv("FROM"))
+	require.NoError(t, err)
+
+	through, err = parseTime(os.Getenv("THROUGH"))
+	require.NoError(t, err)
+
+	step, err = parseDuration(os.Getenv("STEP"))
+	require.NoError(t, err)
+
+	return query, from, through, step, &mockChunkStore{chunks}
+}
+
+func runRangeQuery(t testing.TB, query string, from, through time.Time, step time.Duration, store ChunkStore) {
+	if len(query) == 0 || store == nil {
+		return
+	}
 	queryable := newChunkStoreQueryable(store, batch.NewChunkMergeIterator)
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:        util.Logger,
 		MaxConcurrent: 1,
-		MaxSamples:    1e6,
-		Timeout:       1 * time.Minute,
+		MaxSamples:    math.MaxInt32,
+		Timeout:       10 * time.Minute,
 	})
 	rangeQuery, err := engine.NewRangeQuery(queryable, query, from, through, step)
 	require.NoError(t, err)
@@ -63,6 +65,11 @@ func TestChunkTar(t *testing.T) {
 	r := rangeQuery.Exec(ctx)
 	_, err = r.Matrix()
 	require.NoError(t, err)
+}
+
+func TestChunkTar(t *testing.T) {
+	query, from, through, step, store := getTarDataFromEnv(t)
+	runRangeQuery(t, query, from, through, step, store)
 }
 
 func parseTime(s string) (time.Time, error) {

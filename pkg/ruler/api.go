@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	ErrNoNamespace = errors.New("a namespace must be provided in the url")
-	ErrNoGroupName = errors.New("a matching group name must be provided in the url")
+	ErrNoNamespace  = errors.New("a namespace must be provided in the url")
+	ErrNoGroupName  = errors.New("a matching group name must be provided in the url")
+	ErrNoRuleGroups = errors.New("no rule groups found")
 )
 
 // API is used to provided endpoints to directly interact with the ruler
@@ -81,6 +82,12 @@ func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
+
+	if len(rgs) == 0 {
+		level.Info(logger).Log("msg", "no rule groups found", "userID", userID)
+		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
+		return
+	}
 
 	d, err := yaml.Marshal(&rgs)
 	if err != nil {

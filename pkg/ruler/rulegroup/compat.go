@@ -38,6 +38,8 @@ func ToProto(namespace string, rl rulefmt.RuleGroup) RuleGroup {
 		}
 	}
 
+	rg.Rules = rules
+
 	return rg
 }
 

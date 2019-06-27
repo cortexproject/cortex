@@ -67,13 +67,20 @@ func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	options := configs.RuleStoreConditions{
+		UserID: userID,
+	}
+
 	vars := mux.Vars(r)
 
+	namespace, set := vars["namespace"]
+	if set {
+		level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
+		options.Namespace = namespace
+	}
+
 	level.Debug(logger).Log("msg", "retrieving rule groups from rule store", "userID", userID)
-	rgs, err := a.store.ListRuleGroups(r.Context(), configs.RuleStoreConditions{
-		UserID:    userID,
-		Namespace: vars["namespace"],
-	})
+	rgs, err := a.store.ListRuleGroups(r.Context(), options)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -195,6 +202,8 @@ func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	level.Debug(logger).Log("msg", "attempting to unmarshal rulegroup", "userID", userID, "group", string(payload))
 
 	rg := rulefmt.RuleGroup{}
 	err = yaml.Unmarshal(payload, &rg)

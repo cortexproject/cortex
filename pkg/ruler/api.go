@@ -37,10 +37,10 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		name, method, path string
 		handler            http.HandlerFunc
 	}{
-		{"list_rules", "GET", "/api/prom/rules/", a.listRules},
-		{"list_rules_namespace", "GET", "/api/prom/rules/{namespace}/", a.listRules},
+		{"list_rules", "GET", "/api/prom/rules", a.listRules},
+		{"list_rules_namespace", "GET", "/api/prom/rules/{namespace}", a.listRules},
 		{"get_rulegroup", "GET", "/api/prom/rules/{namespace}/{groupName}", a.getRuleGroup},
-		{"set_rulegroup", "POST", "/api/prom/rules/{namespace}/", a.setRuleGroup},
+		{"set_rulegroup", "POST", "/api/prom/rules/{namespace}", a.setRuleGroup},
 		{"delete_rulegroup", "DELETE", "/api/prom/rules/{namespace}/{groupName}", a.deleteRuleGroup},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)

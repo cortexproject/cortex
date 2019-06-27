@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io/ioutil"
 	"strings"
@@ -22,6 +23,10 @@ import (
 const (
 	alertPrefix = "alerts/"
 	rulePrefix  = "rules/"
+)
+
+var (
+	ErrBadRuleGroup = errors.New("unable to decompose handle for rule object")
 )
 
 // GCSConfig is config for the GCS Chunk Client.
@@ -243,12 +248,10 @@ func (g *gcsConfigClient) getAllRuleGroups(ctx context.Context, userID string) (
 
 func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) ([]configs.RuleNamespace, error) {
 	it := g.bucket.Objects(ctx, &storage.Query{
-		Delimiter: "/",
-		Prefix:    generateRuleHandle(options.UserID, "", ""),
+		Prefix: generateRuleHandle(options.UserID, options.Namespace, ""),
 	})
 
-	nss := []configs.RuleNamespace{}
-
+	namespaces := map[string]bool{}
 	for {
 		obj, err := it.Next()
 		if err == iterator.Done {
@@ -259,14 +262,25 @@ func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.Ru
 			return []configs.RuleNamespace{}, err
 		}
 
-		if obj.Name == options.Namespace && options.Namespace != "" {
-			level.Debug(util.Logger).Log("msg", "listing rule groups", "namespace", obj.Name)
-			ns, err := g.getRuleNamespace(ctx, options.UserID, obj.Name)
-			if err != nil {
-				return []configs.RuleNamespace{}, err
-			}
-			nss = append(nss, ns)
+		level.Debug(util.Logger).Log("msg", "listing rule groups", "handle", obj.Name)
+
+		_, namespace, _, err := decomposeRuleHande(obj.Name)
+		if err != nil {
+			return []configs.RuleNamespace{}, err
 		}
+		if obj.Name == options.Namespace && options.Namespace != "" {
+			namespaces[namespace] = true
+		}
+	}
+
+	nss := []configs.RuleNamespace{}
+
+	for ns := range namespaces {
+		ns, err := g.getRuleNamespace(ctx, options.UserID, ns)
+		if err != nil {
+			return []configs.RuleNamespace{}, err
+		}
+		nss = append(nss, ns)
 	}
 
 	return nss, nil
@@ -402,4 +416,15 @@ func generateRuleHandle(id, namespace, name string) string {
 		return prefix
 	}
 	return prefix + namespace + "/" + name
+}
+
+func decomposeRuleHande(handle string) (string, string, string, error) {
+	components := strings.Split(handle, "/")
+
+	if len(components) != 4 {
+		return "", "", "", ErrBadRuleGroup
+	}
+
+	// Return `user, namespace, group_name`
+	return components[1], components[2], components[3], nil
 }

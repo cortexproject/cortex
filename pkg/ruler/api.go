@@ -73,8 +73,8 @@ func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 
-	namespace, set := vars["namespace"]
-	if set {
+	namespace := vars["namespace"]
+	if namespace != "" {
 		level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
 		options.Namespace = namespace
 	}
@@ -187,8 +187,8 @@ func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 
-	namespace, set := vars["namespace"]
-	if !set {
+	namespace := vars["namespace"]
+	if namespace != "" {
 		level.Error(logger).Log("err", err.Error())
 		http.Error(w, ErrNoNamespace.Error(), http.StatusBadRequest)
 		return

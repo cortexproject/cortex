@@ -273,7 +273,7 @@ func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.Ru
 		if err != nil {
 			return []configs.RuleNamespace{}, err
 		}
-		if obj.Name == options.Namespace || options.Namespace == "" {
+		if namespace == options.Namespace || options.Namespace == "" {
 			namespaces[namespace] = true
 		}
 	}

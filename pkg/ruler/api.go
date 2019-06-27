@@ -103,7 +103,6 @@ func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/yaml")
-	w.Write(d)
 	if _, err := w.Write(d); err != nil {
 		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -159,7 +158,6 @@ func (a *API) getRuleGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/yaml")
-	w.Write(d)
 	if _, err := w.Write(d); err != nil {
 		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

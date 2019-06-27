@@ -40,8 +40,7 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		{"list_rules", "GET", "/api/prom/rules/", a.listRules},
 		{"list_rules_namespace", "GET", "/api/prom/rules/{namespace}/", a.listRules},
 		{"get_rulegroup", "GET", "/api/prom/rules/{namespace}/{groupName}", a.getRuleGroup},
-		{"set_namespace", "POST", "/api/prom/rules/{namespace}/", a.setRuleNamespace},
-		{"set_rulegroup", "POST", "/api/prom/rules/{namespace}/", a.setRuleNamespace},
+		{"set_rulegroup", "POST", "/api/prom/rules/{namespace}/", a.setRuleGroup},
 		{"delete_rulegroup", "DELETE", "/api/prom/rules/{namespace}/{groupName}", a.deleteRuleGroup},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
@@ -106,10 +105,6 @@ func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) getRuleGroup(w http.ResponseWriter, r *http.Request) {
-
-}
-
-func (a *API) setRuleNamespace(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -130,33 +125,39 @@ func (a *API) setRuleNamespace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vars := mux.Vars(r)
-
-	namespace, set := vars["namespace"]
-	if !set {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, ErrNoNamespace.Error(), http.StatusBadRequest)
+	ns, exists := vars["namespace"]
+	if !exists {
+		http.Error(w, ErrNoNamespace.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	payload, err := ioutil.ReadAll(r.Body)
+	gn, exists := vars["groupName"]
+	if !exists {
+		http.Error(w, ErrNoGroupName.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	rg, err := a.store.GetRuleGroup(r.Context(), userID, ns, gn)
+
 	if err != nil {
-		level.Error(logger).Log("err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	rgs := []rulefmt.RuleGroup{}
-	err = yaml.Unmarshal(payload, &rgs)
+	d, err := yaml.Marshal(&rg)
 	if err != nil {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	for _, rg := range rgs {
-		a.store.SetRuleGroup(r.Context(), userID, namespace, rg)
+	w.Header().Set("Content-Type", "application/yaml")
+	w.Write(d)
+	if _, err := w.Write(d); err != nil {
+		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	w.WriteHeader(http.StatusOK)
 }
 
 func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
@@ -188,13 +189,6 @@ func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groupName, set := vars["groupName"]
-	if !set {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, ErrNoGroupName.Error(), http.StatusBadRequest)
-		return
-	}
-
 	payload, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		level.Error(logger).Log("err", err.Error())
@@ -210,9 +204,6 @@ func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set the group name to match the name provided in
-	// the url
-	rg.Name = groupName
 	errs := configs.ValidateRuleGroup(rg)
 	if len(errs) > 0 {
 		level.Error(logger).Log("err", err.Error())

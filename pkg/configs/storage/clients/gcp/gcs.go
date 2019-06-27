@@ -397,7 +397,7 @@ func (g *gcsConfigClient) DeleteRuleGroup(ctx context.Context, userID string, na
 }
 
 func generateRuleHandle(id, namespace, name string) string {
-	prefix := rulePrefix + "/" + id + "/"
+	prefix := rulePrefix + id + "/"
 	if namespace == "" {
 		return prefix
 	}

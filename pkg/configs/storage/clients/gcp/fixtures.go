@@ -6,6 +6,7 @@ import (
 	"github.com/fsouza/fake-gcs-server/fakestorage"
 
 	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/storage/testutils"
 )
 
 const (
@@ -35,3 +36,11 @@ func (f *fixture) Teardown() error {
 	f.gcssrv.Stop()
 	return nil
 }
+
+// Fixtures for unit testing GCP storage.
+var Fixtures = func() []testutils.Fixture {
+	fixtures := []testutils.Fixture{
+		&fixture{name: "gcs"},
+	}
+	return fixtures
+}()

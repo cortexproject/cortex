@@ -147,29 +147,34 @@ func (g *gcsConfigClient) DeleteAlertConfig(ctx context.Context, userID string) 
 
 func (g *gcsConfigClient) PollRules(ctx context.Context) (map[string][]configs.RuleGroup, error) {
 	objs := g.bucket.Objects(ctx, &storage.Query{
-		Delimiter: "/",
-		Prefix:    rulePrefix,
+		Prefix: rulePrefix,
 	})
 
 	updatedUsers := []string{}
 	for {
-		user, err := objs.Next()
+		handle, err := objs.Next()
 		if err == iterator.Done {
 			break
 		}
-		level.Debug(util.Logger).Log("msg", "checking gcs for updated rules", "user", user.Name)
+		user, _, _, err := decomposeRuleHande(handle.Name)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to poll user for rules", "user", user)
+		}
+
+		level.Debug(util.Logger).Log("msg", "checking gcs for updated rules", "user", user)
 
 		if err != nil {
 			return nil, err
 		}
 
-		updated, err := g.checkUser(ctx, user.Name)
+		updated, err := g.checkUser(ctx, user)
 		if err != nil {
 			return nil, err
 		}
 
 		if updated {
-			updatedUsers = append(updatedUsers, user.Name)
+			level.Info(util.Logger).Log("msg", "updated rules found", "user", user)
+			updatedUsers = append(updatedUsers, user)
 		}
 	}
 
@@ -276,6 +281,7 @@ func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.Ru
 	nss := []configs.RuleNamespace{}
 
 	for ns := range namespaces {
+		level.Debug(util.Logger).Log("msg", "retrieving rule namespace", "user", options.UserID, "namespace", ns)
 		ns, err := g.getRuleNamespace(ctx, options.UserID, ns)
 		if err != nil {
 			return []configs.RuleNamespace{}, err

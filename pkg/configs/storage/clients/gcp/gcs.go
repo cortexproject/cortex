@@ -251,7 +251,7 @@ func (g *gcsConfigClient) getAllRuleGroups(ctx context.Context, userID string) (
 	return rgs, nil
 }
 
-func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) ([]configs.RuleNamespace, error) {
+func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) (map[string]configs.RuleNamespace, error) {
 	it := g.bucket.Objects(ctx, &storage.Query{
 		Prefix: generateRuleHandle(options.UserID, options.Namespace, ""),
 	})
@@ -264,29 +264,29 @@ func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.Ru
 		}
 
 		if err != nil {
-			return []configs.RuleNamespace{}, err
+			return nil, err
 		}
 
 		level.Debug(util.Logger).Log("msg", "listing rule groups", "handle", obj.Name)
 
 		_, namespace, _, err := decomposeRuleHande(obj.Name)
 		if err != nil {
-			return []configs.RuleNamespace{}, err
+			return nil, err
 		}
 		if namespace == options.Namespace || options.Namespace == "" {
 			namespaces[namespace] = true
 		}
 	}
 
-	nss := []configs.RuleNamespace{}
+	nss := map[string]configs.RuleNamespace{}
 
-	for ns := range namespaces {
-		level.Debug(util.Logger).Log("msg", "retrieving rule namespace", "user", options.UserID, "namespace", ns)
-		ns, err := g.getRuleNamespace(ctx, options.UserID, ns)
+	for namespace := range namespaces {
+		level.Debug(util.Logger).Log("msg", "retrieving rule namespace", "user", options.UserID, "namespace", namespace)
+		ns, err := g.getRuleNamespace(ctx, options.UserID, namespace)
 		if err != nil {
-			return []configs.RuleNamespace{}, err
+			return nil, err
 		}
-		nss = append(nss, ns)
+		nss[namespace] = ns
 	}
 
 	return nss, nil

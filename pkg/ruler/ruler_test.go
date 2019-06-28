@@ -36,11 +36,11 @@ func (m *mockRuleStore) PollRules(ctx context.Context) (map[string][]configs.Rul
 	return pollPayload, nil
 }
 
-func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) ([]configs.RuleNamespace, error) {
+func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) (map[string]configs.RuleNamespace, error) {
 	groupPrefix := userID + ":"
 
 	namespaces := []string{}
-	nss := []configs.RuleNamespace{}
+	nss := map[string]configs.RuleNamespace{}
 	for n := range m.rules {
 		if strings.HasPrefix(n, groupPrefix) {
 			components := strings.Split(n, ":")
@@ -61,7 +61,7 @@ func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options configs.Rule
 			continue
 		}
 
-		nss = append(nss, ns)
+		nss[n] = ns
 	}
 
 	return nss, nil

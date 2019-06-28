@@ -185,7 +185,7 @@ func (c *configsClient) DeleteAlertConfig(ctx context.Context, userID string) er
 	return errors.New("remote configdb client does not implement DeleteAlertConfig")
 }
 
-func (c *configsClient) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) ([]configs.RuleNamespace, error) {
+func (c *configsClient) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) (map[string]configs.RuleNamespace, error) {
 	return nil, errors.New("remote configdb client does not implement ListRule")
 }
 

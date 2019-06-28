@@ -44,7 +44,7 @@ type RuleStoreConditions struct {
 type RuleStore interface {
 	PollRules(ctx context.Context) (map[string][]RuleGroup, error)
 
-	ListRuleGroups(ctx context.Context, options RuleStoreConditions) ([]RuleNamespace, error)
+	ListRuleGroups(ctx context.Context, options RuleStoreConditions) (map[string]RuleNamespace, error)
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (rulefmt.RuleGroup, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group rulefmt.RuleGroup) error
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error

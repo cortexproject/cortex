@@ -71,8 +71,8 @@ func (i instrumented) PollRules(ctx context.Context) (map[string][]configs.RuleG
 	return cfgs, err
 }
 
-func (i instrumented) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) ([]configs.RuleNamespace, error) {
-	var cfgs []configs.RuleNamespace
+func (i instrumented) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) (map[string]configs.RuleNamespace, error) {
+	var cfgs map[string]configs.RuleNamespace
 	err := instrument.CollectedRequest(context.Background(), "Configs.ListRuleGroups", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
 		cfgs, err = i.next.ListRuleGroups(ctx, options)

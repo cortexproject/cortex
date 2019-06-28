@@ -15,7 +15,7 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/api"
-	"github.com/prometheus/client_golang/api/prometheus/v1"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
@@ -138,7 +138,9 @@ type tracingClient struct {
 }
 
 func (t tracingClient) Do(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
+	req = req.WithContext(ctx)
 	req, tr := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
+	ctx = req.Context()
 	defer tr.Finish()
 	return t.Client.Do(ctx, req)
 }
@@ -197,7 +199,12 @@ func (r *Runner) runRandomTest() {
 
 	ctx := context.Background()
 	log, ctx := spanlogger.New(ctx, "runRandomTest")
-	level.Info(log).Log("name", tc.Name())
+	span, trace := opentracing.SpanFromContext(ctx), "<none>"
+	if span != nil {
+		trace = fmt.Sprintf("%s", span.Context())
+	}
+
+	level.Info(log).Log("name", tc.Name(), "trace", trace)
 	defer log.Finish()
 
 	// pick a random time to start testStart and now

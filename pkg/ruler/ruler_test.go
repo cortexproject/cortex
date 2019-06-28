@@ -71,8 +71,7 @@ func (m *mockRuleStore) getRuleNamespace(ctx context.Context, userID string, nam
 	groupPrefix := userID + ":" + namespace + ":"
 
 	ns := configs.RuleNamespace{
-		Namespace: namespace,
-		Groups:    []rulefmt.RuleGroup{},
+		Groups: []rulefmt.RuleGroup{},
 	}
 	for n, g := range m.rules {
 		if strings.HasPrefix(n, groupPrefix) {

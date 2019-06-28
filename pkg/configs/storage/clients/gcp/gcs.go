@@ -88,7 +88,7 @@ func (g *gcsConfigClient) getAlertConfig(ctx context.Context, obj string) (confi
 
 func (g *gcsConfigClient) PollAlerts(ctx context.Context) (map[string]configs.AlertConfig, error) {
 	objs := g.bucket.Objects(ctx, &storage.Query{
-		Prefix: rulePrefix,
+		Prefix: alertPrefix,
 	})
 
 	alertMap := map[string]configs.AlertConfig{}
@@ -298,8 +298,7 @@ func (g *gcsConfigClient) getRuleNamespace(ctx context.Context, userID string, n
 	})
 
 	ns := configs.RuleNamespace{
-		Namespace: namespace,
-		Groups:    []rulefmt.RuleGroup{},
+		Groups: []rulefmt.RuleGroup{},
 	}
 
 	for {

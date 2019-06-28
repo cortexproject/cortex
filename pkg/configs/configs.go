@@ -67,8 +67,7 @@ type RuleGroup interface {
 // rule file format, if no namespace is set, the default namespace
 // is used
 type RuleNamespace struct {
-	Namespace string              `yaml:"namespace"`
-	Groups    []rulefmt.RuleGroup `yaml:"groups"`
+	Groups []rulefmt.RuleGroup `yaml:"groups"`
 }
 
 // Validate each rule in the rule namespace is valid

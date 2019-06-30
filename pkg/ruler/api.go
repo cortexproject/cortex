@@ -188,8 +188,8 @@ func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
 	namespace := vars["namespace"]
-	if namespace != "" {
-		level.Error(logger).Log("err", err.Error())
+	if namespace == "" {
+		level.Error(logger).Log("err", "no namespace provided with rule group")
 		http.Error(w, ErrNoNamespace.Error(), http.StatusBadRequest)
 		return
 	}

@@ -19,6 +19,8 @@ func (bs batchStream) print() {
 	fmt.Println("]")
 }
 
+// reset, hasNext, next, atTime etc are all inlined in go1.11.
+
 func (bs *batchStream) reset() {
 	for i := range *bs {
 		(*bs)[i].Index = 0
@@ -73,6 +75,7 @@ func mergeBatches(batches batchStream, result batchStream, size int) batchStream
 }
 
 func mergeStreams(left, right batchStream, result batchStream, size int) batchStream {
+	// Ensure that 'result' has enough capacity of left and right added together.
 	if cap(result) >= len(left)+len(right) {
 		for i := range result {
 			result[i].Index = 0
@@ -84,17 +87,17 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 	} else {
 		result = make([]promchunk.Batch, len(left)+len(right))
 	}
-	l := 1
+	resultLen := 1
 	b := &result[0]
 
 	for left.hasNext() && right.hasNext() {
 		if b.Index == size {
 			b.Length = b.Index
-			l++
-			if l > len(result) {
+			resultLen++
+			if resultLen > len(result) {
 				result = append(result, promchunk.Batch{})
 			}
-			b = &result[l-1]
+			b = &result[resultLen-1]
 		}
 		t1, t2 := left.atTime(), right.atTime()
 		if t1 < t2 {
@@ -114,11 +117,11 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 	for ; left.hasNext(); left.next() {
 		if b.Index == size {
 			b.Length = b.Index
-			l++
-			if l > len(result) {
+			resultLen++
+			if resultLen > len(result) {
 				result = append(result, promchunk.Batch{})
 			}
-			b = &result[l-1]
+			b = &result[resultLen-1]
 		}
 		b.Timestamps[b.Index], b.Values[b.Index] = left.at()
 		b.Index++
@@ -128,11 +131,11 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 	for ; right.hasNext(); right.next() {
 		if b.Index == size {
 			b.Length = b.Index
-			l++
-			if l > len(result) {
+			resultLen++
+			if resultLen > len(result) {
 				result = append(result, promchunk.Batch{})
 			}
-			b = &result[l-1]
+			b = &result[resultLen-1]
 		}
 		b.Timestamps[b.Index], b.Values[b.Index] = right.at()
 		b.Index++
@@ -140,7 +143,7 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 	}
 	b.Length = b.Index
 
-	result = result[:l]
+	result = result[:resultLen]
 	result.reset()
 	return result
 }

@@ -63,17 +63,17 @@ func newMemorySeries(m labels.Labels) *memorySeries {
 //
 // The caller must have locked the fingerprint of the series.
 func (s *memorySeries) add(v model.SamplePair) error {
+	// If sender has repeated the same timestamp, check more closely and perhaps return error.
 	if v.Timestamp == s.lastTime {
-		// Don't report "no-op appends", i.e. where timestamp and sample
-		// value are the same as for the last append, as they are a
-		// common occurrence when using client-side timestamps
-		// (e.g. Pushgateway or federation).
-		if s.lastSampleValueSet && v.Value.Equal(s.lastSampleValue) {
-			return nil
-		}
-		// If we don't know what the last sample value is, silently discard as for no-op.
+		// If we don't know what the last sample value is, silently discard.
 		// This will mask some errors but better than complaining when we don't really know.
 		if !s.lastSampleValueSet {
+			return nil
+		}
+		// If both timestamp and sample value are the same as for the last append,
+		// ignore as they are a common occurrence when using client-side timestamps
+		// (e.g. Pushgateway or federation).
+		if v.Value.Equal(s.lastSampleValue) {
 			return nil
 		}
 		return &memorySeriesError{

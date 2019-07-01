@@ -32,7 +32,7 @@ func newMergeIterator(cs []chunk.Chunk) *mergeIterator {
 		its:        its,
 		h:          make(iteratorHeap, 0, len(its)),
 		batches:    make(batchStream, 0, len(its)*2*promchunk.BatchSize),
-		batchesBuf: make(batchStream, 0, len(its)*2*promchunk.BatchSize),
+		batchesBuf: make(batchStream, len(its)*2*promchunk.BatchSize),
 	}
 
 	for _, iter := range c.its {

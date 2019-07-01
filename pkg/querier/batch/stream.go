@@ -19,22 +19,6 @@ func (bs batchStream) print() {
 	fmt.Println("]")
 }
 
-// append, reset, hasNext, next, atTime etc are all inlined in go1.11.
-// append isn't a pointer receiver as that was causing bs to escape to the heap.
-func (bs batchStream) append(t int64, v float64, size int) batchStream {
-	l := len(bs)
-	if l == 0 || bs[l-1].Index == size {
-		bs = append(bs, promchunk.Batch{})
-		l++
-	}
-	b := &bs[l-1]
-	b.Timestamps[b.Index] = t
-	b.Values[b.Index] = v
-	b.Index++
-	b.Length++
-	return bs
-}
-
 func (bs *batchStream) reset() {
 	for i := range *bs {
 		(*bs)[i].Index = 0
@@ -61,7 +45,7 @@ func (bs *batchStream) at() (int64, float64) {
 	return b.Timestamps[b.Index], b.Values[b.Index]
 }
 
-// mergeBatches assumes the contents of batches are overlapping and unstorted.
+// mergeBatches assumes the contents of batches are overlapping and unsorted.
 // Merge them together into a sorted, non-overlapping stream in result.
 // Caller must guarantee result is big enough.  Return value will always be a
 // slice pointing to the same underly array as result, allowing mergeBatches
@@ -89,33 +73,74 @@ func mergeBatches(batches batchStream, result batchStream, size int) batchStream
 }
 
 func mergeStreams(left, right batchStream, result batchStream, size int) batchStream {
-	result.reset()
-	result = result[:0]
+	if cap(result) >= len(left)+len(right) {
+		for i := range result {
+			result[i].Index = 0
+			result[i].Length = 0
+		}
+		for len(result) < len(left)+len(right) {
+			result = append(result, promchunk.Batch{})
+		}
+	} else {
+		result = make([]promchunk.Batch, len(left)+len(right))
+	}
+	l := 1
+	b := &result[0]
+
 	for left.hasNext() && right.hasNext() {
+		if b.Index == size {
+			b.Length = b.Index
+			l++
+			if l > len(result) {
+				result = append(result, promchunk.Batch{})
+			}
+			b = &result[l-1]
+		}
 		t1, t2 := left.atTime(), right.atTime()
 		if t1 < t2 {
-			t, v := left.at()
-			result = result.append(t, v, size)
+			b.Timestamps[b.Index], b.Values[b.Index] = left.at()
 			left.next()
 		} else if t1 > t2 {
-			t, v := right.at()
-			result = result.append(t, v, size)
+			b.Timestamps[b.Index], b.Values[b.Index] = right.at()
 			right.next()
 		} else {
-			t, v := left.at()
-			result = result.append(t, v, size)
+			b.Timestamps[b.Index], b.Values[b.Index] = left.at()
 			left.next()
 			right.next()
 		}
+		b.Index++
 	}
+
 	for ; left.hasNext(); left.next() {
-		t, v := left.at()
-		result = result.append(t, v, size)
+		if b.Index == size {
+			b.Length = b.Index
+			l++
+			if l > len(result) {
+				result = append(result, promchunk.Batch{})
+			}
+			b = &result[l-1]
+		}
+		b.Timestamps[b.Index], b.Values[b.Index] = left.at()
+		b.Index++
+		b.Length++
 	}
+
 	for ; right.hasNext(); right.next() {
-		t, v := right.at()
-		result = result.append(t, v, size)
+		if b.Index == size {
+			b.Length = b.Index
+			l++
+			if l > len(result) {
+				result = append(result, promchunk.Batch{})
+			}
+			b = &result[l-1]
+		}
+		b.Timestamps[b.Index], b.Values[b.Index] = right.at()
+		b.Index++
+		b.Length++
 	}
+	b.Length = b.Index
+
+	result = result[:l]
 	result.reset()
 	return result
 }

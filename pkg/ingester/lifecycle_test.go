@@ -110,15 +110,29 @@ func TestIngesterTransfer(t *testing.T) {
 		m   = model.Metric{
 			model.MetricNameLabel: "foo",
 		}
+		sampleData = []model.Sample{
+			{
+				Metric:    m,
+				Timestamp: ts,
+				Value:     val,
+			},
+		}
+		expectedResponse = &client.QueryResponse{
+			Timeseries: []client.TimeSeries{
+				{
+					Labels: client.FromMetricsToLabelAdapters(m),
+					Samples: []client.Sample{
+						{
+							Value:       456,
+							TimestampMs: 123000,
+						},
+					},
+				},
+			},
+		}
 	)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing1.Push(ctx, client.ToWriteRequest([]model.Sample{
-		{
-			Metric:    m,
-			Timestamp: ts,
-			Value:     val,
-		},
-	}, client.API))
+	_, err = ing1.Push(ctx, client.ToWriteRequest(sampleData, client.API))
 	require.NoError(t, err)
 
 	// Start a second ingester, but let it go into PENDING
@@ -152,19 +166,14 @@ func TestIngesterTransfer(t *testing.T) {
 
 	response, err := ing2.Query(ctx, request)
 	require.NoError(t, err)
-	assert.Equal(t, &client.QueryResponse{
-		Timeseries: []client.TimeSeries{
-			{
-				Labels: client.FromMetricsToLabelAdapters(m),
-				Samples: []client.Sample{
-					{
-						Value:       456,
-						TimestampMs: 123000,
-					},
-				},
-			},
-		},
-	}, response)
+	assert.Equal(t, expectedResponse, response)
+
+	// Check we can send the same sample again to the new ingester and get the same result
+	_, err = ing2.Push(ctx, client.ToWriteRequest(sampleData, client.API))
+	require.NoError(t, err)
+	response, err = ing2.Query(ctx, request)
+	require.NoError(t, err)
+	assert.Equal(t, expectedResponse, response)
 }
 
 func TestIngesterBadTransfer(t *testing.T) {

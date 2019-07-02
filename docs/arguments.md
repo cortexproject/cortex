@@ -116,6 +116,11 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    When `push` requests arrive, pre-allocate this many slots to decode them. Tune this setting to reduce memory allocations and garbage. The optimum value will depend on how many labels are sent with your timeseries samples.
 
+- `-store.chunk-cache-stubs`
+
+   Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
+   Make sure you configure ingesters with a different cache to queriers, which need the whole value.
+
 ## Ingester, Distributor & Querier limits.
 
 Cortex implements various limits on the requests it can process, in order to prevent a single tenant overwhelming the cluster.  There are various default global limits which apply to all tenants which can be set on the command line.  These limits can also be overridden on a per-tenant basis, using a configuration file.  Specify the filename for the override configuration file using the `-limits.per-user-override-config=<filename>` flag.  The override file will be re-read every 10 seconds by default - this can also be controlled using the `-limits.per-user-override-period=10s` flag.

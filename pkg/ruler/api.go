@@ -40,7 +40,7 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		{"list_rules", "GET", "/api/prom/rules", a.listRules},
 		{"list_rules_namespace", "GET", "/api/prom/rules/{namespace}", a.listRules},
 		{"get_rulegroup", "GET", "/api/prom/rules/{namespace}/{groupName}", a.getRuleGroup},
-		{"set_rulegroup", "POST", "/api/prom/rules/{namespace}", a.setRuleGroup},
+		{"set_rulegroup", "POST", "/api/prom/rules/{namespace}", a.createRuleGroup},
 		{"delete_rulegroup", "DELETE", "/api/prom/rules/{namespace}/{groupName}", a.deleteRuleGroup},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
@@ -165,7 +165,7 @@ func (a *API) getRuleGroup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
+func (a *API) createRuleGroup(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -225,7 +225,8 @@ func (a *API) setRuleGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	// Return a status accepted because the rule has been stored and queued for polling, but is not currently active
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (a *API) deleteRuleGroup(w http.ResponseWriter, r *http.Request) {

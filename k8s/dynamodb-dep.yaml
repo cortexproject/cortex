@@ -14,7 +14,8 @@ spec:
     spec:
       containers:
       - name: dynamodb
-        image: deangiberson/aws-dynamodb-local
+        image: amazon/dynamodb-local:1.11.477
         imagePullPolicy: IfNotPresent
+        args: ['-jar', 'DynamoDBLocal.jar', '-inMemory', '-sharedDb']
         ports:
         - containerPort: 8000

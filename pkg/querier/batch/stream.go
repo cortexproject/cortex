@@ -90,15 +90,22 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 	resultLen := 1
 	b := &result[0]
 
-	for left.hasNext() && right.hasNext() {
+	checkForFullBatch := func() {
 		if b.Index == size {
 			b.Length = b.Index
 			resultLen++
 			if resultLen > len(result) {
+				// It is possible that result can grow longer
+				// than left and right combined based on the
+				// 'size' variable.
 				result = append(result, promchunk.Batch{})
 			}
 			b = &result[resultLen-1]
 		}
+	}
+
+	for left.hasNext() && right.hasNext() {
+		checkForFullBatch()
 		t1, t2 := left.atTime(), right.atTime()
 		if t1 < t2 {
 			b.Timestamps[b.Index], b.Values[b.Index] = left.at()
@@ -114,33 +121,18 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 		b.Index++
 	}
 
-	for ; left.hasNext(); left.next() {
-		if b.Index == size {
-			b.Length = b.Index
-			resultLen++
-			if resultLen > len(result) {
-				result = append(result, promchunk.Batch{})
-			}
-			b = &result[resultLen-1]
+	addToResult := func(bs batchStream) {
+		for ; bs.hasNext(); bs.next() {
+			checkForFullBatch()
+			b.Timestamps[b.Index], b.Values[b.Index] = bs.at()
+			b.Index++
+			b.Length++
 		}
-		b.Timestamps[b.Index], b.Values[b.Index] = left.at()
-		b.Index++
-		b.Length++
 	}
 
-	for ; right.hasNext(); right.next() {
-		if b.Index == size {
-			b.Length = b.Index
-			resultLen++
-			if resultLen > len(result) {
-				result = append(result, promchunk.Batch{})
-			}
-			b = &result[resultLen-1]
-		}
-		b.Timestamps[b.Index], b.Values[b.Index] = right.at()
-		b.Index++
-		b.Length++
-	}
+	addToResult(left)
+	addToResult(right)
+
 	b.Length = b.Index
 
 	result = result[:resultLen]

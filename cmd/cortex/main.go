@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -27,9 +28,11 @@ func main() {
 		cfg             cortex.Config
 		configFile      = ""
 		eventSampleRate int
+		ballastBytes    int
 	)
 	flag.StringVar(&configFile, "config.file", "", "Configuration file to load.")
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
+	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
 
 	flagext.RegisterFlags(&cfg)
 	flag.Parse()
@@ -43,6 +46,9 @@ func main() {
 
 	// Parse a second time, as command line flags should take precedent over the config file.
 	flag.Parse()
+
+	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
+	ballast := make([]byte, ballastBytes)
 
 	util.InitLogger(&cfg.Server)
 	util.InitEvents(eventSampleRate)
@@ -60,6 +66,7 @@ func main() {
 		level.Error(util.Logger).Log("msg", "error running Cortex", "err", err)
 	}
 
+	runtime.KeepAlive(ballast)
 	err = t.Stop()
 	util.CheckFatal("initializing cortex", err)
 }

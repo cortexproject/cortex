@@ -75,29 +75,29 @@ func mergeBatches(batches batchStream, result batchStream, size int) batchStream
 }
 
 func mergeStreams(left, right batchStream, result batchStream, size int) batchStream {
-	// Ensure that 'result' has enough capacity of left and right added together.
-	if cap(result) >= len(left)+len(right) {
-		for i := range result {
-			result[i].Index = 0
-			result[i].Length = 0
-		}
-		for len(result) < len(left)+len(right) {
-			result = append(result, promchunk.Batch{})
-		}
-	} else {
-		result = make([]promchunk.Batch, len(left)+len(right))
+	// Reset the Index and Length of existing batches.
+	for i := range result {
+		result[i].Index = 0
+		result[i].Length = 0
 	}
-	resultLen := 1
+	resultLen := 1 // Number of batches in the final result.
 	b := &result[0]
 
+	// This function adds a new batch to the result
+	// if the current batch being appended is full.
 	checkForFullBatch := func() {
 		if b.Index == size {
+			// The batch reached it intended size.
+			// Add another batch the the result
+			// and use it for further appending.
+
+			// The Index is the place at which new sample
+			// has to be appended, hence it tells the length.
 			b.Length = b.Index
 			resultLen++
 			if resultLen > len(result) {
 				// It is possible that result can grow longer
-				// than left and right combined based on the
-				// 'size' variable.
+				// then the one provided.
 				result = append(result, promchunk.Batch{})
 			}
 			b = &result[resultLen-1]
@@ -121,6 +121,8 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 		b.Index++
 	}
 
+	// This function adds all the samples from the provided
+	// batchStream into the result in the same order.
 	addToResult := func(bs batchStream) {
 		for ; bs.hasNext(); bs.next() {
 			checkForFullBatch()
@@ -133,8 +135,12 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 	addToResult(left)
 	addToResult(right)
 
+	// The Index is the place at which new sample
+	// has to be appended, hence it tells the length.
 	b.Length = b.Index
 
+	// The provided 'result' slice might be bigger
+	// than the actual result, hence return the subslice.
 	result = result[:resultLen]
 	result.reset()
 	return result

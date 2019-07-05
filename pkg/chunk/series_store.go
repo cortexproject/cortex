@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sort"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -244,18 +243,7 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, from, through
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
 	}
-
-	var result []string
-	for _, c := range allChunks {
-		for _, l := range c.Metric {
-			if l.Name != model.MetricNameLabel {
-				result = append(result, string(l.Name))
-			}
-		}
-	}
-	sort.Strings(result)
-	result = uniqueStrings(result)
-	return result, nil
+	return labelNamesFromChunks(allChunks), nil
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {

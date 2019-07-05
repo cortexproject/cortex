@@ -263,17 +263,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, from, through model
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
 	}
-	var result []string
-	for _, c := range allChunks {
-		for _, l := range c.Metric {
-			if l.Name != model.MetricNameLabel {
-				result = append(result, string(l.Name))
-			}
-		}
-	}
-	sort.Strings(result)
-	result = uniqueStrings(result)
-	return result, nil
+	return labelNamesFromChunks(allChunks), nil
 }
 
 func (c *store) validateQueryTimeRange(ctx context.Context, from *model.Time, through *model.Time) (bool, error) {

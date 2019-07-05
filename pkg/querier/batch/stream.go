@@ -47,33 +47,6 @@ func (bs *batchStream) at() (int64, float64) {
 	return b.Timestamps[b.Index], b.Values[b.Index]
 }
 
-// mergeBatches assumes the contents of batches are overlapping and unsorted.
-// Merge them together into a sorted, non-overlapping stream in result.
-// Caller must guarantee result is big enough.  Return value will always be a
-// slice pointing to the same underly array as result, allowing mergeBatches
-// to call itself recursively.
-func mergeBatches(batches batchStream, result batchStream, size int) batchStream {
-	switch len(batches) {
-	case 0:
-		return nil
-	case 1:
-		copy(result[:1], batches)
-		return result[:1]
-	case 2:
-		return mergeStreams(batches[0:1], batches[1:2], result, size)
-	default:
-		n := len(batches) / 2
-		left := mergeBatches(batches[n:], result[n:], size)
-		right := mergeBatches(batches[:n], result[:n], size)
-
-		batches = mergeStreams(left, right, batches, size)
-		result = result[:len(batches)]
-		copy(result, batches)
-
-		return result[:len(batches)]
-	}
-}
-
 func mergeStreams(left, right batchStream, result batchStream, size int) batchStream {
 	// Reset the Index and Length of existing batches.
 	for i := range result {

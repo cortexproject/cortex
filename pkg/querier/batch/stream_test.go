@@ -10,42 +10,36 @@ import (
 
 func TestStream(t *testing.T) {
 	for i, tc := range []struct {
-		input  []promchunk.Batch
-		output batchStream
+		input1, input2 []promchunk.Batch
+		output         batchStream
 	}{
 		{
-			input:  []promchunk.Batch{mkBatch(0)},
+			input1: []promchunk.Batch{mkBatch(0)},
+			input2: []promchunk.Batch{mkBatch(0)},
 			output: []promchunk.Batch{mkBatch(0)},
 		},
 
 		{
-			input:  []promchunk.Batch{mkBatch(0), mkBatch(0)},
-			output: []promchunk.Batch{mkBatch(0)},
-		},
-
-		{
-			input:  []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
+			input1: []promchunk.Batch{mkBatch(0)},
+			input2: []promchunk.Batch{mkBatch(promchunk.BatchSize)},
 			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
 		},
 
 		{
-			input:  []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize), mkBatch(0), mkBatch(promchunk.BatchSize)},
-			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
-		},
-
-		{
-			input:  []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize / 2), mkBatch(promchunk.BatchSize)},
-			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
-		},
-
-		{
-			input:  []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize / 2), mkBatch(promchunk.BatchSize), mkBatch(3 * promchunk.BatchSize / 2), mkBatch(2 * promchunk.BatchSize)},
+			input1: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize)},
+			input2: []promchunk.Batch{mkBatch(promchunk.BatchSize / 2), mkBatch(2 * promchunk.BatchSize)},
 			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize), mkBatch(2 * promchunk.BatchSize)},
+		},
+
+		{
+			input1: []promchunk.Batch{mkBatch(promchunk.BatchSize / 2), mkBatch(3 * promchunk.BatchSize / 2), mkBatch(5 * promchunk.BatchSize / 2)},
+			input2: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize), mkBatch(3 * promchunk.BatchSize)},
+			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize), mkBatch(2 * promchunk.BatchSize), mkBatch(3 * promchunk.BatchSize)},
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			result := make(batchStream, len(tc.input))
-			result = mergeBatches(tc.input, result, promchunk.BatchSize)
+			result := make(batchStream, len(tc.input1)+len(tc.input2))
+			result = mergeStreams(tc.input1, tc.input2, result, promchunk.BatchSize)
 			require.Equal(t, batchStream(tc.output), result)
 		})
 	}

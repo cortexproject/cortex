@@ -38,7 +38,7 @@ func keysFromChunks(chunks []Chunk) []string {
 }
 
 func labelNamesFromChunks(chunks []Chunk) []string {
-	keys := make(map[string]struct{})
+	keys := map[string]struct{}{}
 	var result []string
 	for _, c := range chunks {
 		for _, l := range c.Metric {

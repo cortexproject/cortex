@@ -48,6 +48,11 @@ var (
 		Name:      "ruler_ring_check_errors_total",
 		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
+	evalFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ruler_evalauation_failures_total",
+		Help:      "Total number of rule groups failed to be evaluated.",
+	}, []string{"id"})
 	ruleMetrics *rules.Metrics
 )
 
@@ -313,6 +318,7 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 	if err := ctx.Err(); err == nil {
 		cancelTimeout() // release resources
 	} else {
+		evalFailures.WithLabelValues(userID).Inc()
 		level.Warn(logger).Log("msg", "context error", "error", err)
 	}
 

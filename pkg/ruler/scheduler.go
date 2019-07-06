@@ -29,20 +29,10 @@ const (
 )
 
 var (
-	totalConfigs = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "scheduler_configs_total",
-		Help:      "How many configs the scheduler knows about.",
-	})
 	totalRuleGroups = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "scheduler_groups_total",
 		Help:      "How many rule groups the scheduler is currently evaluating",
-	})
-	configUpdates = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "scheduler_config_updates_total",
-		Help:      "How many config updates the scheduler has made.",
 	})
 )
 

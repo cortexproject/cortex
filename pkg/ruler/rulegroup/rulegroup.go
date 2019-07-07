@@ -24,7 +24,7 @@ func (rg *ruleGroup) Rules(ctx context.Context) ([]rules.Rule, error) {
 }
 
 func (rg *ruleGroup) Name() string {
-	return rg.user + "/" + rg.namespace + "/" + rg.name
+	return rg.namespace + "/" + rg.name
 }
 
 // NewRuleGroup returns a rulegroup

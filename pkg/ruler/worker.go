@@ -6,20 +6,21 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
-	blockedWorkers = prometheus.NewGauge(prometheus.GaugeOpts{
+	blockedWorkers = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "blocked_workers",
 		Help:      "How many workers are waiting on an item to be ready.",
 	})
-	workerIdleTime = prometheus.NewCounter(prometheus.CounterOpts{
+	workerIdleTime = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "worker_idle_seconds_total",
 		Help:      "How long workers have spent waiting for work.",
 	})
-	evalLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
+	evalLatency = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "group_evaluation_latency_seconds",
 		Help:      "How far behind the target time each rule group executed.",

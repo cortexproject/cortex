@@ -8,6 +8,8 @@ import (
 )
 
 // TODO: Add a lazy rule group that only loads rules when they are needed
+// TODO: The cortex project should implement a separate Group struct from
+//       the prometheus project. This will allow for more precise instrumentation
 
 type ruleGroup struct {
 	name      string

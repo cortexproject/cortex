@@ -190,7 +190,7 @@ func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []conf
 }
 
 func (s *scheduler) updateUserConfig(ctx context.Context, cfg userConfig) {
-	// Retreive any previous configuration and update to the new configuration
+	// Retrieve any previous configuration and update to the new configuration
 	s.Lock()
 	curr, exists := s.cfgs[cfg.id]
 	s.cfgs[cfg.id] = cfg

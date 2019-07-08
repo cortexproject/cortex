@@ -36,7 +36,7 @@ type RuleStoreConditions struct {
 	UserID string
 
 	// Namespaces filters results only rule groups with the specified namespace
-	// are retreived
+	// are retrieved
 	Namespace string
 }
 

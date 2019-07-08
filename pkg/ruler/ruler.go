@@ -336,9 +336,10 @@ func (r *Ruler) ownsRule(hash uint32) bool {
 		return true
 	}
 	if rlrs.Ingesters[0].Addr == r.lifecycler.Addr {
+		level.Debug(util.Logger).Log("msg", "rule group owned", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
 		return true
 	}
-	level.Debug(util.Logger).Log("msg", "rule group not owned, address does not match", "owner", rlrs.Ingesters[0].Addr, "current", r.cfg.LifecyclerConfig.Addr)
+	level.Debug(util.Logger).Log("msg", "rule group not owned, address does not match", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
 	return false
 }
 

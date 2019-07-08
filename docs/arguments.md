@@ -100,6 +100,13 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters.  The new ring code can still read and write the old ring format, so is backwards compatible.
 
+- `-ingester.chunk-encoding`
+
+  Pick one of the encoding formats for timeseries data, which have different performance characteristics.
+  `Bigchunk` uses the Prometheus V2 code, and expands in memory to arbitrary length.
+  `Varbit`, `Delta` and `DoubleDelta` use Prometheus V1 code, and are fixed at 1K per chunk.
+  Defaults to `DoubleDelta`, but we recommend `Bigchunk`.
+
 - `-store.bigchunk-size-cap-bytes`
 
    When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days.

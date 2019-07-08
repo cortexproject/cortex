@@ -67,6 +67,9 @@ type RuleGroup interface {
 // rule file format, if no namespace is set, the default namespace
 // is used
 type RuleNamespace struct {
+	// Namespace field only exists for setting namespace in namespace body instead of file name
+	Namespace string `yaml:"namespace,omitempty"`
+
 	Groups []rulefmt.RuleGroup `yaml:"groups"`
 }
 

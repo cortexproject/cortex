@@ -26,7 +26,7 @@ const (
 )
 
 var (
-	ErrBadRuleGroup = errors.New("unable to decompose handle for rule object")
+	errBadRuleGroup = errors.New("unable to decompose handle for rule object")
 )
 
 // GCSConfig is config for the GCS Chunk Client.
@@ -427,7 +427,7 @@ func decomposeRuleHande(handle string) (string, string, string, error) {
 	components := strings.Split(handle, "/")
 
 	if len(components) != 4 {
-		return "", "", "", ErrBadRuleGroup
+		return "", "", "", errBadRuleGroup
 	}
 
 	// Return `user, namespace, group_name`

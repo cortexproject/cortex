@@ -27,6 +27,10 @@ func (rg *ruleGroup) Name() string {
 	return rg.namespace + "/" + rg.name
 }
 
+func (rg *ruleGroup) User() string {
+	return rg.user
+}
+
 // NewRuleGroup returns a rulegroup
 func NewRuleGroup(name, namespace, user string, rules []rules.Rule) configs.RuleGroup {
 	return &ruleGroup{

@@ -213,12 +213,17 @@ func (r *Ruler) Stop() {
 	}
 }
 
-func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
+func (r *Ruler) newGroup(ctx context.Context, g configs.RuleGroup) (*group, error) {
 	appendable := &appendableAppender{pusher: r.pusher}
-	notifier, err := r.getOrCreateNotifier(userID)
+	notifier, err := r.getOrCreateNotifier(g.User())
 	if err != nil {
 		return nil, err
 	}
+	rls, err := g.Rules(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &rules.ManagerOptions{
 		Appendable:  appendable,
 		QueryFunc:   rules.EngineQueryFunc(r.engine, r.queryable),
@@ -228,7 +233,7 @@ func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*gr
 		Logger:      util.Logger,
 		Metrics:     ruleMetrics,
 	}
-	return newGroup(groupName, rls, appendable, opts), nil
+	return newGroup(g.Name(), rls, appendable, opts), nil
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.

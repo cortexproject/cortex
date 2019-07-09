@@ -15,7 +15,6 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/rules"
 )
 
 var backoffConfig = util.BackoffConfig{
@@ -33,6 +32,11 @@ var (
 		Namespace: "cortex",
 		Name:      "scheduler_groups_total",
 		Help:      "How many rule groups the scheduler is currently evaluating",
+	})
+	scheduleFailures = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "scheduler_update_failures_total",
+		Help:      "Number of failures when updating rule groups",
 	})
 )
 
@@ -71,7 +75,7 @@ type userConfig struct {
 	rules []configs.RuleGroup
 }
 
-type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
+type groupFactory func(context.Context, configs.RuleGroup) (*group, error)
 
 type scheduler struct {
 	store              configs.RuleStore
@@ -145,35 +149,27 @@ func (s *scheduler) updateConfigs(ctx context.Context) error {
 }
 
 func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []configs.RuleGroup) {
-	now := time.Now()
-	hasher := fnv.New64a()
-
 	level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_groups", len(rgs))
 
 	// create a new userchan for rulegroups of this user
 	userChan := make(chan struct{})
 
 	ringHasher := fnv.New32a()
-	evalTime := computeNextEvalTime(hasher, now, float64(s.evaluationInterval.Nanoseconds()), userID)
 	workItems := []workItem{}
-	for _, rg := range rgs {
-		rules, err := rg.Rules(ctx)
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", rg.Name(), "err", err)
-			return
-		}
+	evalTime := s.determineEvalTime(userID)
 
-		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", rg.Name(), "num_rules", len(rules))
-		g, err := s.groupFn(userID, rg.Name(), rules)
+	for _, rg := range rgs {
+		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", rg.Name())
+		grp, err := s.groupFn(ctx, rg)
 		if err != nil {
-			level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", rg.Name(), "err", err)
+			level.Error(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", rg.Name(), "err", err)
 			return
 		}
 
 		ringHasher.Reset()
 		ringHasher.Write([]byte(rg.Name()))
 		hash := ringHasher.Sum32()
-		workItems = append(workItems, workItem{userID, rg.Name(), hash, g, evalTime, userChan})
+		workItems = append(workItems, workItem{userID, rg.Name(), hash, grp, evalTime, userChan})
 	}
 
 	s.updateUserConfig(ctx, userConfig{
@@ -201,6 +197,12 @@ func (s *scheduler) updateUserConfig(ctx context.Context, cfg userConfig) {
 	}
 
 	return
+}
+
+func (s *scheduler) determineEvalTime(userID string) time.Time {
+	now := time.Now()
+	hasher := fnv.New64a()
+	return computeNextEvalTime(hasher, now, float64(s.evaluationInterval.Nanoseconds()), userID)
 }
 
 // computeNextEvalTime Computes when a user's rules should be next evaluated, based on how far we are through an evaluation cycle

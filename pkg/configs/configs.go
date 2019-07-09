@@ -61,6 +61,7 @@ type AlertConfig struct {
 type RuleGroup interface {
 	Rules(ctx context.Context) ([]rules.Rule, error)
 	Name() string
+	User() string
 }
 
 // RuleNamespace is used to parse a slightly modified prometheus

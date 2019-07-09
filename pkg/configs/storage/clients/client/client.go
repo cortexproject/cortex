@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rulegroup"
+	"github.com/cortexproject/cortex/pkg/ruler/group"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	legacy_configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
@@ -115,7 +115,7 @@ func (c ConfigsResponse) GetLatestConfigID() legacy_configs.ID {
 	return latest
 }
 
-func (c *configsClient) PollAlerts(ctx context.Context) (map[string]configs.AlertConfig, error) {
+func (c *configsClient) PollAlertConfigs(ctx context.Context) (map[string]configs.AlertConfig, error) {
 	resp, err := c.GetAlerts(ctx, c.lastPoll)
 	if err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (c *configsClient) PollRules(ctx context.Context) (map[string][]configs.Rul
 		}
 		for groupSlug, r := range rMap {
 			name, file := decomposeGroupSlug(groupSlug)
-			userRules = append(userRules, rulegroup.NewRuleGroup(name, file, user, r))
+			userRules = append(userRules, group.NewRuleGroup(name, file, user, r))
 		}
 		newRules[user] = userRules
 	}

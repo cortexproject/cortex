@@ -340,7 +340,7 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 
 // poll the configuration server. Not re-entrant.
 func (am *MultitenantAlertmanager) poll() (map[string]configs.AlertConfig, error) {
-	cfgs, err := am.store.PollAlerts(context.Background())
+	cfgs, err := am.store.PollAlertConfigs(context.Background())
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: configs server poll failed", "err", err)
 		return nil, err

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rulegroup"
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/ruler/group"
+	"github.com/cortexproject/cortex/pkg/util"
 
 	"cloud.google.com/go/storage"
-	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
@@ -86,7 +86,7 @@ func (g *gcsConfigClient) getAlertConfig(ctx context.Context, obj string) (confi
 	return config, nil
 }
 
-func (g *gcsConfigClient) PollAlerts(ctx context.Context) (map[string]configs.AlertConfig, error) {
+func (g *gcsConfigClient) PollAlertConfigs(ctx context.Context) (map[string]configs.AlertConfig, error) {
 	objs := g.bucket.Objects(ctx, &storage.Query{
 		Prefix: alertPrefix,
 	})
@@ -240,7 +240,7 @@ func (g *gcsConfigClient) getAllRuleGroups(ctx context.Context, userID string) (
 			return []configs.RuleGroup{}, err
 		}
 
-		rg, err := rulegroup.GenerateRuleGroup(userID, rgProto)
+		rg, err := group.GenerateRuleGroup(userID, rgProto)
 		if err != nil {
 			return []configs.RuleGroup{}, err
 		}
@@ -316,14 +316,14 @@ func (g *gcsConfigClient) getRuleNamespace(ctx context.Context, userID string, n
 			return configs.RuleNamespace{}, err
 		}
 
-		ns.Groups = append(ns.Groups, rulegroup.FromProto(rg))
+		ns.Groups = append(ns.Groups, group.FromProto(rg))
 	}
 
 	return ns, nil
 }
 
-func (g *gcsConfigClient) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (rulefmt.RuleGroup, error) {
-	handle := generateRuleHandle(userID, namespace, group)
+func (g *gcsConfigClient) GetRuleGroup(ctx context.Context, userID string, namespace string, grp string) (rulefmt.RuleGroup, error) {
+	handle := generateRuleHandle(userID, namespace, grp)
 	rg, err := g.getRuleGroup(ctx, handle)
 	if err != nil {
 		return rulefmt.RuleGroup{}, err
@@ -332,10 +332,10 @@ func (g *gcsConfigClient) GetRuleGroup(ctx context.Context, userID string, names
 	if rg == nil {
 		return rulefmt.RuleGroup{}, configs.ErrGroupNotFound
 	}
-	return rulegroup.FromProto(rg), nil
+	return group.FromProto(rg), nil
 }
 
-func (g *gcsConfigClient) getRuleGroup(ctx context.Context, handle string) (*rulegroup.RuleGroup, error) {
+func (g *gcsConfigClient) getRuleGroup(ctx context.Context, handle string) (*group.RuleGroup, error) {
 	reader, err := g.bucket.Object(handle).NewReader(ctx)
 	if err == storage.ErrObjectNotExist {
 		level.Debug(util.Logger).Log("msg", "rule group does not exist", "name", handle)
@@ -351,7 +351,7 @@ func (g *gcsConfigClient) getRuleGroup(ctx context.Context, handle string) (*rul
 		return nil, err
 	}
 
-	rg := &rulegroup.RuleGroup{}
+	rg := &group.RuleGroup{}
 
 	err = proto.Unmarshal(buf, rg)
 	if err != nil {
@@ -361,14 +361,14 @@ func (g *gcsConfigClient) getRuleGroup(ctx context.Context, handle string) (*rul
 	return rg, nil
 }
 
-func (g *gcsConfigClient) SetRuleGroup(ctx context.Context, userID string, namespace string, group rulefmt.RuleGroup) error {
-	rg := rulegroup.ToProto(namespace, group)
+func (g *gcsConfigClient) SetRuleGroup(ctx context.Context, userID string, namespace string, grp rulefmt.RuleGroup) error {
+	rg := group.ToProto(namespace, grp)
 	rgBytes, err := proto.Marshal(&rg)
 	if err != nil {
 		return err
 	}
 
-	handle := generateRuleHandle(userID, namespace, group.Name)
+	handle := generateRuleHandle(userID, namespace, grp.Name)
 	objHandle := g.bucket.Object(handle)
 
 	writer := objHandle.NewWriter(ctx)

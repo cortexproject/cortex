@@ -24,11 +24,11 @@ type instrumented struct {
 	next configs.ConfigStore
 }
 
-func (i instrumented) PollAlerts(ctx context.Context) (map[string]configs.AlertConfig, error) {
+func (i instrumented) PollAlertConfigs(ctx context.Context) (map[string]configs.AlertConfig, error) {
 	var cfgs map[string]configs.AlertConfig
-	err := instrument.CollectedRequest(context.Background(), "Configs.PollAlerts", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+	err := instrument.CollectedRequest(context.Background(), "Configs.PollAlertConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
-		cfgs, err = i.next.PollAlerts(ctx)
+		cfgs, err = i.next.PollAlertConfigs(ctx)
 		return err
 	})
 	return cfgs, err

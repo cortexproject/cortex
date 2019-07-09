@@ -1,4 +1,4 @@
-package rulegroup
+package group
 
 import (
 	"context"

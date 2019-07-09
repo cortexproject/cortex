@@ -23,7 +23,7 @@ type ConfigStore interface {
 
 // AlertStore stores config information and template files to configure alertmanager tenants
 type AlertStore interface {
-	PollAlerts(ctx context.Context) (map[string]AlertConfig, error)
+	PollAlertConfigs(ctx context.Context) (map[string]AlertConfig, error)
 
 	GetAlertConfig(ctx context.Context, userID string) (AlertConfig, error)
 	SetAlertConfig(ctx context.Context, userID string, config AlertConfig) error

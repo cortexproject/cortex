@@ -276,6 +276,9 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 	}); err != nil {
 		if mse, ok := err.(*memorySeriesError); ok {
 			state.discardedSamples.WithLabelValues(mse.errorType).Inc()
+			if mse.noReport {
+				return nil
+			}
 			// Use a dumb string template to avoid the message being parsed as a template
 			err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
 		}

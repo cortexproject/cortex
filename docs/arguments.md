@@ -1,5 +1,60 @@
 # Cortex Arguments Explained
 
+## Querier
+
+- `-querier.max-concurrent`
+
+   The maximum number of top-level PromQL queries that will execute at the same time, per querier process.
+   If using the query frontend, this should be set to at least (`querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.
+
+- `-querier.query-parallelism`
+
+   This refers to database queries against the store (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
+
+- `-querier.timeout`
+
+   The timeout for a top-level PromQL query.
+
+- `-querier.max-samples`
+
+   Maximum number of samples a single query can load into memory, to avoid blowing up on enormous queries.
+
+The next three options only apply when the querier is used together with the Query Frontend:
+
+- `-querier.frontend-address`
+
+   Address of query frontend service, used by workers to find the frontend which will give them queries to execute.
+
+- `-querier.dns-lookup-period`
+
+   How often the workers will query DNS to re-check where the frontend is.
+
+- `-querier.worker-parallelism`
+
+   Number of simultaneous queries to process, per worker process.
+   See note on `-querier.max-concurrent`
+
+## Querier and Ruler
+
+The ingester query API was improved over time, but defaults to the old behaviour for backwards-compatibility. For best results both of these next two flags should be set to `true`:
+
+- `-querier.batch-iterators`
+
+   This uses iterators to execute query, as opposed to fully materialising the series in memory, and fetches multiple results per loop.
+
+- `-querier.ingester-streaming`
+
+   Use streaming RPCs to query ingester, to reduce memory pressure in the ingester.
+
+- `-querier.iterators`
+
+   This is similar to `-querier.batch-iterators` but less efficient.
+   If both `iterators` and `batch-iterators` are `true`, `batch-iterators` will take precedence.
+
+- `-promql.lookback-delta`
+
+   Time since the last sample after which a time series is considered stale and ignored by expression evaluations.
+
 ## Query Frontend
 
 - `-querier.align-querier-with-step`
@@ -37,6 +92,18 @@
 - `-distributor.extra-query-delay`
    This is used by a component with an embedded distributor (Querier and Ruler) to control how long to wait until sending more than the minimum amount of queries needed for a successful response.
 
+## Ingester
+
+- `-ingester.normalise-tokens`
+
+   Write out "normalised" tokens to the ring.  Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.
+
+   Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters.  The new ring code can still read and write the old ring format, so is backwards compatible.
+
+- `-store.bigchunk-size-cap-bytes`
+
+   When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days.
+
 ## Ingester, Distributor & Querier limits.
 
 Cortex implements various limits on the requests it can process, in order to prevent a single tenant overwhelming the cluster.  There are various default global limits which apply to all tenants which can be set on the command line.  These limits can also be overridden on a per-tenant basis, using a configuration file.  Specify the filename for the override configuration file using the `-limits.per-user-override-config=<filename>` flag.  The override file will be re-read every 10 seconds by default - this can also be controlled using the `-limits.per-user-override-period=10s` flag.
@@ -64,7 +131,7 @@ Valid fields are (with their corresponding flags for default values):
 
   The per-tenant rate limit (and burst size), in samples per second. Enforced on a per distributor basis, actual effective rate limit will be N times higher, where N is the number of distributor replicas.
 
-  **NB** Changing these values currently require restarting the distributor.
+  **NB** Limits are reset every `-distributor.limiter-reload-period`, as such if you set a very high burst limit it will never be hit.
 
 - `max_label_name_length` / `-validation.max-length-label-name`
 - `max_label_value_length` / `-validation.max-length-label-value`
@@ -89,3 +156,9 @@ Valid fields are (with their corresponding flags for default values):
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 
   Limits on the number of timeseries and samples returns by a single ingester during a query.
+
+## Storage
+
+- `s3.force-path-style`
+
+  Set this to `true` to force the request to use path-style addressing (`http://s3.amazonaws.com/BUCKET/KEY`). By default, the S3 client will use virtual hosted bucket addressing when possible (`http://BUCKET.s3.amazonaws.com/KEY`).

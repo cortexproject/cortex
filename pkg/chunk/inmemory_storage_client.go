@@ -38,6 +38,10 @@ func NewMockStorage() *MockStorage {
 	}
 }
 
+// Stop doesn't do anything.
+func (*MockStorage) Stop() {
+}
+
 // ListTables implements StorageClient.
 func (m *MockStorage) ListTables(_ context.Context) ([]string, error) {
 	m.mtx.RLock()
@@ -66,6 +70,20 @@ func (m *MockStorage) CreateTable(_ context.Context, desc TableDesc) error {
 		write: desc.ProvisionedWrite,
 		read:  desc.ProvisionedRead,
 	}
+
+	return nil
+}
+
+// DeleteTable implements StorageClient.
+func (m *MockStorage) DeleteTable(_ context.Context, name string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if _, ok := m.tables[name]; !ok {
+		return fmt.Errorf("table does not exist")
+	}
+
+	delete(m.tables, name)
 
 	return nil
 }
@@ -262,7 +280,7 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 	defer m.mtx.Unlock()
 
 	for i := range chunks {
-		buf, err := chunks[i].Encode()
+		buf, err := chunks[i].Encoded()
 		if err != nil {
 			return err
 		}

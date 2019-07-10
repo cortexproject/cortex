@@ -9,9 +9,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const tpl = `
@@ -86,6 +87,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		// Implement PRG pattern to prevent double-POST and work with CSRF middleware.
 		// https://en.wikipedia.org/wiki/Post/Redirect/Get
 		http.Redirect(w, req, req.RequestURI, http.StatusFound)
+		return
 	}
 
 	r.mtx.RLock()
@@ -103,7 +105,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		ing := r.ringDesc.Ingesters[id]
 		timestamp := time.Unix(ing.Timestamp, 0)
 		state := ing.State.String()
-		if !r.IsHealthy(ing, Reporting) {
+		if !r.IsHealthy(&ing, Reporting) {
 			state = unhealthy
 		}
 

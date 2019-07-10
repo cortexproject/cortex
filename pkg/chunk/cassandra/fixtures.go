@@ -6,7 +6,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/prometheus/common/model"
 )
 
 // GOCQL doesn't provide nice mocks, so we use a real Cassandra instance.
@@ -15,18 +14,19 @@ import (
 // $ CASSANDRA_TEST_ADDRESSES=localhost:9042 go test ./pkg/chunk/storage
 
 type fixture struct {
-	name          string
-	storageClient chunk.StorageClient
-	tableClient   chunk.TableClient
-	schemaConfig  chunk.SchemaConfig
+	name         string
+	indexClient  chunk.IndexClient
+	objectClient chunk.ObjectClient
+	tableClient  chunk.TableClient
+	schemaConfig chunk.SchemaConfig
 }
 
 func (f fixture) Name() string {
 	return f.name
 }
 
-func (f fixture) Clients() (chunk.StorageClient, chunk.TableClient, chunk.SchemaConfig, error) {
-	return f.storageClient, f.tableClient, f.schemaConfig, nil
+func (f fixture) Clients() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error) {
+	return f.indexClient, f.objectClient, f.tableClient, f.schemaConfig, nil
 }
 
 func (f fixture) Teardown() error {
@@ -41,14 +41,14 @@ func Fixtures() ([]testutils.Fixture, error) {
 	}
 
 	cfg := Config{
-		addresses:         addresses,
-		keyspace:          "test",
-		consistency:       "QUORUM",
-		replicationFactor: 1,
+		Addresses:         addresses,
+		Keyspace:          "test",
+		Consistency:       "QUORUM",
+		ReplicationFactor: 1,
 	}
 
 	// Get a SchemaConfig with the defaults.
-	schemaConfig := chunk.DefaultSchemaConfig("cassandra", "v1", model.Now())
+	schemaConfig := testutils.DefaultSchemaConfig("cassandra")
 
 	storageClient, err := NewStorageClient(cfg, schemaConfig)
 	if err != nil {
@@ -62,10 +62,11 @@ func Fixtures() ([]testutils.Fixture, error) {
 
 	return []testutils.Fixture{
 		fixture{
-			name:          "Cassandra",
-			storageClient: storageClient,
-			tableClient:   tableClient,
-			schemaConfig:  schemaConfig,
+			name:         "Cassandra",
+			indexClient:  storageClient,
+			objectClient: storageClient,
+			tableClient:  tableClient,
+			schemaConfig: schemaConfig,
 		},
 	}, nil
 }

@@ -1,20 +1,23 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/segmentio/fasthash/fnv1a"
-	"golang.org/x/net/context"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ingester/index"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -51,7 +54,7 @@ type userState struct {
 	fpLocker            *fingerprintLocker
 	fpToSeries          *seriesMap
 	mapper              *fpMapper
-	index               *invertedIndex
+	index               *index.InvertedIndex
 	ingestedAPISamples  *ewmaRate
 	ingestedRuleSamples *ewmaRate
 
@@ -62,6 +65,12 @@ type userState struct {
 }
 
 const metricCounterShards = 128
+
+// DiscardedSamples metric labels
+const (
+	perUserSeriesLimit   = "per_user_series_limit"
+	perMetricSeriesLimit = "per_metric_series_limit"
+)
 
 type metricCounterShard struct {
 	mtx sync.Mutex
@@ -120,7 +129,11 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 	return state, ok, nil
 }
 
+<<<<<<< HEAD
 func (us *userStates) getOrCreate(ctx context.Context) (*userState, error) {
+=======
+func (us *userStates) getOrCreateSeries(ctx context.Context, labels []client.LabelAdapter) (*userState, model.Fingerprint, *memorySeries, error) {
+>>>>>>> upstream/master
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
@@ -164,10 +177,35 @@ func (us *userStates) getOrCreate(ctx context.Context) (*userState, error) {
 	return state, nil
 }
 
+<<<<<<< HEAD
 func (us *userStates) getOrCreateSeries(ctx context.Context, labels labelPairs, record *Record) (*userState, model.Fingerprint, *memorySeries, error) {
 	state, err := us.getOrCreate(ctx)
 	if err != nil {
 		return nil, 0, nil, err
+=======
+		// Speculatively create a userState object and try to store it
+		// in the map.  Another goroutine may have got there before
+		// us, in which case this userState will be discarded
+		state = &userState{
+			userID:              userID,
+			limits:              us.limits,
+			fpToSeries:          newSeriesMap(),
+			fpLocker:            newFingerprintLocker(16 * 1024),
+			index:               index.New(),
+			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
+			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
+			seriesInMetric:      seriesInMetric,
+
+			memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
+			memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
+		}
+		state.mapper = newFPMapper(state.fpToSeries)
+		stored, ok := us.states.LoadOrStore(userID, state)
+		if !ok {
+			memUsers.Inc()
+		}
+		state = stored.(*userState)
+>>>>>>> upstream/master
 	}
 
 	fp, series, err := state.getSeries(labels, record)
@@ -204,36 +242,39 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	// as this should happen rarely (all samples from one push are added
 	// serially), and the overshoot in allowed series would be minimal.
 	if u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
+		u.fpLocker.Unlock(fp)
+		validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, u.userID).Inc()
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
 
-	metricName, err := extract.MetricNameFromLabelPairs(metric)
+	metricName, err := extract.MetricNameFromLabelAdapters(metric)
 	if err != nil {
 		return nil, err
 	}
 
 	if !u.canAddSeriesFor(string(metricName)) {
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
+		u.fpLocker.Unlock(fp)
+		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, u.userID).Inc()
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}
 
-	util.Event().Log("msg", "new series", "userID", u.userID, "fp", fp, "series", metric)
 	u.memSeriesCreatedTotal.Inc()
 	memSeries.Inc()
+
 
 	record.Labels = append(record.Labels, Labels{
 		Fingerprint: int64(fp),
 		Labels:      metric,
 	})
 
-	series := newMemorySeries(metric)
+	labels := u.index.Add(metric, fp)
+	series = newMemorySeries(labels)
 	u.fpToSeries.put(fp, series)
-	u.index.add(metric, fp)
-
 	return series, nil
 }
 
 func (u *userState) canAddSeriesFor(metric string) bool {
-	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
+	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
@@ -244,19 +285,18 @@ func (u *userState) canAddSeriesFor(metric string) bool {
 	return true
 }
 
-func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
+func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 	u.fpToSeries.del(fp)
-	u.index.delete(metric, fp)
+	u.index.Delete(labels.Labels(metric), fp)
 
-	metricNameB, err := extract.MetricNameFromLabelPairs(metric)
-	if err != nil {
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
 		// Series without a metric name should never be able to make it into
 		// the ingester's memory storage.
-		panic(err)
+		panic("No metric name label")
 	}
-	metricName := string(metricNameB)
 
-	shard := &u.seriesInMetric[hashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
+	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metricName))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
@@ -269,18 +309,37 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 	memSeries.Dec()
 }
 
-// forSeriesMatching passes all series matching the given matchers to the provided callback.
-// Deals with locking and the quirks of zero-length matcher values.
-func (u *userState) forSeriesMatching(allMatchers []*labels.Matcher, callback func(model.Fingerprint, *memorySeries) error) error {
+// forSeriesMatching passes all series matching the given matchers to the
+// provided callback. Deals with locking and the quirks of zero-length matcher
+// values. There are 2 callbacks:
+// - The `add` callback is called for each series while the lock is held, and
+//   is intend to be used by the caller to build a batch.
+// - The `send` callback is called at certain intervals specified by batchSize
+//   with no locks held, and is intended to be used by the caller to send the
+//   built batches.
+func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher,
+	add func(context.Context, model.Fingerprint, *memorySeries) error,
+	send func(context.Context) error, batchSize int,
+) error {
+	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
+	defer log.Finish()
+
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
-	fps := u.index.lookup(matchers)
+	fps := u.index.Lookup(matchers)
 	if len(fps) > u.limits.MaxSeriesPerQuery(u.userID) {
 		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
 	}
 
-	// fps is sorted, lock them in order to prevent deadlocks
+	level.Debug(log).Log("series", len(fps))
+
+	// We only hold one FP lock at once here, so no opportunity to deadlock.
+	sent := 0
 outer:
 	for _, fp := range fps {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		u.fpLocker.Lock(fp)
 		series, ok := u.fpToSeries.get(fp)
 		if !ok {
@@ -289,18 +348,28 @@ outer:
 		}
 
 		for _, filter := range filters {
-			if !filter.Matches(string(series.metric.valueForName([]byte(filter.Name)))) {
+			if !filter.Matches(series.metric.Get(filter.Name)) {
 				u.fpLocker.Unlock(fp)
 				continue outer
 			}
 		}
 
-		err := callback(fp, series)
+		err := add(ctx, fp, series)
 		u.fpLocker.Unlock(fp)
 		if err != nil {
 			return err
 		}
+
+		sent++
+		if batchSize > 0 && sent%batchSize == 0 && send != nil {
+			if err = send(ctx); err != nil {
+				return nil
+			}
+		}
 	}
 
+	if batchSize > 0 && sent%batchSize > 0 && send != nil {
+		return send(ctx)
+	}
 	return nil
 }

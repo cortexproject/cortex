@@ -9,7 +9,7 @@ data:
       scrape_interval: 30s # By default, scrape targets every 15 seconds.
 
     remote_write:
-      url: http://nginx.default.svc.cluster.local:80/api/prom/push
+      - url: http://nginx.default.svc.cluster.local:80/api/prom/push
 
     scrape_configs:
     - job_name: 'kubernetes-pods'

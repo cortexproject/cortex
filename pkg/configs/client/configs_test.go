@@ -1,16 +1,18 @@
 package client
 
 import (
-	"strings"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestJSONDecoding(t *testing.T) {
-	observed, err := configsFromJSON(strings.NewReader(`
-{
+var response = `{
   "configs": {
     "2": {
       "id": 1,
@@ -23,8 +25,18 @@ func TestJSONDecoding(t *testing.T) {
     }
   }
 }
-`))
+`
+
+func TestDoRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte(response))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	resp, err := doRequest(server.URL, 1*time.Second, 0)
 	assert.Nil(t, err)
+
 	expected := ConfigsResponse{Configs: map[string]configs.View{
 		"2": {
 			ID: 1,
@@ -38,5 +50,5 @@ func TestJSONDecoding(t *testing.T) {
 			},
 		},
 	}}
-	assert.Equal(t, &expected, observed)
+	assert.Equal(t, &expected, resp)
 }

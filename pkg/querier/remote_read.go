@@ -43,7 +43,11 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 					return
 				}
 
-				seriesSet, err := querier.Select(nil, matchers...)
+				params := &storage.SelectParams{
+					Start: int64(from),
+					End:   int64(to),
+				}
+				seriesSet, _, err := querier.Select(params, matchers...)
 				if err != nil {
 					errors <- err
 					return
@@ -96,7 +100,7 @@ func seriesSetToMatrix(s storage.SeriesSet) (model.Matrix, error) {
 			return nil, err
 		}
 		result = append(result, &model.SampleStream{
-			Metric: labelsToMetric(series.Labels()),
+			Metric: util.LabelsToMetric(series.Labels()),
 			Values: values,
 		})
 	}

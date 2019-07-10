@@ -11,12 +11,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NYTimes/gziphandler"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
@@ -48,12 +50,13 @@ var (
 
 // Config for a Frontend.
 type Config struct {
-	MaxOutstandingPerTenant int
-	MaxRetries              int
-	SplitQueriesByDay       bool
-	AlignQueriesWithStep    bool
-	CacheResults            bool
-	resultsCacheConfig
+	MaxOutstandingPerTenant int  `yaml:"max_outstanding_per_tenant"`
+	MaxRetries              int  `yaml:"max_retries"`
+	SplitQueriesByDay       bool `yaml:"split_queries_by_day"`
+	AlignQueriesWithStep    bool `yaml:"align_queries_with_step"`
+	CacheResults            bool `yaml:"cache_results"`
+	CompressResponses       bool `yaml:"compress_responses"`
+	ResultsCacheConfig      `yaml:"results_cache"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -63,7 +66,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
-	cfg.resultsCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
+	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -80,32 +84,21 @@ type Frontend struct {
 
 type request struct {
 	enqueueTime time.Time
-	context     context.Context
+	queueSpan   opentracing.Span
+	originalCtx context.Context
 
-	request  *httpgrpc.HTTPRequest
+	request  *ProcessRequest
 	err      chan error
-	response chan *httpgrpc.HTTPResponse
+	response chan *ProcessResponse
 }
 
 // New creates a new frontend.
-func New(cfg Config, log log.Logger) (*Frontend, error) {
+func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
 		queues: map[string]chan *request{},
 	}
-
-	// We need to do the opentracing at the leafs of the roundtrippers, as a
-	// single request could turn into multiple requests.
-	tracingRoundTripper := &nethttp.Transport{
-		RoundTripper: f,
-	}
-	var roundTripper http.RoundTripper = RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		req, ht := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
-		defer ht.Finish()
-
-		return tracingRoundTripper.RoundTrip(req)
-	})
 
 	// Stack up the pipeline of various query range middlewares.
 	queryRangeMiddleware := []queryRangeMiddleware{}
@@ -113,23 +106,25 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 		queryRangeMiddleware = append(queryRangeMiddleware, stepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware(limits))
 	}
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.resultsCacheConfig)
+		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.ResultsCacheConfig, limits)
 		if err != nil {
 			return nil, err
 		}
-		queryRangeMiddleware = append(queryRangeMiddleware, queryCacheMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, instrument("results_cache"), queryCacheMiddleware)
 	}
 
 	// Finally, if the user selected any query range middleware, stitch it in.
+	var roundTripper http.RoundTripper = f
 	if len(queryRangeMiddleware) > 0 {
 		roundTripper = &queryRangeRoundTripper{
 			next: roundTripper,
 			queryRangeMiddleware: merge(queryRangeMiddleware...).Wrap(&queryRangeTerminator{
 				next: roundTripper,
 			}),
+			limits: limits,
 		}
 	}
 	f.roundTripper = roundTripper
@@ -146,8 +141,15 @@ func (f *Frontend) Close() {
 	}
 }
 
-// ServeHTTP serves HTTP requests.
-func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// Handler for HTTP requests.
+func (f *Frontend) Handler() http.Handler {
+	if f.cfg.CompressResponses {
+		return gziphandler.GzipHandler(http.HandlerFunc(f.handle))
+	}
+	return http.HandlerFunc(f.handle)
+}
+
+func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	resp, err := f.roundTripper.RoundTrip(r)
 	if err != nil {
 		server.WriteError(w, err)
@@ -164,48 +166,79 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // RoundTrip implement http.Transport.
 func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
-	ctx := r.Context()
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	req, err := server.HTTPRequest(r)
 	if err != nil {
 		return nil, err
 	}
 
-	request := &request{
-		context: ctx,
+	resp, err := f.RoundTripGRPC(r.Context(), &ProcessRequest{
+		HttpRequest: req,
+	})
+	if err != nil {
+		return nil, err
+	}
 
-		request: req,
+	httpResp := &http.Response{
+		StatusCode: int(resp.HttpResponse.Code),
+		Body:       ioutil.NopCloser(bytes.NewReader(resp.HttpResponse.Body)),
+		Header:     http.Header{},
+	}
+	for _, h := range resp.HttpResponse.Headers {
+		httpResp.Header[h.Key] = h.Values
+	}
+	return httpResp, nil
+}
+
+type httpgrpcHeadersCarrier httpgrpc.HTTPRequest
+
+func (c *httpgrpcHeadersCarrier) Set(key, val string) {
+	c.Headers = append(c.Headers, &httpgrpc.Header{
+		Key:    key,
+		Values: []string{val},
+	})
+}
+
+// RoundTripGRPC round trips a proto (instread of a HTTP request).
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error) {
+	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
+	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+	if tracer != nil && span != nil {
+		carrier := (*httpgrpcHeadersCarrier)(req.HttpRequest)
+		tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
+	}
+
+	request := &request{
+		request:     req,
+		originalCtx: ctx,
 		// Buffer of 1 to ensure response can be written even if client has gone away.
 		err:      make(chan error, 1),
-		response: make(chan *httpgrpc.HTTPResponse, 1),
+		response: make(chan *ProcessResponse, 1),
 	}
 
 	var lastErr error
 	for tries := 0; tries < f.cfg.MaxRetries; tries++ {
-		if err := f.queueRequest(userID, request); err != nil {
+		if err := f.queueRequest(ctx, request); err != nil {
 			return nil, err
 		}
 
-		var resp *httpgrpc.HTTPResponse
+		var resp *ProcessResponse
 		select {
 		case <-ctx.Done():
-			// TODO propagate cancellation.
-			//request.Cancel()
 			return nil, errCanceled
 
 		case resp = <-request.response:
 		case lastErr = <-request.err:
-			resp, _ = httpgrpc.HTTPResponseFromError(lastErr)
+			httpResp, ok := httpgrpc.HTTPResponseFromError(lastErr)
+			if ok {
+				resp = &ProcessResponse{
+					HttpResponse: httpResp,
+				}
+			}
 		}
 
 		// Retry is we get a HTTP 500.
-		if resp != nil && resp.Code/100 == 5 {
-			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp)
-			lastErr = httpgrpc.ErrorFromHTTPResponse(resp)
+		if resp != nil && resp.HttpResponse.Code/100 == 5 {
+			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp.HttpResponse)
 			continue
 		}
 
@@ -217,15 +250,7 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 
 		retries.Observe(float64(tries))
 
-		httpResp := &http.Response{
-			StatusCode: int(resp.Code),
-			Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
-			Header:     http.Header{},
-		}
-		for _, h := range resp.Headers {
-			httpResp.Header[h.Key] = h.Values
-		}
-		return httpResp, nil
+		return resp, nil
 	}
 
 	if lastErr != nil {
@@ -237,13 +262,53 @@ func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
+	var (
+		sendChan = make(chan *ProcessRequest)
+		recvChan = make(chan *ProcessResponse, 1)
 
-	// If this request is canceled, ping the condition to unblock. This is done
-	// once, here (instead of in getNextRequest) as we expect calls to Process to
-	// process many requests.
+		// Need buffer of 2 so goroutines reading/writing to stream don't hang
+		// around when stream dies.
+		errChan = make(chan error, 2)
+	)
+
+	// If the stream from the querier is canceled, ping the condition to unblock.
+	// This is done once, here (instead of in getNextRequest) as we expect calls
+	// to Process to process many requests.
 	go func() {
 		<-server.Context().Done()
 		f.cond.Broadcast()
+	}()
+
+	// Use a pair of goroutines to read/write from the stream and send to channels,
+	// so we can use selects to also wait on the cancellation of the request context.
+	// These goroutines will error out when the stream returns.
+	go func() {
+		for {
+			var req *ProcessRequest
+			select {
+			case req = <-sendChan:
+			case <-server.Context().Done():
+				return
+			}
+
+			err := server.Send(req)
+			if err != nil {
+				errChan <- err
+				return
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			resp, err := server.Recv()
+			if err == nil {
+				recvChan <- resp
+			} else {
+				errChan <- err
+				return
+			}
+		}
 	}()
 
 	for {
@@ -252,27 +317,37 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
-		if err := server.Send(&ProcessRequest{
-			HttpRequest: request.request,
-		}); err != nil {
+		originalCtx := request.originalCtx
+
+		select {
+		case sendChan <- request.request:
+		case err := <-errChan:
 			request.err <- err
 			return err
+		case <-originalCtx.Done():
+			return originalCtx.Err()
 		}
 
-		response, err := server.Recv()
-		if err != nil {
+		select {
+		case resp := <-recvChan:
+			request.response <- resp
+		case err := <-errChan:
 			request.err <- err
 			return err
+		case <-originalCtx.Done():
+			return originalCtx.Err()
 		}
-
-		request.response <- response.HttpResponse
 	}
 }
 
-func (f *Frontend) queueRequest(userID string, req *request) error {
+func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
 	req.enqueueTime = time.Now()
-	_, ctx := opentracing.StartSpanFromContext(req.context, "queued")
-	req.context = ctx
+	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
@@ -324,9 +399,7 @@ func (f *Frontend) getNextRequest(ctx context.Context) (*request, error) {
 
 		queueDuration.Observe(time.Now().Sub(request.enqueueTime).Seconds())
 		queueLength.Add(-1)
-
-		sp := opentracing.SpanFromContext(request.context)
-		sp.Finish()
+		request.queueSpan.Finish()
 
 		return request, nil
 	}

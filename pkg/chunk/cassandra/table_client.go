@@ -28,7 +28,7 @@ func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) 
 }
 
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
-	md, err := c.session.KeyspaceMetadata(c.cfg.keyspace)
+	md, err := c.session.KeyspaceMetadata(c.cfg.Keyspace)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -47,6 +47,12 @@ func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) err
 			value blob,
 			PRIMARY KEY (hash, range)
 		)`, desc.Name)).WithContext(ctx).Exec()
+	return errors.WithStack(err)
+}
+
+func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
+	err := c.session.Query(fmt.Sprintf(`
+		DROP TABLE IF EXISTS %s;`, name)).WithContext(ctx).Exec()
 	return errors.WithStack(err)
 }
 

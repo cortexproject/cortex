@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -57,6 +58,8 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 		// be used.
 		{"get_rules", "GET", "/api/prom/configs/rules", a.getConfig},
 		{"set_rules", "POST", "/api/prom/configs/rules", a.setConfig},
+		{"get_templates", "GET", "/api/prom/configs/templates", a.getConfig},
+		{"set_templates", "POST", "/api/prom/configs/templates", a.setConfig},
 		{"get_alertmanager_config", "GET", "/api/prom/configs/alertmanager", a.getConfig},
 		{"set_alertmanager_config", "POST", "/api/prom/configs/alertmanager", a.setConfig},
 		{"validate_alertmanager_config", "POST", "/api/prom/configs/alertmanager/validate", a.validateAlertmanagerConfig},
@@ -79,7 +82,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := util.WithContext(r.Context(), util.Logger)
 
-	cfg, err := a.db.GetConfig(userID)
+	cfg, err := a.db.GetConfig(r.Context(), userID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "No configuration", http.StatusNotFound)
 		return
@@ -124,7 +127,12 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return
 	}
-	if err := a.db.SetConfig(userID, cfg); err != nil {
+	if err := validateTemplateFiles(cfg); err != nil {
+		level.Error(logger).Log("msg", "invalid templates", "err", err)
+		http.Error(w, fmt.Sprintf("Invalid templates: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := a.db.SetConfig(r.Context(), userID, cfg); err != nil {
 		// XXX: Untested
 		level.Error(logger).Log("msg", "error storing config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -162,10 +170,6 @@ func validateAlertmanagerConfig(cfg string) error {
 		return err
 	}
 
-	if len(amCfg.Templates) != 0 {
-		return fmt.Errorf("template files are not supported in Cortex yet")
-	}
-
 	for _, recv := range amCfg.Receivers {
 		if len(recv.EmailConfigs) != 0 {
 			return fmt.Errorf("email notifications are not supported in Cortex yet")
@@ -180,6 +184,16 @@ func validateRulesFiles(c configs.Config) error {
 	return err
 }
 
+func validateTemplateFiles(c configs.Config) error {
+	for fn, content := range c.TemplateFiles {
+		if _, err := template.New(fn).Parse(content); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // ConfigsView renders multiple configurations, mapping userID to configs.View.
 // Exposed only for tests.
 type ConfigsView struct {
@@ -192,7 +206,7 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 	logger := util.WithContext(r.Context(), util.Logger)
 	rawSince := r.FormValue("since")
 	if rawSince == "" {
-		cfgs, cfgErr = a.db.GetAllConfigs()
+		cfgs, cfgErr = a.db.GetAllConfigs(r.Context())
 	} else {
 		since, err := strconv.ParseUint(rawSince, 10, 0)
 		if err != nil {
@@ -200,7 +214,7 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, cfgErr = a.db.GetConfigs(configs.ID(since))
+		cfgs, cfgErr = a.db.GetConfigs(r.Context(), configs.ID(since))
 	}
 
 	if cfgErr != nil {
@@ -227,7 +241,7 @@ func (a *API) deactivateConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := util.WithContext(r.Context(), util.Logger)
 
-	if err := a.db.DeactivateConfig(userID); err != nil {
+	if err := a.db.DeactivateConfig(r.Context(), userID); err != nil {
 		if err == sql.ErrNoRows {
 			level.Info(logger).Log("msg", "deactivate config - no configuration", "userID", userID)
 			http.Error(w, "No configuration", http.StatusNotFound)
@@ -249,7 +263,7 @@ func (a *API) restoreConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := util.WithContext(r.Context(), util.Logger)
 
-	if err := a.db.RestoreConfig(userID); err != nil {
+	if err := a.db.RestoreConfig(r.Context(), userID); err != nil {
 		if err == sql.ErrNoRows {
 			level.Info(logger).Log("msg", "restore config - no configuration", "userID", userID)
 			http.Error(w, "No configuration", http.StatusNotFound)

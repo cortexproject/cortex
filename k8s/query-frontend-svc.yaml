@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: query-frontend
+spec:
+  # clusterIP: None gives a "headless" service so DNS returns all endpoints.
+  clusterIP: None
+  ports:
+    - port: 9095
+      name: grcp
+    - port: 80
+      name: http
+  selector:
+    name: query-frontend

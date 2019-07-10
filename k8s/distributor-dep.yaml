@@ -12,9 +12,10 @@ spec:
     spec:
       containers:
       - name: distributor
-        image: quay.io/cortexproject/distributor
+        image: quay.io/cortexproject/cortex
         imagePullPolicy: IfNotPresent
         args:
+        - -target=distributor
         - -log.level=debug
         - -server.http-listen-port=80
         - -consul.hostname=consul.default.svc.cluster.local:8500

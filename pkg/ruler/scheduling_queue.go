@@ -6,19 +6,17 @@ import (
 
 	"github.com/jonboulle/clockwork"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
-	queueLength = prometheus.NewGauge(prometheus.GaugeOpts{
+	itemEvaluationLatency = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
-		Name:      "rules_queue_length",
-		Help:      "The length of the rules queue.",
+		Name:      "scheduling_queue_item_latency",
+		Help:      "Difference between the items scheduled evaluation time and actual evaluation time",
+		Buckets:   prometheus.DefBuckets,
 	})
 )
-
-func init() {
-	prometheus.MustRegister(queueLength)
-}
 
 // ScheduledItem is an item in a queue of scheduled items.
 type ScheduledItem interface {
@@ -71,12 +69,11 @@ func (q *queueState) Enqueue(op ScheduledItem) {
 	} else {
 		heap.Push(q, op)
 	}
-	queueLength.Set(float64(len(q.items)))
 }
 
 func (q *queueState) Dequeue() ScheduledItem {
 	item := heap.Pop(q).(ScheduledItem)
-	queueLength.Set(float64(len(q.items)))
+	itemEvaluationLatency.Observe(time.Now().Sub(item.Scheduled()).Seconds())
 	return item
 }
 
@@ -124,7 +121,7 @@ func (sq *SchedulingQueue) run() {
 		if q.Len() == 0 {
 			next, open := <-sq.add
 
-			// Iff sq.add is closed (and there is nothing on the queue),
+			// If sq.add is closed (and there is nothing on the queue),
 			// we can close sq.next and stop this goroutine
 			if !open {
 				close(sq.next)

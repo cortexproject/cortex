@@ -20,15 +20,15 @@ import (
 // Query multiple ingesters and returns a Matrix of samples.
 func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	var matrix model.Matrix
-	err := instrument.TimeRequestHistogram(ctx, "Distributor.Query", queryDuration, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "Distributor.Query", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
 		if err != nil {
-			return promql.ErrStorage(err)
+			return promql.ErrStorage{Err: err}
 		}
 
 		matrix, err = d.queryIngesters(ctx, replicationSet, req)
 		if err != nil {
-			return promql.ErrStorage(err)
+			return promql.ErrStorage{Err: err}
 		}
 		return nil
 	})
@@ -38,15 +38,15 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 // QueryStream multiple ingesters via the streaming interface and returns big ol' set of chunks.
 func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error) {
 	var result []client.TimeSeriesChunk
-	err := instrument.TimeRequestHistogram(ctx, "Distributor.QueryStream", queryDuration, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		replicationSet, req, err := d.queryPrep(ctx, from, to, matchers...)
 		if err != nil {
-			return promql.ErrStorage(err)
+			return promql.ErrStorage{Err: err}
 		}
 
 		result, err = d.queryIngesterStream(ctx, replicationSet, req)
 		if err != nil {
-			return promql.ErrStorage(err)
+			return promql.ErrStorage{Err: err}
 		}
 		return nil
 	})
@@ -68,7 +68,7 @@ func (d *Distributor) queryPrep(ctx context.Context, from, to model.Time, matche
 	// Get ingesters by metricName if one exists, otherwise get all ingesters
 	metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
 	if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
-		replicationSet, err = d.ring.Get(shardByMetricName(userID, []byte(metricNameMatcher.Value)), ring.Read)
+		replicationSet, err = d.ring.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read)
 	} else {
 		replicationSet, err = d.ring.GetAll()
 	}

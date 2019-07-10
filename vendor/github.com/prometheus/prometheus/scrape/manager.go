@@ -14,15 +14,22 @@
 package scrape
 
 import (
+	"encoding"
 	"fmt"
+	"hash/fnv"
+	"net"
+	"os"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -33,13 +40,16 @@ type Appendable interface {
 
 // NewManager is the Manager constructor
 func NewManager(logger log.Logger, app Appendable) *Manager {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
 	return &Manager{
 		append:        app,
 		logger:        logger,
 		scrapeConfigs: make(map[string]*config.ScrapeConfig),
 		scrapePools:   make(map[string]*scrapePool),
 		graceShut:     make(chan struct{}),
-		targetsAll:    make(map[string][]*Target),
+		triggerReload: make(chan struct{}, 1),
 	}
 }
 
@@ -50,26 +60,96 @@ type Manager struct {
 	append    Appendable
 	graceShut chan struct{}
 
-	mtxTargets     sync.Mutex // Guards the fields below.
-	targetsActive  []*Target
-	targetsDropped []*Target
-	targetsAll     map[string][]*Target
-
+	jitterSeed    uint64     // Global jitterSeed seed is used to spread scrape workload across HA setup.
 	mtxScrape     sync.Mutex // Guards the fields below.
 	scrapeConfigs map[string]*config.ScrapeConfig
 	scrapePools   map[string]*scrapePool
+	targetSets    map[string][]*targetgroup.Group
+
+	triggerReload chan struct{}
 }
 
-// Run starts background processing to handle target updates and reload the scraping loops.
+// Run receives and saves target set updates and triggers the scraping loops reloading.
+// Reloading happens in the background so that it doesn't block receiving targets updates.
 func (m *Manager) Run(tsets <-chan map[string][]*targetgroup.Group) error {
+	go m.reloader()
 	for {
 		select {
 		case ts := <-tsets:
-			m.reload(ts)
+			m.updateTsets(ts)
+
+			select {
+			case m.triggerReload <- struct{}{}:
+			default:
+			}
+
 		case <-m.graceShut:
 			return nil
 		}
 	}
+}
+
+func (m *Manager) reloader() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-m.graceShut:
+			return
+		case <-ticker.C:
+			select {
+			case <-m.triggerReload:
+				m.reload()
+			case <-m.graceShut:
+				return
+			}
+		}
+	}
+}
+
+func (m *Manager) reload() {
+	m.mtxScrape.Lock()
+	var wg sync.WaitGroup
+	for setName, groups := range m.targetSets {
+		if _, ok := m.scrapePools[setName]; !ok {
+			scrapeConfig, ok := m.scrapeConfigs[setName]
+			if !ok {
+				level.Error(m.logger).Log("msg", "error reloading target set", "err", "invalid config id:"+setName)
+				continue
+			}
+			sp, err := newScrapePool(scrapeConfig, m.append, m.jitterSeed, log.With(m.logger, "scrape_pool", setName))
+			if err != nil {
+				level.Error(m.logger).Log("msg", "error creating new scrape pool", "err", err, "scrape_pool", setName)
+				continue
+			}
+			m.scrapePools[setName] = sp
+		}
+
+		wg.Add(1)
+		// Run the sync in parallel as these take a while and at high load can't catch up.
+		go func(sp *scrapePool, groups []*targetgroup.Group) {
+			sp.Sync(groups)
+			wg.Done()
+		}(m.scrapePools[setName], groups)
+
+	}
+	m.mtxScrape.Unlock()
+	wg.Wait()
+}
+
+// setJitterSeed calculates a global jitterSeed per server relying on extra label set.
+func (m *Manager) setJitterSeed(labels labels.Labels) error {
+	h := fnv.New64a()
+	hostname, err := getFqdn()
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(h, "%s%s", hostname, labels.String()); err != nil {
+		return err
+	}
+	m.jitterSeed = h.Sum64()
+	return nil
 }
 
 // Stop cancels all running scrape pools and blocks until all have exited.
@@ -83,6 +163,12 @@ func (m *Manager) Stop() {
 	close(m.graceShut)
 }
 
+func (m *Manager) updateTsets(tsets map[string][]*targetgroup.Group) {
+	m.mtxScrape.Lock()
+	m.targetSets = tsets
+	m.mtxScrape.Unlock()
+}
+
 // ApplyConfig resets the manager's target providers and job configurations as defined by the new cfg.
 func (m *Manager) ApplyConfig(cfg *config.Config) error {
 	m.mtxScrape.Lock()
@@ -94,79 +180,107 @@ func (m *Manager) ApplyConfig(cfg *config.Config) error {
 	}
 	m.scrapeConfigs = c
 
-	// Cleanup and reload pool if config has changed.
+	if err := m.setJitterSeed(cfg.GlobalConfig.ExternalLabels); err != nil {
+		return err
+	}
+
+	// Cleanup and reload pool if the configuration has changed.
+	var failed bool
 	for name, sp := range m.scrapePools {
 		if cfg, ok := m.scrapeConfigs[name]; !ok {
 			sp.stop()
 			delete(m.scrapePools, name)
 		} else if !reflect.DeepEqual(sp.config, cfg) {
-			sp.reload(cfg)
+			err := sp.reload(cfg)
+			if err != nil {
+				level.Error(m.logger).Log("msg", "error reloading scrape pool", "err", err, "scrape_pool", name)
+				failed = true
+			}
 		}
 	}
 
+	if failed {
+		return errors.New("failed to apply the new configuration")
+	}
 	return nil
 }
 
 // TargetsAll returns active and dropped targets grouped by job_name.
 func (m *Manager) TargetsAll() map[string][]*Target {
-	m.mtxTargets.Lock()
-	defer m.mtxTargets.Unlock()
-	return m.targetsAll
-}
-
-// TargetsActive returns the active targets currently being scraped.
-func (m *Manager) TargetsActive() []*Target {
-	m.mtxTargets.Lock()
-	defer m.mtxTargets.Unlock()
-	return m.targetsActive
-}
-
-// TargetsDropped returns the dropped targets during relabelling.
-func (m *Manager) TargetsDropped() []*Target {
-	m.mtxTargets.Lock()
-	defer m.mtxTargets.Unlock()
-	return m.targetsDropped
-}
-
-func (m *Manager) targetsUpdate(active, dropped map[string][]*Target) {
-	m.mtxTargets.Lock()
-	defer m.mtxTargets.Unlock()
-
-	m.targetsAll = make(map[string][]*Target)
-	m.targetsActive = nil
-	m.targetsDropped = nil
-	for jobName, targets := range active {
-		m.targetsAll[jobName] = append(m.targetsAll[jobName], targets...)
-		m.targetsActive = append(m.targetsActive, targets...)
-
-	}
-	for jobName, targets := range dropped {
-		m.targetsAll[jobName] = append(m.targetsAll[jobName], targets...)
-		m.targetsDropped = append(m.targetsDropped, targets...)
-	}
-}
-
-func (m *Manager) reload(t map[string][]*targetgroup.Group) {
 	m.mtxScrape.Lock()
 	defer m.mtxScrape.Unlock()
 
-	tDropped := make(map[string][]*Target)
-	tActive := make(map[string][]*Target)
+	targets := make(map[string][]*Target, len(m.scrapePools))
+	for tset, sp := range m.scrapePools {
+		targets[tset] = append(sp.ActiveTargets(), sp.DroppedTargets()...)
 
-	for tsetName, tgroup := range t {
-		var sp *scrapePool
-		if existing, ok := m.scrapePools[tsetName]; !ok {
-			scrapeConfig, ok := m.scrapeConfigs[tsetName]
-			if !ok {
-				level.Error(m.logger).Log("msg", "error reloading target set", "err", fmt.Sprintf("invalid config id:%v", tsetName))
-				continue
-			}
-			sp = newScrapePool(scrapeConfig, m.append, log.With(m.logger, "scrape_pool", tsetName))
-			m.scrapePools[tsetName] = sp
-		} else {
-			sp = existing
-		}
-		tActive[tsetName], tDropped[tsetName] = sp.Sync(tgroup)
 	}
-	m.targetsUpdate(tActive, tDropped)
+	return targets
+}
+
+// TargetsActive returns the active targets currently being scraped.
+func (m *Manager) TargetsActive() map[string][]*Target {
+	m.mtxScrape.Lock()
+	defer m.mtxScrape.Unlock()
+
+	targets := make(map[string][]*Target, len(m.scrapePools))
+	for tset, sp := range m.scrapePools {
+		targets[tset] = sp.ActiveTargets()
+	}
+	return targets
+}
+
+// TargetsDropped returns the dropped targets during relabelling.
+func (m *Manager) TargetsDropped() map[string][]*Target {
+	m.mtxScrape.Lock()
+	defer m.mtxScrape.Unlock()
+
+	targets := make(map[string][]*Target, len(m.scrapePools))
+	for tset, sp := range m.scrapePools {
+		targets[tset] = sp.DroppedTargets()
+	}
+	return targets
+}
+
+// getFqdn returns a FQDN if it's possible, otherwise falls back to hostname.
+func getFqdn() (string, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		// Return the system hostname if we can't look up the IP address.
+		return hostname, nil
+	}
+
+	lookup := func(ipStr encoding.TextMarshaler) (string, error) {
+		ip, err := ipStr.MarshalText()
+		if err != nil {
+			return "", err
+		}
+		hosts, err := net.LookupAddr(string(ip))
+		if err != nil || len(hosts) == 0 {
+			return "", err
+		}
+		return hosts[0], nil
+	}
+
+	for _, addr := range ips {
+		if ip := addr.To4(); ip != nil {
+			if fqdn, err := lookup(ip); err == nil {
+				return fqdn, nil
+			}
+
+		}
+
+		if ip := addr.To16(); ip != nil {
+			if fqdn, err := lookup(ip); err == nil {
+				return fqdn, nil
+			}
+
+		}
+	}
+	return hostname, nil
 }

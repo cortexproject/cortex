@@ -73,21 +73,23 @@ func TestReplicationStrategy(t *testing.T) {
 			ExpectedError: "at least 3 live ingesters required, could only find 2",
 		},
 	} {
-		ingesters := []*IngesterDesc{}
+		ingesters := []IngesterDesc{}
 		for i := 0; i < tc.LiveIngesters; i++ {
-			ingesters = append(ingesters, &IngesterDesc{
+			ingesters = append(ingesters, IngesterDesc{
 				Timestamp: time.Now().Unix(),
 			})
 		}
 		for i := 0; i < tc.DeadIngesters; i++ {
-			ingesters = append(ingesters, &IngesterDesc{})
+			ingesters = append(ingesters, IngesterDesc{})
 		}
-
+		codec := ProtoCodec{Factory: ProtoDescFactory}
 		r, err := New(Config{
-			Mock:              NewInMemoryKVClient(),
+			KVStore: KVConfig{
+				Mock: NewInMemoryKVClient(codec),
+			},
 			HeartbeatTimeout:  100 * time.Second,
 			ReplicationFactor: tc.RF,
-		})
+		}, "ingester")
 		require.NoError(t, err)
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {

@@ -12,9 +12,10 @@ spec:
     spec:
       containers:
       - name: alertmanager
-        image: quay.io/cortexproject/alertmanager
+        image: quay.io/cortexproject/cortex
         imagePullPolicy: IfNotPresent
         args:
+        - -target=alertmanager
         - -log.level=debug
         - -server.http-listen-port=80
         - -alertmanager.configs.url=http://configs.default.svc.cluster.local:80

@@ -28,3 +28,11 @@ func BenchmarkChunkQueryable(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkChunkQueryableFromTar(b *testing.B) {
+	query, from, through, step, store := getTarDataFromEnv(b)
+	b.Run(fmt.Sprintf("query=%s,from=%d,to=%d,step=%f", query, from.Unix(), through.Unix(), step.Seconds()), func(b *testing.B) {
+		b.ResetTimer()
+		runRangeQuery(b, query, from, through, step, store)
+	})
+}

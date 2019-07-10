@@ -3,7 +3,7 @@ version: 2
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: cortexproject/build-image:switch-imports-f7f4e51d7
+    - image: cortexproject/build-image:1370-pin-protoc-7ae297930
   working_directory: /go/src/github.com/cortexproject/cortex
 
 workflows:
@@ -34,7 +34,10 @@ jobs:
         command: make BUILD_IN_CONTAINER=false lint
     - run:
         name: Check vendor directory is consistent.
-        command: make BUILD_IN_CONTAINER=false dep-check
+        command: make BUILD_IN_CONTAINER=false mod-check
+    - run:
+        name: Check protos are consistent.
+        command: make BUILD_IN_CONTAINER=false check-protos
 
   test:
     <<: *defaults
@@ -46,7 +49,7 @@ jobs:
 
   integration:
     docker:
-    - image: cortexproject/build-image:switch-imports-f7f4e51d7
+    - image: cortexproject/build-image:1370-pin-protoc-7ae297930
     - image: circleci/postgres:9.6.2-alpine
       environment:
         POSTGRES_DB: configs_test
@@ -56,7 +59,7 @@ jobs:
     - checkout
     - run:
         name: Integration Test
-        command: MIGRATIONS_DIR=$(pwd)/cmd/configs/migrations make BUILD_IN_CONTAINER=false configs-integration-test
+        command: MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IN_CONTAINER=false configs-integration-test
 
   build:
     <<: *defaults
@@ -78,6 +81,15 @@ jobs:
         command: |
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false
+
+    - store_artifacts:
+        path: pkg/querier/frontend/frontend.pb.go
+    - store_artifacts:
+        path: pkg/chunk/storage/caching_index_client.pb.go
+    - store_artifacts:
+        path: pkg/ring/ring.pb.go
+    - store_artifacts:
+        path: pkg/ingester/client/cortex.pb.go
 
     - run:
         name: Save Images

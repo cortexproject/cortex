@@ -5,27 +5,30 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var dummyResponse = &apiResponse{
+var dummyResponse = &APIResponse{
 	Status: statusSuccess,
-	Data: queryRangeResponse{
-		ResultType: model.ValMatrix,
-		Result: model.Matrix{
-			&model.SampleStream{
-				Metric: model.Metric{
-					"foo": "bar",
+	Data: QueryRangeResponse{
+		ResultType: matrix,
+		Result: []SampleStream{
+			{
+				Labels: []client.LabelAdapter{
+					{Name: "foo", Value: "bar"},
 				},
-				Values: []model.SamplePair{
+				Samples: []client.Sample{
 					{
-						Timestamp: 60,
-						Value:     60,
+						TimestampMs: 60,
+						Value:       60,
 					},
 				},
 			},
@@ -33,33 +36,33 @@ var dummyResponse = &apiResponse{
 	},
 }
 
-func mkAPIResponse(start, end, step int64) *apiResponse {
-	samples := []model.SamplePair{}
+func mkAPIResponse(start, end, step int64) *APIResponse {
+	samples := []client.Sample{}
 	for i := start; i <= end; i += step {
-		samples = append(samples, model.SamplePair{
-			Timestamp: model.Time(i),
-			Value:     model.SampleValue(float64(i)),
+		samples = append(samples, client.Sample{
+			TimestampMs: int64(i),
+			Value:       float64(i),
 		})
 	}
 
-	return &apiResponse{
+	return &APIResponse{
 		Status: statusSuccess,
-		Data: queryRangeResponse{
-			ResultType: model.ValMatrix,
-			Result: model.Matrix{
-				&model.SampleStream{
-					Metric: model.Metric{
-						"foo": "bar",
+		Data: QueryRangeResponse{
+			ResultType: matrix,
+			Result: []SampleStream{
+				{
+					Labels: []client.LabelAdapter{
+						{Name: "foo", Value: "bar"},
 					},
-					Values: samples,
+					Samples: samples,
 				},
 			},
 		},
 	}
 }
 
-func mkExtent(start, end int64) extent {
-	return extent{
+func mkExtent(start, end int64) Extent {
+	return Extent{
 		Start:    start,
 		End:      end,
 		Response: mkAPIResponse(start, end, 10),
@@ -68,78 +71,78 @@ func mkExtent(start, end int64) extent {
 
 func TestPartiton(t *testing.T) {
 	for i, tc := range []struct {
-		input                  *queryRangeRequest
-		prevCachedResponse     []extent
-		expectedRequests       []*queryRangeRequest
-		expectedCachedResponse []*apiResponse
+		input                  *QueryRangeRequest
+		prevCachedResponse     []Extent
+		expectedRequests       []*QueryRangeRequest
+		expectedCachedResponse []*APIResponse
 	}{
 		// 1. Test a complete hit.
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   100,
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
 			},
-			prevCachedResponse: []extent{
+			prevCachedResponse: []Extent{
 				mkExtent(0, 100),
 			},
-			expectedCachedResponse: []*apiResponse{
+			expectedCachedResponse: []*APIResponse{
 				mkAPIResponse(0, 100, 10),
 			},
 		},
 
 		// Test with a complete miss.
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   100,
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
 			},
-			prevCachedResponse: []extent{
+			prevCachedResponse: []Extent{
 				mkExtent(110, 210),
 			},
-			expectedRequests: []*queryRangeRequest{{
-				start: 0,
-				end:   100,
+			expectedRequests: []*QueryRangeRequest{{
+				Start: 0,
+				End:   100,
 			}},
 			expectedCachedResponse: nil,
 		},
 
 		// Test a partial hit.
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   100,
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   100,
 			},
-			prevCachedResponse: []extent{
+			prevCachedResponse: []Extent{
 				mkExtent(50, 100),
 			},
-			expectedRequests: []*queryRangeRequest{
+			expectedRequests: []*QueryRangeRequest{
 				{
-					start: 0,
-					end:   50,
+					Start: 0,
+					End:   50,
 				},
 			},
-			expectedCachedResponse: []*apiResponse{
+			expectedCachedResponse: []*APIResponse{
 				mkAPIResponse(50, 100, 10),
 			},
 		},
 
 		// Test multiple partial hits.
 		{
-			input: &queryRangeRequest{
-				start: 100,
-				end:   200,
+			input: &QueryRangeRequest{
+				Start: 100,
+				End:   200,
 			},
-			prevCachedResponse: []extent{
+			prevCachedResponse: []Extent{
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
-			expectedRequests: []*queryRangeRequest{
+			expectedRequests: []*QueryRangeRequest{
 				{
-					start: 120,
-					end:   160,
+					Start: 120,
+					End:   160,
 				},
 			},
-			expectedCachedResponse: []*apiResponse{
+			expectedCachedResponse: []*APIResponse{
 				mkAPIResponse(100, 120, 10),
 				mkAPIResponse(160, 200, 10),
 			},
@@ -153,17 +156,27 @@ func TestPartiton(t *testing.T) {
 	}
 }
 
+func defaultOverrides(t *testing.T) *validation.Overrides {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides, err := validation.NewOverrides(limits)
+	require.NoError(t, err)
+	return overrides
+}
+
 func TestResultsCache(t *testing.T) {
 	calls := 0
 	rcm, err := newResultsCacheMiddleware(
-		resultsCacheConfig{
-			cacheConfig: cache.Config{
+		ResultsCacheConfig{
+			CacheConfig: cache.Config{
 				Cache: cache.NewMockCache(),
 			},
-		})
+		},
+		defaultOverrides(t),
+	)
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *queryRangeRequest) (*apiResponse, error) {
+	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, req *QueryRangeRequest) (*APIResponse, error) {
 		calls++
 		return parsedResponse, nil
 	}))
@@ -181,25 +194,25 @@ func TestResultsCache(t *testing.T) {
 
 	// Doing request with new end time should do one more query.
 	req := parsedRequest.copy()
-	req.end += 100
+	req.End += 100
 	resp, err = rc.Do(ctx, &req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
 }
 
 func TestResultsCacheRecent(t *testing.T) {
-	var cfg resultsCacheConfig
-	util.DefaultValues(&cfg)
-	cfg.cacheConfig.Cache = cache.NewMockCache()
-	rcm, err := newResultsCacheMiddleware(cfg)
+	var cfg ResultsCacheConfig
+	flagext.DefaultValues(&cfg)
+	cfg.CacheConfig.Cache = cache.NewMockCache()
+	rcm, err := newResultsCacheMiddleware(cfg, defaultOverrides(t))
 	require.NoError(t, err)
 
 	req := parsedRequest.copy()
-	req.end = int64(model.Now())
-	req.start = req.end - (60 * 1e3)
+	req.End = int64(model.Now())
+	req.Start = req.End - (60 * 1e3)
 
 	calls := 0
-	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, r *queryRangeRequest) (*apiResponse, error) {
+	rc := rcm.Wrap(queryRangeHandlerFunc(func(_ context.Context, r *QueryRangeRequest) (*APIResponse, error) {
 		calls++
 		assert.Equal(t, r, &req)
 		return parsedResponse, nil

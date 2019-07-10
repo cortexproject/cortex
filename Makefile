@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos
+.PHONY: all test clean images protos exes
 .DEFAULT_GOAL := all
 
 # Boiler plate for bulding Docker containers.
@@ -9,10 +9,11 @@ GIT_REVISION := $(shell git rev-parse HEAD)
 UPTODATE := .uptodate
 
 # Building Docker images is now automated. The convention is every directory
-# with a Dockerfile in it builds an image calls quay.io/weaveworks/<dirname>.
+# with a Dockerfile in it builds an image calls quay.io/cortexproject/<dirname>.
 # Dependencies (i.e. things that go in the image) still need to be explicitly
 # declared.
 %/$(UPTODATE): %/Dockerfile
+	@echo
 	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
 	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
 	touch $@
@@ -38,25 +39,26 @@ PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 # for every directory with main.go in it, in the ./cmd directory.
 MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
-GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
+GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -name '*.pb.go' -prune -o -type f -name '*.go' -print)
 define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS)
+$(1): $(dir $(1))/main.go $(GO_FILES) protos
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
-# Manually declared dependancies And what goes into each exe
+# Manually declared dependencies And what goes into each exe
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ingester/wal.pb.go: pkg/ingester/wal.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
-all: $(UPTODATE_FILES)
-test: $(PROTO_GOS)
-protos: $(PROTO_GOS)
-dep-check: protos
-configs-integration-test: $(PROTO_GOS)
+pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
+pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 
-# And now what goes into each image
+all: $(UPTODATE_FILES)
+test: protos
+mod-check: protos
+configs-integration-test: protos
+lint: protos
 build-image/$(UPTODATE): build-image/*
 
 # All the boiler plate for building golang follows:
@@ -70,7 +72,7 @@ RM := --rm
 # as it currently disallows TTY devices. This value needs to be overridden
 # in any custom cloudbuild.yaml files
 TTY := --tty
-GO_FLAGS := -ldflags "-extldflags \"-static\" -linkmode=external -s -w" -tags netgo -i
+GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
        echo "\nYour go standard library was built without the 'netgo' build tag."; \
@@ -82,10 +84,12 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) lint test shell dep-check: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) time docker run $(RM) $(TTY) -i \
+	@echo
+	@echo ">>>> Entering build container: $@"
+	@$(SUDO) time docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
@@ -95,14 +99,16 @@ configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
-	$(SUDO) docker run $(RM) $(TTY) -i \
+	@echo
+	@echo ">>>> Entering build container: $@"
+	@$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
-		-v $(shell pwd)/cmd/configs/migrations:/migrations \
-		-e MIGRATIONS_DIR=/migrations \
+		-v $(shell pwd)/cmd/cortex/migrations:/migrations \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
+		-e DB_ADDR=configs-db.cortex.local \
 		$(IMAGE_PREFIX)build-image $@; \
 	status=$$?; \
 	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
@@ -110,15 +116,23 @@ configs-integration-test: build-image/$(UPTODATE)
 
 else
 
+exes: $(EXES)
+
 $(EXES):
-	go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
+
+protos: $(PROTO_GOS)
 
 %.pb.go:
 	protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint:
-	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
+	./tools/lint -notestpackage -novet -ignorespelling queriers -ignorespelling Queriers .
+
+	# -stdmethods=false disables checks for non-standard signatures for methods with familiar names.
+	# This is needed because the Prometheus storage interface requires a non-standard Seek() method.
+	go vet -stdmethods=false ./pkg/...
 
 test:
 	./tools/test -netgo
@@ -127,17 +141,27 @@ shell:
 	bash
 
 configs-integration-test:
-	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
+	/bin/bash -c "go test -v -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
 
-dep-check:
-	dep check
+mod-check:
+	GO111MODULE=on go mod download
+	GO111MODULE=on go mod verify
+	GO111MODULE=on go mod tidy
+	GO111MODULE=on go mod vendor
+	@git diff --exit-code -- go.sum go.mod vendor/
+
+check-protos: clean-protos protos
+	@git diff --exit-code -- $(PROTO_GOS)
 
 endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
+	rm -rf $(UPTODATE_FILES) $(EXES) .cache
 	go clean ./...
+
+clean-protos:
+	rm -rf $(PROTO_GOS)
 
 save-images:
 	@mkdir -p images
@@ -151,5 +175,16 @@ load-images:
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
 			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+		fi \
+	done
+
+# Loads the built Docker images into the minikube environment, and tags them with
+# "latest" so the k8s manifests shipped with this code work.
+prime-minikube: save-images
+	eval $$(minikube docker-env) ; \
+	for image_name in $(IMAGE_NAMES); do \
+		if ! echo $$image_name | grep build; then \
+			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+			docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest ; \
 		fi \
 	done

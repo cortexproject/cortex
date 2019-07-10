@@ -3,15 +3,15 @@ package client
 import (
 	"flag"
 
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/mwitkow/go-grpc-middleware"
-	"github.com/opentracing/opentracing-go"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
 	"github.com/weaveworks/common/middleware"
 )
@@ -27,6 +27,7 @@ var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.Histogra
 type HealthAndIngesterClient interface {
 	IngesterClient
 	grpc_health_v1.HealthClient
+	Close() error
 }
 
 type closableHealthAndIngesterClient struct {
@@ -35,28 +36,22 @@ type closableHealthAndIngesterClient struct {
 	conn *grpc.ClientConn
 }
 
-// MakeIngesterClient makes a new IngesterClient
-func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
-	opts := []grpc.DialOption{
-		grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
+func instrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+	return []grpc.UnaryClientInterceptor{
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
 			cortex_middleware.PrometheusGRPCUnaryInstrumentation(ingesterClientRequestDuration),
-		)),
-		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
+		}, []grpc.StreamClientInterceptor{
 			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 			middleware.StreamClientUserHeaderInterceptor,
 			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
-		)),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize)),
-	}
-	if cfg.legacyCompressToIngester {
-		cfg.CompressToIngester = true
-	}
-	if cfg.CompressToIngester {
-		opts = append(opts, grpc.WithDefaultCallOptions(grpc.UseCompressor("gzip")))
-	}
+		}
+}
+
+// MakeIngesterClient makes a new IngesterClient
+func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
+	opts := []grpc.DialOption{grpc.WithInsecure()}
+	opts = append(opts, cfg.GRPCClientConfig.DialOption(instrumentation())...)
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err
@@ -74,16 +69,10 @@ func (c *closableHealthAndIngesterClient) Close() error {
 
 // Config is the configuration struct for the ingester client
 type Config struct {
-	MaxRecvMsgSize           int
-	CompressToIngester       bool
-	legacyCompressToIngester bool
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags registers configuration settings used by the ingester client config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	// We have seen 20MB returns from queries - add a bit of headroom
-	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
-	f.BoolVar(&cfg.CompressToIngester, "ingester.client.compress-to-ingester", false, "Compress data in calls to ingesters.")
-	// moved from distributor pkg, but flag prefix left as back compat fallback for existing users.
-	f.BoolVar(&cfg.legacyCompressToIngester, "distributor.compress-to-ingester", false, "Compress data in calls to ingesters. (DEPRECATED: use ingester.client.compress-to-ingester instead")
+	cfg.GRPCClientConfig.RegisterFlags("ingester.client", f)
 }

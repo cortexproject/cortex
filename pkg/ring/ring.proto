@@ -2,9 +2,14 @@ syntax = "proto3";
 
 package ring;
 
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
 message Desc {
-	map<string,IngesterDesc> ingesters = 1;
-	repeated TokenDesc tokens = 2;
+	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
+	repeated TokenDesc tokens = 2 [(gogoproto.nullable) = false];
 }
 
 message IngesterDesc {
@@ -13,6 +18,7 @@ message IngesterDesc {
 	string addr = 1;
 	int64 timestamp = 2;
 	IngesterState state = 3;
+	repeated uint32 tokens = 6;
 }
 
 message TokenDesc {

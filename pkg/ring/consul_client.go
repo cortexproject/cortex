@@ -102,6 +102,7 @@ func (c *consulClient) cas(ctx context.Context, key string, f CASCallback) error
 	)
 	for i := 0; i < retries; i++ {
 		options := &consul.QueryOptions{
+			AllowStale:        !c.cfg.ConsistentReads,
 			RequireConsistent: c.cfg.ConsistentReads,
 		}
 		kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
@@ -179,6 +180,7 @@ func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interfac
 	)
 	for backoff.Ongoing() {
 		queryOptions := &consul.QueryOptions{
+			AllowStale:        !c.cfg.ConsistentReads,
 			RequireConsistent: c.cfg.ConsistentReads,
 			WaitIndex:         index,
 			WaitTime:          longPollDuration,
@@ -264,6 +266,7 @@ func (c *consulClient) PutBytes(ctx context.Context, key string, buf []byte) err
 
 func (c *consulClient) Get(ctx context.Context, key string) (interface{}, error) {
 	options := &consul.QueryOptions{
+		AllowStale:        !c.cfg.ConsistentReads,
 		RequireConsistent: c.cfg.ConsistentReads,
 	}
 	kvp, _, err := c.kv.Get(key, options.WithContext(ctx))

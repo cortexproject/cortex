@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -55,24 +56,27 @@ var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
-	ConsulConfig
-	store             string
-	HeartbeatTimeout  time.Duration
-	ReplicationFactor int
-	Mock              KVClient
+	KVStore           KVConfig      `yaml:"kvstore,omitempty"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
+	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet
+// RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ConsulConfig.RegisterFlags(f)
+	cfg.RegisterFlagsWithPrefix("", f)
+}
 
-	f.StringVar(&cfg.store, "ring.store", "consul", "Backend storage to use for the ring (consul, inmemory).")
-	f.DurationVar(&cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
-	f.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.KVStore.RegisterFlagsWithPrefix(prefix, f)
+
+	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
+	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 }
 
 // Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
+	name     string
 	cfg      Config
 	KVClient KVClient
 	done     chan struct{}
@@ -81,58 +85,48 @@ type Ring struct {
 	mtx      sync.RWMutex
 	ringDesc *Desc
 
-	ingesterOwnershipDesc *prometheus.Desc
-	numIngestersDesc      *prometheus.Desc
-	totalTokensDesc       *prometheus.Desc
-	numTokensDesc         *prometheus.Desc
+	memberOwnershipDesc *prometheus.Desc
+	numMembersDesc      *prometheus.Desc
+	totalTokensDesc     *prometheus.Desc
+	numTokensDesc       *prometheus.Desc
 }
 
 // New creates a new Ring
-func New(cfg Config) (*Ring, error) {
+func New(cfg Config, name string) (*Ring, error) {
 	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
-
-	store := cfg.Mock
-	if store == nil {
-		var err error
-
-		switch cfg.store {
-		case "consul":
-			codec := ProtoCodec{Factory: ProtoDescFactory}
-			store, err = NewConsulClient(cfg.ConsulConfig, codec)
-		case "inmemory":
-			store = NewInMemoryKVClient()
-		}
-		if err != nil {
-			return nil, err
-		}
+	codec := ProtoCodec{Factory: ProtoDescFactory}
+	store, err := NewKVStore(cfg.KVStore, codec)
+	if err != nil {
+		return nil, err
 	}
 
 	r := &Ring{
+		name:     name,
 		cfg:      cfg,
 		KVClient: store,
 		done:     make(chan struct{}),
 		ringDesc: &Desc{},
-		ingesterOwnershipDesc: prometheus.NewDesc(
-			"cortex_ring_ingester_ownership_percent",
-			"The percent ownership of the ring by ingester",
-			[]string{"ingester"}, nil,
+		memberOwnershipDesc: prometheus.NewDesc(
+			"cortex_ring_member_ownership_percent",
+			"The percent ownership of the ring by member",
+			[]string{"member", "name"}, nil,
 		),
-		numIngestersDesc: prometheus.NewDesc(
-			"cortex_ring_ingesters",
-			"Number of ingesters in the ring",
-			[]string{"state"}, nil,
+		numMembersDesc: prometheus.NewDesc(
+			"cortex_ring_members",
+			"Number of members in the ring",
+			[]string{"state", "name"}, nil,
 		),
 		totalTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_total",
 			"Number of tokens in the ring",
-			nil, nil,
+			[]string{"name"}, nil,
 		),
 		numTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_owned",
-			"The number of tokens in the ring owned by the ingester",
-			[]string{"ingester"}, nil,
+			"The number of tokens in the ring owned by the member",
+			[]string{"member", "name"}, nil,
 		),
 	}
 	var ctx context.Context
@@ -156,11 +150,32 @@ func (r *Ring) loop(ctx context.Context) {
 		}
 
 		ringDesc := value.(*Desc)
+		ringDesc.Tokens = migrateRing(ringDesc)
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = ringDesc
 		return true
 	})
+}
+
+// migrateRing will denormalise the ring's tokens if stored in normal form.
+func migrateRing(desc *Desc) []TokenDesc {
+	numTokens := len(desc.Tokens)
+	for _, ing := range desc.Ingesters {
+		numTokens += len(ing.Tokens)
+	}
+	tokens := make([]TokenDesc, len(desc.Tokens), numTokens)
+	copy(tokens, desc.Tokens)
+	for key, ing := range desc.Ingesters {
+		for _, token := range ing.Tokens {
+			tokens = append(tokens, TokenDesc{
+				Token:    token,
+				Ingester: key,
+			})
+		}
+	}
+	sort.Sort(ByToken(tokens))
+	return tokens
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.
@@ -194,7 +209,7 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 
 	var (
 		n             = r.cfg.ReplicationFactor
-		ingesters     = make([]*IngesterDesc, 0, n)
+		ingesters     = make([]IngesterDesc, 0, n)
 		distinctHosts = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0
@@ -247,11 +262,11 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	ingesters := make([]*IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	maxErrors := r.cfg.ReplicationFactor / 2
 
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester, Read) {
+		if !r.IsHealthy(&ingester, Read) {
 			maxErrors--
 			continue
 		}
@@ -280,8 +295,8 @@ func (r *Ring) search(key uint32) int {
 
 // Describe implements prometheus.Collector.
 func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
-	ch <- r.ingesterOwnershipDesc
-	ch <- r.numIngestersDesc
+	ch <- r.memberOwnershipDesc
+	ch <- r.numMembersDesc
 	ch <- r.totalTokensDesc
 	ch <- r.numTokensDesc
 }
@@ -320,16 +335,18 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	numTokens, ownedRange := countTokens(r.ringDesc)
 	for id, totalOwned := range ownedRange {
 		ch <- prometheus.MustNewConstMetric(
-			r.ingesterOwnershipDesc,
+			r.memberOwnershipDesc,
 			prometheus.GaugeValue,
 			float64(totalOwned)/float64(math.MaxUint32),
 			id,
+			r.name,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			r.numTokensDesc,
 			prometheus.GaugeValue,
 			float64(numTokens[id]),
 			id,
+			r.name,
 		)
 	}
 
@@ -342,7 +359,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		JOINING.String(): 0,
 	}
 	for _, ingester := range r.ringDesc.Ingesters {
-		if !r.IsHealthy(ingester, Reporting) {
+		if !r.IsHealthy(&ingester, Reporting) {
 			byState[unhealthy]++
 		} else {
 			byState[ingester.State.String()]++
@@ -351,15 +368,17 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 
 	for state, count := range byState {
 		ch <- prometheus.MustNewConstMetric(
-			r.numIngestersDesc,
+			r.numMembersDesc,
 			prometheus.GaugeValue,
 			float64(count),
 			state,
+			r.name,
 		)
 	}
 	ch <- prometheus.MustNewConstMetric(
 		r.totalTokensDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringDesc.Tokens)),
+		r.name,
 	)
 }

@@ -40,6 +40,7 @@ func TestRoundTrip(t *testing.T) {
 		queryRangeMiddleware: queryRangeTerminator{
 			next: downstream,
 		},
+		limits: defaultOverrides(t),
 	}
 
 	for i, tc := range []struct {

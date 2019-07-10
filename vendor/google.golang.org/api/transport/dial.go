@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,19 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package transport supports network connections to HTTP and GRPC servers.
-// This package is not intended for use by end developers. Use the
-// google.golang.org/api/option package to configure API clients.
 package transport
 
 import (
+	"context"
 	"net/http"
 
-	"golang.org/x/net/context"
-	"golang.org/x/oauth2/google"
 	"google.golang.org/grpc"
 
-	"google.golang.org/api/internal"
 	"google.golang.org/api/option"
 	gtransport "google.golang.org/api/transport/grpc"
 	htransport "google.golang.org/api/transport/http"
@@ -48,14 +43,4 @@ func DialGRPC(ctx context.Context, opts ...option.ClientOption) (*grpc.ClientCon
 // The connection is configured with the given ClientOptions.
 func DialGRPCInsecure(ctx context.Context, opts ...option.ClientOption) (*grpc.ClientConn, error) {
 	return gtransport.DialInsecure(ctx, opts...)
-}
-
-// Creds constructs a google.DefaultCredentials from the information in the options,
-// or obtains the default credentials in the same way as google.FindDefaultCredentials.
-func Creds(ctx context.Context, opts ...option.ClientOption) (*google.DefaultCredentials, error) {
-	var ds internal.DialSettings
-	for _, opt := range opts {
-		opt.Apply(&ds)
-	}
-	return internal.Creds(ctx, &ds)
 }

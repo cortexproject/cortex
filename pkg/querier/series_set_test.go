@@ -31,10 +31,10 @@ func TestMatrixToSeriesSetSortsMetricLabels(t *testing.T) {
 		{
 			Metric: model.Metric{
 				model.MetricNameLabel: "testmetric",
-				"e": "f",
-				"a": "b",
-				"g": "h",
-				"c": "d",
+				"e":                   "f",
+				"a":                   "b",
+				"g":                   "h",
+				"c":                   "d",
 			},
 			Values: []model.SamplePair{{Timestamp: 0, Value: 0}},
 		},

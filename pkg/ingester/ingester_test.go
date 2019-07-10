@@ -21,9 +21,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 )
@@ -63,9 +63,9 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		return err
 	}
 	for _, chunk := range chunks {
-		for k, v := range chunk.Metric {
-			if v == "" {
-				return fmt.Errorf("Chunk has blank label %q", k)
+		for _, v := range chunk.Metric {
+			if v.Value == "" {
+				return fmt.Errorf("Chunk has blank label %q", v.Name)
 			}
 		}
 	}
@@ -93,7 +93,7 @@ func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matr
 		ss := model.SampleStream{
 			Metric: model.Metric{
 				model.MetricNameLabel: model.LabelValue(fmt.Sprintf("testmetric_%d", i)),
-				model.JobLabel:        "testjob",
+				model.JobLabel:        model.LabelValue(fmt.Sprintf("testjob%d", i%2)),
 			},
 			Values: make([]model.SamplePair, 0, samplesPerSeries),
 		}
@@ -124,11 +124,15 @@ func matrixToSamples(m model.Matrix) []model.Sample {
 }
 
 func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.MatchType, n, v string) (model.Matrix, *client.QueryRequest, error) {
+	return runTestQueryTimes(ctx, t, ing, ty, n, v, model.Earliest, model.Latest)
+}
+
+func runTestQueryTimes(ctx context.Context, t *testing.T, ing *Ingester, ty labels.MatchType, n, v string, start, end model.Time) (model.Matrix, *client.QueryRequest, error) {
 	matcher, err := labels.NewMatcher(ty, n, v)
 	if err != nil {
 		return nil, nil, err
 	}
-	req, err := client.ToQueryRequest(model.Earliest, model.Latest, []*labels.Matcher{matcher})
+	req, err := client.ToQueryRequest(start, end, []*labels.Matcher{matcher})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -156,6 +160,7 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries in
 		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID]), client.API))
 		require.NoError(t, err)
 	}
+
 	return userIDs, testData
 }
 
@@ -187,6 +192,31 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via chunk store.
 	ing.Shutdown()
 	store.checkData(t, userIDs, testData)
+}
+
+func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
+	_, ing := newDefaultTestStore(t)
+
+	userIDs, _ := pushTestSamples(t, ing, 10, 1000)
+
+	// Read samples back via ingester queries.
+	for _, userID := range userIDs {
+		ctx := user.InjectOrgID(context.Background(), userID)
+		_, req, err := runTestQueryTimes(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+", model.Latest.Add(-15*time.Second), model.Latest)
+		require.NoError(t, err)
+
+		s := stream{
+			ctx: ctx,
+		}
+		err = ing.QueryStream(req, &s)
+		require.NoError(t, err)
+
+		// Nothing should be selected.
+		require.Equal(t, 0, len(s.responses))
+	}
+
+	// Read samples back via chunk store.
+	ing.Shutdown()
 }
 
 func TestIngesterIdleFlush(t *testing.T) {
@@ -244,7 +274,7 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	defer ing.Shutdown()
 
 	m := labelPairs{
-		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
+		{Name: model.MetricNameLabel, Value: "testmetric"},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
 	err := ing.append(ctx, m, 1, 0, client.API, &Record{})
@@ -275,9 +305,9 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 	defer ing.Shutdown()
 
 	lp := labelPairs{
-		{Name: []byte(model.MetricNameLabel), Value: []byte("testmetric")},
-		{Name: []byte("foo"), Value: []byte("")},
-		{Name: []byte("bar"), Value: []byte("")},
+		{Name: model.MetricNameLabel, Value: "testmetric"},
+		{Name: "foo", Value: ""},
+		{Name: "bar", Value: ""},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
 	err := ing.append(ctx, lp, 1, 0, client.API, &Record{})
@@ -445,8 +475,8 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 					Timeseries: []client.PreallocTimeseries{
 						{
 							TimeSeries: client.TimeSeries{
-								Labels: []client.LabelPair{
-									{Name: wire.Bytes("__name__"), Value: wire.Bytes(fmt.Sprintf("metric_%d", j))},
+								Labels: []client.LabelAdapter{
+									{Name: model.MetricNameLabel, Value: fmt.Sprintf("metric_%d", j)},
 								},
 								Samples: []client.Sample{
 									{TimestampMs: int64(j), Value: float64(j)},
@@ -475,13 +505,13 @@ func BenchmarkIngesterPush(b *testing.B) {
 	)
 
 	// Construct a set of realistic-looking samples, all with slightly different label sets
-	labels := chunk.BenchmarkMetric.Clone()
+	labels := util.LabelsToMetric(chunk.BenchmarkLabels).Clone()
 	ts := make([]client.PreallocTimeseries, 0, series)
 	for j := 0; j < series; j++ {
 		labels["cpu"] = model.LabelValue(fmt.Sprintf("cpu%02d", j))
 		ts = append(ts, client.PreallocTimeseries{
 			TimeSeries: client.TimeSeries{
-				Labels: client.ToLabelPairs(labels),
+				Labels: client.FromMetricsToLabelAdapters(labels),
 				Samples: []client.Sample{
 					{TimestampMs: 0, Value: float64(j)},
 				},

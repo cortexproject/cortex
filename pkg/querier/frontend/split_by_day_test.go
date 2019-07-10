@@ -20,9 +20,23 @@ func TestNextDayBoundary(t *testing.T) {
 	for i, tc := range []struct {
 		in, step, out int64
 	}{
+		// Smallest possible period is 1 millisecond
 		{0, 1, millisecondPerDay - 1},
+		// A more standard example
 		{0, 15 * seconds, millisecondPerDay - 15*seconds},
+		// Move start time forward 1 second; end time moves the same
 		{1 * seconds, 15 * seconds, millisecondPerDay - (15-1)*seconds},
+		// Move start time forward 14 seconds; end time moves the same
+		{14 * seconds, 15 * seconds, millisecondPerDay - (15-14)*seconds},
+		// Now some examples where the period does not divide evenly into a day:
+		// 1 day modulus 35 seconds = 20 seconds
+		{0, 35 * seconds, millisecondPerDay - 20*seconds},
+		// Move start time forward 1 second; end time moves the same
+		{1 * seconds, 35 * seconds, millisecondPerDay - (20-1)*seconds},
+		// If the end time lands exactly on midnight we stop one period before that
+		{20 * seconds, 35 * seconds, millisecondPerDay - 35*seconds},
+		// This example starts 35 seconds after the 5th one ends
+		{millisecondPerDay + 15*seconds, 35 * seconds, 2*millisecondPerDay - 5*seconds},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			require.Equal(t, tc.out, nextDayBoundary(tc.in, tc.step))
@@ -32,94 +46,95 @@ func TestNextDayBoundary(t *testing.T) {
 
 func TestSplitQuery(t *testing.T) {
 	for i, tc := range []struct {
-		input    *queryRangeRequest
-		expected []*queryRangeRequest
+		input    *QueryRangeRequest
+		expected []*QueryRangeRequest
 	}{
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   60 * 60 * seconds,
-				step:  15 * seconds,
-				query: "foo",
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   60 * 60 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
 			},
-			expected: []*queryRangeRequest{
+			expected: []*QueryRangeRequest{
 				{
-					start: 0,
-					end:   60 * 60 * seconds,
-					step:  15 * seconds,
-					query: "foo",
+					Start: 0,
+					End:   60 * 60 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 			},
 		},
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   24 * 3600 * seconds,
-				step:  15 * seconds,
-				query: "foo",
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   24 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
 			},
-			expected: []*queryRangeRequest{
+			expected: []*QueryRangeRequest{
 				{
-					start: 0,
-					end:   24 * 3600 * seconds,
-					step:  15 * seconds,
-					query: "foo",
+					Start: 0,
+					End:   24 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 			},
 		},
 		{
-			input: &queryRangeRequest{
-				start: 0,
-				end:   2 * 24 * 3600 * seconds,
-				step:  15 * seconds,
-				query: "foo",
+			input: &QueryRangeRequest{
+				Start: 0,
+				End:   2 * 24 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
 			},
-			expected: []*queryRangeRequest{
+			expected: []*QueryRangeRequest{
 				{
-					start: 0,
-					end:   (24 * 3600 * seconds) - (15 * seconds),
-					step:  15 * seconds,
-					query: "foo",
+					Start: 0,
+					End:   (24 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 				{
-					start: 24 * 3600 * seconds,
-					end:   2 * 24 * 3600 * seconds,
-					step:  15 * seconds,
-					query: "foo",
+					Start: 24 * 3600 * seconds,
+					End:   2 * 24 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 			},
 		},
 		{
-			input: &queryRangeRequest{
-				start: 3 * 3600 * seconds,
-				end:   3 * 24 * 3600 * seconds,
-				step:  15 * seconds,
-				query: "foo",
+			input: &QueryRangeRequest{
+				Start: 3 * 3600 * seconds,
+				End:   3 * 24 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
 			},
-			expected: []*queryRangeRequest{
+			expected: []*QueryRangeRequest{
 				{
-					start: 3 * 3600 * seconds,
-					end:   (24 * 3600 * seconds) - (15 * seconds),
-					step:  15 * seconds,
-					query: "foo",
+					Start: 3 * 3600 * seconds,
+					End:   (24 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 				{
-					start: 24 * 3600 * seconds,
-					end:   (2 * 24 * 3600 * seconds) - (15 * seconds),
-					step:  15 * seconds,
-					query: "foo",
+					Start: 24 * 3600 * seconds,
+					End:   (2 * 24 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 				{
-					start: 2 * 24 * 3600 * seconds,
-					end:   3 * 24 * 3600 * seconds,
-					step:  15 * seconds,
-					query: "foo",
+					Start: 2 * 24 * 3600 * seconds,
+					End:   3 * 24 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
 				},
 			},
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			require.Equal(t, tc.expected, splitQuery(tc.input))
+			days := splitQuery(tc.input)
+			require.Equal(t, tc.expected, days)
 		})
 	}
 }
@@ -145,16 +160,18 @@ func TestSplitByDay(t *testing.T) {
 					next: http.DefaultTransport,
 				},
 			},
+			limits: defaultOverrides(t),
 		},
+		limits: defaultOverrides(t),
 	}
 
-	mergedResponse, err := mergeAPIResponses([]*apiResponse{
+	mergedResponse, err := mergeAPIResponses([]*APIResponse{
 		parsedResponse,
 		parsedResponse,
 	})
 	require.NoError(t, err)
 
-	mergedHTTPResponse, err := mergedResponse.toHTTPResponse()
+	mergedHTTPResponse, err := mergedResponse.toHTTPResponse(context.Background())
 	require.NoError(t, err)
 
 	mergedHTTPResponseBody, err := ioutil.ReadAll(mergedHTTPResponse.Body)

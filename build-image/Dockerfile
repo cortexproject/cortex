@@ -1,4 +1,4 @@
-FROM golang:1.10.1-stretch
+FROM golang:1.12.5-stretch
 RUN apt-get update && apt-get install -y python-requests python-yaml file jq unzip protobuf-compiler libprotobuf-dev && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN go clean -i net && \
@@ -8,16 +8,14 @@ RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v1.3.0/shfmt
 	echo "b1925c2c405458811f0c227266402cf1868b4de529f114722c2e3a5af4ac7bb2  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \
 	mv shfmt /usr/bin
-RUN go get -tags netgo \
+RUN GO111MODULE=on go get -tags netgo \
 		github.com/fzipp/gocyclo \
 		golang.org/x/lint/golint \
-		github.com/kisielk/errcheck \
-		github.com/mjibson/esc \
-		github.com/client9/misspell/cmd/misspell \
-		github.com/jteeuwen/go-bindata/go-bindata \
-		github.com/golang/protobuf/protoc-gen-go \
-		github.com/gogo/protobuf/protoc-gen-gogoslick \
-		github.com/gogo/protobuf/gogoproto && \
+		github.com/kisielk/errcheck@v1.2.0 \
+		github.com/client9/misspell/cmd/misspell@v0.3.4 \
+		github.com/golang/protobuf/protoc-gen-go@v1.3.1 \
+		github.com/gogo/protobuf/protoc-gen-gogoslick@v1.2.1 \
+		github.com/gogo/protobuf/gogoproto@v1.2.1 && \
 	rm -rf /go/pkg /go/src
 RUN curl -Ls https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64 -o $GOPATH/bin/dep && \
   chmod +x $GOPATH/bin/dep

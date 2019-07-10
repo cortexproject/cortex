@@ -17,13 +17,13 @@ import (
 
 // API implements the configs api.
 type API struct {
-	db db.RulesDB
+	db db.DB
 	http.Handler
 }
 
 // NewAPIFromConfig makes a new API from our database config.
 func NewAPIFromConfig(cfg db.Config) (*API, error) {
-	db, err := db.NewRulesDB(cfg)
+	db, err := db.New(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func NewAPIFromConfig(cfg db.Config) (*API, error) {
 }
 
 // NewAPI creates a new API.
-func NewAPI(db db.RulesDB) *API {
+func NewAPI(db db.DB) *API {
 	a := &API{db: db}
 	r := mux.NewRouter()
 	a.RegisterRoutes(r)
@@ -61,7 +61,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := util.WithContext(r.Context(), util.Logger)
 
-	cfg, err := a.db.GetRulesConfig(userID)
+	cfg, err := a.db.GetRulesConfig(r.Context(), userID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "No configuration", http.StatusNotFound)
 		return
@@ -105,7 +105,7 @@ func (a *API) casConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := a.db.SetRulesConfig(userID, updateReq.OldConfig, updateReq.NewConfig)
+	updated, err := a.db.SetRulesConfig(r.Context(), userID, updateReq.OldConfig, updateReq.NewConfig)
 	if err != nil {
 		level.Error(logger).Log("msg", "error storing config", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

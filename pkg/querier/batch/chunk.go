@@ -2,7 +2,7 @@ package batch
 
 import (
 	"github.com/cortexproject/cortex/pkg/chunk"
-	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/prometheus/common/model"
 )
 
@@ -28,6 +28,18 @@ func (i *chunkIterator) Seek(t int64, size int) bool {
 	// contain samples in that window, we can shortcut.
 	if int64(i.chunk.Through) < t {
 		return false
+	}
+
+	// If the seek is to the middle of the current batch, and size fits, we can
+	// shortcut.
+	if i.batch.Length > 0 && t >= i.batch.Timestamps[0] && t <= i.batch.Timestamps[i.batch.Length-1] {
+		i.batch.Index = 0
+		for i.batch.Index < i.batch.Length && t > i.batch.Timestamps[i.batch.Index] {
+			i.batch.Index++
+		}
+		if i.batch.Index+size < i.batch.Length {
+			return true
+		}
 	}
 
 	if i.it.FindAtOrAfter(model.Time(t)) {

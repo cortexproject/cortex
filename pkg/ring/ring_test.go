@@ -18,10 +18,10 @@ func BenchmarkRing(b *testing.B) {
 	for i := 0; i < numIngester; i++ {
 		tokens := GenerateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
+		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE, false)
 	}
-
-	consul := NewInMemoryKVClient()
+	codec := ProtoCodec{Factory: ProtoDescFactory}
+	consul := NewInMemoryKVClient(codec)
 	ringBytes, err := ProtoCodec{}.Encode(desc)
 	if err != nil {
 		b.Fatal(err)
@@ -29,9 +29,11 @@ func BenchmarkRing(b *testing.B) {
 	consul.PutBytes(context.Background(), ConsulKey, ringBytes)
 
 	r, err := New(Config{
-		Mock:              consul,
+		KVStore: KVConfig{
+			Mock: consul,
+		},
 		ReplicationFactor: 3,
-	})
+	}, "ingester")
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -18,6 +18,16 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Whether the last overrides reload attempt was successful.",
 })
 
+func init() {
+	overridesReloadSuccess.Set(1) // Default to 1
+}
+
+// When we load YAML from disk, we want the various per-customer limits
+// to default to any values specified on the command line, not default
+// command line values.  This global contains those values.  I (Tom) cannot
+// find a nicer way I'm afraid.
+var defaultLimits Limits
+
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
 type Overrides struct {
@@ -28,7 +38,12 @@ type Overrides struct {
 }
 
 // NewOverrides makes a new Overrides.
+// We store the supplied limits in a global variable to ensure per-tenant limits
+// are defaulted to those values.  As such, the last call to NewOverrides will
+// become the new global defaults.
 func NewOverrides(defaults Limits) (*Overrides, error) {
+	defaultLimits = defaults
+
 	if defaults.PerTenantOverrideConfig == "" {
 		level.Info(util.Logger).Log("msg", "per-tenant overides disabled")
 		return &Overrides{
@@ -141,6 +156,16 @@ func (o *Overrides) getDuration(userID string, f func(*Limits) time.Duration) ti
 	return f(override)
 }
 
+func (o *Overrides) getString(userID string, f func(*Limits) string) string {
+	o.overridesMtx.RLock()
+	defer o.overridesMtx.RUnlock()
+	override, ok := o.overrides[userID]
+	if !ok {
+		return f(&o.Defaults)
+	}
+	return f(override)
+}
+
 // IngestionRate returns the limit on ingester rate (samples per second).
 func (o *Overrides) IngestionRate(userID string) float64 {
 	return o.getFloat(userID, func(l *Limits) float64 {
@@ -152,6 +177,27 @@ func (o *Overrides) IngestionRate(userID string) float64 {
 func (o *Overrides) IngestionBurstSize(userID string) int {
 	return o.getInt(userID, func(l *Limits) int {
 		return l.IngestionBurstSize
+	})
+}
+
+// AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.
+func (o *Overrides) AcceptHASamples(userID string) bool {
+	return o.getBool(userID, func(l *Limits) bool {
+		return l.AcceptHASamples
+	})
+}
+
+// HAReplicaLabel returns the replica label to look for when deciding whether to accept a sample from a Prometheus HA replica.
+func (o *Overrides) HAReplicaLabel(userID string) string {
+	return o.getString(userID, func(l *Limits) string {
+		return l.HAReplicaLabel
+	})
+}
+
+// HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
+func (o *Overrides) HAClusterLabel(userID string) string {
+	return o.getString(userID, func(l *Limits) string {
+		return l.HAClusterLabel
 	})
 }
 
@@ -239,5 +285,27 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return o.getDuration(userID, func(l *Limits) time.Duration {
 		return l.MaxQueryLength
+	})
+}
+
+// MaxQueryParallelism returns the limit to the number of sub-queries the
+// frontend will process in parallel.
+func (o *Overrides) MaxQueryParallelism(userID string) int {
+	return o.getInt(userID, func(l *Limits) int {
+		return l.MaxQueryParallelism
+	})
+}
+
+// EnforceMetricName whether to enforce the presence of a metric name.
+func (o *Overrides) EnforceMetricName(userID string) bool {
+	return o.getBool(userID, func(l *Limits) bool {
+		return l.EnforceMetricName
+	})
+}
+
+// CardinalityLimit whether to enforce the presence of a metric name.
+func (o *Overrides) CardinalityLimit(userID string) int {
+	return o.getInt(userID, func(l *Limits) int {
+		return l.CardinalityLimit
 	})
 }

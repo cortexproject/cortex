@@ -3,8 +3,6 @@ package cache_test
 import (
 	"context"
 	"math/rand"
-	"os"
-	"path"
 	"sort"
 	"strconv"
 	"testing"
@@ -12,8 +10,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,16 +34,18 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
-			model.Metric{
-				model.MetricNameLabel: "foo",
-				"bar": "baz",
+			labels.Labels{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
 			},
 			promChunk[0],
 			ts,
 			ts.Add(chunkLen),
 		)
 
-		buf, err := c.Encode()
+		err := c.Encode()
+		require.NoError(t, err)
+		buf, err := c.Encoded()
 		require.NoError(t, err)
 
 		keys = append(keys, c.ExternalKey())
@@ -140,7 +141,7 @@ func testCache(t *testing.T, cache cache.Cache) {
 
 func TestMemcache(t *testing.T) {
 	t.Run("Unbatched", func(t *testing.T) {
-		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache())
+		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache(), "test")
 		testCache(t, cache)
 	})
 
@@ -148,22 +149,9 @@ func TestMemcache(t *testing.T) {
 		cache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 3,
-		}, newMockMemcache())
+		}, newMockMemcache(), "test")
 		testCache(t, cache)
 	})
-}
-
-func TestDiskcache(t *testing.T) {
-	dirname := os.TempDir()
-	filename := path.Join(dirname, "diskcache")
-	defer os.RemoveAll(filename)
-
-	cache, err := cache.NewDiskcache(cache.DiskcacheConfig{
-		Path: filename,
-		Size: 100 * 1024 * 1024,
-	})
-	require.NoError(t, err)
-	testCache(t, cache)
 }
 
 func TestFifoCache(t *testing.T) {

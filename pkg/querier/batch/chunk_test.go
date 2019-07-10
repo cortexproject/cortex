@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
 const (
@@ -20,18 +21,30 @@ const (
 )
 
 func TestChunkIter(t *testing.T) {
-	chunk := mkChunk(t, 0, 100)
-	iter := &chunkIterator{}
-	iter.reset(chunk)
-	testIter(t, 100, newIteratorAdapter(iter))
-	testSeek(t, 100, newIteratorAdapter(iter))
+	forEncodings(t, func(t *testing.T, enc promchunk.Encoding) {
+		chunk := mkChunk(t, 0, 100, enc)
+		iter := &chunkIterator{}
+		iter.reset(chunk)
+		testIter(t, 100, newIteratorAdapter(iter))
+		testSeek(t, 100, newIteratorAdapter(iter))
+	})
 }
 
-func mkChunk(t require.TestingT, from model.Time, points int) chunk.Chunk {
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
+func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
+	for _, enc := range []promchunk.Encoding{
+		promchunk.DoubleDelta, promchunk.Varbit, promchunk.Bigchunk,
+	} {
+		t.Run(enc.String(), func(t *testing.T) {
+			f(t, enc)
+		})
 	}
-	pc, err := promchunk.NewForEncoding(promchunk.DoubleDelta)
+}
+
+func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) chunk.Chunk {
+	metric := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
+	}
+	pc, err := promchunk.NewForEncoding(enc)
 	require.NoError(t, err)
 	ts := from
 	for i := 0; i < points; i++ {
@@ -78,4 +91,53 @@ func testSeek(t require.TestingT, points int, iter storage.SeriesIterator) {
 			require.NoError(t, iter.Err())
 		}
 	}
+}
+
+func TestSeek(t *testing.T) {
+	var it mockIterator
+	c := chunkIterator{
+		chunk: chunk.Chunk{
+			Through: promchunk.BatchSize,
+		},
+		it: &it,
+	}
+
+	for i := 0; i < promchunk.BatchSize-1; i++ {
+		require.True(t, c.Seek(int64(i), 1))
+	}
+	require.Equal(t, 1, it.seeks)
+
+	require.True(t, c.Seek(int64(promchunk.BatchSize), 1))
+	require.Equal(t, 2, it.seeks)
+}
+
+type mockIterator struct {
+	seeks int
+}
+
+func (i *mockIterator) Scan() bool {
+	return true
+}
+
+func (i *mockIterator) FindAtOrAfter(model.Time) bool {
+	i.seeks++
+	return true
+}
+
+func (i *mockIterator) Value() model.SamplePair {
+	return model.SamplePair{}
+}
+
+func (i *mockIterator) Batch(size int) promchunk.Batch {
+	batch := promchunk.Batch{
+		Length: promchunk.BatchSize,
+	}
+	for i := 0; i < promchunk.BatchSize; i++ {
+		batch.Timestamps[i] = int64(i)
+	}
+	return batch
+}
+
+func (i *mockIterator) Err() error {
+	return nil
 }

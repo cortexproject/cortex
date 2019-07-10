@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -32,26 +33,26 @@ type chunkStoreQuerier struct {
 	mint, maxt        int64
 }
 
-func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
+func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	chunks, err := q.store.Get(q.ctx, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
-		return nil, promql.ErrStorage(err)
+		return nil, nil, promql.ErrStorage{Err: err}
 	}
 
-	return q.partitionChunks(chunks), nil
+	return q.partitionChunks(chunks), nil, nil
 }
 
 func (q *chunkStoreQuerier) partitionChunks(chunks []chunk.Chunk) storage.SeriesSet {
 	chunksBySeries := map[model.Fingerprint][]chunk.Chunk{}
 	for _, c := range chunks {
-		fp := c.Metric.Fingerprint()
+		fp := client.Fingerprint(c.Metric)
 		chunksBySeries[fp] = append(chunksBySeries[fp], c)
 	}
 
 	series := make([]storage.Series, 0, len(chunksBySeries))
 	for i := range chunksBySeries {
 		series = append(series, &chunkSeries{
-			labels:            metricToLabels(chunksBySeries[i][0].Metric),
+			labels:            chunksBySeries[i][0].Metric,
 			chunks:            chunksBySeries[i],
 			chunkIteratorFunc: q.chunkIteratorFunc,
 			mint:              q.mint,
@@ -63,6 +64,10 @@ func (q *chunkStoreQuerier) partitionChunks(chunks []chunk.Chunk) storage.Series
 }
 
 func (q *chunkStoreQuerier) LabelValues(name string) ([]string, error) {
+	return nil, nil
+}
+
+func (q *chunkStoreQuerier) LabelNames() ([]string, error) {
 	return nil, nil
 }
 

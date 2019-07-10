@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
+
+	legacy_promql "github.com/cortexproject/cortex/pkg/configs/legacy_promql"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // An ID is the ID of a single users's Cortex configuration. When a
@@ -70,6 +72,7 @@ func (v *RuleFormatVersion) UnmarshalJSON(data []byte) error {
 type Config struct {
 	// RulesFiles maps from a rules filename to file contents.
 	RulesConfig        RulesConfig
+	TemplateFiles      map[string]string
 	AlertmanagerConfig string
 }
 
@@ -79,6 +82,7 @@ type Config struct {
 type configCompat struct {
 	RulesFiles         map[string]string `json:"rules_files"`
 	RuleFormatVersion  RuleFormatVersion `json:"rule_format_version"`
+	TemplateFiles      map[string]string `json:"template_files"`
 	AlertmanagerConfig string            `json:"alertmanager_config"`
 }
 
@@ -87,6 +91,7 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	compat := &configCompat{
 		RulesFiles:         c.RulesConfig.Files,
 		RuleFormatVersion:  c.RulesConfig.FormatVersion,
+		TemplateFiles:      c.TemplateFiles,
 		AlertmanagerConfig: c.AlertmanagerConfig,
 	}
 
@@ -104,6 +109,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			Files:         compat.RulesFiles,
 			FormatVersion: compat.RuleFormatVersion,
 		},
+		TemplateFiles:      compat.TemplateFiles,
 		AlertmanagerConfig: compat.AlertmanagerConfig,
 	}
 	return nil
@@ -235,7 +241,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 	result := map[string][]rules.Rule{}
 	for fn, content := range c.Files {
-		stmts, err := promql.ParseStmts(content)
+		stmts, err := legacy_promql.ParseStmts(content)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing %s: %s", fn, err)
 		}
@@ -244,11 +250,29 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 			var rule rules.Rule
 
 			switch r := stmt.(type) {
-			case *promql.AlertStmt:
-				rule = rules.NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations, true, util.Logger)
+			case *legacy_promql.AlertStmt:
+				// legacy_promql.ParseStmts has parsed the whole rule for us.
+				// Ideally we'd just use r.Expr and pass that to rules.NewAlertingRule,
+				// but it is of the type legacy_proql.Expr and not promql.Expr.
+				// So we convert it back to a string, and then parse it again with the
+				// upstream parser to get it into the right type.
+				expr, err := promql.ParseExpr(r.Expr.String())
+				if err != nil {
+					return nil, err
+				}
 
-			case *promql.RecordStmt:
-				rule = rules.NewRecordingRule(r.Name, r.Expr, r.Labels)
+				rule = rules.NewAlertingRule(
+					r.Name, expr, r.Duration, r.Labels, r.Annotations, true,
+					log.With(util.Logger, "alert", r.Name),
+				)
+
+			case *legacy_promql.RecordStmt:
+				expr, err := promql.ParseExpr(r.Expr.String())
+				if err != nil {
+					return nil, err
+				}
+
+				rule = rules.NewRecordingRule(r.Name, expr, r.Labels)
 
 			default:
 				return nil, fmt.Errorf("ruler.GetRules: unknown statement type")

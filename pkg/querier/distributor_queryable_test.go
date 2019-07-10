@@ -35,7 +35,7 @@ func TestDistributorQuerier(t *testing.T) {
 	querier, err := queryable.Querier(context.Background(), mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet, err := querier.Select(nil)
+	seriesSet, _, err := querier.Select(nil)
 	require.NoError(t, err)
 
 	require.True(t, seriesSet.Next())
@@ -62,6 +62,9 @@ func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, 
 	return m.r, nil
 }
 func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
+	return nil, nil
+}
+func (m *mockDistributor) LabelNames(context.Context) ([]string, error) {
 	return nil, nil
 }
 func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {

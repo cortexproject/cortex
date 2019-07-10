@@ -3,13 +3,13 @@ package querier
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
@@ -64,11 +64,8 @@ func TestRemoteReadHandler(t *testing.T) {
 			{
 				Timeseries: []client.TimeSeries{
 					{
-						Labels: []client.LabelPair{
-							{
-								Name:  wire.Bytes([]byte("foo")),
-								Value: wire.Bytes([]byte("bar")),
-							},
+						Labels: []client.LabelAdapter{
+							{Name: "foo", Value: "bar"},
 						},
 						Samples: []client.Sample{
 							{Value: 0, TimestampMs: 0},
@@ -88,11 +85,18 @@ type mockQuerier struct {
 	matrix model.Matrix
 }
 
-func (m mockQuerier) Select(_ *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, error) {
-	return matrixToSeriesSet(m.matrix), nil
+func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	if sp == nil {
+		panic(fmt.Errorf("select params must be set"))
+	}
+	return matrixToSeriesSet(m.matrix), nil, nil
 }
 
 func (m mockQuerier) LabelValues(name string) ([]string, error) {
+	return nil, nil
+}
+
+func (m mockQuerier) LabelNames() ([]string, error) {
 	return nil, nil
 }
 

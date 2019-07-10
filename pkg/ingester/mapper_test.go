@@ -1,9 +1,11 @@
 package ingester
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 var (
@@ -17,31 +19,41 @@ var (
 	fp2  = model.Fingerprint(maxMappedFP + 2)
 	fp3  = model.Fingerprint(1)
 	cm11 = labelPairs{
-		{Name: []byte("foo"), Value: []byte("bar")},
-		{Name: []byte("dings"), Value: []byte("bumms")},
+		{Name: "foo", Value: "bar"},
+		{Name: "dings", Value: "bumms"},
 	}
 	cm12 = labelPairs{
-		{Name: []byte("bar"), Value: []byte("foo")},
+		{Name: "bar", Value: "foo"},
 	}
 	cm13 = labelPairs{
-		{Name: []byte("foo"), Value: []byte("bar")},
+		{Name: "foo", Value: "bar"},
 	}
 	cm21 = labelPairs{
-		{Name: []byte("foo"), Value: []byte("bumms")},
-		{Name: []byte("dings"), Value: []byte("bar")},
+		{Name: "foo", Value: "bumms"},
+		{Name: "dings", Value: "bar"},
 	}
 	cm22 = labelPairs{
-		{Name: []byte("dings"), Value: []byte("foo")},
-		{Name: []byte("bar"), Value: []byte("bumms")},
+		{Name: "dings", Value: "foo"},
+		{Name: "bar", Value: "bumms"},
 	}
 	cm31 = labelPairs{
-		{Name: []byte("bumms"), Value: []byte("dings")},
+		{Name: "bumms", Value: "dings"},
 	}
 	cm32 = labelPairs{
-		{Name: []byte("bumms"), Value: []byte("dings")},
-		{Name: []byte("bar"), Value: []byte("foo")},
+		{Name: "bumms", Value: "dings"},
+		{Name: "bar", Value: "foo"},
 	}
 )
+
+func (a labelPairs) copyValuesAndSort() labels.Labels {
+	c := make(labels.Labels, len(a))
+	for i, pair := range a {
+		c[i].Name = pair.Name
+		c[i].Value = pair.Value
+	}
+	sort.Sort(c)
+	return c
+}
 
 func TestFPMapper(t *testing.T) {
 	sm := newSeriesMap()

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,8 +18,8 @@ func TestMarshall(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			req.Timeseries = append(req.Timeseries, PreallocTimeseries{
 				TimeSeries{
-					Labels: []LabelPair{
-						{wire.Bytes([]byte("foo")), wire.Bytes([]byte(strconv.Itoa(i)))},
+					Labels: []LabelAdapter{
+						{"foo", strconv.Itoa(i)},
 					},
 					Samples: []Sample{
 						{TimestampMs: int64(i), Value: float64(i)},

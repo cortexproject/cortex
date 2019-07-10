@@ -40,10 +40,26 @@ func fixtureWriteScale() chunk.AutoScalingConfig {
 	}
 }
 
-func fixturePeriodicTableConfig(prefix string, inactLastN int64, writeScale, inactWriteScale chunk.AutoScalingConfig) chunk.PeriodicTableConfig {
+func fixtureReadScale() chunk.AutoScalingConfig {
+	return chunk.AutoScalingConfig{
+		Enabled:     true,
+		MinCapacity: 1,
+		MaxCapacity: 2000,
+		OutCooldown: 100,
+		InCooldown:  100,
+		TargetValue: 80.0,
+	}
+}
+
+func fixturePeriodicTableConfig(prefix string) chunk.PeriodicTableConfig {
 	return chunk.PeriodicTableConfig{
 		Prefix: prefix,
 		Period: tablePeriod,
+	}
+}
+
+func fixtureProvisionConfig(inactLastN int64, writeScale, inactWriteScale chunk.AutoScalingConfig) chunk.ProvisionConfig {
+	return chunk.ProvisionConfig{
 		ProvisionedWriteThroughput: write,
 		ProvisionedReadThroughput:  read,
 		InactiveWriteThroughput:    inactiveWrite,
@@ -51,6 +67,17 @@ func fixturePeriodicTableConfig(prefix string, inactLastN int64, writeScale, ina
 		WriteScale:                 writeScale,
 		InactiveWriteScale:         inactWriteScale,
 		InactiveWriteScaleLastN:    inactLastN,
+	}
+}
+
+func fixtureReadProvisionConfig(readScale, inactReadScale chunk.AutoScalingConfig) chunk.ProvisionConfig {
+	return chunk.ProvisionConfig{
+		ProvisionedWriteThroughput: write,
+		ProvisionedReadThroughput:  read,
+		InactiveWriteThroughput:    inactiveWrite,
+		InactiveReadThroughput:     inactiveRead,
+		ReadScale:                  readScale,
+		InactiveReadScale:          inactReadScale,
 	}
 }
 
@@ -123,26 +150,24 @@ func TestTableManagerAutoScaling(t *testing.T) {
 	cfg := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
-				Store: "aws-dynamo",
-				IndexTables: chunk.PeriodicTableConfig{
-					InactiveReadThroughput:  inactiveRead,
-					InactiveWriteThroughput: inactiveWrite,
-				},
+				IndexType: "aws-dynamo",
 			},
 			{
-				Store:       "aws-dynamo",
-				From:        model.TimeFromUnix(0),
-				IndexTables: fixturePeriodicTableConfig(tablePrefix, 0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
-				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix, 0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
+				IndexType:   "aws-dynamo",
+				From:        chunk.DayTime{Time: model.TimeFromUnix(0)},
+				IndexTables: fixturePeriodicTableConfig(tablePrefix),
+				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			}},
 	}
 	tbm := chunk.TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
+		IndexTables:         fixtureProvisionConfig(0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
+		ChunkTables:         fixtureProvisionConfig(0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
 	}
 
 	// Check tables are created with autoscale
 	{
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,10 +183,10 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are updated with new settings
 	{
-		cfg.Configs[1].IndexTables.WriteScale.OutCooldown = 200
-		cfg.Configs[1].ChunkTables.WriteScale.TargetValue = 90.0
+		tbm.IndexTables.WriteScale.OutCooldown = 200
+		tbm.ChunkTables.WriteScale.TargetValue = 90.0
 
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,10 +202,10 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are degristered when autoscaling is disabled for inactive tables
 	{
-		cfg.Configs[1].IndexTables.WriteScale.OutCooldown = 200
-		cfg.Configs[1].ChunkTables.WriteScale.TargetValue = 90.0
+		tbm.IndexTables.WriteScale.OutCooldown = 200
+		tbm.ChunkTables.WriteScale.TargetValue = 90.0
 
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -197,10 +222,10 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are degristered when autoscaling is disabled entirely
 	{
-		cfg.Configs[1].IndexTables.WriteScale.Enabled = false
-		cfg.Configs[1].ChunkTables.WriteScale.Enabled = false
+		tbm.IndexTables.WriteScale.Enabled = false
+		tbm.ChunkTables.WriteScale.Enabled = false
 
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,26 +252,25 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 	cfg := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
-				Store: "aws-dynamo",
-				IndexTables: chunk.PeriodicTableConfig{
-					InactiveReadThroughput:  inactiveRead,
-					InactiveWriteThroughput: inactiveWrite,
-				},
+				IndexType:   "aws-dynamo",
+				IndexTables: chunk.PeriodicTableConfig{},
 			},
 			{
-				Store:       "aws-dynamo",
-				IndexTables: fixturePeriodicTableConfig(tablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
-				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
+				IndexType:   "aws-dynamo",
+				IndexTables: fixturePeriodicTableConfig(tablePrefix),
+				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			},
 		},
 	}
 	tbm := chunk.TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
+		IndexTables:         fixtureProvisionConfig(2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
+		ChunkTables:         fixtureProvisionConfig(2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
 	}
 
 	// Check legacy and latest tables do not autoscale with inactive autoscale enabled.
 	{
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -262,7 +286,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 
 	// Check inactive tables are autoscaled even if there are less than the limit.
 	{
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -279,7 +303,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 
 	// Check inactive tables past the limit do not autoscale but the latest N do.
 	{
-		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
+		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

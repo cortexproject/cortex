@@ -228,7 +228,7 @@ func (r *Runner) runRandomTest() {
 		} else {
 			failures = true
 			sampleResult.WithLabelValues(fail).Inc()
-			level.Error(log).Log("msg", "wrong value", "expected", tc.ExpectedValueAt(pair.Timestamp.Time()), "actual", pair.Value)
+			level.Error(log).Log("msg", "wrong value", "at", pair.Timestamp, "expected", tc.ExpectedValueAt(pair.Timestamp.Time()), "actual", pair.Value)
 			log.LogFields(otlog.Error(fmt.Errorf("wrong value")))
 		}
 	}

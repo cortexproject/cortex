@@ -8,12 +8,13 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/go-kit/kit/log/level"
+	ot "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
 )
@@ -35,6 +36,19 @@ var (
 		Help:    "Distribution of stored chunk lengths (when stored).",
 		Buckets: prometheus.ExponentialBuckets(5, 2, 11), // biggest bucket is 5*2^(11-1) = 5120
 	})
+	chunkSize = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "cortex_ingester_chunk_size_bytes",
+		Help:    "Distribution of stored chunk sizes (when stored).",
+		Buckets: prometheus.ExponentialBuckets(500, 2, 5), // biggest bucket is 500*2^(5-1) = 8000
+	})
+	chunksPerUser = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_chunks_stored_total",
+		Help: "Total stored chunks per user.",
+	}, []string{"user"})
+	chunkSizePerUser = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_chunk_stored_bytes_total",
+		Help: "Total bytes stored in chunks per user.",
+	}, []string{"user"})
 	chunkAge = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "cortex_ingester_chunk_age_seconds",
 		Help: "Distribution of chunk ages (when stored).",
@@ -46,6 +60,10 @@ var (
 		Name: "cortex_ingester_memory_chunks",
 		Help: "The total number of chunks in memory.",
 	})
+	flushReasons = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_flush_reasons",
+		Help: "Total number of series scheduled for flushing, with reasons.",
+	}, []string{"reason"})
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -109,6 +127,23 @@ const (
 	reasonIdle
 )
 
+func (f flushReason) String() string {
+	switch f {
+	case noFlush:
+		return "NoFlush"
+	case reasonImmediate:
+		return "Immediate"
+	case reasonMultipleChunksInSeries:
+		return "MultipleChunksInSeries"
+	case reasonAged:
+		return "Aged"
+	case reasonIdle:
+		return "Idle"
+	default:
+		panic("unrecognised flushReason")
+	}
+}
+
 // sweepSeries schedules a series for flushing based on a set of criteria
 //
 // NB we don't close the head chunk here, as the series could wait in the queue
@@ -120,12 +155,14 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 
 	firstTime := series.firstTime()
 	flush := i.shouldFlushSeries(series, fp, immediate)
+	if flush == noFlush {
+		return
+	}
 
-	if flush != noFlush {
-		flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
-		if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
-			util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
-		}
+	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
+	if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
+		flushReasons.WithLabelValues(flush.String()).Inc()
+		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
 	}
 }
 
@@ -134,14 +171,12 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint,
 		return reasonImmediate
 	}
 
-	// Series should be scheduled for flushing if the oldest chunk in the series needs flushing
-	if len(series.chunkDescs) > 0 {
-		reason := i.shouldFlushChunk(series.chunkDescs[0], fp)
-		if reason != noFlush && len(series.chunkDescs) > 1 {
-			// Maintain a distinct reason for reporting purposes
-			reason = reasonMultipleChunksInSeries
-		}
-		return reason
+	// Flush if we have more than one chunk, and haven't already flushed the first chunk
+	if len(series.chunkDescs) > 1 && !series.chunkDescs[0].flushed {
+		return reasonMultipleChunksInSeries
+	} else if len(series.chunkDescs) > 0 {
+		// Otherwise look in more detail at the first chunk
+		return i.shouldFlushChunk(series.chunkDescs[0], fp)
 	}
 
 	return noFlush
@@ -152,6 +187,17 @@ func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint) flushReason {
 		return noFlush
 	}
 
+	if i.cfg.SpreadFlushes {
+		now := model.Now()
+		// Map from the fingerprint hash to a fixed point in the cycle of period MaxChunkAge
+		startOfCycle := now.Add(-(now.Sub(model.Time(0)) % i.cfg.MaxChunkAge))
+		slot := startOfCycle.Add(time.Duration(fp) % i.cfg.MaxChunkAge)
+		// If that point is now, to the resolution of FlushCheckPeriod, flush the chunk.
+		if slot >= now && slot < now.Add(i.cfg.FlushCheckPeriod) {
+			return reasonAged
+		}
+		// If we missed the slot due to timing it will get caught by the MaxChunkAge check below, some time later.
+	}
 	// Adjust max age slightly to spread flushes out over time
 	var jitter time.Duration
 	if i.cfg.ChunkAgeJitter != 0 {
@@ -237,15 +283,19 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel() // releases resources if slowOperation completes before timeout elapses
 
+	sp, ctx := ot.StartSpanFromContext(ctx, "flushUserSeries")
+	defer sp.Finish()
+	sp.SetTag("organization", userID)
+
 	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
-	err := i.flushChunks(ctx, fp, client.FromLabelPairs(series.metric), chunks)
+	err := i.flushChunks(ctx, fp, series.metric, chunks)
 	if err != nil {
 		return err
 	}
 
 	userState.fpLocker.Lock(fp)
 	if immediate {
-		userState.removeSeries(fp, series.labels())
+		userState.removeSeries(fp, series.metric)
 		memoryChunks.Sub(float64(len(chunks)))
 	} else {
 		for i := 0; i < len(chunks); i++ {
@@ -271,11 +321,11 @@ func (i *Ingester) removeFlushedChunks(userState *userState, fp model.Fingerprin
 		}
 	}
 	if len(series.chunkDescs) == 0 {
-		userState.removeSeries(fp, series.labels())
+		userState.removeSeries(fp, series.metric)
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric model.Metric, chunkDescs []*desc) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric labels.Labels, chunkDescs []*desc) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
@@ -283,19 +333,28 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, metric
 
 	wireChunks := make([]chunk.Chunk, 0, len(chunkDescs))
 	for _, chunkDesc := range chunkDescs {
-		wireChunks = append(wireChunks, chunk.NewChunk(userID, fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime))
+		c := chunk.NewChunk(userID, fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime)
+		if err := c.Encode(); err != nil {
+			return err
+		}
+		wireChunks = append(wireChunks, c)
 	}
 
 	if err := i.chunkStore.Put(ctx, wireChunks); err != nil {
 		return err
 	}
 
+	sizePerUser := chunkSizePerUser.WithLabelValues(userID)
+	countPerUser := chunksPerUser.WithLabelValues(userID)
 	// Record statistsics only when actual put request did not return error.
 	for _, chunkDesc := range chunkDescs {
-		utilization, length := chunkDesc.C.Utilization(), chunkDesc.C.Len()
-		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "utilization", utilization, "length", length, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)
+		utilization, length, size := chunkDesc.C.Utilization(), chunkDesc.C.Len(), chunkDesc.C.Size()
+		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "utilization", utilization, "length", length, "size", size, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)
 		chunkUtilization.Observe(utilization)
 		chunkLength.Observe(float64(length))
+		chunkSize.Observe(float64(size))
+		sizePerUser.Add(float64(size))
+		countPerUser.Inc()
 		chunkAge.Observe(model.Now().Sub(chunkDesc.FirstTime).Seconds())
 	}
 

@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 )
 
@@ -46,7 +47,7 @@ func newSeriesMap() *seriesMap {
 // get returns a memorySeries for a fingerprint. Return values have the same
 // semantics as the native Go map.
 func (sm *seriesMap) get(fp model.Fingerprint) (*memorySeries, bool) {
-	shard := &sm.shards[hashFP(fp)%seriesMapShards]
+	shard := &sm.shards[util.HashFP(fp)%seriesMapShards]
 	shard.mtx.Lock()
 	ms, ok := shard.m[fp]
 	shard.mtx.Unlock()
@@ -55,7 +56,7 @@ func (sm *seriesMap) get(fp model.Fingerprint) (*memorySeries, bool) {
 
 // put adds a mapping to the seriesMap.
 func (sm *seriesMap) put(fp model.Fingerprint, s *memorySeries) {
-	shard := &sm.shards[hashFP(fp)%seriesMapShards]
+	shard := &sm.shards[util.HashFP(fp)%seriesMapShards]
 	shard.mtx.Lock()
 	_, ok := shard.m[fp]
 	shard.m[fp] = s
@@ -68,7 +69,7 @@ func (sm *seriesMap) put(fp model.Fingerprint, s *memorySeries) {
 
 // del removes a mapping from the series Map.
 func (sm *seriesMap) del(fp model.Fingerprint) {
-	shard := &sm.shards[hashFP(fp)%seriesMapShards]
+	shard := &sm.shards[util.HashFP(fp)%seriesMapShards]
 	shard.mtx.Lock()
 	_, ok := shard.m[fp]
 	delete(shard.m, fp)

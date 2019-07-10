@@ -14,13 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
-	"github.com/cortexproject/cortex/pkg/util/wire"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/user"
 )
 
@@ -57,6 +58,7 @@ var (
 	}{
 		{"DoubleDelta", promchunk.DoubleDelta},
 		{"Varbit", promchunk.Varbit},
+		{"Bigchunk", promchunk.Bigchunk},
 	}
 
 	queries = []query{
@@ -80,7 +82,7 @@ var (
 			query: "foo",
 			step:  sampleRate * 4,
 			labels: labels.Labels{
-				labels.Label{"__name__", "foo"},
+				labels.Label{Name: model.MetricNameLabel, Value: "foo"},
 			},
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
@@ -108,7 +110,7 @@ var (
 			query: "foo",
 			step:  sampleRate * 4 * 10,
 			labels: labels.Labels{
-				labels.Label{"__name__", "foo"},
+				labels.Label{Name: model.MetricNameLabel, Value: "foo"},
 			},
 			samples: func(from, through time.Time, step time.Duration) int {
 				return int(through.Sub(from)/step) + 1
@@ -122,7 +124,7 @@ var (
 
 func TestQuerier(t *testing.T) {
 	var cfg Config
-	util.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg)
 
 	for _, query := range queries {
 		for _, encoding := range encodings {
@@ -145,6 +147,87 @@ func TestQuerier(t *testing.T) {
 	}
 }
 
+func TestNoHistoricalQueryToIngester(t *testing.T) {
+	testCases := []struct {
+		name                     string
+		mint, maxt               time.Time
+		hitIngester              bool
+		ingesterMaxQueryLookback time.Duration
+	}{
+		{
+			name:                     "hit-test1",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(1 * time.Hour),
+			hitIngester:              true,
+			ingesterMaxQueryLookback: 1 * time.Hour,
+		},
+		{
+			name:                     "hit-test2",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(-59 * time.Minute),
+			hitIngester:              true,
+			ingesterMaxQueryLookback: 1 * time.Hour,
+		},
+		{ // Skipping ingester is disabled.
+			name:                     "hit-test2",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(-50 * time.Minute),
+			hitIngester:              true,
+			ingesterMaxQueryLookback: 0,
+		},
+		{
+			name:                     "dont-hit-test1",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(-100 * time.Minute),
+			hitIngester:              false,
+			ingesterMaxQueryLookback: 1 * time.Hour,
+		},
+		{
+			name:                     "dont-hit-test2",
+			mint:                     time.Now().Add(-5 * time.Hour),
+			maxt:                     time.Now().Add(-61 * time.Minute),
+			hitIngester:              false,
+			ingesterMaxQueryLookback: 1 * time.Hour,
+		},
+	}
+
+	engine := promql.NewEngine(promql.EngineOpts{
+		Logger:        util.Logger,
+		MaxConcurrent: 10,
+		MaxSamples:    1e6,
+		Timeout:       1 * time.Minute,
+	})
+	cfg := Config{}
+	for _, ingesterStreaming := range []bool{true, false} {
+		cfg.IngesterStreaming = ingesterStreaming
+		for _, c := range testCases {
+			cfg.IngesterMaxQueryLookback = c.ingesterMaxQueryLookback
+			t.Run(fmt.Sprintf("IngesterStreaming=%t,test=%s", cfg.IngesterStreaming, c.name), func(t *testing.T) {
+				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
+				distributor := &errDistributor{}
+
+				queryable, _ := New(cfg, distributor, chunkStore)
+				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
+				require.NoError(t, err)
+
+				ctx := user.InjectOrgID(context.Background(), "0")
+				r := query.Exec(ctx)
+				_, err = r.Matrix()
+
+				if c.hitIngester {
+					// If the ingester was hit, the distributor always returns errDistributorError.
+					require.Error(t, err)
+					require.Equal(t, errDistributorError.Error(), err.Error())
+				} else {
+					// If the ingester was hit, there would have been an error from errDistributor.
+					require.NoError(t, err)
+				}
+			})
+		}
+	}
+
+}
+
 // mockDistibutorFor duplicates the chunks in the mockChunkStore into the mockDistributor
 // so we can test everything is dedupe correctly.
 func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *mockDistributor {
@@ -152,7 +235,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 	require.NoError(t, err)
 
 	tsc := client.TimeSeriesChunk{
-		Labels: []client.LabelPair{{Name: wire.Bytes(model.MetricNameLabel), Value: wire.Bytes("foo")}},
+		Labels: []client.LabelAdapter{{Name: model.MetricNameLabel, Value: "foo"}},
 		Chunks: chunks,
 	}
 	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)
@@ -167,7 +250,12 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 
 func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
-	engine := promql.NewEngine(util.Logger, nil, 10, 1*time.Minute)
+	engine := promql.NewEngine(promql.EngineOpts{
+		Logger:        util.Logger,
+		MaxConcurrent: 10,
+		MaxSamples:    1e6,
+		Timeout:       1 * time.Minute,
+	})
 	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
 	require.NoError(t, err)
 
@@ -188,4 +276,27 @@ func testQuery(t require.TestingT, queryable storage.Queryable, end model.Time, 
 		ts += int64(step / time.Millisecond)
 	}
 	return r
+}
+
+type errDistributor struct {
+	m model.Matrix
+	r []client.TimeSeriesChunk
+}
+
+var errDistributorError = fmt.Errorf("errDistributorError")
+
+func (m *errDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
+	return m.m, errDistributorError
+}
+func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error) {
+	return m.r, errDistributorError
+}
+func (m *errDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
+	return nil, errDistributorError
+}
+func (m *errDistributor) LabelNames(context.Context) ([]string, error) {
+	return nil, errDistributorError
+}
+func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	return nil, errDistributorError
 }

@@ -7,8 +7,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/go-kit/kit/log"
+	"github.com/gogo/status"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -27,6 +29,10 @@ func (i mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheckR
 
 func (i mockIngester) Close() error {
 	return nil
+}
+
+func (i mockIngester) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
+	return nil, status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
 type mockReadRing struct {

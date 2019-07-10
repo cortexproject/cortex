@@ -6,8 +6,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
@@ -23,7 +24,7 @@ func init() {
 }
 
 type memorySeries struct {
-	metric sortedLabelPairs
+	metric labels.Labels
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
 	chunkDescs []*desc
@@ -50,16 +51,11 @@ func (error *memorySeriesError) Error() string {
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m labelPairs) *memorySeries {
+func newMemorySeries(m labels.Labels) *memorySeries {
 	return &memorySeries{
-		metric:   m.copyValuesAndSort(),
+		metric:   m,
 		lastTime: model.Earliest,
 	}
-}
-
-// helper to extract the not-necessarily-sorted type used elsewhere, without casting everywhere.
-func (s *memorySeries) labels() labelPairs {
-	return labelPairs(s.metric)
 }
 
 // add adds a sample pair to the series. It returns the number of newly
@@ -90,7 +86,7 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	}
 
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {
-		newHead := newDesc(chunk.New(), v.Timestamp, v.Timestamp)
+		newHead := newDesc(encoding.New(), v.Timestamp, v.Timestamp)
 		s.chunkDescs = append(s.chunkDescs, newHead)
 		s.headChunkClosed = false
 		createdChunks.Inc()
@@ -109,11 +105,11 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	} else {
 		s.chunkDescs = s.chunkDescs[:len(s.chunkDescs)-1]
 		for _, c := range chunks {
-			lastTime, err := c.NewIterator().LastTimestamp()
+			first, last, err := firstAndLastTimes(c)
 			if err != nil {
 				return err
 			}
-			s.chunkDescs = append(s.chunkDescs, newDesc(c, c.FirstTime(), lastTime))
+			s.chunkDescs = append(s.chunkDescs, newDesc(c, first, last))
 			createdChunks.Inc()
 		}
 	}
@@ -123,6 +119,24 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	s.lastSampleValueSet = true
 
 	return nil
+}
+
+func firstAndLastTimes(c encoding.Chunk) (model.Time, model.Time, error) {
+	var (
+		first    model.Time
+		last     model.Time
+		firstSet bool
+		iter     = c.NewIterator()
+	)
+	for iter.Scan() {
+		sample := iter.Value()
+		if !firstSet {
+			first = sample.Timestamp
+			firstSet = true
+		}
+		last = sample.Timestamp
+	}
+	return first, last, iter.Err()
 }
 
 func (s *memorySeries) closeHead() {
@@ -173,7 +187,7 @@ func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 	}
 	for idx := fromIdx; idx <= throughIdx; idx++ {
 		cd := s.chunkDescs[idx]
-		chValues, err := chunk.RangeValues(cd.C.NewIterator(), in)
+		chValues, err := encoding.RangeValues(cd.C.NewIterator(), in)
 		if err != nil {
 			return nil, err
 		}
@@ -197,14 +211,14 @@ func (s *memorySeries) setChunks(descs []*desc) error {
 }
 
 type desc struct {
-	C          chunk.Chunk // nil if chunk is evicted.
-	FirstTime  model.Time  // Timestamp of first sample. Populated at creation. Immutable.
-	LastTime   model.Time  // Timestamp of last sample. Populated at creation & on append.
-	LastUpdate model.Time  // This server's local time on last change
-	flushed    bool        // set to true when flush succeeds
+	C          encoding.Chunk // nil if chunk is evicted.
+	FirstTime  model.Time     // Timestamp of first sample. Populated at creation. Immutable.
+	LastTime   model.Time     // Timestamp of last sample. Populated at creation & on append.
+	LastUpdate model.Time     // This server's local time on last change
+	flushed    bool           // set to true when flush succeeds
 }
 
-func newDesc(c chunk.Chunk, firstTime model.Time, lastTime model.Time) *desc {
+func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *desc {
 	return &desc{
 		C:          c,
 		FirstTime:  firstTime,
@@ -216,7 +230,7 @@ func newDesc(c chunk.Chunk, firstTime model.Time, lastTime model.Time) *desc {
 // Add adds a sample pair to the underlying chunk. For safe concurrent access,
 // The chunk must be pinned, and the caller must have locked the fingerprint of
 // the series.
-func (d *desc) add(s model.SamplePair) ([]chunk.Chunk, error) {
+func (d *desc) add(s model.SamplePair) ([]encoding.Chunk, error) {
 	cs, err := d.C.Add(s)
 	if err != nil {
 		return nil, err
@@ -228,4 +242,12 @@ func (d *desc) add(s model.SamplePair) ([]chunk.Chunk, error) {
 	}
 
 	return cs, nil
+}
+
+func (d *desc) slice(start, end model.Time) *desc {
+	return &desc{
+		C:         d.C.Slice(start, end),
+		FirstTime: start,
+		LastTime:  end,
+	}
 }

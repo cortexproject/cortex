@@ -14,7 +14,11 @@ import (
 type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error
-	Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	// GetChunkRefs returns the un-loaded chunks and the fetchers to be used to load them. You can load each slice of chunks ([]Chunk),
+	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)
+	GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
+	LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error)
 	Stop()
 }
 
@@ -40,15 +44,15 @@ func NewCompositeStore() CompositeStore {
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
-func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, storage StorageClient, limits *validation.Overrides) error {
+func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks ObjectClient, limits *validation.Overrides) error {
 	schema := cfg.createSchema()
 	var store Store
 	var err error
 	switch cfg.Schema {
-	case "v9":
-		store, err = newSeriesStore(storeCfg, schema, storage, limits)
+	case "v9", "v10":
+		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits)
 	default:
-		store, err = newStore(storeCfg, schema, storage, limits)
+		store, err = newStore(storeCfg, schema, index, chunks, limits)
 	}
 	if err != nil {
 		return err
@@ -86,6 +90,36 @@ func (c compositeStore) Get(ctx context.Context, from, through model.Time, match
 		return nil
 	})
 	return results, err
+}
+
+// LabelValuesForMetricName retrieves all label values for a single label name and metric name.
+func (c compositeStore) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error) {
+	var result []string
+	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+		labelValues, err := store.LabelValuesForMetricName(ctx, from, through, metricName, labelName)
+		if err != nil {
+			return err
+		}
+		result = append(result, labelValues...)
+		return nil
+	})
+	return result, err
+}
+
+func (c compositeStore) GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	chunkIDs := [][]Chunk{}
+	fetchers := []*Fetcher{}
+	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+		ids, fetcher, err := store.GetChunkRefs(ctx, from, through, matchers...)
+		if err != nil {
+			return err
+		}
+
+		chunkIDs = append(chunkIDs, ids...)
+		fetchers = append(fetchers, fetcher...)
+		return nil
+	})
+	return chunkIDs, fetchers, err
 }
 
 func (c compositeStore) Stop() {

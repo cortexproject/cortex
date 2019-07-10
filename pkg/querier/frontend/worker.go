@@ -3,17 +3,18 @@ package frontend
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/mwitkow/go-grpc-middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/naming"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
@@ -31,6 +32,8 @@ type WorkerConfig struct {
 	Address           string
 	Parallelism       int
 	DNSLookupDuration time.Duration
+
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -38,6 +41,8 @@ func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service.")
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
+
+	cfg.GRPCClientConfig.RegisterFlags("querier.frontend-client", f)
 }
 
 // Worker is the counter-part to the frontend, actually processing requests.
@@ -142,7 +147,7 @@ func (w *worker) watchDNSLoop() {
 
 // runMany starts N runOne loops for a given address.
 func (w *worker) runMany(ctx context.Context, address string) {
-	client, err := connect(address)
+	client, err := w.connect(address)
 	if err != nil {
 		level.Error(w.log).Log("msg", "error connecting", "addr", address, "err", err)
 		return
@@ -198,6 +203,17 @@ func (w *worker) process(ctx context.Context, c Frontend_ProcessClient) error {
 			}
 		}
 
+		if len(response.Body) >= w.cfg.GRPCClientConfig.MaxSendMsgSize {
+			errMsg := fmt.Sprintf("the response is larger than the max (%d vs %d)", len(response.Body), w.cfg.GRPCClientConfig.MaxSendMsgSize)
+
+			// This makes sure the request is not retried, else a 500 is sent and we retry the large query again.
+			response = &httpgrpc.HTTPResponse{
+				Code: http.StatusRequestEntityTooLarge,
+				Body: []byte(errMsg),
+			}
+			level.Error(w.log).Log("msg", "error processing query", "err", errMsg)
+		}
+
 		if err := c.Send(&ProcessResponse{
 			HttpResponse: response,
 		}); err != nil {
@@ -206,14 +222,10 @@ func (w *worker) process(ctx context.Context, c Frontend_ProcessClient) error {
 	}
 }
 
-func connect(address string) (FrontendClient, error) {
-	conn, err := grpc.Dial(
-		address,
-		grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-			middleware.ClientUserHeaderInterceptor,
-		)),
-	)
+func (w *worker) connect(address string) (FrontendClient, error) {
+	opts := []grpc.DialOption{grpc.WithInsecure()}
+	opts = append(opts, w.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor}, nil)...)
+	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, err
 	}

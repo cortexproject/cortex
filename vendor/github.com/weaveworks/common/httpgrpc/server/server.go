@@ -11,12 +11,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/mwitkow/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/sercand/kuberesolver"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/balancer/roundrobin"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
@@ -71,10 +72,15 @@ type Client struct {
 
 // ParseURL deals with direct:// style URLs, as well as kubernetes:// urls.
 // For backwards compatibility it treats URLs without schems as kubernetes://.
-func ParseURL(unparsed string) (string, []grpc.DialOption, error) {
+func ParseURL(unparsed string) (string, error) {
+	// if it has :///, this is the kuberesolver v2 URL. Return it as it is.
+	if strings.Contains(unparsed, ":///") {
+		return unparsed, nil
+	}
+
 	parsed, err := url.Parse(unparsed)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
 
 	scheme, host := parsed.Scheme, parsed.Host
@@ -84,43 +90,47 @@ func ParseURL(unparsed string) (string, []grpc.DialOption, error) {
 
 	switch scheme {
 	case "direct":
-		return host, nil, err
+		return host, err
 
 	case "kubernetes":
 		host, port, err := net.SplitHostPort(host)
 		if err != nil {
-			return "", nil, err
+			return "", err
 		}
-		parts := strings.SplitN(host, ".", 2)
-		service, namespace := parts[0], "default"
-		if len(parts) == 2 {
+		parts := strings.SplitN(host, ".", 3)
+		service, namespace, domain := parts[0], "default", ""
+		if len(parts) > 1 {
 			namespace = parts[1]
+			domain = "." + namespace
 		}
-		balancer := kuberesolver.NewWithNamespace(namespace)
-		address := fmt.Sprintf("kubernetes://%s:%s", service, port)
-		dialOptions := []grpc.DialOption{balancer.DialOption()}
-		return address, dialOptions, nil
+		if len(parts) > 2 {
+			domain = domain + "." + parts[2]
+		}
+		address := fmt.Sprintf("kubernetes://%s%s:%s", service, domain, port)
+		return address, nil
 
 	default:
-		return "", nil, fmt.Errorf("unrecognised scheme: %s", parsed.Scheme)
+		return "", fmt.Errorf("unrecognised scheme: %s", parsed.Scheme)
 	}
 }
 
 // NewClient makes a new Client, given a kubernetes service address.
 func NewClient(address string) (*Client, error) {
-	address, dialOptions, err := ParseURL(address)
+	kuberesolver.RegisterInCluster()
+
+	address, err := ParseURL(address)
 	if err != nil {
 		return nil, err
 	}
 
-	dialOptions = append(
-		dialOptions,
+	dialOptions := []grpc.DialOption{
+		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
 		)),
-	)
+	}
 
 	conn, err := grpc.Dial(address, dialOptions...)
 	if err != nil {

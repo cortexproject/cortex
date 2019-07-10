@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/stretchr/testify/require"
 )
 

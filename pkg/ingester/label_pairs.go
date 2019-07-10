@@ -1,11 +1,11 @@
 package ingester
 
 import (
-	"bytes"
 	"sort"
 	"strings"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -13,34 +13,24 @@ import (
 
 // A series is uniquely identified by its set of label name/value
 // pairs, which may arrive in any order over the wire
-type labelPairs []client.LabelPair
-
-// We sort the set for faster lookup, and use a separate type to let
-// the compiler check usage.
-type sortedLabelPairs []client.LabelPair
-
-func (s sortedLabelPairs) Len() int           { return len(s) }
-func (s sortedLabelPairs) Less(i, j int) bool { return bytes.Compare(s[i].Name, s[j].Name) < 0 }
-func (s sortedLabelPairs) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-var labelNameBytes = []byte(model.MetricNameLabel)
+type labelPairs []client.LabelAdapter
 
 func (a labelPairs) String() string {
 	var b strings.Builder
 
-	metricName, err := extract.MetricNameFromLabelPairs(a)
+	metricName, err := extract.MetricNameFromLabelAdapters(a)
 	numLabels := len(a) - 1
 	if err != nil {
 		numLabels = len(a)
 	}
-	b.Write(metricName)
+	b.WriteString(metricName)
 	b.WriteByte('{')
 	count := 0
 	for _, pair := range a {
-		if !pair.Name.Equal(labelNameBytes) {
-			b.Write(pair.Name)
+		if pair.Name != model.MetricNameLabel {
+			b.WriteString(pair.Name)
 			b.WriteString("=\"")
-			b.Write(pair.Value)
+			b.WriteString(pair.Value)
 			b.WriteByte('"')
 			count++
 			if count < numLabels {
@@ -50,10 +40,6 @@ func (a labelPairs) String() string {
 	}
 	b.WriteByte('}')
 	return b.String()
-}
-
-func (s sortedLabelPairs) String() string {
-	return labelPairs(s).String()
 }
 
 // Remove any label where the value is "" - Prometheus 2+ will remove these
@@ -70,45 +56,33 @@ func (a *labelPairs) removeBlanks() {
 	}
 }
 
-func (a labelPairs) copyValuesAndSort() sortedLabelPairs {
-	c := make(sortedLabelPairs, len(a))
-	// Since names and values may point into a much larger buffer,
-	// make a copy of all the names and values, in one block for efficiency
-	totalLength := 0
-	for _, pair := range a {
-		totalLength += len(pair.Name) + len(pair.Value)
+func valueForName(s labels.Labels, name string) (string, bool) {
+	pos := sort.Search(len(s), func(i int) bool { return s[i].Name >= name })
+	if pos == len(s) || s[pos].Name != name {
+		return "", false
 	}
-	copyBytes := make([]byte, totalLength)
-	pos := 0
-	copyByteSlice := func(val []byte) []byte {
-		start := pos
-		pos += copy(copyBytes[pos:], val)
-		return copyBytes[start:pos]
-	}
-	for i, pair := range a {
-		c[i].Name = copyByteSlice(pair.Name)
-		c[i].Value = copyByteSlice(pair.Value)
-	}
-	sort.Sort(c)
-	return c
+	return s[pos].Value, true
 }
 
-func (s sortedLabelPairs) valueForName(name []byte) []byte {
-	pos := sort.Search(len(s), func(i int) bool { return bytes.Compare(s[i].Name, name) >= 0 })
-	if pos == len(s) || !bytes.Equal(s[pos].Name, name) {
-		return nil
-	}
-	return s[pos].Value
-}
-
-// Check if s and b contain the same name/value pairs
-func (s sortedLabelPairs) equal(b labelPairs) bool {
-	if len(s) != len(b) {
+// Check if a and b contain the same name/value pairs
+func (a labelPairs) equal(b labels.Labels) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	for _, pair := range b {
-		found := s.valueForName(pair.Name)
-		if found == nil || !bytes.Equal(found, pair.Value) {
+	// Check as many as we can where the two sets are in the same order
+	i := 0
+	for ; i < len(a); i++ {
+		if b[i].Name != string(a[i].Name) {
+			break
+		}
+		if b[i].Value != string(a[i].Value) {
+			return false
+		}
+	}
+	// Now check remaining values using binary search
+	for ; i < len(a); i++ {
+		v, found := valueForName(b, a[i].Name)
+		if !found || v != a[i].Value {
 			return false
 		}
 	}

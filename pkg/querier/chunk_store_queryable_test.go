@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
 func TestChunkQueryable(t *testing.T) {
@@ -50,8 +50,8 @@ func makeMockChunkStore(t require.TestingT, numChunks int, encoding promchunk.En
 }
 
 func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, encoding promchunk.Encoding) chunk.Chunk {
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
+	metric := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
 	}
 	pc, err := promchunk.NewForEncoding(encoding)
 	require.NoError(t, err)

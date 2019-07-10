@@ -9,8 +9,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/assert"
@@ -21,7 +22,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/user"
 )
 
@@ -131,18 +131,20 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 		config       Config
 		workerConfig WorkerConfig
 	)
-	util.DefaultValues(&config, &workerConfig)
+	flagext.DefaultValues(&config, &workerConfig)
 	config.SplitQueriesByDay = true
 
-	grpcListen, err := net.Listen("tcp", "")
+	// localhost:0 prevents firewall warnings on Mac OS X.
+	grpcListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 	workerConfig.Address = grpcListen.Addr().String()
 
-	httpListen, err := net.Listen("tcp", "")
+	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	frontend, err := New(config, logger)
+	frontend, err := New(config, logger, defaultOverrides(t))
 	require.NoError(t, err)
+	defer frontend.Close()
 
 	grpcServer := grpc.NewServer(
 		grpc.StreamInterceptor(otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer())),
@@ -155,7 +157,7 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 		Handler: middleware.Merge(
 			middleware.AuthenticateUser,
 			middleware.Tracer{},
-		).Wrap(frontend),
+		).Wrap(frontend.Handler()),
 	}
 	defer httpServer.Shutdown(context.Background())
 

@@ -144,8 +144,10 @@ func (a *API) getRuleGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rg, err := a.store.GetRuleGroup(r.Context(), userID, ns, gn)
-
 	if err != nil {
+		if err == configs.ErrGroupNotFound {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

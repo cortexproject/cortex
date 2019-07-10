@@ -39,11 +39,14 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, prefix+"gcs.bucketname", "", "Name of GCS bucket to put chunks in.")
 }
 
+// gcsConfigClient acts as a config backend. It is not safe to use concurrently when polling for rules.
+// This is not an issue with the current scheduler architecture, but must be noted.
 type gcsConfigClient struct {
 	client *storage.Client
 	bucket *storage.BucketHandle
 
-	lastPolled time.Time
+	alertPolled time.Time
+	rulePolled  time.Time
 }
 
 // NewGCSConfigClient makes a new chunk.ObjectClient that writes chunks to GCS.
@@ -57,7 +60,8 @@ func NewGCSConfigClient(ctx context.Context, cfg GCSConfig) (configs.ConfigStore
 		client: client,
 		bucket: bucket,
 
-		lastPolled: time.Unix(0, 0),
+		alertPolled: time.Unix(0, 0),
+		rulePolled:  time.Unix(0, 0),
 	}, nil
 }
 
@@ -86,6 +90,7 @@ func (g *gcsConfigClient) getAlertConfig(ctx context.Context, obj string) (confi
 	return config, nil
 }
 
+// PollAlertConfigs returns any recently updated alert configurations
 func (g *gcsConfigClient) PollAlertConfigs(ctx context.Context) (map[string]configs.AlertConfig, error) {
 	objs := g.bucket.Objects(ctx, &storage.Query{
 		Prefix: alertPrefix,
@@ -103,7 +108,7 @@ func (g *gcsConfigClient) PollAlertConfigs(ctx context.Context) (map[string]conf
 			return nil, err
 		}
 
-		if objAttrs.Updated.After(g.lastPolled) {
+		if objAttrs.Updated.After(g.alertPolled) {
 			level.Debug(util.Logger).Log("msg", "adding updated gcs config", "config", objAttrs.Name)
 			rls, err := g.getAlertConfig(ctx, objAttrs.Name)
 			if err != nil {
@@ -113,14 +118,16 @@ func (g *gcsConfigClient) PollAlertConfigs(ctx context.Context) (map[string]conf
 		}
 	}
 
-	g.lastPolled = time.Now()
+	g.alertPolled = time.Now()
 	return alertMap, nil
 }
 
+// GetAlertConfig returns a specified users alertmanager configuration
 func (g *gcsConfigClient) GetAlertConfig(ctx context.Context, userID string) (configs.AlertConfig, error) {
 	return g.getAlertConfig(ctx, alertPrefix+userID)
 }
 
+// SetAlertConfig sets a specified users alertmanager configuration
 func (g *gcsConfigClient) SetAlertConfig(ctx context.Context, userID string, cfg configs.AlertConfig) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
@@ -141,10 +148,16 @@ func (g *gcsConfigClient) SetAlertConfig(ctx context.Context, userID string, cfg
 	return nil
 }
 
+// DeleteAlertConfig deletes a specified users alertmanager configuration
 func (g *gcsConfigClient) DeleteAlertConfig(ctx context.Context, userID string) error {
+	err := g.bucket.Object(alertPrefix + userID).Delete(ctx)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
+// PollRules returns a users recently updated rule set
 func (g *gcsConfigClient) PollRules(ctx context.Context) (map[string][]configs.RuleGroup, error) {
 	objs := g.bucket.Objects(ctx, &storage.Query{
 		Prefix: rulePrefix,
@@ -189,7 +202,7 @@ func (g *gcsConfigClient) PollRules(ctx context.Context) (map[string][]configs.R
 		ruleMap[user] = rgs
 	}
 
-	g.lastPolled = time.Now()
+	g.rulePolled = time.Now()
 	return ruleMap, nil
 }
 
@@ -209,7 +222,7 @@ func (g *gcsConfigClient) checkUser(ctx context.Context, userID string) (bool, e
 			return false, err
 		}
 
-		if rg.Updated.After(g.lastPolled) {
+		if rg.Updated.After(g.rulePolled) {
 			level.Debug(util.Logger).Log("msg", "updated rulegroups found", "user", userID)
 			return true, nil
 		}
@@ -385,30 +398,8 @@ func (g *gcsConfigClient) SetRuleGroup(ctx context.Context, userID string, names
 
 func (g *gcsConfigClient) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
 	handle := generateRuleHandle(userID, namespace, group)
-	rg, err := g.getRuleGroup(ctx, handle)
+	err := g.bucket.Object(handle).Delete(ctx)
 	if err != nil {
-		return nil
-	}
-
-	if rg == nil {
-		return configs.ErrGroupNotFound
-	}
-
-	rg.Deleted = true
-
-	rgBytes, err := proto.Marshal(rg)
-	if err != nil {
-		return err
-	}
-
-	objHandle := g.bucket.Object(handle)
-
-	writer := objHandle.NewWriter(ctx)
-	if _, err := writer.Write(rgBytes); err != nil {
-		return err
-	}
-
-	if err := writer.Close(); err != nil {
 		return err
 	}
 

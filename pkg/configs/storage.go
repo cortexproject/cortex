@@ -16,6 +16,7 @@ var (
 )
 
 // ConfigStore unifies the AlertStore and ConfigStore interface
+// TODO: Remove polling from the configstorage backend. A notification queue system would work better for this use case.
 type ConfigStore interface {
 	AlertStore
 	RuleStore

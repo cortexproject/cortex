@@ -179,7 +179,7 @@ func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interfac
 	)
 	for backoff.Ongoing() {
 		queryOptions := &consul.QueryOptions{
-			RequireConsistent: true,
+			RequireConsistent: c.cfg.ConsistentReads,
 			WaitIndex:         index,
 			WaitTime:          longPollDuration,
 		}

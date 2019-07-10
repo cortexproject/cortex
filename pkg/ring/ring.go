@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -57,7 +58,7 @@ var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
-	KVStore           KVConfig      `yaml:"kvstore,omitempty"`
+	KVStore           kv.Config     `yaml:"kvstore,omitempty"`
 	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
 	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
 }
@@ -97,8 +98,8 @@ func New(cfg Config, name string) (*Ring, error) {
 	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
-	codec := kv.ProtoCodec{Factory: ProtoDescFactory}
-	store, err := NewKVStore(cfg.KVStore, codec)
+	codec := codec.Proto{Factory: ProtoDescFactory}
+	store, err := kv.NewClient(cfg.KVStore, codec)
 	if err != nil {
 		return nil, err
 	}

@@ -12,8 +12,8 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 )
 
@@ -62,7 +62,7 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 			in: HATrackerConfig{
 				UpdateTimeout:   time.Second,
 				FailoverTimeout: time.Second,
-				KVStore: ring.KVConfig{
+				KVStore: kv.Config{
 					Store: "inmemory",
 				},
 			},
@@ -72,7 +72,7 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 			in: HATrackerConfig{
 				UpdateTimeout:   time.Second,
 				FailoverTimeout: 999 * time.Millisecond,
-				KVStore: ring.KVConfig{
+				KVStore: kv.Config{
 					Store: "inmemory",
 				},
 			},
@@ -82,7 +82,7 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 			in: HATrackerConfig{
 				UpdateTimeout:   time.Second,
 				FailoverTimeout: 1001 * time.Millisecond,
-				KVStore: ring.KVConfig{
+				KVStore: kv.Config{
 					Store: "inmemory",
 				},
 			},
@@ -103,10 +103,10 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	replica := "r1"
 	start := mtime.Now()
 
-	codec := kv.ProtoCodec{Factory: ProtoReplicaDescFactory}
+	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
-		KVStore:         ring.KVConfig{Mock: mock},
+		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   time.Millisecond,
 		FailoverTimeout: time.Millisecond * 2,
 	})
@@ -130,7 +130,7 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 	start := mtime.Now()
 
 	c, err := newClusterTracker(HATrackerConfig{
-		KVStore:         ring.KVConfig{Store: "inmemory"},
+		KVStore:         kv.Config{Store: "inmemory"},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
 	})
@@ -161,7 +161,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	replica2 := "replica2"
 
 	c, err := newClusterTracker(HATrackerConfig{
-		KVStore:         ring.KVConfig{Store: "inmemory"},
+		KVStore:         kv.Config{Store: "inmemory"},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
 	})
@@ -191,7 +191,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	replica2 := "replica2"
 
 	c, err := newClusterTracker(HATrackerConfig{
-		KVStore:         ring.KVConfig{Store: "inmemory"},
+		KVStore:         kv.Config{Store: "inmemory"},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
 	})
@@ -235,10 +235,10 @@ func TestCheckReplicaWriteTimeout(t *testing.T) {
 	cluster := "c1"
 	user := "user"
 
-	codec := kv.ProtoCodec{Factory: ProtoReplicaDescFactory}
+	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
-		KVStore:         ring.KVConfig{Mock: mock},
+		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
 	})
@@ -286,10 +286,10 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	cluster := "c1"
 	user := "user"
 
-	codec := kv.ProtoCodec{Factory: ProtoReplicaDescFactory}
+	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
-		KVStore:         ring.KVConfig{Mock: mock},
+		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
 	})

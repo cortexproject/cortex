@@ -8,36 +8,38 @@ import (
 	"strings"
 	"time"
 
-	kvstore "github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
+
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
 	longPollDuration = 10 * time.Second
 )
 
+var (
+	writeOptions = &consul.WriteOptions{}
+
+	// ErrNotFound is returned by ConsulClient.Get.
+	ErrNotFound = fmt.Errorf("Not found")
+
+	backoffConfig = util.BackoffConfig{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 1 * time.Minute,
+	}
+)
+
 // Config to create a ConsulClient
 type Config struct {
 	Host              string
-	Prefix            string
 	ACLToken          string
 	HTTPClientTimeout time.Duration
 	ConsistentReads   bool
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet
-// If prefix is not an empty string it should end with a period.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
-	f.StringVar(&cfg.Prefix, prefix+"consul.prefix", "collectors/", "Prefix for keys in Consul. Should end with a /.")
-	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
-	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
-	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to consul.")
 }
 
 type kv interface {
@@ -47,14 +49,24 @@ type kv interface {
 	Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error)
 }
 
-type consulClient struct {
+// Client is a KV.Client for Consul.
+type Client struct {
 	kv
-	codec kvstore.Codec
+	codec codec.Codec
 	cfg   Config
 }
 
-// NewConsulClient returns a new ConsulClient.
-func NewConsulClient(cfg Config, codec kvstore.Codec) (kvstore.Client, error) {
+// RegisterFlags adds the flags required to config this to the given FlagSet
+// If prefix is not an empty string it should end with a period.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
+	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
+	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
+	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
+	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to consul.")
+}
+
+// NewClient returns a new Client.
+func NewClient(cfg Config, codec codec.Codec) (*Client, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
 		Token:   cfg.ACLToken,
@@ -68,33 +80,23 @@ func NewConsulClient(cfg Config, codec kvstore.Codec) (kvstore.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	var c kvstore.Client = &consulClient{
+	c := &Client{
 		kv:    consulMetrics{client.KV()},
 		codec: codec,
 		cfg:   cfg,
 	}
-	if cfg.Prefix != "" {
-		c = kvstore.PrefixClient(c, cfg.Prefix)
-	}
 	return c, nil
 }
 
-var (
-	writeOptions = &consul.WriteOptions{}
-
-	// ErrNotFound is returned by ConsulClient.Get.
-	ErrNotFound = fmt.Errorf("Not found")
-)
-
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
-func (c *consulClient) CAS(ctx context.Context, key string, f kvstore.CASCallback) error {
+func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	return instrument.CollectedRequest(ctx, "CAS loop", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return c.cas(ctx, key, f)
 	})
 }
 
-func (c *consulClient) cas(ctx context.Context, key string, f kvstore.CASCallback) error {
+func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	var (
 		index   = uint64(0)
 		retries = 10
@@ -162,18 +164,13 @@ func (c *consulClient) cas(ctx context.Context, key string, f kvstore.CASCallbac
 	return fmt.Errorf("failed to CAS %s", key)
 }
 
-var backoffConfig = util.BackoffConfig{
-	MinBackoff: 1 * time.Second,
-	MaxBackoff: 1 * time.Minute,
-}
-
 // WatchKey will watch a given key in consul for changes. When the value
 // under said key changes, the f callback is called with the deserialised
 // value. To construct the deserialised value, a factory function should be
 // supplied which generates an empty struct for WatchKey to deserialise
 // into. Values in Consul are assumed to be JSON. This function blocks until
 // the context is cancelled.
-func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
@@ -215,7 +212,7 @@ func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interfac
 // WatchPrefix will watch a given prefix in Consul for new keys and changes to existing keys under that prefix.
 // When the value under said key changes, the f callback is called with the deserialised value.
 // Values in Consul are assumed to be JSON. This function blocks until the context is cancelled.
-func (c *consulClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
@@ -256,7 +253,8 @@ func (c *consulClient) WatchPrefix(ctx context.Context, prefix string, f func(st
 	}
 }
 
-func (c *consulClient) PutBytes(ctx context.Context, key string, buf []byte) error {
+// PutBytes implements kv.Client.
+func (c *Client) PutBytes(ctx context.Context, key string, buf []byte) error {
 	_, err := c.kv.Put(&consul.KVPair{
 		Key:   key,
 		Value: buf,
@@ -264,7 +262,8 @@ func (c *consulClient) PutBytes(ctx context.Context, key string, buf []byte) err
 	return err
 }
 
-func (c *consulClient) Get(ctx context.Context, key string) (interface{}, error) {
+// Get implements kv.Get.
+func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	options := &consul.QueryOptions{
 		AllowStale:        !c.cfg.ConsistentReads,
 		RequireConsistent: c.cfg.ConsistentReads,

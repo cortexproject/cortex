@@ -1,7 +1,7 @@
-package kv
+package codec
 
 import (
-	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 )
 
@@ -11,13 +11,13 @@ type Codec interface {
 	Encode(interface{}) ([]byte, error)
 }
 
-// ProtoCodec is a Codec for proto/snappy
-type ProtoCodec struct {
+// Proto is a Codec for proto/snappy
+type Proto struct {
 	Factory func() proto.Message
 }
 
 // Decode implements Codec
-func (p ProtoCodec) Decode(bytes []byte) (interface{}, error) {
+func (p Proto) Decode(bytes []byte) (interface{}, error) {
 	out := p.Factory()
 	bytes, err := snappy.Decode(nil, bytes)
 	if err != nil {
@@ -30,7 +30,7 @@ func (p ProtoCodec) Decode(bytes []byte) (interface{}, error) {
 }
 
 // Encode implements Codec
-func (p ProtoCodec) Encode(msg interface{}) ([]byte, error) {
+func (p Proto) Encode(msg interface{}) ([]byte, error) {
 	bytes, err := proto.Marshal(msg.(proto.Message))
 	if err != nil {
 		return nil, err

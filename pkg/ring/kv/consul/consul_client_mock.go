@@ -5,10 +5,11 @@ import (
 	"sync"
 	"time"
 
-	kvstore "github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
+
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type mockKV struct {
@@ -19,13 +20,13 @@ type mockKV struct {
 }
 
 // NewInMemoryKVClient makes a new mock consul client.
-func NewInMemoryKVClient(codec kvstore.Codec) kvstore.Client {
+func NewInMemoryKVClient(codec codec.Codec) *Client {
 	m := mockKV{
 		kvps: map[string]*consul.KVPair{},
 	}
 	m.cond = sync.NewCond(&m.mtx)
 	go m.loop()
-	return &consulClient{
+	return &Client{
 		kv:    &m,
 		codec: codec,
 	}

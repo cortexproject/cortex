@@ -146,7 +146,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 		port = *cfg.ListenPort
 	}
 	codec := GetCodec()
-	store, err := NewKVStore(cfg.RingConfig.KVStore, codec)
+	store, err := kv.NewClient(cfg.RingConfig.KVStore, codec)
 	if err != nil {
 		return nil, err
 	}

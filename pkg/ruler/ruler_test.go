@@ -15,7 +15,7 @@ import (
 	client_config "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/prometheus/notifier"
@@ -34,7 +34,7 @@ func (m *mockRuleStore) GetAlerts(ctx context.Context, since configs.ID) (*clien
 }
 
 func defaultRulerConfig() Config {
-	codec := kv.ProtoCodec{Factory: ring.ProtoDescFactory}
+	codec := codec.Proto{Factory: ring.ProtoDescFactory}
 	consul := consul.NewInMemoryKVClient(codec)
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)

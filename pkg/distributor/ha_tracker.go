@@ -16,8 +16,8 @@ import (
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -62,7 +62,7 @@ type HATrackerConfig struct {
 	// more than this duration
 	FailoverTimeout time.Duration
 
-	KVStore ring.KVConfig
+	KVStore kv.Config
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -82,9 +82,9 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store.
 func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
-	codec := kv.ProtoCodec{Factory: ProtoReplicaDescFactory}
+	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 
-	client, err := ring.NewKVStore(cfg.KVStore, codec)
+	client, err := kv.NewClient(cfg.KVStore, codec)
 	if err != nil {
 		return nil, err
 	}

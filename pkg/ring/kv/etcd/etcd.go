@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/etcd-io/etcd/clientv3"
@@ -20,6 +20,13 @@ type Config struct {
 	MaxRetries  int           `yaml:"max_retries"`
 }
 
+// Client implements ring.KVClient for etcd.
+type Client struct {
+	cfg   Config
+	codec codec.Codec
+	cli   *clientv3.Client
+}
+
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	cfg.Endpoints = []string{}
@@ -29,7 +36,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 }
 
 // New makes a new Client.
-func New(cfg Config, codec kv.Codec) (*Client, error) {
+func New(cfg Config, codec codec.Codec) (*Client, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
@@ -45,15 +52,8 @@ func New(cfg Config, codec kv.Codec) (*Client, error) {
 	}, nil
 }
 
-// Client implements ring.KVClient for etcd.
-type Client struct {
-	cfg   Config
-	codec kv.Codec
-	cli   *clientv3.Client
-}
-
-// CAS implements ring.KVClient.
-func (c *Client) CAS(ctx context.Context, key string, f kv.CASCallback) error {
+// CAS implements kv.Client.
+func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	var revision int64
 
 	for i := 0; i < c.cfg.MaxRetries; i++ {
@@ -108,7 +108,7 @@ func (c *Client) CAS(ctx context.Context, key string, f kv.CASCallback) error {
 	return fmt.Errorf("failed to CAS %s", key)
 }
 
-// WatchKey implements ring.KVClient.
+// WatchKey implements kv.Client.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 1 * time.Second,
@@ -138,7 +138,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	}
 }
 
-// WatchPrefix implements ring.KVClient.
+// WatchPrefix implements kv.Client.
 func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, interface{}) bool) {
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 1 * time.Second,
@@ -168,7 +168,7 @@ func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, int
 	}
 }
 
-// Get implements ring.KVClient.
+// Get implements kv.Client.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	resp, err := c.cli.Get(ctx, key)
 	if err != nil {
@@ -180,7 +180,7 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	return c.codec.Decode(resp.Kvs[0].Value)
 }
 
-// PutBytes implements ring.KVClient.
+// PutBytes implements kv.Client.
 func (c *Client) PutBytes(ctx context.Context, key string, buf []byte) error {
 	_, err := c.cli.Put(ctx, key, string(buf))
 	return err

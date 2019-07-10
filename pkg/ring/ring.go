@@ -79,7 +79,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 type Ring struct {
 	name     string
 	cfg      Config
-	KVClient kv.KVClient
+	KVClient kv.Client
 	done     chan struct{}
 	quit     context.CancelFunc
 

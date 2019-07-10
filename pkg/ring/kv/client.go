@@ -9,11 +9,11 @@ import (
 	"github.com/golang/snappy"
 )
 
-// KVClient is a high-level client for key-value stores (such as Etcd and
+// Client is a high-level client for key-value stores (such as Etcd and
 // Consul) that exposes operations such as CAS and Watch which take callbacks.
 // It also deals with serialisation by using a Codec and having a instance of
 // the the desired type passed in to methods ala json.Unmarshal.
-type KVClient interface {
+type Client interface {
 	CAS(ctx context.Context, key string, f CASCallback) error
 
 	// WatchKey calls f whenever the value stored under key changes.
@@ -64,11 +64,11 @@ func (p ProtoCodec) Encode(msg interface{}) ([]byte, error) {
 
 type prefixedKVClient struct {
 	prefix string
-	client KVClient
+	client Client
 }
 
 // PrefixClient takes a KVClient and forces a prefix on all its operations.
-func PrefixClient(client KVClient, prefix string) KVClient {
+func PrefixClient(client Client, prefix string) Client {
 	return &prefixedKVClient{prefix, client}
 }
 

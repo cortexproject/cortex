@@ -40,7 +40,7 @@ const (
 type haTracker struct {
 	logger log.Logger
 	cfg    HATrackerConfig
-	client kv.KVClient
+	client kv.Client
 
 	// Replicas we are accepting samples from.
 	electedLock sync.RWMutex

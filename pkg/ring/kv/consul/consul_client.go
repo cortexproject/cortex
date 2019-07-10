@@ -54,7 +54,7 @@ type consulClient struct {
 }
 
 // NewConsulClient returns a new ConsulClient.
-func NewConsulClient(cfg Config, codec kvstore.Codec) (kvstore.KVClient, error) {
+func NewConsulClient(cfg Config, codec kvstore.Codec) (kvstore.Client, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
 		Token:   cfg.ACLToken,
@@ -68,7 +68,7 @@ func NewConsulClient(cfg Config, codec kvstore.Codec) (kvstore.KVClient, error) 
 	if err != nil {
 		return nil, err
 	}
-	var c kvstore.KVClient = &consulClient{
+	var c kvstore.Client = &consulClient{
 		kv:    consulMetrics{client.KV()},
 		codec: codec,
 		cfg:   cfg,

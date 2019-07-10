@@ -2,12 +2,13 @@ package consul
 
 import (
 	fmt "fmt"
+	"sync"
+	"time"
+
 	kvstore "github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
-	"sync"
-	"time"
 )
 
 type mockKV struct {
@@ -18,7 +19,7 @@ type mockKV struct {
 }
 
 // NewInMemoryKVClient makes a new mock consul client.
-func NewInMemoryKVClient(codec kvstore.Codec) kvstore.KVClient {
+func NewInMemoryKVClient(codec kvstore.Codec) kvstore.Client {
 	m := mockKV{
 		kvps: map[string]*consul.KVPair{},
 	}

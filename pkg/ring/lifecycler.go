@@ -107,7 +107,7 @@ type FlushTransferer interface {
 type Lifecycler struct {
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
-	KVStore         kv.KVClient
+	KVStore         kv.Client
 
 	// Controls the lifecycle of the ingester
 	quit      chan struct{}

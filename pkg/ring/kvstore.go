@@ -11,7 +11,7 @@ import (
 )
 
 var inmemoryStoreInit sync.Once
-var inmemoryStore kv.KVClient
+var inmemoryStore kv.Client
 
 // KVConfig is config for a KVStore currently used by ring and HA tracker,
 // where store can be consul or inmemory.
@@ -21,7 +21,7 @@ type KVConfig struct {
 	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
 	Prefix string        `yaml:"prefix,omitempty"`
 
-	Mock kv.KVClient
+	Mock kv.Client
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
@@ -48,12 +48,12 @@ type CASCallback func(in interface{}) (out interface{}, retry bool, err error)
 
 // NewKVStore creates a new KVstore client (inmemory or consul) based on the config,
 // encodes and decodes data for storage using the codec.
-func NewKVStore(cfg KVConfig, codec kv.Codec) (kv.KVClient, error) {
+func NewKVStore(cfg KVConfig, codec kv.Codec) (kv.Client, error) {
 	if cfg.Mock != nil {
 		return cfg.Mock, nil
 	}
 
-	var kvclient kv.KVClient
+	var kvclient kv.Client
 	var err error
 
 	switch cfg.Store {

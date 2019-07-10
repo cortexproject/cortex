@@ -88,3 +88,25 @@ func (a labelPairs) equal(b labels.Labels) bool {
 	}
 	return true
 }
+
+func newLabelPairs(metric labels.Labels) []client.LabelPair {
+	lp := make([]client.LabelPair, 0, len(metric))
+	for _, m := range metric {
+		lp = append(lp, client.LabelPair{
+			Name:  []byte(m.Name),
+			Value: []byte(m.Value),
+		})
+	}
+	return lp
+}
+
+func newLabelPairsFromLabelAdapters(metric []client.LabelAdapter) []client.LabelPair {
+	lp := make([]client.LabelPair, 0, len(metric))
+	for _, m := range metric {
+		lp = append(lp, client.LabelPair{
+			Name:  []byte(m.Name),
+			Value: []byte(m.Value),
+		})
+	}
+	return lp
+}

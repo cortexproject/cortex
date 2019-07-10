@@ -55,7 +55,7 @@ func BenchmarkQueryStream(b *testing.B) {
 			{Name: "cpu", Value: cpus[i%numCPUs]},
 		}
 
-		state, fp, series, err := ing.userStates.getOrCreateSeries(ctx, labels)
+		state, fp, series, err := ing.userStates.getOrCreateSeries(ctx, labels, &Record{})
 		require.NoError(b, err)
 
 		for j := 0; j < numSamples; j++ {

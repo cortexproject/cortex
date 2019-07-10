@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"flag"
+	"fmt"
 	"path"
 	"sync"
 	"time"
@@ -11,9 +12,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/tsdb/wal"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -223,6 +224,7 @@ func (w *wrapper) recover(ctx context.Context) error {
 	// Use a local userStates, so we don't need to worry about locking.
 	userStates := newUserStates(w.ingester.limits, w.ingester.cfg)
 
+	la := []client.LabelAdapter{}
 	if err := w.recoverRecords("checkpoints", &Series{}, func(msg proto.Message) error {
 		walSeries := msg.(*Series)
 
@@ -231,13 +233,19 @@ func (w *wrapper) recover(ctx context.Context) error {
 			return err
 		}
 
-		userCtx := user.InjectOrgID(ctx, walSeries.UserId)
-		state, err := userStates.getOrCreate(userCtx)
-		if err != nil {
-			return err
+		state, ok := userStates.get(walSeries.UserId)
+		if !ok {
+			return fmt.Errorf("user state not found for userid=%s", walSeries.UserId)
 		}
 
-		series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), walSeries.Labels, &Record{})
+		la = la[:0]
+		for _, l := range walSeries.Labels {
+			la = append(la, client.LabelAdapter{
+				Name:  string(l.Name),
+				Value: string(l.Value),
+			})
+		}
+		series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, &Record{})
 		if err != nil {
 			return err
 		}
@@ -249,11 +257,10 @@ func (w *wrapper) recover(ctx context.Context) error {
 
 	if err := w.recoverRecords("samples", &Record{}, func(msg proto.Message) error {
 		record := msg.(*Record)
-		userCtx := user.InjectOrgID(ctx, record.UserId)
 
-		state, err := userStates.getOrCreate(userCtx)
-		if err != nil {
-			return err
+		state, ok := userStates.get(record.UserId)
+		if !ok {
+			return fmt.Errorf("user state not found for userid=%s", record.UserId)
 		}
 
 		for _, labels := range record.Labels {
@@ -262,7 +269,14 @@ func (w *wrapper) recover(ctx context.Context) error {
 				continue
 			}
 
-			_, err = state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), labels.Labels, &Record{})
+			la = la[:0]
+			for _, l := range labels.Labels {
+				la = append(la, client.LabelAdapter{
+					Name:  string(l.Name),
+					Value: string(l.Value),
+				})
+			}
+			_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, &Record{})
 			if err != nil {
 				return err
 			}

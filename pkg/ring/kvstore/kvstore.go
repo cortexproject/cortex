@@ -9,13 +9,19 @@ import (
 	"github.com/golang/snappy"
 )
 
-// KVClient is a high-level client for Consul, that exposes operations
-// such as CAS and Watch which take callbacks.  It also deals with serialisation
-// by having an instance factory passed in to methods and deserialising into that.
+// KVClient is a high-level client for key-value stores (such as Etcd and
+// Consul) that exposes operations such as CAS and Watch which take callbacks.
+// It also deals with serialisation by using a Codec and having a instance of
+// the the desired type passed in to methods ala json.Unmarshal.
 type KVClient interface {
 	CAS(ctx context.Context, key string, f CASCallback) error
+
+	// WatchKey calls f whenever the value stored under key changes.
 	WatchKey(ctx context.Context, key string, f func(interface{}) bool)
+
+	// WatchPrefix calls f whenever any value stored under prefix changes.
 	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
+
 	Get(ctx context.Context, key string) (interface{}, error)
 	PutBytes(ctx context.Context, key string, buf []byte) error
 }
@@ -23,7 +29,7 @@ type KVClient interface {
 // CASCallback is the type of the callback to CAS.  If err is nil, out must be non-nil.
 type CASCallback func(in interface{}) (out interface{}, retry bool, err error)
 
-// Codec allows the consult client to serialise and deserialise values.
+// Codec allows KV clients to serialise and deserialise values.
 type Codec interface {
 	Decode([]byte) (interface{}, error)
 	Encode(interface{}) ([]byte, error)
@@ -61,7 +67,7 @@ type prefixedKVClient struct {
 	client KVClient
 }
 
-// PrefixClient takes a ConsulClient and forces a prefix on all its operations.
+// PrefixClient takes a KVClient and forces a prefix on all its operations.
 func PrefixClient(client KVClient, prefix string) KVClient {
 	return &prefixedKVClient{prefix, client}
 }
@@ -84,7 +90,7 @@ func (c *prefixedKVClient) WatchPrefix(ctx context.Context, prefix string, f fun
 	})
 }
 
-// PutBytes writes bytes to Consul.
+// PutBytes writes bytes to the KVClient.
 func (c *prefixedKVClient) PutBytes(ctx context.Context, key string, buf []byte) error {
 	return c.client.PutBytes(ctx, c.prefix+key, buf)
 }

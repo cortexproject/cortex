@@ -141,7 +141,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 				d.cfg.EnableHAReplicas = true
 				d.limits.Defaults.AcceptHASamples = true
 				codec := kvstore.ProtoCodec{Factory: ProtoReplicaDescFactory}
-				mock := consul.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
+				mock := kvstore.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
 
 				r, err := newClusterTracker(HATrackerConfig{
 					KVStore:         ring.KVConfig{Mock: mock},

@@ -59,14 +59,15 @@ func NewKVStore(cfg KVConfig, codec kvstore.Codec) (kvstore.KVClient, error) {
 	switch cfg.Store {
 	case "consul":
 		kvclient, err = consul.NewConsulClient(cfg.Consul, codec)
+	case "etcd":
+		kvclient, err = etcd.New(cfg.Etcd, codec)
 	case "inmemory":
 		// If we use the in-memory store, make sure everyone gets the same instance
 		// within the same process.
 		inmemoryStoreInit.Do(func() {
-			kvclient = consul.NewInMemoryKVClient(codec)
+			inmemoryStore = consul.NewInMemoryKVClient(codec)
 		})
-	case "etcd":
-		kvclient, err = etcd.New(cfg.Etcd, codec)
+		kvclient = inmemoryStore
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", cfg.Store)
 	}

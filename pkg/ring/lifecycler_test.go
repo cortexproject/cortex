@@ -113,8 +113,8 @@ func (f *nopFlushTransferer) TransferOut(ctx context.Context) error {
 func TestRingRestart(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	codec := ProtoCodec{Factory: ProtoDescFactory}
-	ringConfig.KVStore.Mock = NewInMemoryKVClient(codec)
+	codec := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryKVClient(codec)
 
 	r, err := New(ringConfig, "ingester")
 	require.NoError(t, err)

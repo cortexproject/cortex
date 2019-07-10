@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/ring/kvstore"
-	"github.com/cortexproject/cortex/pkg/ring/kvstore/consul"
-	"github.com/cortexproject/cortex/pkg/ring/kvstore/etcd"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 )
 
 var inmemoryStoreInit sync.Once
-var inmemoryStore kvstore.KVClient
+var inmemoryStore kv.KVClient
 
 // KVConfig is config for a KVStore currently used by ring and HA tracker,
 // where store can be consul or inmemory.
@@ -21,7 +21,7 @@ type KVConfig struct {
 	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
 	Prefix string        `yaml:"prefix,omitempty"`
 
-	Mock kvstore.KVClient
+	Mock kv.KVClient
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
@@ -48,12 +48,12 @@ type CASCallback func(in interface{}) (out interface{}, retry bool, err error)
 
 // NewKVStore creates a new KVstore client (inmemory or consul) based on the config,
 // encodes and decodes data for storage using the codec.
-func NewKVStore(cfg KVConfig, codec kvstore.Codec) (kvstore.KVClient, error) {
+func NewKVStore(cfg KVConfig, codec kv.Codec) (kv.KVClient, error) {
 	if cfg.Mock != nil {
 		return cfg.Mock, nil
 	}
 
-	var kvclient kvstore.KVClient
+	var kvclient kv.KVClient
 	var err error
 
 	switch cfg.Store {
@@ -77,13 +77,13 @@ func NewKVStore(cfg KVConfig, codec kvstore.Codec) (kvstore.KVClient, error) {
 	}
 
 	if cfg.Prefix != "" {
-		kvclient = kvstore.PrefixClient(kvclient, cfg.Prefix)
+		kvclient = kv.PrefixClient(kvclient, cfg.Prefix)
 	}
 
 	return kvclient, nil
 }
 
 // GetCodec returns the codec used to encode and decode data being put by ring.
-func GetCodec() kvstore.Codec {
-	return kvstore.ProtoCodec{Factory: ProtoDescFactory}
+func GetCodec() kv.Codec {
+	return kv.ProtoCodec{Factory: ProtoDescFactory}
 }

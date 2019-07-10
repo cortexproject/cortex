@@ -17,7 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kvstore"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -40,7 +40,7 @@ const (
 type haTracker struct {
 	logger log.Logger
 	cfg    HATrackerConfig
-	client kvstore.KVClient
+	client kv.KVClient
 
 	// Replicas we are accepting samples from.
 	electedLock sync.RWMutex
@@ -82,7 +82,7 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store.
 func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
-	codec := kvstore.ProtoCodec{Factory: ProtoReplicaDescFactory}
+	codec := kv.ProtoCodec{Factory: ProtoReplicaDescFactory}
 
 	client, err := ring.NewKVStore(cfg.KVStore, codec)
 	if err != nil {

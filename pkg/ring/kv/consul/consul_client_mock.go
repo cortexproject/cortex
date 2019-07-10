@@ -2,13 +2,12 @@ package consul
 
 import (
 	fmt "fmt"
-	"sync"
-	"time"
-
-	"github.com/cortexproject/cortex/pkg/ring/kvstore"
+	kvstore "github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
+	"sync"
+	"time"
 )
 
 type mockKV struct {

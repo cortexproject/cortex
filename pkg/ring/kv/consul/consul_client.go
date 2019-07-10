@@ -8,12 +8,11 @@ import (
 	"strings"
 	"time"
 
+	kvstore "github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
-
-	"github.com/cortexproject/cortex/pkg/ring/kvstore"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 )

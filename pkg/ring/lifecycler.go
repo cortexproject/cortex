@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/cortexproject/cortex/pkg/ring/kvstore"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -107,7 +107,7 @@ type FlushTransferer interface {
 type Lifecycler struct {
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
-	KVStore         kvstore.KVClient
+	KVStore         kv.KVClient
 
 	// Controls the lifecycle of the ingester
 	quit      chan struct{}

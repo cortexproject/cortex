@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring/kvstore"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/etcd-io/etcd/clientv3"
@@ -29,7 +29,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 }
 
 // New makes a new Client.
-func New(cfg Config, codec kvstore.Codec) (*Client, error) {
+func New(cfg Config, codec kv.Codec) (*Client, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
@@ -48,12 +48,12 @@ func New(cfg Config, codec kvstore.Codec) (*Client, error) {
 // Client implements ring.KVClient for etcd.
 type Client struct {
 	cfg   Config
-	codec kvstore.Codec
+	codec kv.Codec
 	cli   *clientv3.Client
 }
 
 // CAS implements ring.KVClient.
-func (c *Client) CAS(ctx context.Context, key string, f kvstore.CASCallback) error {
+func (c *Client) CAS(ctx context.Context, key string, f kv.CASCallback) error {
 	var revision int64
 
 	for i := 0; i < c.cfg.MaxRetries; i++ {

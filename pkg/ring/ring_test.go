@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ring/kvstore"
-	"github.com/cortexproject/cortex/pkg/ring/kvstore/consul"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 )
 
 const (
@@ -24,7 +24,7 @@ func BenchmarkRing(b *testing.B) {
 		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE, false)
 	}
 	consul := consul.NewInMemoryKVClient(GetCodec())
-	ringBytes, err := kvstore.ProtoCodec{}.Encode(desc)
+	ringBytes, err := kv.ProtoCodec{}.Encode(desc)
 
 	if err != nil {
 		b.Fatal(err)

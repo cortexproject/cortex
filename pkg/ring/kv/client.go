@@ -83,7 +83,7 @@ func NewClient(cfg Config, codec codec.Codec) (Client, error) {
 		// If we use the in-memory store, make sure everyone gets the same instance
 		// within the same process.
 		inmemoryStoreInit.Do(func() {
-			inmemoryStore = consul.NewInMemoryKVClient(codec)
+			inmemoryStore = consul.NewInMemoryClient(codec)
 		})
 		client = inmemoryStore
 	default:

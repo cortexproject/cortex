@@ -29,7 +29,7 @@ import (
 const userID = "1"
 
 func defaultIngesterTestConfig() Config {
-	consul := consul.NewInMemoryKVClient(ring.GetCodec())
+	consul := consul.NewInMemoryClient(ring.GetCodec())
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.FlushCheckPeriod = 99999 * time.Hour

@@ -35,7 +35,7 @@ func (m *mockRuleStore) GetAlerts(ctx context.Context, since configs.ID) (*clien
 
 func defaultRulerConfig() Config {
 	codec := codec.Proto{Factory: ring.ProtoDescFactory}
-	consul := consul.NewInMemoryKVClient(codec)
+	consul := consul.NewInMemoryClient(codec)
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	flagext.DefaultValues(&cfg.LifecyclerConfig)

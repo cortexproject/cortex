@@ -59,7 +59,7 @@ func checkNormalised(d interface{}, id string) bool {
 func TestRingNormaliseMigration(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	ringConfig.KVStore.Mock = consul.NewInMemoryKVClient(GetCodec())
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
 	r, err := New(ringConfig, "ingester")
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestRingRestart(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
 	codec := GetCodec()
-	ringConfig.KVStore.Mock = consul.NewInMemoryKVClient(codec)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
 
 	r, err := New(ringConfig, "ingester")
 	require.NoError(t, err)

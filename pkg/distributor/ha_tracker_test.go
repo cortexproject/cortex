@@ -104,7 +104,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	start := mtime.Now()
 
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
-	mock := kv.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
+	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   time.Millisecond,
@@ -236,7 +236,7 @@ func TestCheckReplicaWriteTimeout(t *testing.T) {
 	user := "user"
 
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
-	mock := kv.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
+	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   100 * time.Millisecond,
@@ -287,7 +287,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	user := "user"
 
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
-	mock := kv.PrefixClient(consul.NewInMemoryKVClient(codec), "prefix")
+	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
 		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   100 * time.Millisecond,

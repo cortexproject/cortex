@@ -24,7 +24,7 @@ func BenchmarkRing(b *testing.B) {
 		takenTokens = append(takenTokens, tokens...)
 		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE, false)
 	}
-	consul := consul.NewInMemoryKVClient(GetCodec())
+	consul := consul.NewInMemoryClient(GetCodec())
 	ringBytes, err := codec.Proto{}.Encode(desc)
 
 	if err != nil {

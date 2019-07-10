@@ -86,7 +86,7 @@ func TestReplicationStrategy(t *testing.T) {
 		}
 		r, err := New(Config{
 			KVStore: kv.Config{
-				Mock: consul.NewInMemoryKVClient(GetCodec()),
+				Mock: consul.NewInMemoryClient(GetCodec()),
 			},
 			HeartbeatTimeout:  100 * time.Second,
 			ReplicationFactor: tc.RF,

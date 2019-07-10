@@ -19,8 +19,8 @@ type mockKV struct {
 	current uint64 // the current 'index in the log'
 }
 
-// NewInMemoryKVClient makes a new mock consul client.
-func NewInMemoryKVClient(codec codec.Codec) *Client {
+// NewInMemoryClient makes a new mock consul client.
+func NewInMemoryClient(codec codec.Codec) *Client {
 	m := mockKV{
 		kvps: map[string]*consul.KVPair{},
 	}

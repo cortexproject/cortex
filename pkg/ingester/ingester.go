@@ -275,7 +275,7 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 		Timestamp: timestamp,
 	}); err != nil {
 		if mse, ok := err.(*memorySeriesError); ok {
-			validation.DiscardedSamples.WithLabelValues(mse.errorType, state.userID).Inc()
+			state.discardedSamples.WithLabelValues(mse.errorType).Inc()
 			// Use a dumb string template to avoid the message being parsed as a template
 			err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
 		}

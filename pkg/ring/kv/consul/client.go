@@ -253,15 +253,6 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	}
 }
 
-// PutBytes implements kv.Client.
-func (c *Client) PutBytes(ctx context.Context, key string, buf []byte) error {
-	_, err := c.kv.Put(&consul.KVPair{
-		Key:   key,
-		Value: buf,
-	}, writeOptions.WithContext(ctx))
-	return err
-}
-
 // Get implements kv.Get.
 func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	options := &consul.QueryOptions{

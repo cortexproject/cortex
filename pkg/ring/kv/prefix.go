@@ -34,11 +34,6 @@ func (c *prefixedKVClient) WatchPrefix(ctx context.Context, prefix string, f fun
 	})
 }
 
-// PutBytes writes bytes to the KVClient.
-func (c *prefixedKVClient) PutBytes(ctx context.Context, key string, buf []byte) error {
-	return c.client.PutBytes(ctx, c.prefix+key, buf)
-}
-
 func (c *prefixedKVClient) Get(ctx context.Context, key string) (interface{}, error) {
 	return c.client.Get(ctx, c.prefix+key)
 }

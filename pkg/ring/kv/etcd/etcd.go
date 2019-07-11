@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+	"go.etcd.io/etcd/clientv3"
+
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/etcd-io/etcd/clientv3"
-	"github.com/go-kit/kit/log/level"
 )
 
 // Config for a new etcd.Client.
@@ -27,8 +28,8 @@ type Client struct {
 	cli   *clientv3.Client
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
+func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.Endpoints = []string{}
 	f.Var((*flagext.Strings)(&cfg.Endpoints), prefix+"etcd.endpoints", "The etcd endpoints to connect to.")
 	f.DurationVar(&cfg.DialTimeout, prefix+"etcd.dial-timeout", 10*time.Second, "The dial timeout for the etcd connection.")
@@ -55,11 +56,13 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 // CAS implements kv.Client.
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	var revision int64
+	var lastErr error
 
 	for i := 0; i < c.cfg.MaxRetries; i++ {
 		resp, err := c.cli.Get(ctx, key)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting key", "key", key, "err", err)
+			lastErr = err
 			continue
 		}
 
@@ -68,9 +71,10 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			intermediate, err = c.codec.Decode(resp.Kvs[0].Value)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+				lastErr = err
 				continue
 			}
-			revision = resp.Kvs[0].ModRevision
+			revision = resp.Kvs[0].Version
 		}
 
 		var retry bool
@@ -80,6 +84,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			if !retry {
 				return err
 			}
+			lastErr = err
 			continue
 		}
 
@@ -90,20 +95,29 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		buf, err := c.codec.Encode(intermediate)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error serialising value", "key", key, "err", err)
+			lastErr = err
 			continue
 		}
 
-		_, err = c.cli.Txn(ctx).
+		result, err := c.cli.Txn(ctx).
 			If(clientv3.Compare(clientv3.Version(key), "=", revision)).
 			Then(clientv3.OpPut(key, string(buf))).
 			Commit()
-
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
+			lastErr = err
+			continue
+		}
+		if !result.Succeeded {
+			level.Error(util.Logger).Log("msg", "failed to CAS", "key", key)
 			continue
 		}
 
 		return nil
+	}
+
+	if lastErr != nil {
+		return lastErr
 	}
 	return fmt.Errorf("failed to CAS %s", key)
 }
@@ -174,14 +188,8 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(resp.Kvs) != 0 {
+	if len(resp.Kvs) != 1 {
 		return nil, fmt.Errorf("got %d kvs, expected 1", len(resp.Kvs))
 	}
 	return c.codec.Decode(resp.Kvs[0].Value)
-}
-
-// PutBytes implements kv.Client.
-func (c *Client) PutBytes(ctx context.Context, key string, buf []byte) error {
-	_, err := c.cli.Put(ctx, key, string(buf))
-	return err
 }

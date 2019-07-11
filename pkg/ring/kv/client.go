@@ -39,7 +39,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// At the moment we have consul.<flag-name>, and ring.store, going forward it would
 	// be easier to have everything under ring, so ring.consul.<flag-name>
 	cfg.Consul.RegisterFlags(f, prefix)
-	cfg.Etcd.RegisterFlags(f, prefix)
+	cfg.Etcd.RegisterFlagsWithPrefix(f, prefix)
 	if prefix == "" {
 		prefix = "ring."
 	}
@@ -61,7 +61,6 @@ type Client interface {
 	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
 
 	Get(ctx context.Context, key string) (interface{}, error)
-	PutBytes(ctx context.Context, key string, buf []byte) error
 }
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,

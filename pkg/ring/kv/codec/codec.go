@@ -37,3 +37,16 @@ func (p Proto) Encode(msg interface{}) ([]byte, error) {
 	}
 	return snappy.Encode(nil, bytes), nil
 }
+
+// String is a code for strings.
+type String struct{}
+
+// Decode implements Codec.
+func (String) Decode(bytes []byte) (interface{}, error) {
+	return string(bytes), nil
+}
+
+// Encode implements Codec.
+func (String) Encode(msg interface{}) ([]byte, error) {
+	return []byte(msg.(string)), nil
+}

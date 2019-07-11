@@ -78,7 +78,7 @@ func NewS3ConfigClient(cfg S3ClientConfig) (configs.ConfigStore, error) {
 }
 
 func (a *s3ConfigClient) PollAlertConfigs(ctx context.Context) (map[string]configs.AlertConfig, error) {
-	a.S3.ListObjectsV2()
+	panic("not implemented")
 }
 
 func (a *s3ConfigClient) GetAlertConfig(ctx context.Context, userID string) (configs.AlertConfig, error) {

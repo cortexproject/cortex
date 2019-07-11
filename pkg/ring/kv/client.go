@@ -52,6 +52,16 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // It also deals with serialisation by using a Codec and having a instance of
 // the the desired type passed in to methods ala json.Unmarshal.
 type Client interface {
+	// Get a spefic key.  Will use a codec to deserialise key to appropriate type.
+	Get(ctx context.Context, key string) (interface{}, error)
+
+	// CAS stands for Compare-And-Swap.  Will call provided callback f with the
+	// current value of the key and allow callback to return a different value.
+	// Will then attempt to atomically swap the current value for the new value.
+	// If that doesn't succeed will try again - callback will be called again
+	// with new value etc.  Guarantees that only a single concurrent CAS
+	// succeeds.  Callback can return nil to indicate it is happy with existing
+	// value.
 	CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
 
 	// WatchKey calls f whenever the value stored under key changes.
@@ -59,8 +69,6 @@ type Client interface {
 
 	// WatchPrefix calls f whenever any value stored under prefix changes.
 	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
-
-	Get(ctx context.Context, key string) (interface{}, error)
 }
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
@@ -76,8 +84,10 @@ func NewClient(cfg Config, codec codec.Codec) (Client, error) {
 	switch cfg.Store {
 	case "consul":
 		client, err = consul.NewClient(cfg.Consul, codec)
+
 	case "etcd":
 		client, err = etcd.New(cfg.Etcd, codec)
+
 	case "inmemory":
 		// If we use the in-memory store, make sure everyone gets the same instance
 		// within the same process.
@@ -85,6 +95,7 @@ func NewClient(cfg Config, codec codec.Codec) (Client, error) {
 			inmemoryStore = consul.NewInMemoryClient(codec)
 		})
 		client = inmemoryStore
+
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", cfg.Store)
 	}
@@ -97,5 +108,5 @@ func NewClient(cfg Config, codec codec.Codec) (Client, error) {
 		client = PrefixClient(client, cfg.Prefix)
 	}
 
-	return client, nil
+	return metrics{client}, nil
 }

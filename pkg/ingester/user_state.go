@@ -120,6 +120,43 @@ func (us *userStates) get(userID string) (*userState, bool) {
 	return state.(*userState), ok
 }
 
+func (us *userStates) getOrCreate(userID string) *userState {
+	rawState, ok := us.states.Load(userID)
+	if ok {
+		return rawState.(*userState)
+	}
+
+	seriesInMetric := make([]metricCounterShard, 0, metricCounterShards)
+	for i := 0; i < metricCounterShards; i++ {
+		seriesInMetric = append(seriesInMetric, metricCounterShard{
+			m: map[string]int{},
+		})
+	}
+
+	// Speculatively create a userState object and try to store it
+	// in the map.  Another goroutine may have got there before
+	// us, in which case this userState will be discarded
+	state := &userState{
+		userID:              userID,
+		limits:              us.limits,
+		fpToSeries:          newSeriesMap(),
+		fpLocker:            newFingerprintLocker(16 * 1024),
+		index:               index.New(),
+		ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
+		ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
+		seriesInMetric:      seriesInMetric,
+
+		memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
+		memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
+	}
+	state.mapper = newFPMapper(state.fpToSeries)
+	stored, ok := us.states.LoadOrStore(userID, state)
+	if !ok {
+		memUsers.Inc()
+	}
+	return stored.(*userState)
+}
+
 func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -135,39 +172,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, labels []client.Lab
 		return nil, 0, nil, fmt.Errorf("no user id")
 	}
 
-	state, ok := us.get(userID)
-	if !ok {
-
-		seriesInMetric := make([]metricCounterShard, 0, metricCounterShards)
-		for i := 0; i < metricCounterShards; i++ {
-			seriesInMetric = append(seriesInMetric, metricCounterShard{
-				m: map[string]int{},
-			})
-		}
-
-		// Speculatively create a userState object and try to store it
-		// in the map.  Another goroutine may have got there before
-		// us, in which case this userState will be discarded
-		state = &userState{
-			userID:              userID,
-			limits:              us.limits,
-			fpToSeries:          newSeriesMap(),
-			fpLocker:            newFingerprintLocker(16 * 1024),
-			index:               index.New(),
-			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			seriesInMetric:      seriesInMetric,
-
-			memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
-			memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
-		}
-		state.mapper = newFPMapper(state.fpToSeries)
-		stored, ok := us.states.LoadOrStore(userID, state)
-		if !ok {
-			memUsers.Inc()
-		}
-		state = stored.(*userState)
-	}
+	state := us.getOrCreate(userID)
 
 	fp, series, err := state.getSeries(labels, record)
 	return state, fp, series, err

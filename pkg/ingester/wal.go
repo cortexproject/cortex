@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"flag"
-	"fmt"
 	"path"
 	"sync"
 	"time"
@@ -220,7 +219,7 @@ func (w *wrapper) truncateSamples() error {
 	return nil
 }
 
-func (w *wrapper) recover(ctx context.Context) error {
+func (w *wrapper) recover(ctx context.Context) (err error) {
 	// Use a local userStates, so we don't need to worry about locking.
 	userStates := newUserStates(w.ingester.limits, w.ingester.cfg)
 
@@ -233,10 +232,7 @@ func (w *wrapper) recover(ctx context.Context) error {
 			return err
 		}
 
-		state, ok := userStates.get(walSeries.UserId)
-		if !ok {
-			return fmt.Errorf("user state not found for userid=%s", walSeries.UserId)
-		}
+		state := userStates.getOrCreate(walSeries.UserId)
 
 		la = la[:0]
 		for _, l := range walSeries.Labels {
@@ -258,10 +254,7 @@ func (w *wrapper) recover(ctx context.Context) error {
 	if err := w.recoverRecords("samples", &Record{}, func(msg proto.Message) error {
 		record := msg.(*Record)
 
-		state, ok := userStates.get(record.UserId)
-		if !ok {
-			return fmt.Errorf("user state not found for userid=%s", record.UserId)
-		}
+		state := userStates.getOrCreate(record.UserId)
 
 		for _, labels := range record.Labels {
 			_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))

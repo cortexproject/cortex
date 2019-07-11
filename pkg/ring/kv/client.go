@@ -43,7 +43,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	if prefix == "" {
 		prefix = "ring."
 	}
-	f.StringVar(&cfg.Prefix, prefix+"prefix", "", "The prefix for the keys in the store. Should end with a /.")
+	f.StringVar(&cfg.Prefix, prefix+"prefix", "collectors/", "The prefix for the keys in the store. Should end with a /.")
 	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, etcd, inmemory).")
 }
 

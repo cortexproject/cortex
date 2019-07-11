@@ -62,6 +62,7 @@ type userState struct {
 
 	memSeriesCreatedTotal prometheus.Counter
 	memSeriesRemovedTotal prometheus.Counter
+	discardedSamples      *prometheus.CounterVec
 }
 
 const metricCounterShards = 128
@@ -160,6 +161,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, labels []client.Lab
 
 			memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
 			memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
+			discardedSamples:      validation.DiscardedSamples.MustCurryWith(prometheus.Labels{"user": userID}),
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		stored, ok := us.states.LoadOrStore(userID, state)
@@ -194,7 +196,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	// serially), and the overshoot in allowed series would be minimal.
 	if u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
 		u.fpLocker.Unlock(fp)
-		validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, u.userID).Inc()
+		u.discardedSamples.WithLabelValues(perUserSeriesLimit).Inc()
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
 
@@ -206,7 +208,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 
 	if !u.canAddSeriesFor(string(metricName)) {
 		u.fpLocker.Unlock(fp)
-		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, u.userID).Inc()
+		u.discardedSamples.WithLabelValues(perMetricSeriesLimit).Inc()
 		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}
 

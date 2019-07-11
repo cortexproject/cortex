@@ -88,8 +88,9 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			continue
 		}
 
+		// Callback returning nil means it doesn't want to CAS anymore.
 		if intermediate == nil {
-			panic("Callback must instantiate value!")
+			return nil
 		}
 
 		buf, err := c.codec.Encode(intermediate)

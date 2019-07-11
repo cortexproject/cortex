@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -64,7 +65,7 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
 func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.RingConfig.RegisterFlagsWithPrefix(prefix, f)
 
@@ -106,7 +107,7 @@ type FlushTransferer interface {
 type Lifecycler struct {
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
-	KVStore         KVClient
+	KVStore         kv.Client
 
 	// Controls the lifecycle of the ingester
 	quit      chan struct{}
@@ -144,8 +145,8 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 	if port == 0 {
 		port = *cfg.ListenPort
 	}
-	codec := ProtoCodec{Factory: ProtoDescFactory}
-	store, err := NewKVStore(cfg.RingConfig.KVStore, codec)
+	codec := GetCodec()
+	store, err := kv.NewClient(cfg.RingConfig.KVStore, codec)
 	if err != nil {
 		return nil, err
 	}

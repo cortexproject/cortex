@@ -15,9 +15,9 @@ require (
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
 	github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
 	github.com/cenkalti/backoff v1.0.0 // indirect
+	github.com/coreos/go-semver v0.3.0 // indirect
+	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/cznic/ql v1.2.0 // indirect
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
-	github.com/etcd-io/bbolt v1.3.1-etcd.8
 	github.com/fluent/fluent-logger-golang v1.2.1 // indirect
 	github.com/fsouza/fake-gcs-server v1.3.0
 	github.com/go-kit/kit v0.8.0
@@ -31,7 +31,8 @@ require (
 	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/gophercloud/gophercloud v0.0.0-20190307220656-fe1ba5ce12dd // indirect
 	github.com/gorilla/mux v1.6.2
-	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
+	github.com/gorilla/websocket v1.4.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/consul v1.4.4
 	github.com/hashicorp/go-cleanhttp v0.5.1
@@ -44,6 +45,7 @@ require (
 	github.com/mattes/migrate v1.3.1
 	github.com/mattn/go-sqlite3 v1.10.0 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/oklog/oklog v0.2.2 // indirect
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
@@ -62,6 +64,7 @@ require (
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
 	github.com/stretchr/testify v1.3.0
 	github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d // indirect
+	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber-go/atomic v1.3.2 // indirect
 	github.com/uber/jaeger-client-go v2.14.0+incompatible
 	github.com/uber/jaeger-lib v1.5.0 // indirect
@@ -69,8 +72,9 @@ require (
 	github.com/weaveworks/common v0.0.0-20190410110702-87611edc252e
 	github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62
 	github.com/weaveworks/promrus v1.2.0 // indirect
-	go.etcd.io/bbolt v1.3.2 // indirect
-	go.uber.org/atomic v1.3.2 // indirect
+	go.etcd.io/bbolt v1.3.3
+	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
+	go.uber.org/zap v1.10.0 // indirect
 	golang.org/x/net v0.0.0-20190311183353-d8887717615a
 	golang.org/x/time v0.0.0-20181108054448-85acf8d2951c
 	golang.org/x/tools v0.0.0-20190312170243-e65039ee4138

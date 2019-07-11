@@ -1,4 +1,4 @@
-package client
+package configdb
 
 import (
 	"context"
@@ -10,18 +10,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler/group"
-
+	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/configs"
-	legacy_configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
+	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/group"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 )
 
+// ConfigsClient allows retrieving recording and alerting rules from the configs server.
+type ConfigsClient struct {
+	URL     *url.URL
+	Timeout time.Duration
+
+	lastPoll configs.ID
+}
+
 // New creates a new ConfigClient.
-func New(cfg Config) (configs.ConfigStore, error) {
-	return &configsClient{
+func New(cfg Config) (*ConfigsClient, error) {
+	return &ConfigsClient{
 		URL:     cfg.ConfigsAPIURL.URL,
 		Timeout: cfg.ClientTimeout,
 
@@ -29,16 +37,8 @@ func New(cfg Config) (configs.ConfigStore, error) {
 	}, nil
 }
 
-// configsClient allows retrieving recording and alerting rules from the configs server.
-type configsClient struct {
-	URL     *url.URL
-	Timeout time.Duration
-
-	lastPoll legacy_configs.ID
-}
-
 // GetRules implements ConfigClient.
-func (c *configsClient) GetRules(ctx context.Context, since legacy_configs.ID) (map[string]legacy_configs.VersionedRulesConfig, error) {
+func (c *ConfigsClient) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -48,7 +48,7 @@ func (c *configsClient) GetRules(ctx context.Context, since legacy_configs.ID) (
 	if err != nil {
 		return nil, err
 	}
-	configs := map[string]legacy_configs.VersionedRulesConfig{}
+	configs := map[string]configs.VersionedRulesConfig{}
 	for id, view := range response.Configs {
 		cfg := view.GetVersionedRulesConfig()
 		if cfg != nil {
@@ -59,7 +59,7 @@ func (c *configsClient) GetRules(ctx context.Context, since legacy_configs.ID) (
 }
 
 // GetAlerts implements ConfigClient.
-func (c *configsClient) GetAlerts(ctx context.Context, since legacy_configs.ID) (*ConfigsResponse, error) {
+func (c *ConfigsClient) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
 	suffix := ""
 	if since != 0 {
 		suffix = fmt.Sprintf("?since=%d", since)
@@ -68,7 +68,7 @@ func (c *configsClient) GetAlerts(ctx context.Context, since legacy_configs.ID) 
 	return doRequest(endpoint, c.Timeout, since)
 }
 
-func doRequest(endpoint string, timeout time.Duration, since legacy_configs.ID) (*ConfigsResponse, error) {
+func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*ConfigsResponse, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -98,14 +98,14 @@ func doRequest(endpoint string, timeout time.Duration, since legacy_configs.ID) 
 // ConfigsResponse is a response from server for GetConfigs.
 type ConfigsResponse struct {
 	// The version since which these configs were changed
-	since legacy_configs.ID
+	since configs.ID
 
 	// Configs maps user ID to their latest configs.View.
-	Configs map[string]legacy_configs.View `json:"configs"`
+	Configs map[string]configs.View `json:"configs"`
 }
 
 // GetLatestConfigID returns the last config ID from a set of configs.
-func (c ConfigsResponse) GetLatestConfigID() legacy_configs.ID {
+func (c ConfigsResponse) GetLatestConfigID() configs.ID {
 	latest := c.since
 	for _, config := range c.Configs {
 		if config.ID > latest {
@@ -115,15 +115,15 @@ func (c ConfigsResponse) GetLatestConfigID() legacy_configs.ID {
 	return latest
 }
 
-func (c *configsClient) PollAlertConfigs(ctx context.Context) (map[string]configs.AlertConfig, error) {
+func (c *ConfigsClient) PollAlertConfigs(ctx context.Context) (map[string]alertmanager.AlertConfig, error) {
 	resp, err := c.GetAlerts(ctx, c.lastPoll)
 	if err != nil {
 		return nil, err
 	}
 
-	newConfigs := map[string]configs.AlertConfig{}
+	newConfigs := map[string]alertmanager.AlertConfig{}
 	for user, c := range resp.Configs {
-		newConfigs[user] = configs.AlertConfig{
+		newConfigs[user] = alertmanager.AlertConfig{
 			TemplateFiles:      c.Config.TemplateFiles,
 			AlertmanagerConfig: c.Config.AlertmanagerConfig,
 		}
@@ -135,16 +135,16 @@ func (c *configsClient) PollAlertConfigs(ctx context.Context) (map[string]config
 }
 
 // PollRules polls the configdb server and returns the updated rule groups
-func (c *configsClient) PollRules(ctx context.Context) (map[string][]configs.RuleGroup, error) {
+func (c *ConfigsClient) PollRules(ctx context.Context) (map[string][]ruler.RuleGroup, error) {
 	resp, err := c.GetAlerts(ctx, c.lastPoll)
 	if err != nil {
 		return nil, err
 	}
 
-	newRules := map[string][]configs.RuleGroup{}
+	newRules := map[string][]ruler.RuleGroup{}
 
 	for user, cfg := range resp.Configs {
-		userRules := []configs.RuleGroup{}
+		userRules := []ruler.RuleGroup{}
 		rls := cfg.GetVersionedRulesConfig()
 		rMap, err := rls.Config.Parse()
 		if err != nil {
@@ -173,30 +173,30 @@ func decomposeGroupSlug(slug string) (string, string) {
 	return components[0], components[1]
 }
 
-func (c *configsClient) GetAlertConfig(ctx context.Context, userID string) (configs.AlertConfig, error) {
-	return configs.AlertConfig{}, errors.New("remote configdb client does not implement GetAlertConfig")
+func (c *ConfigsClient) GetAlertConfig(ctx context.Context, userID string) (alertmanager.AlertConfig, error) {
+	return alertmanager.AlertConfig{}, errors.New("remote configdb client does not implement GetAlertConfig")
 }
 
-func (c *configsClient) SetAlertConfig(ctx context.Context, userID string, config configs.AlertConfig) error {
+func (c *ConfigsClient) SetAlertConfig(ctx context.Context, userID string, config alertmanager.AlertConfig) error {
 	return errors.New("remote configdb client does not implement SetAlertConfig")
 }
 
-func (c *configsClient) DeleteAlertConfig(ctx context.Context, userID string) error {
+func (c *ConfigsClient) DeleteAlertConfig(ctx context.Context, userID string) error {
 	return errors.New("remote configdb client does not implement DeleteAlertConfig")
 }
 
-func (c *configsClient) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) (map[string]configs.RuleNamespace, error) {
+func (c *ConfigsClient) ListRuleGroups(ctx context.Context, options ruler.RuleStoreConditions) (map[string]ruler.RuleNamespace, error) {
 	return nil, errors.New("remote configdb client does not implement ListRule")
 }
 
-func (c *configsClient) GetRuleGroup(ctx context.Context, userID, namespace, group string) (rulefmt.RuleGroup, error) {
-	return rulefmt.RuleGroup{}, errors.New("remote configdb client does not implement GetRuleGroup")
+func (c *ConfigsClient) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulefmt.RuleGroup, error) {
+	return nil, errors.New("remote configdb client does not implement GetRuleGroup")
 }
 
-func (c *configsClient) SetRuleGroup(ctx context.Context, userID, namespace string, group rulefmt.RuleGroup) error {
+func (c *ConfigsClient) SetRuleGroup(ctx context.Context, userID, namespace string, group rulefmt.RuleGroup) error {
 	return errors.New("remote configdb client does not implement SetRuleGroup")
 }
 
-func (c *configsClient) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
+func (c *ConfigsClient) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
 	return errors.New("remote configdb client does not implement DeleteRuleGroup")
 }

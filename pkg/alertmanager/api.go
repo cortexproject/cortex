@@ -4,7 +4,6 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -14,11 +13,11 @@ import (
 
 // API is used to provided endpoints to directly interact with the ruler
 type API struct {
-	store configs.AlertStore
+	store AlertStore
 }
 
 // NewAPI returns a ruler API
-func NewAPI(store configs.AlertStore) *API {
+func NewAPI(store AlertStore) *API {
 	return &API{store}
 }
 
@@ -104,7 +103,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := configs.AlertConfig{}
+	cfg := AlertConfig{}
 	err = yaml.Unmarshal(payload, &cfg)
 	if err != nil {
 		level.Error(logger).Log("err", err.Error())

@@ -22,7 +22,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
-	config_storage "github.com/cortexproject/cortex/pkg/configs/storage"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -30,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	config_storage "github.com/cortexproject/cortex/pkg/storage"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -320,7 +320,7 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
-	store, err := config_storage.New(cfg.ConfigStore)
+	store, err := config_storage.NewRuleStore(cfg.ConfigStore)
 	if err != nil {
 		return err
 	}
@@ -333,7 +333,7 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	// Only serve the API for setting & getting rules configs if we're not
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if cfg.ConfigStore.BackendType != "client" {
+	if cfg.ConfigStore.RuleStoreConfig.BackendType != "configdb" {
 		a := ruler.NewAPI(store)
 		a.RegisterRoutes(t.server.HTTP)
 	}
@@ -348,7 +348,7 @@ func (t *Cortex) stopRuler() error {
 }
 
 func (t *Cortex) initConfigs(cfg *Config) (err error) {
-	t.configDB, err = db.New(cfg.ConfigStore.ClientConfig.DBConfig)
+	t.configDB, err = db.New(cfg.ConfigDB)
 	if err != nil {
 		return
 	}
@@ -364,7 +364,7 @@ func (t *Cortex) stopConfigs() error {
 }
 
 func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
-	store, err := config_storage.New(cfg.ConfigStore)
+	store, err := config_storage.NewAlertStore(cfg.ConfigStore)
 	if err != nil {
 		return err
 	}
@@ -377,7 +377,7 @@ func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 	// Only serve the API for setting & getting alert configs if we're not
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if cfg.ConfigStore.BackendType != "client" {
+	if cfg.ConfigStore.AlertStoreConfig.BackendType != "configdb" {
 		a := alertmanager.NewAPI(store)
 		a.RegisterRoutes(t.server.HTTP)
 	}

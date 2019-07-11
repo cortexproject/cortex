@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/ruler/group"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
@@ -77,11 +76,11 @@ func TestSchedulerRulesOverlap(t *testing.T) {
 	groupTwo := "test2"
 	next := time.Now()
 
-	ruleSetsOne := []configs.RuleGroup{
+	ruleSetsOne := []RuleGroup{
 		group.NewRuleGroup(groupOne, "default", userID, []rules.Rule{nil}),
 	}
 
-	ruleSetsTwo := []configs.RuleGroup{
+	ruleSetsTwo := []RuleGroup{
 		group.NewRuleGroup(groupTwo, "default", userID, []rules.Rule{nil}),
 	}
 	userChanOne := make(chan struct{})

@@ -7,9 +7,9 @@ import (
 	"io/ioutil"
 	"net/url"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/db/memory"
 	"github.com/cortexproject/cortex/pkg/configs/db/postgres"
-	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
 )
 
 // Config configures the database.

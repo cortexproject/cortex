@@ -22,7 +22,6 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -135,7 +134,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, store configs.RuleStore) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, store RuleStore) (*Ruler, error) {
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
@@ -213,7 +212,7 @@ func (r *Ruler) Stop() {
 	}
 }
 
-func (r *Ruler) newGroup(ctx context.Context, g configs.RuleGroup) (*group, error) {
+func (r *Ruler) newGroup(ctx context.Context, g RuleGroup) (*wrappedGroup, error) {
 	appendable := &appendableAppender{pusher: r.pusher}
 	notifier, err := r.getOrCreateNotifier(g.User())
 	if err != nil {

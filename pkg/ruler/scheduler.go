@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/jonboulle/clockwork"
@@ -44,7 +43,7 @@ type workItem struct {
 	userID    string
 	groupName string
 	hash      uint32
-	group     *group
+	group     *wrappedGroup
 	scheduled time.Time
 
 	done chan struct{}
@@ -72,13 +71,13 @@ func (w workItem) String() string {
 type userConfig struct {
 	done  chan struct{}
 	id    string
-	rules []configs.RuleGroup
+	rules []RuleGroup
 }
 
-type groupFactory func(context.Context, configs.RuleGroup) (*group, error)
+type groupFactory func(context.Context, RuleGroup) (*wrappedGroup, error)
 
 type scheduler struct {
-	store              configs.RuleStore
+	store              RuleStore
 	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
@@ -91,7 +90,7 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(store configs.RuleStore, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
+func newScheduler(store RuleStore, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
 	return &scheduler{
 		store:              store,
 		evaluationInterval: evaluationInterval,
@@ -148,7 +147,7 @@ func (s *scheduler) updateConfigs(ctx context.Context) error {
 	return nil
 }
 
-func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []configs.RuleGroup) {
+func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []RuleGroup) {
 	level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_groups", len(rgs))
 
 	// create a new userchan for rulegroups of this user

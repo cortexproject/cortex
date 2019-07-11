@@ -3,9 +3,9 @@ package group
 import (
 	time "time"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -44,7 +44,7 @@ func ToProto(namespace string, rl rulefmt.RuleGroup) RuleGroup {
 }
 
 // FromProto generates a rulefmt RuleGroup
-func FromProto(rg *RuleGroup) rulefmt.RuleGroup {
+func FromProto(rg *RuleGroup) *rulefmt.RuleGroup {
 	formattedRuleGroup := rulefmt.RuleGroup{
 		Name:     rg.GetName(),
 		Interval: model.Duration(*rg.Interval),
@@ -62,11 +62,11 @@ func FromProto(rg *RuleGroup) rulefmt.RuleGroup {
 		}
 	}
 
-	return formattedRuleGroup
+	return &formattedRuleGroup
 }
 
 // GenerateRuleGroup returns a functional rulegroup from a proto
-func GenerateRuleGroup(userID string, rg *RuleGroup) (configs.RuleGroup, error) {
+func GenerateRuleGroup(userID string, rg *RuleGroup) (*Group, error) {
 	rls := make([]rules.Rule, 0, len(rg.Rules))
 	for _, rl := range rg.Rules {
 		expr, err := promql.ParseExpr(rl.GetExpr())

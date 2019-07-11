@@ -19,7 +19,6 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
-	config_storage "github.com/cortexproject/cortex/pkg/configs/storage"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -27,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	config_storage "github.com/cortexproject/cortex/pkg/storage"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -69,8 +69,9 @@ type Config struct {
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 
-	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
+	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
 	ConfigStore  config_storage.Config                      `yaml:"config_store,omitempty"`
+	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
 	Alertmanager alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 }
 
@@ -99,6 +100,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Encoding.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
+	c.ConfigDB.RegisterFlags(f)
 	c.ConfigStore.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
 

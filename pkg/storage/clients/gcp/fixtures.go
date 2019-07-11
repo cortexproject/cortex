@@ -1,12 +1,10 @@
 package gcp
 
 import (
-	"context"
-
+	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/storage/testutils"
 	"github.com/fsouza/fake-gcs-server/fakestorage"
-
-	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/configs/storage/testutils"
 )
 
 const (
@@ -23,13 +21,14 @@ func (f *fixture) Name() string {
 	return f.name
 }
 
-func (f *fixture) Clients() (store configs.ConfigStore, err error) {
+func (f *fixture) Clients() (alertmanager.AlertStore, ruler.RuleStore, error) {
 	f.gcssrv = fakestorage.NewServer(nil)
 	f.gcssrv.CreateBucket("configdb")
-
-	return NewGCSConfigClient(context.Background(), GCSConfig{
+	cli := newGCSClient(GCSConfig{
 		BucketName: "configdb",
-	})
+	}, f.gcssrv.Client())
+
+	return cli, cli, nil
 }
 
 func (f *fixture) Teardown() error {

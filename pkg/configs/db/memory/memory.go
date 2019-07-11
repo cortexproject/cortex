@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
+	"github.com/cortexproject/cortex/pkg/configs"
 )
 
 // DB is an in-memory database for testing, and local development

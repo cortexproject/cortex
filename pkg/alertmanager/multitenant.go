@@ -22,7 +22,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/mesh"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -213,7 +212,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
-	store configs.AlertStore
+	store AlertStore
 
 	// The fallback config is stored as a string and parsed every time it's needed
 	// because we mutate the parsed results and don't want those changes to take
@@ -221,7 +220,7 @@ type MultitenantAlertmanager struct {
 	fallbackConfig string
 
 	// All the organization configurations that we have. Only used for instrumentation.
-	cfgs map[string]configs.AlertConfig
+	cfgs map[string]AlertConfig
 
 	alertmanagersMtx sync.Mutex
 	alertmanagers    map[string]*Alertmanager
@@ -234,7 +233,7 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store configs.AlertStore) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store AlertStore) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
@@ -316,7 +315,7 @@ func (am *MultitenantAlertmanager) Stop() {
 
 // Load the full set of configurations from the server, retrying with backoff
 // until we can get them.
-func (am *MultitenantAlertmanager) loadAllConfigs() map[string]configs.AlertConfig {
+func (am *MultitenantAlertmanager) loadAllConfigs() map[string]AlertConfig {
 	backoff := util.NewBackoff(context.Background(), backoffConfig)
 	for {
 		cfgs, err := am.poll()
@@ -339,7 +338,7 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 }
 
 // poll the configuration server. Not re-entrant.
-func (am *MultitenantAlertmanager) poll() (map[string]configs.AlertConfig, error) {
+func (am *MultitenantAlertmanager) poll() (map[string]AlertConfig, error) {
 	cfgs, err := am.store.PollAlertConfigs(context.Background())
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: configs server poll failed", "err", err)
@@ -348,7 +347,7 @@ func (am *MultitenantAlertmanager) poll() (map[string]configs.AlertConfig, error
 	return cfgs, nil
 }
 
-func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.AlertConfig) {
+func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]AlertConfig) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	for userID, config := range cfgs {
@@ -412,7 +411,7 @@ func (am *MultitenantAlertmanager) createTemplatesFile(userID, fn, content strin
 
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
-func (am *MultitenantAlertmanager) setConfig(userID string, config configs.AlertConfig) error {
+func (am *MultitenantAlertmanager) setConfig(userID string, config AlertConfig) error {
 	_, hasExisting := am.alertmanagers[userID]
 	var amConfig *amconfig.Config
 	var err error
@@ -475,7 +474,7 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Alert
 }
 
 // alertmanagerConfigFromConfig returns the Alertmanager config from the Cortex configuration.
-func alertmanagerConfigFromConfig(c configs.AlertConfig) (*amconfig.Config, error) {
+func alertmanagerConfigFromConfig(c AlertConfig) (*amconfig.Config, error) {
 	cfg, err := amconfig.Load(c.AlertmanagerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing Alertmanager config: %s", err)

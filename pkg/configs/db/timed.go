@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 
-	configs "github.com/cortexproject/cortex/pkg/configs/legacy_configs"
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 )

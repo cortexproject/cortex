@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/group"
 	"github.com/cortexproject/cortex/pkg/util"
 
-	"cloud.google.com/go/storage"
+	gstorage "cloud.google.com/go/storage"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
@@ -39,64 +40,70 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, prefix+"gcs.bucketname", "", "Name of GCS bucket to put chunks in.")
 }
 
-// gcsConfigClient acts as a config backend. It is not safe to use concurrently when polling for rules.
+// GCSClient acts as a config backend. It is not safe to use concurrently when polling for rules.
 // This is not an issue with the current scheduler architecture, but must be noted.
-type gcsConfigClient struct {
-	client *storage.Client
-	bucket *storage.BucketHandle
+type GCSClient struct {
+	client *gstorage.Client
+	bucket *gstorage.BucketHandle
 
 	alertPolled time.Time
 	rulePolled  time.Time
 }
 
-// NewGCSConfigClient makes a new chunk.ObjectClient that writes chunks to GCS.
-func NewGCSConfigClient(ctx context.Context, cfg GCSConfig) (configs.ConfigStore, error) {
-	client, err := storage.NewClient(ctx)
+// NewGCSClient makes a new chunk.ObjectClient that writes chunks to GCS.
+func NewGCSClient(ctx context.Context, cfg GCSConfig) (*GCSClient, error) {
+	client, err := gstorage.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	return newGCSClient(cfg, client), nil
+}
+
+// newGCSClient makes a new chunk.ObjectClient that writes chunks to GCS.
+func newGCSClient(cfg GCSConfig, client *gstorage.Client) *GCSClient {
 	bucket := client.Bucket(cfg.BucketName)
-	return &gcsConfigClient{
+	return &GCSClient{
 		client: client,
 		bucket: bucket,
 
 		alertPolled: time.Unix(0, 0),
 		rulePolled:  time.Unix(0, 0),
-	}, nil
+	}
 }
 
-func (g *gcsConfigClient) getAlertConfig(ctx context.Context, obj string) (configs.AlertConfig, error) {
+func (g *GCSClient) getAlertConfig(ctx context.Context, obj string) (alertmanager.AlertConfig, error) {
 	reader, err := g.bucket.Object(obj).NewReader(ctx)
-	if err == storage.ErrObjectNotExist {
+	if err == gstorage.ErrObjectNotExist {
 		level.Debug(util.Logger).Log("msg", "object does not exist", "name", obj)
-		return configs.AlertConfig{}, nil
+		return alertmanager.AlertConfig{}, nil
 	}
 	if err != nil {
-		return configs.AlertConfig{}, err
+		return alertmanager.AlertConfig{}, err
 	}
 	defer reader.Close()
 
 	buf, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return configs.AlertConfig{}, err
+		return alertmanager.AlertConfig{}, err
 	}
 
-	config := configs.AlertConfig{}
+	config := alertmanager.AlertConfig{}
 	err = json.Unmarshal(buf, &config)
 	if err != nil {
-		return configs.AlertConfig{}, err
+		return alertmanager.AlertConfig{}, err
 	}
 
 	return config, nil
 }
 
 // PollAlertConfigs returns any recently updated alert configurations
-func (g *gcsConfigClient) PollAlertConfigs(ctx context.Context) (map[string]configs.AlertConfig, error) {
-	objs := g.bucket.Objects(ctx, &storage.Query{
+func (g *GCSClient) PollAlertConfigs(ctx context.Context) (map[string]alertmanager.AlertConfig, error) {
+	objs := g.bucket.Objects(ctx, &gstorage.Query{
 		Prefix: alertPrefix,
 	})
 
-	alertMap := map[string]configs.AlertConfig{}
+	alertMap := map[string]alertmanager.AlertConfig{}
 	for {
 		objAttrs, err := objs.Next()
 		if err == iterator.Done {
@@ -123,12 +130,12 @@ func (g *gcsConfigClient) PollAlertConfigs(ctx context.Context) (map[string]conf
 }
 
 // GetAlertConfig returns a specified users alertmanager configuration
-func (g *gcsConfigClient) GetAlertConfig(ctx context.Context, userID string) (configs.AlertConfig, error) {
+func (g *GCSClient) GetAlertConfig(ctx context.Context, userID string) (alertmanager.AlertConfig, error) {
 	return g.getAlertConfig(ctx, alertPrefix+userID)
 }
 
 // SetAlertConfig sets a specified users alertmanager configuration
-func (g *gcsConfigClient) SetAlertConfig(ctx context.Context, userID string, cfg configs.AlertConfig) error {
+func (g *GCSClient) SetAlertConfig(ctx context.Context, userID string, cfg alertmanager.AlertConfig) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -149,7 +156,7 @@ func (g *gcsConfigClient) SetAlertConfig(ctx context.Context, userID string, cfg
 }
 
 // DeleteAlertConfig deletes a specified users alertmanager configuration
-func (g *gcsConfigClient) DeleteAlertConfig(ctx context.Context, userID string) error {
+func (g *GCSClient) DeleteAlertConfig(ctx context.Context, userID string) error {
 	err := g.bucket.Object(alertPrefix + userID).Delete(ctx)
 	if err != nil {
 		return err
@@ -158,8 +165,8 @@ func (g *gcsConfigClient) DeleteAlertConfig(ctx context.Context, userID string) 
 }
 
 // PollRules returns a users recently updated rule set
-func (g *gcsConfigClient) PollRules(ctx context.Context) (map[string][]configs.RuleGroup, error) {
-	objs := g.bucket.Objects(ctx, &storage.Query{
+func (g *GCSClient) PollRules(ctx context.Context) (map[string][]ruler.RuleGroup, error) {
+	objs := g.bucket.Objects(ctx, &gstorage.Query{
 		Prefix: rulePrefix,
 	})
 
@@ -191,7 +198,7 @@ func (g *gcsConfigClient) PollRules(ctx context.Context) (map[string][]configs.R
 		}
 	}
 
-	ruleMap := map[string][]configs.RuleGroup{}
+	ruleMap := map[string][]ruler.RuleGroup{}
 
 	for _, user := range updatedUsers {
 		rgs, err := g.getAllRuleGroups(ctx, user)
@@ -206,8 +213,8 @@ func (g *gcsConfigClient) PollRules(ctx context.Context) (map[string][]configs.R
 	return ruleMap, nil
 }
 
-func (g *gcsConfigClient) checkUser(ctx context.Context, userID string) (bool, error) {
-	objs := g.bucket.Objects(ctx, &storage.Query{
+func (g *GCSClient) checkUser(ctx context.Context, userID string) (bool, error) {
+	objs := g.bucket.Objects(ctx, &gstorage.Query{
 		Prefix: generateRuleHandle(userID, "", ""),
 	})
 
@@ -231,12 +238,12 @@ func (g *gcsConfigClient) checkUser(ctx context.Context, userID string) (bool, e
 	return false, nil
 }
 
-func (g *gcsConfigClient) getAllRuleGroups(ctx context.Context, userID string) ([]configs.RuleGroup, error) {
-	it := g.bucket.Objects(ctx, &storage.Query{
+func (g *GCSClient) getAllRuleGroups(ctx context.Context, userID string) ([]ruler.RuleGroup, error) {
+	it := g.bucket.Objects(ctx, &gstorage.Query{
 		Prefix: generateRuleHandle(userID, "", ""),
 	})
 
-	rgs := []configs.RuleGroup{}
+	rgs := []ruler.RuleGroup{}
 
 	for {
 		obj, err := it.Next()
@@ -245,17 +252,17 @@ func (g *gcsConfigClient) getAllRuleGroups(ctx context.Context, userID string) (
 		}
 
 		if err != nil {
-			return []configs.RuleGroup{}, err
+			return []ruler.RuleGroup{}, err
 		}
 
 		rgProto, err := g.getRuleGroup(ctx, obj.Name)
 		if err != nil {
-			return []configs.RuleGroup{}, err
+			return []ruler.RuleGroup{}, err
 		}
 
 		rg, err := group.GenerateRuleGroup(userID, rgProto)
 		if err != nil {
-			return []configs.RuleGroup{}, err
+			return []ruler.RuleGroup{}, err
 		}
 
 		rgs = append(rgs, rg)
@@ -264,8 +271,8 @@ func (g *gcsConfigClient) getAllRuleGroups(ctx context.Context, userID string) (
 	return rgs, nil
 }
 
-func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.RuleStoreConditions) (map[string]configs.RuleNamespace, error) {
-	it := g.bucket.Objects(ctx, &storage.Query{
+func (g *GCSClient) ListRuleGroups(ctx context.Context, options ruler.RuleStoreConditions) (map[string]ruler.RuleNamespace, error) {
+	it := g.bucket.Objects(ctx, &gstorage.Query{
 		Prefix: generateRuleHandle(options.UserID, options.Namespace, ""),
 	})
 
@@ -291,7 +298,7 @@ func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.Ru
 		}
 	}
 
-	nss := map[string]configs.RuleNamespace{}
+	nss := map[string]ruler.RuleNamespace{}
 
 	for namespace := range namespaces {
 		level.Debug(util.Logger).Log("msg", "retrieving rule namespace", "user", options.UserID, "namespace", namespace)
@@ -305,12 +312,12 @@ func (g *gcsConfigClient) ListRuleGroups(ctx context.Context, options configs.Ru
 	return nss, nil
 }
 
-func (g *gcsConfigClient) getRuleNamespace(ctx context.Context, userID string, namespace string) (configs.RuleNamespace, error) {
-	it := g.bucket.Objects(ctx, &storage.Query{
+func (g *GCSClient) getRuleNamespace(ctx context.Context, userID string, namespace string) (ruler.RuleNamespace, error) {
+	it := g.bucket.Objects(ctx, &gstorage.Query{
 		Prefix: generateRuleHandle(userID, namespace, ""),
 	})
 
-	ns := configs.RuleNamespace{
+	ns := ruler.RuleNamespace{
 		Groups: []rulefmt.RuleGroup{},
 	}
 
@@ -321,36 +328,36 @@ func (g *gcsConfigClient) getRuleNamespace(ctx context.Context, userID string, n
 		}
 
 		if err != nil {
-			return configs.RuleNamespace{}, err
+			return ruler.RuleNamespace{}, err
 		}
 
 		rg, err := g.getRuleGroup(ctx, obj.Name)
 		if err != nil {
-			return configs.RuleNamespace{}, err
+			return ruler.RuleNamespace{}, err
 		}
 
-		ns.Groups = append(ns.Groups, group.FromProto(rg))
+		ns.Groups = append(ns.Groups, *group.FromProto(rg))
 	}
 
 	return ns, nil
 }
 
-func (g *gcsConfigClient) GetRuleGroup(ctx context.Context, userID string, namespace string, grp string) (rulefmt.RuleGroup, error) {
+func (g *GCSClient) GetRuleGroup(ctx context.Context, userID string, namespace string, grp string) (*rulefmt.RuleGroup, error) {
 	handle := generateRuleHandle(userID, namespace, grp)
 	rg, err := g.getRuleGroup(ctx, handle)
 	if err != nil {
-		return rulefmt.RuleGroup{}, err
+		return nil, err
 	}
 
 	if rg == nil {
-		return rulefmt.RuleGroup{}, configs.ErrGroupNotFound
+		return nil, ruler.ErrGroupNotFound
 	}
 	return group.FromProto(rg), nil
 }
 
-func (g *gcsConfigClient) getRuleGroup(ctx context.Context, handle string) (*group.RuleGroup, error) {
+func (g *GCSClient) getRuleGroup(ctx context.Context, handle string) (*group.RuleGroup, error) {
 	reader, err := g.bucket.Object(handle).NewReader(ctx)
-	if err == storage.ErrObjectNotExist {
+	if err == gstorage.ErrObjectNotExist {
 		level.Debug(util.Logger).Log("msg", "rule group does not exist", "name", handle)
 		return nil, nil
 	}
@@ -374,7 +381,7 @@ func (g *gcsConfigClient) getRuleGroup(ctx context.Context, handle string) (*gro
 	return rg, nil
 }
 
-func (g *gcsConfigClient) SetRuleGroup(ctx context.Context, userID string, namespace string, grp rulefmt.RuleGroup) error {
+func (g *GCSClient) SetRuleGroup(ctx context.Context, userID string, namespace string, grp rulefmt.RuleGroup) error {
 	rg := group.ToProto(namespace, grp)
 	rgBytes, err := proto.Marshal(&rg)
 	if err != nil {
@@ -396,7 +403,7 @@ func (g *gcsConfigClient) SetRuleGroup(ctx context.Context, userID string, names
 	return nil
 }
 
-func (g *gcsConfigClient) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
+func (g *GCSClient) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
 	handle := generateRuleHandle(userID, namespace, group)
 	err := g.bucket.Object(handle).Delete(ctx)
 	if err != nil {

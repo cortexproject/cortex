@@ -1,4 +1,4 @@
-package configs
+package ruler
 
 import (
 	"context"
@@ -15,22 +15,6 @@ var (
 	ErrUserNotFound           = errors.New("no rule groups found for user")
 )
 
-// ConfigStore unifies the AlertStore and ConfigStore interface
-// TODO: Remove polling from the configstorage backend. A notification queue system would work better for this use case.
-type ConfigStore interface {
-	AlertStore
-	RuleStore
-}
-
-// AlertStore stores config information and template files to configure alertmanager tenants
-type AlertStore interface {
-	PollAlertConfigs(ctx context.Context) (map[string]AlertConfig, error)
-
-	GetAlertConfig(ctx context.Context, userID string) (AlertConfig, error)
-	SetAlertConfig(ctx context.Context, userID string, config AlertConfig) error
-	DeleteAlertConfig(ctx context.Context, userID string) error
-}
-
 // RuleStoreConditions are used to filter retrieived results from a rule store
 type RuleStoreConditions struct {
 	// UserID specifies to only retrieve rules with this ID
@@ -46,15 +30,9 @@ type RuleStore interface {
 	PollRules(ctx context.Context) (map[string][]RuleGroup, error)
 
 	ListRuleGroups(ctx context.Context, options RuleStoreConditions) (map[string]RuleNamespace, error)
-	GetRuleGroup(ctx context.Context, userID, namespace, group string) (rulefmt.RuleGroup, error)
+	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulefmt.RuleGroup, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group rulefmt.RuleGroup) error
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
-}
-
-// AlertConfig is used to configure user alert managers
-type AlertConfig struct {
-	TemplateFiles      map[string]string `json:"template_files"`
-	AlertmanagerConfig string            `json:"alertmanager_config"`
 }
 
 // RuleGroup is used to retrieve rules from the database to evaluate,

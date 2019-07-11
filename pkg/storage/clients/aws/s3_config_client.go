@@ -93,7 +93,7 @@ func (a *s3ConfigClient) DeleteAlertConfig(ctx context.Context, userID string) e
 	panic("not implemented")
 }
 
-func (a *s3ConfigClient) PollRules(ctx context.Context) (map[string][]configs.RuleGroup, error) {
+func (a *s3ConfigClient) PollRules(ctx context.Context) (map[string][]storage.RuleGroup error) {
 	panic("not implemented")
 }
 

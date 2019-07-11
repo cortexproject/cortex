@@ -3,7 +3,6 @@ package group
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/prometheus/prometheus/rules"
 )
 
@@ -11,7 +10,7 @@ import (
 // TODO: The cortex project should implement a separate Group struct from
 //       the prometheus project. This will allow for more precise instrumentation
 
-type ruleGroup struct {
+type Group struct {
 	name      string
 	namespace string
 	user      string
@@ -19,21 +18,21 @@ type ruleGroup struct {
 	rules []rules.Rule
 }
 
-func (rg *ruleGroup) Rules(ctx context.Context) ([]rules.Rule, error) {
+func (rg *Group) Rules(ctx context.Context) ([]rules.Rule, error) {
 	return rg.rules, nil
 }
 
-func (rg *ruleGroup) Name() string {
+func (rg *Group) Name() string {
 	return rg.namespace + "/" + rg.name
 }
 
-func (rg *ruleGroup) User() string {
+func (rg *Group) User() string {
 	return rg.user
 }
 
 // NewRuleGroup returns a rulegroup
-func NewRuleGroup(name, namespace, user string, rules []rules.Rule) configs.RuleGroup {
-	return &ruleGroup{
+func NewRuleGroup(name, namespace, user string, rules []rules.Rule) *Group {
+	return &Group{
 		name:      name,
 		namespace: namespace,
 		user:      user,

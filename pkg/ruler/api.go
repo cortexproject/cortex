@@ -7,7 +7,6 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 
-	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -23,11 +22,11 @@ var (
 
 // API is used to provided endpoints to directly interact with the ruler
 type API struct {
-	store configs.RuleStore
+	store RuleStore
 }
 
 // NewAPI returns a ruler API
-func NewAPI(store configs.RuleStore) *API {
+func NewAPI(store RuleStore) *API {
 	return &API{store}
 }
 
@@ -67,7 +66,7 @@ func (a *API) listRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	options := configs.RuleStoreConditions{
+	options := RuleStoreConditions{
 		UserID: userID,
 	}
 
@@ -145,7 +144,7 @@ func (a *API) getRuleGroup(w http.ResponseWriter, r *http.Request) {
 
 	rg, err := a.store.GetRuleGroup(r.Context(), userID, ns, gn)
 	if err != nil {
-		if err == configs.ErrGroupNotFound {
+		if err == ErrGroupNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -213,7 +212,7 @@ func (a *API) createRuleGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	errs := configs.ValidateRuleGroup(rg)
+	errs := ValidateRuleGroup(rg)
 	if len(errs) > 0 {
 		level.Error(logger).Log("err", err.Error())
 		http.Error(w, errs[0].Error(), http.StatusBadRequest)

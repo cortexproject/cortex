@@ -340,7 +340,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
-	if !limiter.AllowN(time.Now(), numSamples) {
+	if limiter.WaitN(ctx, numSamples) != nil {
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(numSamples))

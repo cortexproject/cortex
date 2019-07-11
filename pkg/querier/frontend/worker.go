@@ -173,7 +173,7 @@ func (w *worker) runOne(ctx context.Context, client FrontendClient) {
 			continue
 		}
 
-		if err := w.process(ctx, c); err != nil {
+		if err := w.process(c); err != nil {
 			level.Error(w.log).Log("msg", "error processing requests", "err", err)
 			backoff.Wait()
 			continue
@@ -184,41 +184,51 @@ func (w *worker) runOne(ctx context.Context, client FrontendClient) {
 }
 
 // process loops processing requests on an established stream.
-func (w *worker) process(ctx context.Context, c Frontend_ProcessClient) error {
+func (w *worker) process(c Frontend_ProcessClient) error {
+	// Build a child context so we can cancel querie when the stream is closed.
+	ctx, cancel := context.WithCancel(c.Context())
+	defer cancel()
+
 	for {
 		request, err := c.Recv()
 		if err != nil {
 			return err
 		}
 
-		response, err := w.server.Handle(ctx, request.HttpRequest)
-		if err != nil {
-			var ok bool
-			response, ok = httpgrpc.HTTPResponseFromError(err)
-			if !ok {
-				response = &httpgrpc.HTTPResponse{
-					Code: http.StatusInternalServerError,
-					Body: []byte(err.Error()),
+		// Handle the request on a "background" goroutine, so we go back to
+		// blocking on c.Recv().  This allows us to detect the stream closing
+		// and cancel the query.  We don't actally handle queries in parallel
+		// here, as we're running in lock step with the server - each Recv is
+		// paired with a Send.
+		go func() {
+			response, err := w.server.Handle(ctx, request.HttpRequest)
+			if err != nil {
+				var ok bool
+				response, ok = httpgrpc.HTTPResponseFromError(err)
+				if !ok {
+					response = &httpgrpc.HTTPResponse{
+						Code: http.StatusInternalServerError,
+						Body: []byte(err.Error()),
+					}
 				}
 			}
-		}
 
-		if len(response.Body) >= w.cfg.GRPCClientConfig.MaxSendMsgSize {
-			errMsg := fmt.Sprintf("the response is larger than the max (%d vs %d)", len(response.Body), w.cfg.GRPCClientConfig.MaxSendMsgSize)
-
-			// This makes sure the request is not retried, else a 500 is sent and we retry the large query again.
-			response = &httpgrpc.HTTPResponse{
-				Code: http.StatusRequestEntityTooLarge,
-				Body: []byte(errMsg),
+			// Ensure responses that are too big are not retried.
+			if len(response.Body) >= w.cfg.GRPCClientConfig.MaxSendMsgSize {
+				errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), w.cfg.GRPCClientConfig.MaxSendMsgSize)
+				response = &httpgrpc.HTTPResponse{
+					Code: http.StatusRequestEntityTooLarge,
+					Body: []byte(errMsg),
+				}
+				level.Error(w.log).Log("msg", "error processing query", "err", errMsg)
 			}
-			level.Error(w.log).Log("msg", "error processing query", "err", errMsg)
-		}
 
-		if err := c.Send(&ProcessResponse{
-			HttpResponse: response,
-		}); err != nil {
-			return err
-		}
+			if err := c.Send(&ProcessResponse{
+				HttpResponse: response,
+			}); err != nil {
+				level.Error(w.log).Log("msg", "error processing requests", "err", err)
+			}
+		}()
 	}
 }
 

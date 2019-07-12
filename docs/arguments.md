@@ -96,7 +96,35 @@ The ingester query API was improved over time, but defaults to the old behaviour
    Per-user flag to enable handling of samples with external labels for identifying replicas in an HA Prometheus setup. This defaults to false, and is technically defined in the Distributor limits.
 
 - `distributor.enable-ha-tracker` 
-   Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `accept-ha-samples` is still needed to enable ingestion of HA samples per user ID until that flag is defaulted to true.
+   Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `accept-ha-samples` is still needed to enable ingestion of HA samples per user ID.
+
+### Ring/HA Tracker Store
+
+The KVStore client is used by both the Ring and HA Tracker.
+- `prefix`
+   The prefix for the keys in the store. Should end with a /. For example with a preifx of foo, the key bar would be stored under foo/bar.
+- `store`
+   Backend storage to use for the ring (consul, etcd, inmemory).
+
+#### Consul
+
+- `consul.hostname`
+   Hostname and port of Consul.
+- `consul.acltoken`
+   ACL token used to interact with Consul.
+- `consul.client-timeout`
+   HTTP timeout when talking to Consul.
+- `consul.consistent-reads`
+   Enable consistent reads to Consul.
+
+#### etcd
+
+- `etcd.endpoints`
+   The etcd endpoints to connect to.
+- `etcd.dial-timeout`
+   The timeout for the etcd connection.
+- `etcd.max-retries`
+   The maximum number of retries to do for failed ops.
 
 ### HA Tracker
 
@@ -112,20 +140,10 @@ via external labels in their Prometheus config.
 HA Tracking looks for the two labels (which can be overwritten per user)
 
 It also talks to a KVStore and has it's own copies of the same flags used by the Distributor to connect to for the ring.
-- `ha-tracker.consul.acltoken`
-   ACL Token used to interact with Consul.
-- `ha-tracker.consul.client-timeout`
-   HTTP timeout when talking to consul (default 20s)
-- `ha-tracker.consul.consistent-reads`
-   Enable consistent reads to consul. (default true)
-- `ha-tracker.consul.hostname`
-   Hostname and port of Consul. (default "localhost:8500")
-- `ha-tracker.consul.prefix`
-   Prefix for keys in Consul. Should end with a /. (default "collectors/")
 - `ha-tracker.failover-timeout`
    If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout (default 30s)
 - `ha-tracker.store`
-   Backend storage to use for the ring (consul, inmemory). (default "consul")
+   Backend storage to use for the ring (consul, etcd, inmemory). (default "consul")
 - `ha-tracker.update-timeout`
    Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp. (default 15s)
 

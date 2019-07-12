@@ -58,9 +58,10 @@ func (w *worker) Run() {
 			level.Debug(util.Logger).Log("msg", "queue closed and empty; terminating worker")
 			return
 		}
-		evalLatency.Observe(time.Since(item.scheduled).Seconds())
+		latency := time.Since(item.scheduled)
+		evalLatency.Observe(latency.Seconds())
 		workerIdleTime.Add(waitElapsed.Seconds())
-		level.Debug(util.Logger).Log("msg", "processing item", "item", item)
+		level.Debug(util.Logger).Log("msg", "processing item", "item", item, "latency", latency.String())
 		w.ruler.Evaluate(item.userID, item)
 		w.scheduler.workItemDone(*item)
 		level.Debug(util.Logger).Log("msg", "item handed back to queue", "item", item)

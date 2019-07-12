@@ -24,7 +24,7 @@ var (
 		Namespace: "cortex",
 		Name:      "group_evaluation_latency_seconds",
 		Help:      "How far behind the target time each rule group executed.",
-		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 25},
+		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 60},
 	})
 )
 

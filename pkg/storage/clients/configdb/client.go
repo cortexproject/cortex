@@ -3,6 +3,7 @@ package configdb
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,8 +15,21 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/group"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 )
+
+// Config says where we can find the ruler configs.
+type Config struct {
+	ConfigsAPIURL flagext.URLValue
+	ClientTimeout time.Duration
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.Var(&cfg.ConfigsAPIURL, prefix+".configs.url", "DEPRECATED. URL of configs API server.")
+	f.DurationVar(&cfg.ClientTimeout, prefix+".client-timeout", 5*time.Second, "DEPRECATED. Timeout for requests to Weave Cloud configs service.")
+}
 
 // ConfigsClient allows retrieving recording and alerting rules from the configs server.
 type ConfigsClient struct {

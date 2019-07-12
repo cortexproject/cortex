@@ -24,6 +24,8 @@ The **distributor** service is responsible for handling samples written by Prome
 
 Distributors communicate with ingesters via [gRPC](https://grpc.io). They are stateless and can be scaled up and down as needed.
 
+If the HA Tracker is enabled, the Distributor will deduplicate incomming samples that contain both a cluster and replica label. It talks to a KVStore to store state about which replica per cluster it's accepting samples from for a given user ID. Samples with one or neither of these labels will be accepted by default.
+
 #### Hashing
 
 Distributors use consistent hashing, in conjunction with the (configurable) replication factor, to determine *which* instances of the ingester service receive each sample.

@@ -279,7 +279,7 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 			return err
 		}
 
-		// Handle the stream sending & recieving on a goroutine so we can
+		// Handle the stream sending & receiving on a goroutine so we can
 		// monitoring the contexts in a select and cancel things appropriately.
 		resps := make(chan *ProcessResponse, 1)
 		errs := make(chan error, 1)

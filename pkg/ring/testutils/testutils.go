@@ -4,13 +4,14 @@ import (
 	"context"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 )
 
 // NumTokens determines the number of tokens owned by the specified
 // address
-func NumTokens(c ring.KVClient, name string) int {
+func NumTokens(c kv.Client, name string) int {
 	ringDesc, err := c.Get(context.Background(), ring.ConsulKey)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error reading consul", "err", err)

@@ -111,8 +111,8 @@ It embeds the chunk store client code for fetching data from long-term storage a
 
 The **chunk store** is Cortex's long-term data store, designed to support interactive querying and sustained writing without the need for background maintenance tasks. It consists of:
 
-* An index for the chunks. This index can be backed by [DynamoDB from Amazon Web Services](https://aws.amazon.com/dynamodb), [Bigtable from Google Cloud Platform](https://cloud.google.com/bigtable), [Apache Cassandra](https://cassandra.apache.org), or [Amazon S3](https://aws.amazon.com/s3).
-* A key-value (KV) store for the chunk data itself
+* An index for the chunks. This index can be backed by [DynamoDB from Amazon Web Services](https://aws.amazon.com/dynamodb), [Bigtable from Google Cloud Platform](https://cloud.google.com/bigtable), [Apache Cassandra](https://cassandra.apache.org).
+* A key-value (KV) store for the chunk data itself, which can be DynamoDB, Bigtable, Cassandra again, or an object store such as [Amazon S3](https://aws.amazon.com/s3)
 
 > Unlike the other core components of Cortex, the chunk store is not a separate service, job, or process, but rather a library embedded in the three services that need to access Cortex data: the [ingester](#ingester), [querier](#querier), and [ruler](#ruler).
 

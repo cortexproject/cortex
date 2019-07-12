@@ -100,9 +100,33 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Before enabling, rollout a version of Cortex that supports normalised token for all jobs that interact with the ring, then rollout with this flag set to `true` on the ingesters.  The new ring code can still read and write the old ring format, so is backwards compatible.
 
+- `-ingester.chunk-encoding`
+
+  Pick one of the encoding formats for timeseries data, which have different performance characteristics.
+  `Bigchunk` uses the Prometheus V2 code, and expands in memory to arbitrary length.
+  `Varbit`, `Delta` and `DoubleDelta` use Prometheus V1 code, and are fixed at 1K per chunk.
+  Defaults to `DoubleDelta`, but we recommend `Bigchunk`.
+
 - `-store.bigchunk-size-cap-bytes`
 
    When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days.
+
+- `-ingester-client.expected-timeseries`
+
+   When `push` requests arrive, pre-allocate this many slots to decode them. Tune this setting to reduce memory allocations and garbage. This should match the `max_samples_per_send` in your `queue_config` for Prometheus.
+
+- `-ingester-client.expected-samples-per-series`
+
+   When `push` requests arrive, pre-allocate this many slots to decode them. Tune this setting to reduce memory allocations and garbage. Under normal conditions, Prometheus scrapes should arrive with one sample per series.
+
+- `-ingester-client.expected-labels`
+
+   When `push` requests arrive, pre-allocate this many slots to decode them. Tune this setting to reduce memory allocations and garbage. The optimum value will depend on how many labels are sent with your timeseries samples.
+
+- `-store.chunk-cache-stubs`
+
+   Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
+   Make sure you configure ingesters with a different cache to queriers, which need the whole value.
 
 ## Ingester, Distributor & Querier limits.
 

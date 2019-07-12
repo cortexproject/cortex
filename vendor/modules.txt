@@ -100,12 +100,18 @@ github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1
 github.com/cespare/xxhash
 # github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd
 github.com/codahale/hdrhistogram
+# github.com/coreos/go-semver v0.3.0
+github.com/coreos/go-semver/semver
+# github.com/coreos/go-systemd v0.0.0-20181012123002-c6f51f82210d
+github.com/coreos/go-systemd/journal
+# github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
+github.com/coreos/pkg/capnslog
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
 github.com/dgrijalva/jwt-go
-# github.com/etcd-io/bbolt v1.3.1-etcd.8
-github.com/etcd-io/bbolt
+# github.com/dustin/go-humanize v1.0.0
+github.com/dustin/go-humanize
 # github.com/fluent/fluent-logger-golang v1.2.1
 github.com/fluent/fluent-logger-golang/fluent
 # github.com/fsouza/fake-gcs-server v1.3.0
@@ -139,9 +145,9 @@ github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/wrappers
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/timestamp
-github.com/golang/protobuf/protoc-gen-go/descriptor
 github.com/golang/protobuf/jsonpb
 github.com/golang/protobuf/protoc-gen-go/generator
+github.com/golang/protobuf/protoc-gen-go/descriptor
 github.com/golang/protobuf/ptypes/struct
 github.com/golang/protobuf/protoc-gen-go/generator/internal/remap
 github.com/golang/protobuf/protoc-gen-go/plugin
@@ -151,6 +157,8 @@ github.com/golang/snappy
 github.com/google/btree
 # github.com/google/gofuzz v0.0.0-20161122191042-44d81051d367
 github.com/google/gofuzz
+# github.com/google/uuid v1.0.0
+github.com/google/uuid
 # github.com/googleapis/gax-go/v2 v2.0.3
 github.com/googleapis/gax-go/v2
 # github.com/googleapis/gnostic v0.2.0
@@ -174,11 +182,15 @@ github.com/gophercloud/gophercloud/openstack/identity/v2/tenants
 github.com/gorilla/context
 # github.com/gorilla/mux v1.6.2
 github.com/gorilla/mux
+# github.com/gorilla/websocket v1.4.0
+github.com/gorilla/websocket
 # github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7
 github.com/gregjones/httpcache
 github.com/gregjones/httpcache/diskcache
-# github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
+# github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4
 github.com/grpc-ecosystem/go-grpc-middleware
+# github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
+github.com/grpc-ecosystem/go-grpc-prometheus
 # github.com/grpc-ecosystem/grpc-gateway v1.8.5
 github.com/grpc-ecosystem/grpc-gateway/runtime
 github.com/grpc-ecosystem/grpc-gateway/utilities
@@ -226,7 +238,7 @@ github.com/mattes/migrate/migrate/direction
 github.com/mattes/migrate/pipe
 # github.com/mattn/go-colorable v0.0.9
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.3
+# github.com/mattn/go-isatty v0.0.4
 github.com/mattn/go-isatty
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
@@ -234,13 +246,13 @@ github.com/matttproud/golang_protobuf_extensions/pbutil
 github.com/mgutz/ansi
 # github.com/miekg/dns v1.1.8
 github.com/miekg/dns
-# github.com/mitchellh/go-homedir v0.0.0-20180523094522-3864e76763d9
+# github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
 # github.com/mitchellh/mapstructure v1.1.2
 github.com/mitchellh/mapstructure
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 github.com/modern-go/concurrent
-# github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742
+# github.com/modern-go/reflect2 v1.0.1
 github.com/modern-go/reflect2
 # github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223
 github.com/mwitkow/go-conntrack
@@ -364,11 +376,17 @@ github.com/segmentio/fasthash/fnv1a
 github.com/sercand/kuberesolver
 # github.com/sirupsen/logrus v1.2.0
 github.com/sirupsen/logrus
+# github.com/soheilhy/cmux v0.1.4
+github.com/soheilhy/cmux
+# github.com/spf13/pflag v1.0.3
+github.com/spf13/pflag
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/require
 github.com/stretchr/testify/assert
 # github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d
 github.com/tinylib/msgp/msgp
+# github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5
+github.com/tmc/grpc-websocket-proxy/wsproxy
 # github.com/uber/jaeger-client-go v2.14.0+incompatible
 github.com/uber/jaeger-client-go/config
 github.com/uber/jaeger-client-go
@@ -411,6 +429,84 @@ github.com/weaveworks/common/test
 github.com/weaveworks/mesh
 # github.com/weaveworks/promrus v1.2.0
 github.com/weaveworks/promrus
+# github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2
+github.com/xiang90/probing
+# go.etcd.io/bbolt v1.3.3
+go.etcd.io/bbolt
+# go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
+go.etcd.io/etcd/clientv3
+go.etcd.io/etcd/embed
+go.etcd.io/etcd/etcdserver/api/v3client
+go.etcd.io/etcd/auth/authpb
+go.etcd.io/etcd/clientv3/balancer
+go.etcd.io/etcd/clientv3/balancer/picker
+go.etcd.io/etcd/clientv3/balancer/resolver/endpoint
+go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes
+go.etcd.io/etcd/etcdserver/etcdserverpb
+go.etcd.io/etcd/mvcc/mvccpb
+go.etcd.io/etcd/pkg/logutil
+go.etcd.io/etcd/pkg/types
+go.etcd.io/etcd/etcdserver
+go.etcd.io/etcd/etcdserver/api/etcdhttp
+go.etcd.io/etcd/etcdserver/api/rafthttp
+go.etcd.io/etcd/etcdserver/api/v2http
+go.etcd.io/etcd/etcdserver/api/v2v3
+go.etcd.io/etcd/etcdserver/api/v3compactor
+go.etcd.io/etcd/etcdserver/api/v3election
+go.etcd.io/etcd/etcdserver/api/v3election/v3electionpb
+go.etcd.io/etcd/etcdserver/api/v3election/v3electionpb/gw
+go.etcd.io/etcd/etcdserver/api/v3lock
+go.etcd.io/etcd/etcdserver/api/v3lock/v3lockpb
+go.etcd.io/etcd/etcdserver/api/v3lock/v3lockpb/gw
+go.etcd.io/etcd/etcdserver/api/v3rpc
+go.etcd.io/etcd/etcdserver/etcdserverpb/gw
+go.etcd.io/etcd/pkg/debugutil
+go.etcd.io/etcd/pkg/flags
+go.etcd.io/etcd/pkg/httputil
+go.etcd.io/etcd/pkg/netutil
+go.etcd.io/etcd/pkg/runtime
+go.etcd.io/etcd/pkg/srv
+go.etcd.io/etcd/pkg/tlsutil
+go.etcd.io/etcd/pkg/transport
+go.etcd.io/etcd/version
+go.etcd.io/etcd/wal
+go.etcd.io/etcd/proxy/grpcproxy/adapter
+go.etcd.io/etcd/pkg/systemd
+go.etcd.io/etcd/raft
+go.etcd.io/etcd/auth
+go.etcd.io/etcd/etcdserver/api
+go.etcd.io/etcd/etcdserver/api/membership
+go.etcd.io/etcd/etcdserver/api/snap
+go.etcd.io/etcd/etcdserver/api/v2discovery
+go.etcd.io/etcd/etcdserver/api/v2http/httptypes
+go.etcd.io/etcd/etcdserver/api/v2stats
+go.etcd.io/etcd/etcdserver/api/v2store
+go.etcd.io/etcd/etcdserver/api/v3alarm
+go.etcd.io/etcd/lease
+go.etcd.io/etcd/lease/leasehttp
+go.etcd.io/etcd/mvcc
+go.etcd.io/etcd/mvcc/backend
+go.etcd.io/etcd/pkg/contention
+go.etcd.io/etcd/pkg/fileutil
+go.etcd.io/etcd/pkg/idutil
+go.etcd.io/etcd/pkg/pbutil
+go.etcd.io/etcd/pkg/schedule
+go.etcd.io/etcd/pkg/wait
+go.etcd.io/etcd/raft/raftpb
+go.etcd.io/etcd/wal/walpb
+go.etcd.io/etcd/etcdserver/api/v2error
+go.etcd.io/etcd/pkg/ioutil
+go.etcd.io/etcd/etcdserver/api/v2auth
+go.etcd.io/etcd/clientv3/concurrency
+go.etcd.io/etcd/pkg/adt
+go.etcd.io/etcd/pkg/cpuutil
+go.etcd.io/etcd/pkg/crc
+go.etcd.io/etcd/raft/quorum
+go.etcd.io/etcd/raft/tracker
+go.etcd.io/etcd/etcdserver/api/snap/snappb
+go.etcd.io/etcd/client
+go.etcd.io/etcd/lease/leasepb
+go.etcd.io/etcd/pkg/pathutil
 # go.opencensus.io v0.21.0
 go.opencensus.io/trace
 go.opencensus.io/plugin/ochttp
@@ -430,14 +526,27 @@ go.opencensus.io/internal/tagencoding
 go.opencensus.io/metric/metricproducer
 go.opencensus.io/resource
 go.opencensus.io/plugin/ochttp/propagation/tracecontext
+# go.uber.org/atomic v1.3.2
+go.uber.org/atomic
+# go.uber.org/multierr v1.1.0
+go.uber.org/multierr
+# go.uber.org/zap v1.10.0
+go.uber.org/zap
+go.uber.org/zap/zapcore
+go.uber.org/zap/internal/bufferpool
+go.uber.org/zap/buffer
+go.uber.org/zap/internal/color
+go.uber.org/zap/internal/exit
 # golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
 golang.org/x/crypto/nacl/box
 golang.org/x/crypto/nacl/secretbox
+golang.org/x/crypto/bcrypt
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/salsa20/salsa
 golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/poly1305
 golang.org/x/crypto/ssh/terminal
+golang.org/x/crypto/blowfish
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 # golang.org/x/net v0.0.0-20190311183353-d8887717615a
@@ -550,6 +659,7 @@ google.golang.org/grpc/balancer/base
 google.golang.org/grpc/credentials/internal
 google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/internal/syscall
+google.golang.org/grpc/health
 # gopkg.in/fsnotify/fsnotify.v1 v1.4.7
 gopkg.in/fsnotify/fsnotify.v1
 # gopkg.in/inf.v0 v0.9.1

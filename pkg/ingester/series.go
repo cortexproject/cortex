@@ -44,6 +44,7 @@ type memorySeries struct {
 type memorySeriesError struct {
 	message   string
 	errorType string
+	noReport  bool // if true, error will be counted but not reported to caller
 }
 
 func (error *memorySeriesError) Error() string {
@@ -69,16 +70,19 @@ func (s *memorySeries) labels() []client.LabelPair {
 //
 // The caller must have locked the fingerprint of the series.
 func (s *memorySeries) add(v model.SamplePair) error {
-	// Don't report "no-op appends", i.e. where timestamp and sample
-	// value are the same as for the last append, as they are a
-	// common occurrence when using client-side timestamps
-	// (e.g. Pushgateway or federation).
-	if s.lastSampleValueSet &&
-		v.Timestamp == s.lastTime &&
-		v.Value.Equal(s.lastSampleValue) {
-		return nil
-	}
+	// If sender has repeated the same timestamp, check more closely and perhaps return error.
 	if v.Timestamp == s.lastTime {
+		// If we don't know what the last sample value is, silently discard.
+		// This will mask some errors but better than complaining when we don't really know.
+		if !s.lastSampleValueSet {
+			return &memorySeriesError{errorType: "duplicate-timestamp", noReport: true}
+		}
+		// If both timestamp and sample value are the same as for the last append,
+		// ignore as they are a common occurrence when using client-side timestamps
+		// (e.g. Pushgateway or federation).
+		if v.Value.Equal(s.lastSampleValue) {
+			return &memorySeriesError{errorType: "duplicate-sample", noReport: true}
+		}
 		return &memorySeriesError{
 			message:   fmt.Sprintf("sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value),
 			errorType: "new-value-for-timestamp",

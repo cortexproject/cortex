@@ -62,6 +62,7 @@ type userState struct {
 
 	memSeriesCreatedTotal prometheus.Counter
 	memSeriesRemovedTotal prometheus.Counter
+	discardedSamples      *prometheus.CounterVec
 }
 
 const metricCounterShards = 128
@@ -148,7 +149,9 @@ func (us *userStates) getOrCreate(userID string) *userState {
 
 		memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
 		memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
+		discardedSamples:      validation.DiscardedSamples.MustCurryWith(prometheus.Labels{"user": userID}),
 	}
+
 	state.mapper = newFPMapper(state.fpToSeries)
 	stored, ok := us.states.LoadOrStore(userID, state)
 	if !ok {
@@ -208,7 +211,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	// as this should happen rarely (all samples from one push are added
 	// serially), and the overshoot in allowed series would be minimal.
 	if u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
-		validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, u.userID).Inc()
+		u.discardedSamples.WithLabelValues(perUserSeriesLimit).Inc()
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
 
@@ -218,7 +221,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	}
 
 	if !u.canAddSeriesFor(string(metricName)) {
-		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, u.userID).Inc()
+		u.discardedSamples.WithLabelValues(perMetricSeriesLimit).Inc()
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}
 

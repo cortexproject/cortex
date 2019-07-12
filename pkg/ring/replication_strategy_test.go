@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,10 +84,9 @@ func TestReplicationStrategy(t *testing.T) {
 		for i := 0; i < tc.DeadIngesters; i++ {
 			ingesters = append(ingesters, IngesterDesc{})
 		}
-		codec := ProtoCodec{Factory: ProtoDescFactory}
 		r, err := New(Config{
-			KVStore: KVConfig{
-				Mock: NewInMemoryKVClient(codec),
+			KVStore: kv.Config{
+				Mock: consul.NewInMemoryClient(GetCodec()),
 			},
 			HeartbeatTimeout:  100 * time.Second,
 			ReplicationFactor: tc.RF,

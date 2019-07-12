@@ -291,7 +291,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 	}
 
-	// Build slice of sampleTrackers, one per timeseries.
+	// For each timeseries, compute a hash to distribute across ingesters;
+	// check each sample and discard if outside limits.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
 	numSamples := 0

@@ -37,11 +37,7 @@ type Storage struct {
 	logger log.Logger
 	mtx    sync.Mutex
 
-	// For writes
-	walDir        string
-	queues        []*QueueManager
-	samplesIn     *ewmaRate
-	flushDeadline time.Duration
+	rws *WriteStorage
 
 	// For reads
 	queryables             []storage.Queryable
@@ -56,20 +52,9 @@ func NewStorage(l log.Logger, reg prometheus.Registerer, stCallback startTimeCal
 	s := &Storage{
 		logger:                 logging.Dedupe(l, 1*time.Minute),
 		localStartTimeCallback: stCallback,
-		flushDeadline:          flushDeadline,
-		samplesIn:              newEWMARate(ewmaWeight, shardUpdateDuration),
-		walDir:                 walDir,
+		rws:                    NewWriteStorage(l, walDir, flushDeadline),
 	}
-	go s.run()
 	return s
-}
-
-func (s *Storage) run() {
-	ticker := time.NewTicker(shardUpdateDuration)
-	defer ticker.Stop()
-	for range ticker.C {
-		s.samplesIn.tick()
-	}
 }
 
 // ApplyConfig updates the state as the new config requires.
@@ -77,38 +62,8 @@ func (s *Storage) ApplyConfig(conf *config.Config) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	// Update write queues
-	newQueues := []*QueueManager{}
-	// TODO: we should only stop & recreate queues which have changes,
-	// as this can be quite disruptive.
-	for i, rwConf := range conf.RemoteWriteConfigs {
-		c, err := NewClient(i, &ClientConfig{
-			URL:              rwConf.URL,
-			Timeout:          rwConf.RemoteTimeout,
-			HTTPClientConfig: rwConf.HTTPClientConfig,
-		})
-		if err != nil {
-			return err
-		}
-		newQueues = append(newQueues, NewQueueManager(
-			s.logger,
-			s.walDir,
-			s.samplesIn,
-			rwConf.QueueConfig,
-			conf.GlobalConfig.ExternalLabels,
-			rwConf.WriteRelabelConfigs,
-			c,
-			s.flushDeadline,
-		))
-	}
-
-	for _, q := range s.queues {
-		q.Stop()
-	}
-
-	s.queues = newQueues
-	for _, q := range s.queues {
-		q.Start()
+	if err := s.rws.ApplyConfig(conf); err != nil {
+		return err
 	}
 
 	// Update read clients
@@ -161,16 +116,16 @@ func (s *Storage) Querier(ctx context.Context, mint, maxt int64) (storage.Querie
 	return storage.NewMergeQuerier(nil, queriers), nil
 }
 
+// Appender implements storage.Storage.
+func (s *Storage) Appender() (storage.Appender, error) {
+	return s.rws.Appender()
+}
+
 // Close the background processing of the storage queues.
 func (s *Storage) Close() error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-
-	for _, q := range s.queues {
-		q.Stop()
-	}
-
-	return nil
+	return s.rws.Close()
 }
 
 func labelsToEqualityMatchers(ls model.LabelSet) []*labels.Matcher {

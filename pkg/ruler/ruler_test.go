@@ -34,6 +34,11 @@ func (m *mockRuleStore) PollRules(ctx context.Context) (map[string][]RuleGroup, 
 	return pollPayload, nil
 }
 
+// RuleStore returns an RuleStore from the client
+func (m *mockRuleStore) RuleStore() RuleStore {
+	return m
+}
+
 func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options RuleStoreConditions) (map[string]RuleNamespace, error) {
 	groupPrefix := userID + ":"
 

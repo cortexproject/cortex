@@ -25,9 +25,17 @@ type RuleStoreConditions struct {
 	Namespace string
 }
 
+type RulePoller interface {
+	PollRules(ctx context.Context) (map[string][]RuleGroup, error)
+
+	// RuleStore returns the rule store client used by the poller, this allows a Poller
+	// to be used for scheduling, and an associated rule store to be used by the API.
+	RuleStore() RuleStore
+}
+
 // RuleStore is used to store and retrieve rules
 type RuleStore interface {
-	PollRules(ctx context.Context) (map[string][]RuleGroup, error)
+	RulePoller
 
 	ListRuleGroups(ctx context.Context, options RuleStoreConditions) (map[string]RuleNamespace, error)
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulefmt.RuleGroup, error)

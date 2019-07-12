@@ -39,9 +39,9 @@ func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 }
 
 // NewRuleStore returns a rule store
-func NewRuleStore(cfg Config) (ruler.RuleStore, error) {
+func NewRuleStore(cfg Config) (ruler.RulePoller, error) {
 	var (
-		store ruler.RuleStore
+		store ruler.RulePoller
 		err   error
 	)
 	switch cfg.RuleStoreConfig.BackendType {
@@ -57,9 +57,9 @@ func NewRuleStore(cfg Config) (ruler.RuleStore, error) {
 }
 
 // NewAlertStore returns a alert store
-func NewAlertStore(cfg Config) (alertmanager.AlertStore, error) {
+func NewAlertStore(cfg Config) (alertmanager.AlertPoller, error) {
 	var (
-		store alertmanager.AlertStore
+		store alertmanager.AlertPoller
 		err   error
 	)
 	switch cfg.AlertStoreConfig.BackendType {

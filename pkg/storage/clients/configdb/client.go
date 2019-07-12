@@ -3,7 +3,6 @@ package configdb
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/group"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 )
 
 // ConfigsClient allows retrieving recording and alerting rules from the configs server.
@@ -166,37 +164,19 @@ func (c *ConfigsClient) PollRules(ctx context.Context) (map[string][]ruler.RuleG
 	return newRules, nil
 }
 
+// AlertStore returns an AlertStore from the client
+func (c *ConfigsClient) AlertStore() alertmanager.AlertStore {
+	return nil
+}
+
+// RuleStore returns an RuleStore from the client
+func (c *ConfigsClient) RuleStore() ruler.RuleStore {
+	return nil
+}
+
 // decomposeGroupSlug breaks the group slug from Parse
 // into it's group name and file name
 func decomposeGroupSlug(slug string) (string, string) {
 	components := strings.Split(slug, ";")
 	return components[0], components[1]
-}
-
-func (c *ConfigsClient) GetAlertConfig(ctx context.Context, userID string) (alertmanager.AlertConfig, error) {
-	return alertmanager.AlertConfig{}, errors.New("remote configdb client does not implement GetAlertConfig")
-}
-
-func (c *ConfigsClient) SetAlertConfig(ctx context.Context, userID string, config alertmanager.AlertConfig) error {
-	return errors.New("remote configdb client does not implement SetAlertConfig")
-}
-
-func (c *ConfigsClient) DeleteAlertConfig(ctx context.Context, userID string) error {
-	return errors.New("remote configdb client does not implement DeleteAlertConfig")
-}
-
-func (c *ConfigsClient) ListRuleGroups(ctx context.Context, options ruler.RuleStoreConditions) (map[string]ruler.RuleNamespace, error) {
-	return nil, errors.New("remote configdb client does not implement ListRule")
-}
-
-func (c *ConfigsClient) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulefmt.RuleGroup, error) {
-	return nil, errors.New("remote configdb client does not implement GetRuleGroup")
-}
-
-func (c *ConfigsClient) SetRuleGroup(ctx context.Context, userID, namespace string, group rulefmt.RuleGroup) error {
-	return errors.New("remote configdb client does not implement SetRuleGroup")
-}
-
-func (c *ConfigsClient) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
-	return errors.New("remote configdb client does not implement DeleteRuleGroup")
 }

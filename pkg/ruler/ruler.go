@@ -134,7 +134,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, store RuleStore) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, poller RulePoller) (*Ruler, error) {
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
@@ -155,7 +155,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		workerWG:    &sync.WaitGroup{},
 	}
 
-	ruler.scheduler = newScheduler(store, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
+	ruler.scheduler = newScheduler(poller, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
 
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler

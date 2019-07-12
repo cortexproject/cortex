@@ -212,7 +212,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
-	store AlertStore
+	store AlertPoller
 
 	// The fallback config is stored as a string and parsed every time it's needed
 	// because we mutate the parsed results and don't want those changes to take
@@ -233,7 +233,7 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store AlertStore) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store AlertPoller) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)

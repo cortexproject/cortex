@@ -129,6 +129,11 @@ func (g *GCSClient) PollAlertConfigs(ctx context.Context) (map[string]alertmanag
 	return alertMap, nil
 }
 
+// AlertStore returns an AlertStore from the client
+func (g *GCSClient) AlertStore() alertmanager.AlertStore {
+	return g
+}
+
 // GetAlertConfig returns a specified users alertmanager configuration
 func (g *GCSClient) GetAlertConfig(ctx context.Context, userID string) (alertmanager.AlertConfig, error) {
 	return g.getAlertConfig(ctx, alertPrefix+userID)
@@ -211,6 +216,11 @@ func (g *GCSClient) PollRules(ctx context.Context) (map[string][]ruler.RuleGroup
 
 	g.rulePolled = time.Now()
 	return ruleMap, nil
+}
+
+// RuleStore returns an RuleStore from the client
+func (g *GCSClient) RuleStore() ruler.RuleStore {
+	return g
 }
 
 func (g *GCSClient) checkUser(ctx context.Context, userID string) (bool, error) {

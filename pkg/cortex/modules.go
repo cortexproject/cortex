@@ -320,12 +320,12 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
-	store, err := config_storage.NewRuleStore(cfg.ConfigStore)
+	poller, err := config_storage.NewRuleStore(cfg.ConfigStore)
 	if err != nil {
 		return err
 	}
 
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, store)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, poller)
 	if err != nil {
 		return
 	}
@@ -334,7 +334,7 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
 	if cfg.ConfigStore.RuleStoreConfig.BackendType != "configdb" {
-		a := ruler.NewAPI(store)
+		a := ruler.NewAPI(poller.RuleStore())
 		a.RegisterRoutes(t.server.HTTP)
 	}
 
@@ -364,12 +364,12 @@ func (t *Cortex) stopConfigs() error {
 }
 
 func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
-	store, err := config_storage.NewAlertStore(cfg.ConfigStore)
+	poller, err := config_storage.NewAlertStore(cfg.ConfigStore)
 	if err != nil {
 		return err
 	}
 
-	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, store)
+	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, poller)
 	if err != nil {
 		return
 	}
@@ -378,7 +378,7 @@ func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
 	if cfg.ConfigStore.AlertStoreConfig.BackendType != "configdb" {
-		a := alertmanager.NewAPI(store)
+		a := alertmanager.NewAPI(poller.AlertStore())
 		a.RegisterRoutes(t.server.HTTP)
 	}
 

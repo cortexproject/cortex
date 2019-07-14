@@ -75,7 +75,7 @@ Write de-amplification is the main source of Cortex's low total cost of ownershi
 
 Ruler executes PromQL queries for Recording Rules and Alerts.  Ruler
 is configured from a database, so that different rules can be set for
-each tennant.
+each tenant.
 
 All the rules for one instance are executed as a group, then
 rescheduled to be executed again 15 seconds later. Execution is done

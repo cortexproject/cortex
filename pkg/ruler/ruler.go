@@ -35,7 +35,7 @@ var (
 		Namespace: "cortex",
 		Name:      "group_evaluation_duration_seconds",
 		Help:      "The duration for a rule group to execute.",
-		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 25},
+		Buckets:   []float64{.5, 1, 2.5, 5, 10, 25, 60, 120},
 	})
 	rulesProcessed = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",

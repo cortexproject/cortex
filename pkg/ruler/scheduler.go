@@ -37,6 +37,11 @@ var (
 		Name:      "scheduler_update_failures_total",
 		Help:      "Number of failures when updating rule groups",
 	})
+	iterationsMissed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "rule_group_iterations_missed_total",
+		Help:      "The total number of rule group evaluations missed due to slow rule group evaluation.",
+	}, []string{"id"})
 )
 
 type workItem struct {
@@ -57,11 +62,6 @@ func (w workItem) Key() string {
 // Scheduled implements ScheduledItem
 func (w workItem) Scheduled() time.Time {
 	return w.scheduled
-}
-
-// Defer returns a work item with updated rules, rescheduled to a later time.
-func (w workItem) Defer(interval time.Duration) workItem {
-	return workItem{w.userID, w.groupName, w.hash, w.group, w.scheduled.Add(interval), w.done}
 }
 
 func (w workItem) String() string {
@@ -258,8 +258,13 @@ func (s *scheduler) workItemDone(i workItem) {
 		level.Debug(util.Logger).Log("msg", "scheduler: work item dropped", "item", i)
 		return
 	default:
-		next := i.Defer(s.evaluationInterval)
-		level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", next.scheduled.Format(timeLogFormat))
-		s.addWorkItem(next)
+		missed := (time.Since(i.scheduled) / s.evaluationInterval) - 1
+		if missed > 0 {
+			level.Warn(util.Logger).Log("msg", "scheduler: work item missed evaluation", "item", i)
+			iterationsMissed.WithLabelValues(i.userID).Add(float64(missed))
+		}
+		i.scheduled = i.scheduled.Add((missed + 1) * s.evaluationInterval)
+		level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", i.scheduled.Format(timeLogFormat))
+		s.addWorkItem(i)
 	}
 }

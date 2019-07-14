@@ -42,6 +42,12 @@ var (
 		Name:      "rule_group_iterations_missed_total",
 		Help:      "The total number of rule group evaluations missed due to slow rule group evaluation.",
 	}, []string{"id"})
+	evalLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "group_evaluation_latency_seconds",
+		Help:      "How far behind the target time each rule group executed.",
+		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 60},
+	})
 )
 
 type workItem struct {
@@ -247,6 +253,12 @@ func (s *scheduler) nextWorkItem() *workItem {
 	}
 	item := op.(workItem)
 	level.Debug(util.Logger).Log("msg", "scheduler: work item granted", "item", item)
+
+	// Record the latency of the items evaluation here
+	latency := time.Since(item.scheduled)
+	evalLatency.Observe(latency.Seconds())
+	level.Debug(util.Logger).Log("msg", "sheduler: returning item", "item", item, "latency", latency.String())
+
 	return &item
 }
 
@@ -258,11 +270,15 @@ func (s *scheduler) workItemDone(i workItem) {
 		level.Debug(util.Logger).Log("msg", "scheduler: work item dropped", "item", i)
 		return
 	default:
+		// If the evaluation of the item took longer than it's evaluation interval, skip to the next valid interval
+		// and record any evaluation misses. This must be differentiated from lateness due to scheduling which is
+		// caused by the overall workload, not the result of latency within a single rule group.
 		missed := (time.Since(i.scheduled) / s.evaluationInterval) - 1
 		if missed > 0 {
 			level.Warn(util.Logger).Log("msg", "scheduler: work item missed evaluation", "item", i)
 			iterationsMissed.WithLabelValues(i.userID).Add(float64(missed))
 		}
+
 		i.scheduled = i.scheduled.Add((missed + 1) * s.evaluationInterval)
 		level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", i.scheduled.Format(timeLogFormat))
 		s.addWorkItem(i)

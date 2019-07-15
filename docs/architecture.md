@@ -73,7 +73,26 @@ Write de-amplification is the main source of Cortex's low total cost of ownershi
 
 ### Ruler
 
-The **ruler** service is responsible for handling alerts produced by [Alertmanager](https://prometheus.io/docs/alerting/alertmanager/).
+Ruler executes PromQL queries for Recording Rules and Alerts.  Ruler
+is configured from a database, so that different rules can be set for
+each tenant.
+
+All the rules for one instance are executed as a group, then
+rescheduled to be executed again 15 seconds later. Execution is done
+by a 'worker' running on a goroutine - if you don't have enough
+workers then the ruler will lag behind.
+
+Ruler can be scaled horizontally.
+
+### AlertManager
+
+AlertManager is responsible for accepting alert notifications from
+Ruler, grouping them, and passing on to a notification channel such as
+email, PagerDuty, etc.
+
+Like the Ruler, AlertManager is configured per-tenant in a database.
+
+[Upstream Docs](https://prometheus.io/docs/alerting/alertmanager/).
 
 ### Query frontend
 

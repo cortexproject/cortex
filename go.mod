@@ -64,7 +64,7 @@ require (
 	github.com/uber/jaeger-client-go v2.14.0+incompatible
 	github.com/uber/jaeger-lib v1.5.0 // indirect
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
-	github.com/weaveworks/common v0.0.0-20190410110702-87611edc252e
+	github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd
 	github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62
 	github.com/weaveworks/promrus v1.2.0 // indirect
 	go.etcd.io/bbolt v1.3.3

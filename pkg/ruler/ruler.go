@@ -37,27 +37,15 @@ var (
 		Help:      "The duration for a rule group to execute.",
 		Buckets:   []float64{.5, 1, 2.5, 5, 10, 25, 60, 120},
 	})
-	rulesProcessed = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "rules_processed_total",
-		Help:      "How many rules have been processed.",
-	})
 	ringCheckErrors = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "ruler_ring_check_errors_total",
 		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
-	evalFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "ruler_evalauation_failures_total",
-		Help:      "Total number of rule groups failed to be evaluated.",
-	}, []string{"id"})
-	ruleMetrics *rules.Metrics
 )
 
 func init() {
 	evalDuration.Register()
-	ruleMetrics = rules.NewGroupMetrics(prometheus.DefaultRegisterer)
 }
 
 // Config is the configuration for the recording rules server.
@@ -131,6 +119,10 @@ type Ruler struct {
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
 	notifiers    map[string]*rulerNotifier
+
+	// Per-user rules metrics
+	userMetricsMtx sync.Mutex
+	userMetrics    map[string]*rules.Metrics
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
@@ -153,6 +145,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		notifierCfg: ncfg,
 		notifiers:   map[string]*rulerNotifier{},
 		workerWG:    &sync.WaitGroup{},
+		userMetrics: map[string]*rules.Metrics{},
 	}
 
 	ruler.scheduler = newScheduler(poller, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
@@ -213,15 +206,28 @@ func (r *Ruler) Stop() {
 }
 
 func (r *Ruler) newGroup(ctx context.Context, g RuleGroup) (*wrappedGroup, error) {
+	user := g.User()
 	appendable := &appendableAppender{pusher: r.pusher}
-	notifier, err := r.getOrCreateNotifier(g.User())
+	notifier, err := r.getOrCreateNotifier(user)
 	if err != nil {
 		return nil, err
 	}
+
 	rls, err := g.Rules(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Get the rule group metrics for set user or create it if it does not exist
+	r.userMetricsMtx.Lock()
+	metrics, exists := r.userMetrics[user]
+	if !exists {
+		// Wrap the default register with the users ID and pass
+		reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": user}, prometheus.DefaultRegisterer)
+		metrics = rules.NewGroupMetrics(reg)
+		r.userMetrics[user] = metrics
+	}
+	r.userMetricsMtx.Unlock()
 
 	opts := &rules.ManagerOptions{
 		Appendable:  appendable,
@@ -230,7 +236,7 @@ func (r *Ruler) newGroup(ctx context.Context, g RuleGroup) (*wrappedGroup, error
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
 		Logger:      util.Logger,
-		Metrics:     ruleMetrics,
+		Metrics:     metrics,
 	}
 	return newGroup(g.Name(), rls, appendable, opts), nil
 }
@@ -310,7 +316,7 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 		return
 	}
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
-	ctx, cancelTimeout := context.WithTimeout(ctx, r.cfg.GroupTimeout)
+
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
 		if span := opentracing.SpanFromContext(ctx); span != nil {
 			span.SetTag("instance", userID)
@@ -319,14 +325,6 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 		item.group.Eval(ctx, time.Now())
 		return nil
 	})
-	if err := ctx.Err(); err == nil {
-		cancelTimeout() // release resources
-	} else {
-		evalFailures.WithLabelValues(userID).Inc()
-		level.Warn(logger).Log("msg", "context error", "error", err)
-	}
-
-	rulesProcessed.Add(float64(len(item.group.Rules())))
 }
 
 func (r *Ruler) ownsRule(hash uint32) bool {

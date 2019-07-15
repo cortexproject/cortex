@@ -37,11 +37,6 @@ var (
 		Name:      "scheduler_groups_total",
 		Help:      "How many rule groups the scheduler is currently evaluating",
 	})
-	scheduleFailures = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "scheduler_update_failures_total",
-		Help:      "Number of failures when updating rule groups",
-	})
 	evalLatency = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "group_evaluation_latency_seconds",

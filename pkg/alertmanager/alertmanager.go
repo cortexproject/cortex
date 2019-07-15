@@ -45,7 +45,7 @@ type Alertmanager struct {
 	cfg        *Config
 	api        *api.API
 	logger     log.Logger
-	nflog      nflog.Log
+	nflog      *nflog.Log
 	silences   *silence.Silences
 	marker     types.Marker
 	alerts     *mem.Alerts
@@ -115,7 +115,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
 
-	am.api = api.New(
+	am.api, err = api.New(
 		am.alerts,
 		am.silences,
 		func(matchers []*labels.Matcher) dispatch.AlertOverview {
@@ -125,6 +125,9 @@ func New(cfg *Config) (*Alertmanager, error) {
 		nil, // Passing a nil mesh router since we don't show mesh router information in Cortex anyway.
 		log.With(am.logger, "component", "api"),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create api: %v", err)
+	}
 
 	am.router = route.New()
 

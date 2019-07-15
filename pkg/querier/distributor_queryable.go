@@ -54,12 +54,14 @@ func (q *distributorQuerier) Select(sp *storage.SelectParams, matchers ...*label
 	return matrixToSeriesSet(matrix), nil, nil
 }
 
-func (q *distributorQuerier) LabelValues(name string) ([]string, error) {
-	return q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
+func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	lv, err := q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
+	return lv, nil, err
 }
 
-func (q *distributorQuerier) LabelNames() ([]string, error) {
-	return q.distributor.LabelNames(q.ctx)
+func (q *distributorQuerier) LabelNames() ([]string, storage.Warnings, error) {
+	ln, err := q.distributor.LabelNames(q.ctx)
+	return ln, nil, err
 }
 
 func (q *distributorQuerier) Close() error {

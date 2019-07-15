@@ -168,12 +168,14 @@ func (q querier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (
 }
 
 // LabelsValue implements storage.Querier.
-func (q querier) LabelValues(name string) ([]string, error) {
-	return q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
+func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	lv, err := q.distributor.LabelValuesForLabelName(q.ctx, model.LabelName(name))
+	return lv, nil, err
 }
 
-func (q querier) LabelNames() ([]string, error) {
-	return q.distributor.LabelNames(q.ctx)
+func (q querier) LabelNames() ([]string, storage.Warnings, error) {
+	ln, err := q.distributor.LabelNames(q.ctx)
+	return ln, nil, err
 }
 
 func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {

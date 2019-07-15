@@ -63,12 +63,12 @@ func (q *chunkStoreQuerier) partitionChunks(chunks []chunk.Chunk) storage.Series
 	return newConcreteSeriesSet(series)
 }
 
-func (q *chunkStoreQuerier) LabelValues(name string) ([]string, error) {
-	return nil, nil
+func (q *chunkStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
 }
 
-func (q *chunkStoreQuerier) LabelNames() ([]string, error) {
-	return nil, nil
+func (q *chunkStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
+	return nil, nil, nil
 }
 
 func (q *chunkStoreQuerier) Close() error {

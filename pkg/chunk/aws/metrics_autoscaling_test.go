@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/api"
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 
@@ -428,26 +429,30 @@ func (m *mockPrometheus) SetResponseForReads(usageRates [][]int, errorRates [][]
 	}
 }
 
-func (m *mockPrometheus) Query(ctx context.Context, query string, ts time.Time) (model.Value, error) {
-	return nil, errors.New("not implemented")
+func (m *mockPrometheus) Query(ctx context.Context, query string, ts time.Time) (model.Value, api.Warnings, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
-func (m *mockPrometheus) QueryRange(ctx context.Context, query string, r promV1.Range) (model.Value, error) {
+func (m *mockPrometheus) QueryRange(ctx context.Context, query string, r promV1.Range) (model.Value, api.Warnings, error) {
 	if len(m.rangeValues) == 0 {
-		return nil, errors.New("mockPrometheus.QueryRange: out of values")
+		return nil, nil, errors.New("mockPrometheus.QueryRange: out of values")
 	}
 	// Take the first value and move the slice up
 	ret := m.rangeValues[0]
 	m.rangeValues = m.rangeValues[1:]
-	return ret, nil
+	return ret, nil, nil
 }
 
 func (m *mockPrometheus) LabelValues(ctx context.Context, label string) (model.LabelValues, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockPrometheus) Series(ctx context.Context, matches []string, startTime time.Time, endTime time.Time) ([]model.LabelSet, error) {
+func (m *mockPrometheus) LabelNames(ctx context.Context) ([]string, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (m *mockPrometheus) Series(ctx context.Context, matches []string, startTime time.Time, endTime time.Time) ([]model.LabelSet, api.Warnings, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 func (m *mockPrometheus) AlertManagers(ctx context.Context) (promV1.AlertManagersResult, error) {
@@ -480,4 +485,12 @@ func (m *mockPrometheus) Rules(ctx context.Context) (promV1.RulesResult, error) 
 
 func (m *mockPrometheus) Targets(ctx context.Context) (promV1.TargetsResult, error) {
 	return promV1.TargetsResult{}, errors.New("not implemented")
+}
+
+func (m *mockPrometheus) Alerts(ctx context.Context) (promV1.AlertsResult, error) {
+	return promV1.AlertsResult{}, errors.New("not implemented")
+}
+
+func (m *mockPrometheus) TargetsMetadata(ctx context.Context, matchTarget string, metric string, limit string) ([]promV1.MetricMetadata, error) {
+	return nil, errors.New("not implemented")
 }

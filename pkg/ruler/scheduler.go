@@ -27,6 +27,11 @@ const (
 )
 
 var (
+	totalConfigs = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "scheduler_configs_total",
+		Help:      "How many user configs the scheduler knows about.",
+	})
 	totalRuleGroups = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "scheduler_groups_total",
@@ -37,17 +42,17 @@ var (
 		Name:      "scheduler_update_failures_total",
 		Help:      "Number of failures when updating rule groups",
 	})
-	iterationsMissed = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "rule_group_iterations_missed_total",
-		Help:      "The total number of rule group evaluations missed due to slow rule group evaluation.",
-	}, []string{"id"})
 	evalLatency = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "group_evaluation_latency_seconds",
 		Help:      "How far behind the target time each rule group executed.",
 		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 60},
 	})
+	iterationsMissed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "rule_group_iterations_missed_total",
+		Help:      "The total number of rule group evaluations missed due to slow rule group evaluation.",
+	}, []string{"user"})
 )
 
 type workItem struct {
@@ -150,6 +155,7 @@ func (s *scheduler) updateConfigs(ctx context.Context) error {
 		s.addUserConfig(ctx, user, cfg)
 	}
 
+	totalConfigs.Set(float64(len(s.cfgs)))
 	return nil
 }
 

@@ -301,6 +301,16 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 	}()
 
 	prevNumChunks := len(series.chunkDescs)
+	if i.cfg.SpreadFlushes && prevNumChunks > 0 {
+		// Map from the fingerprint hash to a point in the cycle of period MaxChunkAge
+		startOfCycle := timestamp.Add(-(timestamp.Sub(model.Time(0)) % i.cfg.MaxChunkAge))
+		slot := startOfCycle.Add(time.Duration(uint64(fp) % uint64(i.cfg.MaxChunkAge)))
+		// If adding this sample means the head chunk will span that point in time, close so it will get flushed
+		if series.head().FirstTime < slot && timestamp >= slot {
+			series.closeHead()
+		}
+	}
+
 	if err := series.add(model.SamplePair{
 		Value:     value,
 		Timestamp: timestamp,

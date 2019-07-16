@@ -251,6 +251,26 @@ func TestIngesterIdleFlush(t *testing.T) {
 	}
 }
 
+func TestIngesterSpreadFlush(t *testing.T) {
+	// Create test ingester with short flush cycle
+	cfg := defaultIngesterTestConfig()
+	cfg.SpreadFlushes = true
+	cfg.FlushCheckPeriod = 20 * time.Millisecond
+	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+
+	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
+
+	// add another sample with timestamp at the end of the cycle to trigger
+	// head closes and get an extra chunk so we will flush the first one
+	_, _ = pushTestSamples(t, ing, 4, 1, int(cfg.MaxChunkAge.Seconds()-1)*1000)
+
+	// wait beyond flush time so first set of samples should be sent to store
+	time.Sleep(cfg.FlushCheckPeriod * 2)
+
+	// check the first set of samples has been sent to the store
+	store.checkData(t, userIDs, testData)
+}
+
 type stream struct {
 	grpc.ServerStream
 	ctx       context.Context

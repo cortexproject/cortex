@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
@@ -305,26 +304,6 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 	// TODO: Remove notifiers for stale users. Right now this is a slow leak.
 	r.notifiers[userID] = n
 	return n.notifier, nil
-}
-
-// Evaluate a list of rules in the given context.
-func (r *Ruler) Evaluate(userID string, item *workItem) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-	logger := util.WithContext(ctx, util.Logger)
-	if r.cfg.EnableSharding && !r.ownsRule(item.hash) {
-		level.Debug(util.Logger).Log("msg", "ruler: skipping evaluation, not owned", "user_id", item.userID, "group", item.groupName)
-		return
-	}
-	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
-
-	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
-		if span := opentracing.SpanFromContext(ctx); span != nil {
-			span.SetTag("instance", userID)
-			span.SetTag("groupName", item.groupName)
-		}
-		item.group.Eval(ctx, time.Now())
-		return nil
-	})
 }
 
 func (r *Ruler) ownsRule(hash uint32) bool {

@@ -36,7 +36,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
     prometheus_serviceaccount:
         kube.ServiceAccount($._config.prometheus.name) + {
             metadata+: {
-                namespace: $._config.namespace
+                namespace: $._config.namespace,
             },
         },
 
@@ -78,21 +78,20 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         };
 
         # Container
-        local image = $._images.prometheus;
         local prometheusContainer = kube.Container(name) + {
             args+: args,
-            image: image,
+            image: $._config.prometheus.image,
             ports_: prometheusPorts,
             resources+: $._config.prometheus.resources,
             volumeMounts_: {
                 config_volume: prometheusConfigVolumeMount + { readOnly: true },
                 storage_volume: storageVolumeMount,
-            }
+            },
         };
 
         local prometheusPod = kube.PodSpec + {
             containers_: {
-                prometheus: prometheusContainer
+                prometheus: prometheusContainer,
             },
             volumes_: {
                 config_volume: prometheusConfigVolume,
@@ -110,7 +109,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: {
                     spec: prometheusPod,
                     metadata+: {
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },

@@ -33,7 +33,7 @@ $(GOPATH): export GOPATH=$(GOPATH_DIR)
 $(GOPATH):
 	bash $(CURRENT_DIR)/get-go-tools.sh
 	go get github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
-	go get github.com/ksonnet/kubecfg
+	go get github.com/bitnami/kubecfg
 
 # jsonnet-bundler vendored libraries
 $(VENDOR): export PATH=$(NEWPATH)

@@ -7,25 +7,28 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
 
         # Arguments
         local extraArgs = $._config.ruler.extraArgs;
-        local alertmanager_uri = $._config.alertmanager.name + '.' + $._config.namespace + '.svc.cluster.local/api/prom/alertmanager/';
-        local configs_uri = $._config.configs.name + '.' + $._config.namespace + '.svc.cluster.local';
+        local alertmanager_uri = 'http://' + $._config.alertmanager.name + '.' + $._config.namespace + '.svc.cluster.local/api/prom/alertmanager/';
+        local configs_uri = 'http://' + $._config.configs.name + '.' + $._config.namespace + '.svc.cluster.local';
         local consul_uri = $._config.consul.name + '.' + $._config.namespace + '.svc.cluster.local:8500';
+        local memcached_uri = $._config.memcached.name + '.' + $._config.namespace + '.svc.cluster.local';
         local args = [
+            '-target=ruler',
             '-server.http-listen-port=80',
             '-config-yaml=/etc/cortex/schemaConfig.yaml',
             '-consul.hostname=' + consul_uri,
             '-ruler.alertmanager-url=' + alertmanager_uri,
             '-ruler.configs.url=' + configs_uri,
+            '-memcached.hostname=' + memcached_uri,
         ];
 
         # Environment Variables
         local env = $._config.ruler.env;
         local envKVMixin = $._config.ruler.envKVMixin;
-        local extraEnv = [{name: key, value: extraEnv[key]} for key in std.objectFields(envKVMixin)];
+        local extraEnv = [{name: key, value: envKVMixin[key]} for key in std.objectFields(envKVMixin)];
 
         local rulerPorts = {
             http: {
-                containerPort: 80
+                containerPort: 80,
             },
         };
 
@@ -34,14 +37,13 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local schemaConfigVolumeMount = {
             config_volume: {
                 mountPath: '/etc/cortex',
-                readOnly: true
+                readOnly: true,
             },
         };
         
         # Container
-        local image = $._images.ruler;
         local rulerContainer = kube.Container(name) + {
-            image: image,
+            image: $._config.ruler.image,
             args+: args + extraArgs,
             ports_: rulerPorts,
             volumeMounts_: schemaConfigVolumeMount,
@@ -53,7 +55,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 ruler: rulerContainer,
             },
             volumes_: {
-                config_volume: schemaConfigVolume
+                config_volume: schemaConfigVolume,
             },
         };
 
@@ -66,7 +68,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: {
                     spec: rulerPod,
                     metadata+: {
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },

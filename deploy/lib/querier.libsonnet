@@ -8,39 +8,41 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         # Arguments
         local extraArgs = $._config.querier.extraArgs;
         local consul_uri = $._config.consul.name + '.' + $._config.namespace + '.svc.cluster.local:8500';
+        local memcached_uri = $._config.memcached.name + '.' + $._config.namespace + '.svc.cluster.local';
         local args = [
+            '-target=querier',
             '-server.http-listen-port=80',
             '-querier.frontend-address=query-frontend.' + $._config.namespace + '.svc.cluster.local:9095',
             '-querier.batch-iterators=true',
             '-querier.ingester-streaming=true',
             '-config-yaml=/etc/cortex/schemaConfig.yaml',
             '-consul.hostname=' + consul_uri,
+            '-memcached.hostname=' + memcached_uri,
         ];
         
         # Environment Variables
         local env = $._config.ingester.env;
         local envKVMixin = $._config.querier.envKVMixin;
-        local extraEnv = [{name: key, value: extraEnv[key]} for key in std.objectFields(envKVMixin)];
+        local extraEnv = [{name: key, value: envKVMixin[key]} for key in std.objectFields(envKVMixin)];
 
         # SchemaConfig volume
         local schemaConfigVolume = kube.ConfigMapVolume($.schema_configmap);
         local schemaConfigVolumeMount = {
             config_volume: {
                 mountPath: '/etc/cortex',
-                readOnly: true
+                readOnly: true,
             },
         };
 
         local querierPorts = {
             http: {
-                containerPort: 80
+                containerPort: 80,
             },
         };
 
         # Container
-        local image = $._images.querier;
         local querierContainer = kube.Container(name) + {
-            image: image,
+            image: $._config.querier.image,
             env: env + extraEnv,
             args+: args + extraArgs,
             ports_: querierPorts,
@@ -54,7 +56,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 querier: querierContainer,
             },
             volumes_: {
-                config_volume: schemaConfigVolume
+                config_volume: schemaConfigVolume,
             },
         };
 
@@ -69,7 +71,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: {
                     spec: querierPod,
                     metadata+: {
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },

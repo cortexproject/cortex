@@ -9,23 +9,23 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local extraArgs = $._config.distributor.extraArgs;
         local consul_uri = $._config.consul.name + '.' + $._config.namespace + '.svc.cluster.local:8500';
         local args = [
+            '-target=distributor',
             '-server.http-listen-port=80',
             '-distributor.shard-by-all-labels=true',
-            '-consul.hostname=' + consul_uri
+            '-consul.hostname=' + consul_uri,
         ];
 
         # Ports
         local distributorPorts = {
             http: {
-                containerPort: 80
+                containerPort: 80,
             },
         };
 
         # Container
-        local image = $._images.distributor;
         local distributorContainer = kube.Container(name) + {
             args+: args + extraArgs,
-            image: image,
+            image: $._config.distributor.image,
             ports_: distributorPorts,
             resources+: $._config.distributor.resources,
         };
@@ -33,7 +33,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         # Pod
         local distributorPod = kube.PodSpec + {
             containers_: {
-                distributor: distributorContainer
+                distributor: distributorContainer,
             },
         };
 
@@ -46,7 +46,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: {
                     spec: distributorPod,
                     metadata+: {
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },
@@ -60,7 +60,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             target_pod: $.distributor_deployment.spec.template,
             metadata+: {
                 labels: labels,
-                namespace: $._config.namespace
+                namespace: $._config.namespace,
             },
         },
 }

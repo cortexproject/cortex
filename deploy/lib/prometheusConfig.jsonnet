@@ -4,7 +4,7 @@ local prom = {
     PodJob(name, appName): { 
         job_name: name,
         kubernetes_sd_configs: [{
-            role: "pod"
+            role: "pod",
         }],
         relabel_configs: [
             # Only include pods matching the "app" label
@@ -12,7 +12,7 @@ local prom = {
                 action: "keep",
                 regex: appName,
                 source_labels: [
-                    "__meta_kubernetes_pod_label_app"
+                    "__meta_kubernetes_pod_label_app",
                 ],
             },
             # Only scrape over the 'http' port
@@ -20,14 +20,14 @@ local prom = {
                 action: "keep",
                 regex: "http",
                 source_labels: [
-                    "__meta_kubernetes_pod_container_port_name"
+                    "__meta_kubernetes_pod_container_port_name",
                 ],
             },
             # LabelMap or include existing pod labels
             {
                 action: "labelmap",
                 regex: "__meta_kubernetes_pod_label_(.+)",
-                replacement: "$1"
+                replacement: "$1",
             },
             # Include the pod's node name in a label
             {
@@ -35,7 +35,7 @@ local prom = {
                 regex: "(.*)",
                 replacement: "$1",
                 source_labels: ["__meta_kubernetes_pod_node_name"],
-                target_label: "kubernetes_node_name"
+                target_label: "kubernetes_node_name",
             },
             # Report the pod's name as "instance"
             {
@@ -43,7 +43,7 @@ local prom = {
                 regex: "(.*)",
                 replacement: "$1",
                 source_labels: ["__meta_kubernetes_pod_name"],
-                target_label: "instance"
+                target_label: "instance",
             },
         ],
     },
@@ -59,11 +59,11 @@ local prom = {
         external_labels: {
             cortex_deployment: "demo",
         },
-        scrape_interval: "30s"
+        scrape_interval: "30s",
     },
     remote_read: [
         {
-            url: nginx_uri + '/api/prom/'
+            url: nginx_uri + '/api/prom/',
         },
     ],
     remote_write: [
@@ -76,6 +76,7 @@ local prom = {
         prom.PodJob('cortex/configs', 'configs'),
         prom.PodJob('cortex/distributor', 'distributor'),
         prom.PodJob('cortex/ingester', 'ingester'),
+        prom.PodJob('cortex/memcached', 'memcached'),
         prom.PodJob('cortex/querier', 'querier'),
         prom.PodJob('cortex/query-frontend', 'query-frontend'),
         prom.PodJob('cortex/ruler', 'ruler'),

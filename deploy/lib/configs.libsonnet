@@ -7,24 +7,27 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
 
         # Arguments
         local extraArgs = $._config.configs.extraArgs;
-        local postgres_path = '/configs?sslmode=disable';
+        local postgres_user = $._config.configs.postgresUser;
+        local postgres_password = $._config.configs.postgresPassword;
+        local postgres_db = $._config.configs.postgresDb;
+        local postgres_path = '/' + postgres_db + '?sslmode=disable';
         local postgres_uri = $._config.postgres.name + '.' + $._config.namespace + '.svc.cluster.local';
         local args = [
+            '-target=configs',
             '-server.http-listen-port=80',
-            '-database.uri=postgres://postgres@' + postgres_uri + postgres_path,
+            '-database.uri=postgres://' + postgres_user + ':' + postgres_password + '@' + postgres_uri + postgres_path,
             '-database.migrations=/migrations',
         ];
 
         local configsPorts = {
             http: {
-                containerPort: 80
+                containerPort: 80,
             },
         };
 
         # Container
-        local image = $._images.configs;
         local configsContainer = kube.Container(name) + {
-            image: image,
+            image: $._config.configs.image,
             args+: args + extraArgs,
             ports_: configsPorts,
             resources+: $._config.configs.resources,
@@ -32,7 +35,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
 
         local configsPod = kube.PodSpec + {
             containers_: {
-                configs: configsContainer
+                configs: configsContainer,
             },
         };
 
@@ -45,7 +48,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: {
                     spec: configsPod,
                     metadata+:{ 
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },
@@ -59,7 +62,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             target_pod: $.configs_deployment.spec.template,
             metadata+: {
                 labels: labels,
-                namespace: $._config.namespace
+                namespace: $._config.namespace,
             },
         },
 }

@@ -8,21 +8,20 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         # Ports
         local dynamodbPorts = {
             http: {
-                containerPort: 8000
+                containerPort: 8000,
             },
         };
 
         # Container
-        local image = $._images.dynamodb;
         local dynamodbContainer = kube.Container(name) + {
-            image: image,
+            image: $._config.dynamodb.image,
             resources+: $._config.dynamodb.resources,
             ports_: dynamodbPorts,
         };
 
         local dynamodbPod = kube.PodSpec + {
             containers_: {
-                dynamodb: dynamodbContainer
+                dynamodb: dynamodbContainer,
             },
         };
 
@@ -35,7 +34,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: {
                     spec: dynamodbPod,
                     metadata+: {
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },

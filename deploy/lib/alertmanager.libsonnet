@@ -9,6 +9,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local extraArgs = $._config.alertmanager.extraArgs;
         local configs_uri = 'http://' + $._config.configs.name + '.' + $._config.namespace + '.svc.cluster.local:80';
         local args = [
+            '-target=alertmanager',
             '-server.http-listen-port=80',
             '-alertmanager.configs.url=' + configs_uri,
             '-alertmanager.web.external-url=/api/prom/alertmanager',
@@ -21,9 +22,8 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         };
 
         # Container
-        local image = $._images.alertmanager;
         local alertmanagerContainer = kube.Container(name) + {
-            image: image,
+            image: $._config.alertmanager.image,
             args+: args + extraArgs,
             ports_: alertmanagerPorts,
             resources+: $._config.alertmanager.resources,
@@ -31,7 +31,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
 
         local alertmanagerPod = kube.PodSpec + {
             containers_: {
-                alertmanager: alertmanagerContainer
+                alertmanager: alertmanagerContainer,
             },
         };
 
@@ -44,7 +44,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: { 
                     spec: alertmanagerPod,
                     metadata+: {
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },

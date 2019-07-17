@@ -11,48 +11,48 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local schemaConfigVolumeMount = {
             config_volume: {
                 mountPath: '/etc/cortex',
-                readOnly: true
+                readOnly: true,
             },
         };
 
         # Ports
         local tableManagerPorts = {
             http: {
-                containerPort: 80
+                containerPort: 80,
             },
         };
 
         # Arguments
         local extraArgs = $._config.tableManager.extraArgs;
         local args = [
+            '-target=table-manager',
             '-config-yaml=/etc/cortex/schemaConfig.yaml',
         ];
 
         # Environment Variables
         local env = $._config.tableManager.env;
         local envKVMixin = $._config.tableManager.envKVMixin;
-        local extraEnv = [{name: key, value: extraEnv[key]} for key in std.objectFields(envKVMixin)];
+        local extraEnv = [{name: key, value: envKVMixin[key]} for key in std.objectFields(envKVMixin)];
         
         # Container
-        local image = $._images.tableManager;
         local resources = $._config.tableManager.resources;
         local tableManagerContainer = kube.Container(name) + {
-            image: image,
+            image: $._config.tableManager.image,
             args+: args + extraArgs,
             env: env + extraEnv,
             ports_: tableManagerPorts,
             volumeMounts_: schemaConfigVolumeMount,
-            resources: resources
+            resources: resources,
         };
 
         # Pod
         local tableManagerPod = kube.PodSpec + {
             containers_: {
-                ['table-manager']: tableManagerContainer
+                ['table-manager']: tableManagerContainer,
             },
             volumes_: {
-                config_volume: schemaConfigVolume
-            }
+                config_volume: schemaConfigVolume,
+            },
         };
 
         kube.Deployment(name) + {
@@ -64,10 +64,10 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: {
                     spec: tableManagerPod,
                     metadata+: {
-                        labels: labels
-                    }
+                        labels: labels,
+                    },
                 },
-            }
+            },
         },
 
 }

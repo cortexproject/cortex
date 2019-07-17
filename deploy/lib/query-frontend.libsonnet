@@ -3,14 +3,16 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
 {
     query_frontend_deployment:
         local name = $._config.queryFrontend.name;
-        local image = $._images.queryFrontend;
         local labels = $._config.queryFrontend.labels;
         local extraArgs = $._config.queryFrontend.extraArgs;
+        local memcached_uri = $._config.memcached.name + '.' + $._config.namespace + '.svc.cluster.local';
 
         local args = [
+            '-target=query-frontend',
             '-server.http-listen-port=80',
             '-querier.split-queries-by-day=true',
             '-querier.align-querier-with-step=true',
+            '-memcached.hostname=' + memcached_uri,
         ];
 
         local queryFrontendPorts = {
@@ -18,12 +20,12 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 containerPort: 80,
             },
             grpc: {
-                containerPort: 9095
+                containerPort: 9095,
             },
         };
 
         local queryFrontendContainer = kube.Container(name) + {
-            image: image,
+            image: $._config.queryFrontend.image,
             args+: args + extraArgs,
             ports_: queryFrontendPorts,
             resources+: $._config.queryFrontend.resources,
@@ -32,8 +34,9 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local queryFrontendPod = kube.PodSpec + {
             containers_: {
                 ['query-frontend']: queryFrontendContainer
-            }
+            },
         };
+
         kube.Deployment(name) + {
             metadata+: {
                 namespace: $._config.namespace,
@@ -44,7 +47,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 template+: {
                     spec: queryFrontendPod,
                     metadata+: {
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },
@@ -69,12 +72,12 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                     {
                         port: 80,
                         targetPort: 80,
-                        name: 'http'
+                        name: 'http',
                     },
                     {
                         port: 9095,
                         targetPort: 9095,
-                        name: 'grpc'
+                        name: 'grpc',
                     },
                 ],
             },

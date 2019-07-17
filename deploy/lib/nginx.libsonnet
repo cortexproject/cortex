@@ -7,7 +7,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                 namespace: $._config.namespace,
             },
             data: {
-                'nginx.conf': $._config.nginx.configuration
+                'nginx.conf': $._config.nginx.configuration,
             },
         },
 
@@ -20,19 +20,18 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local nginxConfigVolumeMount = {
             config_volume: {
                 mountPath: '/etc/nginx',
-                readOnly: true
+                readOnly: true,
             },
         };
 
         local nginxPorts = {
             http: {
-                containerPort: 80
+                containerPort: 80,
             },
         };
 
-        local image = $._images.nginx;
         local nginxContainer = kube.Container(name) + {
-            image: image,
+            image: $._config.nginx.image,
             ports_: nginxPorts,
             resources+: $._config.nginx.resources,
             volumeMounts_: nginxConfigVolumeMount,
@@ -40,7 +39,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
 
         local nginxPod = kube.PodSpec + {
             containers_: {
-                nginx: nginxContainer
+                nginx: nginxContainer,
             },
             volumes_: {
                 config_volume: nginxConfigVolume,
@@ -50,13 +49,13 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         kube.Deployment(name) + {
             metadata+: {
                 namespace: $._config.namespace,
-                labels: labels
+                labels: labels,
             },
             spec+: {
                 template+: {
                     spec: nginxPod,
                     metadata+: {
-                        labels: labels
+                        labels: labels,
                     },
                 },
             },
@@ -70,14 +69,14 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             target_pod: $.nginx_deployment.spec.template,
             metadata+: {
                 labels: labels,
-                namespace: $._config.namespace
+                namespace: $._config.namespace,
             },
             spec+: {
                 ports: [
                     {
                         nodePort: 30080,
                         port: 80,
-                        name: 'http'
+                        name: 'http',
                     },
                 ],
                 type: 'NodePort',

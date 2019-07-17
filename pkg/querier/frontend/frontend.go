@@ -210,7 +210,10 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 	request := &request{
 		request:     req,
 		originalCtx: ctx,
-		// Buffer of 1 to ensure response can be written even if client has gone away.
+
+		// Buffer of 1 to ensure response can be written by the server side
+		// of the Process stream, even if this goroutine goes away due to
+		// client context cancellation.
 		err:      make(chan error, 1),
 		response: make(chan *ProcessResponse, 1),
 	}
@@ -262,80 +265,56 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 
 // Process allows backends to pull requests from the frontend.
 func (f *Frontend) Process(server Frontend_ProcessServer) error {
-	var (
-		sendChan = make(chan *ProcessRequest)
-		recvChan = make(chan *ProcessResponse, 1)
-
-		// Need buffer of 2 so goroutines reading/writing to stream don't hang
-		// around when stream dies.
-		errChan = make(chan error, 2)
-	)
-
-	// If the stream from the querier is canceled, ping the condition to unblock.
-	// This is done once, here (instead of in getNextRequest) as we expect calls
-	// to Process to process many requests.
+	// If the downstream request(from querier -> frontend) is cancelled,
+	// we need to ping the condition variable to unblock getNextRequest.
+	// Ideally we'd have ctx aware condition variables...
 	go func() {
 		<-server.Context().Done()
 		f.cond.Broadcast()
 	}()
 
-	// Use a pair of goroutines to read/write from the stream and send to channels,
-	// so we can use selects to also wait on the cancellation of the request context.
-	// These goroutines will error out when the stream returns.
-	go func() {
-		for {
-			var req *ProcessRequest
-			select {
-			case req = <-sendChan:
-			case <-server.Context().Done():
-				return
-			}
-
-			err := server.Send(req)
-			if err != nil {
-				errChan <- err
-				return
-			}
-		}
-	}()
-
-	go func() {
-		for {
-			resp, err := server.Recv()
-			if err == nil {
-				recvChan <- resp
-			} else {
-				errChan <- err
-				return
-			}
-		}
-	}()
-
 	for {
-		request, err := f.getNextRequest(server.Context())
+		req, err := f.getNextRequest(server.Context())
 		if err != nil {
 			return err
 		}
 
-		originalCtx := request.originalCtx
+		// Handle the stream sending & receiving on a goroutine so we can
+		// monitoring the contexts in a select and cancel things appropriately.
+		resps := make(chan *ProcessResponse, 1)
+		errs := make(chan error, 1)
+		go func() {
+			err = server.Send(req.request)
+			if err != nil {
+				errs <- err
+				return
+			}
+
+			resp, err := server.Recv()
+			if err != nil {
+				errs <- err
+				return
+			}
+
+			resps <- resp
+		}()
 
 		select {
-		case sendChan <- request.request:
-		case err := <-errChan:
-			request.err <- err
-			return err
-		case <-originalCtx.Done():
-			return originalCtx.Err()
-		}
+		// If the upstream reqeust is cancelled, we need to cancel the
+		// downstream req.  Only way we can do that is to close the stream.
+		// The worker client is expecting this semantics.
+		case <-req.originalCtx.Done():
+			return req.originalCtx.Err()
 
-		select {
-		case resp := <-recvChan:
-			request.response <- resp
-		case err := <-errChan:
-			request.err <- err
+		// Is there was an error handling this request due to network IO,
+		// then error out this upstream request _and_ stream.
+		case err := <-errs:
+			req.err <- err
 			return err
-		case <-originalCtx.Done():
-			return originalCtx.Err()
+
+		// Happy path: propagate the response.
+		case resp := <-resps:
+			req.response <- resp
 		}
 	}
 }

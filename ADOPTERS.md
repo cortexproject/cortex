@@ -7,4 +7,5 @@ This is the list of organisations that are using Cortex in **production environm
 * [GoJek](https://www.gojek.io/)
 * [GrafanaLabs](https://grafana.com/)
 * [MayaData](https://mayadata.io/)
+* [REWE Digital](https://rewe-digital.com/)
 * [Weaveworks](https://www.weave.works/)

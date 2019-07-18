@@ -75,7 +75,7 @@ func (w *worker) Evaluate(userID string, item *workItem) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	logger := util.WithContext(ctx, util.Logger)
 	if w.ruler.cfg.EnableSharding && !w.ruler.ownsRule(item.hash) {
-		level.Debug(util.Logger).Log("msg", "ruler: skipping evaluation, not owned", "user_id", item.userID, "group", item.groupName)
+		level.Debug(util.Logger).Log("msg", "ruler: skipping evaluation, not owned", "user_id", item.userID, "group", item.groupID)
 		return
 	}
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
@@ -83,7 +83,7 @@ func (w *worker) Evaluate(userID string, item *workItem) {
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
 		if span := opentracing.SpanFromContext(ctx); span != nil {
 			span.SetTag("instance", userID)
-			span.SetTag("groupName", item.groupName)
+			span.SetTag("groupID", item.groupID)
 		}
 		item.group.Eval(ctx, time.Now())
 		return nil

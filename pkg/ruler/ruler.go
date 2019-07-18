@@ -16,13 +16,14 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
+	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ruler/store"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/instrument"
@@ -76,11 +77,14 @@ type Config struct {
 	SearchPendingFor time.Duration
 	LifecyclerConfig ring.LifecyclerConfig
 	FlushCheckPeriod time.Duration
+
+	StoreConfig RuleStoreConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ruler.", f)
+	cfg.StoreConfig.RegisterFlags(f)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
@@ -104,7 +108,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Ruler struct {
 	cfg         Config
 	engine      *promql.Engine
-	queryable   storage.Queryable
+	queryable   promStorage.Queryable
 	pusher      Pusher
 	alertURL    *url.URL
 	notifierCfg *config.Config
@@ -114,6 +118,8 @@ type Ruler struct {
 
 	lifecycler *ring.Lifecycler
 	ring       *ring.Ring
+
+	store store.RuleStore
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -125,7 +131,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, poller RulePoller) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor) (*Ruler, error) {
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
@@ -134,6 +140,8 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 	if err != nil {
 		return nil, err
 	}
+
+	rulePoller, ruleStore, err := NewRuleStorage(cfg.StoreConfig)
 
 	ruler := &Ruler{
 		cfg:         cfg,
@@ -145,9 +153,10 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		notifiers:   map[string]*rulerNotifier{},
 		workerWG:    &sync.WaitGroup{},
 		userMetrics: map[string]*rules.Metrics{},
+		store:       ruleStore,
 	}
 
-	ruler.scheduler = newScheduler(poller, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
+	ruler.scheduler = newScheduler(rulePoller, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
 
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler
@@ -204,7 +213,7 @@ func (r *Ruler) Stop() {
 	}
 }
 
-func (r *Ruler) newGroup(ctx context.Context, g RuleGroup) (*wrappedGroup, error) {
+func (r *Ruler) newGroup(ctx context.Context, g store.RuleGroup) (*wrappedGroup, error) {
 	user := g.User()
 	appendable := &appendableAppender{pusher: r.pusher}
 	notifier, err := r.getOrCreateNotifier(user)
@@ -237,7 +246,7 @@ func (r *Ruler) newGroup(ctx context.Context, g RuleGroup) (*wrappedGroup, error
 		Logger:      util.Logger,
 		Metrics:     metrics,
 	}
-	return newGroup(g.Name(), rls, appendable, opts), nil
+	return newGroup(g.ID(), rls, appendable, opts), nil
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.

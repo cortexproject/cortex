@@ -6,14 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler/group"
-	"github.com/prometheus/prometheus/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/store"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/assert"
 )
 
 type fakeHasher struct {
-	something uint32
-	data      *[]byte
+	data *[]byte
 }
 
 func (h *fakeHasher) Write(data []byte) (int, error) {
@@ -76,12 +75,12 @@ func TestSchedulerRulesOverlap(t *testing.T) {
 	groupTwo := "test2"
 	next := time.Now()
 
-	ruleSetsOne := []RuleGroup{
-		group.NewRuleGroup(groupOne, "default", userID, []rules.Rule{nil}),
+	ruleSetsOne := []store.RuleGroup{
+		store.NewRuleGroup(groupOne, "default", userID, []rulefmt.Rule{}),
 	}
 
-	ruleSetsTwo := []RuleGroup{
-		group.NewRuleGroup(groupTwo, "default", userID, []rules.Rule{nil}),
+	ruleSetsTwo := []store.RuleGroup{
+		store.NewRuleGroup(groupTwo, "default", userID, []rulefmt.Rule{}),
 	}
 	userChanOne := make(chan struct{})
 	userChanTwo := make(chan struct{})
@@ -90,13 +89,13 @@ func TestSchedulerRulesOverlap(t *testing.T) {
 	cfgTwo := userConfig{rules: ruleSetsTwo, done: userChanTwo}
 
 	s.updateUserConfig(context.Background(), cfgOne)
-	w0 := workItem{userID: userID, groupName: groupOne, scheduled: next, done: userChanOne}
+	w0 := workItem{userID: userID, groupID: groupOne, scheduled: next, done: userChanOne}
 	s.workItemDone(w0)
 	item := s.q.Dequeue().(workItem)
-	assert.Equal(t, item.groupName, groupOne)
+	assert.Equal(t, item.groupID, groupOne)
 
 	// create a new workitem for the updated ruleset
-	w1 := workItem{userID: userID, groupName: groupTwo, scheduled: next, done: userChanTwo}
+	w1 := workItem{userID: userID, groupID: groupTwo, scheduled: next, done: userChanTwo}
 
 	// Apply the new config, scheduling the previous config to be dropped
 	s.updateUserConfig(context.Background(), cfgTwo)
@@ -108,7 +107,7 @@ func TestSchedulerRulesOverlap(t *testing.T) {
 	// Ensure the old config was dropped due to the done channel being closed
 	// when the new user config was updated
 	item = s.q.Dequeue().(workItem)
-	assert.Equal(t, item.groupName, groupTwo)
+	assert.Equal(t, item.groupID, groupTwo)
 
 	s.q.Close()
 	assert.Equal(t, nil, s.q.Dequeue())

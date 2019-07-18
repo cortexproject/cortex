@@ -1,8 +1,8 @@
 package gcp
 
 import (
-	"github.com/cortexproject/cortex/pkg/alertmanager"
-	"github.com/cortexproject/cortex/pkg/ruler"
+	alertStore "github.com/cortexproject/cortex/pkg/alertmanager/storage"
+	"github.com/cortexproject/cortex/pkg/ruler/store"
 	"github.com/cortexproject/cortex/pkg/storage/testutils"
 	"github.com/fsouza/fake-gcs-server/fakestorage"
 )
@@ -21,7 +21,7 @@ func (f *fixture) Name() string {
 	return f.name
 }
 
-func (f *fixture) Clients() (alertmanager.AlertStore, ruler.RuleStore, error) {
+func (f *fixture) Clients() (alertStore.AlertStore, store.RuleStore, error) {
 	f.gcssrv = fakestorage.NewServer(nil)
 	f.gcssrv.CreateBucket("configdb")
 	cli := newGCSClient(GCSConfig{

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager"
-	"github.com/cortexproject/cortex/pkg/ruler"
+	alertStore "github.com/cortexproject/cortex/pkg/alertmanager/storage"
+	"github.com/cortexproject/cortex/pkg/ruler/store"
 	"github.com/cortexproject/cortex/pkg/storage/clients/gcp"
 	"github.com/cortexproject/cortex/pkg/storage/testutils"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
@@ -26,7 +26,7 @@ var (
 )
 
 func TestRuleStoreBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, _ alertmanager.AlertStore, client ruler.RuleStore) {
+	forAllFixtures(t, func(t *testing.T, _ alertStore.AlertStore, client store.RuleStore) {
 		const batchSize = 5
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -36,7 +36,7 @@ func TestRuleStoreBasic(t *testing.T) {
 
 		rg, err := client.GetRuleGroup(ctx, userID, namespace, exampleRuleGrp.Name)
 		require.NoError(t, err)
-		assert.Equal(t, exampleRuleGrp.Name, rg.Name)
+		assert.Equal(t, exampleRuleGrp.Name, rg.Name())
 
 		err = client.DeleteRuleGroup(ctx, userID, namespace, exampleRuleGrp.Name)
 		require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestRuleStoreBasic(t *testing.T) {
 	})
 }
 
-func forAllFixtures(t *testing.T, clientTest func(*testing.T, alertmanager.AlertStore, ruler.RuleStore)) {
+func forAllFixtures(t *testing.T, clientTest func(*testing.T, alertStore.AlertStore, store.RuleStore)) {
 	var fixtures []testutils.Fixture
 	fixtures = append(fixtures, gcp.Fixtures...)
 

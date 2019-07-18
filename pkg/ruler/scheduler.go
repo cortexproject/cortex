@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ruler/store"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/jonboulle/clockwork"
@@ -16,10 +17,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-var backoffConfig = util.BackoffConfig{
-	// Backoff for loading initial configuration set.
-	MinBackoff: 100 * time.Millisecond,
-	MaxBackoff: 2 * time.Second,
+type Scheduler interface {
+	Next() *WorkItem
+	Done(WorkItem)
+}
+
+type WorkItem interface {
+	Evaluate(context.Context)
 }
 
 const (
@@ -52,7 +56,7 @@ var (
 
 type workItem struct {
 	userID    string
-	groupName string
+	groupID   string
 	hash      uint32
 	group     *wrappedGroup
 	scheduled time.Time
@@ -62,7 +66,7 @@ type workItem struct {
 
 // Key implements ScheduledItem
 func (w workItem) Key() string {
-	return w.userID + ":" + w.groupName
+	return w.userID + ":" + w.groupID
 }
 
 // Scheduled implements ScheduledItem
@@ -71,19 +75,19 @@ func (w workItem) Scheduled() time.Time {
 }
 
 func (w workItem) String() string {
-	return fmt.Sprintf("%s:%s:%d@%s", w.userID, w.groupName, len(w.group.Rules()), w.scheduled.Format(timeLogFormat))
+	return fmt.Sprintf("%s:%s:%d@%s", w.userID, w.groupID, len(w.group.Rules()), w.scheduled.Format(timeLogFormat))
 }
 
 type userConfig struct {
 	done  chan struct{}
 	id    string
-	rules []RuleGroup
+	rules []store.RuleGroup
 }
 
-type groupFactory func(context.Context, RuleGroup) (*wrappedGroup, error)
+type groupFactory func(context.Context, store.RuleGroup) (*wrappedGroup, error)
 
 type scheduler struct {
-	store              RulePoller
+	poller             store.RulePoller
 	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
@@ -96,9 +100,9 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(store RulePoller, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
+func newScheduler(poller store.RulePoller, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
 	return &scheduler{
-		store:              store,
+		poller:             poller,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
@@ -135,13 +139,14 @@ func (s *scheduler) Run() {
 }
 
 func (s *scheduler) Stop() {
+	s.poller.Stop()
 	close(s.done)
 	s.q.Close()
 	level.Debug(util.Logger).Log("msg", "scheduler stopped")
 }
 
 func (s *scheduler) updateConfigs(ctx context.Context) error {
-	cfgs, err := s.store.PollRules(ctx)
+	cfgs, err := s.poller.PollRules(ctx)
 	if err != nil {
 		return err
 	}
@@ -154,7 +159,7 @@ func (s *scheduler) updateConfigs(ctx context.Context) error {
 	return nil
 }
 
-func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []RuleGroup) {
+func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []store.RuleGroup) {
 	level.Info(util.Logger).Log("msg", "scheduler: updating rules for user", "user_id", userID, "num_groups", len(rgs))
 
 	// create a new userchan for rulegroups of this user
@@ -165,17 +170,17 @@ func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []Rule
 	evalTime := s.determineEvalTime(userID)
 
 	for _, rg := range rgs {
-		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", rg.Name())
+		level.Debug(util.Logger).Log("msg", "scheduler: updating rules for user and group", "user_id", userID, "group", rg.ID())
 		grp, err := s.groupFn(ctx, rg)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", rg.Name(), "err", err)
+			level.Error(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", rg.ID(), "err", err)
 			return
 		}
 
 		ringHasher.Reset()
-		ringHasher.Write([]byte(rg.Name()))
+		ringHasher.Write([]byte(rg.ID()))
 		hash := ringHasher.Sum32()
-		workItems = append(workItems, workItem{userID, rg.Name(), hash, grp, evalTime, userChan})
+		workItems = append(workItems, workItem{userID, rg.ID(), hash, grp, evalTime, userChan})
 	}
 
 	s.updateUserConfig(ctx, userConfig{
@@ -233,7 +238,7 @@ func (s *scheduler) addWorkItem(i workItem) {
 		level.Debug(util.Logger).Log("msg", "scheduler: work item not added, scheduler stoped", "item", i)
 		return
 	default:
-		// The queue is keyed by userID+groupName, so items for existing userID+groupName will be replaced.
+		// The queue is keyed by userID+groupID, so items for existing userID+groupID will be replaced.
 		s.q.Enqueue(i)
 		level.Debug(util.Logger).Log("msg", "scheduler: work item added", "item", i)
 	}

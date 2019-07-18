@@ -8,8 +8,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
-const userID = "1"
-
 // TestRulerShutdown tests shutting down ruler unregisters correctly
 func TestRulerShutdown(t *testing.T) {
 	config := defaultRulerConfig()

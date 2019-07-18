@@ -10,10 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager"
+	alertstore "github.com/cortexproject/cortex/pkg/alertmanager/storage"
 	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/group"
+	"github.com/cortexproject/cortex/pkg/ruler/store"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
@@ -69,6 +68,9 @@ func (c *ConfigsClient) GetRules(ctx context.Context, since configs.ID) (map[str
 	}
 	return configs, nil
 }
+
+// Stop stops rthe config client
+func (c *ConfigsClient) Stop() {}
 
 // GetAlerts implements ConfigClient.
 func (c *ConfigsClient) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
@@ -127,15 +129,16 @@ func (c ConfigsResponse) GetLatestConfigID() configs.ID {
 	return latest
 }
 
-func (c *ConfigsClient) PollAlertConfigs(ctx context.Context) (map[string]alertmanager.AlertConfig, error) {
+// PollAlerts polls the configdb for updated alerts
+func (c *ConfigsClient) PollAlerts(ctx context.Context) (map[string]alertstore.AlertConfig, error) {
 	resp, err := c.GetAlerts(ctx, c.lastPoll)
 	if err != nil {
 		return nil, err
 	}
 
-	newConfigs := map[string]alertmanager.AlertConfig{}
+	newConfigs := map[string]alertstore.AlertConfig{}
 	for user, c := range resp.Configs {
-		newConfigs[user] = alertmanager.AlertConfig{
+		newConfigs[user] = alertstore.AlertConfig{
 			TemplateFiles:      c.Config.TemplateFiles,
 			AlertmanagerConfig: c.Config.AlertmanagerConfig,
 		}
@@ -147,24 +150,30 @@ func (c *ConfigsClient) PollAlertConfigs(ctx context.Context) (map[string]alertm
 }
 
 // PollRules polls the configdb server and returns the updated rule groups
-func (c *ConfigsClient) PollRules(ctx context.Context) (map[string][]ruler.RuleGroup, error) {
-	resp, err := c.GetAlerts(ctx, c.lastPoll)
+func (c *ConfigsClient) PollRules(ctx context.Context) (map[string][]store.RuleGroup, error) {
+	resp, err := c.GetRules(ctx, c.lastPoll)
 	if err != nil {
 		return nil, err
 	}
 
-	newRules := map[string][]ruler.RuleGroup{}
+	newRules := map[string][]store.RuleGroup{}
 
-	for user, cfg := range resp.Configs {
-		userRules := []ruler.RuleGroup{}
-		rls := cfg.GetVersionedRulesConfig()
-		rMap, err := rls.Config.Parse()
+	var highestID configs.ID
+	for user, cfg := range resp {
+		if cfg.ID > highestID {
+			highestID = cfg.ID
+		}
+		userRules := []store.RuleGroup{}
+		if cfg.IsDeleted() {
+			newRules[user] = []store.RuleGroup{}
+		}
+		rMap, err := cfg.Config.Parse()
 		if err != nil {
 			return nil, err
 		}
 		for groupSlug, r := range rMap {
 			name, file := decomposeGroupSlug(groupSlug)
-			userRules = append(userRules, group.NewRuleGroup(name, file, user, r))
+			userRules = append(userRules, store.FormattedToRuleGroup(user, file, name, r))
 		}
 		newRules[user] = userRules
 	}
@@ -173,19 +182,9 @@ func (c *ConfigsClient) PollRules(ctx context.Context) (map[string][]ruler.RuleG
 		return nil, err
 	}
 
-	c.lastPoll = resp.GetLatestConfigID()
+	c.lastPoll = highestID
 
 	return newRules, nil
-}
-
-// AlertStore returns an AlertStore from the client
-func (c *ConfigsClient) AlertStore() alertmanager.AlertStore {
-	return nil
-}
-
-// RuleStore returns an RuleStore from the client
-func (c *ConfigsClient) RuleStore() ruler.RuleStore {
-	return nil
 }
 
 // decomposeGroupSlug breaks the group slug from Parse

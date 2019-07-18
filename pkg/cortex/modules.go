@@ -29,7 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
-	config_storage "github.com/cortexproject/cortex/pkg/storage"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -320,23 +319,12 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
-	poller, err := config_storage.NewRuleStore(cfg.ConfigStore)
-	if err != nil {
-		return err
-	}
-
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, poller)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor)
 	if err != nil {
 		return
 	}
 
-	// Only serve the API for setting & getting rules configs if we're not
-	// serving configs from the configs API. Allows for smoother
-	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if cfg.ConfigStore.RuleStoreConfig.BackendType != "configdb" {
-		a := ruler.NewAPI(poller.RuleStore())
-		a.RegisterRoutes(t.server.HTTP)
-	}
+	t.ruler.RegisterRoutes(t.server.HTTP)
 
 	t.server.HTTP.Handle("/ruler_ring", t.ruler)
 	return
@@ -364,23 +352,12 @@ func (t *Cortex) stopConfigs() error {
 }
 
 func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
-	poller, err := config_storage.NewAlertStore(cfg.ConfigStore)
-	if err != nil {
-		return err
-	}
-
-	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager, poller)
+	t.alertmanager, err = alertmanager.NewMultitenantAlertmanager(&cfg.Alertmanager)
 	if err != nil {
 		return
 	}
 
-	// Only serve the API for setting & getting alert configs if we're not
-	// serving configs from the configs API. Allows for smoother
-	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if cfg.ConfigStore.AlertStoreConfig.BackendType != "configdb" {
-		a := alertmanager.NewAPI(poller.AlertStore())
-		a.RegisterRoutes(t.server.HTTP)
-	}
+	t.alertmanager.RegisterRoutes(t.server.HTTP)
 
 	go t.alertmanager.Run()
 

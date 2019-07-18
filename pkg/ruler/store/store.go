@@ -1,4 +1,4 @@
-package ruler
+package store
 
 import (
 	"context"
@@ -15,6 +15,12 @@ var (
 	ErrUserNotFound           = errors.New("no rule groups found for user")
 )
 
+// RulePoller is used to poll for recently updated rules
+type RulePoller interface {
+	PollRules(ctx context.Context) (map[string][]RuleGroup, error)
+	Stop()
+}
+
 // RuleStoreConditions are used to filter retrieived results from a rule store
 type RuleStoreConditions struct {
 	// UserID specifies to only retrieve rules with this ID
@@ -25,20 +31,10 @@ type RuleStoreConditions struct {
 	Namespace string
 }
 
-type RulePoller interface {
-	PollRules(ctx context.Context) (map[string][]RuleGroup, error)
-
-	// RuleStore returns the rule store client used by the poller, this allows a Poller
-	// to be used for scheduling, and an associated rule store to be used by the API.
-	RuleStore() RuleStore
-}
-
 // RuleStore is used to store and retrieve rules
 type RuleStore interface {
-	RulePoller
-
-	ListRuleGroups(ctx context.Context, options RuleStoreConditions) (map[string]RuleNamespace, error)
-	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulefmt.RuleGroup, error)
+	ListRuleGroups(ctx context.Context, options RuleStoreConditions) (RuleGroupList, error)
+	GetRuleGroup(ctx context.Context, userID, namespace, group string) (RuleGroup, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group rulefmt.RuleGroup) error
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
 }
@@ -47,8 +43,29 @@ type RuleStore interface {
 // an interface is used to allow for lazy evaluation implementations
 type RuleGroup interface {
 	Rules(ctx context.Context) ([]rules.Rule, error)
+	ID() string
 	Name() string
+	Namespace() string
 	User() string
+	Formatted() rulefmt.RuleGroup
+}
+
+type RuleGroupList []RuleGroup
+
+func (l RuleGroupList) Formatted(user string) map[string][]rulefmt.RuleGroup {
+	ruleMap := map[string][]rulefmt.RuleGroup{}
+	for _, g := range l {
+		if g.User() != user {
+			continue
+		}
+
+		if _, exists := ruleMap[g.Namespace()]; !exists {
+			ruleMap[g.Namespace()] = []rulefmt.RuleGroup{g.Formatted()}
+		}
+		ruleMap[g.Namespace()] = append(ruleMap[g.Namespace()], g.Formatted())
+
+	}
+	return ruleMap
 }
 
 // RuleNamespace is used to parse a slightly modified prometheus

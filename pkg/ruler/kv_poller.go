@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/cortexproject/cortex/pkg/ruler/store"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/usertracker"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 )
 
@@ -34,11 +36,14 @@ func (p *trackedPoller) trackedRuleStore() *trackedRuleStore {
 func (p *trackedPoller) PollRules(ctx context.Context) (map[string][]store.RuleGroup, error) {
 	updatedRules := map[string][]store.RuleGroup{}
 
+	level.Debug(util.Logger).Log("msg", "polling for new rules")
+
 	// First poll will return all rule groups
 	if !p.initialized {
+		level.Debug(util.Logger).Log("msg", "first poll, loading all rules")
 		rgs, err := p.store.ListRuleGroups(ctx, store.RuleStoreConditions{})
 		if err != nil {
-			return nil, nil
+			return nil, err
 		}
 		for _, rg := range rgs {
 			if _, exists := updatedRules[rg.User()]; !exists {
@@ -51,11 +56,12 @@ func (p *trackedPoller) PollRules(ctx context.Context) (map[string][]store.RuleG
 	} else {
 		users := p.tracker.GetUpdatedUsers(ctx)
 		for _, u := range users {
+			level.Debug(util.Logger).Log("msg", "poll found updated user", "user", u)
 			rgs, err := p.store.ListRuleGroups(ctx, store.RuleStoreConditions{
 				UserID: u,
 			})
 			if err != nil {
-				return nil, nil
+				return nil, err
 			}
 
 			updatedRules[u] = rgs

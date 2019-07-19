@@ -90,6 +90,8 @@ func (c *Tracker) Stop() {
 	<-c.done
 }
 
+// GetUpdatedUsers returns all of the users updated since the last
+// poll
 func (c *Tracker) GetUpdatedUsers(ctx context.Context) []string {
 	c.updatedUsersMtx.Lock()
 	defer c.updatedUsersMtx.Unlock()
@@ -104,6 +106,8 @@ func (c *Tracker) GetUpdatedUsers(ctx context.Context) []string {
 	return users
 }
 
+// UpdateUser pushes a change to the kvstore to signal the user has been
+// updated
 func (c *Tracker) UpdateUser(ctx context.Context, userID string) error {
 	return c.client.CAS(ctx, userID, func(in interface{}) (out interface{}, retry bool, err error) {
 		// Add an entry to mark an update to a users rule configs

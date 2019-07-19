@@ -143,6 +143,7 @@ func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		if err == store.ErrGroupNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
+			return
 		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

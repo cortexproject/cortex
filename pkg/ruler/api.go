@@ -127,19 +127,19 @@ func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 	}
 
 	vars := mux.Vars(req)
-	ns, exists := vars["namespace"]
+	namespace, exists := vars["namespace"]
 	if !exists {
 		http.Error(w, ErrNoNamespace.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	gn, exists := vars["groupName"]
+	groupName, exists := vars["groupName"]
 	if !exists {
 		http.Error(w, ErrNoGroupName.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	rg, err := r.store.GetRuleGroup(req.Context(), userID, ns, gn)
+	rg, err := r.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {
 		if err == store.ErrGroupNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -229,5 +229,45 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Ruler) deleteRuleGroup(w http.ResponseWriter, req *http.Request) {
+	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
 
+	logger := util.WithContext(req.Context(), util.Logger)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if userID == "" {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(req)
+	namespace, exists := vars["namespace"]
+	if !exists {
+		http.Error(w, ErrNoNamespace.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	groupName, exists := vars["groupName"]
+	if !exists {
+		http.Error(w, ErrNoGroupName.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	err = r.store.DeleteRuleGroup(req.Context(), userID, namespace, groupName)
+	if err != nil {
+		level.Error(logger).Log("err", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return a status accepted because the rule has been stored and queued for polling, but is not currently active
+	w.WriteHeader(http.StatusAccepted)
 }

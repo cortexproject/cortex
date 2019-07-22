@@ -3,18 +3,22 @@ package ruler
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/cortexproject/cortex/pkg/ruler/store"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 )
 
 type mockRuleStore struct {
+	sync.Mutex
 	rules map[string]store.RuleGroup
 
 	pollPayload map[string][]store.RuleGroup
 }
 
 func (m *mockRuleStore) PollRules(ctx context.Context) (map[string][]store.RuleGroup, error) {
+	m.Lock()
+	defer m.Unlock()
 	pollPayload := m.pollPayload
 	m.pollPayload = map[string][]store.RuleGroup{}
 	return pollPayload, nil
@@ -28,6 +32,9 @@ func (m *mockRuleStore) RuleStore() store.RuleStore {
 }
 
 func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options store.RuleStoreConditions) (store.RuleGroupList, error) {
+	m.Lock()
+	defer m.Unlock()
+
 	groupPrefix := options.UserID + ":"
 
 	namespaces := []string{}
@@ -76,6 +83,9 @@ func (m *mockRuleStore) getRuleNamespace(ctx context.Context, userID string, nam
 }
 
 func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (store.RuleGroup, error) {
+	m.Lock()
+	defer m.Unlock()
+
 	groupID := userID + ":" + namespace + ":" + group
 	g, ok := m.rules[groupID]
 
@@ -88,12 +98,18 @@ func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespa
 }
 
 func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group rulefmt.RuleGroup) error {
+	m.Lock()
+	defer m.Unlock()
+
 	groupID := userID + ":" + namespace + ":" + group.Name
 	m.rules[groupID] = store.NewRuleGroup(group.Name, namespace, userID, group.Rules)
 	return nil
 }
 
 func (m *mockRuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
+	m.Lock()
+	defer m.Unlock()
+
 	groupID := userID + ":" + namespace + ":" + group
 	delete(m.rules, groupID)
 	return nil

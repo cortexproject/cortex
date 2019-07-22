@@ -14,7 +14,7 @@ import (
 
 // RegisterRoutes registers the configs API HTTP routes with the provided Router.
 func (am *MultitenantAlertmanager) RegisterRoutes(r *mux.Router) {
-	// if no storeis set return without regisering routes
+	// if no store is set return without regisering routes
 	if am.store == nil {
 		return
 	}

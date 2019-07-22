@@ -17,6 +17,7 @@ import (
 // TODO: The cortex project should implement a separate Group struct from
 //       the prometheus project. This will allow for more precise instrumentation
 
+// Group is used as a compatibility format between storage and evaluation
 type Group struct {
 	name      string
 	namespace string
@@ -24,10 +25,22 @@ type Group struct {
 	interval  time.Duration
 	rules     []*Rule
 
-	// TODO: Allows for the support of the configdb client
+	// activeRules allows for the support of the configdb client
+	// TODO: figure out a better way to accomplish this
 	activeRules []rules.Rule
 }
 
+// NewRuleGroup returns a Group
+func NewRuleGroup(name, namespace, user string, rls []rulefmt.Rule) *Group {
+	return &Group{
+		name:      name,
+		namespace: namespace,
+		user:      user,
+		rules:     formattedRuleToProto(rls),
+	}
+}
+
+// Rules returns eval ready prometheus rules
 func (g *Group) Rules(ctx context.Context) ([]rules.Rule, error) {
 	// Used to be compatible with configdb client
 	if g.rules == nil && g.activeRules != nil {
@@ -62,22 +75,27 @@ func (g *Group) Rules(ctx context.Context) ([]rules.Rule, error) {
 	return rls, nil
 }
 
+// ID returns a unique group identifier with the namespace and name
 func (g *Group) ID() string {
 	return g.namespace + "/" + g.name
 }
 
+// Name returns the name of the rule group
 func (g *Group) Name() string {
 	return g.name
 }
 
+// Namespace returns the Namespace of the rule group
 func (g *Group) Namespace() string {
 	return g.namespace
 }
 
+// User returns the User of the rule group
 func (g *Group) User() string {
 	return g.user
 }
 
+// Formatted returns a prometheus rulefmt formatted rule group
 func (g *Group) Formatted() rulefmt.RuleGroup {
 	formattedRuleGroup := rulefmt.RuleGroup{
 		Name:     g.name,
@@ -97,14 +115,4 @@ func (g *Group) Formatted() rulefmt.RuleGroup {
 	}
 
 	return formattedRuleGroup
-}
-
-// NewGroup returns a Group
-func NewRuleGroup(name, namespace, user string, rls []rulefmt.Rule) *Group {
-	return &Group{
-		name:      name,
-		namespace: namespace,
-		user:      user,
-		rules:     formattedRuleToProto(rls),
-	}
 }

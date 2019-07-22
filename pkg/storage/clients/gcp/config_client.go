@@ -64,6 +64,7 @@ func newGCSClient(cfg GCSConfig, client *gstorage.Client) *GCSClient {
 	}
 }
 
+// ListAlertConfigs returns all of the active alert configus in this store
 func (g *GCSClient) ListAlertConfigs(ctx context.Context) (map[string]alertStore.AlertConfig, error) {
 	it := g.bucket.Objects(ctx, &gstorage.Query{
 		Prefix: alertPrefix,
@@ -182,6 +183,7 @@ func (g *GCSClient) getAllRuleGroups(ctx context.Context, userID string) ([]stor
 	return rgs, nil
 }
 
+// ListRuleGroups returns all the active rule groups for a user
 func (g *GCSClient) ListRuleGroups(ctx context.Context, options store.RuleStoreConditions) (store.RuleGroupList, error) {
 	it := g.bucket.Objects(ctx, &gstorage.Query{
 		Prefix: generateRuleHandle(options.UserID, options.Namespace, ""),
@@ -237,6 +239,7 @@ func (g *GCSClient) getRuleNamespace(ctx context.Context, userID string, namespa
 	return groups, nil
 }
 
+// GetRuleGroup returns the requested rule group
 func (g *GCSClient) GetRuleGroup(ctx context.Context, userID string, namespace string, grp string) (store.RuleGroup, error) {
 	handle := generateRuleHandle(userID, namespace, grp)
 	rg, err := g.getRuleGroup(ctx, handle)
@@ -277,6 +280,7 @@ func (g *GCSClient) getRuleGroup(ctx context.Context, handle string) (*store.Rul
 	return rg, nil
 }
 
+// SetRuleGroup sets provided rule group
 func (g *GCSClient) SetRuleGroup(ctx context.Context, userID string, namespace string, grp rulefmt.RuleGroup) error {
 	rg := store.ToProto(userID, namespace, grp)
 	rgBytes, err := proto.Marshal(&rg)
@@ -299,6 +303,7 @@ func (g *GCSClient) SetRuleGroup(ctx context.Context, userID string, namespace s
 	return nil
 }
 
+// DeleteRuleGroup deletes the specified rule group
 func (g *GCSClient) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
 	handle := generateRuleHandle(userID, namespace, group)
 	err := g.bucket.Object(handle).Delete(ctx)

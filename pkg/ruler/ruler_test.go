@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -69,7 +71,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	defer ts.Close()
 
 	cfg := defaultRulerConfig()
-	cfg.AlertmanagerURL.Set(ts.URL)
+	err := cfg.AlertmanagerURL.Set(ts.URL)
+	require.NoError(t, err)
 	cfg.AlertmanagerDiscovery = false
 
 	r := newTestRuler(t, cfg)

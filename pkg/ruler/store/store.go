@@ -10,9 +10,12 @@ import (
 )
 
 var (
-	ErrGroupNotFound          = errors.New("group does not exist")
+	// ErrGroupNotFound is returned if a rule group does not exist
+	ErrGroupNotFound = errors.New("group does not exist")
+	// ErrGroupNamespaceNotFound is returned if a namespace does not exist
 	ErrGroupNamespaceNotFound = errors.New("group namespace does not exist")
-	ErrUserNotFound           = errors.New("no rule groups found for user")
+	// ErrUserNotFound is returned if the user does not currently exist
+	ErrUserNotFound = errors.New("no rule groups found for user")
 )
 
 // RulePoller is used to poll for recently updated rules
@@ -50,8 +53,11 @@ type RuleGroup interface {
 	Formatted() rulefmt.RuleGroup
 }
 
+// RuleGroupList contains a set of rule groups
 type RuleGroupList []RuleGroup
 
+// Formatted returns the rule group list as a set of formatted rule groups mapped
+// by namespace
 func (l RuleGroupList) Formatted(user string) map[string][]rulefmt.RuleGroup {
 	ruleMap := map[string][]rulefmt.RuleGroup{}
 	for _, g := range l {

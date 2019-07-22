@@ -8,7 +8,7 @@ import (
 )
 
 // trackedAlertPoller checks for updated user configs and
-// retreives the updated configuration from the backend
+// Retrieves the updated configuration from the backend
 type trackedAlertPoller struct {
 	tracker *usertracker.Tracker
 	store   storage.AlertStore
@@ -46,7 +46,7 @@ func (p *trackedAlertPoller) PollAlerts(ctx context.Context) (map[string]storage
 	// Get the changed users from the user update tracker
 	users := p.tracker.GetUpdatedUsers(ctx)
 
-	// Retreive user configuration from the rule store
+	// Retrieve user configuration from the rule store
 	// TODO: Add Retry logic for failed requests
 	// TODO: store users that were failed to be updated and reattempt to retrieve on the next poll
 	for _, u := range users {

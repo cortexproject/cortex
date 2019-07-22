@@ -16,9 +16,14 @@ import (
 )
 
 var (
-	ErrNoNamespace  = errors.New("a namespace must be provided in the url")
-	ErrNoGroupName  = errors.New("a matching group name must be provided in the url")
+	// ErrNoNamespace signals the requested namespace does not exist
+	ErrNoNamespace = errors.New("a namespace must be provided in the url")
+	// ErrNoGroupName signals a group name url parameter was not found
+	ErrNoGroupName = errors.New("a matching group name must be provided in the url")
+	// ErrNoRuleGroups signals the rule group requested does not exist
 	ErrNoRuleGroups = errors.New("no rule groups found")
+	// ErrNoUserID is returned when no user ID is provided
+	ErrNoUserID = errors.New("no id provided")
 )
 
 // RegisterRoutes registers the configs API HTTP routes with the provided Router.
@@ -33,7 +38,7 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 		handler            http.HandlerFunc
 	}{
 		{"list_rules", "GET", "/api/prom/rules", r.listRules},
-		{"list_rules_namespace", "GET", "/api/prom/rules/{namespace}", r.listRules},
+		{"getRuleNamespace", "GET", "/api/prom/rules/{namespace}", r.listRules},
 		{"get_rulegroup", "GET", "/api/prom/rules/{namespace}/{groupName}", r.getRuleGroup},
 		{"set_rulegroup", "POST", "/api/prom/rules/{namespace}", r.createRuleGroup},
 		{"delete_rulegroup", "DELETE", "/api/prom/rules/{namespace}/{groupName}", r.deleteRuleGroup},
@@ -43,22 +48,15 @@ func (r *Ruler) RegisterRoutes(router *mux.Router) {
 }
 
 func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
+	logger := util.WithContext(req.Context(), util.Logger)
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	logger := util.WithContext(req.Context(), util.Logger)
-	if err != nil {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	if userID == "" {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, ErrNoUserID.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -107,22 +105,16 @@ func (r *Ruler) listRules(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
+	logger := util.WithContext(req.Context(), util.Logger)
+
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	logger := util.WithContext(req.Context(), util.Logger)
-	if err != nil {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	if userID == "" {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, ErrNoUserID.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -165,22 +157,15 @@ func (r *Ruler) getRuleGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
+	logger := util.WithContext(req.Context(), util.Logger)
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	logger := util.WithContext(req.Context(), util.Logger)
-	if err != nil {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	if userID == "" {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, ErrNoUserID.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -229,22 +214,15 @@ func (r *Ruler) createRuleGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Ruler) deleteRuleGroup(w http.ResponseWriter, req *http.Request) {
+	logger := util.WithContext(req.Context(), util.Logger)
 	userID, _, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	logger := util.WithContext(req.Context(), util.Logger)
-	if err != nil {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	if userID == "" {
-		level.Error(logger).Log("err", err.Error())
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, ErrNoUserID.Error(), http.StatusUnauthorized)
 		return
 	}
 

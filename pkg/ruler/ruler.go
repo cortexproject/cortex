@@ -142,6 +142,9 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 	}
 
 	rulePoller, ruleStore, err := NewRuleStorage(cfg.StoreConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	ruler := &Ruler{
 		cfg:         cfg,
@@ -350,6 +353,9 @@ func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				</body>
 			</html>`
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(unshardedPage))
+		_, err := w.Write([]byte(unshardedPage))
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to serve status page", "err", err)
+		}
 	}
 }

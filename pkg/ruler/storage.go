@@ -45,6 +45,9 @@ func NewRuleStorage(cfg RuleStoreConfig) (store.RulePoller, store.RuleStore, err
 		return poller, nil, err
 	case "gcs":
 		ruleStore, err = gcp.NewGCSClient(context.Background(), cfg.GCS)
+		if err != nil {
+			return nil, nil, err
+		}
 	default:
 		return nil, nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs", cfg.Type)
 	}

@@ -55,7 +55,7 @@ func (w *worker) Run() {
 		item := w.scheduler.nextWorkItem()
 		blockedWorkers.Dec()
 
-		waitElapsed := time.Now().Sub(waitStart)
+		waitElapsed := time.Since(waitStart)
 		workerIdleTime.Add(waitElapsed.Seconds())
 
 		// If no item is returned, worker is safe to terminate
@@ -80,7 +80,7 @@ func (w *worker) Evaluate(userID string, item *workItem) {
 	}
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
 
-	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
+	err := instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
 		if span := opentracing.SpanFromContext(ctx); span != nil {
 			span.SetTag("instance", userID)
 			span.SetTag("groupID", item.groupID)
@@ -88,4 +88,7 @@ func (w *worker) Evaluate(userID string, item *workItem) {
 		item.group.Eval(ctx, time.Now())
 		return nil
 	})
+	if err != nil {
+		level.Debug(logger).Log("msg", "failed instrumented worker evaluation", "err", err)
+	}
 }

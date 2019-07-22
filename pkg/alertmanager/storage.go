@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/usertracker"
 )
 
+// AlertStoreConfig configures the alertmanager backend
 type AlertStoreConfig struct {
 	Type string `yaml:"type"`
 

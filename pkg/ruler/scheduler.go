@@ -17,15 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-type Scheduler interface {
-	Next() *WorkItem
-	Done(WorkItem)
-}
-
-type WorkItem interface {
-	Evaluate(context.Context)
-}
-
 const (
 	timeLogFormat = "2006-01-02T15:04:05"
 )
@@ -178,7 +169,12 @@ func (s *scheduler) addUserConfig(ctx context.Context, userID string, rgs []stor
 		}
 
 		ringHasher.Reset()
-		ringHasher.Write([]byte(rg.ID()))
+		_, err = ringHasher.Write([]byte(rg.ID()))
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", rg.ID(), "err", err)
+			return
+		}
+
 		hash := ringHasher.Sum32()
 		workItems = append(workItems, workItem{userID, rg.ID(), hash, grp, evalTime, userChan})
 	}
@@ -206,8 +202,6 @@ func (s *scheduler) updateUserConfig(ctx context.Context, cfg userConfig) {
 	if exists {
 		close(curr.done) // If a previous configuration exists, ensure it is closed
 	}
-
-	return
 }
 
 func (s *scheduler) determineEvalTime(userID string) time.Time {
@@ -222,7 +216,11 @@ func computeNextEvalTime(hasher hash.Hash64, now time.Time, intervalNanos float6
 	currentEvalCyclePoint := math.Mod(float64(now.UnixNano()), intervalNanos)
 
 	hasher.Reset()
-	hasher.Write([]byte(userID))
+	_, err := hasher.Write([]byte(userID))
+	if err != nil {
+		// if an error occurs just return the current time plus a minute
+		return now.Add(time.Minute)
+	}
 	offset := math.Mod(
 		// We subtract our current point in the cycle to cause the entries
 		// before 'now' to wrap around to the end.

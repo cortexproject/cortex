@@ -16,7 +16,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/status"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -49,42 +48,54 @@ type ingesterMetrics struct {
 	queriedChunks       prometheus.Histogram
 }
 
-func newIngesterMetrics() *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 	m := &ingesterMetrics{
-		flushQueueLength: promauto.NewGauge(prometheus.GaugeOpts{
+		flushQueueLength: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_flush_queue_length",
 			Help: "The total number of series pending in the flush queue.",
 		}),
-		ingestedSamples: promauto.NewCounter(prometheus.CounterOpts{
+		ingestedSamples: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_total",
 			Help: "The total number of samples ingested.",
 		}),
-		ingestedSamplesFail: promauto.NewCounter(prometheus.CounterOpts{
+		ingestedSamplesFail: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_failures_total",
 			Help: "The total number of samples that errored on ingestion.",
 		}),
-		queries: promauto.NewCounter(prometheus.CounterOpts{
+		queries: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_queries_total",
 			Help: "The total number of queries the ingester has handled.",
 		}),
-		queriedSamples: promauto.NewHistogram(prometheus.HistogramOpts{
+		queriedSamples: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_queried_samples",
 			Help: "The total number of samples returned from queries.",
 			// Could easily return 10m samples per query - 10*(8^(8-1)) = 20.9m.
 			Buckets: prometheus.ExponentialBuckets(10, 8, 8),
 		}),
-		queriedSeries: promauto.NewHistogram(prometheus.HistogramOpts{
+		queriedSeries: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_queried_series",
 			Help: "The total number of series returned from queries.",
 			// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
 			Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 		}),
-		queriedChunks: promauto.NewHistogram(prometheus.HistogramOpts{
+		queriedChunks: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_queried_chunks",
 			Help: "The total number of chunks returned from queries.",
 			// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
 			Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 		}),
+	}
+
+	if r != nil {
+		r.MustRegister(
+			m.flushQueueLength,
+			m.ingestedSamples,
+			m.ingestedSamplesFail,
+			m.queries,
+			m.queriedSamples,
+			m.queriedSeries,
+			m.queriedChunks,
+		)
 	}
 
 	return m
@@ -164,7 +175,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -173,7 +184,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		cfg:          cfg,
 		clientConfig: clientConfig,
 
-		metrics: newIngesterMetrics(),
+		metrics: newIngesterMetrics(registerer),
 
 		limits:     limits,
 		chunkStore: chunkStore,

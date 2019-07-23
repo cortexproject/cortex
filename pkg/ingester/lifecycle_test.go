@@ -96,7 +96,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.ClaimOnRollout = true
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
-	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil)
+	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 
 	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -141,7 +141,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
-	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil)
+	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 
 	// Let ing2 send chunks to ing1
@@ -186,7 +186,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.Addr = "ingester1"
 	cfg.LifecyclerConfig.ClaimOnRollout = true
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
-	ing, err := New(cfg, defaultClientTestConfig(), limits, nil)
+	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 
 	test.Poll(t, 100*time.Millisecond, ring.PENDING, func() interface{} {

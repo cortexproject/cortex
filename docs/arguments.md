@@ -101,12 +101,15 @@ The ingester query API was improved over time, but defaults to the old behaviour
 ### Ring/HA Tracker Store
 
 The KVStore client is used by both the Ring and HA Tracker.
-- `prefix`
-   The prefix for the keys in the store. Should end with a /. For example with a preifx of foo, the key bar would be stored under foo/bar.
-- `store`
+- `{ring,ha-tracker}.prefix`
+   The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.
+- `{ring,ha-tracker}.store`
    Backend storage to use for the ring (consul, etcd, inmemory).
 
 #### Consul
+
+By default these flags are used to configure Consul used for the ring. To configure Consul for the HA tracker,
+prefix these flags with `ha-tracker.`
 
 - `consul.hostname`
    Hostname and port of Consul.
@@ -118,6 +121,9 @@ The KVStore client is used by both the Ring and HA Tracker.
    Enable consistent reads to Consul.
 
 #### etcd
+
+By default these flags are used to configure etcd used for the ring. To configure etcd for the HA tracker,
+prefix these flags with `ha-tracker.`
 
 - `etcd.endpoints`
    The etcd endpoints to connect to.

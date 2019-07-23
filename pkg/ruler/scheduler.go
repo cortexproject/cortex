@@ -279,7 +279,7 @@ func (s *scheduler) workItemDone(i workItem) {
 		// caused by the overall workload, not the result of latency within a single rule group.
 		missed := (time.Since(i.scheduled) / s.evaluationInterval) - 1
 		if missed > 0 {
-			level.Warn(util.Logger).Log("msg", "scheduler: work item missed evaluation", "item", i)
+			level.Warn(util.Logger).Log("msg", "scheduler: work item missed evaluation", "item", i, "late_by", missed.String)
 			iterationsMissed.WithLabelValues(i.userID).Add(float64(missed))
 		}
 

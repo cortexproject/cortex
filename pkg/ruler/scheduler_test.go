@@ -11,8 +11,7 @@ import (
 )
 
 type fakeHasher struct {
-	something uint32
-	data      *[]byte
+	data *[]byte
 }
 
 func (h *fakeHasher) Write(data []byte) (int, error) {

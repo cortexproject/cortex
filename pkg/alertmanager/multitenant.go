@@ -190,6 +190,7 @@ type MultitenantAlertmanagerConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.AlertStore.RegisterFlags(f)
 	flag.StringVar(&cfg.DataDir, "alertmanager.storage.path", "data/", "Base path for data storage.")
 	flag.DurationVar(&cfg.Retention, "alertmanager.storage.retention", 5*24*time.Hour, "How long to keep data for.")
 

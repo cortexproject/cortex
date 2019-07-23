@@ -39,42 +39,56 @@ const (
 	queryStreamBatchSize = 128
 )
 
-var (
-	flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_flush_queue_length",
-		Help: "The total number of series pending in the flush queue.",
-	})
-	ingestedSamples = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_ingested_samples_total",
-		Help: "The total number of samples ingested.",
-	})
-	ingestedSamplesFail = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_ingested_samples_failures_total",
-		Help: "The total number of samples that errored on ingestion.",
-	})
-	queries = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_queries_total",
-		Help: "The total number of queries the ingester has handled.",
-	})
-	queriedSamples = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "cortex_ingester_queried_samples",
-		Help: "The total number of samples returned from queries.",
-		// Could easily return 10m samples per query - 10*(8^(8-1)) = 20.9m.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 8),
-	})
-	queriedSeries = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "cortex_ingester_queried_series",
-		Help: "The total number of series returned from queries.",
-		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
-	})
-	queriedChunks = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "cortex_ingester_queried_chunks",
-		Help: "The total number of chunks returned from queries.",
-		// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
-	})
-)
+type ingesterMetrics struct {
+	flushQueueLength    prometheus.Gauge
+	ingestedSamples     prometheus.Counter
+	ingestedSamplesFail prometheus.Counter
+	queries             prometheus.Counter
+	queriedSamples      prometheus.Histogram
+	queriedSeries       prometheus.Histogram
+	queriedChunks       prometheus.Histogram
+}
+
+func newIngesterMetrics() *ingesterMetrics {
+	m := &ingesterMetrics{
+		flushQueueLength: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_flush_queue_length",
+			Help: "The total number of series pending in the flush queue.",
+		}),
+		ingestedSamples: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_samples_total",
+			Help: "The total number of samples ingested.",
+		}),
+		ingestedSamplesFail: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_samples_failures_total",
+			Help: "The total number of samples that errored on ingestion.",
+		}),
+		queries: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_queries_total",
+			Help: "The total number of queries the ingester has handled.",
+		}),
+		queriedSamples: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name: "cortex_ingester_queried_samples",
+			Help: "The total number of samples returned from queries.",
+			// Could easily return 10m samples per query - 10*(8^(8-1)) = 20.9m.
+			Buckets: prometheus.ExponentialBuckets(10, 8, 8),
+		}),
+		queriedSeries: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name: "cortex_ingester_queried_series",
+			Help: "The total number of series returned from queries.",
+			// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
+			Buckets: prometheus.ExponentialBuckets(10, 8, 6),
+		}),
+		queriedChunks: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name: "cortex_ingester_queried_chunks",
+			Help: "The total number of chunks returned from queries.",
+			// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
+			Buckets: prometheus.ExponentialBuckets(10, 8, 7),
+		}),
+	}
+
+	return m
+}
 
 // Config for an Ingester.
 type Config struct {
@@ -121,6 +135,8 @@ type Ingester struct {
 	cfg          Config
 	clientConfig client.Config
 
+	metrics *ingesterMetrics
+
 	chunkStore ChunkStore
 	lifecycler *ring.Lifecycler
 	limits     *validation.Overrides
@@ -157,6 +173,8 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		cfg:          cfg,
 		clientConfig: clientConfig,
 
+		metrics: newIngesterMetrics(),
+
 		limits:     limits,
 		chunkStore: chunkStore,
 		userStates: newUserStates(limits, cfg),
@@ -173,7 +191,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
+		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
 		go i.flushLoop(j)
 	}
 
@@ -234,7 +252,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 				continue
 			}
 
-			ingestedSamplesFail.Inc()
+			i.metrics.ingestedSamplesFail.Inc()
 			if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
 				switch httpResp.Code {
 				case http.StatusBadRequest, http.StatusTooManyRequests:
@@ -286,7 +304,7 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 	}
 
 	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-	ingestedSamples.Inc()
+	i.metrics.ingestedSamples.Inc()
 	switch source {
 	case client.RULE:
 		state.ingestedRuleSamples.inc()
@@ -311,7 +329,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		return nil, err
 	}
 
-	queries.Inc()
+	i.metrics.queries.Inc()
 
 	i.userStatesMtx.RLock()
 	state, ok, err := i.userStates.getViaContext(ctx)
@@ -353,8 +371,8 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		result.Timeseries = append(result.Timeseries, ts)
 		return nil
 	}, nil, 0)
-	queriedSeries.Observe(float64(numSeries))
-	queriedSamples.Observe(float64(numSamples))
+	i.metrics.queriedSeries.Observe(float64(numSeries))
+	i.metrics.queriedSamples.Observe(float64(numSamples))
 	return result, err
 }
 
@@ -367,7 +385,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
-	queries.Inc()
+	i.metrics.queries.Inc()
 
 	i.userStatesMtx.RLock()
 	state, ok, err := i.userStates.getViaContext(ctx)
@@ -423,8 +441,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
-	queriedSeries.Observe(float64(numSeries))
-	queriedChunks.Observe(float64(numChunks))
+	i.metrics.queriedSeries.Observe(float64(numSeries))
+	i.metrics.queriedChunks.Observe(float64(numChunks))
 	level.Debug(log).Log("streams", numSeries)
 	level.Debug(log).Log("chunks", numChunks)
 	return err

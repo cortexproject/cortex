@@ -3,7 +3,7 @@ package alertmanager
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/storage"
+	"github.com/cortexproject/cortex/pkg/storage/alerts"
 	"github.com/cortexproject/cortex/pkg/util/usertracker"
 )
 
@@ -11,12 +11,12 @@ import (
 // Retrieves the updated configuration from the backend
 type trackedAlertPoller struct {
 	tracker *usertracker.Tracker
-	store   storage.AlertStore
+	store   alerts.AlertStore
 
 	initialized bool
 }
 
-func newTrackedAlertPoller(tracker *usertracker.Tracker, store storage.AlertStore) (*trackedAlertPoller, error) {
+func newTrackedAlertPoller(tracker *usertracker.Tracker, store alerts.AlertStore) (*trackedAlertPoller, error) {
 	return &trackedAlertPoller{
 		tracker: tracker,
 		store:   store,
@@ -34,8 +34,8 @@ func (p *trackedAlertPoller) trackedAlertStore() *trackedAlertStore {
 
 // PollAlerts returns the alerts changed since the last poll
 // All alert configurations are returned on the first poll
-func (p *trackedAlertPoller) PollAlerts(ctx context.Context) (map[string]storage.AlertConfig, error) {
-	updatedConfigs := map[string]storage.AlertConfig{}
+func (p *trackedAlertPoller) PollAlerts(ctx context.Context) (map[string]alerts.AlertConfig, error) {
+	updatedConfigs := map[string]alerts.AlertConfig{}
 
 	// First poll will return all rule groups
 	if !p.initialized {
@@ -67,21 +67,21 @@ func (p *trackedAlertPoller) Stop() {
 
 type trackedAlertStore struct {
 	tracker *usertracker.Tracker
-	store   storage.AlertStore
+	store   alerts.AlertStore
 }
 
 // ListAlertConfigs passes through to the embedded alert store
-func (w *trackedAlertStore) ListAlertConfigs(ctx context.Context) (map[string]storage.AlertConfig, error) {
+func (w *trackedAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfig, error) {
 	return w.store.ListAlertConfigs(ctx)
 }
 
 // GetAlertConfig passes through to the embedded alert store
-func (w *trackedAlertStore) GetAlertConfig(ctx context.Context, id string) (storage.AlertConfig, error) {
+func (w *trackedAlertStore) GetAlertConfig(ctx context.Context, id string) (alerts.AlertConfig, error) {
 	return w.store.GetAlertConfig(ctx, id)
 }
 
 // SetAlertConfig passes through to the embedded alert store, and tracks a user change
-func (w *trackedAlertStore) SetAlertConfig(ctx context.Context, id string, cfg storage.AlertConfig) error {
+func (w *trackedAlertStore) SetAlertConfig(ctx context.Context, id string, cfg alerts.AlertConfig) error {
 	err := w.store.SetAlertConfig(ctx, id, cfg)
 	if err != nil {
 		return err

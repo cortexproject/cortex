@@ -1,13 +1,13 @@
 package testutils
 
 import (
-	alertStore "github.com/cortexproject/cortex/pkg/alertmanager/storage"
-	"github.com/cortexproject/cortex/pkg/ruler/store"
+	"github.com/cortexproject/cortex/pkg/storage/alerts"
+	"github.com/cortexproject/cortex/pkg/storage/rules"
 )
 
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
-	Clients() (alertStore.AlertStore, store.RuleStore, error)
+	Clients() (alerts.AlertStore, rules.RuleStore, error)
 	Teardown() error
 }

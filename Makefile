@@ -52,7 +52,7 @@ pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
-pkg/ruler/store/store.pb.go: pkg/ruler/store/store.proto
+pkg/storage/rules/rules.pb.go: pkg/storage/rules/rules.proto
 pkg/util/usertracker/usertracker.pb.go: pkg/util/usertracker/usertracker.proto
 all: $(UPTODATE_FILES)
 test: protos

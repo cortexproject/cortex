@@ -1,4 +1,4 @@
-package store
+package rules
 
 import (
 	time "time"
@@ -35,12 +35,12 @@ func ToProto(user string, namespace string, rl rulefmt.RuleGroup) RuleGroupDesc 
 	return rg
 }
 
-func formattedRuleToProto(rls []rulefmt.Rule) []*Rule {
-	rules := make([]*Rule, len(rls))
+func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
+	rules := make([]*RuleDesc, len(rls))
 	for i := range rls {
 		f := time.Duration(rls[i].For)
 
-		rules[i] = &Rule{
+		rules[i] = &RuleDesc{
 			Expr:   rls[i].Expr,
 			Record: rls[i].Record,
 			Alert:  rls[i].Alert,

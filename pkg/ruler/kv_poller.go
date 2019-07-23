@@ -3,7 +3,7 @@ package ruler
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/ruler/store"
+	"github.com/cortexproject/cortex/pkg/storage/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/usertracker"
 	"github.com/go-kit/kit/log/level"
@@ -12,12 +12,12 @@ import (
 
 type trackedPoller struct {
 	tracker *usertracker.Tracker
-	store   store.RuleStore
+	store   rules.RuleStore
 
 	initialized bool
 }
 
-func newTrackedPoller(tracker *usertracker.Tracker, store store.RuleStore) (*trackedPoller, error) {
+func newTrackedPoller(tracker *usertracker.Tracker, store rules.RuleStore) (*trackedPoller, error) {
 	return &trackedPoller{
 		tracker: tracker,
 		store:   store,
@@ -33,21 +33,21 @@ func (p *trackedPoller) trackedRuleStore() *trackedRuleStore {
 	}
 }
 
-func (p *trackedPoller) PollRules(ctx context.Context) (map[string][]store.RuleGroup, error) {
-	updatedRules := map[string][]store.RuleGroup{}
+func (p *trackedPoller) PollRules(ctx context.Context) (map[string][]rules.RuleGroup, error) {
+	updatedRules := map[string][]rules.RuleGroup{}
 
 	level.Debug(util.Logger).Log("msg", "polling for new rules")
 
 	// First poll will return all rule groups
 	if !p.initialized {
 		level.Debug(util.Logger).Log("msg", "first poll, loading all rules")
-		rgs, err := p.store.ListRuleGroups(ctx, store.RuleStoreConditions{})
+		rgs, err := p.store.ListRuleGroups(ctx, rules.RuleStoreConditions{})
 		if err != nil {
 			return nil, err
 		}
 		for _, rg := range rgs {
 			if _, exists := updatedRules[rg.User()]; !exists {
-				updatedRules[rg.User()] = []store.RuleGroup{rg}
+				updatedRules[rg.User()] = []rules.RuleGroup{rg}
 			} else {
 				updatedRules[rg.User()] = append(updatedRules[rg.User()], rg)
 			}
@@ -57,7 +57,7 @@ func (p *trackedPoller) PollRules(ctx context.Context) (map[string][]store.RuleG
 		users := p.tracker.GetUpdatedUsers(ctx)
 		for _, u := range users {
 			level.Debug(util.Logger).Log("msg", "poll found updated user", "user", u)
-			rgs, err := p.store.ListRuleGroups(ctx, store.RuleStoreConditions{
+			rgs, err := p.store.ListRuleGroups(ctx, rules.RuleStoreConditions{
 				UserID: u,
 			})
 			if err != nil {
@@ -77,16 +77,16 @@ func (p *trackedPoller) Stop() {
 
 type trackedRuleStore struct {
 	tracker *usertracker.Tracker
-	store   store.RuleStore
+	store   rules.RuleStore
 }
 
 // ListRuleGroups returns set of all rule groups matching the provided conditions
-func (w *trackedRuleStore) ListRuleGroups(ctx context.Context, options store.RuleStoreConditions) (store.RuleGroupList, error) {
+func (w *trackedRuleStore) ListRuleGroups(ctx context.Context, options rules.RuleStoreConditions) (rules.RuleGroupList, error) {
 	return w.store.ListRuleGroups(ctx, options)
 }
 
 // GetRuleGroup retrieves the specified rule group from the backend store
-func (w *trackedRuleStore) GetRuleGroup(ctx context.Context, userID, namespace, group string) (store.RuleGroup, error) {
+func (w *trackedRuleStore) GetRuleGroup(ctx context.Context, userID, namespace, group string) (rules.RuleGroup, error) {
 	return w.store.GetRuleGroup(ctx, userID, namespace, group)
 }
 

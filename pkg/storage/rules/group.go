@@ -1,4 +1,4 @@
-package store
+package rules
 
 import (
 	"context"
@@ -23,7 +23,7 @@ type Group struct {
 	namespace string
 	user      string
 	interval  time.Duration
-	rules     []*Rule
+	rules     []*RuleDesc
 
 	// activeRules allows for the support of the configdb client
 	// TODO: figure out a better way to accomplish this

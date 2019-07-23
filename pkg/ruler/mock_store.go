@@ -5,40 +5,40 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/ruler/store"
+	"github.com/cortexproject/cortex/pkg/storage/rules"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 )
 
 type mockRuleStore struct {
 	sync.Mutex
-	rules map[string]store.RuleGroup
+	rules map[string]rules.RuleGroup
 
-	pollPayload map[string][]store.RuleGroup
+	pollPayload map[string][]rules.RuleGroup
 }
 
-func (m *mockRuleStore) PollRules(ctx context.Context) (map[string][]store.RuleGroup, error) {
+func (m *mockRuleStore) PollRules(ctx context.Context) (map[string][]rules.RuleGroup, error) {
 	m.Lock()
 	defer m.Unlock()
 	pollPayload := m.pollPayload
-	m.pollPayload = map[string][]store.RuleGroup{}
+	m.pollPayload = map[string][]rules.RuleGroup{}
 	return pollPayload, nil
 }
 
 func (m *mockRuleStore) Stop() {}
 
 // RuleStore returns an RuleStore from the client
-func (m *mockRuleStore) RuleStore() store.RuleStore {
+func (m *mockRuleStore) RuleStore() rules.RuleStore {
 	return m
 }
 
-func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options store.RuleStoreConditions) (store.RuleGroupList, error) {
+func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options rules.RuleStoreConditions) (rules.RuleGroupList, error) {
 	m.Lock()
 	defer m.Unlock()
 
 	groupPrefix := options.UserID + ":"
 
 	namespaces := []string{}
-	nss := store.RuleGroupList{}
+	nss := rules.RuleGroupList{}
 	for n := range m.rules {
 		if strings.HasPrefix(n, groupPrefix) {
 			components := strings.Split(n, ":")
@@ -50,7 +50,7 @@ func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options store.RuleSt
 	}
 
 	if len(namespaces) == 0 {
-		return nss, store.ErrUserNotFound
+		return nss, rules.ErrUserNotFound
 	}
 
 	for _, n := range namespaces {
@@ -65,10 +65,10 @@ func (m *mockRuleStore) ListRuleGroups(ctx context.Context, options store.RuleSt
 	return nss, nil
 }
 
-func (m *mockRuleStore) getRuleNamespace(ctx context.Context, userID string, namespace string) (store.RuleGroupList, error) {
+func (m *mockRuleStore) getRuleNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	groupPrefix := userID + ":" + namespace + ":"
 
-	ns := store.RuleGroupList{}
+	ns := rules.RuleGroupList{}
 	for n, g := range m.rules {
 		if strings.HasPrefix(n, groupPrefix) {
 			ns = append(ns, g)
@@ -76,13 +76,13 @@ func (m *mockRuleStore) getRuleNamespace(ctx context.Context, userID string, nam
 	}
 
 	if len(ns) == 0 {
-		return ns, store.ErrGroupNamespaceNotFound
+		return ns, rules.ErrGroupNamespaceNotFound
 	}
 
 	return ns, nil
 }
 
-func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (store.RuleGroup, error) {
+func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (rules.RuleGroup, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -90,7 +90,7 @@ func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespa
 	g, ok := m.rules[groupID]
 
 	if !ok {
-		return nil, store.ErrGroupNotFound
+		return nil, rules.ErrGroupNotFound
 	}
 
 	return g, nil
@@ -102,7 +102,7 @@ func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespa
 	defer m.Unlock()
 
 	groupID := userID + ":" + namespace + ":" + group.Name
-	m.rules[groupID] = store.NewRuleGroup(group.Name, namespace, userID, group.Rules)
+	m.rules[groupID] = rules.NewRuleGroup(group.Name, namespace, userID, group.Rules)
 	return nil
 }
 

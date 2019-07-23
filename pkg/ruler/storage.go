@@ -5,9 +5,9 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/ruler/store"
 	"github.com/cortexproject/cortex/pkg/storage/clients/configdb"
 	"github.com/cortexproject/cortex/pkg/storage/clients/gcp"
+	"github.com/cortexproject/cortex/pkg/storage/rules"
 	"github.com/cortexproject/cortex/pkg/util/usertracker"
 )
 
@@ -30,13 +30,13 @@ func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewRuleStorage returns a new rule storage backend poller and store
-func NewRuleStorage(cfg RuleStoreConfig) (store.RulePoller, store.RuleStore, error) {
+func NewRuleStorage(cfg RuleStoreConfig) (rules.RulePoller, rules.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, cfg.mock, nil
 	}
 
 	var (
-		ruleStore store.RuleStore
+		ruleStore rules.RuleStore
 		err       error
 	)
 	switch cfg.Type {

@@ -4,7 +4,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/storage"
+	"github.com/cortexproject/cortex/pkg/storage/alerts"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -93,7 +93,7 @@ func (am *MultitenantAlertmanager) setUserConfig(w http.ResponseWriter, r *http.
 		return
 	}
 
-	cfg := storage.AlertConfig{}
+	cfg := alerts.AlertConfig{}
 	err = yaml.Unmarshal(payload, &cfg)
 	if err != nil {
 		level.Error(logger).Log("err", err.Error())

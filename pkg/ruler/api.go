@@ -7,7 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 
-	"github.com/cortexproject/cortex/pkg/ruler/store"
+	store "github.com/cortexproject/cortex/pkg/storage/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"

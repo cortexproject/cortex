@@ -1,4 +1,4 @@
-package storage
+package alerts
 
 import (
 	"context"

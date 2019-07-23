@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package store;
+package rules;
 
-option go_package = "store";
+option go_package = "rules";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
@@ -21,14 +21,14 @@ message RuleGroupDesc {
     string namespace = 2;
     google.protobuf.Duration interval = 3 [(gogoproto.stdduration) = true];
   
-    repeated Rule rules = 4;
+    repeated RuleDesc rules = 4;
   
     bool deleted = 5;
 
     string user = 6;
   }
   
-  message Rule {
+  message RuleDesc {
     string expr = 1;
     string record = 2;
     string alert = 3;

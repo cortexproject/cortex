@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/rules"
+	promRules "github.com/prometheus/prometheus/rules"
 	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
@@ -23,7 +23,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ruler/store"
+	"github.com/cortexproject/cortex/pkg/storage/rules"
+	store "github.com/cortexproject/cortex/pkg/storage/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/instrument"
@@ -119,7 +120,7 @@ type Ruler struct {
 	lifecycler *ring.Lifecycler
 	ring       *ring.Ring
 
-	store store.RuleStore
+	store rules.RuleStore
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -127,7 +128,7 @@ type Ruler struct {
 
 	// Per-user rules metrics
 	userMetricsMtx sync.Mutex
-	userMetrics    map[string]*rules.Metrics
+	userMetrics    map[string]*promRules.Metrics
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
@@ -155,7 +156,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 		notifierCfg: ncfg,
 		notifiers:   map[string]*rulerNotifier{},
 		workerWG:    &sync.WaitGroup{},
-		userMetrics: map[string]*rules.Metrics{},
+		userMetrics: map[string]*promRules.Metrics{},
 		store:       ruleStore,
 	}
 
@@ -235,14 +236,14 @@ func (r *Ruler) newGroup(ctx context.Context, g store.RuleGroup) (*wrappedGroup,
 	if !exists {
 		// Wrap the default register with the users ID and pass
 		reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": user}, prometheus.DefaultRegisterer)
-		metrics = rules.NewGroupMetrics(reg)
+		metrics = promRules.NewGroupMetrics(reg)
 		r.userMetrics[user] = metrics
 	}
 	r.userMetricsMtx.Unlock()
 
-	opts := &rules.ManagerOptions{
+	opts := &promRules.ManagerOptions{
 		Appendable:  appendable,
-		QueryFunc:   rules.EngineQueryFunc(r.engine, r.queryable),
+		QueryFunc:   promRules.EngineQueryFunc(r.engine, r.queryable),
 		Context:     context.Background(),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
@@ -252,17 +253,17 @@ func (r *Ruler) newGroup(ctx context.Context, g store.RuleGroup) (*wrappedGroup,
 	return newGroup(g.ID(), rls, appendable, opts), nil
 }
 
-// sendAlerts implements a rules.NotifyFunc for a Notifier.
+// sendAlerts implements a promRules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
-	return func(ctx native_ctx.Context, expr string, alerts ...*rules.Alert) {
+func sendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
+	return func(ctx native_ctx.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
 			// Only send actually firing alerts.
-			if alert.State == rules.StatePending {
+			if alert.State == promRules.StatePending {
 				continue
 			}
 			a := &notifier.Alert{

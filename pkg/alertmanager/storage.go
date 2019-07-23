@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/storage"
+	"github.com/cortexproject/cortex/pkg/storage/alerts"
 	"github.com/cortexproject/cortex/pkg/storage/clients/configdb"
 	"github.com/cortexproject/cortex/pkg/storage/clients/gcp"
 	"github.com/cortexproject/cortex/pkg/util/usertracker"
@@ -30,9 +30,9 @@ func (cfg *AlertStoreConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewAlertStore returns a new rule storage backend poller and store
-func NewAlertStore(cfg AlertStoreConfig) (storage.AlertPoller, storage.AlertStore, error) {
+func NewAlertStore(cfg AlertStoreConfig) (alerts.AlertPoller, alerts.AlertStore, error) {
 	var (
-		alertStore storage.AlertStore
+		alertStore alerts.AlertStore
 		err        error
 	)
 	switch cfg.Type {

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	alertStore "github.com/cortexproject/cortex/pkg/alertmanager/storage"
-	"github.com/cortexproject/cortex/pkg/ruler/store"
+	"github.com/cortexproject/cortex/pkg/storage/alerts"
 	"github.com/cortexproject/cortex/pkg/storage/clients/gcp"
+	"github.com/cortexproject/cortex/pkg/storage/rules"
 	"github.com/cortexproject/cortex/pkg/storage/testutils"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +26,7 @@ var (
 )
 
 func TestRuleStoreBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, _ alertStore.AlertStore, client store.RuleStore) {
+	forAllFixtures(t, func(t *testing.T, _ alerts.AlertStore, client rules.RuleStore) {
 		const batchSize = 5
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -47,7 +47,7 @@ func TestRuleStoreBasic(t *testing.T) {
 	})
 }
 
-func forAllFixtures(t *testing.T, clientTest func(*testing.T, alertStore.AlertStore, store.RuleStore)) {
+func forAllFixtures(t *testing.T, clientTest func(*testing.T, alerts.AlertStore, rules.RuleStore)) {
 	var fixtures []testutils.Fixture
 	fixtures = append(fixtures, gcp.Fixtures...)
 

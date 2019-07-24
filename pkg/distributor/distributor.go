@@ -45,6 +45,16 @@ var (
 		Name:      "distributor_received_samples_total",
 		Help:      "The total number of received samples.",
 	}, []string{"user"})
+	nonHASamples = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_non_ha_samples_received_total",
+		Help:      "The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.",
+	}, []string{"user"})
+	dedupedSamples = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_deduped_samples_total",
+		Help:      "The total number of deduplicated samples.",
+	}, []string{"user", "cluster"})
 	sendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "distributor_send_duration_seconds",
@@ -256,9 +266,7 @@ func removeReplicaLabel(replica string, labels *[]client.LabelAdapter) {
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
-func (d *Distributor) checkSample(ctx context.Context, userID string, ts client.PreallocTimeseries) (bool, error) {
-	cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), ts.Labels)
-
+func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string) (bool, error) {
 	// If the sample doesn't have either HA label, accept it.
 	// At the moment we want to accept these samples by default.
 	if cluster == "" || replica == "" {
@@ -290,10 +298,22 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	var lastPartialErr error
 	removeReplica := false
 
-	if d.cfg.EnableHATracker && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
-		removeReplica, err = d.checkSample(ctx, userID, req.Timeseries[0])
+	if d.cfg.EnableHAReplicas && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
+		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
+		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {
+			if _, ok := httpgrpc.HTTPResponseFromError(err); ok {
+				// These samples have been deduped.
+				for _, ts := range req.Timeseries {
+					dedupedSamples.WithLabelValues(userID, cluster).Add(float64(len(ts.Samples)))
+				}
+			}
 			return nil, err
+		}
+		// These samples were sent for a user ID that we've configured to accept HA samples from,
+		// but the samples didn't contain one or both of the required HA labels.
+		for _, ts := range req.Timeseries {
+			nonHASamples.WithLabelValues(userID).Add(float64(len(ts.Samples)))
 		}
 	}
 

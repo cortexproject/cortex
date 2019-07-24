@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/golang/protobuf/proto"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/mtime"
 
@@ -19,6 +22,24 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
+)
+
+var (
+	electedReplicaChanges = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_changes_total",
+		Help:      "The total number of times the elected replica has changed for a user ID/cluster.",
+	}, []string{"user", "cluster"})
+	electedReplicaTimestamp = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_timestamp_seconds",
+		Help:      "The timestamp stored for the currently elected replica, from the KVStore.",
+	}, []string{"user", "cluster"})
+	kvCASCalls = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_kv_store_cas_total",
+		Help:      "The total number of CAS calls to the KV store for a user ID/cluster.",
+	}, []string{"user", "cluster"})
 )
 
 // ProtoReplicaDescFactory makes new InstanceDescs
@@ -114,7 +135,12 @@ func (c *haTracker) loop(ctx context.Context) {
 		replica := value.(*ReplicaDesc)
 		c.electedLock.Lock()
 		defer c.electedLock.Unlock()
+		chunks := strings.SplitN(key, "/", 2)
+		if replica.Replica != c.elected[key].Replica {
+			electedReplicaChanges.WithLabelValues(chunks[0], chunks[1])
+		}
 		c.elected[key] = *replica
+		electedReplicaTimestamp.WithLabelValues(chunks[0], chunks[1]).Set(float64(replica.ReceivedAt))
 		return true
 	})
 }
@@ -144,6 +170,7 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 		}
 		return nil
 	}
+	kvCASCalls.WithLabelValues(userID, replica).Inc()
 	return c.checkKVStore(ctx, key, replica, now)
 }
 

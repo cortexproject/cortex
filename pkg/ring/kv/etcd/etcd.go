@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/weaveworks/common/httpgrpc"
 	"go.etcd.io/etcd/clientv3"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -82,6 +83,9 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
 			if !retry {
+				if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
+					level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
+				}
 				return err
 			}
 			lastErr = err

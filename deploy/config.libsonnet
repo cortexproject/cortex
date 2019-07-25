@@ -73,6 +73,7 @@
             metrics: false,
             maxItemMemory: 64, #megabytes
             extraArgs: [],
+            resources: {},
         },
         postgres:: {
             name: 'postgres',

@@ -73,7 +73,7 @@ func (q *queueState) Enqueue(op ScheduledItem) {
 
 func (q *queueState) Dequeue() ScheduledItem {
 	item := heap.Pop(q).(ScheduledItem)
-	itemEvaluationLatency.Observe(time.Now().Sub(item.Scheduled()).Seconds())
+	itemEvaluationLatency.Observe(time.Since(item.Scheduled()).Seconds())
 	return item
 }
 

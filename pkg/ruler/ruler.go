@@ -10,21 +10,21 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
+	promRules "github.com/prometheus/prometheus/rules"
+	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
-	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/rules"
+	store "github.com/cortexproject/cortex/pkg/storage/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/instrument"
@@ -36,24 +36,17 @@ var (
 		Namespace: "cortex",
 		Name:      "group_evaluation_duration_seconds",
 		Help:      "The duration for a rule group to execute.",
-		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 25},
-	})
-	rulesProcessed = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "rules_processed_total",
-		Help:      "How many rules have been processed.",
+		Buckets:   []float64{.5, 1, 2.5, 5, 10, 25, 60, 120},
 	})
 	ringCheckErrors = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "ruler_ring_check_errors_total",
 		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
-	ruleMetrics *rules.Metrics
 )
 
 func init() {
 	evalDuration.Register()
-	ruleMetrics = rules.NewGroupMetrics(prometheus.DefaultRegisterer)
 }
 
 // Config is the configuration for the recording rules server.
@@ -85,11 +78,14 @@ type Config struct {
 	SearchPendingFor time.Duration
 	LifecyclerConfig ring.LifecyclerConfig
 	FlushCheckPeriod time.Duration
+
+	StoreConfig RuleStoreConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ruler.", f)
+	cfg.StoreConfig.RegisterFlags(f)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
@@ -113,7 +109,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Ruler struct {
 	cfg         Config
 	engine      *promql.Engine
-	queryable   storage.Queryable
+	queryable   promStorage.Queryable
 	pusher      Pusher
 	alertURL    *url.URL
 	notifierCfg *config.Config
@@ -124,18 +120,29 @@ type Ruler struct {
 	lifecycler *ring.Lifecycler
 	ring       *ring.Ring
 
+	store rules.RuleStore
+
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
 	notifiers    map[string]*rulerNotifier
+
+	// Per-user rules metrics
+	userMetricsMtx sync.Mutex
+	userMetrics    map[string]*promRules.Metrics
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, rulesAPI client.Client) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor) (*Ruler, error) {
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
 
 	ncfg, err := buildNotifierConfig(&cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	rulePoller, ruleStore, err := NewRuleStorage(cfg.StoreConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -149,9 +156,11 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		notifierCfg: ncfg,
 		notifiers:   map[string]*rulerNotifier{},
 		workerWG:    &sync.WaitGroup{},
+		userMetrics: map[string]*promRules.Metrics{},
+		store:       ruleStore,
 	}
 
-	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
+	ruler.scheduler = newScheduler(rulePoller, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
 
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler
@@ -208,35 +217,53 @@ func (r *Ruler) Stop() {
 	}
 }
 
-func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
+func (r *Ruler) newGroup(ctx context.Context, g store.RuleGroup) (*wrappedGroup, error) {
+	user := g.User()
 	appendable := &appendableAppender{pusher: r.pusher}
-	notifier, err := r.getOrCreateNotifier(userID)
+	notifier, err := r.getOrCreateNotifier(user)
 	if err != nil {
 		return nil, err
 	}
-	opts := &rules.ManagerOptions{
+
+	rls, err := g.Rules(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the rule group metrics for set user or create it if it does not exist
+	r.userMetricsMtx.Lock()
+	metrics, exists := r.userMetrics[user]
+	if !exists {
+		// Wrap the default register with the users ID and pass
+		reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": user}, prometheus.DefaultRegisterer)
+		metrics = promRules.NewGroupMetrics(reg)
+		r.userMetrics[user] = metrics
+	}
+	r.userMetricsMtx.Unlock()
+
+	opts := &promRules.ManagerOptions{
 		Appendable:  appendable,
-		QueryFunc:   rules.EngineQueryFunc(r.engine, r.queryable),
+		QueryFunc:   promRules.EngineQueryFunc(r.engine, r.queryable),
 		Context:     context.Background(),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
 		Logger:      util.Logger,
-		Metrics:     ruleMetrics,
+		Metrics:     metrics,
 	}
-	return newGroup(groupName, rls, appendable, opts), nil
+	return newGroup(g.ID(), rls, appendable, opts), nil
 }
 
-// sendAlerts implements a rules.NotifyFunc for a Notifier.
+// sendAlerts implements a promRules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
-	return func(ctx native_ctx.Context, expr string, alerts ...*rules.Alert) {
+func sendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
+	return func(ctx native_ctx.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
 			// Only send actually firing alerts.
-			if alert.State == rules.StatePending {
+			if alert.State == promRules.StatePending {
 				continue
 			}
 			a := &notifier.Alert{
@@ -292,33 +319,6 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 	return n.notifier, nil
 }
 
-// Evaluate a list of rules in the given context.
-func (r *Ruler) Evaluate(userID string, item *workItem) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-	logger := util.WithContext(ctx, util.Logger)
-	if r.cfg.EnableSharding && !r.ownsRule(item.hash) {
-		level.Debug(util.Logger).Log("msg", "ruler: skipping evaluation, not owned", "user_id", item.userID, "group", item.groupName)
-		return
-	}
-	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
-	ctx, cancelTimeout := context.WithTimeout(ctx, r.cfg.GroupTimeout)
-	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
-		if span := opentracing.SpanFromContext(ctx); span != nil {
-			span.SetTag("instance", userID)
-			span.SetTag("groupName", item.groupName)
-		}
-		item.group.Eval(ctx, time.Now())
-		return nil
-	})
-	if err := ctx.Err(); err == nil {
-		cancelTimeout() // release resources
-	} else {
-		level.Warn(logger).Log("msg", "context error", "error", err)
-	}
-
-	rulesProcessed.Add(float64(len(item.group.Rules())))
-}
-
 func (r *Ruler) ownsRule(hash uint32) bool {
 	rlrs, err := r.ring.Get(hash, ring.Read)
 	// If an error occurs evaluate a rule as if it is owned
@@ -330,9 +330,10 @@ func (r *Ruler) ownsRule(hash uint32) bool {
 		return true
 	}
 	if rlrs.Ingesters[0].Addr == r.lifecycler.Addr {
+		level.Debug(util.Logger).Log("msg", "rule group owned", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
 		return true
 	}
-	level.Debug(util.Logger).Log("msg", "rule group not owned, address does not match", "owner", rlrs.Ingesters[0].Addr, "current", r.cfg.LifecyclerConfig.Addr)
+	level.Debug(util.Logger).Log("msg", "rule group not owned, address does not match", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
 	return false
 }
 
@@ -353,6 +354,9 @@ func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				</body>
 			</html>`
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(unshardedPage))
+		_, err := w.Write([]byte(unshardedPage))
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to serve status page", "err", err)
+		}
 	}
 }

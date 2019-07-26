@@ -24,6 +24,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
                     port: 'memcache',
                 },
             },
+            resources+: $._config.memcached.resources,
         };
 
         # memcached-exporter container
@@ -32,7 +33,6 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             ports_: {
                 metrics: { containerPort: 9150 },
             },
-            resources+: $._config.memcached.resources,
         };
 
         local memcachedPod = kube.PodSpec + {

@@ -35,6 +35,12 @@ var (
 		Name:      "ha_tracker_elected_replica_timestamp_seconds",
 		Help:      "The timestamp stored for the currently elected replica, from the KVStore.",
 	}, []string{"user", "cluster"})
+	electedReplicaPropagationTime = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_change_propagation_time_seconds",
+		Help:      "The time it for the distributor to update the replica change.",
+		Buckets:   prometheus.DefBuckets,
+	})
 	kvCASCalls = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "ha_tracker_kv_store_cas_total",
@@ -141,6 +147,7 @@ func (c *haTracker) loop(ctx context.Context) {
 		}
 		c.elected[key] = *replica
 		electedReplicaTimestamp.WithLabelValues(chunks[0], chunks[1]).Set(float64(replica.ReceivedAt))
+		electedReplicaPropagationTime.Observe(time.Since(timestamp.Time(replica.ReceivedAt)).Seconds())
 		return true
 	})
 }

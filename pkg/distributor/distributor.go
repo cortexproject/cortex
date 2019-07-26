@@ -270,6 +270,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 	// If the sample doesn't have either HA label, accept it.
 	// At the moment we want to accept these samples by default.
 	if cluster == "" || replica == "" {
+		nonHASamples.WithLabelValues(userID).Inc()
 		return false, nil
 	}
 
@@ -298,22 +299,26 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	var lastPartialErr error
 	removeReplica := false
 
+	numSamples := 0
+	for _, ts := range req.Timeseries {
+		numSamples += len(ts.Samples)
+	}
+	receivedSamples.WithLabelValues(userID).Add(float64(numSamples))
+
 	if d.cfg.EnableHAReplicas && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {
-			if _, ok := httpgrpc.HTTPResponseFromError(err); ok {
+			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
 				// These samples have been deduped.
+				numSamples := 0
 				for _, ts := range req.Timeseries {
-					dedupedSamples.WithLabelValues(userID, cluster).Add(float64(len(ts.Samples)))
+					numSamples += len(ts.Samples)
 				}
+				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
 			}
+
 			return nil, err
-		}
-		// These samples were sent for a user ID that we've configured to accept HA samples from,
-		// but the samples didn't contain one or both of the required HA labels.
-		for _, ts := range req.Timeseries {
-			nonHASamples.WithLabelValues(userID).Add(float64(len(ts.Samples)))
 		}
 	}
 
@@ -321,7 +326,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	// check each sample and discard if outside limits.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
-	numSamples := 0
+	numSamples = 0
 	for _, ts := range req.Timeseries {
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
@@ -360,7 +365,6 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 		numSamples += len(ts.Samples)
 	}
-	receivedSamples.WithLabelValues(userID).Add(float64(numSamples))
 
 	if len(keys) == 0 {
 		return &client.WriteResponse{}, lastPartialErr

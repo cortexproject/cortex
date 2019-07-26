@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk/local/archive"
+
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
 
@@ -25,36 +27,63 @@ const (
 	dbReloadPeriod = 10 * time.Minute
 )
 
+type archivedDB struct {
+	boltDBs map[string]*bbolt.DB
+	sync.RWMutex
+}
+
 // BoltDBConfig for a BoltDB index client.
 type BoltDBConfig struct {
-	Directory string `yaml:"directory"`
+	Directory     string         `yaml:"directory"`
+	EnableArchive bool           `yaml:"enable_archive"`
+	ArchiveConfig archive.Config `yaml:"archive_config"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *BoltDBConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.ArchiveConfig.RegisterFlags(f)
+
 	f.StringVar(&cfg.Directory, "boltdb.dir", "", "Location of BoltDB index files.")
+	f.BoolVar(&cfg.EnableArchive, "boltdb.enable-archive", false, "Enable archival of files to a store")
 }
 
 type boltIndexClient struct {
-	cfg BoltDBConfig
+	cfg      BoltDBConfig
+	archiver *archive.Archiver
 
 	dbsMtx sync.RWMutex
 	dbs    map[string]*bbolt.DB
 	done   chan struct{}
 	wait   sync.WaitGroup
+
+	archivedDbsMtx sync.RWMutex
+	archivedDbs    map[string]*archivedDB
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
 func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
-	if err := ensureDirectory(cfg.Directory); err != nil {
+	if err := chunk_util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}
 
 	indexClient := &boltIndexClient{
-		cfg:  cfg,
-		dbs:  map[string]*bbolt.DB{},
-		done: make(chan struct{}),
+		cfg:         cfg,
+		dbs:         map[string]*bbolt.DB{},
+		done:        make(chan struct{}),
+		archivedDbs: map[string]*archivedDB{},
 	}
+
+	var archiver *archive.Archiver
+	if cfg.EnableArchive {
+		var err error
+		archiver, err = archive.NewArchiver(cfg.ArchiveConfig, cfg.Directory)
+		if err != nil {
+			return nil, err
+		}
+		go indexClient.processArchiverUpdates()
+	}
+
+	indexClient.archiver = archiver
 
 	indexClient.wait.Add(1)
 	go indexClient.loop()
@@ -75,6 +104,103 @@ func (b *boltIndexClient) loop() {
 			return
 		}
 	}
+}
+
+func (b *boltIndexClient) processArchiverUpdates() {
+	updatesChan := b.archiver.UpdatesChan()
+	for {
+		select {
+		case update := <-updatesChan:
+			switch update.UpdateType {
+			case archive.UpdateTypeFileRemoved:
+				err := b.processArchiverFileRemovedUpdate(context.Background(), update.TableName, update.FilePath)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "failed to process file delete update from archiver", "update", update, "err", err)
+				}
+			case archive.UpdateTypeFileDownloaded:
+				err := b.processArchiverFileDownloadedUpdate(context.Background(), update.TableName, update.FilePath)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "failed to process file added update from archiver", "update", update, "err", err)
+				}
+			case archive.UpdateTypeTableRemoved:
+				err := b.processArchiverTableDeletedUpdate(update.TableName)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "failed to process table deleted update from archiver", "update", update, "err", err)
+				}
+			default:
+				level.Error(util.Logger).Log("Invalid update type from archiver", "update", update)
+			}
+			fmt.Println(update)
+		}
+	}
+}
+
+func (b *boltIndexClient) processArchiverFileRemovedUpdate(ctx context.Context, tableName, filePath string) error {
+	aDB, err := b.getArchivedDB(ctx, tableName)
+	if err != nil {
+		return err
+	}
+
+	aDB.Lock()
+	defer aDB.Unlock()
+
+	boltDB, isOK := aDB.boltDBs[filePath]
+	if !isOK {
+		return nil
+	}
+
+	delete(aDB.boltDBs, filePath)
+
+	if err := boltDB.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (b *boltIndexClient) processArchiverFileDownloadedUpdate(ctx context.Context, tableName, filePath string) error {
+	aDB, err := b.getArchivedDB(ctx, tableName)
+	if err != nil {
+		return err
+	}
+
+	aDB.Lock()
+	defer aDB.Unlock()
+	_, isOK := aDB.boltDBs[filePath]
+	if isOK {
+		return nil
+	}
+
+	boltDB, err := openBoltdbFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	aDB.boltDBs[filePath] = boltDB
+	return nil
+}
+
+func (b *boltIndexClient) processArchiverTableDeletedUpdate(tableName string) error {
+	b.archivedDbsMtx.Lock()
+	defer b.archivedDbsMtx.Unlock()
+
+	aDB, isOK := b.archivedDbs[tableName]
+	if !isOK {
+		return nil
+	}
+
+	aDB.Lock()
+	defer aDB.Unlock()
+
+	for _, boltDB := range aDB.boltDBs {
+		err := boltDB.Close()
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed to close removed boltdb", "filepath", boltDB.Path(), "err", err)
+		}
+	}
+
+	delete(b.archivedDbs, tableName)
+	return nil
 }
 
 func (b *boltIndexClient) reload() {
@@ -114,6 +240,9 @@ func (b *boltIndexClient) Stop() {
 		db.Close()
 	}
 
+	if b.archiver != nil {
+		b.archiver.Stop()
+	}
 	b.wait.Wait()
 }
 
@@ -131,16 +260,20 @@ func (b *boltIndexClient) getDB(name string) (*bbolt.DB, error) {
 		return db, nil
 	}
 
+	return nil, nil
+}
+
+func (b *boltIndexClient) openDB(name string) (*bbolt.DB, error) {
 	b.dbsMtx.Lock()
 	defer b.dbsMtx.Unlock()
-	db, ok = b.dbs[name]
+	db, ok := b.dbs[name]
 	if ok {
 		return db, nil
 	}
 
 	// Open the database.
 	// Set Timeout to avoid obtaining file lock wait indefinitely.
-	db, err := bbolt.Open(path.Join(b.cfg.Directory, name), 0666, &bbolt.Options{Timeout: 5 * time.Second})
+	db, err := openBoltdbFile(path.Join(b.cfg.Directory, name))
 	if err != nil {
 		return nil, err
 	}
@@ -149,11 +282,56 @@ func (b *boltIndexClient) getDB(name string) (*bbolt.DB, error) {
 	return db, nil
 }
 
+func (b *boltIndexClient) getArchivedDB(ctx context.Context, name string) (*archivedDB, error) {
+	b.archivedDbsMtx.RLock()
+	aDB, ok := b.archivedDbs[name]
+	b.archivedDbsMtx.RUnlock()
+	if ok {
+		return aDB, nil
+	}
+
+	b.archivedDbsMtx.Lock()
+	defer b.archivedDbsMtx.Unlock()
+
+	aDB, ok = b.archivedDbs[name]
+	if ok {
+		return aDB, nil
+	}
+
+	archivedFilePaths, err := b.archiver.Sync(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	aDB = &archivedDB{}
+
+	boltDBs := make(map[string]*bbolt.DB, len(archivedFilePaths))
+	for _, archivedFilePath := range archivedFilePaths {
+		db, err := openBoltdbFile(archivedFilePath)
+		if err != nil {
+			return nil, err
+		}
+
+		boltDBs[archivedFilePath] = db
+	}
+	aDB.boltDBs = boltDBs
+	b.archivedDbs[name] = aDB
+
+	return aDB, nil
+}
+
 func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	for table, kvps := range batch.(*boltWriteBatch).tables {
 		db, err := b.getDB(table)
 		if err != nil {
 			return err
+		}
+
+		if db == nil {
+			db, err = b.openDB(table)
+			if err != nil {
+				return err
+			}
 		}
 
 		if err := db.Update(func(tx *bbolt.Tx) error {
@@ -181,9 +359,19 @@ func (b *boltIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQ
 }
 
 func (b *boltIndexClient) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
-	db, err := b.getDB(query.TableName)
+	localDB, err := b.getDB(query.TableName)
 	if err != nil {
 		return err
+	}
+
+	var aDB *archivedDB
+	if b.archiver != nil {
+		aDB, err = b.getArchivedDB(ctx, query.TableName)
+		if err != nil {
+			return err
+		}
+		aDB.RLock()
+		defer aDB.RUnlock()
 	}
 
 	var start []byte
@@ -197,6 +385,57 @@ func (b *boltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 
 	rowPrefix := []byte(query.HashValue + separator)
 
+	viewFunc := func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketName)
+		if b == nil {
+			return nil
+		}
+
+		var batch boltReadBatch
+		c := b.Cursor()
+		for k, v := c.Seek(start); k != nil; k, v = c.Next() {
+			if len(query.ValueEqual) > 0 && !bytes.Equal(v, query.ValueEqual) {
+				continue
+			}
+
+			if len(query.RangeValuePrefix) > 0 && !bytes.HasPrefix(k, start) {
+				break
+			}
+
+			if !bytes.HasPrefix(k, rowPrefix) {
+				break
+			}
+
+			batch.rangeValue = k[len(rowPrefix):]
+			batch.value = v
+			if !callback(&batch) {
+				break
+			}
+		}
+
+		return nil
+	}
+
+	if localDB != nil {
+		err = localDB.View(viewFunc)
+		if err != nil {
+			return err
+		}
+	}
+
+	if aDB != nil {
+		for _, db := range aDB.boltDBs {
+			err := db.View(viewFunc)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (b *boltIndexClient) queryBoltDB(db *bbolt.DB, start, rowPrefix []byte, query *chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
 	return db.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketName)
 		if b == nil {
@@ -276,12 +515,6 @@ func (b *boltReadBatchIterator) Value() []byte {
 	return b.value
 }
 
-func ensureDirectory(dir string) error {
-	info, err := os.Stat(dir)
-	if os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0777)
-	} else if err == nil && !info.IsDir() {
-		return fmt.Errorf("not a directory: %s", dir)
-	}
-	return err
+func openBoltdbFile(path string) (*bbolt.DB, error) {
+	return bbolt.Open(path, 0666, &bbolt.Options{Timeout: 5 * time.Second})
 }

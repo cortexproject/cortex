@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -35,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/cortexproject/cortex/pkg/chunk/local/archive"
 )
 
 type moduleName int
@@ -56,6 +58,8 @@ const (
 	AlertManager
 	Compactor
 	All
+
+	ingesterQueryStoreMaxLookBackPeriodWhenUsingArchiver = archive.ArchiveFileInterval + (15 * time.Minute)
 )
 
 func (m moduleName) String() string {
@@ -293,6 +297,16 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.TSDBConfig = cfg.TSDB
 	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
 
+
+	// We want ingester to also query the store when using boltdb
+	if cfg.Schema.ActiveIndexType() == "boltdb" {
+		cfg.Ingester.QueryStore = true
+		// When using archiver, limit max look back for query to push interval by archiver + 15 mins to query only data whose index is not pushed yet
+		if cfg.Storage.BoltDBConfig.EnableArchive {
+			cfg.Ingester.QueryStoreMaxLookBackPeriod = ingesterQueryStoreMaxLookBackPeriodWhenUsingArchiver
+		}
+	}
+
 	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
@@ -318,6 +332,17 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 	err = cfg.Schema.Load()
 	if err != nil {
 		return
+	}
+
+	if cfg.Schema.ActiveIndexType() == "boltdb" && cfg.Storage.BoltDBConfig.EnableArchive {
+		cfg.Storage.BoltDBConfig.ArchiveConfig.IngesterName = cfg.Ingester.LifecyclerConfig.ID
+		if cfg.Target == Ingester {
+			// We do not want ingester to unnecessarily keep downloading files
+			cfg.Storage.BoltDBConfig.ArchiveConfig.Mode = archive.ArchiveModeWriteOnly
+		} else if cfg.Target == Querier {
+			// We do not want query to do any updates to index
+			cfg.Storage.BoltDBConfig.ArchiveConfig.Mode = archive.ArchiveModeReadOnly
+		}
 	}
 
 	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)

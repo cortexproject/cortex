@@ -71,6 +71,9 @@ type Config struct {
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
+
+	QueryStore                  bool
+	QueryStoreMaxLookBackPeriod time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -129,6 +132,7 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []cortex_chunk.Chunk) error
+	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]cortex_chunk.Chunk, error)
 }
 
 // New constructs a new Ingester.
@@ -435,9 +439,11 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	}
 
 	result := &client.QueryResponse{}
-	numSeries, numSamples := 0, 0
+	numSamples := 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
-	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
+	fingerPrints := map[model.Fingerprint]struct{}{}
+
+	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fingerprint model.Fingerprint, series *memorySeries) error {
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
@@ -445,7 +451,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		if len(values) == 0 {
 			return nil
 		}
-		numSeries++
+		fingerPrints[fingerprint] = struct{}{}
 
 		numSamples += len(values)
 		if numSamples > maxSamplesPerQuery {
@@ -453,19 +459,56 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		}
 
 		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapters(series.metric),
-			Samples: make([]client.Sample, 0, len(values)),
+			Labels:  client.FromLabelsToLabelAdapaters(series.metric),
+			Samples: modelSamplePairsToClientSamples(values),
 		}
-		for _, s := range values {
-			ts.Samples = append(ts.Samples, client.Sample{
-				Value:       float64(s.Value),
-				TimestampMs: int64(s.Timestamp),
-			})
-		}
+
 		result.Timeseries = append(result.Timeseries, ts)
 		return nil
 	}, nil, 0)
-	i.metrics.queriedSeries.Observe(float64(numSeries))
+
+	if i.cfg.QueryStore {
+		storeQueryFrom := from
+		if i.cfg.QueryStoreMaxLookBackPeriod != 0 {
+			oldestStartTime := model.Now().Add(-i.cfg.QueryStoreMaxLookBackPeriod)
+			if oldestStartTime.After(from) {
+				storeQueryFrom = oldestStartTime
+			}
+		}
+
+		var chunks []cortex_chunk.Chunk
+		var err error
+
+		if storeQueryFrom < through {
+			chunks, err = i.chunkStore.Get(ctx, storeQueryFrom, through, matchers...)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		for _, chunk := range chunks {
+			ss, err := chunk.Samples(from, through)
+			if err != nil {
+				return nil, err
+			}
+
+			numSamples += len(ss)
+			if numSamples > maxSamplesPerQuery {
+				return nil, httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
+			}
+
+			fingerPrints[chunk.Fingerprint] = struct{}{}
+
+			ts := client.TimeSeries{
+				Labels:  client.FromLabelsToLabelAdapaters(chunk.Metric),
+				Samples: modelSamplePairsToClientSamples(ss),
+			}
+
+			result.Timeseries = append(result.Timeseries, ts)
+		}
+	}
+
+	i.metrics.queriedSeries.Observe(float64(len(fingerPrints)))
 	i.metrics.queriedSamples.Observe(float64(numSamples))
 	return result, err
 }

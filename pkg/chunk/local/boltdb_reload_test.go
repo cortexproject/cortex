@@ -16,7 +16,7 @@ var (
 )
 
 func setupDb(t *testing.T, boltdbIndexClient *boltIndexClient, dbname string) {
-	db, err := boltdbIndexClient.getDB(dbname)
+	db, err := boltdbIndexClient.openDB(dbname)
 	require.NoError(t, err)
 
 	err = db.Update(func(tx *bbolt.Tx) error {

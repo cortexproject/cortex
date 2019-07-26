@@ -76,6 +76,10 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
+func (s *testStore) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	return nil, nil
+}
+
 func (s *testStore) Stop() {}
 
 // check that the store is holding data equivalent to what we expect

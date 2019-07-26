@@ -34,7 +34,7 @@ type FSObjectClient struct {
 
 // NewFSObjectClient makes a chunk.ObjectClient which stores chunks as files in the local filesystem.
 func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
-	if err := ensureDirectory(cfg.Directory); err != nil {
+	if err := util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}
 

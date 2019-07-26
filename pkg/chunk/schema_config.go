@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -120,6 +121,19 @@ func (cfg *LegacySchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.IndexTables.RegisterFlags("dynamodb.periodic-table", "cortex_", f)
 	f.Var(&cfg.ChunkTablesFrom, "dynamodb.chunk-table.from", "Date after which to write chunks to DynamoDB.")
 	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", "cortex_chunks_", f)
+}
+
+// ActiveIndexType type returns index type which would be applicable to metrics that would be pushed starting now
+// Note: Another periodic config can be applicable in future which can change index type
+func (cfg *SchemaConfig) ActiveIndexType() string {
+	now := model.Now()
+	i := sort.Search(len(cfg.Configs), func(i int) bool {
+		return cfg.Configs[i].From.Time > now
+	})
+	if i > 0 {
+		i--
+	}
+	return cfg.Configs[i].IndexType
 }
 
 func (cfg *SchemaConfig) loadFromFlags() error {

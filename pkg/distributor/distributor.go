@@ -51,6 +51,12 @@ var (
 		Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
 		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 	}, []string{"method", "status_code"})
+	labelsHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "labels_per_sample",
+		Help:      "Number of labels per sample.",
+		Buckets:   []float64{5, 10, 15, 20, 25},
+	})
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_ingester_appends_total",
@@ -308,6 +314,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			return nil, err
 		}
 
+		labelsHistogram.Observe(float64(len(ts.Labels)))
 		if err := d.limits.ValidateLabels(userID, ts.Labels); err != nil {
 			lastPartialErr = err
 			continue

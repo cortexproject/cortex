@@ -11,6 +11,14 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local configs_uri = 'http://' + $._config.configs.name + '.' + $._config.namespace + '.svc.cluster.local';
         local consul_uri = $._config.consul.name + '.' + $._config.namespace + '.svc.cluster.local:8500';
         local memcached_uri = $._config.memcached.name + '.' + $._config.namespace + '.svc.cluster.local';
+        local index_fifocache_args = if $._config.ruler.caching.index_fifocache.enable
+                                     then ['-store.index-cache-read.cache.enable-fifocache=true',
+                                           '-store.index-cache-read.fifocache.size=' + $._config.ruler.caching.index_fifocache.size]
+                                     else [];
+        local chunk_fifocache_args = if $._config.ruler.caching.chunk_fifocache.enable
+                                     then ['-cache.enable-fifocache=true',
+                                           '-fifocache.size=' + $._config.ruler.caching.chunk_fifocache.size]
+                                     else [];
         local args = [
             '-target=ruler',
             '-server.http-listen-port=80',
@@ -19,7 +27,8 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             '-ruler.alertmanager-url=' + alertmanager_uri,
             '-ruler.configs.url=' + configs_uri,
             '-memcached.hostname=' + memcached_uri,
-        ];
+            '-store.index-cache-read.memcached.hostname=' + memcached_uri,
+        ] + index_fifocache_args + chunk_fifocache_args;
 
         # Environment Variables
         local env = $._config.ruler.env;

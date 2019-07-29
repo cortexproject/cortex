@@ -15,7 +15,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             '-ingester.normalise-tokens=true',
             '-config-yaml=/etc/cortex/schemaConfig.yaml',
             '-consul.hostname=' + consul_uri,
-            '-memcached.hostname=' + memcached_uri,
+            '-store.index-cache-write.memcached.hostname=' + memcached_uri,
         ];
         
         # Environment Variables

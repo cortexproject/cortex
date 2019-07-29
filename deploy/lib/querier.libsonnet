@@ -9,6 +9,14 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local extraArgs = $._config.querier.extraArgs;
         local consul_uri = $._config.consul.name + '.' + $._config.namespace + '.svc.cluster.local:8500';
         local memcached_uri = $._config.memcached.name + '.' + $._config.namespace + '.svc.cluster.local';
+        local index_fifocache_args = if $._config.querier.caching.index_fifocache.enable
+                                     then ['-store.index-cache-read.cache.enable-fifocache=true',
+                                           '-store.index-cache-read.fifocache.size=' + $._config.querier.caching.index_fifocache.size]
+                                     else [];
+        local chunk_fifocache_args = if $._config.querier.caching.chunk_fifocache.enable
+                                     then ['-cache.enable-fifocache=true',
+                                           '-fifocache.size=' + $._config.querier.caching.chunk_fifocache.size]
+                                     else [];
         local args = [
             '-target=querier',
             '-server.http-listen-port=80',
@@ -18,7 +26,8 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             '-config-yaml=/etc/cortex/schemaConfig.yaml',
             '-consul.hostname=' + consul_uri,
             '-memcached.hostname=' + memcached_uri,
-        ];
+            '-store.index-cache-read.memcached.hostname=' + memcached_uri,
+        ] + index_fifocache_args + chunk_fifocache_args;
         
         # Environment Variables
         local env = $._config.ingester.env;

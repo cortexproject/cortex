@@ -5,6 +5,8 @@
 // this should contain most/all of the knobs you need to turn to deploy cortex. 
 // If it is not provided here, you can use mixins on top of the final generated manifests.
 // 
+local default_fifocache_size = 102400;
+
 {
     _config+:: {
         namespace: 'cortex',
@@ -101,6 +103,16 @@
             env: [],
             serviceType: 'ClusterIP',
             resources: {},
+            caching: {
+                chunk_fifocache: {
+                    enable: false,
+                    size: default_fifocache_size,
+                },
+                index_fifocache: {
+                    enable: false,
+                    size: default_fifocache_size,
+                },
+            },
         },
         queryFrontend:: {
             name: 'query-frontend',
@@ -118,6 +130,16 @@
             envKVMixin:: {},
             env: [],
             resources: {},
+            enacaching: {
+                chunk_fifocache: {
+                    enable: false,
+                    size: default_fifocache_size,
+                },
+                index_fifocache: {
+                    enable: false,
+                    size: default_fifocache_size,
+                },
+            },
         },
         tableManager:: {
             name: 'table-manager',

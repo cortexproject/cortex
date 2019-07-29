@@ -138,8 +138,10 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 	c.electedLock.RLock()
 	entry, ok := c.elected[key]
 	c.electedLock.RUnlock()
-
-	if ok && entry.Replica == replica && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout {
+	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout {
+		if entry.Replica != replica {
+			return replicasNotMatchError(replica, entry.Replica)
+		}
 		return nil
 	}
 	return c.checkKVStore(ctx, key, replica, now)
@@ -159,7 +161,7 @@ func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now t
 			// is less than failOver timeout amount of time since the timestamp in the KV store.
 			if desc.Replica != replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.cfg.FailoverTimeout {
 				// Return a 202.
-				return nil, false, httpgrpc.Errorf(http.StatusAccepted, "replicas did not match, rejecting sample: %s != %s", replica, desc.Replica)
+				return nil, false, replicasNotMatchError(replica, desc.Replica)
 			}
 		}
 
@@ -170,6 +172,10 @@ func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now t
 			Replica: replica, ReceivedAt: timestamp.FromTime(now),
 		}, true, nil
 	})
+}
+
+func replicasNotMatchError(replica, elected string) error {
+	return httpgrpc.Errorf(http.StatusAccepted, "replicas did not mach, rejecting sample: replica=%s, elected=%s", replica, elected)
 }
 
 // Modifies the labels parameter in place, removing labels that match

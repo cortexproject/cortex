@@ -62,6 +62,6 @@ message CachedResponse  {
 message Extent  {
 	int64 start = 1 [(gogoproto.jsontag) = "start"];
 	int64 end = 2 [(gogoproto.jsontag) = "end"];
-  APIResponse response = 3 [(gogoproto.jsontag) = "response"];
-  string trace_id = 4 [(gogoproto.jsontag) = "-"];
+	APIResponse response = 3 [(gogoproto.jsontag) = "response"];
+	string trace_id = 4 [(gogoproto.jsontag) = "-"];
 }

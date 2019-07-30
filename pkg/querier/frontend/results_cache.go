@@ -153,7 +153,6 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 		accumulator.TraceId = jaegerTraceID(ctx)
 		accumulator.End = extents[i].End
 		accumulator.Response, err = mergeAPIResponses([]*APIResponse{accumulator.Response, extents[i].Response})
-
 		if err != nil {
 			return nil, nil, err
 		}

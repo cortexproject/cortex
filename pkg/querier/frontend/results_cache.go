@@ -7,6 +7,10 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+
+	"github.com/uber/jaeger-client-go"
+
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -97,6 +101,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r *QueryRangeRequest) (*AP
 			Start:    r.Start,
 			End:      r.End,
 			Response: response,
+			TraceId:  jaegerTraceID(ctx),
 		},
 	}
 	return response, extents, nil
@@ -107,6 +112,8 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 		reqResps []requestResponse
 		err      error
 	)
+	log, ctx := spanlogger.New(ctx, "handleHit")
+	defer log.Finish()
 
 	requests, responses := partition(r, extents)
 	if len(requests) == 0 {
@@ -126,6 +133,7 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 			Start:    reqResp.req.Start,
 			End:      reqResp.req.End,
 			Response: reqResp.resp,
+			TraceId:  jaegerTraceID(ctx),
 		})
 	}
 	sort.Slice(extents, func(i, j int) bool {
@@ -141,8 +149,12 @@ func (s resultsCache) handleHit(ctx context.Context, r *QueryRangeRequest, exten
 			continue
 		}
 
+		log.Log("msg", "merging extent", "start", accumulator.Start, "old_end", accumulator.End, "new_end", extents[i].End, "from_trace", accumulator.TraceId, "with_trace", accumulator.TraceId)
+
+		accumulator.TraceId = jaegerTraceID(ctx)
 		accumulator.End = extents[i].End
 		accumulator.Response, err = mergeAPIResponses([]*APIResponse{accumulator.Response, extents[i].Response})
+
 		if err != nil {
 			return nil, nil, err
 		}
@@ -237,4 +249,14 @@ func (s resultsCache) put(ctx context.Context, key string, extents []Extent) {
 	}
 
 	s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
+}
+
+func jaegerTraceID(ctx context.Context) string {
+	span := opentracing.SpanFromContext(ctx)
+	if span == nil {
+		return ""
+	}
+
+	spanContext := span.Context().(jaeger.SpanContext)
+	return spanContext.TraceID().String()
 }

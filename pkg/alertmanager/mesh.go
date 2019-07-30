@@ -38,7 +38,7 @@ type promLog struct{}
 
 // Printf implements the mesh.Logger interface.
 func (p promLog) Printf(format string, args ...interface{}) {
-	level.Info(util.Logger).Log(fmt.Sprintf(format, args...))
+	level.Info(util.Logger).Log("msg", fmt.Sprintf(format, args...))
 }
 
 func initMesh(addr, hwaddr, nickname, pw string) *mesh.Router {

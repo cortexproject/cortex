@@ -101,15 +101,15 @@ The ingester query API was improved over time, but defaults to the old behaviour
 ### Ring/HA Tracker Store
 
 The KVStore client is used by both the Ring and HA Tracker.
-- `{ring,ha-tracker}.prefix`
+- `{ring,distributor.ha-tracker}.prefix`
    The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.
-- `{ring,ha-tracker}.store`
+- `{ring,distributor.ha-tracker}.store`
    Backend storage to use for the ring (consul, etcd, inmemory).
 
 #### Consul
 
 By default these flags are used to configure Consul used for the ring. To configure Consul for the HA tracker,
-prefix these flags with `ha-tracker.`
+prefix these flags with `distributor.ha-tracker.`
 
 - `consul.hostname`
    Hostname and port of Consul.
@@ -123,7 +123,7 @@ prefix these flags with `ha-tracker.`
 #### etcd
 
 By default these flags are used to configure etcd used for the ring. To configure etcd for the HA tracker,
-prefix these flags with `ha-tracker.`
+prefix these flags with `distributor.ha-tracker.`
 
 - `etcd.endpoints`
    The etcd endpoints to connect to.
@@ -135,9 +135,9 @@ prefix these flags with `ha-tracker.`
 ### HA Tracker
 
 HA tracking has two of it's own flags:
-- `ha-tracker.cluster`
+- `distributor.ha-tracker.cluster`
    Prometheus label to look for in samples to identify a Prometheus HA cluster. (default "cluster")
-- `ha-tracker.replica`
+- `distributor.ha-tracker.replica`
    Prometheus label to look for in samples to identify a Prometheus HA replica. (default "__replica__")
 
 It's reasonable to assume people probably already have a `cluster` label, or something similar. If not, they should add one along with `__replica__`
@@ -146,11 +146,11 @@ via external labels in their Prometheus config.
 HA Tracking looks for the two labels (which can be overwritten per user)
 
 It also talks to a KVStore and has it's own copies of the same flags used by the Distributor to connect to for the ring.
-- `ha-tracker.failover-timeout`
+- `distributor.ha-tracker.failover-timeout`
    If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout (default 30s)
-- `ha-tracker.store`
+- `distributor.ha-tracker.store`
    Backend storage to use for the ring (consul, etcd, inmemory). (default "consul")
-- `ha-tracker.update-timeout`
+- `distributor.ha-tracker.update-timeout`
    Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp. (default 15s)
 
 ## Ingester

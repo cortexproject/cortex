@@ -108,7 +108,7 @@ type Distributor struct {
 	billingClient *billing.Client
 
 	// For handling HA replicas.
-	replicas *haTracker
+	Replicas *haTracker
 
 	// Per-user rate limiters.
 	ingestLimitersMtx sync.RWMutex
@@ -185,7 +185,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		if err != nil {
 			return nil, err
 		}
-		d.replicas = replicas
+		d.Replicas = replicas
 	}
 
 	go d.loop()
@@ -279,7 +279,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 
 	// At this point we know we have both HA labels, we should lookup
 	// the cluster/instance here to see if we want to accept this sample.
-	err := d.replicas.checkReplica(ctx, userID, cluster, replica)
+	err := d.Replicas.checkReplica(ctx, userID, cluster, replica)
 	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
 	if err != nil { // Don't accept the sample.
 		return false, err

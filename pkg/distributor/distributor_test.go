@@ -150,11 +150,11 @@ func TestDistributorPushHAInstances(t *testing.T) {
 					FailoverTimeout: time.Second,
 				})
 				assert.NoError(t, err)
-				d.replicas = r
+				d.Replicas = r
 
 				userID, err := user.ExtractOrgID(ctx)
 				assert.NoError(t, err)
-				err = d.replicas.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
+				err = d.Replicas.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
 				assert.NoError(t, err)
 
 				request := makeWriteRequestHA(tc.samples, tc.testReplica, tc.cluster)

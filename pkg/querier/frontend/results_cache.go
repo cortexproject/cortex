@@ -7,19 +7,18 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-
-	"github.com/uber/jaeger-client-go"
-
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
+	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // ResultsCacheConfig is the config for the results cache.

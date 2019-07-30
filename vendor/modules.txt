@@ -98,8 +98,6 @@ github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1
 github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1
 # github.com/cespare/xxhash v1.1.0
 github.com/cespare/xxhash
-# github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd
-github.com/codahale/hdrhistogram
 # github.com/coreos/go-semver v0.3.0
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd v0.0.0-20181012123002-c6f51f82210d
@@ -264,7 +262,7 @@ github.com/oklog/ulid
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v0.0.0-20170113013457-1de4cc2120e7
 github.com/opentracing-contrib/go-stdlib/nethttp
-# github.com/opentracing/opentracing-go v1.0.2
+# github.com/opentracing/opentracing-go v1.1.0
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/log
 github.com/opentracing/opentracing-go/ext
@@ -387,12 +385,13 @@ github.com/stretchr/testify/assert
 github.com/tinylib/msgp/msgp
 # github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5
 github.com/tmc/grpc-websocket-proxy/wsproxy
-# github.com/uber/jaeger-client-go v2.14.0+incompatible
+# github.com/uber/jaeger-client-go v2.16.0+incompatible
 github.com/uber/jaeger-client-go/config
 github.com/uber/jaeger-client-go
 github.com/uber/jaeger-client-go/internal/baggage/remote
 github.com/uber/jaeger-client-go/internal/throttler/remote
 github.com/uber/jaeger-client-go/rpcmetrics
+github.com/uber/jaeger-client-go/transport
 github.com/uber/jaeger-client-go/internal/baggage
 github.com/uber/jaeger-client-go/internal/spanlog
 github.com/uber/jaeger-client-go/internal/throttler
@@ -404,7 +403,7 @@ github.com/uber/jaeger-client-go/thrift-gen/zipkincore
 github.com/uber/jaeger-client-go/utils
 github.com/uber/jaeger-client-go/thrift-gen/baggage
 github.com/uber/jaeger-client-go/thrift-gen/agent
-# github.com/uber/jaeger-lib v1.5.0
+# github.com/uber/jaeger-lib v2.0.0+incompatible
 github.com/uber/jaeger-lib/metrics/prometheus
 github.com/uber/jaeger-lib/metrics
 # github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1

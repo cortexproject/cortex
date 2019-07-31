@@ -43,6 +43,7 @@ require (
 	github.com/mattes/migrate v1.3.1
 	github.com/mattn/go-sqlite3 v1.10.0 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b
+	github.com/oklog/oklog v0.3.2 // indirect
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
@@ -50,10 +51,10 @@ require (
 	github.com/opentracing/opentracing-go v1.0.2
 	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/prometheus/alertmanager v0.17.0
+	github.com/prometheus/alertmanager v0.13.0
 	github.com/prometheus/client_golang v1.0.0
 	github.com/prometheus/common v0.4.1
-	github.com/prometheus/prometheus v0.0.0-20190710134608-e5b22494857d
+	github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac
 	github.com/prometheus/tsdb v0.9.1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect

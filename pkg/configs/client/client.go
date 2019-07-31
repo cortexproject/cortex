@@ -16,10 +16,6 @@ import (
 
 // Client is what the ruler and altermanger needs from a config store to process rules.
 type Client interface {
-	// GetRules returns all Cortex configurations from a configs API server
-	// that have been updated after the given configs.ID was last updated.
-	GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error)
-
 	// GetAlerts fetches all the alerts that have changes since since.
 	GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error)
 }
@@ -53,27 +49,6 @@ func New(cfg Config) (Client, error) {
 type configsClient struct {
 	URL     *url.URL
 	Timeout time.Duration
-}
-
-// GetRules implements ConfigClient.
-func (c configsClient) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	suffix := ""
-	if since != 0 {
-		suffix = fmt.Sprintf("?since=%d", since)
-	}
-	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.URL.String(), suffix)
-	response, err := doRequest(endpoint, c.Timeout, since)
-	if err != nil {
-		return nil, err
-	}
-	configs := map[string]configs.VersionedRulesConfig{}
-	for id, view := range response.Configs {
-		cfg := view.GetVersionedRulesConfig()
-		if cfg != nil {
-			configs[id] = *cfg
-		}
-	}
-	return configs, nil
 }
 
 // GetAlerts implements ConfigClient.
@@ -115,14 +90,6 @@ func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*Confi
 
 type dbStore struct {
 	db db.DB
-}
-
-// GetRules implements ConfigClient.
-func (d dbStore) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	if since == 0 {
-		return d.db.GetAllRulesConfigs(ctx)
-	}
-	return d.db.GetRulesConfigs(ctx, since)
 }
 
 // GetAlerts implements ConfigClient.

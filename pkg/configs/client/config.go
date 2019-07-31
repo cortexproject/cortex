@@ -28,8 +28,6 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.DBConfig.RegisterFlags(f)
-	f.Var(&cfg.ConfigsAPIURL, "ruler.configs.url", "DEPRECATED. URL of configs API server.")
-	f.DurationVar(&cfg.ClientTimeout, "ruler.client-timeout", 5*time.Second, "DEPRECATED. Timeout for requests to Weave Cloud configs service.")
 	flag.Var(&cfg.ConfigsAPIURL, "alertmanager.configs.url", "URL of configs API server.")
 	flag.DurationVar(&cfg.ClientTimeout, "alertmanager.configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 }
@@ -47,16 +45,6 @@ func init() {
 
 type instrumented struct {
 	next Client
-}
-
-func (i instrumented) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	var cfgs map[string]configs.VersionedRulesConfig
-	err := instrument.CollectedRequest(context.Background(), "Configs.GetConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-		var err error
-		cfgs, err = i.next.GetRules(ctx, since) // Warning: this will produce an incorrect result if the configID ever overflows
-		return err
-	})
-	return cfgs, err
 }
 
 func (i instrumented) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {

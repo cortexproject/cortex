@@ -4,10 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"sort"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -257,6 +257,10 @@ func jaegerTraceID(ctx context.Context) string {
 		return ""
 	}
 
-	spanContext := span.Context().(jaeger.SpanContext)
+	spanContext, ok := span.Context().(jaeger.SpanContext)
+	if !ok {
+		return ""
+	}
+
 	return spanContext.TraceID().String()
 }

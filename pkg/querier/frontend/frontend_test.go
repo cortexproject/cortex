@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 

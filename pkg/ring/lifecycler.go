@@ -389,8 +389,12 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
-		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
-		i.setState(ingesterDesc.State)
+		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there. (except when it's in LEAVING state meaning)
+		if ingesterDesc.State == LEAVING {
+			i.setState(PENDING)
+		} else {
+			i.setState(ingesterDesc.State)
+		}
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 

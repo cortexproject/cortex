@@ -35,6 +35,7 @@ type ReadRing interface {
 	BatchGet(keys []uint32, op Operation) ([]ReplicationSet, error)
 	GetAll() (ReplicationSet, error)
 	ReplicationFactor() int
+	ForgetIngester(addr string) error
 }
 
 // Operation can be Read or Write
@@ -255,6 +256,22 @@ func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 	}, nil
 }
 
+func (r *Ring) ForgetIngester(addr string) error {
+	level.Info(util.Logger).Log("msg", "removing ingester from ring")
+	unregister := func(in interface{}) (out interface{}, retry bool, err error) {
+		if in == nil {
+			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
+		}
+
+		ringDesc := in.(*Desc)
+		ingesterIdByAddr := ringDesc.FindIngesterIdByAddr(addr)
+		level.Debug(util.Logger).Log("msg", "ForgetIngester: removing ingester with id", "ingesterIdByAddr", ingesterIdByAddr)
+		ringDesc.RemoveIngester(ingesterIdByAddr)
+		return ringDesc, true, nil
+	}
+	return r.KVClient.CAS(context.Background(), ConsulKey, unregister)
+}
+
 // GetAll returns all available ingesters in the ring.
 func (r *Ring) GetAll() (ReplicationSet, error) {
 	r.mtx.RLock()
@@ -266,17 +283,18 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 
 	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	maxErrors := r.cfg.ReplicationFactor / 2
+	minSuccess := r.cfg.ReplicationFactor/2 + 1
 
 	for _, ingester := range r.ringDesc.Ingesters {
 		if !r.IsHealthy(&ingester, Read) {
-			maxErrors--
+			//maxErrors--
 			continue
 		}
 		ingesters = append(ingesters, ingester)
 	}
 
-	if maxErrors < 0 {
-		return ReplicationSet{}, fmt.Errorf("too many failed ingesters")
+	if len(ingesters) < minSuccess {
+		return ReplicationSet{}, fmt.Errorf("not enough healthy ingesters (ingesters: %d, replicationFactor: %d)", len(ingesters), r.cfg.ReplicationFactor)
 	}
 
 	return ReplicationSet{

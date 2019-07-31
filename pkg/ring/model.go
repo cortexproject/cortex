@@ -129,6 +129,18 @@ func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
 	return result
 }
 
+// FindIngesterIdByAddr returns the ingesterId for the given address
+func (d *Desc) FindIngesterIdByAddr(addr string) string {
+	var result string
+	for id, ing := range d.Ingesters {
+		if ing.Addr == addr {
+			result = id
+			return result
+		}
+	}
+	return result
+}
+
 // Ready returns no error when all ingesters are active and healthy.
 func (d *Desc) Ready(heartbeatTimeout time.Duration) error {
 	numTokens := len(d.Tokens)

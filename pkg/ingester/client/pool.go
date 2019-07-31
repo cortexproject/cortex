@@ -193,6 +193,7 @@ func (p *Pool) cleanUnhealthy() {
 			err := healthCheck(client, p.cfg.RemoteTimeout)
 			if err != nil {
 				level.Warn(util.Logger).Log("msg", "removing ingester failing healtcheck", "addr", addr, "reason", err)
+				p.ring.ForgetIngester(addr)
 				p.RemoveClientFor(addr)
 			}
 		}

@@ -36,6 +36,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.1
 	github.com/jonboulle/clockwork v0.1.0
 	github.com/json-iterator/go v1.1.6
+	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/kylelemons/godebug v0.0.0-20170820004349-d65d576e9348 // indirect
 	github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
@@ -48,7 +49,7 @@ require (
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20170113013457-1de4cc2120e7
-	github.com/opentracing/opentracing-go v1.0.2
+	github.com/opentracing/opentracing-go v1.1.0
 	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/alertmanager v0.13.0
@@ -58,12 +59,14 @@ require (
 	github.com/prometheus/tsdb v0.9.1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
+	github.com/sirupsen/logrus v1.4.2 // indirect
+	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/stretchr/testify v1.3.0
 	github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber-go/atomic v1.3.2 // indirect
-	github.com/uber/jaeger-client-go v2.14.0+incompatible
-	github.com/uber/jaeger-lib v1.5.0 // indirect
+	github.com/uber/jaeger-client-go v2.16.0+incompatible
+	github.com/uber/jaeger-lib v2.0.0+incompatible // indirect
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 	github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd
 	github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62
@@ -71,9 +74,12 @@ require (
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
 	go.uber.org/zap v1.10.0 // indirect
-	golang.org/x/net v0.0.0-20190403144856-b630fd6fe46b
+	golang.org/x/crypto v0.0.0-20190530122614-20be4c3c3ed5 // indirect
+	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
+	golang.org/x/sys v0.0.0-20190602015325-4c4f7f33c9ed // indirect
+	golang.org/x/text v0.3.2 // indirect
 	golang.org/x/time v0.0.0-20181108054448-85acf8d2951c
-	golang.org/x/tools v0.0.0-20190312170243-e65039ee4138
+	golang.org/x/tools v0.0.0-20190602112858-2de7f9bf822c
 	google.golang.org/api v0.4.0
 	google.golang.org/grpc v1.19.1
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect

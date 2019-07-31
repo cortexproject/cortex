@@ -284,6 +284,7 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 
 // Helper to return pre-canned results to Prometheus queries
 type mockPrometheus struct {
+	promV1.API
 	rangeValues []model.Value
 }
 
@@ -429,10 +430,6 @@ func (m *mockPrometheus) SetResponseForReads(usageRates [][]int, errorRates [][]
 	}
 }
 
-func (m *mockPrometheus) Query(ctx context.Context, query string, ts time.Time) (model.Value, api.Warnings, error) {
-	return nil, nil, errors.New("not implemented")
-}
-
 func (m *mockPrometheus) QueryRange(ctx context.Context, query string, r promV1.Range) (model.Value, api.Warnings, error) {
 	if len(m.rangeValues) == 0 {
 		return nil, nil, errors.New("mockPrometheus.QueryRange: out of values")
@@ -441,56 +438,4 @@ func (m *mockPrometheus) QueryRange(ctx context.Context, query string, r promV1.
 	ret := m.rangeValues[0]
 	m.rangeValues = m.rangeValues[1:]
 	return ret, nil, nil
-}
-
-func (m *mockPrometheus) LabelValues(ctx context.Context, label string) (model.LabelValues, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) LabelNames(ctx context.Context) ([]string, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) Series(ctx context.Context, matches []string, startTime time.Time, endTime time.Time) ([]model.LabelSet, api.Warnings, error) {
-	return nil, nil, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) AlertManagers(ctx context.Context) (promV1.AlertManagersResult, error) {
-	return promV1.AlertManagersResult{}, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) CleanTombstones(ctx context.Context) error {
-	return errors.New("not implemented")
-}
-
-func (m *mockPrometheus) Config(ctx context.Context) (promV1.ConfigResult, error) {
-	return promV1.ConfigResult{}, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) DeleteSeries(ctx context.Context, matches []string, startTime time.Time, endTime time.Time) error {
-	return errors.New("not implemented")
-}
-
-func (m *mockPrometheus) Flags(ctx context.Context) (promV1.FlagsResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) Snapshot(ctx context.Context, skipHead bool) (promV1.SnapshotResult, error) {
-	return promV1.SnapshotResult{}, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) Rules(ctx context.Context) (promV1.RulesResult, error) {
-	return promV1.RulesResult{}, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) Targets(ctx context.Context) (promV1.TargetsResult, error) {
-	return promV1.TargetsResult{}, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) Alerts(ctx context.Context) (promV1.AlertsResult, error) {
-	return promV1.AlertsResult{}, errors.New("not implemented")
-}
-
-func (m *mockPrometheus) TargetsMetadata(ctx context.Context, matchTarget string, metric string, limit string) ([]promV1.MetricMetadata, error) {
-	return nil, errors.New("not implemented")
 }

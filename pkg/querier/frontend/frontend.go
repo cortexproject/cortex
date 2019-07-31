@@ -12,16 +12,16 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -31,17 +31,17 @@ var (
 		Help:      "Time spend by requests queued.",
 		Buckets:   prometheus.DefBuckets,
 	})
-	retries = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "query_frontend_retries",
-		Help:      "Number of times a request is retried.",
-		Buckets:   []float64{0, 1, 2, 3, 4, 5},
-	})
 	queueLength = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "query_frontend_queue_length",
 		Help:      "Number of queries in the queue.",
 	})
+	queryRangeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "frontend_query_range_duration_seconds",
+		Help:      "Total time spent in seconds doing query range requests.",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"method", "status_code"})
 
 	errServerClosing  = httpgrpc.Errorf(http.StatusTeapot, "server closing down")
 	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
@@ -50,13 +50,13 @@ var (
 
 // Config for a Frontend.
 type Config struct {
-	MaxOutstandingPerTenant int  `yaml:"max_outstanding_per_tenant"`
-	MaxRetries              int  `yaml:"max_retries"`
-	SplitQueriesByDay       bool `yaml:"split_queries_by_day"`
-	AlignQueriesWithStep    bool `yaml:"align_queries_with_step"`
-	CacheResults            bool `yaml:"cache_results"`
-	CompressResponses       bool `yaml:"compress_responses"`
-	ResultsCacheConfig      `yaml:"results_cache"`
+	MaxOutstandingPerTenant       int  `yaml:"max_outstanding_per_tenant"`
+	MaxRetries                    int  `yaml:"max_retries"`
+	SplitQueriesByDay             bool `yaml:"split_queries_by_day"`
+	AlignQueriesWithStep          bool `yaml:"align_queries_with_step"`
+	CacheResults                  bool `yaml:"cache_results"`
+	CompressResponses             bool `yaml:"compress_responses"`
+	queryrange.ResultsCacheConfig `yaml:"results_cache"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -101,31 +101,32 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 	}
 
 	// Stack up the pipeline of various query range middlewares.
-	queryRangeMiddleware := []queryRangeMiddleware{}
+	var queryRangeMiddleware []queryrange.Middleware
 	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(queryRangeMiddleware, stepAlignMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("step_align", queryRangeDuration), queryrange.StepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, splitByDayMiddleware(limits))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_day", queryRangeDuration), queryrange.SplitByDayMiddleware(limits))
 	}
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := newResultsCacheMiddleware(cfg.ResultsCacheConfig, limits)
+		queryCacheMiddleware, err := queryrange.NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits)
 		if err != nil {
 			return nil, err
 		}
-		queryRangeMiddleware = append(queryRangeMiddleware, instrument("results_cache"), queryCacheMiddleware)
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("results_cache", queryRangeDuration), queryCacheMiddleware)
+	}
+	if cfg.MaxRetries > 0 {
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", queryRangeDuration), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))
 	}
 
 	// Finally, if the user selected any query range middleware, stitch it in.
 	var roundTripper http.RoundTripper = f
 	if len(queryRangeMiddleware) > 0 {
-		roundTripper = &queryRangeRoundTripper{
-			next: roundTripper,
-			queryRangeMiddleware: merge(queryRangeMiddleware...).Wrap(&queryRangeTerminator{
-				next: roundTripper,
-			}),
-			limits: limits,
-		}
+		roundTripper = queryrange.NewRoundTripper(
+			f,
+			queryrange.MergeMiddlewares(queryRangeMiddleware...).Wrap(&queryrange.ToRoundTripperMiddleware{Next: f}),
+			limits,
+		)
 	}
 	f.roundTripper = roundTripper
 	f.cond = sync.NewCond(&f.mtx)
@@ -207,7 +208,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 		tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
 	}
 
-	request := &request{
+	request := request{
 		request:     req,
 		originalCtx: ctx,
 
@@ -218,49 +219,20 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 		response: make(chan *ProcessResponse, 1),
 	}
 
-	var lastErr error
-	for tries := 0; tries < f.cfg.MaxRetries; tries++ {
-		if err := f.queueRequest(ctx, request); err != nil {
-			return nil, err
-		}
+	if err := f.queueRequest(ctx, &request); err != nil {
+		return nil, err
+	}
 
-		var resp *ProcessResponse
-		select {
-		case <-ctx.Done():
-			return nil, errCanceled
+	select {
+	case <-ctx.Done():
+		return nil, errCanceled
 
-		case resp = <-request.response:
-		case lastErr = <-request.err:
-			httpResp, ok := httpgrpc.HTTPResponseFromError(lastErr)
-			if ok {
-				resp = &ProcessResponse{
-					HttpResponse: httpResp,
-				}
-			}
-		}
-
-		// Retry is we get a HTTP 500.
-		if resp != nil && resp.HttpResponse.Code/100 == 5 {
-			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp.HttpResponse)
-			continue
-		}
-
-		// Also retry for non-HTTP errors.
-		if resp == nil && lastErr != nil {
-			level.Error(f.log).Log("msg", "error processing request", "try", tries, "err", lastErr)
-			continue
-		}
-
-		retries.Observe(float64(tries))
-
+	case resp := <-request.response:
 		return resp, nil
-	}
 
-	if lastErr != nil {
-		return nil, lastErr
+	case err := <-request.err:
+		return nil, err
 	}
-
-	return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Query failed after %d retries.", f.cfg.MaxRetries)
 }
 
 // Process allows backends to pull requests from the frontend.

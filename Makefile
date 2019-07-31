@@ -50,6 +50,7 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
+pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 all: $(UPTODATE_FILES)

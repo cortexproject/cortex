@@ -45,6 +45,11 @@ var (
 		Name:      "distributor_received_samples_total",
 		Help:      "The total number of received samples.",
 	}, []string{"user"})
+	incommingSamples = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_samples_in_total",
+		Help:      "The total number of samples that have come in to the distributor, including rejected or deduped samples.",
+	}, []string{"user"})
 	nonHASamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_non_ha_samples_received_total",
@@ -303,21 +308,17 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	for _, ts := range req.Timeseries {
 		numSamples += len(ts.Samples)
 	}
-	receivedSamples.WithLabelValues(userID).Add(float64(numSamples))
+	// Count the total samples in, prior to validation or deuplication, for comparison with other metrics.
+	incommingSamples.WithLabelValues(userID).Add(float64(numSamples))
 
-	if d.cfg.EnableHAReplicas && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
+	if d.cfg.EnableHATracker && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {
 			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
 				// These samples have been deduped.
-				numSamples := 0
-				for _, ts := range req.Timeseries {
-					numSamples += len(ts.Samples)
-				}
 				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
 			}
-
 			return nil, err
 		}
 	}
@@ -365,6 +366,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 		numSamples += len(ts.Samples)
 	}
+	receivedSamples.WithLabelValues(userID).Add(float64(numSamples))
 
 	if len(keys) == 0 {
 		return &client.WriteResponse{}, lastPartialErr

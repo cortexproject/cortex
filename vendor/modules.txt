@@ -284,7 +284,7 @@ github.com/philhofer/fwd
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/alertmanager v0.13.0
+# github.com/prometheus/alertmanager v0.12.1-0.20190731170042-6e135a0112f5
 github.com/prometheus/alertmanager/api
 github.com/prometheus/alertmanager/config
 github.com/prometheus/alertmanager/dispatch

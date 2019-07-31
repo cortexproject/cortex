@@ -92,11 +92,11 @@ The ingester query API was improved over time, but defaults to the old behaviour
 - `-distributor.extra-query-delay`
    This is used by a component with an embedded distributor (Querier and Ruler) to control how long to wait until sending more than the minimum amount of queries needed for a successful response.
 
-- `distributor.accept-ha-samples`
-   Per-user flag to enable handling of samples with external labels for identifying replicas in an HA Prometheus setup. This defaults to false, and is technically defined in the Distributor limits.
+- `distributor.ha-tracker.enable-for-all-users`
+   Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup. This defaults to false, and is technically defined in the Distributor limits.
 
-- `distributor.enable-ha-tracker` 
-   Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `accept-ha-samples` is still needed to enable ingestion of HA samples per user ID.
+- `distributor.ha-tracker.enable` 
+   Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `enable-for-all-users` is still needed to enable ingestion of HA samples for all users.
 
 ### Ring/HA Tracker Store
 

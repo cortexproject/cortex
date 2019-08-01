@@ -45,7 +45,7 @@ var (
 		Name:      "distributor_received_samples_total",
 		Help:      "The total number of received samples.",
 	}, []string{"user"})
-	incommingSamples = promauto.NewCounterVec(prometheus.CounterOpts{
+	incomingSamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_samples_in_total",
 		Help:      "The total number of samples that have come in to the distributor, including rejected or deduped samples.",
@@ -275,7 +275,6 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 	// If the sample doesn't have either HA label, accept it.
 	// At the moment we want to accept these samples by default.
 	if cluster == "" || replica == "" {
-		nonHASamples.WithLabelValues(userID).Inc()
 		return false, nil
 	}
 
@@ -309,7 +308,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		numSamples += len(ts.Samples)
 	}
 	// Count the total samples in, prior to validation or deuplication, for comparison with other metrics.
-	incommingSamples.WithLabelValues(userID).Add(float64(numSamples))
+	incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
 
 	if d.cfg.EnableHATracker && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
@@ -321,13 +320,14 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			}
 			return nil, err
 		}
+		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels
+		nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
 	}
 
 	// For each timeseries, compute a hash to distribute across ingesters;
 	// check each sample and discard if outside limits.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
-	numSamples = 0
 	for _, ts := range req.Timeseries {
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
@@ -363,8 +363,6 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				Samples: samples,
 			},
 		})
-
-		numSamples += len(ts.Samples)
 	}
 	receivedSamples.WithLabelValues(userID).Add(float64(numSamples))
 

@@ -4,7 +4,8 @@
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
-IMAGE_TAG ?= $(shell ./tools/image-tag)
+# Use CIRCLE_TAG if present for releases.
+IMAGE_TAG ?= $(if $(CIRCLE_TAG),$(CIRCLE_TAG),$(shell ./tools/image-tag))
 GIT_REVISION := $(shell git rev-parse HEAD)
 UPTODATE := .uptodate
 

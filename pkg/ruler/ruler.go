@@ -16,8 +16,8 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
+	promRules "github.com/prometheus/prometheus/rules"
+	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
@@ -48,12 +48,10 @@ var (
 		Name:      "ruler_ring_check_errors_total",
 		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
-	ruleMetrics *rules.Metrics
 )
 
 func init() {
 	evalDuration.Register()
-	ruleMetrics = rules.NewGroupMetrics(prometheus.DefaultRegisterer)
 }
 
 // Config is the configuration for the recording rules server.
@@ -113,7 +111,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Ruler struct {
 	cfg         Config
 	engine      *promql.Engine
-	queryable   storage.Queryable
+	queryable   promStorage.Queryable
 	pusher      Pusher
 	alertURL    *url.URL
 	notifierCfg *config.Config
@@ -127,10 +125,14 @@ type Ruler struct {
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
 	notifiers    map[string]*rulerNotifier
+
+	// Per-user rules metrics
+	userMetricsMtx sync.Mutex
+	userMetrics    map[string]*promRules.Metrics
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, rulesAPI client.Client) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor, rulesAPI client.Client) (*Ruler, error) {
 	if cfg.NumWorkers <= 0 {
 		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
@@ -149,6 +151,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		notifierCfg: ncfg,
 		notifiers:   map[string]*rulerNotifier{},
 		workerWG:    &sync.WaitGroup{},
+		userMetrics: map[string]*promRules.Metrics{},
 	}
 
 	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
@@ -208,35 +211,47 @@ func (r *Ruler) Stop() {
 	}
 }
 
-func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
+func (r *Ruler) newGroup(user string, groupName string, rls []promRules.Rule) (*group, error) {
 	appendable := &appendableAppender{pusher: r.pusher}
-	notifier, err := r.getOrCreateNotifier(userID)
+	notifier, err := r.getOrCreateNotifier(user)
 	if err != nil {
 		return nil, err
 	}
-	opts := &rules.ManagerOptions{
+
+	// Get the rule group metrics for set user or create it if it does not exist
+	r.userMetricsMtx.Lock()
+	metrics, exists := r.userMetrics[user]
+	if !exists {
+		// Wrap the default register with the users ID and pass
+		reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": user}, prometheus.DefaultRegisterer)
+		metrics = promRules.NewGroupMetrics(reg)
+		r.userMetrics[user] = metrics
+	}
+	r.userMetricsMtx.Unlock()
+
+	opts := &promRules.ManagerOptions{
 		Appendable:  appendable,
-		QueryFunc:   rules.EngineQueryFunc(r.engine, r.queryable),
+		QueryFunc:   promRules.EngineQueryFunc(r.engine, r.queryable),
 		Context:     context.Background(),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
 		Logger:      util.Logger,
-		Metrics:     ruleMetrics,
+		Metrics:     metrics,
 	}
 	return newGroup(groupName, rls, appendable, opts), nil
 }
 
-// sendAlerts implements a rules.NotifyFunc for a Notifier.
+// sendAlerts implements a promRules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
-	return func(ctx native_ctx.Context, expr string, alerts ...*rules.Alert) {
+func sendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
+	return func(ctx native_ctx.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
 			// Only send actually firing alerts.
-			if alert.State == rules.StatePending {
+			if alert.State == promRules.StatePending {
 				continue
 			}
 			a := &notifier.Alert{

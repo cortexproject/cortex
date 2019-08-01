@@ -4,7 +4,7 @@
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
-IMAGE_TAG := $(shell ./tools/image-tag)
+IMAGE_TAG ?= $(shell ./tools/image-tag)
 GIT_REVISION := $(shell git rev-parse HEAD)
 UPTODATE := .uptodate
 

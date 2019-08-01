@@ -95,6 +95,9 @@ jobs:
         name: Build
         command: |
           touch build-image/.uptodate
+          if [ -n "$CIRCLE_TAG" ]; then
+            export IMAGE_TAG=$CIRCLE_TAG
+          fi
           make BUILD_IN_CONTAINER=false
 
     - store_artifacts:

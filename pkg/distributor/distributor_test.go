@@ -97,7 +97,7 @@ func TestDistributorPush(t *testing.T) {
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
-				d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels)
+				d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, nil)
 				defer d.Stop()
 
 				request := makeWriteRequest(tc.samples)
@@ -150,8 +150,11 @@ func TestDistributorPushHAInstances(t *testing.T) {
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
-				d := prepare(t, 1, 1, 0, shardByAllLabels)
-				d.limits.Defaults.AcceptHASamples = true
+				var limits validation.Limits
+				flagext.DefaultValues(&limits)
+				limits.AcceptHASamples = true
+
+				d := prepare(t, 1, 1, 0, shardByAllLabels, &limits)
 				codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 
@@ -273,7 +276,7 @@ func TestDistributorPushQuery(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels)
+			d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil)
 			defer d.Stop()
 
 			request := makeWriteRequest(tc.samples)
@@ -305,7 +308,7 @@ func TestSlowQueries(t *testing.T) {
 			if nIngesters-happy > 1 {
 				expectedErr = promql.ErrStorage{Err: errFail}
 			}
-			d := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels)
+			d := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels, nil)
 			defer d.Stop()
 
 			_, err := d.Query(ctx, 0, 10, nameMatcher)
@@ -317,7 +320,7 @@ func TestSlowQueries(t *testing.T) {
 	}
 }
 
-func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool) *Distributor {
+func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits) *Distributor {
 	ingesters := []mockIngester{}
 	for i := 0; i < happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
@@ -355,16 +358,20 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	}
 
 	var cfg Config
-	var limits validation.Limits
 	var clientConfig client.Config
-	flagext.DefaultValues(&cfg, &limits, &clientConfig)
+	flagext.DefaultValues(&cfg, &clientConfig)
+
+	if limits == nil {
+		limits = &validation.Limits{}
+		flagext.DefaultValues(limits)
+	}
 	limits.IngestionRate = 20
 	limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory
 	cfg.ShardByAllLabels = shardByAllLabels
 	cfg.ExtraQueryDelay = 50 * time.Millisecond
 
-	overrides, err := validation.NewOverrides(limits)
+	overrides, err := validation.NewOverrides(*limits)
 	require.NoError(t, err)
 
 	d, err := New(cfg, clientConfig, overrides, ring)
@@ -694,13 +701,16 @@ func TestDistributorValidation(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			d := prepare(t, 3, 3, 0, true)
-			defer d.Stop()
+			var limits validation.Limits
+			flagext.DefaultValues(&limits)
 
-			d.limits.Defaults.CreationGracePeriod = 2 * time.Hour
-			d.limits.Defaults.RejectOldSamples = true
-			d.limits.Defaults.RejectOldSamplesMaxAge = 24 * time.Hour
-			d.limits.Defaults.MaxLabelNamesPerSeries = 2
+			limits.CreationGracePeriod = 2 * time.Hour
+			limits.RejectOldSamples = true
+			limits.RejectOldSamplesMaxAge = 24 * time.Hour
+			limits.MaxLabelNamesPerSeries = 2
+
+			d := prepare(t, 3, 3, 0, true, &limits)
+			defer d.Stop()
 
 			_, err := d.Push(ctx, client.ToWriteRequest(tc.samples, client.API))
 			require.Equal(t, tc.err, err)

@@ -54,7 +54,7 @@ require (
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/prometheus/alertmanager v0.12.1-0.20190731170042-6e135a0112f5
+	github.com/prometheus/alertmanager v0.15.1
 	github.com/prometheus/client_golang v1.0.0
 	github.com/prometheus/common v0.4.1
 	github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac
@@ -71,7 +71,6 @@ require (
 	github.com/uber/jaeger-lib v2.0.0+incompatible // indirect
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 	github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd
-	github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62
 	github.com/weaveworks/promrus v1.2.0 // indirect
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5

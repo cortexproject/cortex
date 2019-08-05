@@ -219,7 +219,8 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	)
 	for backoff.Ongoing() {
 		queryOptions := &consul.QueryOptions{
-			RequireConsistent: true,
+			AllowStale:        !c.cfg.ConsistentReads,
+			RequireConsistent: c.cfg.ConsistentReads,
 			WaitIndex:         index,
 			WaitTime:          longPollDuration,
 		}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -14,6 +15,27 @@ var (
 	expectedTimeseries       = 100
 	expectedLabels           = 20
 	expectedSamplesPerSeries = 10
+
+	// TSPool is the pool to return the timeseries to.
+	TSPool = sync.Pool{
+		New: func() interface{} {
+			return make([]PreallocTimeseries, 0, expectedTimeseries)
+		},
+	}
+
+	// LabelAdapterPool is the pool to return the labels to.
+	LabelAdapterPool = sync.Pool{
+		New: func() interface{} {
+			return make([]LabelAdapter, 0, expectedLabels)
+		},
+	}
+
+	// SamplePool is the pool to return the samples to.
+	SamplePool = sync.Pool{
+		New: func() interface{} {
+			return make([]Sample, 0, expectedSamplesPerSeries)
+		},
+	}
 )
 
 // PreallocConfig configures how structures will be preallocated to optimise
@@ -27,26 +49,33 @@ func (PreallocConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&expectedSamplesPerSeries, "ingester-client.expected-samples-per-series", expectedSamplesPerSeries, "Expected number of samples per timeseries, used for preallocations.")
 }
 
-// PreallocWriteRequest is a WriteRequest which preallocs slices on Unmarshall.
+// PreallocWriteRequest is a WriteRequest which preallocs slices on Unmarshal.
 type PreallocWriteRequest struct {
 	WriteRequest
 }
 
 // Unmarshal implements proto.Message.
 func (p *PreallocWriteRequest) Unmarshal(dAtA []byte) error {
-	p.Timeseries = make([]PreallocTimeseries, 0, expectedTimeseries)
+	p.Timeseries = TSPool.Get().([]PreallocTimeseries)
 	return p.WriteRequest.Unmarshal(dAtA)
 }
 
-// PreallocTimeseries is a TimeSeries which preallocs slices on Unmarshall.
+// XXX_Unmarshal implements proto.Message.
+// This exists as the decoder first checks for this method before
+// checking for `Unmarshal`.
+func (p *PreallocWriteRequest) XXX_Unmarshal(dAtA []byte) error {
+	return p.Unmarshal(dAtA)
+}
+
+// PreallocTimeseries is a TimeSeries which preallocs slices on Unmarshal.
 type PreallocTimeseries struct {
 	TimeSeries
 }
 
 // Unmarshal implements proto.Message.
 func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
-	p.Labels = make([]LabelAdapter, 0, expectedLabels)
-	p.Samples = make([]Sample, 0, expectedSamplesPerSeries)
+	p.Labels = LabelAdapterPool.Get().([]LabelAdapter)
+	p.Samples = SamplePool.Get().([]Sample)
 	return p.TimeSeries.Unmarshal(dAtA)
 }
 
@@ -223,4 +252,18 @@ func (bs *LabelAdapter) Compare(other LabelAdapter) int {
 		return c
 	}
 	return strings.Compare(bs.Value, other.Value)
+}
+
+// ReuseTS puts the timeseries back into a sync.Pool for reuse.
+func ReuseTS(timeseries []PreallocTimeseries) {
+	for i := range timeseries {
+		ts := timeseries[i]
+		ts.Labels = ts.Labels[:0]
+		ts.Samples = ts.Samples[:0]
+		LabelAdapterPool.Put(ts.Labels)
+		SamplePool.Put(ts.Samples)
+	}
+
+	timeseries = timeseries[:0]
+	TSPool.Put(timeseries)
 }

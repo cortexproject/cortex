@@ -77,25 +77,22 @@ jobs:
         command: make BUILD_IN_CONTAINER=false test
 
   integration:
-    docker:
-    - image: cortexproject/build-image:master-561033f49
-    - image: circleci/postgres:9.6.2-alpine
-      environment:
-        POSTGRES_DB: configs_test
+    machine:
+      image: ubuntu-1604:201903-01
 
-    working_directory: /go/src/github.com/cortexproject/cortex
+    working_directory: ~/src/github.com/cortexproject/cortex
     steps:
     - checkout
-    - setup_remote_docker
-    - install-docker
     - restore_cache:
         key: v1-cortex-{{ .Branch }}-{{ .Revision }}
     - run:
         name: Integration Test
-        command: MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IN_CONTAINER=false configs-integration-test
+        command: |
+          touch build-image/.uptodate
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:1370-pin-protoc-7ae297930 configs-integration-test
     - run:
         name: Load Images
-        command: make BUILD_IN_CONTAINER=false load-images
+        command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
     - run:
         name: Ingester hand-over test
         command: ./integration-tests/test-handover.sh
@@ -124,12 +121,15 @@ jobs:
 
     - run:
         name: Save Images
-        command: make BUILD_IN_CONTAINER=false save-images
+        command: |
+          mkdir /tmp/images
+          ln -s /tmp/images ./images
+          make BUILD_IN_CONTAINER=false save-images
 
     - save_cache:
         key: v1-cortex-{{ .Branch }}-{{ .Revision }}
         paths:
-        - images/
+        - /tmp/images/
 
   deploy:
     <<: *defaults
@@ -143,7 +143,7 @@ jobs:
 
     - run:
         name: Load Images
-        command: make BUILD_IN_CONTAINER=false load-images
+        command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
 
     - run:
         name: Deploy

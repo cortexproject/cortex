@@ -127,6 +127,11 @@ type View struct {
 	DeletedAt time.Time `json:"deleted_at"`
 }
 
+// IsDeleted tells you if the config is deleted.
+func (v View) IsDeleted() bool {
+	return !v.DeletedAt.IsZero()
+}
+
 // GetVersionedRulesConfig specializes the view to just the rules config.
 func (v View) GetVersionedRulesConfig() *VersionedRulesConfig {
 	if v.Config.RulesConfig.Files == nil {

@@ -230,7 +230,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 
 	if record != nil {
 		record.Labels = append(record.Labels, Labels{
-			Fingerprint: int64(fp),
+			Fingerprint: uint64(fp),
 			Labels:      newLabelPairsFromLabelAdapters(metric),
 		})
 	}

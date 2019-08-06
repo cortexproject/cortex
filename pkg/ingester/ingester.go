@@ -316,8 +316,8 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 
 	if record != nil {
 		record.Samples = append(record.Samples, Sample{
-			Fingerprint: int64(fp),
-			Timestamp:   int64(timestamp),
+			Fingerprint: uint64(fp),
+			Timestamp:   uint64(timestamp),
 			Value:       float64(value),
 		})
 	}

@@ -185,7 +185,7 @@ func (w *wrapper) checkpointSeries(userID string, fp model.Fingerprint, series *
 
 	buf, err := proto.Marshal(&Series{
 		UserId:      userID,
-		Fingerprint: int64(fp),
+		Fingerprint: uint64(fp),
 		Labels:      series.labels(),
 		Chunks:      wireChunks,
 	})

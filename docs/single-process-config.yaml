@@ -54,7 +54,7 @@ schema:
   - from: 2019-07-29
     store: boltdb
     object_store: filesystem
-    schema: v11
+    schema: v10
     index:
       prefix: index_
       period: 168h

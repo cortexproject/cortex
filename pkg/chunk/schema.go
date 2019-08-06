@@ -24,7 +24,7 @@ var (
 	seriesRangeKeyV1      = []byte{'7'}
 	labelSeriesRangeKeyV1 = []byte{'8'}
 	// For v11 schema
-	metricConstRangeKeyV1 = []byte{'9'}
+	labelNamesRangeKeyV1 = []byte{'9'}
 
 	// ErrNotSupported when a schema doesn't support that particular lookup.
 	ErrNotSupported = errors.New("not supported")
@@ -48,7 +48,7 @@ type Schema interface {
 
 	// If the query resulted in series IDs, use this method to find chunks.
 	GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
-	// Returns queries to retrieve all labels of multiple series by id.
+	// Returns queries to retrieve all label names of multiple series by id.
 	GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
 }
 
@@ -687,30 +687,12 @@ func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 	// read first 32 bits of the hash and use this to calculate the shard
 	shard := binary.BigEndian.Uint32(seriesID) % s.rowShards
 
-	labelNames := make([]string, 0, len(labels))
-	for _, l := range labels {
-		if l.Name == model.MetricNameLabel {
-			continue
-		}
-		labelNames = append(labelNames, l.Name)
-	}
-	data, err := jsoniter.ConfigFastest.Marshal(labelNames)
-	if err != nil {
-		return nil, err
-	}
 	entries := []IndexEntry{
 		// Entry for metricName -> seriesID
 		{
 			TableName:  bucket.tableName,
 			HashValue:  fmt.Sprintf("%02d:%s:%s", shard, bucket.hashKey, metricName),
 			RangeValue: encodeRangeKey(seriesID, nil, nil, seriesRangeKeyV1),
-		},
-		// Entry for seriesID -> labels
-		{
-			TableName:  bucket.tableName,
-			HashValue:  string(seriesID),
-			RangeValue: encodeRangeKey(nil, nil, nil, metricConstRangeKeyV1),
-			Value:      data,
 		},
 	}
 
@@ -802,6 +784,57 @@ func (v10Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, erro
 // v11Entries builds on v10 but adds index entries for each series to store respective labels.
 type v11Entries struct {
 	v10Entries
+}
+
+func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
+	seriesID := labelsSeriesID(labels)
+
+	// read first 32 bits of the hash and use this to calculate the shard
+	shard := binary.BigEndian.Uint32(seriesID) % s.rowShards
+
+	labelNames := make([]string, 0, len(labels))
+	for _, l := range labels {
+		if l.Name == model.MetricNameLabel {
+			continue
+		}
+		labelNames = append(labelNames, l.Name)
+	}
+	data, err := jsoniter.ConfigFastest.Marshal(labelNames)
+	if err != nil {
+		return nil, err
+	}
+	entries := []IndexEntry{
+		// Entry for metricName -> seriesID
+		{
+			TableName:  bucket.tableName,
+			HashValue:  fmt.Sprintf("%02d:%s:%s", shard, bucket.hashKey, metricName),
+			RangeValue: encodeRangeKey(seriesID, nil, nil, seriesRangeKeyV1),
+		},
+		// Entry for seriesID -> label names
+		{
+			TableName:  bucket.tableName,
+			HashValue:  string(seriesID),
+			RangeValue: encodeRangeKey(nil, nil, nil, labelNamesRangeKeyV1),
+			Value:      data,
+		},
+	}
+
+	// Entries for metricName:labelName -> hash(value):seriesID
+	// We use a hash of the value to limit its length.
+	for _, v := range labels {
+		if v.Name == model.MetricNameLabel {
+			continue
+		}
+		valueHash := sha256bytes(v.Value)
+		entries = append(entries, IndexEntry{
+			TableName:  bucket.tableName,
+			HashValue:  fmt.Sprintf("%02d:%s:%s:%s", shard, bucket.hashKey, metricName, v.Name),
+			RangeValue: encodeRangeKey(valueHash, seriesID, nil, labelSeriesRangeKeyV1),
+			Value:      []byte(v.Value),
+		})
+	}
+
+	return entries, nil
 }
 
 func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error) {

@@ -406,7 +406,8 @@ func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, throug
 		return nil, err
 	}
 	level.Debug(log).Log("entries", len(entries))
-	uniqueLabelNames := map[string]struct{}{model.MetricNameLabel: struct{}{}}
+	result := []string{model.MetricNameLabel}
+	uniqueLabelNames := map[string]struct{}{model.MetricNameLabel: {}}
 	for _, entry := range entries {
 		lbs := []string{}
 		err := jsoniter.ConfigFastest.Unmarshal(entry.Value, &lbs)
@@ -416,12 +417,9 @@ func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, throug
 		for _, l := range lbs {
 			if _, ok := uniqueLabelNames[l]; !ok {
 				uniqueLabelNames[l] = struct{}{}
+				result = append(result, l)
 			}
 		}
-	}
-	result := make([]string, 0, len(uniqueLabelNames))
-	for name := range uniqueLabelNames {
-		result = append(result, name)
 	}
 	sort.Strings(result)
 	return result, nil

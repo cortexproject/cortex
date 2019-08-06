@@ -243,15 +243,18 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		return nil, err
 	}
 
-	record := Record{
-		UserId:  userID,
-		Samples: make([]Sample, 0, len(req.Timeseries)),
+	var record *Record
+	if i.cfg.WALConfig.enabled {
+		record = &Record{
+			UserId:  userID,
+			Samples: make([]Sample, 0, len(req.Timeseries)),
+		}
 	}
 
 	var lastPartialErr error
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
-			err := i.append(ctx, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, &record)
+			err := i.append(ctx, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, record)
 			if err == nil {
 				continue
 			}
@@ -269,7 +272,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		}
 	}
 
-	if err := i.wal.Log(&record); err != nil {
+	if err := i.wal.Log(record); err != nil {
 		return nil, err
 	}
 
@@ -311,11 +314,13 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 		return err
 	}
 
-	record.Samples = append(record.Samples, Sample{
-		Fingerprint: int64(fp),
-		Timestamp:   int64(timestamp),
-		Value:       float64(value),
-	})
+	if record != nil {
+		record.Samples = append(record.Samples, Sample{
+			Fingerprint: int64(fp),
+			Timestamp:   int64(timestamp),
+			Value:       float64(value),
+		})
+	}
 
 	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 	ingestedSamples.Inc()

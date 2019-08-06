@@ -228,10 +228,12 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	u.memSeriesCreatedTotal.Inc()
 	memSeries.Inc()
 
-	record.Labels = append(record.Labels, Labels{
-		Fingerprint: int64(fp),
-		Labels:      newLabelPairsFromLabelAdapters(metric),
-	})
+	if record != nil {
+		record.Labels = append(record.Labels, Labels{
+			Fingerprint: int64(fp),
+			Labels:      newLabelPairsFromLabelAdapters(metric),
+		})
+	}
 
 	labels := u.index.Add(metric, fp)
 	series := newMemorySeries(labels)

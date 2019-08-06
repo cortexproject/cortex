@@ -11,16 +11,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/tsdb/wal"
-	"golang.org/x/net/context"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // WALConfig is config for the Write Ahead Log.
 type WALConfig struct {
 	enabled            bool
-	recover            bool
 	dir                string
 	checkpointDuration time.Duration
 	metricsRegisterer  prometheus.Registerer
@@ -29,7 +26,6 @@ type WALConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.enabled, "ingester.wal-enable", false, "Enable the WAL.")
-	f.BoolVar(&cfg.recover, "ingester.wal-recover", false, "Recover from the WAL on startup.")
 	f.StringVar(&cfg.dir, "ingester.wal-dir", "", "Directory to store the WAL.")
 	f.DurationVar(&cfg.checkpointDuration, "ingester.checkpoint-duration", 1*time.Hour, "Duration over which to checkpoint.")
 }
@@ -91,10 +87,6 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 		quit:        make(chan struct{}),
 		samples:     samples,
 		checkpoints: checkpoints,
-	}
-
-	if cfg.recover {
-		w.recover(context.Background())
 	}
 
 	w.wait.Add(1)
@@ -216,113 +208,5 @@ func (w *wrapper) truncateSamples() error {
 	}
 
 	w.lastSamplesSegment = last
-	return nil
-}
-
-func (w *wrapper) recover(ctx context.Context) (err error) {
-	// Use a local userStates, so we don't need to worry about locking.
-	userStates := newUserStates(w.ingester.limits, w.ingester.cfg)
-
-	la := []client.LabelAdapter{}
-	if err := w.recoverRecords("checkpoints", &Series{}, func(msg proto.Message) error {
-		walSeries := msg.(*Series)
-
-		descs, err := fromWireChunks(walSeries.Chunks)
-		if err != nil {
-			return err
-		}
-
-		state := userStates.getOrCreate(walSeries.UserId)
-
-		la = la[:0]
-		for _, l := range walSeries.Labels {
-			la = append(la, client.LabelAdapter{
-				Name:  string(l.Name),
-				Value: string(l.Value),
-			})
-		}
-		series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, &Record{})
-		if err != nil {
-			return err
-		}
-
-		return series.setChunks(descs)
-	}); err != nil {
-		return err
-	}
-
-	if err := w.recoverRecords("samples", &Record{}, func(msg proto.Message) error {
-		record := msg.(*Record)
-
-		state := userStates.getOrCreate(record.UserId)
-
-		for _, labels := range record.Labels {
-			_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
-			if ok {
-				continue
-			}
-
-			la = la[:0]
-			for _, l := range labels.Labels {
-				la = append(la, client.LabelAdapter{
-					Name:  string(l.Name),
-					Value: string(l.Value),
-				})
-			}
-			_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, &Record{})
-			if err != nil {
-				return err
-			}
-		}
-
-		for _, sample := range record.Samples {
-			series, ok := state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
-			if !ok {
-				return nil
-			}
-
-			err := series.add(model.SamplePair{
-				Timestamp: model.Time(sample.Timestamp),
-				Value:     model.SampleValue(sample.Value),
-			})
-			if err != nil {
-				level.Info(util.Logger).Log("msg", "error appending sample", "err", err)
-			}
-		}
-
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	w.ingester.userStatesMtx.Lock()
-	w.ingester.userStates = userStates
-	w.ingester.userStatesMtx.Unlock()
-
-	return nil
-}
-
-func (w *wrapper) recoverRecords(name string, ty proto.Message, callback func(proto.Message) error) error {
-	segmentReader, err := wal.NewSegmentsReader(path.Join(w.cfg.dir, name))
-	if err != nil {
-		return err
-	}
-	defer segmentReader.Close()
-
-	reader := wal.NewReader(segmentReader)
-	for reader.Next() {
-		ty.Reset()
-		if err := proto.Unmarshal(reader.Record(), ty); err != nil {
-			return err
-		}
-
-		if err := callback(ty); err != nil {
-			return err
-		}
-	}
-	if err := reader.Err(); err != nil {
-		return err
-	}
-
 	return nil
 }

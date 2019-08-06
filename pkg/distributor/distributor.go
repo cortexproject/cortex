@@ -43,7 +43,7 @@ var (
 	receivedSamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_received_samples_total",
-		Help:      "The total number of received samples.",
+		Help:      "The total number of received samples, excluding rejected and deduped samples.",
 	}, []string{"user"})
 	incomingSamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
@@ -330,6 +330,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	// check each sample and discard if outside limits.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
+	validatedSamples := 0
 	for _, ts := range req.Timeseries {
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
@@ -365,18 +366,20 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				Samples: samples,
 			},
 		})
+
+		validatedSamples += len(ts.Samples)
 	}
-	receivedSamples.WithLabelValues(userID).Add(float64(numSamples))
+	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
 
 	if len(keys) == 0 {
 		return &client.WriteResponse{}, lastPartialErr
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
-	if !limiter.AllowN(time.Now(), numSamples) {
+	if !limiter.AllowN(time.Now(), validatedSamples) {
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(numSamples))
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), numSamples)
 	}
 

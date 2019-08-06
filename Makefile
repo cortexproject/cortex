@@ -64,6 +64,7 @@ build-image/$(UPTODATE): build-image/*
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
+BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
 # RM is parameterized to allow CircleCI to run builds, as it
 # currently disallows `docker run --rm`. This value is overridden
 # in circle.yml
@@ -93,7 +94,7 @@ exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos: build-i
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
-		$(IMAGE_PREFIX)build-image $@;
+		$(BUILD_IMAGE) $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
@@ -109,7 +110,7 @@ configs-integration-test: build-image/$(UPTODATE)
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
 		-e DB_ADDR=configs-db.cortex.local \
-		$(IMAGE_PREFIX)build-image $@; \
+		$(BUILD_IMAGE) $@; \
 	status=$$?; \
 	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
 	exit $$status

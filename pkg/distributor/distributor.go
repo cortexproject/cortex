@@ -321,7 +321,9 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			return nil, err
 		}
 		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels
-		nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
+		if !removeReplica {
+			nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
+		}
 	}
 
 	// For each timeseries, compute a hash to distribute across ingesters;

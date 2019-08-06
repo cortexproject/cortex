@@ -151,7 +151,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		workerWG:    &sync.WaitGroup{},
 	}
 
-	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
+	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup, ruler.removeUser)
 
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler
@@ -226,6 +226,17 @@ func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*gr
 	return newGroup(groupName, rls, appendable, opts), nil
 }
 
+func (r *Ruler) removeUser(userID string) error {
+	r.notifiersMtx.Lock()
+	defer r.notifiersMtx.Unlock()
+
+	if n, ok := r.notifiers[userID]; ok {
+		n.stop()
+	}
+	delete(r.notifiers, userID)
+	return nil
+}
+
 // sendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
@@ -287,7 +298,6 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 		return nil, err
 	}
 
-	// TODO: Remove notifiers for stale users. Right now this is a slow leak.
 	r.notifiers[userID] = n
 	return n.notifier, nil
 }

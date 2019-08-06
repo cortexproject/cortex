@@ -83,6 +83,7 @@ type userConfig struct {
 }
 
 type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
+type removeFunction func(userID string) error
 
 type scheduler struct {
 	ruleStore          config_client.Client
@@ -94,12 +95,13 @@ type scheduler struct {
 	cfgs         map[string]userConfig // all rules for all users
 	latestConfig configs.ID            // # of last update received from config
 	groupFn      groupFactory          // function to create a new group
+	removeFn     removeFunction        // called when a user is deleted
 	sync.RWMutex
 	done chan struct{}
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(ruleStore config_client.Client, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
+func newScheduler(ruleStore config_client.Client, evaluationInterval, pollInterval time.Duration, groupFn groupFactory, removeFn removeFunction) *scheduler {
 	return &scheduler{
 		ruleStore:          ruleStore,
 		evaluationInterval: evaluationInterval,
@@ -107,6 +109,7 @@ func newScheduler(ruleStore config_client.Client, evaluationInterval, pollInterv
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
 		cfgs:               map[string]userConfig{},
 		groupFn:            groupFn,
+		removeFn:           removeFn,
 
 		done: make(chan struct{}),
 	}
@@ -246,6 +249,9 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 	if config.IsDeleted() {
 		delete(s.cfgs, userID)
 		s.Unlock()
+		if s.removeFn != nil {
+			s.removeFn(userID)
+		}
 		return
 	}
 	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}

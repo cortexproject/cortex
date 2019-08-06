@@ -103,7 +103,8 @@ Now, some rules of thumb:
 
 If you turn on compression between distributors and ingesters (for
 example to save on inter-zone bandwidth charges at AWS) they will use
-significantly more CPU.
+significantly more CPU (approx 100% more for distributor and 50% more
+for ingester).
 
 ### Caching
 

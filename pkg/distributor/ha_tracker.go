@@ -12,6 +12,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -177,8 +178,17 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 		}
 		return nil
 	}
+
+	err := c.checkKVStore(ctx, key, replica, now)
 	kvCASCalls.WithLabelValues(userID, cluster).Inc()
-	return c.checkKVStore(ctx, key, replica, now)
+	if err != nil {
+		// The callback within checkKVStore will return a 202 if the sample is being deduped,
+		// otherwise there may have been an actual error CAS'ing that we should log.
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
+			level.Error(util.Logger).Log("msg", "rejecting sample", "error", err)
+		}
+	}
+	return err
 }
 
 func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now time.Time) error {

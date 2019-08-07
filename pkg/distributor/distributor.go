@@ -13,7 +13,6 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -283,11 +282,6 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 	err := d.replicas.checkReplica(ctx, userID, cluster, replica)
 	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
 	if err != nil { // Don't accept the sample.
-		// Any response code other than 202, or no response code at all, indicates an actual error
-		// and not just rejection of the sample because of non-matching replica values.
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
-			level.Error(util.Logger).Log("msg", "rejecting sample", "error", err)
-		}
 		return false, err
 	}
 	return true, nil

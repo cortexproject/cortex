@@ -317,9 +317,11 @@ func (am *MultitenantAlertmanager) Stop() {
 	am.srvDiscovery.Stop()
 	close(am.stop)
 	<-am.done
+	am.alertmanagersMtx.Lock()
 	for _, am := range am.alertmanagers {
 		am.Stop()
 	}
+	am.alertmanagersMtx.Unlock()
 	am.meshRouter.Stop()
 	level.Debug(util.Logger).Log("msg", "MultitenantAlertmanager stopped")
 }
@@ -427,7 +429,9 @@ func (am *MultitenantAlertmanager) createTemplatesFile(userID, fn, content strin
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Config) error {
-	_, hasExisting := am.alertmanagers[userID]
+	am.alertmanagersMtx.Lock()
+	existing, hasExisting := am.alertmanagers[userID]
+	am.alertmanagersMtx.Unlock()
 	var amConfig *amconfig.Config
 	var err error
 	var hasTemplateChanges bool
@@ -479,7 +483,7 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 		am.alertmanagersMtx.Unlock()
 	} else if am.cfgs[userID].AlertmanagerConfig != config.AlertmanagerConfig || hasTemplateChanges {
 		// If the config changed, apply the new one.
-		err := am.alertmanagers[userID].ApplyConfig(userID, amConfig)
+		err := existing.ApplyConfig(userID, amConfig)
 		if err != nil {
 			return fmt.Errorf("unable to apply Alertmanager config for user %v: %v", userID, err)
 		}

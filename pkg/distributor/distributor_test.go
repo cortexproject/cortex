@@ -113,6 +113,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "user")
 
 	for i, tc := range []struct {
+		enableTracker    bool
 		acceptedReplica  string
 		testReplica      string
 		cluster          string
@@ -121,6 +122,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 		expectedCode     int32
 	}{
 		{
+			enableTracker:    true,
 			acceptedReplica:  "instance0",
 			testReplica:      "instance0",
 			cluster:          "cluster0",
@@ -129,11 +131,21 @@ func TestDistributorPushHAInstances(t *testing.T) {
 		},
 		// The 202 indicates that we didn't accept this sample.
 		{
+			enableTracker:   true,
 			acceptedReplica: "instance2",
 			testReplica:     "instance0",
 			cluster:         "cluster0",
 			samples:         5,
 			expectedCode:    202,
+		},
+		// If the HA tracker is disabled we should still accept samples that have both labels.
+		{
+			enableTracker:    false,
+			acceptedReplica:  "instance0",
+			testReplica:      "instance0",
+			cluster:          "cluster0",
+			samples:          5,
+			expectedResponse: success,
 		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
@@ -143,13 +155,16 @@ func TestDistributorPushHAInstances(t *testing.T) {
 				codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 
-				r, err := newClusterTracker(HATrackerConfig{
-					KVStore:         kv.Config{Mock: mock},
-					UpdateTimeout:   100 * time.Millisecond,
-					FailoverTimeout: time.Second,
-				})
-				assert.NoError(t, err)
-				d.Replicas = r
+				if tc.enableTracker {
+					r, err := newClusterTracker(HATrackerConfig{
+						EnableHATracker: true,
+						KVStore:         kv.Config{Mock: mock},
+						UpdateTimeout:   100 * time.Millisecond,
+						FailoverTimeout: time.Second,
+					})
+					assert.NoError(t, err)
+					d.Replicas = r
+				}
 
 				userID, err := user.ExtractOrgID(ctx)
 				assert.NoError(t, err)

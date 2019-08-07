@@ -139,7 +139,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
-	cfg.HATrackerConfig.RegisterFlags(f)
+	cfg.HATrackerConfig.RegisterFlags("distributor", f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")

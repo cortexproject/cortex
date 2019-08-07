@@ -99,10 +99,10 @@ exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos: build-i
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
-	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
-	@echo
-	@echo ">>>> Entering build container: $@"
-	@$(SUDO) docker run $(RM) $(TTY) -i \
+	@DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
+	echo ; \
+	echo ">>>> Entering build container: $@"; \
+	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \

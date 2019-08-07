@@ -26,8 +26,8 @@ const trackerTpl = `
 					<th>Cluster</th>
 					<th>Replica</th>
 					<th>Elected Time</th>
-					<th>Updates At</th>
-					<th>Failover At</th>
+					<th>Time Until Update</th>
+					<th>Time Until Failover</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -61,15 +61,16 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		chunks := strings.SplitN(key, "/", 2)
 
 		electedReplicas = append(electedReplicas, struct {
-			UserID, Cluster, Replica            string
-			ElectedAt, UpdateTime, FailoverTime time.Time
+			UserID, Cluster, Replica string
+			ElectedAt                time.Time
+			UpdateTime, FailoverTime time.Duration
 		}{
 			UserID:       chunks[0],
 			Cluster:      chunks[1],
 			Replica:      desc.Replica,
 			ElectedAt:    timestamp.Time(desc.ReceivedAt),
-			UpdateTime:   timestamp.Time(desc.ReceivedAt).Add(h.cfg.UpdateTimeout),
-			FailoverTime: timestamp.Time(desc.ReceivedAt).Add(h.cfg.FailoverTimeout),
+			UpdateTime:   time.Until(timestamp.Time(desc.ReceivedAt).Add(h.cfg.UpdateTimeout)),
+			FailoverTime: time.Until(timestamp.Time(desc.ReceivedAt).Add(h.cfg.FailoverTimeout)),
 		})
 	}
 

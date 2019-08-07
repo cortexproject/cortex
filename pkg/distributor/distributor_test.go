@@ -139,7 +139,6 @@ func TestDistributorPushHAInstances(t *testing.T) {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
 				d := prepare(t, 1, 1, 0, shardByAllLabels)
-				d.cfg.EnableHATracker = true
 				d.limits.Defaults.AcceptHASamples = true
 				codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")

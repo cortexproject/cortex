@@ -123,7 +123,6 @@ type Config struct {
 	BillingConfig billing.Config             `yaml:"billing,omitempty"`
 	PoolConfig    ingester_client.PoolConfig `yaml:"pool,omitempty"`
 
-	EnableHATracker bool            `yaml:"enable_ha_tracker,omitempty"`
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
 	RemoteTimeout       time.Duration `yaml:"remote_timeout,omitempty"`
@@ -143,7 +142,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.HATrackerConfig.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
-	f.BoolVar(&cfg.EnableHATracker, "distributor.ha-tracker.enable", false, "Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
@@ -180,13 +178,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		quit:           make(chan struct{}),
 	}
 
-	if cfg.EnableHATracker {
-		replicas, err := newClusterTracker(cfg.HATrackerConfig)
-		if err != nil {
-			return nil, err
-		}
-		d.Replicas = replicas
+	replicas, err := newClusterTracker(cfg.HATrackerConfig)
+	if err != nil {
+		return nil, err
 	}
+	d.Replicas = replicas
 
 	go d.loop()
 
@@ -218,9 +214,7 @@ func (d *Distributor) loop() {
 func (d *Distributor) Stop() {
 	close(d.quit)
 	d.ingesterPool.Stop()
-	if d.cfg.EnableHATracker {
-		d.replicas.stop()
-	}
+	d.Replicas.stop()
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
@@ -304,7 +298,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	// Count the total samples in, prior to validation or deuplication, for comparison with other metrics.
 	incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
 
-	if d.cfg.EnableHATracker && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
+	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {

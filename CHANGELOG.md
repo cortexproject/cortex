@@ -1,6 +1,6 @@
 ## master / unreleased
 
-## 0.1.0-rc.0 / 2019-07-31
+## 0.1.0 / 2019-08-07
 
 * [CHANGE] HA Tracker flags were renamed to provide more clarity #1465
   * `distributor.accept-ha-labels` is now `distributor.ha-tracker.enable`

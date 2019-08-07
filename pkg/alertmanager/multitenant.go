@@ -368,7 +368,10 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.View) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	for userID, config := range cfgs {
-
+		if config.IsDeleted() {
+			am.deleteUser(userID)
+			continue
+		}
 		err := am.setConfig(userID, config.Config)
 		if err != nil {
 			level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: error applying config", "err", err)
@@ -499,6 +502,16 @@ func alertmanagerConfigFromConfig(c configs.Config) (*amconfig.Config, error) {
 		return nil, fmt.Errorf("error parsing Alertmanager config: %s", err)
 	}
 	return cfg, nil
+}
+
+func (am *MultitenantAlertmanager) deleteUser(userID string) {
+	am.alertmanagersMtx.Lock()
+	if existing, hasExisting := am.alertmanagers[userID]; hasExisting {
+		existing.Stop()
+	}
+	delete(am.alertmanagers, userID)
+	delete(am.cfgs, userID)
+	am.alertmanagersMtx.Unlock()
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {

@@ -15,6 +15,11 @@ func TestStream(t *testing.T) {
 	}{
 		{
 			input1: []promchunk.Batch{mkBatch(0)},
+			output: []promchunk.Batch{mkBatch(0)},
+		},
+
+		{
+			input1: []promchunk.Batch{mkBatch(0)},
 			input2: []promchunk.Batch{mkBatch(0)},
 			output: []promchunk.Batch{mkBatch(0)},
 		},

@@ -13,7 +13,6 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -43,8 +42,23 @@ var (
 	receivedSamples = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "distributor_received_samples_total",
-		Help:      "The total number of received samples.",
+		Help:      "The total number of received samples, excluding rejected and deduped samples.",
 	}, []string{"user"})
+	incomingSamples = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_samples_in_total",
+		Help:      "The total number of samples that have come in to the distributor, including rejected or deduped samples.",
+	}, []string{"user"})
+	nonHASamples = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_non_ha_samples_received_total",
+		Help:      "The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.",
+	}, []string{"user"})
+	dedupedSamples = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "distributor_deduped_samples_total",
+		Help:      "The total number of deduplicated samples.",
+	}, []string{"user", "cluster"})
 	sendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "distributor_send_duration_seconds",
@@ -256,9 +270,7 @@ func removeReplicaLabel(replica string, labels *[]client.LabelAdapter) {
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
-func (d *Distributor) checkSample(ctx context.Context, userID string, ts client.PreallocTimeseries) (bool, error) {
-	cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), ts.Labels)
-
+func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string) (bool, error) {
 	// If the sample doesn't have either HA label, accept it.
 	// At the moment we want to accept these samples by default.
 	if cluster == "" || replica == "" {
@@ -270,11 +282,6 @@ func (d *Distributor) checkSample(ctx context.Context, userID string, ts client.
 	err := d.replicas.checkReplica(ctx, userID, cluster, replica)
 	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
 	if err != nil { // Don't accept the sample.
-		// Any response code other than 202, or no response code at all, indicates an actual error
-		// and not just rejection of the sample because of non-matching replica values.
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
-			level.Error(util.Logger).Log("msg", "rejecting sample", "error", err)
-		}
 		return false, err
 	}
 	return true, nil
@@ -290,10 +297,26 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	var lastPartialErr error
 	removeReplica := false
 
+	numSamples := 0
+	for _, ts := range req.Timeseries {
+		numSamples += len(ts.Samples)
+	}
+	// Count the total samples in, prior to validation or deuplication, for comparison with other metrics.
+	incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
+
 	if d.cfg.EnableHATracker && d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
-		removeReplica, err = d.checkSample(ctx, userID, req.Timeseries[0])
+		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
+		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {
+			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
+				// These samples have been deduped.
+				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
+			}
 			return nil, err
+		}
+		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels
+		if !removeReplica {
+			nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
 		}
 	}
 
@@ -301,7 +324,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	// check each sample and discard if outside limits.
 	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
 	keys := make([]uint32, 0, len(req.Timeseries))
-	numSamples := 0
+	validatedSamples := 0
 	for _, ts := range req.Timeseries {
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
@@ -338,19 +361,19 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			},
 		})
 
-		numSamples += len(ts.Samples)
+		validatedSamples += len(ts.Samples)
 	}
-	receivedSamples.WithLabelValues(userID).Add(float64(numSamples))
+	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
 
 	if len(keys) == 0 {
 		return &client.WriteResponse{}, lastPartialErr
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
-	if !limiter.AllowN(time.Now(), numSamples) {
+	if !limiter.AllowN(time.Now(), validatedSamples) {
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(numSamples))
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), numSamples)
 	}
 

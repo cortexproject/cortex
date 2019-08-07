@@ -5,13 +5,17 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/mtime"
 
@@ -19,6 +23,30 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
+)
+
+var (
+	electedReplicaChanges = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_changes_total",
+		Help:      "The total number of times the elected replica has changed for a user ID/cluster.",
+	}, []string{"user", "cluster"})
+	electedReplicaTimestamp = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_timestamp_seconds",
+		Help:      "The timestamp stored for the currently elected replica, from the KVStore.",
+	}, []string{"user", "cluster"})
+	electedReplicaPropagationTime = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_change_propagation_time_seconds",
+		Help:      "The time it for the distributor to update the replica change.",
+		Buckets:   prometheus.DefBuckets,
+	})
+	kvCASCalls = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_kv_store_cas_total",
+		Help:      "The total number of CAS calls to the KV store for a user ID/cluster.",
+	}, []string{"user", "cluster"})
 )
 
 // ProtoReplicaDescFactory makes new InstanceDescs
@@ -114,7 +142,13 @@ func (c *haTracker) loop(ctx context.Context) {
 		replica := value.(*ReplicaDesc)
 		c.electedLock.Lock()
 		defer c.electedLock.Unlock()
+		chunks := strings.SplitN(key, "/", 2)
+		if replica.Replica != c.elected[key].Replica {
+			electedReplicaChanges.WithLabelValues(chunks[0], chunks[1]).Inc()
+		}
 		c.elected[key] = *replica
+		electedReplicaTimestamp.WithLabelValues(chunks[0], chunks[1]).Set(float64(replica.ReceivedAt / 1000))
+		electedReplicaPropagationTime.Observe(time.Since(timestamp.Time(replica.ReceivedAt)).Seconds())
 		return true
 	})
 }
@@ -144,7 +178,17 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 		}
 		return nil
 	}
-	return c.checkKVStore(ctx, key, replica, now)
+
+	err := c.checkKVStore(ctx, key, replica, now)
+	kvCASCalls.WithLabelValues(userID, cluster).Inc()
+	if err != nil {
+		// The callback within checkKVStore will return a 202 if the sample is being deduped,
+		// otherwise there may have been an actual error CAS'ing that we should log.
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
+			level.Error(util.Logger).Log("msg", "rejecting sample", "error", err)
+		}
+	}
+	return err
 }
 
 func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now time.Time) error {

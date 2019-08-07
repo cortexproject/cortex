@@ -60,13 +60,6 @@ func (p *PreallocWriteRequest) Unmarshal(dAtA []byte) error {
 	return p.WriteRequest.Unmarshal(dAtA)
 }
 
-// XXX_Unmarshal implements proto.Message.
-// This exists as the decoder first checks for this method before
-// checking for `Unmarshal`.
-func (p *PreallocWriteRequest) XXX_Unmarshal(dAtA []byte) error {
-	return p.Unmarshal(dAtA)
-}
-
 // PreallocTimeseries is a TimeSeries which preallocs slices on Unmarshal.
 type PreallocTimeseries struct {
 	TimeSeries

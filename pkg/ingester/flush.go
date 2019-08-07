@@ -64,6 +64,10 @@ var (
 		Name: "cortex_ingester_flush_reasons",
 		Help: "Total number of series scheduled for flushing, with reasons.",
 	}, []string{"reason"})
+	droppedChunks = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_dropped_chunks_total",
+		Help: "Total number of chunks dropped from flushing because they have too few samples.",
+	})
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -272,6 +276,29 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	} else {
 		chunks = chunks[:len(chunks)-1]
 	}
+
+	if reason == reasonIdle && series.headChunkClosed && i.cfg.MinChunkLength > 0 {
+		chunkLength := 0
+		for _, c := range chunks {
+			chunkLength += c.C.Len()
+		}
+		if chunkLength < i.cfg.MinChunkLength {
+			userState.removeSeries(fp, series.metric)
+			memoryChunks.Sub(float64(len(chunks)))
+			droppedChunks.Add(float64(len(chunks)))
+			util.Event().Log(
+				"msg", "dropped chunks",
+				"userID", userID,
+				"numChunks", len(chunks),
+				"chunkLength", chunkLength,
+				"fp", fp,
+				"series", series.metric,
+				"queue", flushQueueIndex,
+			)
+			chunks = nil
+		}
+	}
+
 	userState.fpLocker.Unlock(fp)
 
 	if len(chunks) == 0 {

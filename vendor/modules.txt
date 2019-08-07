@@ -361,7 +361,7 @@ github.com/prometheus/prometheus/discovery/zookeeper
 github.com/prometheus/prometheus/discovery/refresh
 github.com/prometheus/prometheus/pkg/logging
 github.com/prometheus/prometheus/util/treecache
-# github.com/prometheus/tsdb v0.9.1
+# github.com/prometheus/tsdb v0.10.0
 github.com/prometheus/tsdb/chunkenc
 github.com/prometheus/tsdb/labels
 github.com/prometheus/tsdb

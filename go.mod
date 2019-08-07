@@ -27,17 +27,15 @@ require (
 	github.com/gogo/status v1.0.3
 	github.com/golang/protobuf v1.3.1
 	github.com/golang/snappy v0.0.1
-	github.com/google/gofuzz v0.0.0-20161122191042-44d81051d367 // indirect
-	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/gophercloud/gophercloud v0.0.0-20190307220656-fe1ba5ce12dd // indirect
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
-	github.com/hashicorp/consul v1.4.4
+	github.com/hashicorp/consul/api v1.1.0
 	github.com/hashicorp/go-cleanhttp v0.5.1
 	github.com/jonboulle/clockwork v0.1.0
-	github.com/json-iterator/go v1.1.5
+	github.com/json-iterator/go v1.1.6
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/kylelemons/godebug v0.0.0-20170820004349-d65d576e9348 // indirect
 	github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939 // indirect
@@ -46,22 +44,19 @@ require (
 	github.com/mattes/migrate v1.3.1
 	github.com/mattn/go-sqlite3 v1.10.0 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b
-	github.com/mitchellh/go-homedir v1.1.0 // indirect
-	github.com/oklog/oklog v0.2.2 // indirect
+	github.com/oklog/oklog v0.3.2 // indirect
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20170113013457-1de4cc2120e7
 	github.com/opentracing/opentracing-go v1.1.0
-	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/prometheus/alertmanager v0.13.0
-	github.com/prometheus/client_golang v0.9.3
+	github.com/prometheus/alertmanager v0.12.1-0.20190731170042-6e135a0112f5
+	github.com/prometheus/client_golang v1.0.0
 	github.com/prometheus/common v0.4.1
-	github.com/prometheus/procfs v0.0.1 // indirect
-	github.com/prometheus/prometheus v0.0.0-20190417125241-3cc5f9d88062
-	github.com/prometheus/tsdb v0.8.0
+	github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac
+	github.com/prometheus/tsdb v0.9.1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
@@ -73,14 +68,14 @@ require (
 	github.com/uber/jaeger-client-go v2.16.0+incompatible
 	github.com/uber/jaeger-lib v2.0.0+incompatible // indirect
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
-	github.com/weaveworks/common v0.0.0-20190410110702-87611edc252e
+	github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd
 	github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62
 	github.com/weaveworks/promrus v1.2.0 // indirect
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
 	go.uber.org/zap v1.10.0 // indirect
 	golang.org/x/crypto v0.0.0-20190530122614-20be4c3c3ed5 // indirect
-	golang.org/x/net v0.0.0-20190522155817-f3200d17e092
+	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
 	golang.org/x/sys v0.0.0-20190602015325-4c4f7f33c9ed // indirect
 	golang.org/x/text v0.3.2 // indirect
 	golang.org/x/time v0.0.0-20181108054448-85acf8d2951c
@@ -89,5 +84,4 @@ require (
 	google.golang.org/grpc v1.19.1
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/yaml.v2 v2.2.2
-	k8s.io/klog v0.2.0 // indirect
 )

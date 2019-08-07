@@ -35,11 +35,11 @@ func (l lazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Ma
 	}, nil, nil
 }
 
-func (l lazyQuerier) LabelValues(name string) ([]string, error) {
+func (l lazyQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return l.next.LabelValues(name)
 }
 
-func (l lazyQuerier) LabelNames() ([]string, error) {
+func (l lazyQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return l.next.LabelNames()
 }
 

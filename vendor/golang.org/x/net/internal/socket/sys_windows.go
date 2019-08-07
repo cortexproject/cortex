@@ -7,8 +7,6 @@ package socket
 import (
 	"syscall"
 	"unsafe"
-
-	"golang.org/x/sys/windows"
 )
 
 func probeProtocolStack() int {
@@ -17,11 +15,11 @@ func probeProtocolStack() int {
 }
 
 const (
-	sysAF_UNSPEC = windows.AF_UNSPEC
-	sysAF_INET   = windows.AF_INET
-	sysAF_INET6  = windows.AF_INET6
+	sysAF_UNSPEC = 0x0
+	sysAF_INET   = 0x2
+	sysAF_INET6  = 0x17
 
-	sysSOCK_RAW = windows.SOCK_RAW
+	sysSOCK_RAW = 0x3
 )
 
 type sockaddrInet struct {

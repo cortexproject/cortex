@@ -132,9 +132,11 @@ type errQuerier struct {
 func (q *errQuerier) Select(*storage.SelectParams, ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	return errSeriesSet{err: q.err}, nil, q.err
 }
-func (*errQuerier) LabelValues(name string) ([]string, error) { return nil, nil }
-func (*errQuerier) LabelNames() ([]string, error)             { return nil, nil }
-func (*errQuerier) Close() error                              { return nil }
+func (q *errQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	return nil, nil, q.err
+}
+func (q *errQuerier) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, q.err }
+func (q *errQuerier) Close() error                                    { return q.err }
 
 // errSeriesSet implements storage.SeriesSet which always returns error.
 type errSeriesSet struct {

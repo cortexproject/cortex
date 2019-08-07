@@ -1297,13 +1297,17 @@ func (ev *evaluator) VectorBinop(op ItemType, lhs, rhs Vector, matching *VectorM
 // signatureFunc returns a function that calculates the signature for a metric
 // ignoring the provided labels. If on, then the given labels are only used instead.
 func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
-	// TODO(fabxc): ensure names are sorted and then use that and sortedness
-	// of labels by names to speed up the operations below.
-	// Alternatively, inline the hashing and don't build new label sets.
+	sort.Strings(names)
 	if on {
-		return func(lset labels.Labels) uint64 { return lset.HashForLabels(names...) }
+		return func(lset labels.Labels) uint64 {
+			h, _ := lset.HashForLabels(make([]byte, 0, 1024), names...)
+			return h
+		}
 	}
-	return func(lset labels.Labels) uint64 { return lset.HashWithoutLabels(names...) }
+	return func(lset labels.Labels) uint64 {
+		h, _ := lset.HashWithoutLabels(make([]byte, 0, 1024), names...)
+		return h
+	}
 }
 
 // resultMetric returns the metric for the given sample(s) based on the Vector
@@ -1503,6 +1507,8 @@ func (ev *evaluator) aggregation(op ItemType, grouping []string, without bool, p
 		}
 	}
 
+	sort.Strings(grouping)
+	buf := make([]byte, 0, 1024)
 	for _, s := range vec {
 		metric := s.Metric
 
@@ -1516,9 +1522,9 @@ func (ev *evaluator) aggregation(op ItemType, grouping []string, without bool, p
 			groupingKey uint64
 		)
 		if without {
-			groupingKey = metric.HashWithoutLabels(grouping...)
+			groupingKey, buf = metric.HashWithoutLabels(buf, grouping...)
 		} else {
-			groupingKey = metric.HashForLabels(grouping...)
+			groupingKey, buf = metric.HashForLabels(buf, grouping...)
 		}
 
 		group, ok := result[groupingKey]

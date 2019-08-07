@@ -16,24 +16,18 @@ var (
 	expectedLabels           = 20
 	expectedSamplesPerSeries = 10
 
-	// TSPool is the pool to return the timeseries to.
-	TSPool = sync.Pool{
+	slicePool = sync.Pool{
 		New: func() interface{} {
 			return make([]PreallocTimeseries, 0, expectedTimeseries)
 		},
 	}
 
-	// LabelAdapterPool is the pool to return the labels to.
-	LabelAdapterPool = sync.Pool{
+	timeSeriesPool = sync.Pool{
 		New: func() interface{} {
-			return make([]LabelAdapter, 0, expectedLabels)
-		},
-	}
-
-	// SamplePool is the pool to return the samples to.
-	SamplePool = sync.Pool{
-		New: func() interface{} {
-			return make([]Sample, 0, expectedSamplesPerSeries)
+			return TimeSeries{
+				Labels:  make([]LabelAdapter, 0, expectedLabels),
+				Samples: make([]Sample, 0, expectedSamplesPerSeries),
+			}
 		},
 	}
 )
@@ -56,7 +50,7 @@ type PreallocWriteRequest struct {
 
 // Unmarshal implements proto.Message.
 func (p *PreallocWriteRequest) Unmarshal(dAtA []byte) error {
-	p.Timeseries = TSPool.Get().([]PreallocTimeseries)
+	p.Timeseries = slicePool.Get().([]PreallocTimeseries)
 	return p.WriteRequest.Unmarshal(dAtA)
 }
 
@@ -67,8 +61,7 @@ type PreallocTimeseries struct {
 
 // Unmarshal implements proto.Message.
 func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
-	p.Labels = LabelAdapterPool.Get().([]LabelAdapter)
-	p.Samples = SamplePool.Get().([]Sample)
+	p.TimeSeries = timeSeriesPool.Get().(TimeSeries)
 	return p.TimeSeries.Unmarshal(dAtA)
 }
 
@@ -247,16 +240,17 @@ func (bs *LabelAdapter) Compare(other LabelAdapter) int {
 	return strings.Compare(bs.Value, other.Value)
 }
 
-// ReuseTS puts the timeseries back into a sync.Pool for reuse.
-func ReuseTS(timeseries []PreallocTimeseries) {
-	for i := range timeseries {
-		ts := timeseries[i]
-		ts.Labels = ts.Labels[:0]
-		ts.Samples = ts.Samples[:0]
-		LabelAdapterPool.Put(ts.Labels)
-		SamplePool.Put(ts.Samples)
+// ReuseSlice puts the slice back into a sync.Pool for reuse.
+func ReuseSlice(slice []PreallocTimeseries) {
+	for i := range slice {
+		ReuseTimeseries(slice[i].TimeSeries)
 	}
+	slicePool.Put(slice[:0])
+}
 
-	timeseries = timeseries[:0]
-	TSPool.Put(timeseries)
+// ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.
+func ReuseTimeseries(ts TimeSeries) {
+	ts.Labels = ts.Labels[:0]
+	ts.Samples = ts.Samples[:0]
+	timeSeriesPool.Put(ts)
 }

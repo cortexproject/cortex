@@ -168,6 +168,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ring.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
+	replicas, err := newClusterTracker(cfg.HATrackerConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
@@ -176,11 +181,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		limits:         limits,
 		ingestLimiters: map[string]*rate.Limiter{},
 		quit:           make(chan struct{}),
-	}
-
-	replicas, err := newClusterTracker(cfg.HATrackerConfig)
-	if err != nil {
-		return nil, err
 	}
 	d.Replicas = replicas
 

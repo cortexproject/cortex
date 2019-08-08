@@ -39,7 +39,7 @@ Memcached is not essential but highly recommended.
 ### Ingester replication factor
 
 The standard replication factor is three, so that we can drop one
-sample and be unconcerned, as we still have two copies of the data
+replica and be unconcerned, as we still have two copies of the data
 left for redundancy. This is configurable: you can run with more
 redundancy or less, depending on your risk appetite.
 
@@ -150,12 +150,17 @@ The specific values here should be adjusted based on your own
 experiences running Cortex - they are very dependent on rate of data
 arriving and other factors such as series churn.
 
-### Spread out ingesters
+### Take extra care with ingesters
 
-Don't run multiple ingesters on the same node, as that raises the risk
-that you will lost multiple replicas of data at the same time.
+Ingesters hold hours of timeseries data in memory; you can configure
+Cortex to replicate the data but you should take steps to avoid losing
+all replicas at once:
+ - Don't run multiple ingesters on the same node.
+ - Don't run ingesters on preemptible/spot nodes.
+ - Spread out ingesters across racks / availability zones / whatever
+   applies in your datacenters.
 
-In Kubernetes this can be expressed as:
+You can ask Kubernetes to avoid running on the same node like this:
 
 ```
       affinity:
@@ -171,3 +176,34 @@ In Kubernetes this can be expressed as:
                   - ingester
               topologyKey: "kubernetes.io/hostname"
 ```
+
+Give plenty of time for an ingester to hand over or flush data to
+store when shutting down; for Kubernetes this looks like:
+
+```
+      terminationGracePeriodSeconds: 2400
+```
+
+Ask Kubernetes to limit rolling updates to one ingester at a time, and
+signal the old one to stop before the new one is ready:
+
+```
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+```
+
+Ingesters provide an http hook to signal readiness when all is well;
+this is valuable because it stops a rolling update at the first
+problem:
+
+```
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 80
+```
+
+We do not recommend configuring a liveness probe on ingesters -
+killing them is a last resort and should not be left to a machine.

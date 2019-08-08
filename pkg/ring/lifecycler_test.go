@@ -32,7 +32,6 @@ func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	lifecyclerConfig.Port = 1
 	lifecyclerConfig.RingConfig = ringConfig
 	lifecyclerConfig.NumTokens = 1
-	lifecyclerConfig.ClaimOnRollout = true
 	lifecyclerConfig.ID = id
 	lifecyclerConfig.FinalSleep = 0
 	return lifecyclerConfig

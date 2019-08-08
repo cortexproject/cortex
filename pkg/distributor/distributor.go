@@ -391,7 +391,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
 		return d.sendSamples(localCtx, ingester, timeseries)
-	})
+	}, func() { client.ReuseSlice(req.Timeseries) })
 	if err != nil {
 		return nil, err
 	}

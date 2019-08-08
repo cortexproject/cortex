@@ -47,6 +47,7 @@ func BenchmarkQueryStream(b *testing.B) {
 		cpus[i] = fmt.Sprintf("cpu%02d", i)
 	}
 
+	var reuseIter encoding.Iterator
 	for i := 0; i < numSeries; i++ {
 		labels := labelPairs{
 			{Name: model.MetricNameLabel, Value: "node_cpu"},
@@ -59,10 +60,10 @@ func BenchmarkQueryStream(b *testing.B) {
 		require.NoError(b, err)
 
 		for j := 0; j < numSamples; j++ {
-			err = series.add(model.SamplePair{
+			reuseIter, err = series.add(model.SamplePair{
 				Value:     model.SampleValue(float64(i)),
 				Timestamp: model.Time(int64(i)),
-			})
+			}, reuseIter)
 			require.NoError(b, err)
 		}
 

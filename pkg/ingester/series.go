@@ -63,27 +63,27 @@ func newMemorySeries(m labels.Labels) *memorySeries {
 // completed chunks (which are now eligible for persistence).
 //
 // The caller must have locked the fingerprint of the series.
-func (s *memorySeries) add(v model.SamplePair) error {
+func (s *memorySeries) add(v model.SamplePair, reuseIter encoding.Iterator) (encoding.Iterator, error) {
 	// If sender has repeated the same timestamp, check more closely and perhaps return error.
 	if v.Timestamp == s.lastTime {
 		// If we don't know what the last sample value is, silently discard.
 		// This will mask some errors but better than complaining when we don't really know.
 		if !s.lastSampleValueSet {
-			return &memorySeriesError{errorType: "duplicate-timestamp", noReport: true}
+			return reuseIter, &memorySeriesError{errorType: "duplicate-timestamp", noReport: true}
 		}
 		// If both timestamp and sample value are the same as for the last append,
 		// ignore as they are a common occurrence when using client-side timestamps
 		// (e.g. Pushgateway or federation).
 		if v.Value.Equal(s.lastSampleValue) {
-			return &memorySeriesError{errorType: "duplicate-sample", noReport: true}
+			return reuseIter, &memorySeriesError{errorType: "duplicate-sample", noReport: true}
 		}
-		return &memorySeriesError{
+		return reuseIter, &memorySeriesError{
 			message:   fmt.Sprintf("sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value),
 			errorType: "new-value-for-timestamp",
 		}
 	}
 	if v.Timestamp < s.lastTime {
-		return &memorySeriesError{
+		return reuseIter, &memorySeriesError{
 			message:   fmt.Sprintf("sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp),
 			errorType: "sample-out-of-order",
 		}
@@ -98,7 +98,7 @@ func (s *memorySeries) add(v model.SamplePair) error {
 
 	chunks, err := s.head().add(v)
 	if err != nil {
-		return err
+		return reuseIter, err
 	}
 
 	// If we get a single chunk result, then just replace the head chunk with it
@@ -108,10 +108,11 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		s.head().C = chunks[0]
 	} else {
 		s.chunkDescs = s.chunkDescs[:len(s.chunkDescs)-1]
+		var first, last model.Time
 		for _, c := range chunks {
-			first, last, err := firstAndLastTimes(c)
+			first, last, reuseIter, err = firstAndLastTimes(c, reuseIter)
 			if err != nil {
-				return err
+				return reuseIter, err
 			}
 			s.chunkDescs = append(s.chunkDescs, newDesc(c, first, last))
 			createdChunks.Inc()
@@ -122,16 +123,16 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	s.lastSampleValue = v.Value
 	s.lastSampleValueSet = true
 
-	return nil
+	return reuseIter, nil
 }
 
-func firstAndLastTimes(c encoding.Chunk) (model.Time, model.Time, error) {
+func firstAndLastTimes(c encoding.Chunk, iter encoding.Iterator) (model.Time, model.Time, encoding.Iterator, error) {
 	var (
 		first    model.Time
 		last     model.Time
 		firstSet bool
-		iter     = c.NewIterator()
 	)
+	iter = c.NewIterator(iter)
 	for iter.Scan() {
 		sample := iter.Value()
 		if !firstSet {
@@ -140,7 +141,7 @@ func firstAndLastTimes(c encoding.Chunk) (model.Time, model.Time, error) {
 		}
 		last = sample.Timestamp
 	}
-	return first, last, iter.Err()
+	return first, last, iter, iter.Err()
 }
 
 func (s *memorySeries) closeHead() {
@@ -189,9 +190,11 @@ func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 		OldestInclusive: from,
 		NewestInclusive: through,
 	}
+	var reuseIter encoding.Iterator
 	for idx := fromIdx; idx <= throughIdx; idx++ {
 		cd := s.chunkDescs[idx]
-		chValues, err := encoding.RangeValues(cd.C.NewIterator(), in)
+		reuseIter = cd.C.NewIterator(reuseIter)
+		chValues, err := encoding.RangeValues(reuseIter, in)
 		if err != nil {
 			return nil, err
 		}

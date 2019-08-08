@@ -274,22 +274,22 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "testmetric"},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, m, 1, 0, client.API)
+	_, err := ing.append(ctx, m, 1, 0, client.API, nil)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, m, 1, 0, client.API)
+	_, err = ing.append(ctx, m, 1, 0, client.API, nil)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, m, 0, 0, client.API)
+	_, err = ing.append(ctx, m, 0, 0, client.API, nil)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, m, 1, 1, client.API)
+	_, err = ing.append(ctx, m, 1, 1, client.API, nil)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
@@ -307,7 +307,7 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 		{Name: "bar", Value: ""},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, lp, 1, 0, client.API)
+	_, err := ing.append(ctx, lp, 1, 0, client.API, nil)
 	require.NoError(t, err)
 
 	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")

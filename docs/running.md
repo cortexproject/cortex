@@ -23,7 +23,7 @@ and manage.
 ### Components
 
 Every Cortex installation will need Distributor, Ingester and Querier.
-Alert-manager, Ruler and Query-frontend are optional.
+Alertmanager, Ruler and Query-frontend are optional.
 
 ### Other dependencies
 
@@ -31,7 +31,7 @@ Cortex needs a KV store to track sharding of data between
 processes. This can be either Etcd or Consul.
 
 If you want to configure recording and alerting rules (i.e. if you
-will run the Ruler and Alert-manager components) then a Postgres
+will run the Ruler and Alertmanager components) then a Postgres
 database is required to store configs.
 
 Memcached is not essential but highly recommended.

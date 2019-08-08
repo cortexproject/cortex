@@ -105,11 +105,6 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		receivedChunks.Add(float64(len(descs)))
 	}
 
-	if seriesReceived == 0 {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
-		return fmt.Errorf("no series")
-	}
-
 	if fromIngesterID == "" {
 		level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
 		return fmt.Errorf("no ingester id")

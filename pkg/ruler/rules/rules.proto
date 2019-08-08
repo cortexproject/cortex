@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package rules;
+
+option go_package = "rules";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
+import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message RuleGroupDesc {
+    string name = 1;
+    string namespace = 2;
+    google.protobuf.Duration interval = 3 [(gogoproto.stdduration) = true];
+  
+    repeated RuleDesc rules = 4;
+  
+    bool deleted = 5;
+
+    string user = 6;
+  }
+  
+  message RuleDesc {
+    string expr = 1;
+    string record = 2;
+    string alert = 3;
+    google.protobuf.Duration for = 4 [(gogoproto.stdduration) = true];
+    repeated cortex.LabelPair labels = 5 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];;
+    repeated cortex.LabelPair annotations = 6 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];;
+  }

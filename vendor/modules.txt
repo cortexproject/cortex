@@ -392,6 +392,9 @@ github.com/sercand/kuberesolver
 github.com/sirupsen/logrus
 # github.com/soheilhy/cmux v0.1.4
 github.com/soheilhy/cmux
+# github.com/spf13/afero v1.2.2
+github.com/spf13/afero
+github.com/spf13/afero/mem
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
 # github.com/stretchr/testify v1.3.0
@@ -581,17 +584,17 @@ golang.org/x/sync/semaphore
 golang.org/x/sys/windows
 golang.org/x/sys/unix
 # golang.org/x/text v0.3.2
+golang.org/x/text/transform
+golang.org/x/text/unicode/norm
 golang.org/x/text/secure/bidirule
 golang.org/x/text/unicode/bidi
-golang.org/x/text/unicode/norm
-golang.org/x/text/transform
 # golang.org/x/time v0.0.0-20181108054448-85acf8d2951c
 golang.org/x/time/rate
 # google.golang.org/api v0.4.0
 google.golang.org/api/option
 google.golang.org/api/transport/http
-google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/iterator
+google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/transport/grpc
 google.golang.org/api/googleapi
 google.golang.org/api/storage/v1

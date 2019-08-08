@@ -9,8 +9,8 @@ Each ingester goes through different states in its lifecycle. When
 working normally, the state is `ACTIVE`.
 
 On start-up, an ingester first goes into state `PENDING`. After a
-short time, if nothing happens, it adds itself to the ring and goes
-into state ACTIVE.
+[short time](arguments.md#ingester), if nothing happens, it adds
+itself to the ring and goes into state ACTIVE.
 
 A running ingester is notified to shut down by Unix signal
 `SIGINT`. On receipt of this signal it goes into state `LEAVING` and
@@ -21,9 +21,10 @@ removes itself from the ring and exits and the joiner changes to
 `ACTIVE`, taking over ownership of the leaver's
 [ring tokens](architecture.md#hashing).
 
-If a leaving ingester does not find a pending ingester, it will flush
-all of its chunks to the backing database, then remove itself from the
-ring and exit. This may take tens of minutes to complete.
+If a leaving ingester does not find a pending ingester after [several
+attempts](arguments.md#ingester), it will flush all of its chunks to
+the backing database, then remove itself from the ring and exit. This
+may take tens of minutes to complete.
 
 During hand-over, neither the leaving nor joining ingesters will
 accept new samples. Distributors are aware of this, and "spill" the

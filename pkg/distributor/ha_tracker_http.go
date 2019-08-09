@@ -3,6 +3,7 @@ package distributor
 import (
 	"html/template"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -56,15 +57,17 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	h.electedLock.RLock()
 	defer h.electedLock.RUnlock()
 
+	type replica struct {
+		UserID, Cluster, Replica string
+		ElectedAt                time.Time
+		UpdateTime, FailoverTime time.Duration
+	}
+
 	electedReplicas := []interface{}{}
 	for key, desc := range h.elected {
 		chunks := strings.SplitN(key, "/", 2)
 
-		electedReplicas = append(electedReplicas, struct {
-			UserID, Cluster, Replica string
-			ElectedAt                time.Time
-			UpdateTime, FailoverTime time.Duration
-		}{
+		electedReplicas = append(electedReplicas, replica{
 			UserID:       chunks[0],
 			Cluster:      chunks[1],
 			Replica:      desc.Replica,
@@ -73,6 +76,16 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			FailoverTime: time.Until(timestamp.Time(desc.ReceivedAt).Add(h.cfg.FailoverTimeout)),
 		})
 	}
+
+	sort.Slice(electedReplicas, func(i, j int) bool {
+		first := electedReplicas[i].(replica)
+		second := electedReplicas[j].(replica)
+
+		if first.UserID == second.UserID {
+			return first.Cluster < second.Cluster
+		}
+		return first.UserID < second.UserID
+	})
 
 	if err := trackerTmpl.Execute(w, struct {
 		Elected []interface{}

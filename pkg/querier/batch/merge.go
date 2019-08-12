@@ -16,7 +16,8 @@ type mergeIterator struct {
 	batches batchStream
 
 	// Buffers to merge in.
-	batchesBuf batchStream
+	batchesBuf   batchStream
+	nextBatchBuf [1]promchunk.Batch
 
 	currErr error
 }
@@ -32,7 +33,7 @@ func newMergeIterator(cs []chunk.Chunk) *mergeIterator {
 		its:        its,
 		h:          make(iteratorHeap, 0, len(its)),
 		batches:    make(batchStream, 0, len(its)*2*promchunk.BatchSize),
-		batchesBuf: make(batchStream, 0, len(its)*2*promchunk.BatchSize),
+		batchesBuf: make(batchStream, len(its)*2*promchunk.BatchSize),
 	}
 
 	for _, iter := range c.its {
@@ -109,12 +110,9 @@ func (c *mergeIterator) nextBatchEndTime() int64 {
 func (c *mergeIterator) buildNextBatch(size int) bool {
 	// All we need to do is get enough batches that our first batch's last entry
 	// is before all iterators next entry.
-	var nextBatchArr [1]promchunk.Batch
-	nextBatch := nextBatchArr[:]
-
 	for len(c.h) > 0 && (len(c.batches) == 0 || c.nextBatchEndTime() >= c.h[0].AtTime()) {
-		nextBatch[0] = c.h[0].Batch()
-		c.batchesBuf = mergeStreams(c.batches, nextBatch, c.batchesBuf, size)
+		c.nextBatchBuf[0] = c.h[0].Batch()
+		c.batchesBuf = mergeStreams(c.batches, c.nextBatchBuf[:], c.batchesBuf, size)
 		copy(c.batches[:len(c.batchesBuf)], c.batchesBuf)
 		c.batches = c.batches[:len(c.batchesBuf)]
 

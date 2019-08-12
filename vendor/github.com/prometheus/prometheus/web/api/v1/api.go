@@ -410,11 +410,11 @@ func (api *API) labelNames(r *http.Request) apiFuncResult {
 	}
 	defer q.Close()
 
-	names, err := q.LabelNames()
+	names, warnings, err := q.LabelNames()
 	if err != nil {
-		return apiFuncResult{nil, &apiError{errorExec, err}, nil, nil}
+		return apiFuncResult{nil, &apiError{errorExec, err}, warnings, nil}
 	}
-	return apiFuncResult{names, nil, nil, nil}
+	return apiFuncResult{names, nil, warnings, nil}
 }
 
 func (api *API) labelValues(r *http.Request) apiFuncResult {
@@ -430,12 +430,12 @@ func (api *API) labelValues(r *http.Request) apiFuncResult {
 	}
 	defer q.Close()
 
-	vals, err := q.LabelValues(name)
+	vals, warnings, err := q.LabelValues(name)
 	if err != nil {
-		return apiFuncResult{nil, &apiError{errorExec, err}, nil, nil}
+		return apiFuncResult{nil, &apiError{errorExec, err}, warnings, nil}
 	}
 
-	return apiFuncResult{vals, nil, nil, nil}
+	return apiFuncResult{vals, nil, warnings, nil}
 }
 
 var (
@@ -694,7 +694,7 @@ type Alert struct {
 	Annotations labels.Labels `json:"annotations"`
 	State       string        `json:"state"`
 	ActiveAt    *time.Time    `json:"activeAt,omitempty"`
-	Value       float64       `json:"value"`
+	Value       string        `json:"value"`
 }
 
 func (api *API) alerts(r *http.Request) apiFuncResult {
@@ -721,7 +721,7 @@ func rulesAlertsToAPIAlerts(rulesAlerts []*rules.Alert) []*Alert {
 			Annotations: ruleAlert.Annotations,
 			State:       ruleAlert.State.String(),
 			ActiveAt:    &ruleAlert.ActiveAt,
-			Value:       ruleAlert.Value,
+			Value:       strconv.FormatFloat(ruleAlert.Value, 'e', -1, 64),
 		}
 	}
 
@@ -838,7 +838,10 @@ func (api *API) serveFlags(r *http.Request) apiFuncResult {
 }
 
 func (api *API) remoteRead(w http.ResponseWriter, r *http.Request) {
-	api.remoteReadGate.Start(r.Context())
+	if err := api.remoteReadGate.Start(r.Context()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	remoteReadQueries.Inc()
 
 	defer api.remoteReadGate.Done()

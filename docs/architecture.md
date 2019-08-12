@@ -1,7 +1,5 @@
 # Cortex Architecture
 
-> This document is a work in progress. Check back for updates in the coming weeks.
-
 Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the [ingesters](#ingester)) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex's architecture.
 
 <p align="center"><img src="architecture.png" alt="Cortex Architecture"></p>
@@ -23,6 +21,8 @@ Cortex has a service-based architecture, in which the overall system is split up
 The **distributor** service is responsible for handling samples written by Prometheus. It's essentially the "first stop" in the write path for Prometheus samples. Once the distributor receives samples from Prometheus, it splits them into batches and then sends them to multiple [ingesters](#ingester) in parallel.
 
 Distributors communicate with ingesters via [gRPC](https://grpc.io). They are stateless and can be scaled up and down as needed.
+
+If the HA Tracker is enabled, the Distributor will deduplicate incoming samples that contain both a cluster and replica label. It talks to a KVStore to store state about which replica per cluster it's accepting samples from for a given user ID. Samples with one or neither of these labels will be accepted by default.
 
 #### Hashing
 
@@ -73,7 +73,26 @@ Write de-amplification is the main source of Cortex's low total cost of ownershi
 
 ### Ruler
 
-The **ruler** service is responsible for handling alerts produced by [Alertmanager](https://prometheus.io/docs/alerting/alertmanager/).
+Ruler executes PromQL queries for Recording Rules and Alerts.  Ruler
+is configured from a database, so that different rules can be set for
+each tenant.
+
+All the rules for one instance are executed as a group, then
+rescheduled to be executed again 15 seconds later. Execution is done
+by a 'worker' running on a goroutine - if you don't have enough
+workers then the ruler will lag behind.
+
+Ruler can be scaled horizontally.
+
+### AlertManager
+
+AlertManager is responsible for accepting alert notifications from
+Ruler, grouping them, and passing on to a notification channel such as
+email, PagerDuty, etc.
+
+Like the Ruler, AlertManager is configured per-tenant in a database.
+
+[Upstream Docs](https://prometheus.io/docs/alerting/alertmanager/).
 
 ### Query frontend
 

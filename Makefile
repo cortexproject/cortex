@@ -4,7 +4,8 @@
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
-IMAGE_TAG := $(shell ./tools/image-tag)
+# Use CIRCLE_TAG if present for releases.
+IMAGE_TAG ?= $(if $(CIRCLE_TAG),$(CIRCLE_TAG),$(shell ./tools/image-tag))
 GIT_REVISION := $(shell git rev-parse HEAD)
 UPTODATE := .uptodate
 
@@ -51,6 +52,7 @@ pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ingester/wal.pb.go: pkg/ingester/wal.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
+pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 

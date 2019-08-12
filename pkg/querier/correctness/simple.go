@@ -58,9 +58,16 @@ func (tc *simpleTestCase) Query(ctx context.Context, client v1.API, selectors st
 	query := fmt.Sprintf("%s{%s}[%dm]", metricName, selectors, duration/time.Minute)
 	level.Info(log).Log("query", query)
 
-	value, err := client.Query(ctx, query, start)
+	value, wrngs, err := client.Query(ctx, query, start)
 	if err != nil {
 		return nil, err
+	}
+	if wrngs != nil {
+		level.Warn(log).Log(
+			"query", query,
+			"start", start,
+			"warnings", wrngs,
+		)
 	}
 	if value.Type() != model.ValMatrix {
 		return nil, fmt.Errorf("didn't get matrix from Prom")

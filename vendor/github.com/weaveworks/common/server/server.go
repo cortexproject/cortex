@@ -13,6 +13,7 @@ import (
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
@@ -194,7 +195,7 @@ func New(cfg Config) (*Server, error) {
 
 // RegisterInstrumentation on the given router.
 func RegisterInstrumentation(router *mux.Router) {
-	router.Handle("/metrics", prometheus.Handler())
+	router.Handle("/metrics", promhttp.Handler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 }
 

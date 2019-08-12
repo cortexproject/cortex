@@ -317,9 +317,11 @@ func (am *MultitenantAlertmanager) Stop() {
 	am.srvDiscovery.Stop()
 	close(am.stop)
 	<-am.done
+	am.alertmanagersMtx.Lock()
 	for _, am := range am.alertmanagers {
 		am.Stop()
 	}
+	am.alertmanagersMtx.Unlock()
 	am.meshRouter.Stop()
 	level.Debug(util.Logger).Log("msg", "MultitenantAlertmanager stopped")
 }
@@ -366,7 +368,10 @@ func (am *MultitenantAlertmanager) addNewConfigs(cfgs map[string]configs.View) {
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	for userID, config := range cfgs {
-
+		if config.IsDeleted() {
+			am.deleteUser(userID)
+			continue
+		}
 		err := am.setConfig(userID, config.Config)
 		if err != nil {
 			level.Warn(util.Logger).Log("msg", "MultitenantAlertmanager: error applying config", "err", err)
@@ -427,7 +432,9 @@ func (am *MultitenantAlertmanager) createTemplatesFile(userID, fn, content strin
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Config) error {
-	_, hasExisting := am.alertmanagers[userID]
+	am.alertmanagersMtx.Lock()
+	existing, hasExisting := am.alertmanagers[userID]
+	am.alertmanagersMtx.Unlock()
 	var amConfig *amconfig.Config
 	var err error
 	var hasTemplateChanges bool
@@ -479,7 +486,7 @@ func (am *MultitenantAlertmanager) setConfig(userID string, config configs.Confi
 		am.alertmanagersMtx.Unlock()
 	} else if am.cfgs[userID].AlertmanagerConfig != config.AlertmanagerConfig || hasTemplateChanges {
 		// If the config changed, apply the new one.
-		err := am.alertmanagers[userID].ApplyConfig(userID, amConfig)
+		err := existing.ApplyConfig(userID, amConfig)
 		if err != nil {
 			return fmt.Errorf("unable to apply Alertmanager config for user %v: %v", userID, err)
 		}
@@ -495,6 +502,16 @@ func alertmanagerConfigFromConfig(c configs.Config) (*amconfig.Config, error) {
 		return nil, fmt.Errorf("error parsing Alertmanager config: %s", err)
 	}
 	return cfg, nil
+}
+
+func (am *MultitenantAlertmanager) deleteUser(userID string) {
+	am.alertmanagersMtx.Lock()
+	if existing, hasExisting := am.alertmanagers[userID]; hasExisting {
+		existing.Stop()
+	}
+	delete(am.alertmanagers, userID)
+	delete(am.cfgs, userID)
+	am.alertmanagersMtx.Unlock()
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {

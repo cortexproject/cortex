@@ -92,12 +92,12 @@ func (m mockQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matche
 	return matrixToSeriesSet(m.matrix), nil, nil
 }
 
-func (m mockQuerier) LabelValues(name string) ([]string, error) {
-	return nil, nil
+func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
 }
 
-func (m mockQuerier) LabelNames() ([]string, error) {
-	return nil, nil
+func (m mockQuerier) LabelNames() ([]string, storage.Warnings, error) {
+	return nil, nil, nil
 }
 
 func (mockQuerier) Close() error {

@@ -303,68 +303,68 @@ func Intersect(its ...Postings) Postings {
 	if len(its) == 1 {
 		return its[0]
 	}
-
-	l := len(its) / 2
-	a := Intersect(its[:l]...)
-	b := Intersect(its[l:]...)
-
-	if a == EmptyPostings() || b == EmptyPostings() {
-		return EmptyPostings()
+	for _, p := range its {
+		if p == EmptyPostings() {
+			return EmptyPostings()
+		}
 	}
-	return newIntersectPostings(a, b)
+
+	return newIntersectPostings(its...)
 }
 
 type intersectPostings struct {
-	a, b Postings
-	cur  uint64
+	arr []Postings
+	cur uint64
 }
 
-func newIntersectPostings(a, b Postings) *intersectPostings {
-	return &intersectPostings{a: a, b: b}
+func newIntersectPostings(its ...Postings) *intersectPostings {
+	return &intersectPostings{arr: its}
 }
 
 func (it *intersectPostings) At() uint64 {
 	return it.cur
 }
 
-func (it *intersectPostings) doNext(id uint64) bool {
+func (it *intersectPostings) doNext() bool {
+Loop:
 	for {
-		if !it.b.Seek(id) {
-			return false
-		}
-		if vb := it.b.At(); vb != id {
-			if !it.a.Seek(vb) {
+		for _, p := range it.arr {
+			if !p.Seek(it.cur) {
 				return false
 			}
-			id = it.a.At()
-			if vb != id {
-				continue
+			if p.At() > it.cur {
+				it.cur = p.At()
+				continue Loop
 			}
 		}
-		it.cur = id
 		return true
 	}
 }
 
 func (it *intersectPostings) Next() bool {
-	if !it.a.Next() {
-		return false
+	for _, p := range it.arr {
+		if !p.Next() {
+			return false
+		}
+		if p.At() > it.cur {
+			it.cur = p.At()
+		}
 	}
-	return it.doNext(it.a.At())
+	return it.doNext()
 }
 
 func (it *intersectPostings) Seek(id uint64) bool {
-	if !it.a.Seek(id) {
-		return false
-	}
-	return it.doNext(it.a.At())
+	it.cur = id
+	return it.doNext()
 }
 
 func (it *intersectPostings) Err() error {
-	if it.a.Err() != nil {
-		return it.a.Err()
+	for _, p := range it.arr {
+		if p.Err() != nil {
+			return p.Err()
+		}
 	}
-	return it.b.Err()
+	return nil
 }
 
 // Merge returns a new iterator over the union of the input iterators.
@@ -404,7 +404,6 @@ func (h *postingsHeap) Pop() interface{} {
 type mergedPostings struct {
 	h          postingsHeap
 	initilized bool
-	heaped     bool
 	cur        uint64
 	err        error
 }
@@ -434,12 +433,9 @@ func (it *mergedPostings) Next() bool {
 		return false
 	}
 
-	if !it.heaped {
-		heap.Init(&it.h)
-		it.heaped = true
-	}
 	// The user must issue an initial Next.
 	if !it.initilized {
+		heap.Init(&it.h)
 		it.cur = it.h[0].At()
 		it.initilized = true
 		return true
@@ -477,33 +473,24 @@ func (it *mergedPostings) Seek(id uint64) bool {
 			return false
 		}
 	}
-	if it.cur >= id {
-		return true
-	}
-	// Heapifying when there is lots of Seeks is inefficient,
-	// mark to be re-heapified on the Next() call.
-	it.heaped = false
-	lowest := ^uint64(0)
-	n := 0
-	for _, i := range it.h {
-		if i.Seek(id) {
-			it.h[n] = i
-			n++
-			if i.At() < lowest {
-				lowest = i.At()
-			}
-		} else {
-			if i.Err() != nil {
-				it.err = i.Err()
+	for it.cur < id {
+		cur := it.h[0]
+		if !cur.Seek(id) {
+			heap.Pop(&it.h)
+			if cur.Err() != nil {
+				it.err = cur.Err()
 				return false
 			}
+			if it.h.Len() == 0 {
+				return false
+			}
+		} else {
+			// Value of top of heap has changed, re-heapify.
+			heap.Fix(&it.h, 0)
 		}
+
+		it.cur = it.h[0].At()
 	}
-	it.h = it.h[:n]
-	if len(it.h) == 0 {
-		return false
-	}
-	it.cur = lowest
 	return true
 }
 

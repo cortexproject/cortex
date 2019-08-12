@@ -80,7 +80,6 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		var retry bool
 		intermediate, retry, err = f(intermediate)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
 			if !retry {
 				return err
 			}
@@ -109,8 +108,9 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			lastErr = err
 			continue
 		}
+		// result is not Succeeded if the the comparison was false, meaning if the modify indexes did not match.
 		if !result.Succeeded {
-			level.Error(util.Logger).Log("msg", "failed to CAS", "key", key)
+			level.Debug(util.Logger).Log("msg", "failed to CAS, revision and version did not match in etcd", "key", key, "revision", revision)
 			continue
 		}
 

@@ -35,6 +35,9 @@ test-and-lint: test fmt lint
 
 .PHONY: test
 test:
+ifeq ($(USE_DEP),true)
+	dep check
+endif
 	bash -c "set -e; set -o pipefail; $(GOTEST) $(PACKAGES) | $(COLORIZE)"
 
 .PHONY: fmt
@@ -100,7 +103,7 @@ thrift-image:
 
 .PHONY: install-dep-ci
 install-dep-ci:
-	- curl -L -s https://github.com/golang/dep/releases/download/v0.3.2/dep-linux-amd64 -o $$GOPATH/bin/dep
+	- curl -L -s https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64 -o $$GOPATH/bin/dep
 	- chmod +x $$GOPATH/bin/dep
 
 .PHONY: install-ci
@@ -108,10 +111,13 @@ install-ci: install-dep-ci install
 	go get github.com/wadey/gocovmerge
 	go get github.com/mattn/goveralls
 	go get golang.org/x/tools/cmd/cover
-	go get github.com/golang/lint/golint
+	go get golang.org/x/lint/golint
 
 .PHONY: test-ci
 test-ci:
 	@./scripts/cover.sh $(shell go list $(PACKAGES))
+ifeq ($(CI_SKIP_LINT),true)
+	echo 'skipping lint'
+else
 	make lint
-
+endif

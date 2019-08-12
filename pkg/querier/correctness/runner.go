@@ -137,7 +137,7 @@ type tracingClient struct {
 	api.Client
 }
 
-func (t tracingClient) Do(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
+func (t tracingClient) Do(ctx context.Context, req *http.Request) (*http.Response, []byte, api.Warnings, error) {
 	req = req.WithContext(ctx)
 	req, tr := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
 	ctx = req.Context()

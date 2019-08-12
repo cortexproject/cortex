@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -20,42 +20,21 @@ import (
 	"github.com/uber/jaeger-client-go/config"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
-	"github.com/weaveworks/common/user"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+const (
+	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
+	responseBody = `{"status":"success","data":{"resultType":"Matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 func TestFrontend(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Hello World"))
-	})
-	test := func(addr string) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
-		require.NoError(t, err)
-		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
-		require.NoError(t, err)
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode)
-
-		body, err := ioutil.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		assert.Equal(t, "Hello World", string(body))
-	}
-	testFrontend(t, handler, test)
-}
-
-func TestFrontendRetries(t *testing.T) {
-	try := int32(0)
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if atomic.AddInt32(&try, 1) == 5 {
-			w.Write([]byte("Hello World"))
-			return
-		}
-
-		w.WriteHeader(http.StatusInternalServerError)
 	})
 	test := func(addr string) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
@@ -124,8 +103,47 @@ func TestFrontendPropagateTrace(t *testing.T) {
 	testFrontend(t, handler, test)
 }
 
+// TestFrontendCancel ensures that when client requests are cancelled,
+// the underlying query is correctly cancelled _and not retried_.
+func TestFrontendCancel(t *testing.T) {
+	var tries int32
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+		atomic.AddInt32(&tries, 1)
+	})
+	test := func(addr string) {
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
+		require.NoError(t, err)
+		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		req = req.WithContext(ctx)
+
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+		}()
+
+		_, err = http.DefaultClient.Do(req)
+		require.Error(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+		assert.Equal(t, int32(1), atomic.LoadInt32(&tries))
+	}
+	testFrontend(t, handler, test)
+}
+
+func defaultOverrides(t *testing.T) *validation.Overrides {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides, err := validation.NewOverrides(limits)
+	require.NoError(t, err)
+	return overrides
+}
+
 func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
-	logger := log.NewNopLogger() //log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger := log.NewNopLogger()
 
 	var (
 		config       Config
@@ -133,6 +151,7 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 	)
 	flagext.DefaultValues(&config, &workerConfig)
 	config.SplitQueriesByDay = true
+	workerConfig.Parallelism = 1
 
 	// localhost:0 prevents firewall warnings on Mac OS X.
 	grpcListen, err := net.Listen("tcp", "localhost:0")

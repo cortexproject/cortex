@@ -5,13 +5,17 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/mtime"
 
@@ -19,6 +23,30 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
+)
+
+var (
+	electedReplicaChanges = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_changes_total",
+		Help:      "The total number of times the elected replica has changed for a user ID/cluster.",
+	}, []string{"user", "cluster"})
+	electedReplicaTimestamp = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_timestamp_seconds",
+		Help:      "The timestamp stored for the currently elected replica, from the KVStore.",
+	}, []string{"user", "cluster"})
+	electedReplicaPropagationTime = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_elected_replica_change_propagation_time_seconds",
+		Help:      "The time it for the distributor to update the replica change.",
+		Buckets:   prometheus.DefBuckets,
+	})
+	kvCASCalls = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ha_tracker_kv_store_cas_total",
+		Help:      "The total number of CAS calls to the KV store for a user ID/cluster.",
+	}, []string{"user", "cluster"})
 )
 
 // ProtoReplicaDescFactory makes new InstanceDescs
@@ -68,15 +96,15 @@ type HATrackerConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.UpdateTimeout,
-		"ha-tracker.update-timeout",
+		"distributor.ha-tracker.update-timeout",
 		15*time.Second,
 		"Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.")
 	f.DurationVar(&cfg.FailoverTimeout,
-		"ha-tracker.failover-timeout",
+		"distributor.ha-tracker.failover-timeout",
 		30*time.Second,
 		"If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout")
 	// We want the ability to use different Consul instances for the ring and for HA cluster tracking.
-	cfg.KVStore.RegisterFlagsWithPrefix("ha-tracker.", f)
+	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ha-tracker.", f)
 }
 
 // NewClusterTracker returns a new HA cluster tracker using either Consul
@@ -114,7 +142,13 @@ func (c *haTracker) loop(ctx context.Context) {
 		replica := value.(*ReplicaDesc)
 		c.electedLock.Lock()
 		defer c.electedLock.Unlock()
+		chunks := strings.SplitN(key, "/", 2)
+		if replica.Replica != c.elected[key].Replica {
+			electedReplicaChanges.WithLabelValues(chunks[0], chunks[1]).Inc()
+		}
 		c.elected[key] = *replica
+		electedReplicaTimestamp.WithLabelValues(chunks[0], chunks[1]).Set(float64(replica.ReceivedAt / 1000))
+		electedReplicaPropagationTime.Observe(time.Since(timestamp.Time(replica.ReceivedAt)).Seconds())
 		return true
 	})
 }
@@ -138,11 +172,23 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 	c.electedLock.RLock()
 	entry, ok := c.elected[key]
 	c.electedLock.RUnlock()
-
-	if ok && entry.Replica == replica && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout {
+	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout {
+		if entry.Replica != replica {
+			return replicasNotMatchError(replica, entry.Replica)
+		}
 		return nil
 	}
-	return c.checkKVStore(ctx, key, replica, now)
+
+	err := c.checkKVStore(ctx, key, replica, now)
+	kvCASCalls.WithLabelValues(userID, cluster).Inc()
+	if err != nil {
+		// The callback within checkKVStore will return a 202 if the sample is being deduped,
+		// otherwise there may have been an actual error CAS'ing that we should log.
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
+			level.Error(util.Logger).Log("msg", "rejecting sample", "error", err)
+		}
+	}
+	return err
 }
 
 func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now time.Time) error {
@@ -159,7 +205,7 @@ func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now t
 			// is less than failOver timeout amount of time since the timestamp in the KV store.
 			if desc.Replica != replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.cfg.FailoverTimeout {
 				// Return a 202.
-				return nil, false, httpgrpc.Errorf(http.StatusAccepted, "replicas did not match, rejecting sample: %s != %s", replica, desc.Replica)
+				return nil, false, replicasNotMatchError(replica, desc.Replica)
 			}
 		}
 
@@ -170,6 +216,10 @@ func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now t
 			Replica: replica, ReceivedAt: timestamp.FromTime(now),
 		}, true, nil
 	})
+}
+
+func replicasNotMatchError(replica, elected string) error {
+	return httpgrpc.Errorf(http.StatusAccepted, "replicas did not mach, rejecting sample: replica=%s, elected=%s", replica, elected)
 }
 
 // Modifies the labels parameter in place, removing labels that match

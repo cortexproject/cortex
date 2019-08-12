@@ -11,8 +11,7 @@ import (
 )
 
 type fakeHasher struct {
-	something uint32
-	data      *[]byte
+	data *[]byte
 }
 
 func (h *fakeHasher) Write(data []byte) (int, error) {
@@ -69,7 +68,7 @@ func TestSchedulerComputeNextEvalTime(t *testing.T) {
 }
 
 func TestSchedulerRulesOverlap(t *testing.T) {
-	s := newScheduler(nil, 15, 15, nil)
+	s := newScheduler(nil, 15, 15, nil, nil)
 	userID := "bob"
 	groupName := "test"
 	next := time.Now()

@@ -4,7 +4,7 @@
 
 [[constraint]]
   name = "github.com/opentracing/opentracing-go"
-  version = "^1"
+  version = "^1.1"
 
 [[constraint]]
   name = "github.com/prometheus/client_golang"
@@ -20,8 +20,12 @@
 
 [[constraint]]
   name = "github.com/uber/jaeger-lib"
-  version = "^1.3"
+  version = "^2.0"
 
 [[constraint]]
   name = "go.uber.org/zap"
   version = "^1"
+
+[prune]
+  go-tests = true
+  unused-packages = true

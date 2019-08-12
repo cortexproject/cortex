@@ -127,6 +127,11 @@ type View struct {
 	DeletedAt time.Time `json:"deleted_at"`
 }
 
+// IsDeleted tells you if the config is deleted.
+func (v View) IsDeleted() bool {
+	return !v.DeletedAt.IsZero()
+}
+
 // GetVersionedRulesConfig specializes the view to just the rules config.
 func (v View) GetVersionedRulesConfig() *VersionedRulesConfig {
 	if v.Config.RulesConfig.Files == nil {
@@ -214,6 +219,7 @@ func (c RulesConfig) parseV2() (map[string][]rules.Rule, error) {
 						time.Duration(rl.For),
 						labels.FromMap(rl.Labels),
 						labels.FromMap(rl.Annotations),
+						nil,
 						true,
 						log.With(util.Logger, "alert", rl.Alert),
 					))
@@ -262,7 +268,7 @@ func (c RulesConfig) parseV1() (map[string][]rules.Rule, error) {
 				}
 
 				rule = rules.NewAlertingRule(
-					r.Name, expr, r.Duration, r.Labels, r.Annotations, true,
+					r.Name, expr, r.Duration, r.Labels, r.Annotations, nil, true,
 					log.With(util.Logger, "alert", r.Name),
 				)
 

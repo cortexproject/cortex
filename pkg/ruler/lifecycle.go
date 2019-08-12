@@ -8,10 +8,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 )
 
-const (
-	pendingSearchIterations = 10
-)
-
 // TransferOut is a noop for the ruler
 func (r *Ruler) TransferOut(ctx context.Context) error {
 	return nil

@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -61,8 +60,8 @@ type Client struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
 	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
-	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
-	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to consul.")
+	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul")
+	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to Consul.")
 }
 
 // NewClient returns a new Client.
@@ -127,9 +126,6 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 		intermediate, retry, err = f(intermediate)
 		if err != nil {
 			if !retry {
-				if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
-					level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
-				}
 				return err
 			}
 			continue
@@ -219,7 +215,8 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	)
 	for backoff.Ongoing() {
 		queryOptions := &consul.QueryOptions{
-			RequireConsistent: true,
+			AllowStale:        !c.cfg.ConsistentReads,
+			RequireConsistent: c.cfg.ConsistentReads,
 			WaitIndex:         index,
 			WaitTime:          longPollDuration,
 		}

@@ -81,10 +81,10 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		first := electedReplicas[i].(replica)
 		second := electedReplicas[j].(replica)
 
-		if first.UserID == second.UserID {
-			return first.Cluster < second.Cluster
+		if first.UserID != second.UserID {
+			return first.UserID < second.UserID
 		}
-		return first.UserID < second.UserID
+		return first.Cluster < second.Cluster
 	})
 
 	if err := trackerTmpl.Execute(w, struct {

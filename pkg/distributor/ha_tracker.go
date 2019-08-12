@@ -94,8 +94,8 @@ type HATrackerConfig struct {
 	KVStore kv.Config
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet. If prefix is not an empty string it should end with a period.
-func (cfg *HATrackerConfig) RegisterFlags(prefix string, f *flag.FlagSet) {
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableHATracker,
 		prefix+"ha-tracker.enable",
 		false,

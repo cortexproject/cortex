@@ -181,9 +181,8 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		limits:         limits,
 		ingestLimiters: map[string]*rate.Limiter{},
 		quit:           make(chan struct{}),
+		Replicas:       replicas,
 	}
-	d.Replicas = replicas
-
 	go d.loop()
 
 	return d, nil

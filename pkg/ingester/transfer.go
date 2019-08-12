@@ -51,7 +51,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			return
 		}
 
-		level.Error(util.Logger).Log("msg", "TranferChunks failed, not in ACTIVE state.", "state", state)
+		level.Error(util.Logger).Log("msg", "TransferChunks failed, not in ACTIVE state.", "state", state)
 
 		// Enter PENDING state (only valid from JOINING)
 		if i.lifecycler.GetState() == ring.JOINING {

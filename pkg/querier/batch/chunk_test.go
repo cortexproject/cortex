@@ -48,10 +48,10 @@ func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Enco
 	require.NoError(t, err)
 	ts := from
 	for i := 0; i < points; i++ {
-		pcs, err := pc.Add(model.SamplePair{
+		pcs, _, err := pc.Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(float64(ts)),
-		})
+		}, nil)
 		require.NoError(t, err)
 		require.Len(t, pcs, 1)
 		pc = pcs[0]

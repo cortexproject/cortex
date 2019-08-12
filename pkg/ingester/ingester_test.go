@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
+	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"sync"
@@ -492,6 +495,7 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 }
 
 func BenchmarkIngesterPush(b *testing.B) {
+	runtime.MemProfileRate = 256
 	cfg := defaultIngesterTestConfig()
 	clientCfg := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
@@ -531,4 +535,7 @@ func BenchmarkIngesterPush(b *testing.B) {
 		}
 		ing.Shutdown()
 	}
+	runtime.GC()
+	hf, _ := os.Create("/home/ganesh/go/src/github.com/cortexproject/cortex/heap.prof")
+	pprof.WriteHeapProfile(hf)
 }

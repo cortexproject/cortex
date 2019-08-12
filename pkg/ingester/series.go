@@ -96,7 +96,7 @@ func (s *memorySeries) add(v model.SamplePair, reuseIter encoding.Iterator) (enc
 		createdChunks.Inc()
 	}
 
-	chunks, err := s.head().add(v)
+	chunks, reuseIter, err := s.head().add(v, reuseIter)
 	if err != nil {
 		return reuseIter, err
 	}
@@ -235,10 +235,10 @@ func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *desc 
 // Add adds a sample pair to the underlying chunk. For safe concurrent access,
 // The chunk must be pinned, and the caller must have locked the fingerprint of
 // the series.
-func (d *desc) add(s model.SamplePair) ([]encoding.Chunk, error) {
-	cs, err := d.C.Add(s)
+func (d *desc) add(s model.SamplePair, reuseIter encoding.Iterator) ([]encoding.Chunk, encoding.Iterator, error) {
+	cs, reuseIter, err := d.C.Add(s, reuseIter)
 	if err != nil {
-		return nil, err
+		return nil, reuseIter, err
 	}
 
 	if len(cs) == 1 {
@@ -246,7 +246,7 @@ func (d *desc) add(s model.SamplePair) ([]encoding.Chunk, error) {
 		d.LastUpdate = model.Now()
 	}
 
-	return cs, nil
+	return cs, reuseIter, nil
 }
 
 func (d *desc) slice(start, end model.Time) *desc {

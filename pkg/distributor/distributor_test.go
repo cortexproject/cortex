@@ -562,10 +562,10 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 
 		c := encoding.New()
 		for _, sample := range ts.Samples {
-			cs, err := c.Add(model.SamplePair{
+			cs, _, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(sample.TimestampMs),
 				Value:     model.SampleValue(sample.Value),
-			})
+			}, nil)
 			if err != nil {
 				panic(err)
 			}

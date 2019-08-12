@@ -67,7 +67,7 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 	if cfg.metricsRegisterer != nil {
 		samplesRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "samples"}, cfg.metricsRegisterer)
 	}
-	samples, err := wal.New(util.Logger, samplesRegistry, path.Join(cfg.dir, "samples"))
+	samples, err := wal.New(util.Logger, samplesRegistry, path.Join(cfg.dir, "samples"), true)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 	if cfg.metricsRegisterer != nil {
 		checkpointsRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "checkpoints"}, cfg.metricsRegisterer)
 	}
-	checkpoints, err := wal.New(util.Logger, checkpointsRegistry, path.Join(cfg.dir, "checkpoints"))
+	checkpoints, err := wal.New(util.Logger, checkpointsRegistry, path.Join(cfg.dir, "checkpoints"), true)
 	if err != nil {
 		return nil, err
 	}

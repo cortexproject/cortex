@@ -7,6 +7,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/cespare/xxhash"
+	"github.com/facette/natsort"
 )
 
 // MemcachedJumpHashSelector implements the memcache.ServerSelector
@@ -16,8 +17,8 @@ import (
 // While adding or removing servers only requires 1/N keys to move,
 // servers are treated as a stack and can only be pushed/popped.
 // Therefore, MemcachedJumpHashSelector works best for servers
-// with consistent DNS names where the order doesn't arbitrarily
-// change.
+// with consistent DNS names where the naturally sorted order
+// is predictable.
 type MemcachedJumpHashSelector struct {
 	mu    sync.RWMutex
 	addrs []net.Addr
@@ -51,12 +52,16 @@ func (a *staticAddr) String() string  { return a.str }
 // resolve. No attempt is made to connect to the server. If any
 // error occurs, no changes are made to the internal server list.
 //
-// To minimize number of rehashes for keys when growing or shrinking
-// the number of servers, servers should be provided in as consistent
-// of an order as possible between invocations.
+// To minimize the number of rehashes for keys when scaling the
+// number of servers in subsequent calls to SetServers, servers
+// are stored in natural sort order.
 func (s *MemcachedJumpHashSelector) SetServers(servers ...string) error {
-	naddrs := make([]net.Addr, len(servers))
-	for i, server := range servers {
+	sortedServers := make([]string, len(servers))
+	copy(sortedServers, servers)
+	natsort.Sort(sortedServers)
+
+	naddrs := make([]net.Addr, len(sortedServers))
+	for i, server := range sortedServers {
 		if strings.Contains(server, "/") {
 			addr, err := net.ResolveUnixAddr("unix", server)
 			if err != nil {

@@ -3,9 +3,4 @@ cmd/cortex/cortex
 .uptodate
 .pkg
 .cache
-pkg/ingester/client/cortex.pb.go
-pkg/ingester/wal.pb.go
-pkg/querier/frontend/frontend.pb.go
-pkg/ring/ring.pb.go
-pkg/chunk/storage/caching_storage_client.pb.go
 images/

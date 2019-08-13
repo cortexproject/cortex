@@ -86,10 +86,11 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 	}
 
 	w := &walWrapper{
-		cfg:      cfg,
-		ingester: ingester,
-		quit:     make(chan struct{}),
-		wal:      tsdbWAL,
+		cfg:            cfg,
+		ingester:       ingester,
+		quit:           make(chan struct{}),
+		wal:            tsdbWAL,
+		lastWalSegment: -1,
 	}
 
 	w.checkpointDeleteFail = prometheus.NewCounter(prometheus.CounterOpts{
@@ -141,7 +142,6 @@ func (w *walWrapper) run() {
 	defer w.wait.Done()
 
 	for !w.isStopped() {
-		// TODO: add metrics from checkpoint success/failure.
 		if err := w.checkpoint(); err != nil {
 			level.Error(util.Logger).Log("msg", "Error checkpointing series", "err", err)
 			continue

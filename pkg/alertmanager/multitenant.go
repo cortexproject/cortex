@@ -113,13 +113,6 @@ type MultitenantAlertmanagerConfig struct {
 	clusterAdvertiseAddr string
 	peers                flagext.StringSlice
 	peerTimeout          time.Duration
-	gossipInterval       time.Duration
-	pushPullInterval     time.Duration
-	tcpTimeout           time.Duration
-	probeTimeout         time.Duration
-	probeInterval        time.Duration
-	reconnectInterval    time.Duration
-	peerReconnectTimeout time.Duration
 
 	FallbackConfigFile string
 	AutoWebhookRoot    string
@@ -144,14 +137,6 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.StringVar(&cfg.clusterAdvertiseAddr, "cluster.advertise-address", "", "Explicit address to advertise in cluster.")
 	flag.Var(&cfg.peers, "cluster.peer", "Initial peers (may be repeated).")
 	flag.DurationVar(&cfg.peerTimeout, "cluster.peer-timeout", time.Second*15, "Time to wait between peers to send notifications.")
-	flag.DurationVar(&cfg.gossipInterval, "cluster.gossip-interval", cluster.DefaultGossipInterval, "Interval between sending gossip messages. By lowering this value (more frequent) gossip messages are propagated across the cluster more quickly at the expense of increased bandwidth.")
-	flag.DurationVar(&cfg.pushPullInterval, "cluster.pushpull-interval", cluster.DefaultPushPullInterval, "Interval for gossip state syncs. Setting this interval lower (more frequent) will increase convergence speeds across larger clusters at the expense of increased bandwidth usage.")
-	flag.DurationVar(&cfg.tcpTimeout, "cluster.tcp-timeout", cluster.DefaultTcpTimeout, "Timeout for establishing a stream connection with a remote node for a full state sync, and for stream read and write operations.")
-	flag.DurationVar(&cfg.probeTimeout, "cluster.probe-timeout", cluster.DefaultProbeTimeout, "Timeout to wait for an ack from a probed node before assuming it is unhealthy. This should be set to 99-percentile of RTT (round-trip time) on your network.")
-	flag.DurationVar(&cfg.probeInterval, "cluster.probe-interval", cluster.DefaultProbeInterval, "Interval between random node probes. Setting this lower (more frequent) will cause the cluster to detect failed nodes more quickly at the expense of increased bandwidth usage.")
-	flag.DurationVar(&cfg.reconnectInterval, "cluster.reconnect-interval", cluster.DefaultReconnectInterval, "Interval between attempting to reconnect to lost peers.")
-	flag.DurationVar(&cfg.peerReconnectTimeout, "cluster.reconnect-timeout", cluster.DefaultReconnectTimeout, "Length of time to attempt to reconnect to a lost peer.")
-
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -214,21 +199,21 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 			cfg.clusterAdvertiseAddr,
 			cfg.peers,
 			true,
-			cfg.pushPullInterval,
-			cfg.gossipInterval,
-			cfg.tcpTimeout,
-			cfg.probeTimeout,
-			cfg.probeInterval,
+			cluster.DefaultPushPullInterval,
+			cluster.DefaultGossipInterval,
+			cluster.DefaultTcpTimeout,
+			cluster.DefaultProbeTimeout,
+			cluster.DefaultProbeInterval,
 		)
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "unable to initialize gossip mesh", "err", err)
 			os.Exit(1)
 		}
-		err = peer.Join(cfg.reconnectInterval, cfg.peerReconnectTimeout)
+		err = peer.Join(cluster.DefaultReconnectInterval, cluster.DefaultReconnectTimeout)
 		if err != nil {
 			level.Warn(util.Logger).Log("msg", "unable to join gossip mesh", "err", err)
 		}
-		go peer.Settle(context.Background(), cfg.gossipInterval*10)
+		go peer.Settle(context.Background(), cluster.DefaultGossipInterval)
 	}
 
 	am := &MultitenantAlertmanager{

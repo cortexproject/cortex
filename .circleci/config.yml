@@ -96,6 +96,11 @@ jobs:
     - run:
         name: Ingester hand-over test
         command: ./integration-tests/test-handover.sh
+    - run:
+        name: Ingester flush test
+        command: |
+          ./integration-tests/stop-components.sh
+          ./integration-tests/test-flush.sh
 
   build:
     <<: *defaults

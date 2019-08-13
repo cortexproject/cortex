@@ -6,8 +6,33 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/facette/natsort"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNatSort(t *testing.T) {
+	// Validate that the order of SRV records returned by a DNS
+	// lookup for a k8s StatefulSet are ordered as expected when
+	// a natsort is done.
+	input := []string{
+		"memcached-10.memcached.cortex.svc.cluster.local.",
+		"memcached-1.memcached.cortex.svc.cluster.local.",
+		"memcached-6.memcached.cortex.svc.cluster.local.",
+		"memcached-3.memcached.cortex.svc.cluster.local.",
+		"memcached-25.memcached.cortex.svc.cluster.local.",
+	}
+
+	expected := []string{
+		"memcached-1.memcached.cortex.svc.cluster.local.",
+		"memcached-3.memcached.cortex.svc.cluster.local.",
+		"memcached-6.memcached.cortex.svc.cluster.local.",
+		"memcached-10.memcached.cortex.svc.cluster.local.",
+		"memcached-25.memcached.cortex.svc.cluster.local.",
+	}
+
+	natsort.Sort(input)
+	require.Equal(t, expected, input)
+}
 
 func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
 	s := cache.MemcachedJumpHashSelector{}

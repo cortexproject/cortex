@@ -363,13 +363,13 @@ github.com/prometheus/prometheus/pkg/logging
 github.com/prometheus/prometheus/util/treecache
 # github.com/prometheus/tsdb v0.9.1
 github.com/prometheus/tsdb/chunkenc
+github.com/prometheus/tsdb/errors
+github.com/prometheus/tsdb/fileutil
 github.com/prometheus/tsdb/wal
 github.com/prometheus/tsdb/labels
-github.com/prometheus/tsdb/fileutil
 github.com/prometheus/tsdb
 github.com/prometheus/tsdb/chunks
 github.com/prometheus/tsdb/encoding
-github.com/prometheus/tsdb/errors
 github.com/prometheus/tsdb/goversion
 github.com/prometheus/tsdb/index
 # github.com/samuel/go-zookeeper v0.0.0-20161028232340-1d7be4effb13

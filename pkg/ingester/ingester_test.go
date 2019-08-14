@@ -145,13 +145,13 @@ func runTestQueryTimes(ctx context.Context, t *testing.T, ing *Ingester, ty labe
 	return res, req, nil
 }
 
-func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries int) ([]string, map[string]model.Matrix) {
+func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries, offset int) ([]string, map[string]model.Matrix) {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test samples.
 	testData := map[string]model.Matrix{}
 	for i, userID := range userIDs {
-		testData[userID] = buildTestMatrix(numSeries, samplesPerSeries, i)
+		testData[userID] = buildTestMatrix(numSeries, samplesPerSeries, i+offset)
 	}
 
 	// Append samples.
@@ -166,7 +166,7 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries in
 
 func TestIngesterAppend(t *testing.T) {
 	store, ing := newDefaultTestStore(t)
-	userIDs, testData := pushTestSamples(t, ing, 10, 1000)
+	userIDs, testData := pushTestSamples(t, ing, 10, 1000, 0)
 
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
@@ -194,7 +194,7 @@ func TestIngesterAppend(t *testing.T) {
 func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
 
-	userIDs, _ := pushTestSamples(t, ing, 10, 1000)
+	userIDs, _ := pushTestSamples(t, ing, 10, 1000, 0)
 
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
@@ -224,7 +224,7 @@ func TestIngesterIdleFlush(t *testing.T) {
 	cfg.RetainPeriod = 500 * time.Millisecond
 	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 
-	userIDs, testData := pushTestSamples(t, ing, 4, 100)
+	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
 
 	// wait beyond idle time so samples flush
 	time.Sleep(cfg.MaxChunkIdle * 2)

@@ -1,5 +1,6 @@
 ## master / unreleased
 
+* [CHANGE] Retention period should now be a multiple of periodic table duration #1564
 * [FEATURE] Add option to use jump hashing to load balance requests to memcached #1554
 * [FEATURE] Add status page for HA tracker to distributors #1546
 

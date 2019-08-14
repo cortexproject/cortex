@@ -97,15 +97,15 @@ type HATrackerConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableHATracker,
-		prefix+"ha-tracker.enable",
+		"distributor.ha-tracker.enable",
 		false,
 		"Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels).")
 	f.DurationVar(&cfg.UpdateTimeout,
-		prefix+"ha-tracker.update-timeout",
+		"distributor.ha-tracker.update-timeout",
 		15*time.Second,
 		"Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.")
 	f.DurationVar(&cfg.FailoverTimeout,
-		prefix+"ha-tracker.failover-timeout",
+		"distributor.ha-tracker.failover-timeout",
 		30*time.Second,
 		"If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout")
 	// We want the ability to use different Consul instances for the ring and for HA cluster tracking.

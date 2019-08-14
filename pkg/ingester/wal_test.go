@@ -28,6 +28,7 @@ func TestWAL(t *testing.T) {
 	userIDs, testData := pushTestSamples(t, ing, 10, 1000)
 	ing.Shutdown()
 
+	cfg.WALConfig.enabled = false
 	// Start a new ingester and recover the WAL.
 	_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 	defer ing.Shutdown()

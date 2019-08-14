@@ -1,3 +1,5 @@
+# Changelog
+
 ## master / unreleased
 
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706

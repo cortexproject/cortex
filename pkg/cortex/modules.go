@@ -339,17 +339,6 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 		return
 	}
 
-	// Only serve the API for setting & getting rules configs if we're not
-	// serving configs from the configs API. Allows for smoother
-	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if cfg.ConfigStore.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(cfg.ConfigStore.DBConfig)
-		if err != nil {
-			return err
-		}
-		a.RegisterRoutes(t.server.HTTP)
-	}
-
 	t.server.HTTP.Handle("/ruler_ring", t.ruler)
 	return
 }
@@ -360,7 +349,7 @@ func (t *Cortex) stopRuler() error {
 }
 
 func (t *Cortex) initConfigs(cfg *Config) (err error) {
-	t.configDB, err = db.New(cfg.ConfigStore.DBConfig)
+	t.configDB, err = db.New(cfg.ConfigDB)
 	if err != nil {
 		return
 	}

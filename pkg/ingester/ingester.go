@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -255,11 +254,10 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	var lastPartialErr, err error
-	var reuseIter encoding.Iterator
+	var lastPartialErr error
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
-			reuseIter, err = i.append(ctx, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, reuseIter)
+			err := i.append(ctx, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
 			if err == nil {
 				continue
 			}
@@ -281,40 +279,39 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 }
 
 func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp model.Time,
-	value model.SampleValue, source client.WriteRequest_SourceEnum, reuseIter encoding.Iterator) (encoding.Iterator, error) {
+	value model.SampleValue, source client.WriteRequest_SourceEnum) error {
 	labels.removeBlanks()
 
 	i.stopLock.RLock()
 	defer i.stopLock.RUnlock()
 	if i.stopped {
-		return reuseIter, fmt.Errorf("ingester stopping")
+		return fmt.Errorf("ingester stopping")
 	}
 
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, labels)
 	if err != nil {
-		return reuseIter, err
+		return err
 	}
 	defer func() {
 		state.fpLocker.Unlock(fp)
 	}()
 
 	prevNumChunks := len(series.chunkDescs)
-	reuseIter, err = series.add(model.SamplePair{
+	if err := series.add(model.SamplePair{
 		Value:     value,
 		Timestamp: timestamp,
-	}, reuseIter)
-	if err != nil {
+	}); err != nil {
 		if mse, ok := err.(*memorySeriesError); ok {
 			state.discardedSamples.WithLabelValues(mse.errorType).Inc()
 			if mse.noReport {
-				return reuseIter, nil
+				return nil
 			}
 			// Use a dumb string template to avoid the message being parsed as a template
 			err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
 		}
-		return reuseIter, err
+		return err
 	}
 
 	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
@@ -328,7 +325,7 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 		state.ingestedAPISamples.inc()
 	}
 
-	return reuseIter, err
+	return err
 }
 
 // Query implements service.IngesterServer

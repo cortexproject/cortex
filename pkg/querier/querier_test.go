@@ -56,8 +56,8 @@ var (
 		name string
 		e    promchunk.Encoding
 	}{
-		// {"DoubleDelta", promchunk.DoubleDelta},
-		// {"Varbit", promchunk.Varbit},
+		{"DoubleDelta", promchunk.DoubleDelta},
+		{"Varbit", promchunk.Varbit},
 		{"Bigchunk", promchunk.Bigchunk},
 	}
 

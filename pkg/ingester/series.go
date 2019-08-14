@@ -63,27 +63,27 @@ func newMemorySeries(m labels.Labels) *memorySeries {
 // completed chunks (which are now eligible for persistence).
 //
 // The caller must have locked the fingerprint of the series.
-func (s *memorySeries) add(v model.SamplePair, reuseIter encoding.Iterator) (encoding.Iterator, error) {
+func (s *memorySeries) add(v model.SamplePair) error {
 	// If sender has repeated the same timestamp, check more closely and perhaps return error.
 	if v.Timestamp == s.lastTime {
 		// If we don't know what the last sample value is, silently discard.
 		// This will mask some errors but better than complaining when we don't really know.
 		if !s.lastSampleValueSet {
-			return reuseIter, &memorySeriesError{errorType: "duplicate-timestamp", noReport: true}
+			return &memorySeriesError{errorType: "duplicate-timestamp", noReport: true}
 		}
 		// If both timestamp and sample value are the same as for the last append,
 		// ignore as they are a common occurrence when using client-side timestamps
 		// (e.g. Pushgateway or federation).
 		if v.Value.Equal(s.lastSampleValue) {
-			return reuseIter, &memorySeriesError{errorType: "duplicate-sample", noReport: true}
+			return &memorySeriesError{errorType: "duplicate-sample", noReport: true}
 		}
-		return reuseIter, &memorySeriesError{
+		return &memorySeriesError{
 			message:   fmt.Sprintf("sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value),
 			errorType: "new-value-for-timestamp",
 		}
 	}
 	if v.Timestamp < s.lastTime {
-		return reuseIter, &memorySeriesError{
+		return &memorySeriesError{
 			message:   fmt.Sprintf("sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp),
 			errorType: "sample-out-of-order",
 		}
@@ -96,9 +96,9 @@ func (s *memorySeries) add(v model.SamplePair, reuseIter encoding.Iterator) (enc
 		createdChunks.Inc()
 	}
 
-	chunks, reuseIter, err := s.head().add(v, reuseIter)
+	chunks, err := s.head().add(v)
 	if err != nil {
-		return reuseIter, err
+		return err
 	}
 
 	// If we get a single chunk result, then just replace the head chunk with it
@@ -108,11 +108,10 @@ func (s *memorySeries) add(v model.SamplePair, reuseIter encoding.Iterator) (enc
 		s.head().C = chunks[0]
 	} else {
 		s.chunkDescs = s.chunkDescs[:len(s.chunkDescs)-1]
-		var first, last model.Time
 		for _, c := range chunks {
-			first, last, reuseIter, err = firstAndLastTimes(c, reuseIter)
+			first, last, err := firstAndLastTimes(c)
 			if err != nil {
-				return reuseIter, err
+				return err
 			}
 			s.chunkDescs = append(s.chunkDescs, newDesc(c, first, last))
 			createdChunks.Inc()
@@ -123,16 +122,16 @@ func (s *memorySeries) add(v model.SamplePair, reuseIter encoding.Iterator) (enc
 	s.lastSampleValue = v.Value
 	s.lastSampleValueSet = true
 
-	return reuseIter, nil
+	return nil
 }
 
-func firstAndLastTimes(c encoding.Chunk, iter encoding.Iterator) (model.Time, model.Time, encoding.Iterator, error) {
+func firstAndLastTimes(c encoding.Chunk) (model.Time, model.Time, error) {
 	var (
 		first    model.Time
 		last     model.Time
 		firstSet bool
+		iter     = c.NewIterator(nil)
 	)
-	iter = c.NewIterator(iter)
 	for iter.Scan() {
 		sample := iter.Value()
 		if !firstSet {
@@ -141,7 +140,7 @@ func firstAndLastTimes(c encoding.Chunk, iter encoding.Iterator) (model.Time, mo
 		}
 		last = sample.Timestamp
 	}
-	return first, last, iter, iter.Err()
+	return first, last, iter.Err()
 }
 
 func (s *memorySeries) closeHead() {
@@ -235,10 +234,10 @@ func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *desc 
 // Add adds a sample pair to the underlying chunk. For safe concurrent access,
 // The chunk must be pinned, and the caller must have locked the fingerprint of
 // the series.
-func (d *desc) add(s model.SamplePair, reuseIter encoding.Iterator) ([]encoding.Chunk, encoding.Iterator, error) {
-	cs, reuseIter, err := d.C.Add(s, reuseIter)
+func (d *desc) add(s model.SamplePair) ([]encoding.Chunk, error) {
+	cs, err := d.C.Add(s)
 	if err != nil {
-		return nil, reuseIter, err
+		return nil, err
 	}
 
 	if len(cs) == 1 {
@@ -246,7 +245,7 @@ func (d *desc) add(s model.SamplePair, reuseIter encoding.Iterator) ([]encoding.
 		d.LastUpdate = model.Now()
 	}
 
-	return cs, reuseIter, nil
+	return cs, nil
 }
 
 func (d *desc) slice(start, end model.Time) *desc {

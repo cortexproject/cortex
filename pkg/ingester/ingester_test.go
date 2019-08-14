@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"os"
-	"runtime"
-	"runtime/pprof"
 	"sort"
 	"strconv"
 	"sync"
@@ -277,22 +274,22 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "testmetric"},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.append(ctx, m, 1, 0, client.API, nil)
+	err := ing.append(ctx, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	_, err = ing.append(ctx, m, 1, 0, client.API, nil)
+	err = ing.append(ctx, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	_, err = ing.append(ctx, m, 0, 0, client.API, nil)
+	err = ing.append(ctx, m, 0, 0, client.API)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
 
 	// Same timestamp as previous sample, but different value.
-	_, err = ing.append(ctx, m, 1, 1, client.API, nil)
+	err = ing.append(ctx, m, 1, 1, client.API)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
@@ -310,7 +307,7 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 		{Name: "bar", Value: ""},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.append(ctx, lp, 1, 0, client.API, nil)
+	err := ing.append(ctx, lp, 1, 0, client.API)
 	require.NoError(t, err)
 
 	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
@@ -495,7 +492,6 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 }
 
 func BenchmarkIngesterPush(b *testing.B) {
-	runtime.MemProfileRate = 256
 	cfg := defaultIngesterTestConfig()
 	clientCfg := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
@@ -535,7 +531,4 @@ func BenchmarkIngesterPush(b *testing.B) {
 		}
 		ing.Shutdown()
 	}
-	runtime.GC()
-	hf, _ := os.Create("/home/ganesh/go/src/github.com/cortexproject/cortex/heap.prof")
-	pprof.WriteHeapProfile(hf)
 }

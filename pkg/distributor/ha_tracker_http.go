@@ -55,15 +55,13 @@ func init() {
 
 func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	h.electedLock.RLock()
-	defer h.electedLock.RUnlock()
-
 	type replica struct {
 		UserID, Cluster, Replica string
 		ElectedAt                time.Time
 		UpdateTime, FailoverTime time.Duration
 	}
 
-	electedReplicas := []interface{}{}
+	electedReplicas := []replica{}
 	for key, desc := range h.elected {
 		chunks := strings.SplitN(key, "/", 2)
 
@@ -76,10 +74,11 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			FailoverTime: time.Until(timestamp.Time(desc.ReceivedAt).Add(h.cfg.FailoverTimeout)),
 		})
 	}
+	h.electedLock.RUnlock()
 
 	sort.Slice(electedReplicas, func(i, j int) bool {
-		first := electedReplicas[i].(replica)
-		second := electedReplicas[j].(replica)
+		first := electedReplicas[i]
+		second := electedReplicas[j]
 
 		if first.UserID != second.UserID {
 			return first.UserID < second.UserID
@@ -88,7 +87,7 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	})
 
 	if err := trackerTmpl.Execute(w, struct {
-		Elected []interface{}
+		Elected []replica
 		Now     time.Time
 	}{
 		Elected: electedReplicas,

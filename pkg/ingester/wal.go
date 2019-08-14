@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -84,7 +83,7 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 	if cfg.metricsRegisterer != nil {
 		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, cfg.metricsRegisterer)
 	}
-	tsdbWAL, err := wal.New(util.Logger, walRegistry, path.Join(cfg.dir, "wal"), true)
+	tsdbWAL, err := wal.New(util.Logger, walRegistry, cfg.dir, true)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +416,6 @@ func getSeriesFromWAL(dir string) (map[string]map[uint64]*memorySeries, error) {
 		}
 
 		for _, sample := range r.Samples {
-			// TODO: verify if sample.Timestamp is in milliseconds.
 			samplePair.Timestamp = model.Time(sample.Timestamp)
 			samplePair.Value = model.SampleValue(sample.Value)
 			if err := seriesMap[sample.Fingerprint].add(samplePair); err != nil {
@@ -466,4 +464,123 @@ func pbLabelPairToLabels(lps []client.LabelPair) labels.Labels {
 		lbls[i].Value = string(lps[i].Value)
 	}
 	return lbls
+}
+
+func recoverFromWal(ctx context.Context, ingester *Ingester, walDir string) (err error) {
+	// Use a local userStates, so we don't need to worry about locking.
+	userStates := newUserStates(ingester.limits, ingester.cfg)
+
+	la := []client.LabelAdapter{}
+
+	lastCheckpointDir, idx, err := lastCheckpoint(walDir)
+	if err != nil {
+		return err
+	}
+	if idx >= 0 {
+		if err := recoverRecords(lastCheckpointDir, &Series{}, func(msg proto.Message) error {
+			walSeries := msg.(*Series)
+
+			descs, err := fromWireChunks(walSeries.Chunks)
+			if err != nil {
+				return err
+			}
+
+			state := userStates.getOrCreate(walSeries.UserId)
+
+			la = la[:0]
+			for _, l := range walSeries.Labels {
+				la = append(la, client.LabelAdapter{
+					Name:  string(l.Name),
+					Value: string(l.Value),
+				})
+			}
+			series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, &Record{})
+			if err != nil {
+				return err
+			}
+
+			return series.setChunks(descs)
+		}); err != nil {
+			return err
+		}
+	}
+
+	if err := recoverRecords(walDir, &Record{}, func(msg proto.Message) error {
+		record := msg.(*Record)
+
+		state := userStates.getOrCreate(record.UserId)
+
+		for _, labels := range record.Labels {
+			_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
+			if ok {
+				continue
+			}
+
+			la = la[:0]
+			for _, l := range labels.Labels {
+				la = append(la, client.LabelAdapter{
+					Name:  string(l.Name),
+					Value: string(l.Value),
+				})
+			}
+			_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, &Record{})
+			if err != nil {
+				return err
+			}
+		}
+
+		for _, sample := range record.Samples {
+			series, ok := state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
+			if !ok {
+				return nil
+			}
+
+			err := series.add(model.SamplePair{
+				Timestamp: model.Time(sample.Timestamp),
+				Value:     model.SampleValue(sample.Value),
+			})
+			if err != nil {
+				// We can ignore memorySeriesError because duplicate (or) out-of-order samples are possible
+				// here because the WAL is not truncated to align with the checkpoint.
+				if _, ok := err.(*memorySeriesError); !ok {
+					return err
+				}
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	ingester.userStatesMtx.Lock()
+	ingester.userStates = userStates
+	ingester.userStatesMtx.Unlock()
+
+	return nil
+}
+
+func recoverRecords(name string, ty proto.Message, callback func(proto.Message) error) error {
+	segmentReader, err := wal.NewSegmentsReader(name)
+	if err != nil {
+		return err
+	}
+	defer segmentReader.Close()
+
+	reader := wal.NewReader(segmentReader)
+	for reader.Next() {
+		ty.Reset()
+		if err := proto.Unmarshal(reader.Record(), ty); err != nil {
+			return err
+		}
+
+		if err := callback(ty); err != nil {
+			return err
+		}
+	}
+	if err := reader.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }

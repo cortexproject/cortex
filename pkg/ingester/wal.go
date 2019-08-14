@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -17,10 +18,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_errors "github.com/prometheus/tsdb/errors"
 	"github.com/prometheus/tsdb/fileutil"
 	"github.com/prometheus/tsdb/wal"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -172,7 +175,7 @@ func (w *walWrapper) checkpoint() (err error) {
 			w.checkpointCreationFail.Inc()
 		}
 	}()
-	_, last, err := w.lastCheckpoint()
+	_, last, err := lastCheckpoint(w.wal.Dir())
 	if err != nil {
 		return err
 	}
@@ -238,8 +241,8 @@ func (w *walWrapper) checkpoint() (err error) {
 
 // lastCheckpoint returns the directory name and index of the most recent checkpoint.
 // If dir does not contain any checkpoints, -1 is returned as index.
-func (w *walWrapper) lastCheckpoint() (string, int, error) {
-	files, err := ioutil.ReadDir(w.wal.Dir())
+func lastCheckpoint(dir string) (string, int, error) {
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return "", -1, err
 	}
@@ -257,7 +260,7 @@ func (w *walWrapper) lastCheckpoint() (string, int, error) {
 		if err != nil {
 			continue
 		}
-		return filepath.Join(w.wal.Dir(), fi.Name()), idx, nil
+		return filepath.Join(dir, fi.Name()), idx, nil
 	}
 	return "", -1, nil
 }
@@ -324,4 +327,96 @@ func (w *walWrapper) truncateSamples() error {
 
 	w.lastWalSegment = last
 	return nil
+}
+
+func FlushFromWAL(ingester *Ingester, dir string) error {
+	lastCheckpointDir, _, err := lastCheckpoint(dir)
+	if err != nil {
+		return err
+	}
+
+	sr, err := wal.NewSegmentsReader(lastCheckpointDir)
+	if err != nil {
+		return err
+	}
+
+	series, err := loadCheckpoint(wal.NewReader(sr))
+	if err != nil {
+		return err
+	}
+
+	// Either use ingester series like normal reading and then flush once per series
+	// or like below - flush once for the checkpoint and 1 more time from the WAL segments
+
+	// TODO: check about adding index entries.
+
+	for _, s := range series {
+		chunkDesc, err := fromWireChunks(s.Chunks)
+		if err != nil {
+			return err
+		}
+
+		// TODO: user id in the context.
+		if err := ingester.flushChunks(
+			context.Background(),
+			model.Fingerprint(s.Fingerprint),
+			pbLabelPairToLabels(s.Labels),
+			chunkDesc,
+		); err != nil {
+			return nil
+		}
+	}
+
+	// TODO: Read segments from WAL which start after the checkpoint.
+	// Need to do some alignment with segment and checkpoint numbers for that.
+	sr, err = wal.NewSegmentsReader(dir)
+	if err != nil {
+		return nil
+	}
+
+	records, err := loadWAL(wal.NewReader(sr))
+	if err != nil {
+		return nil
+	}
+
+	for range records {
+
+	}
+
+	return nil
+}
+
+func loadCheckpoint(r *wal.Reader) (series []*Series, err error) {
+	for r.Next() {
+		rec := r.Record()
+		s := &Series{}
+		if err := proto.Unmarshal(rec, s); err != nil {
+			return nil, err
+		}
+		series = append(series, s)
+
+	}
+	return series, r.Err()
+}
+
+func loadWAL(r *wal.Reader) (records []*Record, err error) {
+	for r.Next() {
+		rec := r.Record()
+		record := &Record{}
+		if err := proto.Unmarshal(rec, record); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+
+	}
+	return records, r.Err()
+}
+
+func pbLabelPairToLabels(lps []client.LabelPair) labels.Labels {
+	lbls := make(labels.Labels, len(lps))
+	for i := range lps {
+		lbls[i].Name = string(lps[i].Name)
+		lbls[i].Value = string(lps[i].Value)
+	}
+	return lbls
 }

@@ -112,6 +112,8 @@ github.com/davecgh/go-spew/spew
 github.com/dgrijalva/jwt-go
 # github.com/dustin/go-humanize v1.0.0
 github.com/dustin/go-humanize
+# github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
+github.com/facette/natsort
 # github.com/fluent/fluent-logger-golang v1.2.1
 github.com/fluent/fluent-logger-golang/fluent
 # github.com/fsouza/fake-gcs-server v1.3.0

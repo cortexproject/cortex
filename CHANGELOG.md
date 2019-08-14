@@ -1,6 +1,7 @@
 ## master / unreleased
 
 * [FEATURE] Add option to use jump hashing to load balance requests to memcached #1554
+* [FEATURE] Add status page for HA tracker to distributors #1546
 
 ## 0.1.0 / 2019-08-07
 

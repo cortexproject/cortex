@@ -82,13 +82,12 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			fromIngesterID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
 		}
-		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {
 			return err
 		}
 
-		state, fp, series, err := userStates.getOrCreateSeries(userCtx, wireSeries.Labels)
+		state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels)
 		if err != nil {
 			return err
 		}

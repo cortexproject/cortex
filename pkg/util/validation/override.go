@@ -58,50 +58,50 @@ func NewOverridesManager(perTenantOverridePeriod time.Duration, overridesReloadP
 	return &overridesManager, nil
 }
 
-func (lm *OverridesManager) loop() {
-	ticker := time.NewTicker(lm.overridesReloadPeriod)
+func (om *OverridesManager) loop() {
+	ticker := time.NewTicker(om.overridesReloadPeriod)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			err := lm.loadOverrides()
+			err := om.loadOverrides()
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "failed to load limit overrides", "err", err)
 			}
-		case <-lm.quit:
+		case <-om.quit:
 			return
 		}
 	}
 }
 
-func (lm *OverridesManager) loadOverrides() error {
-	overrides, err := lm.overridesLoader(lm.overridesReloadPath)
+func (om *OverridesManager) loadOverrides() error {
+	overrides, err := om.overridesLoader(om.overridesReloadPath)
 	if err != nil {
 		overridesReloadSuccess.Set(0)
 		return err
 	}
 	overridesReloadSuccess.Set(1)
 
-	lm.overridesMtx.Lock()
-	defer lm.overridesMtx.Unlock()
-	lm.overrides = overrides
+	om.overridesMtx.Lock()
+	defer om.overridesMtx.Unlock()
+	om.overrides = overrides
 	return nil
 }
 
 // Stop stops the OverridesManager
-func (lm *OverridesManager) Stop() {
-	close(lm.quit)
+func (om *OverridesManager) Stop() {
+	close(om.quit)
 }
 
 // GetLimits returns Limits for a specific userID if its set otherwise the default Limits
-func (lm *OverridesManager) GetLimits(userID string) interface{} {
-	lm.overridesMtx.RLock()
-	defer lm.overridesMtx.RUnlock()
+func (om *OverridesManager) GetLimits(userID string) interface{} {
+	om.overridesMtx.RLock()
+	defer om.overridesMtx.RUnlock()
 
-	override, ok := lm.overrides[userID]
+	override, ok := om.overrides[userID]
 	if !ok {
-		return lm.defaults
+		return om.defaults
 	}
 
 	return override

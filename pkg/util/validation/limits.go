@@ -76,6 +76,8 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
+
+	// During startup we wont have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
 		*l = *defaultLimits
 	}
@@ -222,6 +224,9 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 	return o.overridesManager.GetLimits(userID).(*Limits).CardinalityLimit
 }
 
+// Loads overrides and returns the limits as an interface to store them in OverridesManager.
+// We need to implement it here since OverridesManager must store type Limits in an interface but
+// it doesn't know its definition to initialize it.
 func loadOverrides(filename string) (map[string]interface{}, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -239,8 +244,8 @@ func loadOverrides(filename string) (map[string]interface{}, error) {
 	}
 
 	overridesAsInterface := map[string]interface{}{}
-	for k := range overrides.Overrides {
-		overridesAsInterface[k] = overrides.Overrides[k]
+	for userID := range overrides.Overrides {
+		overridesAsInterface[userID] = overrides.Overrides[userID]
 	}
 
 	return overridesAsInterface, nil

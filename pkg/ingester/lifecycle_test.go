@@ -41,6 +41,7 @@ func defaultIngesterTestConfig() Config {
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
+	cfg.MaxTransferRetries = -1
 	return cfg
 }
 
@@ -95,6 +96,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.ID = "ingester1"
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
+	cfg1.MaxTransferRetries = 10
 	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 

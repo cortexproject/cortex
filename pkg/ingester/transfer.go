@@ -184,6 +184,9 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 // TransferOut finds an ingester in PENDING state and transfers our chunks to it.
 // Called as part of the ingester shutdown process.
 func (i *Ingester) TransferOut(ctx context.Context) error {
+	if i.cfg.MaxTransferRetries < 0 {
+		return fmt.Errorf("transfers disabled")
+	}
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 5 * time.Second,

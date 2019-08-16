@@ -47,6 +47,12 @@ func NewS3ObjectClient(cfg StorageConfig, schemaCfg chunk.SchemaConfig) (chunk.O
 		return nil, err
 	}
 
+	if cfg.S3ForceTLS {
+		if strings.Contains(cfg.S3.URL.Host, ".") {
+			s3Config = s3Config.WithEndpoint(fmt.Sprintf("https://%s", cfg.S3.URL.Host))
+		}
+	}
+
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
 
 	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them

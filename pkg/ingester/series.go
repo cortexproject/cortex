@@ -65,9 +65,7 @@ func (s *memorySeries) labels() []client.LabelPair {
 	return newLabelPairs(s.metric)
 }
 
-// add adds a sample pair to the series. It returns the number of newly
-// completed chunks (which are now eligible for persistence).
-//
+// add adds a sample pair to the series, possibly creating a new chunk.
 // The caller must have locked the fingerprint of the series.
 func (s *memorySeries) add(v model.SamplePair) error {
 	// If sender has repeated the same timestamp, check more closely and perhaps return error.

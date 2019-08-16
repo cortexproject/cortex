@@ -43,7 +43,7 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("numSeries=%d,batchSize=%d,matchers=%s", tc.numSeries, tc.batchSize, tc.matchers), func(t *testing.T) {
 			_, ing := newDefaultTestStore(t)
-			userIDs, _ := pushTestSamples(t, ing, tc.numSeries, 100)
+			userIDs, _ := pushTestSamples(t, ing, tc.numSeries, 100, 0)
 
 			for _, userID := range userIDs {
 				ctx := user.InjectOrgID(context.Background(), userID)

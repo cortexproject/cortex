@@ -113,6 +113,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "user")
 
 	for i, tc := range []struct {
+		enableTracker    bool
 		acceptedReplica  string
 		testReplica      string
 		cluster          string
@@ -121,6 +122,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 		expectedCode     int32
 	}{
 		{
+			enableTracker:    true,
 			acceptedReplica:  "instance0",
 			testReplica:      "instance0",
 			cluster:          "cluster0",
@@ -129,32 +131,44 @@ func TestDistributorPushHAInstances(t *testing.T) {
 		},
 		// The 202 indicates that we didn't accept this sample.
 		{
+			enableTracker:   true,
 			acceptedReplica: "instance2",
 			testReplica:     "instance0",
 			cluster:         "cluster0",
 			samples:         5,
 			expectedCode:    202,
 		},
+		// If the HA tracker is disabled we should still accept samples that have both labels.
+		{
+			enableTracker:    false,
+			acceptedReplica:  "instance0",
+			testReplica:      "instance0",
+			cluster:          "cluster0",
+			samples:          5,
+			expectedResponse: success,
+		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
 				d := prepare(t, 1, 1, 0, shardByAllLabels)
-				d.cfg.EnableHATracker = true
 				d.limits.Defaults.AcceptHASamples = true
 				codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 
-				r, err := newClusterTracker(HATrackerConfig{
-					KVStore:         kv.Config{Mock: mock},
-					UpdateTimeout:   100 * time.Millisecond,
-					FailoverTimeout: time.Second,
-				})
-				assert.NoError(t, err)
-				d.replicas = r
+				if tc.enableTracker {
+					r, err := newClusterTracker(HATrackerConfig{
+						EnableHATracker: true,
+						KVStore:         kv.Config{Mock: mock},
+						UpdateTimeout:   100 * time.Millisecond,
+						FailoverTimeout: time.Second,
+					})
+					assert.NoError(t, err)
+					d.Replicas = r
+				}
 
 				userID, err := user.ExtractOrgID(ctx)
 				assert.NoError(t, err)
-				err = d.replicas.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
+				err = d.Replicas.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
 				assert.NoError(t, err)
 
 				request := makeWriteRequestHA(tc.samples, tc.testReplica, tc.cluster)

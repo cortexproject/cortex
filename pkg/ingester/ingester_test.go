@@ -145,13 +145,13 @@ func runTestQueryTimes(ctx context.Context, t *testing.T, ing *Ingester, ty labe
 	return res, req, nil
 }
 
-func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries int) ([]string, map[string]model.Matrix) {
+func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries, offset int) ([]string, map[string]model.Matrix) {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test samples.
 	testData := map[string]model.Matrix{}
 	for i, userID := range userIDs {
-		testData[userID] = buildTestMatrix(numSeries, samplesPerSeries, i)
+		testData[userID] = buildTestMatrix(numSeries, samplesPerSeries, i+offset)
 	}
 
 	// Append samples.
@@ -186,7 +186,7 @@ func retrieveTestSamples(t *testing.T, ing *Ingester, userIDs []string, testData
 
 func TestIngesterAppend(t *testing.T) {
 	store, ing := newDefaultTestStore(t)
-	userIDs, testData := pushTestSamples(t, ing, 10, 1000)
+	userIDs, testData := pushTestSamples(t, ing, 10, 1000, 0)
 	retrieveTestSamples(t, ing, userIDs, testData)
 
 	// Read samples back via chunk store.
@@ -197,7 +197,7 @@ func TestIngesterAppend(t *testing.T) {
 func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
 
-	userIDs, _ := pushTestSamples(t, ing, 10, 1000)
+	userIDs, _ := pushTestSamples(t, ing, 10, 1000, 0)
 
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
@@ -227,7 +227,7 @@ func TestIngesterIdleFlush(t *testing.T) {
 	cfg.RetainPeriod = 500 * time.Millisecond
 	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 
-	userIDs, testData := pushTestSamples(t, ing, 4, 100)
+	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
 
 	// wait beyond idle time so samples flush
 	time.Sleep(cfg.MaxChunkIdle * 2)
@@ -252,6 +252,26 @@ func TestIngesterIdleFlush(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, model.Matrix{}, res)
 	}
+}
+
+func TestIngesterSpreadFlush(t *testing.T) {
+	// Create test ingester with short flush cycle
+	cfg := defaultIngesterTestConfig()
+	cfg.SpreadFlushes = true
+	cfg.FlushCheckPeriod = 20 * time.Millisecond
+	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+
+	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
+
+	// add another sample with timestamp at the end of the cycle to trigger
+	// head closes and get an extra chunk so we will flush the first one
+	_, _ = pushTestSamples(t, ing, 4, 1, int(cfg.MaxChunkAge.Seconds()-1)*1000)
+
+	// wait beyond flush time so first set of samples should be sent to store
+	time.Sleep(cfg.FlushCheckPeriod * 2)
+
+	// check the first set of samples has been sent to the store
+	store.checkData(t, userIDs, testData)
 }
 
 type stream struct {

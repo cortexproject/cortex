@@ -170,6 +170,7 @@ func (t *Cortex) initDistributor(cfg *Config) (err error) {
 
 	t.server.HTTP.HandleFunc("/all_user_stats", t.distributor.AllUserStatsHandler)
 	t.server.HTTP.Handle("/api/prom/push", t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.distributor.PushHandler)))
+	t.server.HTTP.Handle("/ha-tracker", t.distributor.Replicas)
 	return
 }
 

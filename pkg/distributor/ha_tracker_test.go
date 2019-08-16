@@ -60,6 +60,7 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 	cases := []testCase{
 		{
 			in: HATrackerConfig{
+				EnableHATracker: true,
 				UpdateTimeout:   time.Second,
 				FailoverTimeout: time.Second,
 				KVStore: kv.Config{
@@ -70,6 +71,7 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 		},
 		{
 			in: HATrackerConfig{
+				EnableHATracker: true,
 				UpdateTimeout:   time.Second,
 				FailoverTimeout: 999 * time.Millisecond,
 				KVStore: kv.Config{
@@ -80,6 +82,7 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 		},
 		{
 			in: HATrackerConfig{
+				EnableHATracker: true,
 				UpdateTimeout:   time.Second,
 				FailoverTimeout: 1001 * time.Millisecond,
 				KVStore: kv.Config{
@@ -106,6 +109,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
+		EnableHATracker: true,
 		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   time.Millisecond,
 		FailoverTimeout: time.Millisecond * 2,
@@ -130,6 +134,7 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 	start := mtime.Now()
 
 	c, err := newClusterTracker(HATrackerConfig{
+		EnableHATracker: true,
 		KVStore:         kv.Config{Store: "inmemory"},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
@@ -161,6 +166,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	replica2 := "replica2"
 
 	c, err := newClusterTracker(HATrackerConfig{
+		EnableHATracker: true,
 		KVStore:         kv.Config{Store: "inmemory"},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
@@ -191,6 +197,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	replica2 := "replica2"
 
 	c, err := newClusterTracker(HATrackerConfig{
+		EnableHATracker: true,
 		KVStore:         kv.Config{Store: "inmemory"},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
@@ -238,6 +245,7 @@ func TestCheckReplicaWriteTimeout(t *testing.T) {
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
+		EnableHATracker: true,
 		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,
@@ -289,6 +297,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
+		EnableHATracker: true,
 		KVStore:         kv.Config{Mock: mock},
 		UpdateTimeout:   100 * time.Millisecond,
 		FailoverTimeout: time.Second,

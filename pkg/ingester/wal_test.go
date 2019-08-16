@@ -25,7 +25,7 @@ func TestWAL(t *testing.T) {
 
 	// Build an ingester, add some samples, then shut it down.
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
-	userIDs, testData := pushTestSamples(t, ing, 10, 1000)
+	userIDs, testData := pushTestSamples(t, ing, 10, 1000, 0)
 	ing.Shutdown()
 
 	cfg.WALConfig.enabled = false

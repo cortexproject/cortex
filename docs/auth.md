@@ -11,5 +11,5 @@ interface and humans sending queries from GUIs, supply credentials
 which identify them and confirm they are authorised.
 
 When configuring the remote_write API in Prometheus there is no way to
-add extra headers. The http user and password fields can be user to
-convey tenant ID and/or authentication credentials.
+add extra headers. The user and password fields of http Basic auth, or
+Bearer token, can be used to convey tenant ID and/or credentials.

@@ -55,13 +55,12 @@ func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
 }
 
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
 	for _, chunk := range chunks {
 		for _, v := range chunk.Metric {
 			if v.Value == "" {
@@ -69,6 +68,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 			}
 		}
 	}
+	userID := chunks[0].UserID
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
 	return nil
 }

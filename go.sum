@@ -396,8 +396,8 @@ github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/posener/complete v1.1.1/go.mod h1:em0nMJCgc9GFtwrmVmEMR/ZL6WyhyjMBndrE9hABlRI=
-github.com/prometheus/alertmanager v0.12.1-0.20190731170042-6e135a0112f5 h1:xqYzIhRFSm2qWLNG9UkSCGOHzlg3IOc0Autvw6fobRQ=
-github.com/prometheus/alertmanager v0.12.1-0.20190731170042-6e135a0112f5/go.mod h1:zdz6eCci7rHWB/8/1E/9JEfoKqCAIlxmt8EIKvHi0dI=
+github.com/prometheus/alertmanager v0.15.1 h1:LioLwocIFmJvFSZMkMPwPYQ+zFwjQpMHQu6AXhmdpX4=
+github.com/prometheus/alertmanager v0.15.1/go.mod h1:zdz6eCci7rHWB/8/1E/9JEfoKqCAIlxmt8EIKvHi0dI=
 github.com/prometheus/client_golang v0.8.0/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v0.9.1/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829 h1:D+CiwcpGTW6pL6bv6KI3KbyEyCKyS+1JWS2h8PNDnGA=
@@ -513,8 +513,6 @@ github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1 h1:qi+Yk
 github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1/go.mod h1:7gGdEUJaCrSlWi/mjd68CZv0sfqektYPDcro9cE+M9k=
 github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd h1:yJjtAvkWEyZlz5DGkw3pL12Kbns8rOfPvDrtlIiC82A=
 github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd/go.mod h1:pSm+0KR57BG3pvGoJWFXJSAC7+sEPewcvdt5StevL3A=
-github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62 h1:M8NXuAqtV1qKYA0PFpdu1iJiCwiftOGz8FYfJxqq+GI=
-github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62/go.mod h1:mcON9Ws1aW0crSErpXWp7U1ErCDEKliDX2OhVlbWRKk=
 github.com/weaveworks/promrus v1.2.0 h1:jOLf6pe6/vss4qGHjXmGz4oDJQA+AOCqEL3FvvZGz7M=
 github.com/weaveworks/promrus v1.2.0/go.mod h1:SaE82+OJ91yqjrE1rsvBWVzNZKcHYFtMUyS1+Ogs/KA=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 h1:eY9dn8+vbi4tKz5Qo6v2eYzo7kUS51QINcR5jNpbZS8=

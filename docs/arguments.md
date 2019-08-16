@@ -1,5 +1,7 @@
 # Cortex Arguments Explained
 
+Duration arguments should be specified with a unit like `5s` or `3h`. Valid time units are "ms", "s", "m", "h".
+
 ## Querier
 
 - `-querier.max-concurrent`
@@ -154,6 +156,14 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
    Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp. (default 15s)
 
 ## Ingester
+
+- `-ingester.join-after`
+
+   How long to wait in PENDING state during the [hand-over process](ingester-handover.md). (default 0s)
+
+- `-ingester.ingester.max-transfer-retries`
+
+   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](ingester-handover.md). Each attempt takes a second or so. (default 10)
 
 - `-ingester.normalise-tokens`
 

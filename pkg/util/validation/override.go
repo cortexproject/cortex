@@ -45,7 +45,7 @@ func NewOverrides(defaults Limits) (*Overrides, error) {
 	defaultLimits = defaults
 
 	if defaults.PerTenantOverrideConfig == "" {
-		level.Info(util.Logger).Log("msg", "per-tenant overides disabled")
+		level.Info(util.Logger).Log("msg", "per-tenant overrides disabled")
 		return &Overrides{
 			Defaults:  defaults,
 			overrides: map[string]*Limits{},

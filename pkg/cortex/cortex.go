@@ -53,6 +53,7 @@ type Config struct {
 	Target      moduleName `yaml:"target,omitempty"`
 	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
 	PrintConfig bool       `yaml:"-"`
+	HTTPPrefix  string     `yaml:"http_prefix"`
 
 	Server         server.Config            `yaml:"server,omitempty"`
 	Distributor    distributor.Config       `yaml:"distributor,omitempty"`
@@ -82,6 +83,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&c.Target, "target", "target module (default All)")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
+	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
 	c.Server.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)

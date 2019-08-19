@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"net/url"
+	"path"
 	"sync"
 	"time"
 
@@ -57,6 +59,7 @@ type Config struct {
 	CacheResults                  bool `yaml:"cache_results"`
 	CompressResponses             bool `yaml:"compress_responses"`
 	queryrange.ResultsCacheConfig `yaml:"results_cache"`
+	DownstreamURL                 string `yaml:"downstream"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -68,6 +71,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
+	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -99,6 +103,7 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 		log:    log,
 		queues: map[string]chan *request{},
 	}
+	f.cond = sync.NewCond(&f.mtx)
 
 	// Stack up the pipeline of various query range middlewares.
 	var queryRangeMiddleware []queryrange.Middleware
@@ -119,18 +124,42 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", queryRangeDuration), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))
 	}
 
-	// Finally, if the user selected any query range middleware, stitch it in.
+	// If the user has specified a downstream Prometheus, then we should
+	// forward requests to that.  Otherwise we will wait for queries to
+	// contact us.
 	var roundTripper http.RoundTripper = f
+	if cfg.DownstreamURL != "" {
+		u, err := url.Parse(cfg.DownstreamURL)
+		if err != nil {
+			return nil, err
+		}
+
+		roundTripper = RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			r.URL.Scheme = u.Scheme
+			r.URL.Host = u.Host
+			r.URL.Path = path.Join(u.Path, r.URL.Path)
+			return http.DefaultTransport.RoundTrip(r)
+		})
+	}
+
+	// Finally, if the user selected any query range middleware, stitch it in.
 	if len(queryRangeMiddleware) > 0 {
 		roundTripper = queryrange.NewRoundTripper(
-			f,
-			queryrange.MergeMiddlewares(queryRangeMiddleware...).Wrap(&queryrange.ToRoundTripperMiddleware{Next: f}),
+			roundTripper,
+			queryrange.MergeMiddlewares(queryRangeMiddleware...).Wrap(&queryrange.ToRoundTripperMiddleware{Next: roundTripper}),
 			limits,
 		)
 	}
 	f.roundTripper = roundTripper
-	f.cond = sync.NewCond(&f.mtx)
 	return f, nil
+}
+
+// RoundTripFunc is to http.RoundTripper what http.HandlerFunc is to http.Handler.
+type RoundTripFunc func(*http.Request) (*http.Response, error)
+
+// RoundTrip implements http.RoundTripper.
+func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
 }
 
 // Close stops new requests and errors out any pending requests.

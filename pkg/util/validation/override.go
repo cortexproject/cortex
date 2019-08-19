@@ -19,19 +19,15 @@ func init() {
 	overridesReloadSuccess.Set(1) // Default to 1
 }
 
-type overridesLoader func(string) (map[string]interface{}, error)
-
-// LimitsUnmarshaler helps in unmarshaling limits from yaml
-type LimitsUnmarshaler interface {
-	UnmarshalYAML(unmarshal func(interface{}) error) error
-}
+// OverridesLoader loads the overrides
+type OverridesLoader func(string) (map[string]interface{}, error)
 
 // OverridesManager manages default and per user limits i.e overrides.
 // It can periodically keep reloading overrides based on config.
 type OverridesManager struct {
 	overridesReloadPeriod time.Duration
 	overridesReloadPath   string
-	overridesLoader       overridesLoader
+	overridesLoader       OverridesLoader
 
 	defaults     interface{}
 	overrides    map[string]interface{}
@@ -40,7 +36,7 @@ type OverridesManager struct {
 }
 
 // NewOverridesManager creates an instance of OverridesManager and starts reload overrides loop based on config
-func NewOverridesManager(perTenantOverridePeriod time.Duration, overridesReloadPath string, overridesLoader overridesLoader,
+func NewOverridesManager(perTenantOverridePeriod time.Duration, overridesReloadPath string, overridesLoader OverridesLoader,
 	defaults interface{}) (*OverridesManager, error) {
 	overridesManager := OverridesManager{
 		overridesLoader:       overridesLoader,

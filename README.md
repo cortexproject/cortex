@@ -40,8 +40,8 @@ To learn more about Cortex, consult the following documents & talks:
 - Nov 2018 CNCF TOC Presentation; "Horizontally Scalable, Multi-tenant Prometheus" ([slides][cncf-toc-presentation])
 - Sept 2018 blog post; "[What is Cortex?][what-is-cortex]"
 - Aug 2018 PromCon panel; "[Prometheus Long-Term Storage Approaches][promcon-2018-panel]" ([video][promcon-2018-video])
+- Jul 2018 design doc; "[Cortex Query Optimisations][cortex-query-optimisation-2018]"
 - Aug 2017 PromCon talk; "[Cortex: Prometheus as a Service, One Year On][promcon-2017-talk]" ([videos][promcon-2017-video], [slides][promcon-2017-slides], write up [part 1][promcon-2017-writeup-1], [part 2][promcon-2017-writeup-2], [part 3][promcon-2017-writeup-3])
-- Jul 2017 design doc; "[Cortex Query Optimisations][cortex-query-optimisation-2017]"
 - Jun 2017 Prometheus London meetup talk; "Cortex: open-source, horizontally-scalable, distributed Prometheus" ([video][prometheus-london-2017-video])
 - Dec 2016 KubeCon talk; "Weave Cortex: Multi-tenant, horizontally scalable Prometheus as a Service" ([video][kubecon-2016-video], [slides][kubecon-2016-slides])
 - Aug 2016 PromCon talk; "Project Frankenstein: Multitenant, Scale-Out Prometheus": ([video][promcon-2016-video], [slides][promcon-2016-slides])
@@ -73,7 +73,7 @@ To learn more about Cortex, consult the following documents & talks:
 [promcon-2017-writeup-1]: https://kausal.co/blog/cortex-prometheus-aas-promcon-1/
 [promcon-2017-writeup-2]: https://kausal.co/blog/cortex-prometheus-aas-promcon-2/
 [promcon-2017-writeup-3]: https://kausal.co/blog/cortex-prometheus-aas-promcon-3/
-[cortex-query-optimisation-2017]: https://docs.google.com/document/d/1lsvSkv0tiAMPQv-V8vI2LZ8f4i9JuTRsuPI_i-XcAqY
+[cortex-query-optimisation-2018]: https://docs.google.com/document/d/1lsvSkv0tiAMPQv-V8vI2LZ8f4i9JuTRsuPI_i-XcAqY
 [kubecon-2016-video]: https://www.youtube.com/watch?v=9Uctgnazfwk
 [kubecon-2016-slides]: http://www.slideshare.net/weaveworks/weave-cortex-multitenant-horizontally-scalable-prometheus-as-a-service
 [promcon-2016-video]: https://youtu.be/3Tb4Wc0kfCM

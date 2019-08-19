@@ -89,8 +89,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			return err
 		}
 
-		var record Record // for the WAL, not used.
-		state, fp, series, err := userStates.getOrCreateSeries(userCtx, wireSeries.Labels, &record)
+		state, fp, series, err := userStates.getOrCreateSeries(userCtx, wireSeries.Labels, nil)
 		if err != nil {
 			return err
 		}

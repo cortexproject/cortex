@@ -1,7 +1,6 @@
 package ingester
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -17,11 +16,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_errors "github.com/prometheus/tsdb/errors"
 	"github.com/prometheus/tsdb/fileutil"
 	"github.com/prometheus/tsdb/wal"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -265,7 +262,7 @@ func lastCheckpoint(dir string) (string, int, error) {
 	return "", -1, nil
 }
 
-// deleteCheckpoints deletes all checkpoints in a directory below a given index.
+// deleteCheckpoints deletes all checkpoints in a directory which is <= maxIndex.
 func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 	w.checkpointDeleteTotal.Inc()
 	defer func() {
@@ -329,144 +326,8 @@ func (w *walWrapper) truncateSamples() error {
 	return nil
 }
 
-func flushChunksFromWAL(ingester *Ingester, dir string) error {
-	allSeries, err := getSeriesFromWAL(dir)
-	if err != nil {
-		return err
-	}
-
-	for userID, seriesMap := range allSeries {
-		ctx := user.InjectUserID(context.Background(), userID)
-		for fingerprint, ms := range seriesMap {
-			if err := ingester.flushChunks(
-				ctx,
-				model.Fingerprint(fingerprint),
-				pbLabelPairToLabels(ms.labels()),
-				ms.chunkDescs,
-			); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func getSeriesFromWAL(dir string) (map[string]map[uint64]*memorySeries, error) {
-	// TODO: check about adding index entries.
-	// Map of user_id -> series_fingerprint -> *memorySeries
-	allSeries := make(map[string]map[uint64]*memorySeries)
-
-	// Build the series from the last checkpoint.
-	lastCheckpointDir, _, err := lastCheckpoint(dir)
-	if err != nil {
-		return allSeries, err
-	}
-
-	sr, err := wal.NewSegmentsReader(lastCheckpointDir)
-	if err != nil {
-		return allSeries, err
-	}
-
-	series, err := loadCheckpoint(wal.NewReader(sr))
-	if err != nil {
-		return allSeries, err
-	}
-
-	for _, s := range series {
-		chunkDesc, err := fromWireChunks(s.Chunks)
-		if err != nil {
-			return allSeries, err
-		}
-
-		if _, ok := allSeries[s.UserId]; !ok {
-			allSeries[s.UserId] = make(map[uint64]*memorySeries)
-		}
-
-		ms := newMemorySeries(pbLabelPairToLabels(s.Labels))
-		ms.setChunks(chunkDesc)
-		allSeries[s.UserId][s.Fingerprint] = ms
-	}
-
-	// Load the WAL and add the samples to the series loaded
-	// from the checkpoint.
-	sr, err = wal.NewSegmentsReader(dir)
-	if err != nil {
-		return allSeries, nil
-	}
-	records, err := loadWAL(wal.NewReader(sr))
-	if err != nil {
-		return allSeries, nil
-	}
-
-	samplePair := model.SamplePair{}
-	for _, r := range records {
-		seriesMap, ok := allSeries[r.UserId]
-		if !ok {
-			seriesMap = make(map[uint64]*memorySeries)
-			allSeries[r.UserId] = seriesMap
-		}
-
-		// Some series might not be present in the checkpoint,
-		// hence add them here.
-		for _, lbl := range r.Labels {
-			if _, ok := allSeries[r.UserId][lbl.Fingerprint]; !ok {
-				allSeries[r.UserId][lbl.Fingerprint] = newMemorySeries(pbLabelPairToLabels(lbl.Labels))
-			}
-		}
-
-		for _, sample := range r.Samples {
-			samplePair.Timestamp = model.Time(sample.Timestamp)
-			samplePair.Value = model.SampleValue(sample.Value)
-			if err := seriesMap[sample.Fingerprint].add(samplePair); err != nil {
-				// We can ignore memorySeriesError because duplicate (or) out-of-order samples are possible
-				// here because the WAL is not truncated to align with the checkpoint.
-				if _, ok := err.(*memorySeriesError); !ok {
-					return allSeries, err
-				}
-			}
-		}
-	}
-
-	return allSeries, nil
-}
-
-func loadCheckpoint(r *wal.Reader) (series []*Series, err error) {
-	for r.Next() {
-		rec := r.Record()
-		s := &Series{}
-		if err := proto.Unmarshal(rec, s); err != nil {
-			return nil, err
-		}
-		series = append(series, s)
-
-	}
-	return series, r.Err()
-}
-
-func loadWAL(r *wal.Reader) (records []*Record, err error) {
-	for r.Next() {
-		rec := r.Record()
-		record := &Record{}
-		if err := proto.Unmarshal(rec, record); err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-
-	}
-	return records, r.Err()
-}
-
-func pbLabelPairToLabels(lps []client.LabelPair) labels.Labels {
-	lbls := make(labels.Labels, len(lps))
-	for i := range lps {
-		lbls[i].Name = string(lps[i].Name)
-		lbls[i].Value = string(lps[i].Value)
-	}
-	return lbls
-}
-
-func recoverFromWal(ctx context.Context, ingester *Ingester, walDir string) (err error) {
+func recoverFromWAL(ingester *Ingester) (err error) {
+	walDir := ingester.cfg.WALConfig.dir
 	// Use a local userStates, so we don't need to worry about locking.
 	userStates := newUserStates(ingester.limits, ingester.cfg)
 
@@ -477,6 +338,7 @@ func recoverFromWal(ctx context.Context, ingester *Ingester, walDir string) (err
 		return err
 	}
 	if idx >= 0 {
+		// Checkpoint exists.
 		if err := recoverRecords(lastCheckpointDir, &Series{}, func(msg proto.Message) error {
 			walSeries := msg.(*Series)
 

@@ -1,7 +1,6 @@
 package ingester
 
 import (
-	"context"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -32,7 +31,7 @@ func TestWAL(t *testing.T) {
 	// Start a new ingester and recover the WAL.
 	_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 	defer ing.Shutdown()
-	require.NoError(t, recoverFromWal(context.Background(), ing, dirname))
+	require.NoError(t, recoverFromWAL(ing))
 
 	// Check the samples are still there!
 	retrieveTestSamples(t, ing, userIDs, testData)

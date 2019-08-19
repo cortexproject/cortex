@@ -65,6 +65,8 @@ Ingesters are semi-stateful in that they always retain the last 12 hours worth o
 
 As *semi*-stateful processes, ingesters are *not* designed to be long-term data stores. In Cortex, that role is played by the [chunk store](#chunk-store).
 
+A [hand-over process](ingester-handover.md) manages the state when ingesters are added, removed or replaced.
+
 #### Write de-amplification
 
 Ingesters store the last 12 hours worth of samples in order to perform **write de-amplification**, i.e. batching and compressing samples for the same series and flushing them out to the [chunk store](#chunk-store). Under normal operations, there should be *many* orders of magnitude fewer queries per second (QPS) worth of writes to the chunk store than to the ingesters.

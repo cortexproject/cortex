@@ -132,6 +132,14 @@ func (m *moduleName) Set(s string) error {
 	}
 }
 
+func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	return m.Set(s)
+}
+
 func (t *Cortex) initServer(cfg *Config) (err error) {
 	t.server, err = server.New(cfg.Server)
 	return
@@ -170,6 +178,7 @@ func (t *Cortex) initDistributor(cfg *Config) (err error) {
 
 	t.server.HTTP.HandleFunc("/all_user_stats", t.distributor.AllUserStatsHandler)
 	t.server.HTTP.Handle("/api/prom/push", t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.distributor.PushHandler)))
+	t.server.HTTP.Handle("/ha-tracker", t.distributor.Replicas)
 	return
 }
 
@@ -258,7 +267,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 	}
 
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
-	t.server.HTTP.PathPrefix("/api/prom").Handler(
+	t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Handler(
 		t.httpAuthMiddleware.Wrap(
 			t.frontend.Handler(),
 		),

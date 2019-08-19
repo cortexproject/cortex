@@ -115,6 +115,8 @@ github.com/dgrijalva/jwt-go
 github.com/dustin/go-humanize
 # github.com/edsrzf/mmap-go v1.0.0
 github.com/edsrzf/mmap-go
+# github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
+github.com/facette/natsort
 # github.com/fluent/fluent-logger-golang v1.2.1
 github.com/fluent/fluent-logger-golang/fluent
 # github.com/fsouza/fake-gcs-server v1.3.0
@@ -211,15 +213,25 @@ github.com/grpc-ecosystem/grpc-gateway/internal
 github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul/api v1.1.0
 github.com/hashicorp/consul/api
+# github.com/hashicorp/errwrap v1.0.0
+github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.1
 github.com/hashicorp/go-cleanhttp
 # github.com/hashicorp/go-immutable-radix v1.1.0
 github.com/hashicorp/go-immutable-radix
+# github.com/hashicorp/go-msgpack v0.5.5
+github.com/hashicorp/go-msgpack/codec
+# github.com/hashicorp/go-multierror v1.0.0
+github.com/hashicorp/go-multierror
 # github.com/hashicorp/go-rootcerts v1.0.1
 github.com/hashicorp/go-rootcerts
+# github.com/hashicorp/go-sockaddr v1.0.2
+github.com/hashicorp/go-sockaddr
 # github.com/hashicorp/golang-lru v0.5.3
 github.com/hashicorp/golang-lru/simplelru
 github.com/hashicorp/golang-lru
+# github.com/hashicorp/memberlist v0.1.4
+github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.8.3
 github.com/hashicorp/serf/coordinate
 # github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
@@ -290,8 +302,9 @@ github.com/philhofer/fwd
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/alertmanager v0.12.1-0.20190731170042-6e135a0112f5
+# github.com/prometheus/alertmanager v0.15.1
 github.com/prometheus/alertmanager/api
+github.com/prometheus/alertmanager/cluster
 github.com/prometheus/alertmanager/config
 github.com/prometheus/alertmanager/dispatch
 github.com/prometheus/alertmanager/inhibit
@@ -305,6 +318,7 @@ github.com/prometheus/alertmanager/ui
 github.com/prometheus/alertmanager/pkg/parse
 github.com/prometheus/alertmanager/provider
 github.com/prometheus/alertmanager/silence/silencepb
+github.com/prometheus/alertmanager/cluster/clusterpb
 github.com/prometheus/alertmanager/nflog/nflogpb
 github.com/prometheus/alertmanager/template/internal/deftmpl
 # github.com/prometheus/client_golang v1.1.0
@@ -336,6 +350,7 @@ github.com/prometheus/prometheus/pkg/textparse
 github.com/prometheus/prometheus/pkg/timestamp
 github.com/prometheus/prometheus/pkg/value
 github.com/prometheus/prometheus/storage
+github.com/prometheus/prometheus/storage/tsdb
 github.com/prometheus/prometheus/util/stats
 github.com/prometheus/prometheus/util/strutil
 github.com/prometheus/prometheus/util/testutil
@@ -350,10 +365,11 @@ github.com/prometheus/prometheus/notifier
 github.com/prometheus/prometheus/pkg/gate
 github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/template
+github.com/prometheus/prometheus/tsdb
+github.com/prometheus/prometheus/tsdb/labels
 github.com/prometheus/prometheus/pkg/relabel
 github.com/prometheus/prometheus/prompb
 github.com/prometheus/prometheus/storage/remote
-github.com/prometheus/prometheus/tsdb/labels
 github.com/prometheus/prometheus/util/httputil
 github.com/prometheus/prometheus/pkg/pool
 github.com/prometheus/prometheus/discovery/azure
@@ -367,21 +383,21 @@ github.com/prometheus/prometheus/discovery/openstack
 github.com/prometheus/prometheus/discovery/triton
 github.com/prometheus/prometheus/discovery/zookeeper
 github.com/prometheus/prometheus/discovery/refresh
-github.com/prometheus/prometheus/storage/tsdb
-github.com/prometheus/prometheus/pkg/logging
-github.com/prometheus/prometheus/tsdb
-github.com/prometheus/prometheus/tsdb/fileutil
-github.com/prometheus/prometheus/tsdb/wal
-github.com/prometheus/prometheus/util/treecache
 github.com/prometheus/prometheus/tsdb/chunks
 github.com/prometheus/prometheus/tsdb/encoding
 github.com/prometheus/prometheus/tsdb/errors
+github.com/prometheus/prometheus/tsdb/fileutil
 github.com/prometheus/prometheus/tsdb/goversion
 github.com/prometheus/prometheus/tsdb/index
+github.com/prometheus/prometheus/tsdb/wal
+github.com/prometheus/prometheus/pkg/logging
+github.com/prometheus/prometheus/util/treecache
 # github.com/samuel/go-zookeeper v0.0.0-20190810000440-0ceca61e4d75
 github.com/samuel/go-zookeeper/zk
 # github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
+# github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529
+github.com/sean-/seed
 # github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver v2.1.0+incompatible
@@ -438,8 +454,6 @@ github.com/weaveworks/common/mflag
 github.com/weaveworks/common/mflagext
 github.com/weaveworks/common/signals
 github.com/weaveworks/common/test
-# github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62
-github.com/weaveworks/mesh
 # github.com/weaveworks/promrus v1.2.0
 github.com/weaveworks/promrus
 # github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2
@@ -558,13 +572,7 @@ go.uber.org/zap/buffer
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 # golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
-golang.org/x/crypto/nacl/box
-golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/bcrypt
-golang.org/x/crypto/curve25519
-golang.org/x/crypto/salsa20/salsa
-golang.org/x/crypto/internal/subtle
-golang.org/x/crypto/poly1305
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
@@ -595,7 +603,6 @@ golang.org/x/sync/semaphore
 # golang.org/x/sys v0.0.0-20190813064441-fde4db37ae7a
 golang.org/x/sys/windows
 golang.org/x/sys/unix
-golang.org/x/sys/cpu
 # golang.org/x/text v0.3.2
 golang.org/x/text/secure/bidirule
 golang.org/x/text/unicode/bidi

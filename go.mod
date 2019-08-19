@@ -15,12 +15,14 @@ require (
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
 	github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
 	github.com/cenkalti/backoff v1.0.0 // indirect
+	github.com/cespare/xxhash v1.1.0
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd v0.0.0-20181012123002-c6f51f82210d // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/cznic/ql v1.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
+	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/fluent/fluent-logger-golang v1.2.1 // indirect
 	github.com/fsouza/fake-gcs-server v1.3.0
 	github.com/go-kit/kit v0.9.0
@@ -53,7 +55,7 @@ require (
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/prometheus/alertmanager v0.12.1-0.20190731170042-6e135a0112f5
+	github.com/prometheus/alertmanager v0.15.1
 	github.com/prometheus/client_golang v1.1.0
 	github.com/prometheus/common v0.6.0
 	github.com/prometheus/prometheus v0.0.0-20190819154817-22d54a8192cb
@@ -69,7 +71,6 @@ require (
 	github.com/uber/jaeger-lib v2.0.0+incompatible // indirect
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 	github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd
-	github.com/weaveworks/mesh v0.0.0-20170131170447-5015f896ab62
 	github.com/weaveworks/promrus v1.2.0 // indirect
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5

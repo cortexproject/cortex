@@ -1,3 +1,16 @@
+// Copyright 2018 Prometheus Team
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package dispatch
 
 import (
@@ -247,12 +260,13 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *Route) {
 	fp := groupLabels.Fingerprint()
 
 	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
 	group, ok := d.aggrGroups[route]
 	if !ok {
 		group = map[model.Fingerprint]*aggrGroup{}
 		d.aggrGroups[route] = group
 	}
-	d.mtx.Unlock()
 
 	// If the group does not exist, create it.
 	ag, ok := group[fp]
@@ -287,9 +301,9 @@ type aggrGroup struct {
 	next    *time.Timer
 	timeout func(time.Duration) time.Duration
 
-	mtx     sync.RWMutex
-	alerts  map[model.Fingerprint]*types.Alert
-	hasSent bool
+	mtx        sync.RWMutex
+	alerts     map[model.Fingerprint]*types.Alert
+	hasFlushed bool
 }
 
 // newAggrGroup returns a new aggregation group.
@@ -366,6 +380,7 @@ func (ag *aggrGroup) run(nf notifyFunc) {
 			// Wait the configured interval before calling flush again.
 			ag.mtx.Lock()
 			ag.next.Reset(ag.opts.GroupInterval)
+			ag.hasFlushed = true
 			ag.mtx.Unlock()
 
 			ag.flush(func(alerts ...*types.Alert) bool {
@@ -387,8 +402,7 @@ func (ag *aggrGroup) stop() {
 	<-ag.done
 }
 
-// insert inserts the alert into the aggregation group. If the aggregation group
-// is empty afterwards, it returns true.
+// insert inserts the alert into the aggregation group.
 func (ag *aggrGroup) insert(alert *types.Alert) {
 	ag.mtx.Lock()
 	defer ag.mtx.Unlock()
@@ -397,7 +411,7 @@ func (ag *aggrGroup) insert(alert *types.Alert) {
 
 	// Immediately trigger a flush if the wait duration for this
 	// alert is already over.
-	if !ag.hasSent && alert.StartsAt.Add(ag.opts.GroupWait).Before(time.Now()) {
+	if !ag.hasFlushed && alert.StartsAt.Add(ag.opts.GroupWait).Before(time.Now()) {
 		ag.next.Reset(0)
 	}
 }
@@ -418,12 +432,13 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 
 	var (
 		alerts      = make(map[model.Fingerprint]*types.Alert, len(ag.alerts))
-		alertsSlice = make([]*types.Alert, 0, len(ag.alerts))
+		alertsSlice = make(types.AlertSlice, 0, len(ag.alerts))
 	)
 	for fp, alert := range ag.alerts {
 		alerts[fp] = alert
 		alertsSlice = append(alertsSlice, alert)
 	}
+	sort.Stable(alertsSlice)
 
 	ag.mtx.Unlock()
 
@@ -438,8 +453,6 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 				delete(ag.alerts, fp)
 			}
 		}
-
-		ag.hasSent = true
 		ag.mtx.Unlock()
 	}
 }

@@ -117,6 +117,7 @@ type Config struct {
 	ChunkAgeJitter    time.Duration
 	ConcurrentFlushes int
 	SpreadFlushes     bool
+	MinChunkLength    int
 
 	RateUpdatePeriod time.Duration
 
@@ -136,6 +137,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
 	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 20*time.Minute, "Range of time to subtract from MaxChunkAge to spread out flushes")
 	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", false, "If true, spread series flushes across the whole period of MaxChunkAge")
+	f.IntVar(&cfg.MinChunkLength, "ingester.min-chunk-length", 0, "Minimum number of samples in an idle chunk to flush it to the store. Use with care, if chunks are less than this size they will be discarded.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 }
@@ -299,6 +301,16 @@ func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp mode
 	}()
 
 	prevNumChunks := len(series.chunkDescs)
+	if i.cfg.SpreadFlushes && prevNumChunks > 0 {
+		// Map from the fingerprint hash to a point in the cycle of period MaxChunkAge
+		startOfCycle := timestamp.Add(-(timestamp.Sub(model.Time(0)) % i.cfg.MaxChunkAge))
+		slot := startOfCycle.Add(time.Duration(uint64(fp) % uint64(i.cfg.MaxChunkAge)))
+		// If adding this sample means the head chunk will span that point in time, close so it will get flushed
+		if series.head().FirstTime < slot && timestamp >= slot {
+			series.closeHead()
+		}
+	}
+
 	if err := series.add(model.SamplePair{
 		Value:     value,
 		Timestamp: timestamp,

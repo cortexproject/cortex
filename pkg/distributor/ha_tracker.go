@@ -80,21 +80,26 @@ type haTracker struct {
 // HATrackerConfig contains the configuration require to
 // create a HA Tracker.
 type HATrackerConfig struct {
+	EnableHATracker bool `yaml:"enable_ha_tracker,omitempty"`
 	// We should only update the timestamp if the difference
 	// between the stored timestamp and the time we received a sample at
 	// is more than this duration.
-	UpdateTimeout time.Duration
+	UpdateTimeout time.Duration `yaml:"ha_tracker_update_timeout"`
 	// We should only failover to accepting samples from a replica
 	// other than the replica written in the KVStore if the difference
 	// between the stored timestamp and the time we received a sample is
 	// more than this duration
-	FailoverTimeout time.Duration
+	FailoverTimeout time.Duration `yaml:"ha_tracker_failover_timeout"`
 
 	KVStore kv.Config
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet
+// RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.EnableHATracker,
+		"distributor.ha-tracker.enable",
+		false,
+		"Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels).")
 	f.DurationVar(&cfg.UpdateTimeout,
 		"distributor.ha-tracker.update-timeout",
 		15*time.Second,
@@ -112,11 +117,6 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 
-	client, err := kv.NewClient(cfg.KVStore, codec)
-	if err != nil {
-		return nil, err
-	}
-
 	if cfg.FailoverTimeout <= cfg.UpdateTimeout {
 		return nil, fmt.Errorf("HA Tracker failover timeout must be greater than update timeout, %d is <= %d", cfg.FailoverTimeout, cfg.UpdateTimeout)
 	}
@@ -126,10 +126,17 @@ func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
 		cfg:     cfg,
 		done:    make(chan struct{}),
 		elected: map[string]ReplicaDesc{},
-		client:  client,
 		cancel:  cancel,
 	}
-	go t.loop(ctx)
+
+	if cfg.EnableHATracker {
+		client, err := kv.NewClient(cfg.KVStore, codec)
+		if err != nil {
+			return nil, err
+		}
+		t.client = client
+		go t.loop(ctx)
+	}
 	return &t, nil
 }
 
@@ -155,8 +162,10 @@ func (c *haTracker) loop(ctx context.Context) {
 
 // Stop ends calls the trackers cancel function, which will end the loop for WatchPrefix.
 func (c *haTracker) stop() {
-	c.cancel()
-	<-c.done
+	if c.cfg.EnableHATracker {
+		c.cancel()
+		<-c.done
+	}
 }
 
 // CheckReplica checks the cluster and replica against the backing KVStore and local cache in the
@@ -167,6 +176,10 @@ func (c *haTracker) stop() {
 // accepting samples from another replica for the cluster, so that there isn't a bunch of error's returned
 // to customers clients.
 func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica string) error {
+	// If HA tracking isn't enabled then accept the sample
+	if !c.cfg.EnableHATracker {
+		return nil
+	}
 	key := fmt.Sprintf("%s/%s", userID, cluster)
 	now := mtime.Now()
 	c.electedLock.RLock()

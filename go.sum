@@ -423,8 +423,8 @@ github.com/prometheus/procfs v0.0.0-20190117184657-bf6a532e95b1 h1:/K3IL0Z1quvmJ
 github.com/prometheus/procfs v0.0.0-20190117184657-bf6a532e95b1/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
 github.com/prometheus/procfs v0.0.2 h1:6LJUbpNm42llc4HRCuvApCSWB/WfhuNo9K98Q9sNGfs=
 github.com/prometheus/procfs v0.0.2/go.mod h1:TjEm7ze935MbeOT/UhFTIMYKhuLP4wbCsTZCD3I8kEA=
-github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac h1:nDONJ/OeNXNq7zDXYjuoPsvzf1WoT4cz9V32LsZE7Lo=
-github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac/go.mod h1:0nIafMIZWDF3P7oq1Xf8HKRZ0I37hKmhYEAupBEaa4A=
+github.com/prometheus/prometheus v0.0.0-20190820141915-363b523ee87e h1:WtMWsG3EvUBI/qsDmgjsSsmJ7L2JEDIfgMX7WdKGvTY=
+github.com/prometheus/prometheus v0.0.0-20190820141915-363b523ee87e/go.mod h1:0nIafMIZWDF3P7oq1Xf8HKRZ0I37hKmhYEAupBEaa4A=
 github.com/prometheus/tsdb v0.9.1 h1:IWaAmWkYlgG7/S4iw4IpAQt5Y35QaZM6/GsZ7GsjAuk=
 github.com/prometheus/tsdb v0.9.1/go.mod h1:oi49uRhEe9dPUTlS3JRZOwJuVi6tmh10QSgwXEyGCt4=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=

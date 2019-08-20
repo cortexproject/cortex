@@ -334,7 +334,7 @@ github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
 # github.com/prometheus/procfs v0.0.2
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
-# github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac
+# github.com/prometheus/prometheus v0.0.0-20190820141915-363b523ee87e
 github.com/prometheus/prometheus/pkg/labels
 github.com/prometheus/prometheus/promql
 github.com/prometheus/prometheus/pkg/rulefmt

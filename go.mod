@@ -57,7 +57,7 @@ require (
 	github.com/prometheus/alertmanager v0.15.1
 	github.com/prometheus/client_golang v1.0.0
 	github.com/prometheus/common v0.4.1
-	github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac
+	github.com/prometheus/prometheus v0.0.0-20190820141915-363b523ee87e
 	github.com/prometheus/tsdb v0.9.1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect

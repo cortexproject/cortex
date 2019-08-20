@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"io/ioutil"
+	"strings"
 	"time"
 
 	"google.golang.org/api/iterator"
@@ -85,7 +86,7 @@ func (s *ObjectClient) List(ctx context.Context, prefix string) (map[string]time
 		if attr.Name == prefixWithSep {
 			continue
 		}
-		objectNamesWithMtime[attr.Name] = attr.Updated
+		objectNamesWithMtime[strings.TrimPrefix(attr.Name, prefixWithSep)] = attr.Updated
 	}
 
 	return objectNamesWithMtime, nil

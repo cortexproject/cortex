@@ -5,13 +5,16 @@ import (
 	"io"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk/local/archive/store/local"
+
 	"github.com/cortexproject/cortex/pkg/chunk/local/archive/store/gcs"
 )
 
 // Config for stores
 type Config struct {
-	Store     string     `yaml:"store"`
-	GCSConfig gcs.Config `yaml:"gcs"`
+	Store       string       `yaml:"store"`
+	GCSConfig   gcs.Config   `yaml:"gcs"`
+	LocalConfig local.Config `yaml:"local"`
 }
 
 // NewArchiveStoreClient creates a client for store that is configured to be used
@@ -19,6 +22,8 @@ func NewArchiveStoreClient(cfg Config) (ArchiveStoreClient, error) {
 	switch cfg.Store {
 	case "gcs":
 		return gcs.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
+	case "local":
+		return local.NewLocalObjectObjectClient(context.Background(), cfg.LocalConfig)
 	}
 
 	return nil, nil

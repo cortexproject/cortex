@@ -9,7 +9,6 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -66,22 +65,28 @@ type Update struct {
 	FilePath   string
 }
 
+// downloadedTable represents multiple boltdb files for same period uploaded by different ingesters
+type downloadedTable struct {
+	files        map[string]time.Time
+	downloadedAt time.Time
+}
+
 // Archiver holds its configuration and progress of objects in sync
+// Uploads boltdb files to storage with structure <ingester-name>/<boltdb-filename>
+// Keeps syncing locally changed file to the storage and downloading latest changes from storage
+// Cleans up downloaded files as per configured TTL
 type Archiver struct {
 	cfg             Config
 	boltDbDirectory string
 	storeClient     store.ArchiveStoreClient
 
-	downloadedTables    map[string]map[string]time.Time
+	downloadedTables    map[string]*downloadedTable
 	downloadedTablesMtx sync.RWMutex
 
-	tablesInSync    map[string]struct{}
-	tablesInSyncMtx sync.RWMutex
-
-	updatesChan        chan Update
-	filesArchivedAt    map[string]time.Time
-	filesArchivedAtMtx sync.RWMutex
-	done               chan struct{}
+	updatesChan           chan Update
+	uploadedFilesMtime    map[string]time.Time
+	uploadedFilesMtimeMtx sync.RWMutex
+	done                  chan struct{}
 }
 
 type file struct {
@@ -97,12 +102,12 @@ func NewArchiver(cfg Config, boltDbDirectory string) (*Archiver, error) {
 	}
 
 	archiver := Archiver{
-		cfg:              cfg,
-		boltDbDirectory:  boltDbDirectory,
-		downloadedTables: map[string]map[string]time.Time{},
-		tablesInSync:     map[string]struct{}{},
-		updatesChan:      make(chan Update, updateChanCapacity),
-		filesArchivedAt:  map[string]time.Time{},
+		cfg:                cfg,
+		boltDbDirectory:    boltDbDirectory,
+		downloadedTables:   map[string]*downloadedTable{},
+		updatesChan:        make(chan Update, updateChanCapacity),
+		uploadedFilesMtime: map[string]time.Time{},
+		done:               make(chan struct{}),
 	}
 
 	var err error
@@ -123,6 +128,9 @@ func (a *Archiver) loop() {
 	archiveFileTicker := time.NewTicker(ArchiveFileInterval)
 	defer archiveFileTicker.Stop()
 
+	cacheTTLTicker := time.NewTicker(a.cfg.CacheTTL)
+	defer cacheTTLTicker.Stop()
+
 	for {
 		select {
 		case <-resyncTicker.C:
@@ -134,6 +142,11 @@ func (a *Archiver) loop() {
 			err := a.archiveFiles(context.Background(), removeFilesMovedToArchiveAfter)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
+			}
+		case <-cacheTTLTicker.C:
+			err := a.removeExpiredTables()
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error cleaning up expired tables", "err", err)
 			}
 		case <-a.done:
 			return
@@ -162,13 +175,13 @@ func (a *Archiver) archiveFiles(ctx context.Context, removeFilesAfter time.Durat
 		return err
 	}
 
-	a.filesArchivedAtMtx.Lock()
-	defer a.filesArchivedAtMtx.Unlock()
+	a.uploadedFilesMtimeMtx.Lock()
+	defer a.uploadedFilesMtimeMtx.Unlock()
 
 	for _, file := range files {
 		// Checking whether file is updated after last push, if not skipping it
-		fileArchivedAt, isOK := a.filesArchivedAt[file.path]
-		if isOK && fileArchivedAt.After(file.mtime) {
+		uploadedFileMtime, isOK := a.uploadedFilesMtime[file.path]
+		if isOK && !uploadedFileMtime.Before(file.mtime) {
 			continue
 		}
 
@@ -183,10 +196,10 @@ func (a *Archiver) archiveFiles(ctx context.Context, removeFilesAfter time.Durat
 		if err != nil {
 			return err
 		}
-		a.filesArchivedAt[file.path] = time.Now()
+		a.uploadedFilesMtime[file.path] = file.mtime
 	}
 
-	// Finguring out which files are supposed to be deleted based on mtime
+	// Figuring out which files are supposed to be deleted based on mtime
 	sort.Slice(files, func(i, j int) bool {
 		return !files[i].mtime.Before(files[j].mtime)
 	})
@@ -220,7 +233,7 @@ func (a *Archiver) listFiles(path string) ([]file, error) {
 	return files, nil
 }
 
-// Sync all files for a table and keep pull new and updated files
+// Sync i.e download all files for a table and keep pulling new and updated files
 func (a *Archiver) Sync(ctx context.Context, name string) ([]string, error) {
 	if a.cfg.Mode == ArchiveModeWriteOnly {
 		return nil, nil
@@ -228,7 +241,7 @@ func (a *Archiver) Sync(ctx context.Context, name string) ([]string, error) {
 
 	a.downloadedTablesMtx.RLock()
 
-	downloadedFiles, isOk := a.downloadedTables[name]
+	downloadedTable, isOk := a.downloadedTables[name]
 	if !isOk {
 		a.downloadedTablesMtx.RUnlock()
 		err := a.syncTable(ctx, name, false)
@@ -236,17 +249,12 @@ func (a *Archiver) Sync(ctx context.Context, name string) ([]string, error) {
 			return nil, err
 		}
 
-		// We need to keep this table synced i.e keep downloading all new/updated boltdb files from all the ingesters
-		a.tablesInSyncMtx.Lock()
-		defer a.tablesInSyncMtx.Unlock()
-		a.tablesInSync[name] = struct{}{}
-
 		a.downloadedTablesMtx.RLock()
-		downloadedFiles = a.downloadedTables[name]
+		downloadedTable = a.downloadedTables[name]
 	}
 
-	indexFiles := make([]string, 0, len(downloadedFiles))
-	for downloadedFile := range downloadedFiles {
+	indexFiles := make([]string, 0, len(downloadedTable.files))
+	for downloadedFile := range downloadedTable.files {
 		indexFiles = append(indexFiles, path.Join(a.cfg.CacheLocation, name, downloadedFile))
 	}
 	a.downloadedTablesMtx.RUnlock()
@@ -258,11 +266,10 @@ func (a *Archiver) syncAllTables(ctx context.Context) error {
 		return nil
 	}
 
-	a.tablesInSyncMtx.RLock()
-	defer a.tablesInSyncMtx.RUnlock()
+	tablesToSync := a.listDownloadedTables()
 
-	for syncTable := range a.tablesInSync {
-		err := a.syncTable(ctx, syncTable, true)
+	for _, tableToSync := range tablesToSync {
+		err := a.syncTable(ctx, tableToSync, true)
 		if err != nil {
 			return err
 		}
@@ -271,8 +278,8 @@ func (a *Archiver) syncAllTables(ctx context.Context) error {
 	return nil
 }
 
-// returns list of file paths which were newly download or were re-downloaded due to change in mtime
 func (a *Archiver) syncTable(ctx context.Context, tableName string, sendUpdates bool) error {
+	// listing tables from store
 	objectNamesWithMtime, err := a.storeClient.List(ctx, tableName)
 	if err != nil {
 		return err
@@ -284,21 +291,29 @@ func (a *Archiver) syncTable(ctx context.Context, tableName string, sendUpdates 
 		return err
 	}
 
+	a.downloadedTablesMtx.RLock()
 	_, isOk := a.downloadedTables[tableName]
+	a.downloadedTablesMtx.RUnlock()
+
 	if !isOk {
-		a.downloadedTables[tableName] = map[string]time.Time{}
+		a.downloadedTablesMtx.Lock()
+		a.downloadedTables[tableName] = &downloadedTable{
+			files:        map[string]time.Time{},
+			downloadedAt: time.Now(),
+		}
+		a.downloadedTablesMtx.Unlock()
 	}
 
-	for objectName, objectMtime := range objectNamesWithMtime {
-		fileName := strings.Split(objectName, "/")[1]
+	// downloading files, skipping which are already downloaded and upto date
+	for fileName, mtime := range objectNamesWithMtime {
 		filePath := path.Join(indexDir, fileName)
 
 		a.downloadedTablesMtx.RLock()
 		isUptoDate := false
 
 		// Checking whether file was updated in the store after we downloaded it, if not skipping download
-		downloadedFileMtime, isOk := a.downloadedTables[tableName][fileName]
-		if isOk && downloadedFileMtime == objectMtime {
+		downloadedFileMtime, isOk := a.downloadedTables[tableName].files[fileName]
+		if isOk && downloadedFileMtime == mtime {
 			isUptoDate = true
 		}
 
@@ -307,6 +322,7 @@ func (a *Archiver) syncTable(ctx context.Context, tableName string, sendUpdates 
 			continue
 		}
 
+		objectName := fmt.Sprintf("%s/%s", tableName, fileName)
 		fileBytes, err := a.storeClient.Get(ctx, objectName)
 		if err != nil {
 			return err
@@ -327,19 +343,19 @@ func (a *Archiver) syncTable(ctx context.Context, tableName string, sendUpdates 
 		}
 
 		a.downloadedTablesMtx.Lock()
-		a.downloadedTables[tableName][fileName] = objectMtime
+		a.downloadedTables[tableName].files[fileName] = mtime
 		a.downloadedTablesMtx.Unlock()
 	}
 
 	if sendUpdates {
 		// Clean up removed files from the store.
 		// We want to clean up removed files only when we are sending updates for taking appropriate action when files are removed
-		// This should get handled when re-sync kicks in which sends the updates
+		// If we are not cleaning up now, it should get handled when re-sync kicks in which sends the updates
 		a.downloadedTablesMtx.Lock()
 		defer a.downloadedTablesMtx.Unlock()
 
 		downloadedTable := a.downloadedTables[tableName]
-		for fileName := range downloadedTable {
+		for fileName := range downloadedTable.files {
 			if _, isOK := objectNamesWithMtime[tableName+"/"+fileName]; !isOK {
 				filePath := path.Join(indexDir, fileName)
 				err := os.Remove(filePath)
@@ -354,22 +370,46 @@ func (a *Archiver) syncTable(ctx context.Context, tableName string, sendUpdates 
 	return nil
 }
 
-func (a *Archiver) addSync(tableName string) {
-	a.tablesInSyncMtx.Lock()
-	defer a.tablesInSyncMtx.Unlock()
+func (a *Archiver) listDownloadedTables() []string {
+	a.downloadedTablesMtx.RLock()
+	defer a.downloadedTablesMtx.RUnlock()
 
-	a.tablesInSync[tableName] = struct{}{}
+	tablesInSync := make([]string, len(a.downloadedTables))
+	i := 0
+
+	for tableName := range a.downloadedTables {
+		tablesInSync[i] = tableName
+		i++
+	}
+
+	return tablesInSync
 }
 
-func (a *Archiver) removeSync(tableName string) {
-	a.tablesInSyncMtx.Lock()
-	defer a.tablesInSyncMtx.Unlock()
+func (a *Archiver) removeExpiredTables() error {
+	expiry := time.Now().Add(-a.cfg.CacheTTL)
+	tablesToRemove := []string{}
 
-	delete(a.tablesInSync, tableName)
+	a.downloadedTablesMtx.RLock()
+
+	for tableName, downloadedTable := range a.downloadedTables {
+		if downloadedTable.downloadedAt.Before(expiry) {
+			tablesToRemove = append(tablesToRemove, tableName)
+		}
+	}
+
+	a.downloadedTablesMtx.RUnlock()
+
+	for _, tableToRemove := range tablesToRemove {
+		err := a.removeTable(tableToRemove)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (a *Archiver) removeDownloadedTable(tableName string) error {
-	a.removeSync(tableName)
+func (a *Archiver) removeTable(tableName string) error {
 	a.downloadedTablesMtx.Lock()
 	defer a.downloadedTablesMtx.Unlock()
 

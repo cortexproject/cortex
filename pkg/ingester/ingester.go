@@ -280,8 +280,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	return &client.WriteResponse{}, lastPartialErr
 }
 
-func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp model.Time,
-	value model.SampleValue, source client.WriteRequest_SourceEnum) error {
+func (i *Ingester) append(ctx context.Context, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
 	labels.removeBlanks()
 
 	i.stopLock.RLock()

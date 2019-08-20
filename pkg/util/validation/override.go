@@ -22,30 +22,31 @@ func init() {
 // OverridesLoader loads the overrides
 type OverridesLoader func(string) (map[string]interface{}, error)
 
+// OverridesManagerConfig holds the config for an OverridesManager instance.
+// It holds config related to loading per-tentant overrides and the default limits
+type OverridesManagerConfig struct {
+	OverridesReloadPeriod time.Duration
+	OverridesLoadPath     string
+	OverridesLoader       OverridesLoader
+	Defaults              interface{}
+}
+
 // OverridesManager manages default and per user limits i.e overrides.
 // It can periodically keep reloading overrides based on config.
 type OverridesManager struct {
-	overridesReloadPeriod time.Duration
-	overridesReloadPath   string
-	overridesLoader       OverridesLoader
-
-	defaults     interface{}
+	cfg          OverridesManagerConfig
 	overrides    map[string]interface{}
 	overridesMtx sync.RWMutex
 	quit         chan struct{}
 }
 
 // NewOverridesManager creates an instance of OverridesManager and starts reload overrides loop based on config
-func NewOverridesManager(perTenantOverridePeriod time.Duration, overridesReloadPath string, overridesLoader OverridesLoader,
-	defaults interface{}) (*OverridesManager, error) {
+func NewOverridesManager(cfg OverridesManagerConfig) (*OverridesManager, error) {
 	overridesManager := OverridesManager{
-		overridesLoader:       overridesLoader,
-		overridesReloadPeriod: perTenantOverridePeriod,
-		overridesReloadPath:   overridesReloadPath,
-		defaults:              defaults,
+		cfg: cfg,
 	}
 
-	if overridesReloadPath != "" {
+	if cfg.OverridesLoadPath != "" {
 		overridesManager.loop()
 	} else {
 		level.Info(util.Logger).Log("msg", "per-tenant overrides disabled")
@@ -55,7 +56,7 @@ func NewOverridesManager(perTenantOverridePeriod time.Duration, overridesReloadP
 }
 
 func (om *OverridesManager) loop() {
-	ticker := time.NewTicker(om.overridesReloadPeriod)
+	ticker := time.NewTicker(om.cfg.OverridesReloadPeriod)
 	defer ticker.Stop()
 
 	for {
@@ -72,7 +73,7 @@ func (om *OverridesManager) loop() {
 }
 
 func (om *OverridesManager) loadOverrides() error {
-	overrides, err := om.overridesLoader(om.overridesReloadPath)
+	overrides, err := om.cfg.OverridesLoader(om.cfg.OverridesLoadPath)
 	if err != nil {
 		overridesReloadSuccess.Set(0)
 		return err
@@ -97,7 +98,7 @@ func (om *OverridesManager) GetLimits(userID string) interface{} {
 
 	override, ok := om.overrides[userID]
 	if !ok {
-		return om.defaults
+		return om.cfg.Defaults
 	}
 
 	return override

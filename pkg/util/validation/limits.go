@@ -103,9 +103,14 @@ type Overrides struct {
 // become the new global defaults.
 func NewOverrides(defaults Limits) (*Overrides, error) {
 	defaultLimits = &defaults
+	overridesManagerConfig := OverridesManagerConfig{
+		OverridesReloadPeriod: defaults.PerTenantOverridePeriod,
+		OverridesLoadPath:     defaults.PerTenantOverrideConfig,
+		OverridesLoader:       loadOverrides,
+		Defaults:              &defaults,
+	}
 
-	overridesManager, err := NewOverridesManager(defaults.PerTenantOverridePeriod, defaults.PerTenantOverrideConfig,
-		loadOverrides, &defaults)
+	overridesManager, err := NewOverridesManager(overridesManagerConfig)
 	if err != nil {
 		return nil, err
 	}

@@ -51,7 +51,14 @@ func testLoadOverrides(filename string) (map[string]interface{}, error) {
 
 func TestOverridesManager_GetLimits(t *testing.T) {
 	defaultTestLimits = &TestLimits{Limit1: 100}
-	overridesManager, err := NewOverridesManager(0, "", testLoadOverrides, defaultTestLimits)
+	overridesManagerConfig := OverridesManagerConfig{
+		OverridesReloadPeriod: 0,
+		OverridesLoadPath:     "",
+		OverridesLoader:       testLoadOverrides,
+		Defaults:              defaultTestLimits,
+	}
+
+	overridesManager, err := NewOverridesManager(overridesManagerConfig)
 	require.NoError(t, err)
 
 	require.Equal(t, 100, overridesManager.GetLimits("user1").(*TestLimits).Limit1)
@@ -66,7 +73,7 @@ func TestOverridesManager_GetLimits(t *testing.T) {
     limit2: 150`)
 	require.NoError(t, err)
 
-	overridesManager.overridesReloadPath = tempFile.Name()
+	overridesManager.cfg.OverridesLoadPath = tempFile.Name()
 	require.NoError(t, overridesManager.loadOverrides())
 
 	// Checking whether overrides were enforced

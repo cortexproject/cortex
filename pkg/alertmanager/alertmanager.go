@@ -1,6 +1,7 @@
 package alertmanager
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -23,8 +24,8 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const notificationLogMaintenancePeriod = 15 * time.Minute
@@ -82,7 +83,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
 
-	am.marker = types.NewMarker()
+	am.marker = types.NewMarker(nil)
 
 	// TODO(cortex): Build a registry that can merge metrics from multiple users.
 	// For now, these metrics are ignored, as we can't register the same
@@ -110,28 +111,31 @@ func New(cfg *Config) (*Alertmanager, error) {
 		am.wg.Done()
 	}()
 
-	marker := types.NewMarker()
-	am.alerts, err = mem.NewAlerts(marker, 30*time.Minute)
+	marker := types.NewMarker(nil)
+	am.alerts, err = mem.NewAlerts(context.Background(), marker, 30*time.Minute, am.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
 
-	am.api = api.New(
-		am.alerts,
-		am.silences,
-		func(matchers []*labels.Matcher) dispatch.AlertOverview {
-			return am.dispatcher.Groups(matchers)
+	am.api, err = api.New(api.Options{
+		Alerts:     am.alerts,
+		Silences:   am.silences,
+		StatusFunc: marker.Status,
+		Peer:       cfg.Peer,
+		Logger:     log.With(am.logger, "component", "api"),
+		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
+			return am.dispatcher.Groups(f1, f2)
 		},
-		marker.Status,
-		cfg.Peer,
-		log.With(am.logger, "component", "api"),
-	)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create api: %v", err)
+	}
 
 	am.router = route.New()
 
 	webReload := make(chan chan error)
 	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload, log.With(am.logger, "component", "ui"))
-	am.api.Register(am.router.WithPrefix(path.Join(am.cfg.ExternalURL.Path, "/api/v1")))
+	am.api.Register(am.router, path.Join(am.cfg.ExternalURL.Path, "/api/v1"))
 
 	go func() {
 		for {
@@ -177,10 +181,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	}
 	tmpl.ExternalURL = am.cfg.ExternalURL
 
-	err = am.api.Update(conf, time.Duration(conf.Global.ResolveTimeout))
-	if err != nil {
-		return err
-	}
+	am.api.Update(conf, func(_ model.LabelSet) {})
 
 	am.inhibitor.Stop()
 	am.dispatcher.Stop()
@@ -197,14 +198,11 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 
 	pipeline = notify.BuildPipeline(
 		conf.Receivers,
-		tmpl,
 		waitFunc,
 		am.inhibitor,
-		am.silences,
+		silence.NewSilencer(am.silences, am.marker, am.logger),
 		am.nflog,
-		am.marker,
 		am.cfg.Peer,
-		log.With(am.logger, "component", "pipeline"),
 	)
 	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,

@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -327,8 +328,12 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	if am.cfg.AutoSlackRoot != "" {
 		for _, r := range amConfig.Receivers {
 			for _, s := range r.SlackConfigs {
-				if s.APIURL == autoSlackURL {
-					s.APIURL = amconfig.Secret(am.cfg.AutoSlackRoot + "/" + userID + "/monitor")
+				if s.APIURL.String() == autoSlackURL {
+					u, err := url.Parse(am.cfg.AutoSlackRoot + "/" + userID + "/monitor")
+					if err != nil {
+						return nil, err
+					}
+					s.APIURL = &amconfig.SecretURL{u}
 				}
 			}
 		}
@@ -336,8 +341,12 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	if am.cfg.AutoWebhookRoot != "" {
 		for _, r := range amConfig.Receivers {
 			for _, w := range r.WebhookConfigs {
-				if w.URL == autoWebhookURL {
-					w.URL = am.cfg.AutoWebhookRoot + "/" + userID + "/monitor"
+				if w.URL.String() == autoWebhookURL {
+					u, err := url.Parse(am.cfg.AutoWebhookRoot + "/" + userID + "/monitor")
+					if err != nil {
+						return nil, err
+					}
+					w.URL = &amconfig.URL{u}
 				}
 			}
 		}

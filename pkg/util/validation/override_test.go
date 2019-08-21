@@ -18,7 +18,7 @@ var defaultTestLimits *TestLimits
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (l *TestLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	if defaultLimits != nil {
+	if defaultTestLimits != nil {
 		*l = *defaultTestLimits
 	}
 	type plain TestLimits
@@ -77,10 +77,15 @@ func TestOverridesManager_GetLimits(t *testing.T) {
 	require.NoError(t, overridesManager.loadOverrides())
 
 	// Checking whether overrides were enforced
+	require.Equal(t, 100, overridesManager.GetLimits("user1").(*TestLimits).Limit1)
 	require.Equal(t, 150, overridesManager.GetLimits("user1").(*TestLimits).Limit2)
+
+	// Verifying user2 limits are not impacted by overrides
+	require.Equal(t, 100, overridesManager.GetLimits("user2").(*TestLimits).Limit1)
 	require.Equal(t, 0, overridesManager.GetLimits("user2").(*TestLimits).Limit2)
 
 	// Cleaning up
 	require.NoError(t, tempFile.Close())
 	require.NoError(t, os.Remove(tempFile.Name()))
+	overridesManager.Stop()
 }

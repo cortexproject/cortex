@@ -43,7 +43,8 @@ type OverridesManager struct {
 // NewOverridesManager creates an instance of OverridesManager and starts reload overrides loop based on config
 func NewOverridesManager(cfg OverridesManagerConfig) (*OverridesManager, error) {
 	overridesManager := OverridesManager{
-		cfg: cfg,
+		cfg:  cfg,
+		quit: make(chan struct{}),
 	}
 
 	if cfg.OverridesLoadPath != "" {

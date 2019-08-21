@@ -232,6 +232,8 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 // Loads overrides and returns the limits as an interface to store them in OverridesManager.
 // We need to implement it here since OverridesManager must store type Limits in an interface but
 // it doesn't know its definition to initialize it.
+// We could have used yamlv3.Node for this but there is no way to enforce strict decoding due to a bug in it
+// TODO: Use yamlv3.Node to move this to OverridesManager after https://github.com/go-yaml/yaml/issues/460 is fixed
 func loadOverrides(filename string) (map[string]interface{}, error) {
 	f, err := os.Open(filename)
 	if err != nil {

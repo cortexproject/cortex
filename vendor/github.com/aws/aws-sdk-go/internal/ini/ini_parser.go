@@ -304,7 +304,9 @@ loop:
 			stmt := newCommentStatement(tok)
 			stack.Push(stmt)
 		default:
-			return nil, NewParseError(fmt.Sprintf("invalid state with ASTKind %v and TokenType %v", k, tok))
+			return nil, NewParseError(
+				fmt.Sprintf("invalid state with ASTKind %v and TokenType %v",
+					k, tok.Type()))
 		}
 
 		if len(tokens) > 0 {
@@ -314,10 +316,10 @@ loop:
 
 	// this occurs when a statement has not been completed
 	if stack.top > 1 {
-		return nil, NewParseError(fmt.Sprintf("incomplete expression: %v", stack.container))
+		return nil, NewParseError(fmt.Sprintf("incomplete ini expression"))
 	}
 
-	// returns a sublist which exludes the start symbol
+	// returns a sublist which excludes the start symbol
 	return stack.List(), nil
 }
 

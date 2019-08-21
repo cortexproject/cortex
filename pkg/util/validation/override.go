@@ -48,7 +48,7 @@ func NewOverridesManager(cfg OverridesManagerConfig) (*OverridesManager, error) 
 	}
 
 	if cfg.OverridesLoadPath != "" {
-		overridesManager.loop()
+		go overridesManager.loop()
 	} else {
 		level.Info(util.Logger).Log("msg", "per-tenant overrides disabled")
 	}

@@ -30,6 +30,10 @@ github.com/Azure/go-autorest/logger
 github.com/Masterminds/squirrel
 # github.com/NYTimes/gziphandler v1.1.1
 github.com/NYTimes/gziphandler
+# github.com/PuerkitoBio/purell v1.1.1
+github.com/PuerkitoBio/purell
+# github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578
+github.com/PuerkitoBio/urlesc
 # github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4
 github.com/alecthomas/units
 # github.com/armon/go-metrics v0.0.0-20190430140413-ec5e00d3c878
@@ -111,6 +115,8 @@ github.com/coreos/pkg/capnslog
 github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
 github.com/dgrijalva/jwt-go
+# github.com/docker/go-units v0.4.0
+github.com/docker/go-units
 # github.com/dustin/go-humanize v1.0.0
 github.com/dustin/go-humanize
 # github.com/edsrzf/mmap-go v1.0.0
@@ -127,10 +133,34 @@ github.com/go-kit/kit/log/level
 github.com/go-kit/kit/log
 # github.com/go-logfmt/logfmt v0.4.0
 github.com/go-logfmt/logfmt
+# github.com/go-openapi/analysis v0.19.4
+github.com/go-openapi/analysis
+github.com/go-openapi/analysis/internal
 # github.com/go-openapi/errors v0.19.2
 github.com/go-openapi/errors
+# github.com/go-openapi/jsonpointer v0.19.2
+github.com/go-openapi/jsonpointer
+# github.com/go-openapi/jsonreference v0.19.2
+github.com/go-openapi/jsonreference
+# github.com/go-openapi/loads v0.19.2
+github.com/go-openapi/loads
+# github.com/go-openapi/runtime v0.19.3
+github.com/go-openapi/runtime/middleware
+github.com/go-openapi/runtime
+github.com/go-openapi/runtime/logger
+github.com/go-openapi/runtime/middleware/denco
+github.com/go-openapi/runtime/middleware/header
+github.com/go-openapi/runtime/middleware/untyped
+github.com/go-openapi/runtime/security
+github.com/go-openapi/runtime/flagext
+# github.com/go-openapi/spec v0.19.2
+github.com/go-openapi/spec
 # github.com/go-openapi/strfmt v0.19.2
 github.com/go-openapi/strfmt
+# github.com/go-openapi/swag v0.19.4
+github.com/go-openapi/swag
+# github.com/go-openapi/validate v0.19.2
+github.com/go-openapi/validate
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
 # github.com/gocql/gocql v0.0.0-20180113133114-697e7c57f99b
@@ -234,6 +264,8 @@ github.com/hashicorp/golang-lru
 github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.8.3
 github.com/hashicorp/serf/coordinate
+# github.com/jessevdk/go-flags v0.0.0-20180331124232-1c38ed7ad0cc
+github.com/jessevdk/go-flags
 # github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 github.com/jmespath/go-jmespath
 # github.com/jonboulle/clockwork v0.1.0
@@ -255,6 +287,10 @@ github.com/lann/ps
 # github.com/lib/pq v1.0.0
 github.com/lib/pq
 github.com/lib/pq/oid
+# github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e
+github.com/mailru/easyjson/jlexer
+github.com/mailru/easyjson/jwriter
+github.com/mailru/easyjson/buffer
 # github.com/mattes/migrate v1.3.1
 github.com/mattes/migrate/driver/postgres
 github.com/mattes/migrate/migrate
@@ -282,8 +318,6 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 github.com/mwitkow/go-conntrack
-# github.com/oklog/oklog v0.3.2
-github.com/oklog/oklog/pkg/group
 # github.com/oklog/run v1.0.0
 github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
@@ -302,7 +336,7 @@ github.com/philhofer/fwd
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/alertmanager v0.15.1
+# github.com/prometheus/alertmanager v0.18.0
 github.com/prometheus/alertmanager/api
 github.com/prometheus/alertmanager/cluster
 github.com/prometheus/alertmanager/config
@@ -315,12 +349,24 @@ github.com/prometheus/alertmanager/silence
 github.com/prometheus/alertmanager/template
 github.com/prometheus/alertmanager/types
 github.com/prometheus/alertmanager/ui
-github.com/prometheus/alertmanager/pkg/parse
+github.com/prometheus/alertmanager/api/v1
+github.com/prometheus/alertmanager/api/v2
 github.com/prometheus/alertmanager/provider
-github.com/prometheus/alertmanager/silence/silencepb
 github.com/prometheus/alertmanager/cluster/clusterpb
+github.com/prometheus/alertmanager/store
 github.com/prometheus/alertmanager/nflog/nflogpb
-github.com/prometheus/alertmanager/template/internal/deftmpl
+github.com/prometheus/alertmanager/silence/silencepb
+github.com/prometheus/alertmanager/asset
+github.com/prometheus/alertmanager/api/v2/models
+github.com/prometheus/alertmanager/api/metrics
+github.com/prometheus/alertmanager/pkg/parse
+github.com/prometheus/alertmanager/api/v2/restapi
+github.com/prometheus/alertmanager/api/v2/restapi/operations
+github.com/prometheus/alertmanager/api/v2/restapi/operations/alert
+github.com/prometheus/alertmanager/api/v2/restapi/operations/alertgroup
+github.com/prometheus/alertmanager/api/v2/restapi/operations/general
+github.com/prometheus/alertmanager/api/v2/restapi/operations/receiver
+github.com/prometheus/alertmanager/api/v2/restapi/operations/silence
 # github.com/prometheus/client_golang v1.1.0
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/promauto
@@ -340,7 +386,7 @@ github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
 # github.com/prometheus/procfs v0.0.3
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
-# github.com/prometheus/prometheus v0.0.0-20190819154817-22d54a8192cb
+# github.com/prometheus/prometheus v0.0.0-20190818123050-43acd0e2e93f
 github.com/prometheus/prometheus/pkg/labels
 github.com/prometheus/prometheus/promql
 github.com/prometheus/prometheus/tsdb/chunkenc
@@ -392,6 +438,8 @@ github.com/prometheus/prometheus/tsdb/index
 github.com/prometheus/prometheus/tsdb/wal
 github.com/prometheus/prometheus/pkg/logging
 github.com/prometheus/prometheus/util/treecache
+# github.com/rs/cors v1.6.0
+github.com/rs/cors
 # github.com/samuel/go-zookeeper v0.0.0-20190810000440-0ceca61e4d75
 github.com/samuel/go-zookeeper/zk
 # github.com/satori/go.uuid v1.2.0
@@ -402,6 +450,12 @@ github.com/sean-/seed
 github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver v2.1.0+incompatible
 github.com/sercand/kuberesolver
+# github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
+github.com/shurcooL/httpfs/filter
+github.com/shurcooL/httpfs/union
+github.com/shurcooL/httpfs/vfsutil
+# github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
+github.com/shurcooL/vfsgen
 # github.com/sirupsen/logrus v1.4.2
 github.com/sirupsen/logrus
 # github.com/soheilhy/cmux v0.1.4
@@ -586,6 +640,7 @@ golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
+golang.org/x/net/netutil
 golang.org/x/net/http/httpguts
 golang.org/x/net/idna
 golang.org/x/net/bpf
@@ -608,6 +663,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/transform
+golang.org/x/text/width
 # golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 golang.org/x/time/rate
 # golang.org/x/tools v0.0.0-20190813034749-528a2984e271

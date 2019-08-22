@@ -15,6 +15,7 @@ type TestLimits struct {
 	Limit2 int `json:"limit2"`
 }
 
+// WARNING: THIS GLOBAL VARIABLE COULD LEAD TO UNEXPECTED BEHAVIOUR WHEN RUNNING MULTIPLE DIFFERENT TESTS
 var defaultTestLimits *TestLimits
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -78,17 +79,13 @@ func TestNewOverridesManager(t *testing.T) {
 	var overridesManager *OverridesManager
 	done := make(chan struct{})
 
-	// timeout for getting a response from NewOverridesManager()
-	timeout := time.NewTicker(1 * time.Second)
-	defer timeout.Stop()
-
 	go func() {
 		overridesManager, err = NewOverridesManager(overridesManagerConfig)
 		close(done)
 	}()
 
 	select {
-	case <-timeout.C:
+	case <-time.After(time.Second):
 		t.Fatal("failed to get a response from NewOverridesManager() before timeout")
 	case <-done:
 	}

@@ -31,7 +31,7 @@ type Config struct {
 	HTTPListenPort   int    `yaml:"http_listen_port"`
 	GRPCListenPort   int    `yaml:"grpc_listen_port"`
 
-	RegisterInstrumentation bool `yaml:"-"`
+	RegisterInstrumentation bool `yaml:"register_instrumentation"`
 	ExcludeRequestInLog     bool `yaml:"-"`
 
 	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`

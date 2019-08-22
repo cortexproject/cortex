@@ -432,7 +432,7 @@ github.com/uber/jaeger-lib/metrics/prometheus
 github.com/uber/jaeger-lib/metrics
 # github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 github.com/weaveworks/billing-client
-# github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd
+# github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4
 github.com/weaveworks/common/tracing
 github.com/weaveworks/common/server
 github.com/weaveworks/common/user

@@ -344,6 +344,15 @@ github.com/prometheus/alertmanager/dispatch
 github.com/prometheus/alertmanager/inhibit
 github.com/prometheus/alertmanager/nflog
 github.com/prometheus/alertmanager/notify
+github.com/prometheus/alertmanager/notify/email
+github.com/prometheus/alertmanager/notify/hipchat
+github.com/prometheus/alertmanager/notify/opsgenie
+github.com/prometheus/alertmanager/notify/pagerduty
+github.com/prometheus/alertmanager/notify/pushover
+github.com/prometheus/alertmanager/notify/slack
+github.com/prometheus/alertmanager/notify/victorops
+github.com/prometheus/alertmanager/notify/webhook
+github.com/prometheus/alertmanager/notify/wechat
 github.com/prometheus/alertmanager/provider/mem
 github.com/prometheus/alertmanager/silence
 github.com/prometheus/alertmanager/template

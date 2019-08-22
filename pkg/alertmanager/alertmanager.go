@@ -18,6 +18,15 @@ import (
 	"github.com/prometheus/alertmanager/inhibit"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/notify"
+	"github.com/prometheus/alertmanager/notify/email"
+	"github.com/prometheus/alertmanager/notify/hipchat"
+	"github.com/prometheus/alertmanager/notify/opsgenie"
+	"github.com/prometheus/alertmanager/notify/pagerduty"
+	"github.com/prometheus/alertmanager/notify/pushover"
+	"github.com/prometheus/alertmanager/notify/slack"
+	"github.com/prometheus/alertmanager/notify/victorops"
+	"github.com/prometheus/alertmanager/notify/webhook"
+	"github.com/prometheus/alertmanager/notify/wechat"
 	"github.com/prometheus/alertmanager/provider/mem"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/template"
@@ -196,8 +205,12 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		return d + waitFunc()
 	}
 
+	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.logger)
+	if err != nil {
+		return nil
+	}
 	pipeline = notify.BuildPipeline(
-		conf.Receivers,
+		integrationsMap,
 		waitFunc,
 		am.inhibitor,
 		silence.NewSilencer(am.silences, am.marker, am.logger),
@@ -230,4 +243,68 @@ func (am *Alertmanager) Stop() {
 // ServeHTTP serves the Alertmanager's web UI and API.
 func (am *Alertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	am.router.ServeHTTP(w, req)
+}
+
+// buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
+// list of receiver config.
+func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger log.Logger) (map[string][]notify.Integration, error) {
+	integrationsMap := make(map[string][]notify.Integration, len(nc))
+	for _, rcv := range nc {
+		integrations, err := buildReceiverIntegrations(rcv, tmpl, logger)
+		if err != nil {
+			return nil, err
+		}
+		integrationsMap[rcv.Name] = integrations
+	}
+	return integrationsMap, err
+}
+
+// buildReceiverIntegrations builds a list of integration notifiers off of a
+// receiver config.
+// Taken from https://github.com/prometheus/alertmanager/blob/94d875f1227b29abece661db1a68c001122d1da5/cmd/alertmanager/main.go#L112-L159.
+func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, logger log.Logger) ([]notify.Integration, error) {
+	var (
+		errs         types.MultiError
+		integrations []notify.Integration
+		add          = func(name string, i int, rs notify.ResolvedSender, f func(l log.Logger) (notify.Notifier, error)) {
+			n, err := f(log.With(logger, "integration", name))
+			if err != nil {
+				errs.Add(err)
+				return
+			}
+			integrations = append(integrations, notify.NewIntegration(n, rs, name, i))
+		}
+	)
+
+	for i, c := range nc.WebhookConfigs {
+		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l) })
+	}
+	for i, c := range nc.EmailConfigs {
+		add("email", i, c, func(l log.Logger) (notify.Notifier, error) { return email.New(c, tmpl, l), nil })
+	}
+	for i, c := range nc.PagerdutyConfigs {
+		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l) })
+	}
+	for i, c := range nc.OpsGenieConfigs {
+		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l) })
+	}
+	for i, c := range nc.WechatConfigs {
+		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l) })
+	}
+	for i, c := range nc.SlackConfigs {
+		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l) })
+	}
+	for i, c := range nc.HipchatConfigs {
+		add("hipchat", i, c, func(l log.Logger) (notify.Notifier, error) { return hipchat.New(c, tmpl, l) })
+	}
+	for i, c := range nc.VictorOpsConfigs {
+		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l) })
+	}
+	for i, c := range nc.PushoverConfigs {
+		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l) })
+	}
+	if errs.Len() > 0 {
+		return nil, &errs
+	}
+	return integrations, nil
 }

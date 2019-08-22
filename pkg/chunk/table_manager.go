@@ -168,7 +168,6 @@ func (m *TableManager) loop() {
 	defer m.wait.Done()
 
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
-	rand.Seed(time.Now().UnixNano())
 	time.Sleep(time.Duration(rand.Int63n(int64(m.cfg.DynamoDBPollInterval))))
 
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)

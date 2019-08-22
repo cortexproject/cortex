@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -56,6 +58,9 @@ func main() {
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("cortex-" + cfg.Target.String())
 	defer trace.Close()
+
+	// Initialise seed for randomness usage.
+	rand.Seed(time.Now().UnixNano())
 
 	t, err := cortex.New(cfg)
 	util.CheckFatal("initializing cortex", err)

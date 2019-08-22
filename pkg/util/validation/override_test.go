@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -47,6 +48,34 @@ func testLoadOverrides(filename string) (map[string]interface{}, error) {
 	}
 
 	return overridesAsInterface, nil
+}
+
+func TestNewOverridesManager(t *testing.T) {
+	tempFile, err := ioutil.TempFile("", "test-validation")
+	require.NoError(t, err)
+
+	_, err = tempFile.WriteString(`overrides:
+  user1:
+    limit2: 150`)
+	require.NoError(t, err)
+
+	defaultTestLimits = &TestLimits{Limit1: 100}
+
+	// testing NewOverridesManager with overrides reload config set
+	overridesManagerConfig := OverridesManagerConfig{
+		OverridesReloadPeriod: time.Second,
+		OverridesLoadPath:     tempFile.Name(),
+		OverridesLoader:       testLoadOverrides,
+		Defaults:              defaultTestLimits,
+	}
+
+	overridesManager, err := NewOverridesManager(overridesManagerConfig)
+	require.NoError(t, err)
+
+	// Cleaning up
+	require.NoError(t, tempFile.Close())
+	require.NoError(t, os.Remove(tempFile.Name()))
+	overridesManager.Stop()
 }
 
 func TestOverridesManager_GetLimits(t *testing.T) {

@@ -511,8 +511,6 @@ github.com/uber/jaeger-lib v2.0.0+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6
 github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijbERA=
 github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1 h1:qi+YkNiB7T3Ikw1DoDIFhdAPbDU7fUPDsKrUoZdupnQ=
 github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1/go.mod h1:7gGdEUJaCrSlWi/mjd68CZv0sfqektYPDcro9cE+M9k=
-github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd h1:yJjtAvkWEyZlz5DGkw3pL12Kbns8rOfPvDrtlIiC82A=
-github.com/weaveworks/common v0.0.0-20190714171817-ddeaa31513fd/go.mod h1:pSm+0KR57BG3pvGoJWFXJSAC7+sEPewcvdt5StevL3A=
 github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4 h1:O8BmyjqQoByXjAj6XaTfcxxqSIK6DYLmOSiYQPL9yJg=
 github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4/go.mod h1:pSm+0KR57BG3pvGoJWFXJSAC7+sEPewcvdt5StevL3A=
 github.com/weaveworks/promrus v1.2.0 h1:jOLf6pe6/vss4qGHjXmGz4oDJQA+AOCqEL3FvvZGz7M=

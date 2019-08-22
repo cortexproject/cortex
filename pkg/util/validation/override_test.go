@@ -54,6 +54,12 @@ func TestNewOverridesManager(t *testing.T) {
 	tempFile, err := ioutil.TempFile("", "test-validation")
 	require.NoError(t, err)
 
+	defer func() {
+		// Clean up
+		require.NoError(t, tempFile.Close())
+		require.NoError(t, os.Remove(tempFile.Name()))
+	}()
+
 	_, err = tempFile.WriteString(`overrides:
   user1:
     limit2: 150`)
@@ -69,12 +75,26 @@ func TestNewOverridesManager(t *testing.T) {
 		Defaults:              defaultTestLimits,
 	}
 
-	overridesManager, err := NewOverridesManager(overridesManagerConfig)
+	var overridesManager *OverridesManager
+	done := make(chan struct{})
+
+	// timeout for getting a response from NewOverridesManager()
+	timeout := time.NewTicker(1 * time.Second)
+	defer timeout.Stop()
+
+	go func() {
+		overridesManager, err = NewOverridesManager(overridesManagerConfig)
+		close(done)
+	}()
+
+	select {
+	case <-timeout.C:
+		t.Fatal("failed to get a response from NewOverridesManager() before timeout")
+	case <-done:
+	}
 	require.NoError(t, err)
 
 	// Cleaning up
-	require.NoError(t, tempFile.Close())
-	require.NoError(t, os.Remove(tempFile.Name()))
 	overridesManager.Stop()
 }
 
@@ -97,6 +117,12 @@ func TestOverridesManager_GetLimits(t *testing.T) {
 	tempFile, err := ioutil.TempFile("", "test-validation")
 	require.NoError(t, err)
 
+	defer func() {
+		// Clean up
+		require.NoError(t, tempFile.Close())
+		require.NoError(t, os.Remove(tempFile.Name()))
+	}()
+
 	_, err = tempFile.WriteString(`overrides:
   user1:
     limit2: 150`)
@@ -114,7 +140,5 @@ func TestOverridesManager_GetLimits(t *testing.T) {
 	require.Equal(t, 0, overridesManager.GetLimits("user2").(*TestLimits).Limit2)
 
 	// Cleaning up
-	require.NoError(t, tempFile.Close())
-	require.NoError(t, os.Remove(tempFile.Name()))
 	overridesManager.Stop()
 }

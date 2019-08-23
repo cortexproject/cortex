@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -14,11 +15,12 @@ type TestLimits struct {
 	Limit2 int `json:"limit2"`
 }
 
+// WARNING: THIS GLOBAL VARIABLE COULD LEAD TO UNEXPECTED BEHAVIOUR WHEN RUNNING MULTIPLE DIFFERENT TESTS
 var defaultTestLimits *TestLimits
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (l *TestLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	if defaultLimits != nil {
+	if defaultTestLimits != nil {
 		*l = *defaultTestLimits
 	}
 	type plain TestLimits
@@ -49,6 +51,50 @@ func testLoadOverrides(filename string) (map[string]interface{}, error) {
 	return overridesAsInterface, nil
 }
 
+func TestNewOverridesManager(t *testing.T) {
+	tempFile, err := ioutil.TempFile("", "test-validation")
+	require.NoError(t, err)
+
+	defer func() {
+		// Clean up
+		require.NoError(t, tempFile.Close())
+		require.NoError(t, os.Remove(tempFile.Name()))
+	}()
+
+	_, err = tempFile.WriteString(`overrides:
+  user1:
+    limit2: 150`)
+	require.NoError(t, err)
+
+	defaultTestLimits = &TestLimits{Limit1: 100}
+
+	// testing NewOverridesManager with overrides reload config set
+	overridesManagerConfig := OverridesManagerConfig{
+		OverridesReloadPeriod: time.Second,
+		OverridesLoadPath:     tempFile.Name(),
+		OverridesLoader:       testLoadOverrides,
+		Defaults:              defaultTestLimits,
+	}
+
+	var overridesManager *OverridesManager
+	done := make(chan struct{})
+
+	go func() {
+		overridesManager, err = NewOverridesManager(overridesManagerConfig)
+		close(done)
+	}()
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("failed to get a response from NewOverridesManager() before timeout")
+	case <-done:
+	}
+	require.NoError(t, err)
+
+	// Cleaning up
+	overridesManager.Stop()
+}
+
 func TestOverridesManager_GetLimits(t *testing.T) {
 	defaultTestLimits = &TestLimits{Limit1: 100}
 	overridesManagerConfig := OverridesManagerConfig{
@@ -68,6 +114,12 @@ func TestOverridesManager_GetLimits(t *testing.T) {
 	tempFile, err := ioutil.TempFile("", "test-validation")
 	require.NoError(t, err)
 
+	defer func() {
+		// Clean up
+		require.NoError(t, tempFile.Close())
+		require.NoError(t, os.Remove(tempFile.Name()))
+	}()
+
 	_, err = tempFile.WriteString(`overrides:
   user1:
     limit2: 150`)
@@ -77,10 +129,13 @@ func TestOverridesManager_GetLimits(t *testing.T) {
 	require.NoError(t, overridesManager.loadOverrides())
 
 	// Checking whether overrides were enforced
+	require.Equal(t, 100, overridesManager.GetLimits("user1").(*TestLimits).Limit1)
 	require.Equal(t, 150, overridesManager.GetLimits("user1").(*TestLimits).Limit2)
+
+	// Verifying user2 limits are not impacted by overrides
+	require.Equal(t, 100, overridesManager.GetLimits("user2").(*TestLimits).Limit1)
 	require.Equal(t, 0, overridesManager.GetLimits("user2").(*TestLimits).Limit2)
 
 	// Cleaning up
-	require.NoError(t, tempFile.Close())
-	require.NoError(t, os.Remove(tempFile.Name()))
+	overridesManager.Stop()
 }

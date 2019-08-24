@@ -31,6 +31,7 @@ require (
 	github.com/gogo/status v1.0.3
 	github.com/golang/protobuf v1.3.2
 	github.com/golang/snappy v0.0.1
+	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/websocket v1.4.0 // indirect
@@ -56,6 +57,7 @@ require (
 	github.com/prometheus/client_golang v1.1.0
 	github.com/prometheus/common v0.6.0
 	github.com/prometheus/prometheus v0.0.0-20190818123050-43acd0e2e93f
+	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect

@@ -24,7 +24,7 @@ has_tokens_owned() {
 DIST_ADDR=$(container_ip distributor)
 wait_for "has_tokens_owned $DIST_ADDR" "distributor to see ingester in ring"
 
-docker run $RUN_ARGS --rm weaveworks/avalanche:remote-write --metric-count=2 --label-count=2 --series-count=2 --remote-url=http://distributor/api/prom/push
+docker run $RUN_ARGS --rm $AVALANCHE_IMAGE --metric-count=2 --label-count=2 --series-count=2 --remote-requests-count=1 --remote-url=http://distributor/api/prom/push
 
 echo Stop ingester so it should flush
 docker stop -t=60 i1 # allow 1 minute for flush to complete

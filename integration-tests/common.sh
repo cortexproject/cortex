@@ -8,6 +8,7 @@ COMMON_ARGS="-consul.hostname=consul:8500"
 STORAGE_ARGS="-config-yaml=/tests/schema1.yaml -dynamodb.url=dynamodb://u:p@dynamodb.cortex.:8000"
 INGESTER_ARGS="$COMMON_ARGS $STORAGE_ARGS -ingester.num-tokens=4 -ingester.min-ready-duration=1s --ingester.final-sleep=0s -ingester.concurrent-flushes=5"
 RUN_ARGS="--net=cortex -v $TEST_DIR:/tests"
+AVALANCHE_IMAGE=quay.io/freshtracks.io/avalanche:master-2019-07-28-47b00e3
 
 # Execute command $1 repeatedly until it returns true; description in $2, optional repeat limit in $3
 wait_for() {

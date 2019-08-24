@@ -17,8 +17,6 @@ type RedisClient interface {
 	Stop()
 }
 
-// redisClient is a redis client that gets its server list from SRV
-// records, and periodically updates that ServerList.
 type redisClient struct {
 	endpoint string
 
@@ -76,11 +74,13 @@ func NewRedisClient(cfg RedisClientConfig) RedisClient {
 	return client
 }
 
+// Set adds a key-value pair to the cache.
 func (c *redisClient) Set(key string, buf []byte, ttl int) error {
 	_, err := c.conn.Do("SETEX", key, ttl, buf)
 	return err
 }
 
+// MGet retrieves values from the cache.
 func (c *redisClient) MGet(keys []string) ([][]byte, error) {
 	intf := make([]interface{}, len(keys))
 	for i, key := range keys {
@@ -89,7 +89,7 @@ func (c *redisClient) MGet(keys []string) ([][]byte, error) {
 	return redis.ByteSlices(c.conn.Do("MGET", intf...))
 }
 
-// Stop the redis client.
+// Stop stops the redis client.
 func (c *redisClient) Stop() {
 	close(c.quit)
 	c.wait.Wait()

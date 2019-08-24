@@ -29,6 +29,7 @@ require (
 	github.com/gogo/status v1.0.3
 	github.com/golang/protobuf v1.3.1
 	github.com/golang/snappy v0.0.1
+	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/gophercloud/gophercloud v0.0.0-20190307220656-fe1ba5ce12dd // indirect
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/websocket v1.4.0 // indirect

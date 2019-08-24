@@ -79,6 +79,10 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Use these flags to specify the location and timeout of the memcached cluster used to cache query results.
 
+- `-redis.{endpoint, timeout}`
+
+   Use these flags to specify the location and timeout of the Redis service used to cache query results.
+
 ## Distributor
 
 - `-distributor.shard-by-all-labels`

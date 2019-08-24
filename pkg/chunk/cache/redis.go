@@ -43,6 +43,7 @@ type Redis struct {
 	requestDuration observableVecCollector
 }
 
+// NewRedis makes a new Redis.
 func NewRedis(cfg RedisConfig, client RedisClient, name string) *Redis {
 	c := &Redis{
 		cfg:        cfg,
@@ -104,7 +105,7 @@ func (c *Redis) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	}
 }
 
-// Stop does nothing.
+// Stop stops Redis client.
 func (c *Redis) Stop() error {
 	c.redis.Stop()
 	return nil

@@ -36,7 +36,7 @@ import (
 
 type moduleName int
 
-// The various modules that make up Loki.
+// The various modules that make up Cortex.
 const (
 	Ring moduleName = iota
 	Overrides
@@ -194,7 +194,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
-		false,                              // Disable admin APIs.
+		false, // Disable admin APIs.
 		util.Logger,
 		querier.DummyRulesRetriever{},
 		0, 0, // Remote read samples and concurrency limit.

@@ -11,6 +11,7 @@
 
 ## 0.1.0 / 2019-08-07
 
+* [CHANGE] --claim-on-rollout flag deprecated; feature is now always on #1566
 * [CHANGE] HA Tracker flags were renamed to provide more clarity #1465
   * `distributor.accept-ha-labels` is now `distributor.ha-tracker.enable`
   * `distributor.accept-ha-samples` is now `distributor.ha-tracker.enable-for-all-users`

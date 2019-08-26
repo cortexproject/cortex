@@ -1,14 +1,10 @@
 package ring
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -26,20 +22,12 @@ func BenchmarkRing(b *testing.B) {
 		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE, false)
 	}
 
-	consul := consul.NewInMemoryClient(GetCodec())
-	err := consul.CAS(context.Background(), ConsulKey, func(interface{}) (interface{}, bool, error) {
-		return desc, false, nil
-	})
-	require.NoError(b, err)
-
-	r, err := New(Config{
-		KVStore: kv.Config{
-			Mock: consul,
-		},
-		ReplicationFactor: 3,
-	}, "ingester")
-	if err != nil {
-		b.Fatal(err)
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	r := Ring{
+		name:     "ingester",
+		cfg:      cfg,
+		ringDesc: desc,
 	}
 
 	// Generate a batch of N random keys, and look them up

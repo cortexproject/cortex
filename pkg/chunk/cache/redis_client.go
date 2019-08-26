@@ -63,6 +63,7 @@ func NewRedisClient(cfg RedisClientConfig) RedisClient {
 		endpoint: cfg.Endpoint,
 		pool:     pool,
 		conn:     pool.Get(),
+		quit:     make(chan struct{}),
 	}
 
 	if err := client.ping(); err != nil {

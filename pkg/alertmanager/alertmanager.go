@@ -144,7 +144,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 
 	webReload := make(chan chan error)
 	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload, log.With(am.logger, "component", "ui"))
-	am.api.Register(am.router, path.Join(am.cfg.ExternalURL.Path, "/api/v1"))
+	am.api.Register(am.router, am.cfg.ExternalURL.Path)
 
 	go func() {
 		for {

@@ -157,6 +157,18 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 ## Ingester
 
+- `-ingester.max-chunk-age`
+
+  The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created. (default 12h)
+
+- `-ingester.chunk-age-jitter`
+
+  To reduce load on the database exactly 12 hours after starting, the age limit is reduced by a varying amount up to this. (default 20m)
+
+- `-ingester.spread-flushes`
+
+  Makes the ingester flush each timeseries at a specific point in the `max-chunk-age` cycle. This means multiple replicas of a chunk are very likely to contain the same contents which cuts chunk storage space by up to 66%. Set `-ingester.chunk-age-jitter` to `0` when using this option. If a chunk cache is configured (via `-memcached.hostname`) then duplicate chunk writes are skipped which cuts write IOPs.
+
 - `-ingester.join-after`
 
    How long to wait in PENDING state during the [hand-over process](ingester-handover.md). (default 0s)

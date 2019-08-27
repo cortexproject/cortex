@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-// CompositeStoreLimits helps get Limits specific to Queries for Stores in CompositeStore
-type CompositeStoreLimits interface {
+// StoreLimits helps get Limits specific to Queries for Stores
+type StoreLimits interface {
 	MaxChunksPerQuery(userID string) int
 	MaxQueryLength(userID string) time.Duration
 }
@@ -50,7 +50,7 @@ func NewCompositeStore() CompositeStore {
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
-func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks ObjectClient, limits CompositeStoreLimits) error {
+func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks ObjectClient, limits StoreLimits) error {
 	schema := cfg.CreateSchema()
 	var store Store
 	var err error

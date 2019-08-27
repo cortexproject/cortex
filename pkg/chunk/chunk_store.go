@@ -78,11 +78,11 @@ type store struct {
 	index  IndexClient
 	chunks ObjectClient
 	schema Schema
-	limits CompositeStoreLimits
+	limits StoreLimits
 	*Fetcher
 }
 
-func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits CompositeStoreLimits) (Store, error) {
+func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits StoreLimits) (Store, error) {
 	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
 	if err != nil {
 		return nil, err

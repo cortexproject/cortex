@@ -16,6 +16,8 @@ Incoming samples (writes from Prometheus) are handled by the [distributor](#dist
 
 Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform specific tasks and run separately (and potentially in parallel).
 
+Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don't coordinate or communicate with each other within that layer.
+
 ### Distributor
 
 The **distributor** service is responsible for handling samples written by Prometheus. It's essentially the "first stop" in the write path for Prometheus samples. Once the distributor receives samples from Prometheus, it splits them into batches and then sends them to multiple [ingesters](#ingester) in parallel.
@@ -55,21 +57,15 @@ We recommend randomly load balancing write requests across distributor instances
 
 The **ingester** service is responsible for writing sample data to long-term storage backends (DynamoDB, S3, Cassandra, etc.).
 
-#### Shared-nothing processes
+Samples from each timeseries are built up in "chunks" in memory inside each ingester, then flushed to the [chunk store](#chunk-store). By default each chunk is up to 12 hours long.
 
-Ingesters are, for the most part, shared-nothing processes. They don't coordinate or communicate with each other *under normal operation*. The exception is on rolling updates, during which ingesters transfer their in-memory data from the ingester exiting the group to the ingester joining the group.
-
-#### State
-
-Ingesters are semi-stateful in that they always retain the last 12 hours worth of samples. When restarting or upgrading ingesters, care must be taken to avoid losing that data.
-
-As *semi*-stateful processes, ingesters are *not* designed to be long-term data stores. In Cortex, that role is played by the [chunk store](#chunk-store).
+If an ingester process crashes or exits abruptly, all the data that has not yet been flushed will be lost. Cortex is usually configured to hold multiple (typically 3) replicas of each timeseries to mitigate this risk.
 
 A [hand-over process](ingester-handover.md) manages the state when ingesters are added, removed or replaced.
 
 #### Write de-amplification
 
-Ingesters store the last 12 hours worth of samples in order to perform **write de-amplification**, i.e. batching and compressing samples for the same series and flushing them out to the [chunk store](#chunk-store). Under normal operations, there should be *many* orders of magnitude fewer queries per second (QPS) worth of writes to the chunk store than to the ingesters.
+Ingesters store the last 12 hours worth of samples in order to perform **write de-amplification**, i.e. batching and compressing samples for the same series and flushing them out to the [chunk store](#chunk-store). Under normal operations, there should be *many* orders of magnitude fewer operations per second (OPS) worth of writes to the chunk store than to the ingesters.
 
 Write de-amplification is the main source of Cortex's low total cost of ownership (TCO).
 

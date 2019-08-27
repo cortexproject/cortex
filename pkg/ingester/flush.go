@@ -266,25 +266,27 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 		chunks = chunks[:len(chunks)-1]
 	}
 
-	if reason == reasonIdle && series.headChunkClosed && i.cfg.MinChunkLength > 0 {
-		chunkLength := 0
-		for _, c := range chunks {
-			chunkLength += c.C.Len()
-		}
-		if chunkLength < i.cfg.MinChunkLength {
-			userState.removeSeries(fp, series.metric)
-			memoryChunks.Sub(float64(len(chunks)))
-			droppedChunks.Add(float64(len(chunks)))
-			util.Event().Log(
-				"msg", "dropped chunks",
-				"userID", userID,
-				"numChunks", len(chunks),
-				"chunkLength", chunkLength,
-				"fp", fp,
-				"series", series.metric,
-				"queue", flushQueueIndex,
-			)
-			chunks = nil
+	if reason == reasonIdle && series.headChunkClosed {
+		if minChunkLength := i.limits.MinChunkLength(userID); minChunkLength > 0 {
+			chunkLength := 0
+			for _, c := range chunks {
+				chunkLength += c.C.Len()
+			}
+			if chunkLength < minChunkLength {
+				userState.removeSeries(fp, series.metric)
+				memoryChunks.Sub(float64(len(chunks)))
+				droppedChunks.Add(float64(len(chunks)))
+				util.Event().Log(
+					"msg", "dropped chunks",
+					"userID", userID,
+					"numChunks", len(chunks),
+					"chunkLength", chunkLength,
+					"fp", fp,
+					"series", series.metric,
+					"queue", flushQueueIndex,
+				)
+				chunks = nil
+			}
 		}
 	}
 

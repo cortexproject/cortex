@@ -10,6 +10,7 @@ import (
 // tolerate.
 // - Filters out dead ingesters so the one doesn't even try to write to them.
 // - Checks there is enough ingesters for an operation to succeed.
+// The ingesters argument may be overwritten.
 func (r *Ring) replicationStrategy(ingesters []IngesterDesc, op Operation) (
 	liveIngesters []IngesterDesc, maxFailure int, err error,
 ) {
@@ -26,14 +27,15 @@ func (r *Ring) replicationStrategy(ingesters []IngesterDesc, op Operation) (
 	// Skip those that have not heartbeated in a while. NB these are still
 	// included in the calculation of minSuccess, so if too many failed ingesters
 	// will cause the whole write to fail.
-	liveIngesters = make([]IngesterDesc, 0, len(ingesters))
-	for _, ingester := range ingesters {
-		if r.IsHealthy(&ingester, op) {
-			liveIngesters = append(liveIngesters, ingester)
+	for i := 0; i < len(ingesters); {
+		if r.IsHealthy(&ingesters[i], op) {
+			i++
 		} else {
+			ingesters = append(ingesters[:i], ingesters[i+1:]...)
 			maxFailure--
 		}
 	}
+	liveIngesters = ingesters
 
 	// This is just a shortcut - if there are not minSuccess available ingesters,
 	// after filtering out dead ones, don't even bother trying.

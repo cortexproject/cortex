@@ -48,6 +48,7 @@ type Config struct {
 	PeerTimeout time.Duration
 	Retention   time.Duration
 	ExternalURL *url.URL
+	Registry    prometheus.Registerer
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -75,11 +76,6 @@ func New(cfg *Config) (*Alertmanager, error) {
 		stop:   make(chan struct{}),
 	}
 
-	// TODO(cortex): Build a registry that can merge metrics from multiple users.
-	// For now, these metrics are ignored, as we can't register the same
-	// metric twice with a single registry.
-	am.registry = prometheus.NewRegistry()
-
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
 	var err error
@@ -87,14 +83,14 @@ func New(cfg *Config) (*Alertmanager, error) {
 		nflog.WithRetention(cfg.Retention),
 		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
 		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
-		nflog.WithMetrics(am.registry),
+		nflog.WithMetrics(cfg.Registry),
 		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
 	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
+		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, cfg.Registry)
 		am.nflog.SetBroadcast(c.Broadcast)
 	}
 
@@ -105,13 +101,13 @@ func New(cfg *Config) (*Alertmanager, error) {
 		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
 		Retention:    cfg.Retention,
 		Logger:       log.With(am.logger, "component", "silences"),
-		Metrics:      am.registry,
+		Metrics:      cfg.Registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create silences: %v", err)
 	}
 	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, am.registry)
+		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, cfg.Registry)
 		am.silences.SetBroadcast(c.Broadcast)
 	}
 

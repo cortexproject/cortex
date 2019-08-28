@@ -155,6 +155,9 @@ type MultitenantAlertmanager struct {
 	latestConfig configs.ID
 	latestMutex  sync.RWMutex
 
+	userRegistriesMtx sync.Mutex
+	userRegistries    map[string]prometheus.Registerer
+
 	peer *cluster.Peer
 
 	stop chan struct{}
@@ -217,6 +220,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 		fallbackConfig: string(fallbackConfig),
 		cfgs:           map[string]configs.Config{},
 		alertmanagers:  map[string]*Alertmanager{},
+		userRegistries: map[string]prometheus.Registerer{},
 		peer:           peer,
 		stop:           make(chan struct{}),
 		done:           make(chan struct{}),
@@ -441,6 +445,14 @@ func (am *MultitenantAlertmanager) deleteUser(userID string) {
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config) (*Alertmanager, error) {
+	am.userRegistriesMtx.Lock()
+	userRegistry, exists := am.userRegistries[userID]
+	if !exists {
+		userRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, prometheus.DefaultRegisterer)
+		am.userRegistries[userID] = userRegistry
+	}
+	am.userRegistriesMtx.Unlock()
+
 	newAM, err := New(&Config{
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
@@ -449,6 +461,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		PeerTimeout: am.cfg.peerTimeout,
 		Retention:   am.cfg.Retention,
 		ExternalURL: am.cfg.ExternalURL.URL,
+		Registry:    userRegistry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

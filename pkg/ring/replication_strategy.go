@@ -62,3 +62,11 @@ func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation) bool {
 func (r *Ring) ReplicationFactor() int {
 	return r.cfg.ReplicationFactor
 }
+
+// IngesterCount is number of ingesters in the ring
+func (r *Ring) IngesterCount() int {
+	r.mtx.Lock()
+	c := len(r.ringDesc.Ingesters)
+	r.mtx.Unlock()
+	return c
+}

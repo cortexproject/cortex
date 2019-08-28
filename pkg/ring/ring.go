@@ -34,6 +34,7 @@ type ReadRing interface {
 	Get(key uint32, op Operation) (ReplicationSet, error)
 	GetAll() (ReplicationSet, error)
 	ReplicationFactor() int
+	IngesterCount() int
 }
 
 // Operation can be Read or Write

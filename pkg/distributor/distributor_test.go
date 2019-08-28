@@ -486,6 +486,10 @@ func (r mockRing) ReplicationFactor() int {
 	return int(r.replicationFactor)
 }
 
+func (r mockRing) IngesterCount() int {
+	return len(r.ingesters)
+}
+
 type mockIngester struct {
 	sync.Mutex
 	client.IngesterClient

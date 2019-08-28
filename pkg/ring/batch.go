@@ -37,14 +37,14 @@ type itemTracker struct {
 //
 // Not implemented as a method on Ring so we can test separately.
 func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(IngesterDesc, []int) error, cleanup func()) error {
-	replicationSets, err := r.BatchGet(keys, Write)
-	if err != nil {
-		return err
-	}
-
 	itemTrackers := make([]itemTracker, len(keys))
 	ingesters := map[string]ingester{}
-	for i, replicationSet := range replicationSets {
+
+	for i, key := range keys {
+		replicationSet, err := r.Get(key, Write)
+		if err != nil {
+			return err
+		}
 		itemTrackers[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
 		itemTrackers[i].maxFailures = replicationSet.MaxErrors
 

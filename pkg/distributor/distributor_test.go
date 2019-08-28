@@ -475,18 +475,6 @@ func (r mockRing) Get(key uint32, op ring.Operation) (ring.ReplicationSet, error
 	return result, nil
 }
 
-func (r mockRing) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
-	result := []ring.ReplicationSet{}
-	for i := 0; i < len(keys); i++ {
-		rs, err := r.Get(keys[i], op)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, rs)
-	}
-	return result, nil
-}
-
 func (r mockRing) GetAll() (ring.ReplicationSet, error) {
 	return ring.ReplicationSet{
 		Ingesters: r.ingesters,

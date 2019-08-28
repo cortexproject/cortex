@@ -32,7 +32,6 @@ type ReadRing interface {
 	prometheus.Collector
 
 	Get(key uint32, op Operation) (ReplicationSet, error)
-	BatchGet(keys []uint32, op Operation) ([]ReplicationSet, error)
 	GetAll() (ReplicationSet, error)
 	ReplicationFactor() int
 }
@@ -185,23 +184,6 @@ func (r *Ring) Get(key uint32, op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	return r.getInternal(key, op)
-}
-
-// BatchGet returns ReplicationFactor (or more) ingesters which form the replicas
-// for the given keys. The order of the result matches the order of the input.
-func (r *Ring) BatchGet(keys []uint32, op Operation) ([]ReplicationSet, error) {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-
-	result := make([]ReplicationSet, len(keys), len(keys))
-	for i, key := range keys {
-		rs, err := r.getInternal(key, op)
-		if err != nil {
-			return nil, err
-		}
-		result[i] = rs
-	}
-	return result, nil
 }
 
 func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {

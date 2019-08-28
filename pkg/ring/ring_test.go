@@ -1,10 +1,13 @@
 package ring
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -15,7 +18,7 @@ const (
 	numKeys     = 100
 )
 
-func BenchmarkRing(b *testing.B) {
+func BenchmarkBatch(b *testing.B) {
 	// Make a random ring with N ingesters, and M tokens per ingests
 	desc := NewDesc()
 	takenTokens := []uint32{}
@@ -33,13 +36,20 @@ func BenchmarkRing(b *testing.B) {
 		ringDesc: desc,
 	}
 
+	ctx := context.Background()
+	callback := func(IngesterDesc, []int) error {
+		return nil
+	}
+	cleanup := func() {
+	}
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	keys := make([]uint32, numKeys)
 	// Generate a batch of N random keys, and look them up
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		generateKeys(rnd, numKeys, keys)
-		r.BatchGet(keys, Write)
+		err := DoBatch(ctx, &r, keys, callback, cleanup)
+		require.NoError(b, err)
 	}
 }
 

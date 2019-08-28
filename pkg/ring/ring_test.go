@@ -13,12 +13,22 @@ import (
 )
 
 const (
-	numIngester = 100
-	numTokens   = 512
-	numKeys     = 100
+	numTokens = 512
 )
 
-func BenchmarkBatch(b *testing.B) {
+func BenchmarkBatch10x100(b *testing.B) {
+	benchmarkBatch(b, 10, 100)
+}
+
+func BenchmarkBatch100x100(b *testing.B) {
+	benchmarkBatch(b, 100, 100)
+}
+
+func BenchmarkBatch100x1000(b *testing.B) {
+	benchmarkBatch(b, 100, 1000)
+}
+
+func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	// Make a random ring with N ingesters, and M tokens per ingests
 	desc := NewDesc()
 	takenTokens := []uint32{}

@@ -32,7 +32,7 @@ type RedisClientConfig struct {
 	MaxActiveConns int           `yaml:"max_active_conns,omitempty"`
 }
 
-var redisQueryTimeoutError = errors.New("redis query timeout")
+var errRedisQueryTimeout = errors.New("redis query timeout")
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
@@ -88,7 +88,7 @@ func (c *redisClient) Set(key string, buf []byte, ttl int) error {
 	case err := <-res:
 		return err
 	case <-ctx.Done():
-		return redisQueryTimeoutError
+		return errRedisQueryTimeout
 	}
 }
 
@@ -120,7 +120,7 @@ func (c *redisClient) MGet(keys []string) ([][]byte, error) {
 	case dat := <-res:
 		return dat.bufs, dat.err
 	case <-ctx.Done():
-		return nil, redisQueryTimeoutError
+		return nil, errRedisQueryTimeout
 	}
 }
 

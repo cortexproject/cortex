@@ -1,8 +1,9 @@
 package cache
 
 import (
+	"context"
+	"errors"
 	"flag"
-	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -19,12 +20,8 @@ type RedisClient interface {
 
 type redisClient struct {
 	endpoint string
-
-	pool *redis.Pool
-	conn redis.Conn
-
-	quit chan struct{}
-	wait sync.WaitGroup
+	timeout  time.Duration
+	pool     *redis.Pool
 }
 
 // RedisClientConfig defines how a RedisClient should be constructed.
@@ -33,8 +30,9 @@ type RedisClientConfig struct {
 	Timeout        time.Duration `yaml:"timeout,omitempty"`
 	MaxIdleConns   int           `yaml:"max_idle_conns,omitempty"`
 	MaxActiveConns int           `yaml:"max_active_conns,omitempty"`
-	UpdateInterval time.Duration `yaml:"update_interval,omitempty"`
 }
+
+var redisQueryTimeoutError = errors.New("redis query timeout")
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
@@ -42,7 +40,6 @@ func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(prefix, description string
 	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
 	f.IntVar(&cfg.MaxIdleConns, prefix+"redis.max-idle-conns", 80, description+"Maximum number of idle connections in pool.")
 	f.IntVar(&cfg.MaxActiveConns, prefix+"redis.max-active-conns", 0, description+"Maximum number of active connections in pool.")
-	f.DurationVar(&cfg.UpdateInterval, prefix+"redis.update-interval", 1*time.Minute, description+"Period with which to ping redis service.")
 }
 
 // NewRedisClient creates a new RedisClient
@@ -51,7 +48,7 @@ func NewRedisClient(cfg RedisClientConfig) RedisClient {
 		MaxIdle:   cfg.MaxIdleConns,
 		MaxActive: cfg.MaxActiveConns,
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", cfg.Endpoint, redis.DialConnectTimeout(cfg.Timeout))
+			c, err := redis.Dial("tcp", cfg.Endpoint)
 			if err != nil {
 				return nil, err
 			}
@@ -61,24 +58,43 @@ func NewRedisClient(cfg RedisClientConfig) RedisClient {
 
 	client := &redisClient{
 		endpoint: cfg.Endpoint,
+		timeout:  cfg.Timeout,
 		pool:     pool,
-		conn:     pool.Get(),
-		quit:     make(chan struct{}),
 	}
 
 	if err := client.ping(); err != nil {
 		level.Error(util.Logger).Log("msg", "error connecting to redis", "endpoint", cfg.Endpoint, "err", err)
 	}
 
-	client.wait.Add(1)
-	go client.updateLoop(cfg.UpdateInterval)
 	return client
 }
 
 // Set adds a key-value pair to the cache.
 func (c *redisClient) Set(key string, buf []byte, ttl int) error {
-	_, err := c.conn.Do("SETEX", key, ttl, buf)
-	return err
+	res := make(chan error, 1)
+
+	conn := c.pool.Get()
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	go func() {
+		_, err := conn.Do("SETEX", key, ttl, buf)
+		res <- err
+	}()
+
+	select {
+	case err := <-res:
+		return err
+	case <-ctx.Done():
+		return redisQueryTimeoutError
+	}
+}
+
+type mgetResult struct {
+	bufs [][]byte
+	err  error
 }
 
 // MGet retrieves values from the cache.
@@ -87,35 +103,37 @@ func (c *redisClient) MGet(keys []string) ([][]byte, error) {
 	for i, key := range keys {
 		intf[i] = key
 	}
-	return redis.ByteSlices(c.conn.Do("MGET", intf...))
+	res := make(chan *mgetResult, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	conn := c.pool.Get()
+	defer conn.Close()
+
+	go func() {
+		bufs, err := redis.ByteSlices(conn.Do("MGET", intf...))
+		res <- &mgetResult{bufs: bufs, err: err}
+	}()
+
+	select {
+	case dat := <-res:
+		return dat.bufs, dat.err
+	case <-ctx.Done():
+		return nil, redisQueryTimeoutError
+	}
 }
 
 // Stop stops the redis client.
 func (c *redisClient) Stop() {
-	close(c.quit)
-	c.wait.Wait()
-}
-
-func (c *redisClient) updateLoop(updateInterval time.Duration) {
-	defer c.wait.Done()
-	ticker := time.NewTicker(updateInterval)
-	for {
-		select {
-		case <-ticker.C:
-			err := c.ping()
-			if err != nil {
-				level.Warn(util.Logger).Log("msg", "error connecting to redis", "err", err)
-				c.conn = c.pool.Get()
-			}
-		case <-c.quit:
-			ticker.Stop()
-			return
-		}
-	}
+	c.pool.Close()
 }
 
 func (c *redisClient) ping() error {
-	pong, err := c.conn.Do("PING")
+	conn := c.pool.Get()
+	defer conn.Close()
+
+	pong, err := conn.Do("PING")
 	if err != nil {
 		return err
 	}

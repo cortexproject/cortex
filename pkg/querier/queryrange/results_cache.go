@@ -41,10 +41,10 @@ type resultsCache struct {
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
-func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits) (Middleware, error) {
+func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits) (Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return MiddlewareFunc(func(next Handler) Handler {
@@ -55,7 +55,7 @@ func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits
 			cache:  c,
 			limits: limits,
 		}
-	}), nil
+	}), c, nil
 }
 
 func (s resultsCache) Do(ctx context.Context, r *Request) (*APIResponse, error) {

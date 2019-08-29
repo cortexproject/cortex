@@ -22,6 +22,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -80,6 +81,7 @@ type Frontend struct {
 	cfg          Config
 	log          log.Logger
 	roundTripper http.RoundTripper
+	cache        cache.Cache
 
 	mtx    sync.Mutex
 	cond   *sync.Cond
@@ -114,10 +116,11 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_day", queryRangeDuration), queryrange.SplitByDayMiddleware(limits))
 	}
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := queryrange.NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits)
+		queryCacheMiddleware, cache, err := queryrange.NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits)
 		if err != nil {
 			return nil, err
 		}
+		f.cache = cache
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("results_cache", queryRangeDuration), queryCacheMiddleware)
 	}
 	if cfg.MaxRetries > 0 {
@@ -168,6 +171,10 @@ func (f *Frontend) Close() {
 	defer f.mtx.Unlock()
 	for len(f.queues) > 0 {
 		f.cond.Wait()
+	}
+	if f.cache != nil {
+		f.cache.Stop()
+		f.cache = nil
 	}
 }
 

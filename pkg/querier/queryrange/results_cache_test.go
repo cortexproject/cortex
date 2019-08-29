@@ -201,7 +201,7 @@ func (fakeLimits) MaxQueryParallelism(string) int {
 
 func TestResultsCache(t *testing.T) {
 	calls := 0
-	rcm, err := NewResultsCacheMiddleware(
+	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		ResultsCacheConfig{
 			CacheConfig: cache.Config{
@@ -240,7 +240,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{})
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{})
 	require.NoError(t, err)
 
 	req := parsedRequest.copy()

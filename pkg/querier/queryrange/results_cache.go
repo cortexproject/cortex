@@ -79,10 +79,10 @@ type resultsCache struct {
 // Each request starting from within the same interval will hit the same cache entry.
 // If the cache doesn't have the entire duration of the request cached, it will query the uncached parts and append them to the cache entries.
 // see `generateKey`.
-func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, merger Merger, extractor Extractor) (Middleware, error) {
+func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, merger Merger, extractor Extractor) (Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return MiddlewareFunc(func(next Handler) Handler {
@@ -95,7 +95,7 @@ func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits
 			merger:    merger,
 			extractor: extractor,
 		}
-	}), nil
+	}), c, nil
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {

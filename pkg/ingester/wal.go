@@ -318,7 +318,9 @@ func (w *walWrapper) truncateSamples() error {
 		return err
 	}
 
-	if err := w.wal.Truncate(w.lastWalSegment); err != nil {
+	// The last segment might still have been active  after the checpoint,
+	// hence delete only the segments before that.
+	if err := w.wal.Truncate(w.lastWalSegment - 1); err != nil {
 		return err
 	}
 

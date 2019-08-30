@@ -8,6 +8,9 @@ require (
 	github.com/Azure/go-autorest v11.5.1+incompatible // indirect
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
+	github.com/alicebob/gopher-json v0.0.0-20180125190556-5a6b3ba71ee6 // indirect
+	github.com/alicebob/miniredis v2.5.0+incompatible
+	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/aws/aws-sdk-go v1.15.90
 	github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932 // indirect
 	github.com/blang/semver v3.5.0+incompatible
@@ -28,6 +31,7 @@ require (
 	github.com/gogo/status v1.0.3
 	github.com/golang/protobuf v1.3.1
 	github.com/golang/snappy v0.0.1
+	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/gophercloud/gophercloud v0.0.0-20190307220656-fe1ba5ce12dd // indirect
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/websocket v1.4.0 // indirect
@@ -66,10 +70,11 @@ require (
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber-go/atomic v1.3.2 // indirect
 	github.com/uber/jaeger-client-go v2.16.0+incompatible
-	github.com/uber/jaeger-lib v2.0.0+incompatible // indirect
+	github.com/uber/jaeger-lib v2.0.0+incompatible
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 	github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4
 	github.com/weaveworks/promrus v1.2.0 // indirect
+	github.com/yuin/gopher-lua v0.0.0-20190514113301-1cd887cd7036 // indirect
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
 	go.uber.org/zap v1.10.0 // indirect

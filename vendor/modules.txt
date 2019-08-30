@@ -33,6 +33,11 @@ github.com/Masterminds/squirrel
 github.com/NYTimes/gziphandler
 # github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf
 github.com/alecthomas/units
+# github.com/alicebob/gopher-json v0.0.0-20180125190556-5a6b3ba71ee6
+github.com/alicebob/gopher-json
+# github.com/alicebob/miniredis v2.5.0+incompatible
+github.com/alicebob/miniredis
+github.com/alicebob/miniredis/server
 # github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
 github.com/armon/go-metrics
 # github.com/asaskevich/govalidator v0.0.0-20180720115003-f9ffefc3facf
@@ -160,6 +165,9 @@ github.com/golang/protobuf/protoc-gen-go/generator/internal/remap
 github.com/golang/protobuf/protoc-gen-go/plugin
 # github.com/golang/snappy v0.0.1
 github.com/golang/snappy
+# github.com/gomodule/redigo v2.0.0+incompatible
+github.com/gomodule/redigo/redis
+github.com/gomodule/redigo/internal
 # github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c
 github.com/google/btree
 # github.com/google/gofuzz v0.0.0-20170612174753-24818f796faf
@@ -420,8 +428,8 @@ github.com/uber/jaeger-client-go/transport
 github.com/uber/jaeger-client-go/thrift-gen/agent
 github.com/uber/jaeger-client-go/thrift-gen/baggage
 # github.com/uber/jaeger-lib v2.0.0+incompatible
-github.com/uber/jaeger-lib/metrics/prometheus
 github.com/uber/jaeger-lib/metrics
+github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 github.com/weaveworks/billing-client
 # github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4
@@ -442,6 +450,11 @@ github.com/weaveworks/common/test
 github.com/weaveworks/promrus
 # github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2
 github.com/xiang90/probing
+# github.com/yuin/gopher-lua v0.0.0-20190514113301-1cd887cd7036
+github.com/yuin/gopher-lua
+github.com/yuin/gopher-lua/parse
+github.com/yuin/gopher-lua/ast
+github.com/yuin/gopher-lua/pm
 # go.etcd.io/bbolt v1.3.3
 go.etcd.io/bbolt
 # go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5

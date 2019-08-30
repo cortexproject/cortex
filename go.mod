@@ -10,7 +10,6 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alicebob/gopher-json v0.0.0-20180125190556-5a6b3ba71ee6 // indirect
 	github.com/alicebob/miniredis v2.5.0+incompatible
-	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/aws/aws-sdk-go v1.15.90
 	github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932 // indirect
 	github.com/blang/semver v3.5.0+incompatible
@@ -70,7 +69,7 @@ require (
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber-go/atomic v1.3.2 // indirect
 	github.com/uber/jaeger-client-go v2.16.0+incompatible
-	github.com/uber/jaeger-lib v2.0.0+incompatible
+	github.com/uber/jaeger-lib v2.0.0+incompatible // indirect
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 	github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4
 	github.com/weaveworks/promrus v1.2.0 // indirect

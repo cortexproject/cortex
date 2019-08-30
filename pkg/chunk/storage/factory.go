@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/cortexproject/cortex/pkg/chunk/redis"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -33,6 +34,7 @@ type Config struct {
 	CassandraStorageConfig cassandra.Config   `yaml:"cassandra"`
 	BoltDBConfig           local.BoltDBConfig `yaml:"boltdb"`
 	FSConfig               local.FSConfig     `yaml:"filesystem"`
+	RedisStorageConfig     redis.Config       `yaml:"redis"`
 
 	IndexCacheValidity time.Duration
 
@@ -47,6 +49,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
+	cfg.RedisStorageConfig.RegisterFlags(f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
@@ -152,6 +155,8 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":
 		return local.NewFSObjectClient(cfg.FSConfig)
+	case "redis":
+		return redis.NewRedisObjectClient(cfg.RedisStorageConfig, schemaCfg)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}

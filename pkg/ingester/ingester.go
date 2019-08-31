@@ -285,18 +285,25 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
 	labels.removeBlanks()
 
+	var (
+		state *userState
+		fp    model.Fingerprint
+	)
 	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
+	defer func() {
+		i.userStatesMtx.RUnlock()
+		if state != nil {
+			state.fpLocker.Unlock(fp)
+		}
+	}()
 	if i.stopped {
 		return fmt.Errorf("ingester stopping")
 	}
 	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels)
 	if err != nil {
+		state = nil // don't want to unlock the fp if there is an error
 		return err
 	}
-	defer func() {
-		state.fpLocker.Unlock(fp)
-	}()
 
 	prevNumChunks := len(series.chunkDescs)
 	if i.cfg.SpreadFlushes && prevNumChunks > 0 {

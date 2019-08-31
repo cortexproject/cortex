@@ -18,23 +18,18 @@ import (
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-// ToWriteRequest converts an array of samples into a WriteRequest proto.
-func ToWriteRequest(samples []model.Sample, source WriteRequest_SourceEnum) *WriteRequest {
+// ToWriteRequest converts matched slices of Labels and Samples into a WriteRequest proto.
+func ToWriteRequest(lbls []labels.Labels, samples []Sample, source WriteRequest_SourceEnum) *WriteRequest {
 	req := &WriteRequest{
 		Timeseries: make([]PreallocTimeseries, 0, len(samples)),
 		Source:     source,
 	}
 
-	for _, s := range samples {
+	for i, s := range samples {
 		ts := PreallocTimeseries{
 			TimeSeries: TimeSeries{
-				Labels: FromMetricsToLabelAdapters(s.Metric),
-				Samples: []Sample{
-					{
-						Value:       float64(s.Value),
-						TimestampMs: int64(s.Timestamp),
-					},
-				},
+				Labels:  FromLabelsToLabelAdapters(lbls[i]),
+				Samples: []Sample{s},
 			},
 		}
 		req.Timeseries = append(req.Timeseries, ts)

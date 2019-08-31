@@ -658,44 +658,45 @@ func TestDistributorValidation(t *testing.T) {
 	future, past := now.Add(5*time.Hour), now.Add(-25*time.Hour)
 
 	for i, tc := range []struct {
-		samples []model.Sample
+		labels  []labels.Labels
+		samples []client.Sample
 		err     error
 	}{
 		// Test validation passes.
 		{
-			samples: []model.Sample{{
-				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-				Timestamp: now,
-				Value:     1,
+			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
 			}},
 		},
 
 		// Test validation fails for very old samples.
 		{
-			samples: []model.Sample{{
-				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-				Timestamp: past,
-				Value:     2,
+			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(past),
+				Value:       2,
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has timestamp too old: %d", past),
 		},
 
 		// Test validation fails for samples from the future.
 		{
-			samples: []model.Sample{{
-				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-				Timestamp: future,
-				Value:     4,
+			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(future),
+				Value:       4,
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has timestamp too new: %d", future),
 		},
 
 		// Test maximum labels names per series.
 		{
-			samples: []model.Sample{{
-				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar", "foo2": "bar2"},
-				Timestamp: now,
-				Value:     2,
+			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}, {Name: "foo2", Value: "bar2"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(now),
+				Value:       2,
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `sample for 'testmetric{foo2="bar2", foo="bar"}' has 3 label names; limit 2`),
 		},
@@ -712,7 +713,7 @@ func TestDistributorValidation(t *testing.T) {
 			d := prepare(t, 3, 3, 0, true, &limits)
 			defer d.Stop()
 
-			_, err := d.Push(ctx, client.ToWriteRequest(tc.samples, client.API))
+			_, err := d.Push(ctx, client.ToWriteRequest(tc.labels, tc.samples, client.API))
 			require.Equal(t, tc.err, err)
 		})
 	}

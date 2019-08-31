@@ -201,10 +201,10 @@ func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
 	return *(*labels.Labels)(unsafe.Pointer(&ls))
 }
 
-// FromLabelsToLabelAdapaters casts labels.Labels to []LabelAdapter.
+// FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.
 // It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
 // This allows us to use labels.Labels directly in protos.
-func FromLabelsToLabelAdapaters(ls labels.Labels) []LabelAdapter {
+func FromLabelsToLabelAdapters(ls labels.Labels) []LabelAdapter {
 	return *(*[]LabelAdapter)(unsafe.Pointer(&ls))
 }
 

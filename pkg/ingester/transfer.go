@@ -248,7 +248,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 			err = stream.Send(&client.TimeSeriesChunk{
 				FromIngesterId: i.lifecycler.ID,
 				UserId:         userID,
-				Labels:         client.FromLabelsToLabelAdapaters(pair.series.metric),
+				Labels:         client.FromLabelsToLabelAdapters(pair.series.metric),
 				Chunks:         chunks,
 			})
 			state.fpLocker.Unlock(pair.fp)

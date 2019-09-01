@@ -19,20 +19,18 @@ import (
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // ToWriteRequest converts matched slices of Labels and Samples into a WriteRequest proto.
+// It gets timeseries from the pool, so ReuseSlice() should be called when done.
 func ToWriteRequest(lbls []labels.Labels, samples []Sample, source WriteRequest_SourceEnum) *WriteRequest {
 	req := &WriteRequest{
-		Timeseries: make([]PreallocTimeseries, 0, len(samples)),
+		Timeseries: slicePool.Get().([]PreallocTimeseries),
 		Source:     source,
 	}
 
 	for i, s := range samples {
-		ts := PreallocTimeseries{
-			TimeSeries: TimeSeries{
-				Labels:  FromLabelsToLabelAdapters(lbls[i]),
-				Samples: []Sample{s},
-			},
-		}
-		req.Timeseries = append(req.Timeseries, ts)
+		ts := timeSeriesPool.Get().(TimeSeries)
+		ts.Labels = append(ts.Labels, FromLabelsToLabelAdapters(lbls[i])...)
+		ts.Samples = append(ts.Samples, s)
+		req.Timeseries = append(req.Timeseries, PreallocTimeseries{TimeSeries: ts})
 	}
 
 	return req

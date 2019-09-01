@@ -21,7 +21,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
@@ -530,18 +529,17 @@ func BenchmarkIngesterPush(b *testing.B) {
 	)
 
 	// Construct a set of realistic-looking samples, all with slightly different label sets
-	labels := util.LabelsToMetric(chunk.BenchmarkLabels).Clone()
-	ts := make([]client.PreallocTimeseries, 0, series)
+	var allLabels []labels.Labels
+	var allSamples []client.Sample
 	for j := 0; j < series; j++ {
-		labels["cpu"] = model.LabelValue(fmt.Sprintf("cpu%02d", j))
-		ts = append(ts, client.PreallocTimeseries{
-			TimeSeries: client.TimeSeries{
-				Labels: client.FromMetricsToLabelAdapters(labels),
-				Samples: []client.Sample{
-					{TimestampMs: 0, Value: float64(j)},
-				},
-			},
-		})
+		labels := chunk.BenchmarkLabels.Copy()
+		for i := range labels {
+			if labels[i].Name == "cpu" {
+				labels[i].Value = fmt.Sprintf("cpu%02d", j)
+			}
+		}
+		allLabels = append(allLabels, labels)
+		allSamples = append(allSamples, client.Sample{TimestampMs: 0, Value: float64(j)})
 	}
 	ctx := user.InjectOrgID(context.Background(), "1")
 	b.ResetTimer()
@@ -549,12 +547,10 @@ func BenchmarkIngesterPush(b *testing.B) {
 		_, ing := newTestStore(b, cfg, clientCfg, limits)
 		// Bump the timestamp on each of our test samples each time round the loop
 		for j := 0; j < samples; j++ {
-			for i := range ts {
-				ts[i].TimeSeries.Samples[0].TimestampMs = int64(i)
+			for i := range allSamples {
+				allSamples[i].TimestampMs = int64(j + 1)
 			}
-			_, err := ing.Push(ctx, &client.WriteRequest{
-				Timeseries: ts,
-			})
+			_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, client.API))
 			require.NoError(b, err)
 		}
 		ing.Shutdown()

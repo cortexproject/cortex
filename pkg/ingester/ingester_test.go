@@ -498,7 +498,7 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 				_, err := ing.Push(ctx, &client.WriteRequest{
 					Timeseries: []client.PreallocTimeseries{
 						{
-							TimeSeries: client.TimeSeries{
+							TimeSeries: &client.TimeSeries{
 								Labels: []client.LabelAdapter{
 									{Name: model.MetricNameLabel, Value: fmt.Sprintf("metric_%d", j)},
 								},

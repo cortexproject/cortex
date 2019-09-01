@@ -27,7 +27,7 @@ func ToWriteRequest(lbls []labels.Labels, samples []Sample, source WriteRequest_
 	}
 
 	for i, s := range samples {
-		ts := timeSeriesPool.Get().(TimeSeries)
+		ts := timeSeriesPool.Get().(*TimeSeries)
 		ts.Labels = append(ts.Labels, FromLabelsToLabelAdapters(lbls[i])...)
 		ts.Samples = append(ts.Samples, s)
 		req.Timeseries = append(req.Timeseries, PreallocTimeseries{TimeSeries: ts})

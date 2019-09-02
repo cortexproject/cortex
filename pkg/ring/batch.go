@@ -60,8 +60,8 @@ func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(Inges
 
 	tracker := batchTracker{
 		rpcsPending: int32(len(itemTrackers)),
-		done:        make(chan struct{}),
-		err:         make(chan error),
+		done:        make(chan struct{}, 1),
+		err:         make(chan error, 1),
 	}
 
 	var wg sync.WaitGroup

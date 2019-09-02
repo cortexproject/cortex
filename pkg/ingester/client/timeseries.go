@@ -21,15 +21,6 @@ var (
 			return make([]PreallocTimeseries, 0, expectedTimeseries)
 		},
 	}
-
-	timeSeriesPool = sync.Pool{
-		New: func() interface{} {
-			return TimeSeries{
-				Labels:  make([]LabelAdapter, 0, expectedLabels),
-				Samples: make([]Sample, 0, expectedSamplesPerSeries),
-			}
-		},
-	}
 )
 
 // PreallocConfig configures how structures will be preallocated to optimise
@@ -59,9 +50,18 @@ type PreallocTimeseries struct {
 	TimeSeries
 }
 
+func (p *PreallocTimeseries) ensureAllocated() {
+	// if enough space has already been allocated, use it, otherwise make new
+	if cap(p.Labels) >= expectedLabels && cap(p.Samples) >= expectedSamplesPerSeries {
+		return
+	}
+	p.Labels = make([]LabelAdapter, 0, expectedLabels)
+	p.Samples = make([]Sample, 0, expectedSamplesPerSeries)
+}
+
 // Unmarshal implements proto.Message.
 func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
-	p.TimeSeries = timeSeriesPool.Get().(TimeSeries)
+	p.ensureAllocated()
 	return p.TimeSeries.Unmarshal(dAtA)
 }
 
@@ -243,14 +243,8 @@ func (bs *LabelAdapter) Compare(other LabelAdapter) int {
 // ReuseSlice puts the slice back into a sync.Pool for reuse.
 func ReuseSlice(slice []PreallocTimeseries) {
 	for i := range slice {
-		ReuseTimeseries(slice[i].TimeSeries)
+		slice[i].TimeSeries.Labels = slice[i].TimeSeries.Labels[:0]
+		slice[i].TimeSeries.Samples = slice[i].TimeSeries.Samples[:0]
 	}
 	slicePool.Put(slice[:0])
-}
-
-// ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.
-func ReuseTimeseries(ts TimeSeries) {
-	ts.Labels = ts.Labels[:0]
-	ts.Samples = ts.Samples[:0]
-	timeSeriesPool.Put(ts)
 }

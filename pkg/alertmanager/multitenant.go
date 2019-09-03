@@ -185,7 +185,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 		if err != nil {
 			return nil, fmt.Errorf("unable to read fallback config %q: %s", cfg.FallbackConfigFile, err)
 		}
-		_, _, err = amconfig.LoadFile(cfg.FallbackConfigFile)
+		_, err = amconfig.LoadFile(cfg.FallbackConfigFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to load fallback config %q: %s", cfg.FallbackConfigFile, err)
 		}
@@ -333,7 +333,7 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 					if err != nil {
 						return nil, err
 					}
-					s.APIURL = &amconfig.SecretURL{u}
+					s.APIURL = &amconfig.SecretURL{URL: u}
 				}
 			}
 		}
@@ -346,7 +346,7 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 					if err != nil {
 						return nil, err
 					}
-					w.URL = &amconfig.URL{u}
+					w.URL = &amconfig.URL{URL: u}
 				}
 			}
 		}

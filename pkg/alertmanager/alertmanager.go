@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -65,6 +64,7 @@ type Alertmanager struct {
 	stop       chan struct{}
 	wg         sync.WaitGroup
 	router     *route.Router
+	registry   *prometheus.Registry
 }
 
 // New creates a new Alertmanager.
@@ -78,7 +78,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 	// TODO(cortex): Build a registry that can merge metrics from multiple users.
 	// For now, these metrics are ignored, as we can't register the same
 	// metric twice with a single registry.
-	localRegistry := prometheus.NewRegistry()
+	am.registry = prometheus.NewRegistry()
 
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
@@ -87,14 +87,14 @@ func New(cfg *Config) (*Alertmanager, error) {
 		nflog.WithRetention(cfg.Retention),
 		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
 		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
-		nflog.WithMetrics(localRegistry),
+		nflog.WithMetrics(am.registry),
 		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
 	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, localRegistry)
+		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
 		am.nflog.SetBroadcast(c.Broadcast)
 	}
 
@@ -105,13 +105,13 @@ func New(cfg *Config) (*Alertmanager, error) {
 		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
 		Retention:    cfg.Retention,
 		Logger:       log.With(am.logger, "component", "silences"),
-		Metrics:      localRegistry,
+		Metrics:      am.registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create silences: %v", err)
 	}
 	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, localRegistry)
+		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, am.registry)
 		am.silences.SetBroadcast(c.Broadcast)
 	}
 
@@ -173,11 +173,6 @@ func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
-	var (
-		tmpl     *template.Template
-		pipeline notify.Stage
-	)
-
 	templateFiles := make([]string, len(conf.Templates), len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
@@ -210,7 +205,8 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	if err != nil {
 		return nil
 	}
-	pipeline = notify.BuildPipeline(
+	pipelineBuilder := notify.NewPipelineBuilder(am.registry)
+	pipeline := pipelineBuilder.New(
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
@@ -257,7 +253,7 @@ func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger
 		}
 		integrationsMap[rcv.Name] = integrations
 	}
-	return integrationsMap, err
+	return integrationsMap, nil
 }
 
 // buildReceiverIntegrations builds a list of integration notifiers off of a

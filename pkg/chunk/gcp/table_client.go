@@ -15,6 +15,8 @@ import (
 type tableClient struct {
 	cfg    Config
 	client *bigtable.AdminClient
+
+	tableInfo map[string]*bigtable.TableInfo
 }
 
 // NewTableClient returns a new TableClient.
@@ -27,6 +29,8 @@ func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) 
 	return &tableClient{
 		cfg:    cfg,
 		client: client,
+
+		tableInfo: map[string]*bigtable.TableInfo{},
 	}, nil
 }
 
@@ -39,9 +43,13 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	// Check each table has the right column family.  If not, omit it.
 	output := make([]string, 0, len(tables))
 	for _, table := range tables {
-		info, err := c.client.TableInfo(ctx, table)
-		if err != nil {
-			return nil, errors.Wrap(err, "client.TableInfo")
+		info, exists := c.tableInfo[table]
+		if !exists || !c.cfg.CacheTableInfo {
+			info, err = c.client.TableInfo(ctx, table)
+			if err != nil {
+				return nil, errors.Wrap(err, "client.TableInfo")
+			}
+			c.tableInfo[table] = info
 		}
 
 		if hasColumnFamily(info.FamilyInfos) {
@@ -86,6 +94,7 @@ func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
 	if err := c.client.DeleteTable(ctx, name); err != nil {
 		return errors.Wrap(err, "client.DeleteTable")
 	}
+	delete(c.tableInfo, name)
 
 	return nil
 }

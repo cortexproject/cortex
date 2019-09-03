@@ -284,7 +284,7 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 func (s *scheduler) addWorkItem(i workItem) {
 	select {
 	case <-s.done:
-		level.Debug(util.Logger).Log("msg", "scheduler: work item not added, scheduler stoped", "item", i)
+		level.Debug(util.Logger).Log("msg", "scheduler: work item not added, scheduler stopped", "item", i)
 		return
 	default:
 		// The queue is keyed by userID+groupName, so items for existing userID+groupName will be replaced.

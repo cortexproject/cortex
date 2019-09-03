@@ -75,6 +75,11 @@ func New(cfg *Config) (*Alertmanager, error) {
 		stop:   make(chan struct{}),
 	}
 
+	// TODO(cortex): Build a registry that can merge metrics from multiple users.
+	// For now, these metrics are ignored, as we can't register the same
+	// metric twice with a single registry.
+	localRegistry := prometheus.NewRegistry()
+
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
 	var err error
@@ -82,22 +87,18 @@ func New(cfg *Config) (*Alertmanager, error) {
 		nflog.WithRetention(cfg.Retention),
 		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
 		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
-		// TODO(cortex): Build a registry that can merge metrics from multiple users.
-		// For now, these metrics are ignored, as we can't register the same
-		// metric twice with a single registry.
-		nflog.WithMetrics(prometheus.NewRegistry()),
+		nflog.WithMetrics(localRegistry),
 		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
+	if cfg.Peer != nil {
+		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, localRegistry)
+		am.nflog.SetBroadcast(c.Broadcast)
+	}
 
 	am.marker = types.NewMarker(nil)
-
-	// TODO(cortex): Build a registry that can merge metrics from multiple users.
-	// For now, these metrics are ignored, as we can't register the same
-	// metric twice with a single registry.
-	localRegistry := prometheus.NewRegistry()
 
 	silencesID := fmt.Sprintf("silences:%s", cfg.UserID)
 	am.silences, err = silence.New(silence.Options{

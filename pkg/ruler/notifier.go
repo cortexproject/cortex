@@ -117,7 +117,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 		}
 	}
 	amConfig := &config.AlertmanagerConfig{
-		APIVersion:             config.AlertmanagerAPIVersionV2,
+		APIVersion:             config.AlertmanagerAPIVersionV1,
 		Scheme:                 u.Scheme,
 		PathPrefix:             u.Path,
 		Timeout:                model.Duration(rulerConfig.NotificationTimeout),

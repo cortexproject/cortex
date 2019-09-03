@@ -119,7 +119,6 @@ type Config struct {
 	ConcurrentFlushes int
 	SpreadFlushes     bool
 	MinChunkLength    int
-	RecoverFromWAL    bool
 
 	RateUpdatePeriod time.Duration
 
@@ -143,7 +142,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MinChunkLength, "ingester.min-chunk-length", 0, "Minimum number of samples in an idle chunk to flush it to the store. Use with care, if chunks are less than this size they will be discarded.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-	f.BoolVar(&cfg.RecoverFromWAL, "ingester.recover-from-wal", false, "If true, ingesters recovers from WAL and quits.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -186,9 +184,6 @@ type ChunkStore interface {
 func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
-	}
-	if cfg.RecoverFromWAL {
-		cfg.WALConfig.enabled = false
 	}
 
 	i := &Ingester{
@@ -655,14 +650,4 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
 	}
-}
-
-// RecoverFromWALAndFlush recovers chunks from the WAL with directory pointed by
-// the WALConfig and then flushes it to the chunk store.
-func (i *Ingester) RecoverFromWALAndFlush() error {
-	if err := recoverFromWAL(i); err != nil {
-		return err
-	}
-	i.Flush()
-	return nil
 }

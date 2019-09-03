@@ -225,13 +225,6 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 		return
 	}
 
-	if cfg.Ingester.RecoverFromWAL {
-		if err := t.ingester.RecoverFromWALAndFlush(); err != nil {
-			return err
-		}
-		return t.stopIngester()
-	}
-
 	client.RegisterIngesterServer(t.server.GRPC, t.ingester)
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
 	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))

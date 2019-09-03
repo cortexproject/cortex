@@ -118,6 +118,10 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 		)
 	}
 
+	if err := recoverFromWAL(ingester); err != nil {
+		return nil, err
+	}
+
 	w.wait.Add(1)
 	go w.run()
 	return w, nil

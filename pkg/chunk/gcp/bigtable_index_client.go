@@ -38,12 +38,15 @@ type Config struct {
 
 	ColumnKey      bool
 	DistributeKeys bool
+
+	CacheTableInfo bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Project, "bigtable.project", "", "Bigtable project ID.")
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
+	f.BoolVar(&cfg.CacheTableInfo, "bigtable.cache-table-info", true, "If enabled, once a tables info is fetched, it is cached indefinitely.")
 
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
 }

@@ -56,12 +56,13 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 			if err != nil {
 				return nil, errors.Wrap(err, "client.TableInfo")
 			}
-			c.tableInfo[table] = info
 		}
 
 		if hasColumnFamily(info.FamilyInfos) {
 			output = append(output, table)
+			continue
 		}
+		c.tableInfo[table] = info
 	}
 
 	return output, nil

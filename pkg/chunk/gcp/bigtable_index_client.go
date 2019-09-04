@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
@@ -39,14 +40,16 @@ type Config struct {
 	ColumnKey      bool
 	DistributeKeys bool
 
-	CacheTableInfo bool
+	TableBackoffConfig util.BackoffConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Project, "bigtable.project", "", "Bigtable project ID.")
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
-	f.BoolVar(&cfg.CacheTableInfo, "bigtable.cache-table-info", true, "If enabled, once a tables info is fetched, it is cached indefinitely.")
+	f.DurationVar(&cfg.TableBackoffConfig.MinBackoff, "bigtable.table-client.min-backoff", 5*time.Second, "Minimum backoff time")
+	f.DurationVar(&cfg.TableBackoffConfig.MaxBackoff, "bigtable.table-client.max-backoff", 120*time.Second, "Maximum backoff time")
+	f.IntVar(&cfg.TableBackoffConfig.MaxRetries, "bigtable.table-client.max-retries", 5, "Maximum number of times to retry an operation")
 
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
 }

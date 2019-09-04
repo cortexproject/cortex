@@ -9,14 +9,14 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 )
 
 type tableClient struct {
 	cfg    Config
 	client *bigtable.AdminClient
-
-	tableInfo map[string]*bigtable.TableInfo
 }
 
 // NewTableClient returns a new TableClient.
@@ -29,8 +29,6 @@ func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) 
 	return &tableClient{
 		cfg:    cfg,
 		client: client,
-
-		tableInfo: map[string]*bigtable.TableInfo{},
 	}, nil
 }
 
@@ -39,21 +37,25 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "client.Tables")
 	}
+	backoff := util.NewBackoff(ctx, c.cfg.TableBackoffConfig)
 
 	// Check each table has the right column family.  If not, omit it.
 	output := make([]string, 0, len(tables))
 	for _, table := range tables {
-		info, exists := c.tableInfo[table]
-		if !exists || !c.cfg.CacheTableInfo {
-			info, err = c.client.TableInfo(ctx, table)
+		for backoff.Ongoing() {
+			info, err := c.client.TableInfo(ctx, table)
 			if err != nil {
-				return nil, errors.Wrap(err, "client.TableInfo")
+				level.Warn(util.WithContext(ctx, util.Logger)).Log("msg", "error retrieving table info, backing off and retrying", "err", err, "retry", backoff.NumRetries())
+				continue
 			}
-			c.tableInfo[table] = info
+
+			if hasColumnFamily(info.FamilyInfos) {
+				output = append(output, table)
+			}
 		}
 
-		if hasColumnFamily(info.FamilyInfos) {
-			output = append(output, table)
+		if backoff.Err() != nil {
+			return nil, errors.Wrap(backoff.Err(), "client.TableInfo")
 		}
 	}
 
@@ -94,7 +96,6 @@ func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
 	if err := c.client.DeleteTable(ctx, name); err != nil {
 		return errors.Wrap(err, "client.DeleteTable")
 	}
-	delete(c.tableInfo, name)
 
 	return nil
 }

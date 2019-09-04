@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc/codes"
 
@@ -16,7 +17,8 @@ type tableClient struct {
 	cfg    Config
 	client *bigtable.AdminClient
 
-	tableInfo map[string]*bigtable.TableInfo
+	tableInfo       map[string]*bigtable.TableInfo
+	tableExpiration time.Time
 }
 
 // NewTableClient returns a new TableClient.
@@ -40,11 +42,16 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 		return nil, errors.Wrap(err, "client.Tables")
 	}
 
+	if c.tableExpiration.Before(time.Now()) {
+		c.tableInfo = map[string]*bigtable.TableInfo{}
+		c.tableExpiration = time.Now().Add(c.cfg.TableCacheExpiration)
+	}
+
 	// Check each table has the right column family.  If not, omit it.
 	output := make([]string, 0, len(tables))
 	for _, table := range tables {
 		info, exists := c.tableInfo[table]
-		if !exists || !c.cfg.CacheTableInfo {
+		if !exists || !c.cfg.TableCacheEnabled {
 			info, err = c.client.TableInfo(ctx, table)
 			if err != nil {
 				return nil, errors.Wrap(err, "client.TableInfo")

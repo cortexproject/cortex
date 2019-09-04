@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"context"
+	"fmt"
 
 	"google.golang.org/grpc/codes"
 
@@ -55,7 +56,7 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 		}
 
 		if backoff.Err() != nil {
-			return nil, errors.Wrap(backoff.Err(), "client.TableInfo")
+			return nil, errors.Wrap(backoff.Err(), fmt.Sprintf("client.TableInfo, %v", err))
 		}
 	}
 

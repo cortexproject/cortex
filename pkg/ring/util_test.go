@@ -17,3 +17,20 @@ func TestGenerateTokens(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateTokensIgnoresOldTokens(t *testing.T) {
+	first := GenerateTokens(1000000, nil)
+	second := GenerateTokens(1000000, first)
+
+	dups := make(map[uint32]bool)
+
+	for _, v := range first {
+		dups[v] = true
+	}
+
+	for _, v := range second {
+		if dups[v] {
+			t.Fatal("GenerateTokens returned old token")
+		}
+	}
+}

@@ -335,7 +335,7 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 }
 
 func (r *Ruler) ownsRule(hash uint32) bool {
-	rlrs, err := r.ring.Get(hash, ring.Read)
+	rlrs, err := r.ring.Get(hash, ring.Read, nil)
 	// If an error occurs evaluate a rule as if it is owned
 	// better to have extra datapoints for a rule than none at all
 	// TODO: add a temporary cache of owned rule values or something to fall back on

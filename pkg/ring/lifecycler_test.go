@@ -148,3 +148,58 @@ func TestRingRestart(t *testing.T) {
 			l2Tokens[0] == token
 	})
 }
+
+type MockClient struct {
+	GetFunc         func(ctx context.Context, key string) (interface{}, error)
+	CASFunc         func(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
+	WatchKeyFunc    func(ctx context.Context, key string, f func(interface{}) bool)
+	WatchPrefixFunc func(ctx context.Context, prefix string, f func(string, interface{}) bool)
+}
+
+func (m *MockClient) Get(ctx context.Context, key string) (interface{}, error) {
+	if m.GetFunc != nil {
+		return m.GetFunc(ctx, key)
+	}
+
+	return nil, nil
+}
+
+func (m *MockClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+	if m.CASFunc != nil {
+		return m.CASFunc(ctx, key, f)
+	}
+
+	return nil
+}
+
+func (m *MockClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+	if m.WatchKeyFunc != nil {
+		m.WatchKeyFunc(ctx, key, f)
+	}
+}
+
+func (m *MockClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+	if m.WatchPrefixFunc != nil {
+		m.WatchPrefixFunc(ctx, prefix, f)
+	}
+}
+
+// Ensure a check ready returns error when consul returns a nil key and the ingester already holds keys. This happens if the ring key gets deleted
+func TestCheckReady(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = &MockClient{}
+
+	r, err := New(ringConfig, "ingester")
+	require.NoError(t, err)
+	defer r.Stop()
+	cfg := testLifecyclerConfig(ringConfig, "ring1")
+	cfg.MinReadyDuration = 1 * time.Nanosecond
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester")
+	l1.setTokens([]uint32{1})
+	require.NoError(t, err)
+
+	// Delete the ring key before checking ready
+	err = l1.CheckReady(context.Background())
+	require.Error(t, err)
+}

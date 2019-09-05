@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -34,7 +35,11 @@ type chunkStoreQuerier struct {
 }
 
 func (q *chunkStoreQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	chunks, err := q.store.Get(q.ctx, model.Time(sp.Start), model.Time(sp.End), matchers...)
+	userID, err := user.ExtractOrgID(q.ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	chunks, err := q.store.Get(q.ctx, userID, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}
 	}

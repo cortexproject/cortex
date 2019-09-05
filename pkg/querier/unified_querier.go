@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -48,12 +49,12 @@ type unifiedChunkQuerier struct {
 	csq chunkStoreQuerier
 }
 
-func (q *unifiedChunkQuerier) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (q *unifiedChunkQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	css := make(chan []chunk.Chunk, len(q.stores))
 	errs := make(chan error, len(q.stores))
 	for _, store := range q.stores {
 		go func(store ChunkStore) {
-			cs, err := store.Get(ctx, from, through, matchers...)
+			cs, err := store.Get(ctx, userID, from, through, matchers...)
 			if err != nil {
 				errs <- err
 			} else {
@@ -76,11 +77,16 @@ func (q *unifiedChunkQuerier) Get(ctx context.Context, from, through model.Time,
 
 // Select implements storage.Querier.
 func (q *unifiedChunkQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+	userID, err := user.ExtractOrgID(q.ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if sp == nil {
 		return q.metadataQuery(matchers...)
 	}
 
-	chunks, err := q.Get(q.ctx, model.Time(sp.Start), model.Time(sp.End), matchers...)
+	chunks, err := q.Get(q.ctx, userID, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
 		return nil, nil, err
 	}

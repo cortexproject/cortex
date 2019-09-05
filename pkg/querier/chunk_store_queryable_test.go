@@ -32,7 +32,7 @@ type mockChunkStore struct {
 	chunks []chunk.Chunk
 }
 
-func (m mockChunkStore) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (m mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return m.chunks, nil
 }
 

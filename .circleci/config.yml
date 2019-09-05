@@ -1,4 +1,4 @@
-version: 2
+version: 2.1
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
@@ -20,6 +20,8 @@ workflows:
           tags:
             only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
     - integration:
+        requires:
+        - build
         filters:
           tags:
             only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
@@ -38,6 +40,18 @@ workflows:
             only: master
           tags:
             only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+
+commands:
+  install-docker:
+    steps:
+    - run:
+        name: Install Docker client
+        command: |
+          set -x
+          VER="17.03.0-ce"
+          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+          mv /tmp/docker/* /usr/bin
 
 jobs:
   lint:
@@ -63,33 +77,37 @@ jobs:
         command: make BUILD_IN_CONTAINER=false test
 
   integration:
-    docker:
-    - image: cortexproject/build-image:master-561033f49
-    - image: circleci/postgres:9.6.2-alpine
-      environment:
-        POSTGRES_DB: configs_test
+    machine:
+      image: ubuntu-1604:201903-01
 
-    working_directory: /go/src/github.com/cortexproject/cortex
+    working_directory: ~/src/github.com/cortexproject/cortex
     steps:
     - checkout
+    - restore_cache:
+        key: v1-cortex-{{ .Branch }}-{{ .Revision }}
     - run:
         name: Integration Test
-        command: MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IN_CONTAINER=false configs-integration-test
+        command: |
+          touch build-image/.uptodate
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:1370-pin-protoc-7ae297930 configs-integration-test
+    - run:
+        name: Load Images
+        command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
+    - run:
+        name: Ingester hand-over test
+        command: ./integration-tests/test-handover.sh
+    - run:
+        name: Ingester flush test
+        command: |
+          ./integration-tests/stop-components.sh
+          ./integration-tests/test-flush.sh
 
   build:
     <<: *defaults
     steps:
     - checkout
     - setup_remote_docker
-
-    - run:
-        name: Install Docker client
-        command: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          mv /tmp/docker/* /usr/bin
+    - install-docker
 
     - run:
         name: Build
@@ -108,34 +126,29 @@ jobs:
 
     - run:
         name: Save Images
-        command: make BUILD_IN_CONTAINER=false save-images
+        command: |
+          mkdir /tmp/images
+          ln -s /tmp/images ./images
+          make BUILD_IN_CONTAINER=false save-images
 
     - save_cache:
         key: v1-cortex-{{ .Branch }}-{{ .Revision }}
         paths:
-        - images/
+        - /tmp/images/
 
   deploy:
     <<: *defaults
     steps:
     - checkout
     - setup_remote_docker
-
-    - run:
-        name: Install Docker client
-        command: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          mv /tmp/docker/* /usr/bin
+    - install-docker
 
     - restore_cache:
         key: v1-cortex-{{ .Branch }}-{{ .Revision }}
 
     - run:
         name: Load Images
-        command: make BUILD_IN_CONTAINER=false load-images
+        command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
 
     - run:
         name: Deploy

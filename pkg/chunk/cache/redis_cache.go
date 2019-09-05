@@ -65,7 +65,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 
 // NewRedisCache creates a new RedisCache
 func NewRedisCache(cfg RedisConfig, name string, client RedisClient) *RedisCache {
-	// client != nil in unit testing
+	// client != nil in unit tests
 	if client == nil {
 		client = &redisClient{
 			pool: &redis.Pool{
@@ -121,6 +121,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 	})
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "failed to get from redis", "name", c.name, "err", err)
+		missed = make([]string, len(keys))
 		copy(missed, keys)
 		return
 	}

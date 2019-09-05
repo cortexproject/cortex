@@ -1,6 +1,6 @@
 ## master / unreleased
 
-## 0.2.0-rc.0 / 2019-08-29
+## 0.2.0 / 2019-09-05
 
 This release has several exciting features, the most notable of them being setting `-ingester.spread-flushes` to potentially reduce your storage space by upto 50%.
 

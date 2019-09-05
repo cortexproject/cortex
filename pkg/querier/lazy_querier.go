@@ -48,13 +48,13 @@ func (l lazyQuerier) Close() error {
 }
 
 // Get implements ChunkStore for the chunk tar HTTP handler.
-func (l lazyQuerier) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (l lazyQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	store, ok := l.next.(ChunkStore)
 	if !ok {
 		return nil, fmt.Errorf("not supported")
 	}
 
-	return store.Get(ctx, from, through, matchers...)
+	return store.Get(ctx, userID, from, through, matchers...)
 }
 
 // errSeriesSet implements storage.SeriesSet, just returning an error.

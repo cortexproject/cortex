@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 )
@@ -18,6 +19,11 @@ import (
 // on ingester chunk query streaming.
 func ChunksHandler(queryable storage.Queryable) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, err := user.ExtractOrgID(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		mint, err := queryrange.ParseTime(r.FormValue("start"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -48,7 +54,7 @@ func ChunksHandler(queryable storage.Queryable) http.Handler {
 			return
 		}
 
-		chunks, err := store.Get(r.Context(), model.Time(mint), model.Time(maxt), matchers...)
+		chunks, err := store.Get(r.Context(), userID, model.Time(mint), model.Time(maxt), matchers...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

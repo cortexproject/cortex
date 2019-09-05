@@ -11,8 +11,7 @@ import (
 // - Filters out dead ingesters so the one doesn't even try to write to them.
 // - Checks there is enough ingesters for an operation to succeed.
 // The ingesters argument may be overwritten.
-func (r *Ring) replicationStrategy(ingesters []IngesterDesc, op Operation) (
-	[]IngesterDesc, int, error) {
+func (r *Ring) replicationStrategy(ingesters []IngesterDesc, op Operation) ([]IngesterDesc, int, error) {
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
 	// than the replication factor, so use the bigger or the two.

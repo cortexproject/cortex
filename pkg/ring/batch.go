@@ -41,7 +41,7 @@ func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(Inges
 	itemTrackers := make([]itemTracker, len(keys))
 	ingesters := make(map[string]ingester, r.IngesterCount())
 
-	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
+	const maxExpectedReplicationSet = 5 // Typical replication factor 3, plus one for inactive plus one for luck.
 	var descs [maxExpectedReplicationSet]IngesterDesc
 	for i, key := range keys {
 		replicationSet, err := r.Get(key, Write, descs[:0])

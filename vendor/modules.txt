@@ -389,6 +389,8 @@ github.com/prometheus/tsdb/encoding
 github.com/prometheus/tsdb/errors
 github.com/prometheus/tsdb/goversion
 github.com/prometheus/tsdb/index
+# github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
+github.com/rafaeljusto/redigomock
 # github.com/samuel/go-zookeeper v0.0.0-20161028232340-1d7be4effb13
 github.com/samuel/go-zookeeper/zk
 # github.com/satori/go.uuid v1.2.0

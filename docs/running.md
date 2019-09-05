@@ -207,3 +207,16 @@ problem:
 
 We do not recommend configuring a liveness probe on ingesters -
 killing them is a last resort and should not be left to a machine.
+
+
+## Optimising
+
+### Optimising Storage
+
+These ingester options reduce the chance of storing multiple copies of
+the same data:
+
+        -ingester.spread-flushes=true
+        -ingester.chunk-age-jitter=0
+
+Add a chunk cache via `-memcached.hostname` to allow writes to be de-duplicated.

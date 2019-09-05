@@ -34,21 +34,52 @@ func TestRedisCache(t *testing.T) {
 
 	keys := []string{"key1", "key2", "key3"}
 	bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}
-	intf := make([]interface{}, len(keys))
+	miss := []string{"miss1", "miss2"}
 
-	for i, key := range keys {
-		conn.Command("SETEX", key, 0, bufs[i]).Expect("ok")
-		intf[i] = key
+	// ensure correct input
+	nHit := len(keys)
+	require.Len(t, bufs, nHit)
+
+	// mock the data
+	keyIntf := make([]interface{}, nHit)
+	bufIntf := make([]interface{}, nHit)
+
+	for i := 0; i < nHit; i++ {
+		conn.Command("SETEX", keys[i], 0, bufs[i]).Expect("ok")
+		keyIntf[i] = keys[i]
+		bufIntf[i] = bufs[i]
 	}
-	conn.Command("MGET", intf...).Expect(bufs)
+	conn.Command("MGET", keyIntf...).Expect(bufIntf)
 
+	nMiss := len(miss)
+	missIntf := make([]interface{}, nMiss)
+	for i, s := range miss {
+		missIntf[i] = s
+	}
+	conn.Command("MGET", missIntf...).ExpectError(nil)
+
+	// mock the cache
 	c := cache.NewRedisCache(cfg, "mock", client)
 	ctx := context.Background()
 
 	c.Store(ctx, keys, bufs)
 
-	_, _, missed := c.Fetch(ctx, keys)
-	require.Len(t, missed, 0)
+	// test hits
+	found, data, missed := c.Fetch(ctx, keys)
 
-	// TODO add key/value verification
+	require.Len(t, found, nHit)
+	require.Len(t, missed, 0)
+	for i := 0; i < nHit; i++ {
+		require.Equal(t, keys[i], found[i])
+		require.Equal(t, bufs[i], data[i])
+	}
+
+	// test misses
+	found, _, missed = c.Fetch(ctx, miss)
+
+	require.Len(t, found, 0)
+	require.Len(t, missed, nMiss)
+	for i := 0; i < nMiss; i++ {
+		require.Equal(t, miss[i], missed[i])
+	}
 }

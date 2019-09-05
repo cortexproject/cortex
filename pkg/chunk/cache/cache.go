@@ -28,7 +28,6 @@ type Config struct {
 	Background     BackgroundConfig      `yaml:"background,omitempty"`
 	Memcache       MemcachedConfig       `yaml:"memcached,omitempty"`
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client,omitempty"`
-	RedisClient    RedisClientConfig     `yaml:"redis_client,omitempty"`
 	Redis          RedisConfig           `yaml:"redis,omitempty"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache,omitempty"`
 
@@ -45,7 +44,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.Memcache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
-	cfg.RedisClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
 
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache.")
@@ -83,9 +81,8 @@ func New(cfg Config) (Cache, error) {
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache)))
 	}
 
-	if cfg.RedisClient.Endpoint != "" {
-		client := NewRedisClient(cfg.RedisClient)
-		cache := NewRedis(cfg.Redis, client, cfg.Prefix)
+	if cfg.Redis.Endpoint != "" {
+		cache := NewRedisCache(cfg.Redis, cfg.Prefix, nil)
 		cacheName := cfg.Prefix + "redis"
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache)))
 	}

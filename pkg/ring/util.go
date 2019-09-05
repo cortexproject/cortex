@@ -6,10 +6,11 @@ import (
 	"time"
 )
 
-// GenerateTokens make numTokens random tokens, none of which clash
+// GenerateTokens make numTokens unique random tokens, none of which clash
 // with takenTokens.  Assumes takenTokens is sorted.
 func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	added := make(map[uint32]bool)
 	tokens := []uint32{}
 	for i := 0; i < numTokens; {
 		candidate := r.Uint32()
@@ -19,6 +20,10 @@ func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 		if j < len(takenTokens) && takenTokens[j] == candidate {
 			continue
 		}
+		if added[candidate] {
+			continue
+		}
+		added[candidate] = true
 		tokens = append(tokens, candidate)
 		i++
 	}

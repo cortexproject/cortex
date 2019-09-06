@@ -10,18 +10,18 @@ import (
 func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	added := make(map[uint32]bool)
+	used := make(map[uint32]bool)
 	for _, v := range takenTokens {
-		added[v] = true
+		used[v] = true
 	}
 
 	tokens := []uint32{}
 	for i := 0; i < numTokens; {
 		candidate := r.Uint32()
-		if added[candidate] {
+		if used[candidate] {
 			continue
 		}
-		added[candidate] = true
+		used[candidate] = true
 		tokens = append(tokens, candidate)
 		i++
 	}

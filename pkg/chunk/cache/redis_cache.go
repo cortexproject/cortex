@@ -94,7 +94,7 @@ func NewRedisCache(cfg RedisConfig, name string, client RedisClient) *RedisCache
 		},
 	}
 
-	if err := cache.ping(); err != nil {
+	if err := cache.ping(context.Background()); err != nil {
 		level.Error(util.Logger).Log("msg", "error connecting to redis", "endpoint", cfg.Endpoint, "err", err)
 	}
 
@@ -116,7 +116,7 @@ func redisStatusCode(err error) string {
 func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var data [][]byte
 	err := instr.CollectedRequest(ctx, "Redis.Get", c.requestDuration, redisStatusCode, func(ctx context.Context) (err error) {
-		data, err = c.mget(keys)
+		data, err = c.mget(ctx, keys)
 		return err
 	})
 	if err != nil {
@@ -140,7 +140,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	for i := range keys {
 		err := instr.CollectedRequest(ctx, "Redis.Put", c.requestDuration, redisStatusCode, func(_ context.Context) error {
-			return c.set(keys[i], bufs[i], c.expiration)
+			return c.set(ctx, keys[i], bufs[i], c.expiration)
 		})
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "failed to put to redis", "name", c.name, "err", err)
@@ -154,13 +154,13 @@ func (c *RedisCache) Stop() error {
 }
 
 // set adds a key-value pair to the cache.
-func (c *RedisCache) set(key string, buf []byte, ttl int) error {
+func (c *RedisCache) set(ctx context.Context, key string, buf []byte, ttl int) error {
 	res := make(chan error, 1)
 
 	conn := c.client.Connection()
 	defer conn.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	go func() {
@@ -182,14 +182,14 @@ type mgetResult struct {
 }
 
 // mget retrieves values from the cache.
-func (c *RedisCache) mget(keys []string) ([][]byte, error) {
+func (c *RedisCache) mget(ctx context.Context, keys []string) ([][]byte, error) {
 	intf := make([]interface{}, len(keys))
 	for i, key := range keys {
 		intf[i] = key
 	}
 	res := make(chan *mgetResult, 1)
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	conn := c.client.Connection()
@@ -208,19 +208,29 @@ func (c *RedisCache) mget(keys []string) ([][]byte, error) {
 	}
 }
 
-func (c *RedisCache) ping() error {
+func (c *RedisCache) ping(ctx context.Context) error {
+	res := make(chan error, 1)
+
 	conn := c.client.Connection()
 	defer conn.Close()
 
-	pong, err := conn.Do("PING")
-	if err != nil {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	go func() {
+		pong, err := conn.Do("PING")
+		if err == nil {
+			_, err = redis.String(pong, err)
+		}
+		res <- err
+	}()
+
+	select {
+	case err := <-res:
 		return err
+	case <-ctx.Done():
+		return errRedisQueryTimeout
 	}
-	_, err = redis.String(pong, err)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // Connection returns redis Connection object.

@@ -118,9 +118,13 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 		)
 	}
 
+	level.Info(util.Logger).Log("msg", "recovering from WAL")
+	start := time.Now()
 	if err := recoverFromWAL(ingester); err != nil {
 		return nil, err
 	}
+	elapsed := time.Since(start)
+	level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 
 	w.wait.Add(1)
 	go w.run()

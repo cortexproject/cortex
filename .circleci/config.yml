@@ -11,70 +11,70 @@ workflows:
   test-build-deploy:
     # You must specify a tag filter for each job that deploy depends on.
     jobs:
-    - lint:
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
-    - test:
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
-    - integration:
-        requires:
-        - build
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
-    - build:
-        filters:
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
-    - deploy:
-        requires:
-        - build
-        - test
-        - lint
-        - integration
-        filters:
-          branches:
-            only: master
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+      - lint:
+          filters:
+            tags:
+              only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+      - test:
+          filters:
+            tags:
+              only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+      - integration:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+      - build:
+          filters:
+            tags:
+              only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+      - deploy:
+          requires:
+            - build
+            - test
+            - lint
+            - integration
+          filters:
+            branches:
+              only: master
+            tags:
+              only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
 
 commands:
   install-docker:
     steps:
-    - run:
-        name: Install Docker client
-        command: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          mv /tmp/docker/* /usr/bin
+      - run:
+          name: Install Docker client
+          command: |
+            set -x
+            VER="17.03.0-ce"
+            curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+            tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+            mv /tmp/docker/* /usr/bin
 
 jobs:
   lint:
     <<: *defaults
     steps:
-    - checkout
-    - run:
-        name: Lint
-        command: make BUILD_IN_CONTAINER=false lint
-    - run:
-        name: Check vendor directory is consistent.
-        command: make BUILD_IN_CONTAINER=false mod-check
-    - run:
-        name: Check protos are consistent.
-        command: make BUILD_IN_CONTAINER=false check-protos
+      - checkout
+      - run:
+          name: Lint
+          command: make BUILD_IN_CONTAINER=false lint
+      - run:
+          name: Check vendor directory is consistent.
+          command: make BUILD_IN_CONTAINER=false mod-check
+      - run:
+          name: Check protos are consistent.
+          command: make BUILD_IN_CONTAINER=false check-protos
 
   test:
     <<: *defaults
     steps:
-    - checkout
-    - run:
-        name: Test
-        command: make BUILD_IN_CONTAINER=false test
+      - checkout
+      - run:
+          name: Test
+          command: make BUILD_IN_CONTAINER=false test
 
   integration:
     machine:
@@ -82,81 +82,83 @@ jobs:
 
     working_directory: ~/src/github.com/cortexproject/cortex
     steps:
-    - checkout
-    - restore_cache:
-        key: v1-cortex-{{ .Branch }}-{{ .Revision }}
-    - run:
-        name: Integration Test
-        command: |
-          touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:1370-pin-protoc-7ae297930 configs-integration-test
-    - run:
-        name: Load Images
-        command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
-    - run:
-        name: Ingester hand-over test
-        command: ./integration-tests/test-handover.sh
-    - run:
-        name: Ingester flush test
-        command: |
-          ./integration-tests/stop-components.sh
-          ./integration-tests/test-flush.sh
+      - checkout
+      - restore_cache:
+          key: v1-cortex-{{ .Branch }}-{{ .Revision }}
+      - run:
+          name: Integration Test
+          command: |
+            touch build-image/.uptodate
+            MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:1370-pin-protoc-7ae297930 configs-integration-test
+      - run:
+          name: Load Images
+          command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
+      - run:
+          name: Ingester hand-over test
+          command: ./integration-tests/test-handover.sh
+      - run:
+          name: Ingester flush test
+          command: |
+            ./integration-tests/stop-components.sh
+            ./integration-tests/test-flush.sh
 
   build:
     <<: *defaults
     steps:
-    - checkout
-    - setup_remote_docker
-    - install-docker
+      - checkout
+      - setup_remote_docker
+      - install-docker
 
-    - run:
-        name: Build
-        command: |
-          touch build-image/.uptodate
-          make BUILD_IN_CONTAINER=false
+      - run:
+          name: Build
+          command: |
+            touch build-image/.uptodate
+            make BUILD_IN_CONTAINER=false
 
-    - store_artifacts:
-        path: pkg/querier/frontend/frontend.pb.go
-    - store_artifacts:
-        path: pkg/chunk/storage/caching_index_client.pb.go
-    - store_artifacts:
-        path: pkg/ring/ring.pb.go
-    - store_artifacts:
-        path: pkg/ingester/client/cortex.pb.go
+      - store_artifacts:
+          path: pkg/querier/frontend/frontend.pb.go
+      - store_artifacts:
+          path: pkg/chunk/storage/caching_index_client.pb.go
+      - store_artifacts:
+          path: pkg/ring/ring.pb.go
+      - store_artifacts:
+          path: pkg/ingester/client/cortex.pb.go
+      - store_artifacts:
+          path: pkg/ruler/rules/rules.pb.go
 
-    - run:
-        name: Save Images
-        command: |
-          mkdir /tmp/images
-          ln -s /tmp/images ./images
-          make BUILD_IN_CONTAINER=false save-images
+      - run:
+          name: Save Images
+          command: |
+            mkdir /tmp/images
+            ln -s /tmp/images ./images
+            make BUILD_IN_CONTAINER=false save-images
 
-    - save_cache:
-        key: v1-cortex-{{ .Branch }}-{{ .Revision }}
-        paths:
-        - /tmp/images/
+      - save_cache:
+          key: v1-cortex-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - /tmp/images/
 
   deploy:
     <<: *defaults
     steps:
-    - checkout
-    - setup_remote_docker
-    - install-docker
+      - checkout
+      - setup_remote_docker
+      - install-docker
 
-    - restore_cache:
-        key: v1-cortex-{{ .Branch }}-{{ .Revision }}
+      - restore_cache:
+          key: v1-cortex-{{ .Branch }}-{{ .Revision }}
 
-    - run:
-        name: Load Images
-        command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
+      - run:
+          name: Load Images
+          command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
 
-    - run:
-        name: Deploy
-        command: |
-          if [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
-            docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
-          fi
-          if [ -n "$QUAY_PASSWORD" ]; then
-            docker login -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io;
-          fi
-          IMAGE_TAG=$CIRCLE_TAG ./push-images $NOQUAY
+      - run:
+          name: Deploy
+          command: |
+            if [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
+              docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
+            fi
+            if [ -n "$QUAY_PASSWORD" ]; then
+              docker login -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io;
+            fi
+            IMAGE_TAG=$CIRCLE_TAG ./push-images $NOQUAY

@@ -34,8 +34,8 @@ func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 			Alert:  rls[i].Alert,
 
 			For:         &f,
-			Labels:      client.FromLabelsToLabelAdapaters(labels.FromMap(rls[i].Labels)),
-			Annotations: client.FromLabelsToLabelAdapaters(labels.FromMap(rls[i].Annotations)),
+			Labels:      client.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
+			Annotations: client.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
 		}
 	}
 

@@ -34,7 +34,7 @@ type testStore struct {
 	chunks map[string][]chunk.Chunk
 }
 
-func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, limits validation.Limits) (*testStore, *Ingester) {
+func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, limits validation.Limits) (*testStore, *Ingester, *validation.Overrides) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
@@ -44,10 +44,10 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	ing, err := New(cfg, clientConfig, overrides, store, nil)
 	require.NoError(t, err)
 
-	return store, ing
+	return store, ing, overrides
 }
 
-func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
+func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester, *validation.Overrides) {
 	return newTestStore(t,
 		defaultIngesterTestConfig(),
 		defaultClientTestConfig(),
@@ -175,7 +175,7 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries, o
 }
 
 func TestIngesterAppend(t *testing.T) {
-	store, ing := newDefaultTestStore(t)
+	store, ing, ov := newDefaultTestStore(t)
 	userIDs, testData := pushTestSamples(t, ing, 10, 1000, 0)
 
 	// Read samples back via ingester queries.
@@ -199,10 +199,11 @@ func TestIngesterAppend(t *testing.T) {
 	// Read samples back via chunk store.
 	ing.Shutdown()
 	store.checkData(t, userIDs, testData)
+	ov.Stop()
 }
 
 func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
-	_, ing := newDefaultTestStore(t)
+	_, ing, ov := newDefaultTestStore(t)
 
 	userIDs, _ := pushTestSamples(t, ing, 10, 1000, 0)
 
@@ -222,8 +223,8 @@ func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
 		require.Equal(t, 0, len(s.responses))
 	}
 
-	// Read samples back via chunk store.
 	ing.Shutdown()
+	ov.Stop()
 }
 
 func TestIngesterIdleFlush(t *testing.T) {
@@ -232,7 +233,9 @@ func TestIngesterIdleFlush(t *testing.T) {
 	cfg.FlushCheckPeriod = 20 * time.Millisecond
 	cfg.MaxChunkIdle = 100 * time.Millisecond
 	cfg.RetainPeriod = 500 * time.Millisecond
-	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+	store, ing, ov := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+	defer ing.Shutdown()
+	defer ov.Stop()
 
 	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
 
@@ -266,7 +269,9 @@ func TestIngesterSpreadFlush(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.SpreadFlushes = true
 	cfg.FlushCheckPeriod = 20 * time.Millisecond
-	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+	store, ing, ov := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
+	defer ing.Shutdown()
+	defer ov.Stop()
 
 	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
 
@@ -297,8 +302,9 @@ func (s *stream) Send(response *client.QueryStreamResponse) error {
 }
 
 func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
-	_, ing := newDefaultTestStore(t)
+	_, ing, ov := newDefaultTestStore(t)
 	defer ing.Shutdown()
+	defer ov.Stop()
 
 	m := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -328,8 +334,9 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 
 // Test that blank labels are removed by the ingester
 func TestIngesterAppendBlankLabel(t *testing.T) {
-	_, ing := newDefaultTestStore(t)
+	_, ing, ov := newDefaultTestStore(t)
 	defer ing.Shutdown()
+	defer ov.Stop()
 
 	lp := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
@@ -359,8 +366,9 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxSeriesPerUser = 1
 
-	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
+	_, ing, ov := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
 	defer ing.Shutdown()
+	defer ov.Stop()
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -416,8 +424,9 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
 	limits.MaxSeriesPerMetric = 1
 
-	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
+	_, ing, ov := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
 	defer ing.Shutdown()
+	defer ov.Stop()
 
 	userID := "1"
 	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
@@ -480,8 +489,9 @@ func BenchmarkIngesterSeriesCreationLocking(b *testing.B) {
 }
 
 func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
-	_, ing := newDefaultTestStore(b)
+	_, ing, ov := newDefaultTestStore(b)
 	defer ing.Shutdown()
+	defer ov.Stop()
 
 	var (
 		wg     sync.WaitGroup
@@ -546,7 +556,7 @@ func BenchmarkIngesterPush(b *testing.B) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	b.ResetTimer()
 	for iter := 0; iter < b.N; iter++ {
-		_, ing := newTestStore(b, cfg, clientCfg, limits)
+		_, ing, ov := newTestStore(b, cfg, clientCfg, limits)
 		// Bump the timestamp on each of our test samples each time round the loop
 		for j := 0; j < samples; j++ {
 			for i := range ts {
@@ -558,5 +568,6 @@ func BenchmarkIngesterPush(b *testing.B) {
 			require.NoError(b, err)
 		}
 		ing.Shutdown()
+		ov.Stop()
 	}
 }

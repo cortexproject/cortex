@@ -65,9 +65,10 @@ func TestIngesterRestart(t *testing.T) {
 	config.LifecyclerConfig.SkipUnregister = true
 
 	{
-		_, ingester := newTestStore(t, config, clientConfig, limits)
+		_, ingester, ov := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
+		ov.Stop()
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
@@ -75,9 +76,10 @@ func TestIngesterRestart(t *testing.T) {
 	})
 
 	{
-		_, ingester := newTestStore(t, config, clientConfig, limits)
+		_, ingester, ov := newTestStore(t, config, clientConfig, limits)
 		time.Sleep(100 * time.Millisecond)
 		ingester.Shutdown() // doesn't actually unregister due to skipUnregister: true
+		ov.Stop()
 	}
 
 	time.Sleep(200 * time.Millisecond)
@@ -289,7 +291,8 @@ func (i ingesterClientAdapater) Check(ctx context.Context, in *grpc_health_v1.He
 // removing itself from the ring.
 func TestIngesterFlush(t *testing.T) {
 	// Start the ingester, and get it into ACTIVE state.
-	store, ing := newDefaultTestStore(t)
+	store, ing, ov := newDefaultTestStore(t)
+	defer ov.Stop()
 
 	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
 		return ing.lifecycler.GetState()

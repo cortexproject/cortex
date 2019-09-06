@@ -42,7 +42,9 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 		{99, 10, []*labels.Matcher{matchAllNames, matchNotJob1}, 50},
 	} {
 		t.Run(fmt.Sprintf("numSeries=%d,batchSize=%d,matchers=%s", tc.numSeries, tc.batchSize, tc.matchers), func(t *testing.T) {
-			_, ing := newDefaultTestStore(t)
+			_, ing, ov := newDefaultTestStore(t)
+			defer ing.Shutdown()
+			defer ov.Stop()
 			userIDs, _ := pushTestSamples(t, ing, tc.numSeries, 100, 0)
 
 			for _, userID := range userIDs {

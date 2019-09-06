@@ -34,8 +34,9 @@ func BenchmarkQueryStream(b *testing.B) {
 	limits.MaxSeriesPerMetric = numSeries
 	limits.MaxSeriesPerQuery = numSeries
 	cfg.FlushCheckPeriod = 15 * time.Minute
-	_, ing := newTestStore(b, cfg, clientCfg, limits)
-	// defer ing.Shutdown()
+	_, ing, ov := newTestStore(b, cfg, clientCfg, limits)
+	defer ing.Shutdown()
+	defer ov.Stop()
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 	instances := make([]string, numSeries/numCPUs)
@@ -107,4 +108,5 @@ func BenchmarkQueryStream(b *testing.B) {
 			require.Equal(b, count, int(numSeries))
 		})
 	}
+	b.StopTimer()
 }

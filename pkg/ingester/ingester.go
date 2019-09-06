@@ -384,7 +384,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		}
 
 		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapaters(series.metric),
+			Labels:  client.FromLabelsToLabelAdapters(series.metric),
 			Samples: make([]client.Sample, 0, len(values)),
 		}
 		for _, s := range values {
@@ -447,7 +447,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelAdapaters(series.metric),
+			Labels: client.FromLabelsToLabelAdapters(series.metric),
 			Chunks: wireChunks,
 		})
 
@@ -544,7 +544,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 		Metric: make([]*client.Metric, 0, len(lss)),
 	}
 	for _, ls := range lss {
-		result.Metric = append(result.Metric, &client.Metric{Labels: client.FromLabelsToLabelAdapaters(ls)})
+		result.Metric = append(result.Metric, &client.Metric{Labels: client.FromLabelsToLabelAdapters(ls)})
 	}
 
 	return result, nil

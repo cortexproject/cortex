@@ -101,21 +101,10 @@ func NewRedisCache(cfg RedisConfig, name string, client RedisClient) *RedisCache
 	return cache
 }
 
-func redisStatusCode(err error) string {
-	switch err {
-	case nil:
-		return "200"
-	case redis.ErrNil:
-		return "404"
-	default:
-		return "500"
-	}
-}
-
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
 func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var data [][]byte
-	err := instr.CollectedRequest(ctx, "Redis.Get", c.requestDuration, redisStatusCode, func(ctx context.Context) (err error) {
+	err := instr.CollectedRequest(ctx, "Redis.Fetch", c.requestDuration, redisStatusCode, func(ctx context.Context) (err error) {
 		data, err = c.mget(ctx, keys)
 		return err
 	})
@@ -139,7 +128,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 // Store stores the key in the cache.
 func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	for i := range keys {
-		err := instr.CollectedRequest(ctx, "Redis.Put", c.requestDuration, redisStatusCode, func(_ context.Context) error {
+		err := instr.CollectedRequest(ctx, "Redis.Store", c.requestDuration, redisStatusCode, func(ctx context.Context) error {
 			return c.set(ctx, keys[i], bufs[i], c.expiration)
 		})
 		if err != nil {
@@ -230,6 +219,17 @@ func (c *RedisCache) ping(ctx context.Context) error {
 		return err
 	case <-ctx.Done():
 		return errRedisQueryTimeout
+	}
+}
+
+func redisStatusCode(err error) string {
+	switch err {
+	case nil:
+		return "200"
+	case redis.ErrNil:
+		return "404"
+	default:
+		return "500"
 	}
 }
 

@@ -93,7 +93,7 @@ func seriesSetToQueryResponse(s storage.SeriesSet) (*client.QueryResponse, error
 			return nil, err
 		}
 		result.Timeseries = append(result.Timeseries, client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapaters(series.Labels()),
+			Labels:  client.FromLabelsToLabelAdapters(series.Labels()),
 			Samples: samples,
 		})
 	}

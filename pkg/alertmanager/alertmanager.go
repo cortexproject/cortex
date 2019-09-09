@@ -98,7 +98,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 		am.nflog.SetBroadcast(c.Broadcast)
 	}
 
-	am.marker = types.NewMarker(nil)
+	am.marker = types.NewMarker(am.registry)
 
 	silencesID := fmt.Sprintf("silences:%s", cfg.UserID)
 	am.silences, err = silence.New(silence.Options{
@@ -121,8 +121,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 		am.wg.Done()
 	}()
 
-	marker := types.NewMarker(nil)
-	am.alerts, err = mem.NewAlerts(context.Background(), marker, 30*time.Minute, am.logger)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, am.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -130,7 +129,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 	am.api, err = api.New(api.Options{
 		Alerts:     am.alerts,
 		Silences:   am.silences,
-		StatusFunc: marker.Status,
+		StatusFunc: am.marker.Status,
 		Peer:       cfg.Peer,
 		Logger:     log.With(am.logger, "component", "api"),
 		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {

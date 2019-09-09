@@ -1,10 +1,10 @@
 package alertmanager
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
-	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -17,14 +17,23 @@ import (
 	"github.com/prometheus/alertmanager/inhibit"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/notify"
+	"github.com/prometheus/alertmanager/notify/email"
+	"github.com/prometheus/alertmanager/notify/hipchat"
+	"github.com/prometheus/alertmanager/notify/opsgenie"
+	"github.com/prometheus/alertmanager/notify/pagerduty"
+	"github.com/prometheus/alertmanager/notify/pushover"
+	"github.com/prometheus/alertmanager/notify/slack"
+	"github.com/prometheus/alertmanager/notify/victorops"
+	"github.com/prometheus/alertmanager/notify/webhook"
+	"github.com/prometheus/alertmanager/notify/wechat"
 	"github.com/prometheus/alertmanager/provider/mem"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const notificationLogMaintenancePeriod = 15 * time.Minute
@@ -55,6 +64,7 @@ type Alertmanager struct {
 	stop       chan struct{}
 	wg         sync.WaitGroup
 	router     *route.Router
+	registry   *prometheus.Registry
 }
 
 // New creates a new Alertmanager.
@@ -68,7 +78,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 	// TODO(cortex): Build a registry that can merge metrics from multiple users.
 	// For now, these metrics are ignored, as we can't register the same
 	// metric twice with a single registry.
-	localRegistry := prometheus.NewRegistry()
+	am.registry = prometheus.NewRegistry()
 
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
@@ -77,31 +87,31 @@ func New(cfg *Config) (*Alertmanager, error) {
 		nflog.WithRetention(cfg.Retention),
 		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
 		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
-		nflog.WithMetrics(localRegistry),
+		nflog.WithMetrics(am.registry),
 		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
 	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, localRegistry)
+		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
 		am.nflog.SetBroadcast(c.Broadcast)
 	}
 
-	am.marker = types.NewMarker()
+	am.marker = types.NewMarker(nil)
 
 	silencesID := fmt.Sprintf("silences:%s", cfg.UserID)
 	am.silences, err = silence.New(silence.Options{
 		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
 		Retention:    cfg.Retention,
 		Logger:       log.With(am.logger, "component", "silences"),
-		Metrics:      localRegistry,
+		Metrics:      am.registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create silences: %v", err)
 	}
 	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, localRegistry)
+		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, am.registry)
 		am.silences.SetBroadcast(c.Broadcast)
 	}
 
@@ -111,28 +121,31 @@ func New(cfg *Config) (*Alertmanager, error) {
 		am.wg.Done()
 	}()
 
-	marker := types.NewMarker()
-	am.alerts, err = mem.NewAlerts(marker, 30*time.Minute)
+	marker := types.NewMarker(nil)
+	am.alerts, err = mem.NewAlerts(context.Background(), marker, 30*time.Minute, am.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
 
-	am.api = api.New(
-		am.alerts,
-		am.silences,
-		func(matchers []*labels.Matcher) dispatch.AlertOverview {
-			return am.dispatcher.Groups(matchers)
+	am.api, err = api.New(api.Options{
+		Alerts:     am.alerts,
+		Silences:   am.silences,
+		StatusFunc: marker.Status,
+		Peer:       cfg.Peer,
+		Logger:     log.With(am.logger, "component", "api"),
+		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
+			return am.dispatcher.Groups(f1, f2)
 		},
-		marker.Status,
-		cfg.Peer,
-		log.With(am.logger, "component", "api"),
-	)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create api: %v", err)
+	}
 
 	am.router = route.New()
 
 	webReload := make(chan chan error)
 	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload, log.With(am.logger, "component", "ui"))
-	am.api.Register(am.router.WithPrefix(path.Join(am.cfg.ExternalURL.Path, "/api/v1")))
+	am.api.Register(am.router, am.cfg.ExternalURL.Path)
 
 	go func() {
 		for {
@@ -160,11 +173,6 @@ func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
-	var (
-		tmpl     *template.Template
-		pipeline notify.Stage
-	)
-
 	templateFiles := make([]string, len(conf.Templates), len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
@@ -178,10 +186,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	}
 	tmpl.ExternalURL = am.cfg.ExternalURL
 
-	err = am.api.Update(conf, time.Duration(conf.Global.ResolveTimeout))
-	if err != nil {
-		return err
-	}
+	am.api.Update(conf, func(_ model.LabelSet) {})
 
 	am.inhibitor.Stop()
 	am.dispatcher.Stop()
@@ -196,16 +201,18 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 		return d + waitFunc()
 	}
 
-	pipeline = notify.BuildPipeline(
-		conf.Receivers,
-		tmpl,
+	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.logger)
+	if err != nil {
+		return nil
+	}
+	pipelineBuilder := notify.NewPipelineBuilder(am.registry)
+	pipeline := pipelineBuilder.New(
+		integrationsMap,
 		waitFunc,
 		am.inhibitor,
-		am.silences,
+		silence.NewSilencer(am.silences, am.marker, am.logger),
 		am.nflog,
-		am.marker,
 		am.cfg.Peer,
-		log.With(am.logger, "component", "pipeline"),
 	)
 	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,
@@ -233,4 +240,68 @@ func (am *Alertmanager) Stop() {
 // ServeHTTP serves the Alertmanager's web UI and API.
 func (am *Alertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	am.router.ServeHTTP(w, req)
+}
+
+// buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
+// list of receiver config.
+func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger log.Logger) (map[string][]notify.Integration, error) {
+	integrationsMap := make(map[string][]notify.Integration, len(nc))
+	for _, rcv := range nc {
+		integrations, err := buildReceiverIntegrations(rcv, tmpl, logger)
+		if err != nil {
+			return nil, err
+		}
+		integrationsMap[rcv.Name] = integrations
+	}
+	return integrationsMap, nil
+}
+
+// buildReceiverIntegrations builds a list of integration notifiers off of a
+// receiver config.
+// Taken from https://github.com/prometheus/alertmanager/blob/94d875f1227b29abece661db1a68c001122d1da5/cmd/alertmanager/main.go#L112-L159.
+func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, logger log.Logger) ([]notify.Integration, error) {
+	var (
+		errs         types.MultiError
+		integrations []notify.Integration
+		add          = func(name string, i int, rs notify.ResolvedSender, f func(l log.Logger) (notify.Notifier, error)) {
+			n, err := f(log.With(logger, "integration", name))
+			if err != nil {
+				errs.Add(err)
+				return
+			}
+			integrations = append(integrations, notify.NewIntegration(n, rs, name, i))
+		}
+	)
+
+	for i, c := range nc.WebhookConfigs {
+		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l) })
+	}
+	for i, c := range nc.EmailConfigs {
+		add("email", i, c, func(l log.Logger) (notify.Notifier, error) { return email.New(c, tmpl, l), nil })
+	}
+	for i, c := range nc.PagerdutyConfigs {
+		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l) })
+	}
+	for i, c := range nc.OpsGenieConfigs {
+		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l) })
+	}
+	for i, c := range nc.WechatConfigs {
+		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l) })
+	}
+	for i, c := range nc.SlackConfigs {
+		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l) })
+	}
+	for i, c := range nc.HipchatConfigs {
+		add("hipchat", i, c, func(l log.Logger) (notify.Notifier, error) { return hipchat.New(c, tmpl, l) })
+	}
+	for i, c := range nc.VictorOpsConfigs {
+		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l) })
+	}
+	for i, c := range nc.PushoverConfigs {
+		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l) })
+	}
+	if errs.Len() > 0 {
+		return nil, &errs
+	}
+	return integrations, nil
 }

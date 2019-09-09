@@ -22,11 +22,10 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/util/testutil"
 )
 
 func BenchmarkRangeQuery(b *testing.B) {
-	storage := testutil.NewStorage(b)
+	storage := NewStorage(b)
 	defer storage.Close()
 	engine := NewEngine(nil, nil, 10, 100*time.Second)
 

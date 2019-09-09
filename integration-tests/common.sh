@@ -3,6 +3,7 @@
 TEST_DIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
 IMAGE_TAG=${CIRCLE_TAG:-$($TEST_DIR/../tools/image-tag)}
+IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
 
 COMMON_ARGS="-consul.hostname=consul:8500"
 STORAGE_ARGS="-config-yaml=/tests/schema1.yaml -dynamodb.url=dynamodb://u:p@dynamodb.cortex.:8000"

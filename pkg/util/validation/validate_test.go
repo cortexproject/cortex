@@ -4,24 +4,43 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/httpgrpc"
 )
 
+type validateLabelsCfg struct {
+	enforceMetricName      bool
+	maxLabelNamesPerSeries int
+	maxLabelNameLength     int
+	maxLabelValueLength    int
+}
+
+func (v validateLabelsCfg) EnforceMetricName(userID string) bool {
+	return v.enforceMetricName
+}
+
+func (v validateLabelsCfg) MaxLabelNamesPerSeries(userID string) int {
+	return v.maxLabelNamesPerSeries
+}
+
+func (v validateLabelsCfg) MaxLabelNameLength(userID string) int {
+	return v.maxLabelNameLength
+}
+
+func (v validateLabelsCfg) MaxLabelValueLength(userID string) int {
+	return v.maxLabelValueLength
+}
+
 func TestValidateLabels(t *testing.T) {
-	var cfg Limits
+	var cfg validateLabelsCfg
 	userID := "testUser"
-	flagext.DefaultValues(&cfg)
-	cfg.MaxLabelValueLength = 25
-	cfg.MaxLabelNameLength = 25
-	cfg.MaxLabelNamesPerSeries = 2
-	overrides, err := NewOverrides(cfg)
-	require.NoError(t, err)
+
+	cfg.maxLabelValueLength = 25
+	cfg.maxLabelNameLength = 25
+	cfg.maxLabelNamesPerSeries = 2
+	cfg.enforceMetricName = true
 
 	for _, c := range []struct {
 		metric model.Metric
@@ -57,7 +76,7 @@ func TestValidateLabels(t *testing.T) {
 		},
 	} {
 
-		err := overrides.ValidateLabels(userID, client.FromMetricsToLabelAdapters(c.metric))
+		err := ValidateLabels(cfg, userID, client.FromMetricsToLabelAdapters(c.metric))
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 }

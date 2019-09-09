@@ -36,7 +36,7 @@ import (
 
 type moduleName int
 
-// The various modules that make up Loki.
+// The various modules that make up Cortex.
 const (
 	Ring moduleName = iota
 	Overrides

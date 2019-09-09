@@ -6,7 +6,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -53,14 +52,8 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 					return
 				}
 
-				matrix, err := seriesSetToMatrix(seriesSet)
-				if err != nil {
-					errors <- err
-					return
-				}
-
-				resp.Results[i] = client.ToQueryResponse(matrix)
-				errors <- nil
+				resp.Results[i], err = seriesSetToQueryResponse(seriesSet)
+				errors <- err
 			}(i, qr)
 		}
 
@@ -82,26 +75,26 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 	})
 }
 
-func seriesSetToMatrix(s storage.SeriesSet) (model.Matrix, error) {
-	result := model.Matrix{}
+func seriesSetToQueryResponse(s storage.SeriesSet) (*client.QueryResponse, error) {
+	result := &client.QueryResponse{}
 
 	for s.Next() {
 		series := s.At()
-		values := []model.SamplePair{}
+		samples := []client.Sample{}
 		it := series.Iterator()
 		for it.Next() {
 			t, v := it.At()
-			values = append(values, model.SamplePair{
-				Timestamp: model.Time(t),
-				Value:     model.SampleValue(v),
+			samples = append(samples, client.Sample{
+				TimestampMs: t,
+				Value:       v,
 			})
 		}
 		if err := it.Err(); err != nil {
 			return nil, err
 		}
-		result = append(result, &model.SampleStream{
-			Metric: util.LabelsToMetric(series.Labels()),
-			Values: values,
+		result.Timeseries = append(result.Timeseries, client.TimeSeries{
+			Labels:  client.FromLabelsToLabelAdapters(series.Labels()),
+			Samples: samples,
 		})
 	}
 

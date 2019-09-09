@@ -1,13 +1,27 @@
 ## master / unreleased
 
-* [FEATURE] You can now specify `http_config` on alert receivers #929
+* [CHANGE] `--alertmanager.configs.auto-slack-root` flag was dropped as auto Slack root is not supported anymore. #1597
+* [ENHANCEMENT] Upgraded Prometheus to 2.12.0 and Alertmanager to 0.19.0. #1597
+
+## 0.2.0 / 2019-09-05
+
+This release has several exciting features, the most notable of them being setting `-ingester.spread-flushes` to potentially reduce your storage space by upto 50%.
+
 * [CHANGE] Flags changed due to changes upstream in Prometheus Alertmanager #929:
   * `alertmanager.mesh.listen-address` is now `cluster.listen-address`
   * `alertmanager.mesh.peer.host` and `alertmanager.mesh.peer.service` can be replaced by `cluster.peer`
   * `alertmanager.mesh.hardware-address`, `alertmanager.mesh.nickname`, `alertmanager.mesh.password`, and `alertmanager.mesh.peer.refresh-interval` all disappear.
-* [CHANGE] Retention period should now be a multiple of periodic table duration #1564
+* [CHANGE] --claim-on-rollout flag deprecated; feature is now always on #1566
+* [CHANGE] Retention period must now be a multiple of periodic table duration #1564
+* [CHANGE] The value for the name label for the chunks memcache in all `cortex_cache_` metrics is now `chunksmemcache` (before it was `memcache`) #1569
+* [FEATURE] Makes the ingester flush each timeseries at a specific point in the max-chunk-age cycle with `-ingester.spread-flushes`. This means multiple replicas of a chunk are very likely to contain the same contents which cuts chunk storage space by up to 66%. #1578
+* [FEATURE] Make minimum number of chunk samples configurable per user #1620
+* [FEATURE] Honor HTTPS for custom S3 URLs #1603
+* [FEATURE] You can now point the query-frontend at a normal Prometheus for parallelisation and caching #1441
+* [FEATURE] You can now specify `http_config` on alert receivers #929
 * [FEATURE] Add option to use jump hashing to load balance requests to memcached #1554
 * [FEATURE] Add status page for HA tracker to distributors #1546
+* [FEATURE] The distributor ring page is now easier to read with alternate rows grayed out #1621
 
 ## 0.1.0 / 2019-08-07
 

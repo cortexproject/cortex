@@ -64,6 +64,7 @@ build-image/$(UPTODATE): build-image/*
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
+BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
 # RM is parameterized to allow CircleCI to run builds, as it
 # currently disallows `docker run --rm`. This value is overridden
 # in circle.yml
@@ -93,15 +94,15 @@ exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos: build-i
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
-		$(IMAGE_PREFIX)build-image $@;
+		$(BUILD_IMAGE) $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
-	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
-	@echo
-	@echo ">>>> Entering build container: $@"
-	@$(SUDO) docker run $(RM) $(TTY) -i \
+	@DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
+	echo ; \
+	echo ">>>> Entering build container: $@"; \
+	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
@@ -109,7 +110,7 @@ configs-integration-test: build-image/$(UPTODATE)
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
 		-e DB_ADDR=configs-db.cortex.local \
-		$(IMAGE_PREFIX)build-image $@; \
+		$(BUILD_IMAGE) $@; \
 	status=$$?; \
 	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
 	exit $$status
@@ -144,10 +145,10 @@ configs-integration-test:
 	/bin/bash -c "go test -v -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
 
 mod-check:
-	GO111MODULE=on go mod download
-	GO111MODULE=on go mod verify
-	GO111MODULE=on go mod tidy
-	GO111MODULE=on go mod vendor
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod vendor
 	@git diff --exit-code -- go.sum go.mod vendor/
 
 check-protos: clean-protos protos

@@ -55,13 +55,12 @@ func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
 }
 
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
 	for _, chunk := range chunks {
 		for _, v := range chunk.Metric {
 			if v.Value == "" {
@@ -69,6 +68,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 			}
 		}
 	}
+	userID := chunks[0].UserID
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
 	return nil
 }
@@ -109,18 +109,28 @@ func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matr
 	return m
 }
 
-func matrixToSamples(m model.Matrix) []model.Sample {
-	var samples []model.Sample
+func matrixToSamples(m model.Matrix) []client.Sample {
+	var samples []client.Sample
 	for _, ss := range m {
 		for _, sp := range ss.Values {
-			samples = append(samples, model.Sample{
-				Metric:    ss.Metric,
-				Timestamp: sp.Timestamp,
-				Value:     sp.Value,
+			samples = append(samples, client.Sample{
+				TimestampMs: int64(sp.Timestamp),
+				Value:       float64(sp.Value),
 			})
 		}
 	}
 	return samples
+}
+
+// Return one copy of the labels per sample
+func matrixToLables(m model.Matrix) []labels.Labels {
+	var labels []labels.Labels
+	for _, ss := range m {
+		for range ss.Values {
+			labels = append(labels, client.FromLabelAdaptersToLabels(client.FromMetricsToLabelAdapters(ss.Metric)))
+		}
+	}
+	return labels
 }
 
 func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.MatchType, n, v string) (model.Matrix, *client.QueryRequest, error) {
@@ -157,7 +167,7 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries, o
 	// Append samples.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToSamples(testData[userID]), client.API))
+		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToLables(testData[userID]), matrixToSamples(testData[userID]), client.API))
 		require.NoError(t, err)
 	}
 
@@ -293,23 +303,23 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	m := labelPairs{
 		{Name: model.MetricNameLabel, Value: "testmetric"},
 	}
-	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, m, 1, 0, client.API)
+	ctx := context.Background()
+	err := ing.append(ctx, userID, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, m, 1, 0, client.API)
+	err = ing.append(ctx, userID, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, m, 0, 0, client.API)
+	err = ing.append(ctx, userID, m, 0, 0, client.API)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
 	require.Equal(t, errResp.Code, int32(400))
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, m, 1, 1, client.API)
+	err = ing.append(ctx, userID, m, 1, 1, client.API)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = httpgrpc.HTTPResponseFromError(err)
 	require.True(t, ok)
@@ -327,15 +337,15 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 		{Name: "bar", Value: ""},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, lp, 1, 0, client.API)
+	err := ing.append(ctx, userID, lp, 1, 0, client.API)
 	require.NoError(t, err)
 
-	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, model.MetricNameLabel, "testmetric")
+	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, labels.MetricName, "testmetric")
 	require.NoError(t, err)
 
 	expected := model.Matrix{
 		{
-			Metric: model.Metric{model.MetricNameLabel: "testmetric"},
+			Metric: model.Metric{labels.MetricName: "testmetric"},
 			Values: []model.SamplePair{
 				{Timestamp: 1, Value: 0},
 			},
@@ -353,29 +363,28 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	defer ing.Shutdown()
 
 	userID := "1"
-	sample1 := model.Sample{
-		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-		Timestamp: 0,
-		Value:     1,
+	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	sample1 := client.Sample{
+		TimestampMs: 0,
+		Value:       1,
 	}
-	sample2 := model.Sample{
-		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-		Timestamp: 1,
-		Value:     2,
+	sample2 := client.Sample{
+		TimestampMs: 1,
+		Value:       2,
 	}
-	sample3 := model.Sample{
-		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "biz"},
-		Timestamp: 1,
-		Value:     3,
+	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	sample3 := client.Sample{
+		TimestampMs: 1,
+		Value:       3,
 	}
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}, client.API))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, client.API))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}, client.API))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, client.API))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 	}
@@ -386,15 +395,15 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 	expected := model.Matrix{
 		{
-			Metric: sample1.Metric,
+			Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
 			Values: []model.SamplePair{
 				{
-					Timestamp: sample1.Timestamp,
-					Value:     sample1.Value,
+					Timestamp: model.Time(sample1.TimestampMs),
+					Value:     model.SampleValue(sample1.Value),
 				},
 				{
-					Timestamp: sample2.Timestamp,
-					Value:     sample2.Value,
+					Timestamp: model.Time(sample2.TimestampMs),
+					Value:     model.SampleValue(sample2.Value),
 				},
 			},
 		},
@@ -411,29 +420,28 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	defer ing.Shutdown()
 
 	userID := "1"
-	sample1 := model.Sample{
-		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-		Timestamp: 0,
-		Value:     1,
+	labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
+	sample1 := client.Sample{
+		TimestampMs: 0,
+		Value:       1,
 	}
-	sample2 := model.Sample{
-		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-		Timestamp: 1,
-		Value:     2,
+	sample2 := client.Sample{
+		TimestampMs: 1,
+		Value:       2,
 	}
-	sample3 := model.Sample{
-		Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "biz"},
-		Timestamp: 1,
-		Value:     3,
+	labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
+	sample3 := client.Sample{
+		TimestampMs: 1,
+		Value:       3,
 	}
 
 	// Append only one series first, expect no error.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample1}, client.API))
+	_, err := ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, client.API))
 	require.NoError(t, err)
 
 	// Append to two series, expect series-exceeded error.
-	_, err = ing.Push(ctx, client.ToWriteRequest([]model.Sample{sample2, sample3}, client.API))
+	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, client.API))
 	if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected error about exceeding series per metric, got %v", err)
 	}
@@ -444,15 +452,15 @@ func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 
 	expected := model.Matrix{
 		{
-			Metric: sample1.Metric,
+			Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
 			Values: []model.SamplePair{
 				{
-					Timestamp: sample1.Timestamp,
-					Value:     sample1.Value,
+					Timestamp: model.Time(sample1.TimestampMs),
+					Value:     model.SampleValue(sample1.Value),
 				},
 				{
-					Timestamp: sample2.Timestamp,
-					Value:     sample2.Value,
+					Timestamp: model.Time(sample2.TimestampMs),
+					Value:     model.SampleValue(sample2.Value),
 				},
 			},
 		},

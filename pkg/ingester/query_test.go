@@ -25,8 +25,8 @@ func BenchmarkQueryStream(b *testing.B) {
 	limits := defaultLimitsTestConfig()
 
 	const (
-		numSeries  = 1e6 // Put 1 million timeseries, each with 100 samples.
-		numSamples = 100
+		numSeries  = 1e6 // Put 1 million timeseries, each with 10 samples.
+		numSamples = 10
 		numCPUs    = 32
 	)
 
@@ -55,13 +55,13 @@ func BenchmarkQueryStream(b *testing.B) {
 			{Name: "cpu", Value: cpus[i%numCPUs]},
 		}
 
-		state, fp, series, err := ing.userStates.getOrCreateSeries(ctx, labels)
+		state, fp, series, err := ing.userStates.getOrCreateSeries(ctx, "1", labels)
 		require.NoError(b, err)
 
 		for j := 0; j < numSamples; j++ {
 			err = series.add(model.SamplePair{
-				Value:     model.SampleValue(float64(i)),
-				Timestamp: model.Time(int64(i)),
+				Value:     model.SampleValue(float64(j)),
+				Timestamp: model.Time(int64(j)),
 			})
 			require.NoError(b, err)
 		}

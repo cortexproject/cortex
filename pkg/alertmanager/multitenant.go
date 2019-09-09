@@ -38,10 +38,6 @@ const (
 	// a URL derived from Config.AutoWebhookRoot
 	autoWebhookURL = "http://internal.monitor"
 
-	// If a config sets the Slack URL to this, it will be rewritten to
-	// a URL derived from Config.AutoSlackRoot
-	autoSlackURL = "internal://monitor"
-
 	statusPage = `
 <!doctype html>
 <html>
@@ -117,7 +113,6 @@ type MultitenantAlertmanagerConfig struct {
 
 	FallbackConfigFile string
 	AutoWebhookRoot    string
-	AutoSlackRoot      string
 }
 
 const defaultClusterAddr = "0.0.0.0:9094"
@@ -131,7 +126,6 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	flag.StringVar(&cfg.FallbackConfigFile, "alertmanager.configs.fallback", "", "Filename of fallback config to use if none specified for instance.")
 	flag.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
-	flag.StringVar(&cfg.AutoSlackRoot, "alertmanager.configs.auto-slack-root", "", "Root of URL to generate if config is "+autoSlackURL)
 	flag.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 
 	flag.StringVar(&cfg.clusterBindAddr, "cluster.listen-address", defaultClusterAddr, "Listen address for cluster.")
@@ -185,7 +179,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, cfgCfg confi
 		if err != nil {
 			return nil, fmt.Errorf("unable to read fallback config %q: %s", cfg.FallbackConfigFile, err)
 		}
-		_, _, err = amconfig.LoadFile(cfg.FallbackConfigFile)
+		_, err = amconfig.LoadFile(cfg.FallbackConfigFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to load fallback config %q: %s", cfg.FallbackConfigFile, err)
 		}
@@ -324,20 +318,6 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 	if amConfig == nil { // shouldn't happen, but check just in case
 		return nil, fmt.Errorf("no usable Cortex configuration for %v", userID)
 	}
-	// Magic ability to configure a Slack receiver if config requests it
-	if am.cfg.AutoSlackRoot != "" {
-		for _, r := range amConfig.Receivers {
-			for _, s := range r.SlackConfigs {
-				if s.APIURL.String() == autoSlackURL {
-					u, err := url.Parse(am.cfg.AutoSlackRoot + "/" + userID + "/monitor")
-					if err != nil {
-						return nil, err
-					}
-					s.APIURL = &amconfig.SecretURL{u}
-				}
-			}
-		}
-	}
 	if am.cfg.AutoWebhookRoot != "" {
 		for _, r := range amConfig.Receivers {
 			for _, w := range r.WebhookConfigs {
@@ -346,7 +326,7 @@ func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amco
 					if err != nil {
 						return nil, err
 					}
-					w.URL = &amconfig.URL{u}
+					w.URL = &amconfig.URL{URL: u}
 				}
 			}
 		}

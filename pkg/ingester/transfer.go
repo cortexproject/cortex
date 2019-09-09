@@ -82,13 +82,12 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			fromIngesterID = wireSeries.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
 		}
-		userCtx := user.InjectOrgID(stream.Context(), wireSeries.UserId)
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {
 			return err
 		}
 
-		state, fp, series, err := userStates.getOrCreateSeries(userCtx, wireSeries.Labels)
+		state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels)
 		if err != nil {
 			return err
 		}
@@ -184,6 +183,9 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 // TransferOut finds an ingester in PENDING state and transfers our chunks to it.
 // Called as part of the ingester shutdown process.
 func (i *Ingester) TransferOut(ctx context.Context) error {
+	if i.cfg.MaxTransferRetries < 0 {
+		return fmt.Errorf("transfers disabled")
+	}
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 5 * time.Second,
@@ -246,7 +248,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 			err = stream.Send(&client.TimeSeriesChunk{
 				FromIngesterId: i.lifecycler.ID,
 				UserId:         userID,
-				Labels:         client.FromLabelsToLabelAdapaters(pair.series.metric),
+				Labels:         client.FromLabelsToLabelAdapters(pair.series.metric),
 				Chunks:         chunks,
 			})
 			state.fpLocker.Unlock(pair.fp)

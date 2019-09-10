@@ -9,10 +9,10 @@ set -e
 # TODO: wait for DynamoDB ready
 sleep 5
 echo Start table-manager
-docker run $RUN_ARGS -d --name=tm --hostname=tm --restart=always quay.io/cortexproject/cortex:$IMAGE_TAG -target=table-manager $STORAGE_ARGS -table-manager.retention-period=168h -dynamodb.poll-interval=5s
+docker run $RUN_ARGS -d --name=tm --hostname=tm --restart=always "$IMAGE_PREFIX"cortex:$IMAGE_TAG -target=table-manager $STORAGE_ARGS -table-manager.retention-period=168h -dynamodb.poll-interval=5s
 
 echo Start ingester
-docker run $RUN_ARGS -d --name=i1 --hostname=i1 quay.io/cortexproject/cortex:$IMAGE_TAG -target=ingester $INGESTER_ARGS
+docker run $RUN_ARGS -d --name=i1 --hostname=i1 "$IMAGE_PREFIX"cortex:$IMAGE_TAG -target=ingester $INGESTER_ARGS
 
 sleep 5
 I1_ADDR=$(container_ip i1)

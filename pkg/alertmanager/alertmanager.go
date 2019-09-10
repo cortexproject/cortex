@@ -67,6 +67,21 @@ type Alertmanager struct {
 	registry   *prometheus.Registry
 }
 
+var webReload = make(chan chan error)
+
+func init() {
+	go func() {
+		for {
+			select {
+			// Since this is not a "normal" Alertmanager which reads its config
+			// from disk, we just ignore web-based reload signals. Config updates are
+			// only applied externally via ApplyConfig().
+			case <-webReload:
+			}
+		}
+	}()
+}
+
 // New creates a new Alertmanager.
 func New(cfg *Config) (*Alertmanager, error) {
 	am := &Alertmanager{
@@ -142,22 +157,8 @@ func New(cfg *Config) (*Alertmanager, error) {
 
 	router := route.New().WithPrefix(am.cfg.ExternalURL.Path)
 
-	webReload := make(chan chan error)
 	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
-
-	go func() {
-		for {
-			select {
-			// Since this is not a "normal" Alertmanager which reads its config
-			// from disk, we just ignore web-based reload signals. Config updates are
-			// only applied externally via ApplyConfig().
-			case <-webReload:
-			case <-am.stop:
-				return
-			}
-		}
-	}()
 
 	return am, nil
 }

@@ -41,12 +41,7 @@ func (i ingesterQueryable) Querier(ctx context.Context, mint, maxt int64) (stora
 }
 
 // Get implements ChunkStore.
-func (i ingesterQueryable) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, promql.ErrStorage{Err: err}
-	}
-
+func (i ingesterQueryable) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	results, err := i.distributor.QueryStream(ctx, from, through, matchers...)
 	if err != nil {
 		return nil, promql.ErrStorage{Err: err}

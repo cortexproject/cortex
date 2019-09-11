@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/storage/tsdb"
 	"github.com/prometheus/prometheus/util/testutil"
 )
 
@@ -498,7 +500,7 @@ func (t *Test) clear() {
 	if t.cancelCtx != nil {
 		t.cancelCtx()
 	}
-	t.storage = testutil.NewStorage(t)
+	t.storage = NewStorage(t)
 
 	t.queryEngine = NewEngine(nil, nil, 20, 10*time.Second)
 	t.context, t.cancelCtx = context.WithCancel(context.Background())
@@ -545,4 +547,41 @@ func parseNumber(s string) (float64, error) {
 		return 0, fmt.Errorf("error parsing number: %s", err)
 	}
 	return f, nil
+}
+
+type T interface {
+	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
+}
+
+// NewStorage returns a new storage for testing purposes
+// that removes all associated files on closing.
+func NewStorage(t T) storage.Storage {
+	dir, err := ioutil.TempDir("", "test_storage")
+	if err != nil {
+		t.Fatalf("Opening test dir failed: %s", err)
+	}
+
+	// Tests just load data for a series sequentially. Thus we
+	// need a long appendable window.
+	db, err := tsdb.Open(dir, nil, nil, &tsdb.Options{
+		MinBlockDuration: model.Duration(24 * time.Hour),
+		MaxBlockDuration: model.Duration(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Opening test storage failed: %s", err)
+	}
+	return testStorage{Storage: tsdb.Adapter(db, int64(0)), dir: dir}
+}
+
+type testStorage struct {
+	storage.Storage
+	dir string
+}
+
+func (s testStorage) Close() error {
+	if err := s.Storage.Close(); err != nil {
+		return err
+	}
+	return os.RemoveAll(s.dir)
 }

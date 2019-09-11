@@ -331,7 +331,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		labelsHistogram.Observe(float64(len(ts.Labels)))
-		if err := d.limits.ValidateLabels(userID, ts.Labels); err != nil {
+		if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
 			lastPartialErr = err
 			continue
 		}
@@ -339,7 +339,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
 		samples := make([]client.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
-			if err := d.limits.ValidateSample(userID, metricName, s); err != nil {
+			if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
 				lastPartialErr = err
 				continue
 			}

@@ -68,7 +68,7 @@ func (d *Distributor) queryPrep(ctx context.Context, from, to model.Time, matche
 	// Get ingesters by metricName if one exists, otherwise get all ingesters
 	metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
 	if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
-		replicationSet, err = d.ring.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read)
+		replicationSet, err = d.ring.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
 	} else {
 		replicationSet, err = d.ring.GetAll()
 	}

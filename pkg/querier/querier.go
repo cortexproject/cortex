@@ -55,7 +55,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // ChunkStore is the read-interface to the Chunk Store.  Made an interface here
 // to reduce package coupling.
 type ChunkStore interface {
-	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error)
+	Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error)
 }
 
 // New builds a queryable and promql engine.

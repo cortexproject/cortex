@@ -97,7 +97,7 @@ func TestDistributorPush(t *testing.T) {
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
-				d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels)
+				d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, nil)
 				defer d.Stop()
 
 				request := makeWriteRequest(tc.samples)
@@ -150,8 +150,11 @@ func TestDistributorPushHAInstances(t *testing.T) {
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
-				d := prepare(t, 1, 1, 0, shardByAllLabels)
-				d.limits.Defaults.AcceptHASamples = true
+				var limits validation.Limits
+				flagext.DefaultValues(&limits)
+				limits.AcceptHASamples = true
+
+				d := prepare(t, 1, 1, 0, shardByAllLabels, &limits)
 				codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 
@@ -273,7 +276,7 @@ func TestDistributorPushQuery(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels)
+			d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil)
 			defer d.Stop()
 
 			request := makeWriteRequest(tc.samples)
@@ -305,7 +308,7 @@ func TestSlowQueries(t *testing.T) {
 			if nIngesters-happy > 1 {
 				expectedErr = promql.ErrStorage{Err: errFail}
 			}
-			d := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels)
+			d := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels, nil)
 			defer d.Stop()
 
 			_, err := d.Query(ctx, 0, 10, nameMatcher)
@@ -317,7 +320,7 @@ func TestSlowQueries(t *testing.T) {
 	}
 }
 
-func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool) *Distributor {
+func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits) *Distributor {
 	ingesters := []mockIngester{}
 	for i := 0; i < happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
@@ -355,16 +358,20 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	}
 
 	var cfg Config
-	var limits validation.Limits
 	var clientConfig client.Config
-	flagext.DefaultValues(&cfg, &limits, &clientConfig)
+	flagext.DefaultValues(&cfg, &clientConfig)
+
+	if limits == nil {
+		limits = &validation.Limits{}
+		flagext.DefaultValues(limits)
+	}
 	limits.IngestionRate = 20
 	limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory
 	cfg.ShardByAllLabels = shardByAllLabels
 	cfg.ExtraQueryDelay = 50 * time.Millisecond
 
-	overrides, err := validation.NewOverrides(limits)
+	overrides, err := validation.NewOverrides(*limits)
 	require.NoError(t, err)
 
 	d, err := New(cfg, clientConfig, overrides, ring)
@@ -457,25 +464,14 @@ type mockRing struct {
 	replicationFactor uint32
 }
 
-func (r mockRing) Get(key uint32, op ring.Operation) (ring.ReplicationSet, error) {
+func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (ring.ReplicationSet, error) {
 	result := ring.ReplicationSet{
 		MaxErrors: 1,
+		Ingesters: buf[:0],
 	}
 	for i := uint32(0); i < r.replicationFactor; i++ {
 		n := (key + i) % uint32(len(r.ingesters))
 		result.Ingesters = append(result.Ingesters, r.ingesters[n])
-	}
-	return result, nil
-}
-
-func (r mockRing) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
-	result := []ring.ReplicationSet{}
-	for i := 0; i < len(keys); i++ {
-		rs, err := r.Get(keys[i], op)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, rs)
 	}
 	return result, nil
 }
@@ -489,6 +485,10 @@ func (r mockRing) GetAll() (ring.ReplicationSet, error) {
 
 func (r mockRing) ReplicationFactor() int {
 	return int(r.replicationFactor)
+}
+
+func (r mockRing) IngesterCount() int {
+	return len(r.ingesters)
 }
 
 type mockIngester struct {
@@ -651,58 +651,62 @@ func TestDistributorValidation(t *testing.T) {
 	future, past := now.Add(5*time.Hour), now.Add(-25*time.Hour)
 
 	for i, tc := range []struct {
-		samples []model.Sample
+		labels  []labels.Labels
+		samples []client.Sample
 		err     error
 	}{
 		// Test validation passes.
 		{
-			samples: []model.Sample{{
-				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-				Timestamp: now,
-				Value:     1,
+			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
 			}},
 		},
 
 		// Test validation fails for very old samples.
 		{
-			samples: []model.Sample{{
-				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-				Timestamp: past,
-				Value:     2,
+			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(past),
+				Value:       2,
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has timestamp too old: %d", past),
 		},
 
 		// Test validation fails for samples from the future.
 		{
-			samples: []model.Sample{{
-				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar"},
-				Timestamp: future,
-				Value:     4,
+			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(future),
+				Value:       4,
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has timestamp too new: %d", future),
 		},
 
 		// Test maximum labels names per series.
 		{
-			samples: []model.Sample{{
-				Metric:    model.Metric{model.MetricNameLabel: "testmetric", "foo": "bar", "foo2": "bar2"},
-				Timestamp: now,
-				Value:     2,
+			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}, {Name: "foo2", Value: "bar2"}}},
+			samples: []client.Sample{{
+				TimestampMs: int64(now),
+				Value:       2,
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `sample for 'testmetric{foo2="bar2", foo="bar"}' has 3 label names; limit 2`),
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			d := prepare(t, 3, 3, 0, true)
+			var limits validation.Limits
+			flagext.DefaultValues(&limits)
+
+			limits.CreationGracePeriod = 2 * time.Hour
+			limits.RejectOldSamples = true
+			limits.RejectOldSamplesMaxAge = 24 * time.Hour
+			limits.MaxLabelNamesPerSeries = 2
+
+			d := prepare(t, 3, 3, 0, true, &limits)
 			defer d.Stop()
 
-			d.limits.Defaults.CreationGracePeriod = 2 * time.Hour
-			d.limits.Defaults.RejectOldSamples = true
-			d.limits.Defaults.RejectOldSamplesMaxAge = 24 * time.Hour
-			d.limits.Defaults.MaxLabelNamesPerSeries = 2
-
-			_, err := d.Push(ctx, client.ToWriteRequest(tc.samples, client.API))
+			_, err := d.Push(ctx, client.ToWriteRequest(tc.labels, tc.samples, client.API))
 			require.Equal(t, tc.err, err)
 		})
 	}

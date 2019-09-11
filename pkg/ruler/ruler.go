@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
+	ot "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
@@ -280,13 +280,18 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
-			// Note: The passed-in context comes from the Prometheus rule group code
+			// Note: The passed-in context comes from the Prometheus notifier
 			// and does *not* contain the userID. So it needs to be added to the context
 			// here before using the context to inject the userID into the HTTP request.
 			ctx = user.InjectOrgID(ctx, userID)
 			if err := user.InjectOrgIDIntoHTTPRequest(ctx, req); err != nil {
 				return nil, err
 			}
+			// Jaeger complains the passed-in context has an invalid span ID, so start a new root span
+			sp := ot.GlobalTracer().StartSpan("notify", ot.Tag{Key: "organization", Value: userID})
+			defer sp.Finish()
+			ctx = ot.ContextWithSpan(ctx, sp)
+			ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
 			return ctxhttp.Do(ctx, client, req)
 		},
 	}, util.Logger)
@@ -313,7 +318,7 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.cfg.GroupTimeout)
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
-		if span := opentracing.SpanFromContext(ctx); span != nil {
+		if span := ot.SpanFromContext(ctx); span != nil {
 			span.SetTag("instance", userID)
 			span.SetTag("groupName", item.groupName)
 		}
@@ -330,7 +335,7 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 }
 
 func (r *Ruler) ownsRule(hash uint32) bool {
-	rlrs, err := r.ring.Get(hash, ring.Read)
+	rlrs, err := r.ring.Get(hash, ring.Read, nil)
 	// If an error occurs evaluate a rule as if it is owned
 	// better to have extra datapoints for a rule than none at all
 	// TODO: add a temporary cache of owned rule values or something to fall back on

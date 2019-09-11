@@ -48,6 +48,9 @@ type memorySeriesError struct {
 }
 
 func (error *memorySeriesError) Error() string {
+	if error.message == "" {
+		return error.errorType
+	}
 	return error.message
 }
 

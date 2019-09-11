@@ -9,7 +9,8 @@ Our goal is to provide a new minor release every 4 weeks. This is a new process 
 | release series | date of first pre-release (year-month-day) | release shepherd                            |
 |----------------|--------------------------------------------|---------------------------------------------|
 | v0.1.0         | 2019-07-31                                 | Chris Marchbanks (GitHub: @csmarchbanks)    |
-| v0.2.0         | 2019-08-28                                 | **searching for volunteer**                 |
+| v0.2.0         | 2019-08-28                                 | Goutham Veeramachaneni (Github: @gouthamve) |
+| v0.3.0         | 2019-10-09                                 | **searching for volunteer**                 |
 
 ## Release shepherd responsibilities
 

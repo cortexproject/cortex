@@ -32,8 +32,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/tsdb"
-	tsdbLabels "github.com/prometheus/tsdb/labels"
+	"github.com/prometheus/prometheus/tsdb"
+	tsdbLabels "github.com/prometheus/prometheus/tsdb/labels"
 )
 
 // String constants for instrumentation.
@@ -178,6 +178,7 @@ type QueueManager struct {
 
 	samplesIn, samplesDropped, samplesOut, samplesOutDuration *ewmaRate
 	integralAccumulator                                       float64
+	startedAt                                                 time.Time
 
 	highestSentTimestampMetric *maxGauge
 	pendingSamplesMetric       prometheus.Gauge
@@ -253,7 +254,7 @@ outer:
 			ts := prompb.TimeSeries{
 				Labels: lbls,
 				Samples: []prompb.Sample{
-					prompb.Sample{
+					{
 						Value:     float64(sample.V),
 						Timestamp: sample.T,
 					},
@@ -277,6 +278,8 @@ outer:
 // Start the queue manager sending samples to the remote storage.
 // Does not block.
 func (t *QueueManager) Start() {
+	t.startedAt = time.Now()
+
 	// Setup the QueueManagers metrics. We do this here rather than in the
 	// constructor because of the ordering of creating Queue Managers's, stopping them,
 	// and then starting new ones in storage/remote/storage.go ApplyConfig.
@@ -440,36 +443,50 @@ func (t *QueueManager) calculateDesiredShards() {
 	// (received - send) so we can catch up with any backlog. We use the average
 	// outgoing batch latency to work out how many shards we need.
 	var (
-		samplesIn          = t.samplesIn.rate()
-		samplesOut         = t.samplesOut.rate()
-		samplesKeptRatio   = samplesOut / (t.samplesDropped.rate() + samplesOut)
-		samplesOutDuration = t.samplesOutDuration.rate()
+		samplesInRate      = t.samplesIn.rate()
+		samplesOutRate     = t.samplesOut.rate()
+		samplesKeptRatio   = samplesOutRate / (t.samplesDropped.rate() + samplesOutRate)
+		samplesOutDuration = t.samplesOutDuration.rate() / float64(time.Second)
+		samplesPendingRate = samplesInRate*samplesKeptRatio - samplesOutRate
 		highestSent        = t.highestSentTimestampMetric.Get()
 		highestRecv        = highestTimestamp.Get()
-		samplesPending     = (highestRecv - highestSent) * samplesIn * samplesKeptRatio
+		samplesPending     = (highestRecv - highestSent) * samplesInRate * samplesKeptRatio
 	)
 
-	// We use an integral accumulator, like in a PID, to help dampen oscillation.
-	t.integralAccumulator = t.integralAccumulator + (samplesPending * 0.1)
-
-	if samplesOut <= 0 {
+	if samplesOutRate <= 0 {
 		return
 	}
 
+	// We use an integral accumulator, like in a PID, to help dampen
+	// oscillation. The accumulator will correct for any errors not accounted
+	// for in the desired shard calculation by adjusting for pending samples.
+	const integralGain = 0.2
+	// Initialise the integral accumulator as the average rate of samples
+	// pending. This accounts for pending samples that were created while the
+	// WALWatcher starts up.
+	if t.integralAccumulator == 0 {
+		elapsed := time.Since(t.startedAt) / time.Second
+		t.integralAccumulator = integralGain * samplesPending / float64(elapsed)
+	}
+	t.integralAccumulator += samplesPendingRate * integralGain
+
 	var (
-		timePerSample = samplesOutDuration / samplesOut
-		desiredShards = (timePerSample * samplesPending) / float64(time.Second)
+		timePerSample = samplesOutDuration / samplesOutRate
+		desiredShards = timePerSample * (samplesInRate + t.integralAccumulator)
 	)
-	level.Debug(t.logger).Log("msg", "QueueManager.caclulateDesiredShards",
-		"samplesIn", samplesIn,
-		"samplesOut", samplesOut,
+	level.Debug(t.logger).Log("msg", "QueueManager.calculateDesiredShards",
+		"samplesInRate", samplesInRate,
+		"samplesOutRate", samplesOutRate,
 		"samplesKeptRatio", samplesKeptRatio,
+		"samplesPendingRate", samplesPendingRate,
 		"samplesPending", samplesPending,
 		"samplesOutDuration", samplesOutDuration,
 		"timePerSample", timePerSample,
 		"desiredShards", desiredShards,
 		"highestSent", highestSent,
-		"highestRecv", highestRecv)
+		"highestRecv", highestRecv,
+		"integralAccumulator", t.integralAccumulator,
+	)
 
 	// Changes in the number of shards must be greater than shardToleranceFraction.
 	var (
@@ -680,9 +697,9 @@ func (s *shards) runShard(ctx context.Context, i int, queue chan prompb.TimeSeri
 			}
 
 		case <-timer.C:
-			if len(pendingSamples) > 0 {
-				level.Debug(s.qm.logger).Log("msg", "runShard timer ticked, sending samples", "samples", len(pendingSamples), "shard", shardNum)
-				n := len(pendingSamples)
+			n := len(pendingSamples)
+			if n > 0 {
+				level.Debug(s.qm.logger).Log("msg", "runShard timer ticked, sending samples", "samples", n, "shard", shardNum)
 				s.sendSamples(ctx, pendingSamples, &buf)
 				pendingSamples = pendingSamples[:0]
 				s.qm.pendingSamplesMetric.Sub(float64(n))

@@ -41,6 +41,7 @@ func defaultIngesterTestConfig() Config {
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
+	cfg.MaxTransferRetries = -1
 	return cfg
 }
 
@@ -94,8 +95,8 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1 := defaultIngesterTestConfig()
 	cfg1.LifecyclerConfig.ID = "ingester1"
 	cfg1.LifecyclerConfig.Addr = "ingester1"
-	cfg1.LifecyclerConfig.ClaimOnRollout = true
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
+	cfg1.MaxTransferRetries = 10
 	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 
@@ -104,27 +105,24 @@ func TestIngesterTransfer(t *testing.T) {
 	})
 
 	// Now write a sample to this ingester
+	const ts = 123000
+	const val = 456
 	var (
-		ts  = model.TimeFromUnix(123)
-		val = model.SampleValue(456)
-		m   = model.Metric{
-			model.MetricNameLabel: "foo",
-		}
-		sampleData = []model.Sample{
+		l          = labels.Labels{{Name: labels.MetricName, Value: "foo"}}
+		sampleData = []client.Sample{
 			{
-				Metric:    m,
-				Timestamp: ts,
-				Value:     val,
+				TimestampMs: ts,
+				Value:       val,
 			},
 		}
 		expectedResponse = &client.QueryResponse{
 			Timeseries: []client.TimeSeries{
 				{
-					Labels: client.FromMetricsToLabelAdapters(m),
+					Labels: client.FromLabelsToLabelAdapters(l),
 					Samples: []client.Sample{
 						{
-							Value:       456,
-							TimestampMs: 123000,
+							Value:       val,
+							TimestampMs: ts,
 						},
 					},
 				},
@@ -132,7 +130,7 @@ func TestIngesterTransfer(t *testing.T) {
 		}
 	)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing1.Push(ctx, client.ToWriteRequest(sampleData, client.API))
+	_, err = ing1.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
 	require.NoError(t, err)
 
 	// Start a second ingester, but let it go into PENDING
@@ -169,7 +167,7 @@ func TestIngesterTransfer(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 
 	// Check we can send the same sample again to the new ingester and get the same result
-	_, err = ing2.Push(ctx, client.ToWriteRequest(sampleData, client.API))
+	_, err = ing2.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
 	require.NoError(t, err)
 	response, err = ing2.Query(ctx, request)
 	require.NoError(t, err)
@@ -184,7 +182,6 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.ID = "ingester1"
 	cfg.LifecyclerConfig.Addr = "ingester1"
-	cfg.LifecyclerConfig.ClaimOnRollout = true
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
 	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
@@ -300,20 +297,16 @@ func TestIngesterFlush(t *testing.T) {
 
 	// Now write a sample to this ingester
 	var (
-		ts  = model.TimeFromUnix(123)
-		val = model.SampleValue(456)
-		m   = model.Metric{
-			model.MetricNameLabel: "foo",
+		lbls       = []labels.Labels{{{Name: labels.MetricName, Value: "foo"}}}
+		sampleData = []client.Sample{
+			{
+				TimestampMs: 123000,
+				Value:       456,
+			},
 		}
 	)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err := ing.Push(ctx, client.ToWriteRequest([]model.Sample{
-		{
-			Metric:    m,
-			Timestamp: ts,
-			Value:     val,
-		},
-	}, client.API))
+	_, err := ing.Push(ctx, client.ToWriteRequest(lbls, sampleData, client.API))
 	require.NoError(t, err)
 
 	// We add a 100ms sleep into the flush loop, such that we can reliably detect

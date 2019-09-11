@@ -258,6 +258,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		return nil, fmt.Errorf("no user id")
 	}
 	var lastPartialErr error
+
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
 			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)

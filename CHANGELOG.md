@@ -1,6 +1,5 @@
 ## master / unreleased
 
-
 * [CHANGE] `--alertmanager.configs.auto-slack-root` flag was dropped as auto Slack root is not supported anymore. #1597
 * [FEATURE] Add Redis support for caching #1612
 * [ENHANCEMENT] Upgraded Prometheus to 2.12.0 and Alertmanager to 0.19.0. #1597

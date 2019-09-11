@@ -79,13 +79,13 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    When caching query results, it is desirable to prevent the caching of very recent results that might still be in flux.  Use this parameter to configure the age of results that should be excluded.
 
+- `-cache.store.{type, hostname, service, timeout}`
+
+   Use these flags to specify the location and timeout of the storage system used to cache query results. Currently supported types: `memcached`, `redis`.
+
 - `-memcached.{hostname, service, timeout}`
 
-   Use these flags to specify the location and timeout of the memcached cluster used to cache query results.
-
-- `-redis.{endpoint, timeout}`
-
-   Use these flags to specify the location and timeout of the Redis service used to cache query results.
+   Use these flags to specify the location and timeout of the memcached cluster used to cache query results (to be deprecated).
 
 ## Distributor
 

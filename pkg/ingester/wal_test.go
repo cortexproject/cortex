@@ -36,7 +36,6 @@ func TestWAL(t *testing.T) {
 	for r := 0; r < numRestarts; r++ {
 		// Start a new ingester and recover the WAL.
 		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
-		require.NoError(t, recoverFromWAL(ing))
 
 		for i, userID := range userIDs {
 			testData[userID] = buildTestMatrix(numSeries, (r+1)*numSamplesPerSeriesPerPush, i)
@@ -49,7 +48,6 @@ func TestWAL(t *testing.T) {
 
 	_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 	defer ing.Shutdown()
-	require.NoError(t, recoverFromWAL(ing))
 
 	for i, userID := range userIDs {
 		testData[userID] = buildTestMatrix(numSeries, (numRestarts+1)*numSamplesPerSeriesPerPush, i)

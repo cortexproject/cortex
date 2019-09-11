@@ -152,13 +152,12 @@ type Ingester struct {
 	lifecycler *ring.Lifecycler
 	limits     *validation.Overrides
 
-	stopLock sync.RWMutex
-	stopped  bool
-	quit     chan struct{}
-	done     sync.WaitGroup
+	quit chan struct{}
+	done sync.WaitGroup
 
-	userStatesMtx sync.RWMutex
+	userStatesMtx sync.RWMutex // protects userStates and stopped
 	userStates    *userStates
+	stopped       bool // protected by userStatesMtx
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -247,8 +246,8 @@ func (i *Ingester) Shutdown() {
 
 // StopIncomingRequests is called during the shutdown process.
 func (i *Ingester) StopIncomingRequests() {
-	i.stopLock.Lock()
-	defer i.stopLock.Unlock()
+	i.userStatesMtx.Lock()
+	defer i.userStatesMtx.Unlock()
 	i.stopped = true
 }
 
@@ -279,6 +278,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 			return nil, err
 		}
 	}
+	client.ReuseSlice(req.Timeseries)
 
 	return &client.WriteResponse{}, lastPartialErr
 }
@@ -286,21 +286,25 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
 	labels.removeBlanks()
 
-	i.stopLock.RLock()
-	defer i.stopLock.RUnlock()
+	var (
+		state *userState
+		fp    model.Fingerprint
+	)
+	i.userStatesMtx.RLock()
+	defer func() {
+		i.userStatesMtx.RUnlock()
+		if state != nil {
+			state.fpLocker.Unlock(fp)
+		}
+	}()
 	if i.stopped {
 		return fmt.Errorf("ingester stopping")
 	}
-
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
 	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels)
 	if err != nil {
+		state = nil // don't want to unlock the fp if there is an error
 		return err
 	}
-	defer func() {
-		state.fpLocker.Unlock(fp)
-	}()
 
 	prevNumChunks := len(series.chunkDescs)
 	if i.cfg.SpreadFlushes && prevNumChunks > 0 {
@@ -384,7 +388,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		}
 
 		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapaters(series.metric),
+			Labels:  client.FromLabelsToLabelAdapters(series.metric),
 			Samples: make([]client.Sample, 0, len(values)),
 		}
 		for _, s := range values {
@@ -447,7 +451,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelAdapaters(series.metric),
+			Labels: client.FromLabelsToLabelAdapters(series.metric),
 			Chunks: wireChunks,
 		})
 
@@ -544,7 +548,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Metr
 		Metric: make([]*client.Metric, 0, len(lss)),
 	}
 	for _, ls := range lss {
-		result.Metric = append(result.Metric, &client.Metric{Labels: client.FromLabelsToLabelAdapaters(ls)})
+		result.Metric = append(result.Metric, &client.Metric{Labels: client.FromLabelsToLabelAdapters(ls)})
 	}
 
 	return result, nil

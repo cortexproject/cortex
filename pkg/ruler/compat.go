@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 
@@ -25,7 +24,8 @@ type Pusher interface {
 type appendableAppender struct {
 	pusher  Pusher
 	ctx     context.Context
-	samples []model.Sample
+	labels  []labels.Labels
+	samples []client.Sample
 }
 
 func (a *appendableAppender) Appender() (storage.Appender, error) {
@@ -33,14 +33,10 @@ func (a *appendableAppender) Appender() (storage.Appender, error) {
 }
 
 func (a *appendableAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
-	m := make(model.Metric, len(l))
-	for _, lbl := range l {
-		m[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-	}
-	a.samples = append(a.samples, model.Sample{
-		Metric:    m,
-		Timestamp: model.Time(t),
-		Value:     model.SampleValue(v),
+	a.labels = append(a.labels, l)
+	a.samples = append(a.samples, client.Sample{
+		TimestampMs: t,
+		Value:       v,
 	})
 	return 0, nil
 }
@@ -51,12 +47,14 @@ func (a *appendableAppender) AddFast(l labels.Labels, ref uint64, t int64, v flo
 }
 
 func (a *appendableAppender) Commit() error {
-	_, err := a.pusher.Push(a.ctx, client.ToWriteRequest(a.samples, client.RULE))
+	_, err := a.pusher.Push(a.ctx, client.ToWriteRequest(a.labels, a.samples, client.RULE))
+	a.labels = nil
 	a.samples = nil
 	return err
 }
 
 func (a *appendableAppender) Rollback() error {
+	a.labels = nil
 	a.samples = nil
 	return nil
 }

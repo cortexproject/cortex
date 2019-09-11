@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -32,6 +33,7 @@ var DefaultRouteOpts = RouteOpts{
 	GroupInterval:  5 * time.Minute,
 	RepeatInterval: 4 * time.Hour,
 	GroupBy:        map[model.LabelName]struct{}{},
+	GroupByAll:     false,
 }
 
 // A Route is a node that contains definitions of how to handle alerts.
@@ -69,6 +71,9 @@ func NewRoute(cr *config.Route, parent *Route) *Route {
 			opts.GroupBy[ln] = struct{}{}
 		}
 	}
+
+	opts.GroupByAll = cr.GroupByAll
+
 	if cr.GroupWait != nil {
 		opts.GroupWait = time.Duration(*cr.GroupWait)
 	}
@@ -138,15 +143,16 @@ func (r *Route) Match(lset model.LabelSet) []*Route {
 	return all
 }
 
-// Key returns a key for the route. It does not uniquely identify a the route in general.
+// Key returns a key for the route. It does not uniquely identify the route in general.
 func (r *Route) Key() string {
-	b := make([]byte, 0, 1024)
+	b := strings.Builder{}
 
 	if r.parent != nil {
-		b = append(b, r.parent.Key()...)
-		b = append(b, '/')
+		b.WriteString(r.parent.Key())
+		b.WriteRune('/')
 	}
-	return string(append(b, r.Matchers.String()...))
+	b.WriteString(r.Matchers.String())
+	return b.String()
 }
 
 // RouteOpts holds various routing options necessary for processing alerts
@@ -157,6 +163,9 @@ type RouteOpts struct {
 
 	// What labels to group alerts by for notifications.
 	GroupBy map[model.LabelName]struct{}
+
+	// Use all alert labels to group.
+	GroupByAll bool
 
 	// How long to wait to group matching alerts before sending
 	// a notification.
@@ -170,7 +179,8 @@ func (ro *RouteOpts) String() string {
 	for ln := range ro.GroupBy {
 		labels = append(labels, ln)
 	}
-	return fmt.Sprintf("<RouteOpts send_to:%q group_by:%q timers:%q|%q>", ro.Receiver, labels, ro.GroupWait, ro.GroupInterval)
+	return fmt.Sprintf("<RouteOpts send_to:%q group_by:%q group_by_all:%t timers:%q|%q>",
+		ro.Receiver, labels, ro.GroupByAll, ro.GroupWait, ro.GroupInterval)
 }
 
 // MarshalJSON returns a JSON representation of the routing options.
@@ -178,11 +188,13 @@ func (ro *RouteOpts) MarshalJSON() ([]byte, error) {
 	v := struct {
 		Receiver       string           `json:"receiver"`
 		GroupBy        model.LabelNames `json:"groupBy"`
+		GroupByAll     bool             `json:"groupByAll"`
 		GroupWait      time.Duration    `json:"groupWait"`
 		GroupInterval  time.Duration    `json:"groupInterval"`
 		RepeatInterval time.Duration    `json:"repeatInterval"`
 	}{
 		Receiver:       ro.Receiver,
+		GroupByAll:     ro.GroupByAll,
 		GroupWait:      ro.GroupWait,
 		GroupInterval:  ro.GroupInterval,
 		RepeatInterval: ro.RepeatInterval,

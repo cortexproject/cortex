@@ -15,39 +15,152 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 )
 
+const secretToken = "<secret>"
+
+var secretTokenJSON string
+
+func init() {
+	b, err := json.Marshal(secretToken)
+	if err != nil {
+		panic(err)
+	}
+	secretTokenJSON = string(b)
+}
+
 // Secret is a string that must not be revealed on marshaling.
 type Secret string
 
-// MarshalYAML implements the yaml.Marshaler interface.
+// MarshalYAML implements the yaml.Marshaler interface for Secret.
 func (s Secret) MarshalYAML() (interface{}, error) {
 	if s != "" {
-		return "<secret>", nil
+		return secretToken, nil
 	}
 	return nil, nil
 }
 
-//UnmarshalYAML implements the yaml.Unmarshaler interface for Secrets.
+// UnmarshalYAML implements the yaml.Unmarshaler interface for Secret.
 func (s *Secret) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain Secret
 	return unmarshal((*plain)(s))
 }
 
-// MarshalJSON implements the json.Marshaler interface.
+// MarshalJSON implements the json.Marshaler interface for Secret.
 func (s Secret) MarshalJSON() ([]byte, error) {
-	return json.Marshal("<secret>")
+	return json.Marshal(secretToken)
+}
+
+// URL is a custom type that represents an HTTP or HTTPS URL and allows validation at configuration load time.
+type URL struct {
+	*url.URL
+}
+
+// Copy makes a deep-copy of the struct.
+func (u *URL) Copy() *URL {
+	v := *u.URL
+	return &URL{&v}
+}
+
+// MarshalYAML implements the yaml.Marshaler interface for URL.
+func (u URL) MarshalYAML() (interface{}, error) {
+	if u.URL != nil {
+		return u.URL.String(), nil
+	}
+	return nil, nil
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface for URL.
+func (u *URL) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	urlp, err := parseURL(s)
+	if err != nil {
+		return err
+	}
+	u.URL = urlp.URL
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface for URL.
+func (u URL) MarshalJSON() ([]byte, error) {
+	if u.URL != nil {
+		return json.Marshal(u.URL.String())
+	}
+	return nil, nil
+}
+
+// UnmarshalJSON implements the json.Marshaler interface for URL.
+func (u *URL) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	urlp, err := parseURL(s)
+	if err != nil {
+		return err
+	}
+	u.URL = urlp.URL
+	return nil
+}
+
+// SecretURL is a URL that must not be revealed on marshaling.
+type SecretURL URL
+
+// MarshalYAML implements the yaml.Marshaler interface for SecretURL.
+func (s SecretURL) MarshalYAML() (interface{}, error) {
+	if s.URL != nil {
+		return secretToken, nil
+	}
+	return nil, nil
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface for SecretURL.
+func (s *SecretURL) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var str string
+	if err := unmarshal(&str); err != nil {
+		return err
+	}
+	// In order to deserialize a previously serialized configuration (eg from
+	// the Alertmanager API with amtool), `<secret>` needs to be treated
+	// specially, as it isn't a valid URL.
+	if str == secretToken {
+		s.URL = &url.URL{}
+		return nil
+	}
+	return unmarshal((*URL)(s))
+}
+
+// MarshalJSON implements the json.Marshaler interface for SecretURL.
+func (s SecretURL) MarshalJSON() ([]byte, error) {
+	return json.Marshal(secretToken)
+}
+
+// UnmarshalJSON implements the json.Marshaler interface for SecretURL.
+func (s *SecretURL) UnmarshalJSON(data []byte) error {
+	// In order to deserialize a previously serialized configuration (eg from
+	// the Alertmanager API with amtool), `<secret>` needs to be treated
+	// specially, as it isn't a valid URL.
+	if string(data) == secretToken || string(data) == secretTokenJSON {
+		s.URL = &url.URL{}
+		return nil
+	}
+	return json.Unmarshal(data, (*URL)(s))
 }
 
 // Load parses the YAML input s into a Config.
@@ -74,18 +187,18 @@ func Load(s string) (*Config, error) {
 }
 
 // LoadFile parses the given YAML file into a Config.
-func LoadFile(filename string) (*Config, []byte, error) {
+func LoadFile(filename string) (*Config, error) {
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	cfg, err := Load(string(content))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	resolveFilepaths(filepath.Dir(filename), cfg)
-	return cfg, content, nil
+	return cfg, nil
 }
 
 // resolveFilepaths joins all relative paths in a configuration
@@ -123,7 +236,7 @@ func (c Config) String() string {
 	return string(b)
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
+// UnmarshalYAML implements the yaml.Unmarshaler interface for Config.
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
@@ -137,7 +250,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// We have to restore it here.
 	if c.Global == nil {
 		c.Global = &GlobalConfig{}
-		*c.Global = DefaultGlobalConfig
+		*c.Global = DefaultGlobalConfig()
 	}
 
 	names := map[string]struct{}{}
@@ -152,8 +265,8 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			}
 		}
 		for _, ec := range rcv.EmailConfigs {
-			if ec.Smarthost == "" {
-				if c.Global.SMTPSmarthost == "" {
+			if ec.Smarthost.String() == "" {
+				if c.Global.SMTPSmarthost.String() == "" {
 					return fmt.Errorf("no global SMTP smarthost set")
 				}
 				ec.Smarthost = c.Global.SMTPSmarthost
@@ -188,8 +301,8 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			if sc.HTTPConfig == nil {
 				sc.HTTPConfig = c.Global.HTTPConfig
 			}
-			if sc.APIURL == "" {
-				if c.Global.SlackAPIURL == "" {
+			if sc.APIURL == nil {
+				if c.Global.SlackAPIURL == nil {
 					return fmt.Errorf("no global Slack API URL set")
 				}
 				sc.APIURL = c.Global.SlackAPIURL
@@ -199,14 +312,14 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			if hc.HTTPConfig == nil {
 				hc.HTTPConfig = c.Global.HTTPConfig
 			}
-			if hc.APIURL == "" {
-				if c.Global.HipchatAPIURL == "" {
+			if hc.APIURL == nil {
+				if c.Global.HipchatAPIURL == nil {
 					return fmt.Errorf("no global Hipchat API URL set")
 				}
 				hc.APIURL = c.Global.HipchatAPIURL
 			}
-			if !strings.HasSuffix(hc.APIURL, "/") {
-				hc.APIURL += "/"
+			if !strings.HasSuffix(hc.APIURL.Path, "/") {
+				hc.APIURL.Path += "/"
 			}
 			if hc.AuthToken == "" {
 				if c.Global.HipchatAuthToken == "" {
@@ -224,8 +337,8 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			if pdc.HTTPConfig == nil {
 				pdc.HTTPConfig = c.Global.HTTPConfig
 			}
-			if pdc.URL == "" {
-				if c.Global.PagerdutyURL == "" {
+			if pdc.URL == nil {
+				if c.Global.PagerdutyURL == nil {
 					return fmt.Errorf("no global PagerDuty URL set")
 				}
 				pdc.URL = c.Global.PagerdutyURL
@@ -235,14 +348,14 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			if ogc.HTTPConfig == nil {
 				ogc.HTTPConfig = c.Global.HTTPConfig
 			}
-			if ogc.APIURL == "" {
-				if c.Global.OpsGenieAPIURL == "" {
+			if ogc.APIURL == nil {
+				if c.Global.OpsGenieAPIURL == nil {
 					return fmt.Errorf("no global OpsGenie URL set")
 				}
 				ogc.APIURL = c.Global.OpsGenieAPIURL
 			}
-			if !strings.HasSuffix(ogc.APIURL, "/") {
-				ogc.APIURL += "/"
+			if !strings.HasSuffix(ogc.APIURL.Path, "/") {
+				ogc.APIURL.Path += "/"
 			}
 			if ogc.APIKey == "" {
 				if c.Global.OpsGenieAPIKey == "" {
@@ -256,8 +369,8 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				wcc.HTTPConfig = c.Global.HTTPConfig
 			}
 
-			if wcc.APIURL == "" {
-				if c.Global.WeChatAPIURL == "" {
+			if wcc.APIURL == nil {
+				if c.Global.WeChatAPIURL == nil {
 					return fmt.Errorf("no global Wechat URL set")
 				}
 				wcc.APIURL = c.Global.WeChatAPIURL
@@ -277,22 +390,22 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				wcc.CorpID = c.Global.WeChatAPICorpID
 			}
 
-			if !strings.HasSuffix(wcc.APIURL, "/") {
-				wcc.APIURL += "/"
+			if !strings.HasSuffix(wcc.APIURL.Path, "/") {
+				wcc.APIURL.Path += "/"
 			}
 		}
 		for _, voc := range rcv.VictorOpsConfigs {
 			if voc.HTTPConfig == nil {
 				voc.HTTPConfig = c.Global.HTTPConfig
 			}
-			if voc.APIURL == "" {
-				if c.Global.VictorOpsAPIURL == "" {
+			if voc.APIURL == nil {
+				if c.Global.VictorOpsAPIURL == nil {
 					return fmt.Errorf("no global VictorOps URL set")
 				}
 				voc.APIURL = c.Global.VictorOpsAPIURL
 			}
-			if !strings.HasSuffix(voc.APIURL, "/") {
-				voc.APIURL += "/"
+			if !strings.HasSuffix(voc.APIURL.Path, "/") {
+				voc.APIURL.Path += "/"
 			}
 			if voc.APIKey == "" {
 				if c.Global.VictorOpsAPIKey == "" {
@@ -323,32 +436,101 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // checkReceiver returns an error if a node in the routing tree
 // references a receiver not in the given map.
 func checkReceiver(r *Route, receivers map[string]struct{}) error {
+	for _, sr := range r.Routes {
+		if err := checkReceiver(sr, receivers); err != nil {
+			return err
+		}
+	}
 	if r.Receiver == "" {
 		return nil
 	}
 	if _, ok := receivers[r.Receiver]; !ok {
 		return fmt.Errorf("undefined receiver %q used in route", r.Receiver)
 	}
-	for _, sr := range r.Routes {
-		if err := checkReceiver(sr, receivers); err != nil {
-			return err
-		}
+	return nil
+}
+
+// DefaultGlobalConfig returns GlobalConfig with default values.
+func DefaultGlobalConfig() GlobalConfig {
+	return GlobalConfig{
+		ResolveTimeout: model.Duration(5 * time.Minute),
+		HTTPConfig:     &commoncfg.HTTPClientConfig{},
+
+		SMTPHello:       "localhost",
+		SMTPRequireTLS:  true,
+		PagerdutyURL:    mustParseURL("https://events.pagerduty.com/v2/enqueue"),
+		HipchatAPIURL:   mustParseURL("https://api.hipchat.com/"),
+		OpsGenieAPIURL:  mustParseURL("https://api.opsgenie.com/"),
+		WeChatAPIURL:    mustParseURL("https://qyapi.weixin.qq.com/cgi-bin/"),
+		VictorOpsAPIURL: mustParseURL("https://alert.victorops.com/integrations/generic/20131114/alert/"),
+	}
+}
+
+func mustParseURL(s string) *URL {
+	u, err := parseURL(s)
+	if err != nil {
+		panic(err)
+	}
+	return u
+}
+
+func parseURL(s string) (*URL, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("unsupported scheme %q for URL", u.Scheme)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("missing host for URL")
+	}
+	return &URL{u}, nil
+}
+
+// HostPort represents a "host:port" network address.
+type HostPort struct {
+	Host string
+	Port string
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface for HostPort.
+func (hp *HostPort) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var (
+		s   string
+		err error
+	)
+	if err = unmarshal(&s); err != nil {
+		return err
+	}
+	if s == "" {
+		return nil
+	}
+	hp.Host, hp.Port, err = net.SplitHostPort(s)
+	if err != nil {
+		return err
+	}
+	if hp.Port == "" {
+		return errors.Errorf("address %q: port cannot be empty", s)
 	}
 	return nil
 }
 
-// DefaultGlobalConfig provides global default values.
-var DefaultGlobalConfig = GlobalConfig{
-	ResolveTimeout: model.Duration(5 * time.Minute),
-	HTTPConfig:     &commoncfg.HTTPClientConfig{},
+// MarshalYAML implements the yaml.Marshaler interface for HostPort.
+func (hp HostPort) MarshalYAML() (interface{}, error) {
+	return hp.String(), nil
+}
 
-	SMTPHello:       "localhost",
-	SMTPRequireTLS:  true,
-	PagerdutyURL:    "https://events.pagerduty.com/v2/enqueue",
-	HipchatAPIURL:   "https://api.hipchat.com/",
-	OpsGenieAPIURL:  "https://api.opsgenie.com/",
-	WeChatAPIURL:    "https://qyapi.weixin.qq.com/cgi-bin/",
-	VictorOpsAPIURL: "https://alert.victorops.com/integrations/generic/20131114/alert/",
+// MarshalJSON implements the json.Marshaler interface for HostPort.
+func (hp HostPort) MarshalJSON() ([]byte, error) {
+	return json.Marshal(hp.String())
+}
+
+func (hp HostPort) String() string {
+	if hp.Host == "" && hp.Port == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s:%s", hp.Host, hp.Port)
 }
 
 // GlobalConfig defines configuration parameters that are valid globally
@@ -360,38 +542,41 @@ type GlobalConfig struct {
 
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
 
-	SMTPFrom         string `yaml:"smtp_from,omitempty" json:"smtp_from,omitempty"`
-	SMTPHello        string `yaml:"smtp_hello,omitempty" json:"smtp_hello,omitempty"`
-	SMTPSmarthost    string `yaml:"smtp_smarthost,omitempty" json:"smtp_smarthost,omitempty"`
-	SMTPAuthUsername string `yaml:"smtp_auth_username,omitempty" json:"smtp_auth_username,omitempty"`
-	SMTPAuthPassword Secret `yaml:"smtp_auth_password,omitempty" json:"smtp_auth_password,omitempty"`
-	SMTPAuthSecret   Secret `yaml:"smtp_auth_secret,omitempty" json:"smtp_auth_secret,omitempty"`
-	SMTPAuthIdentity string `yaml:"smtp_auth_identity,omitempty" json:"smtp_auth_identity,omitempty"`
-	SMTPRequireTLS   bool   `yaml:"smtp_require_tls,omitempty" json:"smtp_require_tls,omitempty"`
-	SlackAPIURL      Secret `yaml:"slack_api_url,omitempty" json:"slack_api_url,omitempty"`
-	PagerdutyURL     string `yaml:"pagerduty_url,omitempty" json:"pagerduty_url,omitempty"`
-	HipchatAPIURL    string `yaml:"hipchat_api_url,omitempty" json:"hipchat_api_url,omitempty"`
-	HipchatAuthToken Secret `yaml:"hipchat_auth_token,omitempty" json:"hipchat_auth_token,omitempty"`
-	OpsGenieAPIURL   string `yaml:"opsgenie_api_url,omitempty" json:"opsgenie_api_url,omitempty"`
-	OpsGenieAPIKey   Secret `yaml:"opsgenie_api_key,omitempty" json:"opsgenie_api_key,omitempty"`
-	WeChatAPIURL     string `yaml:"wechat_api_url,omitempty" json:"wechat_api_url,omitempty"`
-	WeChatAPISecret  Secret `yaml:"wechat_api_secret,omitempty" json:"wechat_api_secret,omitempty"`
-	WeChatAPICorpID  string `yaml:"wechat_api_corp_id,omitempty" json:"wechat_api_corp_id,omitempty"`
-	VictorOpsAPIURL  string `yaml:"victorops_api_url,omitempty" json:"victorops_api_url,omitempty"`
-	VictorOpsAPIKey  Secret `yaml:"victorops_api_key,omitempty" json:"victorops_api_key,omitempty"`
+	SMTPFrom         string     `yaml:"smtp_from,omitempty" json:"smtp_from,omitempty"`
+	SMTPHello        string     `yaml:"smtp_hello,omitempty" json:"smtp_hello,omitempty"`
+	SMTPSmarthost    HostPort   `yaml:"smtp_smarthost,omitempty" json:"smtp_smarthost,omitempty"`
+	SMTPAuthUsername string     `yaml:"smtp_auth_username,omitempty" json:"smtp_auth_username,omitempty"`
+	SMTPAuthPassword Secret     `yaml:"smtp_auth_password,omitempty" json:"smtp_auth_password,omitempty"`
+	SMTPAuthSecret   Secret     `yaml:"smtp_auth_secret,omitempty" json:"smtp_auth_secret,omitempty"`
+	SMTPAuthIdentity string     `yaml:"smtp_auth_identity,omitempty" json:"smtp_auth_identity,omitempty"`
+	SMTPRequireTLS   bool       `yaml:"smtp_require_tls,omitempty" json:"smtp_require_tls,omitempty"`
+	SlackAPIURL      *SecretURL `yaml:"slack_api_url,omitempty" json:"slack_api_url,omitempty"`
+	PagerdutyURL     *URL       `yaml:"pagerduty_url,omitempty" json:"pagerduty_url,omitempty"`
+	HipchatAPIURL    *URL       `yaml:"hipchat_api_url,omitempty" json:"hipchat_api_url,omitempty"`
+	HipchatAuthToken Secret     `yaml:"hipchat_auth_token,omitempty" json:"hipchat_auth_token,omitempty"`
+	OpsGenieAPIURL   *URL       `yaml:"opsgenie_api_url,omitempty" json:"opsgenie_api_url,omitempty"`
+	OpsGenieAPIKey   Secret     `yaml:"opsgenie_api_key,omitempty" json:"opsgenie_api_key,omitempty"`
+	WeChatAPIURL     *URL       `yaml:"wechat_api_url,omitempty" json:"wechat_api_url,omitempty"`
+	WeChatAPISecret  Secret     `yaml:"wechat_api_secret,omitempty" json:"wechat_api_secret,omitempty"`
+	WeChatAPICorpID  string     `yaml:"wechat_api_corp_id,omitempty" json:"wechat_api_corp_id,omitempty"`
+	VictorOpsAPIURL  *URL       `yaml:"victorops_api_url,omitempty" json:"victorops_api_url,omitempty"`
+	VictorOpsAPIKey  Secret     `yaml:"victorops_api_key,omitempty" json:"victorops_api_key,omitempty"`
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
+// UnmarshalYAML implements the yaml.Unmarshaler interface for GlobalConfig.
 func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	*c = DefaultGlobalConfig
+	*c = DefaultGlobalConfig()
 	type plain GlobalConfig
 	return unmarshal((*plain)(c))
 }
 
 // A Route is a node that contains definitions of how to handle alerts.
 type Route struct {
-	Receiver string            `yaml:"receiver,omitempty" json:"receiver,omitempty"`
-	GroupBy  []model.LabelName `yaml:"group_by,omitempty" json:"group_by,omitempty"`
+	Receiver string `yaml:"receiver,omitempty" json:"receiver,omitempty"`
+
+	GroupByStr []string          `yaml:"group_by,omitempty" json:"group_by,omitempty"`
+	GroupBy    []model.LabelName `yaml:"-" json:"-"`
+	GroupByAll bool              `yaml:"-" json:"-"`
 
 	Match    map[string]string `yaml:"match,omitempty" json:"match,omitempty"`
 	MatchRE  map[string]Regexp `yaml:"match_re,omitempty" json:"match_re,omitempty"`
@@ -403,7 +588,7 @@ type Route struct {
 	RepeatInterval *model.Duration `yaml:"repeat_interval,omitempty" json:"repeat_interval,omitempty"`
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
+// UnmarshalYAML implements the yaml.Unmarshaler interface for Route.
 func (r *Route) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain Route
 	if err := unmarshal((*plain)(r)); err != nil {
@@ -420,6 +605,21 @@ func (r *Route) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if !model.LabelNameRE.MatchString(k) {
 			return fmt.Errorf("invalid label name %q", k)
 		}
+	}
+	for _, l := range r.GroupByStr {
+		if l == "..." {
+			r.GroupByAll = true
+		} else {
+			labelName := model.LabelName(l)
+			if !labelName.IsValid() {
+				return fmt.Errorf("invalid label name %q in group_by list", l)
+			}
+			r.GroupBy = append(r.GroupBy, labelName)
+		}
+	}
+
+	if len(r.GroupBy) > 0 && r.GroupByAll {
+		return fmt.Errorf("cannot have wildcard group_by (`...`) and other other labels at the same time")
 	}
 
 	groupBy := map[model.LabelName]struct{}{}
@@ -462,7 +662,7 @@ type InhibitRule struct {
 	Equal model.LabelNames `yaml:"equal,omitempty" json:"equal,omitempty"`
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
+// UnmarshalYAML implements the yaml.Unmarshaler interface for InhibitRule.
 func (r *InhibitRule) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain InhibitRule
 	if err := unmarshal((*plain)(r)); err != nil {
@@ -512,7 +712,7 @@ type Receiver struct {
 	VictorOpsConfigs []*VictorOpsConfig `yaml:"victorops_configs,omitempty" json:"victorops_configs,omitempty"`
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
+// UnmarshalYAML implements the yaml.Unmarshaler interface for Receiver.
 func (c *Receiver) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type plain Receiver
 	if err := unmarshal((*plain)(c)); err != nil {
@@ -527,9 +727,10 @@ func (c *Receiver) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // Regexp encapsulates a regexp.Regexp and makes it YAML marshalable.
 type Regexp struct {
 	*regexp.Regexp
+	original string
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
+// UnmarshalYAML implements the yaml.Unmarshaler interface for Regexp.
 func (re *Regexp) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
@@ -540,18 +741,19 @@ func (re *Regexp) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	re.Regexp = regex
+	re.original = s
 	return nil
 }
 
-// MarshalYAML implements the yaml.Marshaler interface.
+// MarshalYAML implements the yaml.Marshaler interface for Regexp.
 func (re Regexp) MarshalYAML() (interface{}, error) {
-	if re.Regexp != nil {
-		return re.String(), nil
+	if re.original != "" {
+		return re.original, nil
 	}
 	return nil, nil
 }
 
-// UnmarshalJSON implements the json.Marshaler interface
+// UnmarshalJSON implements the json.Marshaler interface for Regexp
 func (re *Regexp) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -562,13 +764,14 @@ func (re *Regexp) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	re.Regexp = regex
+	re.original = s
 	return nil
 }
 
-// MarshalJSON implements the json.Marshaler interface.
+// MarshalJSON implements the json.Marshaler interface for Regexp.
 func (re Regexp) MarshalJSON() ([]byte, error) {
-	if re.Regexp != nil {
-		return json.Marshal(re.String())
+	if re.original != "" {
+		return json.Marshal(re.original)
 	}
 	return nil, nil
 }

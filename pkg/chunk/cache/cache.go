@@ -68,7 +68,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.Store.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
 
-	// backward compatability for memcached settings (to be deprecated)
+	// backward compatibility for memcached settings (to be deprecated)
 	cfg.Memcache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 
@@ -110,7 +110,7 @@ func New(cfg Config) (Cache, error) {
 		caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache))
 	}
 
-	// backward compatability for memcached settings (to be deprecated)
+	// backward compatibility for memcached settings (to be deprecated)
 	if len(cfg.Store.Type) == 0 {
 		if len(cfg.MemcacheClient.Host) > 0 {
 			cfg.Store.Type = memcachedCache

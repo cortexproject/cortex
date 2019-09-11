@@ -347,15 +347,22 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	if err != nil {
 		return err
 	}
+
 	if idx >= 0 {
+		level.Debug(util.Logger).Log("msg", "recovering from checkpoint", "checkpoint", lastCheckpointDir)
 		// Checkpoint exists.
+		start := time.Now()
+		numSeries := 0
+		numChunks := 0
 		if err := recoverRecords(lastCheckpointDir, &Series{}, func(msg proto.Message) error {
+			numSeries++
 			walSeries := msg.(*Series)
 
 			descs, err := fromWireChunks(walSeries.Chunks)
 			if err != nil {
 				return err
 			}
+			numChunks += len(descs)
 
 			state := userStates.getOrCreate(walSeries.UserId)
 
@@ -366,7 +373,7 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 					Value: string(l.Value),
 				})
 			}
-			series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, &Record{})
+			series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, nil)
 			if err != nil {
 				return err
 			}
@@ -375,11 +382,20 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 		}); err != nil {
 			return err
 		}
+		elapsed := time.Since(start)
+		level.Debug(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String(), "num_series", numSeries, "num_chunks", numChunks)
+	} else {
+		level.Debug(util.Logger).Log("msg", "no checkpoint found")
 	}
 
+	level.Debug(util.Logger).Log("msg", "recovering from segments", "dir", walDir)
+	numRecords := 0
+	numSeries := 0
+	numSamples := 0
+	start := time.Now()
 	if err := recoverRecords(walDir, &Record{}, func(msg proto.Message) error {
 		record := msg.(*Record)
-
+		numRecords++
 		state := userStates.getOrCreate(record.UserId)
 
 		for _, labels := range record.Labels {
@@ -395,10 +411,11 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 					Value: string(l.Value),
 				})
 			}
-			_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, &Record{})
+			_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, nil)
 			if err != nil {
 				return err
 			}
+			numSeries++
 		}
 
 		for _, sample := range record.Samples {
@@ -419,11 +436,14 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 				}
 			}
 		}
+		numSamples += len(record.Samples)
 
 		return nil
 	}); err != nil {
 		return err
 	}
+	elapsed := time.Since(start)
+	level.Debug(util.Logger).Log("msg", "recovered from segments", "time", elapsed.String(), "num_new_series", numSeries, "num_records", numRecords, "num_samples", numSamples)
 
 	ingester.userStatesMtx.Lock()
 	ingester.userStates = userStates

@@ -1,5 +1,6 @@
 ## master / unreleased
 
+* [CHANGE] `--alertmanager.configs.auto-slack-root` flag was dropped as auto Slack root is not supported anymore. #1597
 * [FEATURE] Add Redis support for caching #1612
 
 ## 0.2.0 / 2019-09-05

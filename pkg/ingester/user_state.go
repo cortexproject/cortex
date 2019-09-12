@@ -190,7 +190,7 @@ func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerpr
 		return fp, series, nil
 	}
 
-	series, err := u.createSeriesWithFingerprint(fp, metric, record)
+	series, err := u.createSeriesWithFingerprint(fp, metric, record, false)
 	if err != nil {
 		u.fpLocker.Unlock(fp)
 		return 0, nil, err
@@ -199,13 +199,13 @@ func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerpr
 	return fp, series, nil
 }
 
-func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record) (*memorySeries, error) {
+func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record, recovery bool) (*memorySeries, error) {
 	// There's theoretically a relatively harmless race here if multiple
 	// goroutines get the length of the series map at the same time, then
 	// all proceed to add a new series. This is likely not worth addressing,
 	// as this should happen rarely (all samples from one push are added
 	// serially), and the overshoot in allowed series would be minimal.
-	if u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
+	if !recovery && u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
 		u.discardedSamples.WithLabelValues(perUserSeriesLimit).Inc()
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
 	}
@@ -215,7 +215,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 		return nil, err
 	}
 
-	if !u.canAddSeriesFor(string(metricName)) {
+	if !recovery && !u.canAddSeriesFor(string(metricName)) {
 		u.discardedSamples.WithLabelValues(perMetricSeriesLimit).Inc()
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
 	}

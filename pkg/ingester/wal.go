@@ -373,7 +373,7 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 					Value: string(l.Value),
 				})
 			}
-			series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, nil)
+			series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, nil, true)
 			if err != nil {
 				return err
 			}
@@ -397,7 +397,9 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 		record := msg.(*Record)
 		numRecords++
 		state := userStates.getOrCreate(record.UserId)
-
+		if numRecords%10000 == 0 {
+			level.Debug(util.Logger).Log("msg", "records milestone", "num_records", numRecords)
+		}
 		for _, labels := range record.Labels {
 			_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
 			if ok {
@@ -411,7 +413,7 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 					Value: string(l.Value),
 				})
 			}
-			_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, nil)
+			_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, nil, true)
 			if err != nil {
 				return err
 			}

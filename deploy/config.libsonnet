@@ -55,6 +55,8 @@ local default_fifocache_size = 102400;
             image: $._config.image,
             labels: { app: $._config.distributor.name },
             extraArgs: [],
+            envKVMixin:: {},
+            env: [],
             resources: {},
         },
         ingester:: {
@@ -120,6 +122,8 @@ local default_fifocache_size = 102400;
             labels: { app: $._config.queryFrontend.name },
             replicas: 1,
             extraArgs: [],
+            envKVMixin:: {},
+            env: [],
             resources: {},
         },
         ruler:: {
@@ -130,7 +134,7 @@ local default_fifocache_size = 102400;
             envKVMixin:: {},
             env: [],
             resources: {},
-            enacaching: {
+            caching: {
                 chunk_fifocache: {
                     enable: false,
                     size: default_fifocache_size,

@@ -14,6 +14,11 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             '-distributor.shard-by-all-labels=true',
             '-consul.hostname=' + consul_uri,
         ];
+        
+        # Environment Variables
+        local env = $._config.distributor.env;
+        local envKVMixin = $._config.distributor.envKVMixin;
+        local extraEnv = [{name: key, value: envKVMixin[key]} for key in std.objectFields(envKVMixin)];
 
         # Ports
         local distributorPorts = {
@@ -25,6 +30,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         # Container
         local distributorContainer = kube.Container(name) + {
             args+: args + extraArgs,
+            env: env + extraEnv,
             image: $._config.distributor.image,
             ports_: distributorPorts,
             resources+: $._config.distributor.resources,

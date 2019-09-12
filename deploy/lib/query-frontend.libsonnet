@@ -7,6 +7,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local extraArgs = $._config.queryFrontend.extraArgs;
         local memcached_uri = $._config.memcached.name + '.' + $._config.namespace + '.svc.cluster.local';
 
+        # Arguments
         local args = [
             '-target=query-frontend',
             '-server.http-listen-port=80',
@@ -14,6 +15,11 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
             '-querier.align-querier-with-step=true',
             '-memcached.hostname=' + memcached_uri,
         ];
+        
+        # Environment Variables
+        local env = $._config.queryFrontend.env;
+        local envKVMixin = $._config.queryFrontend.envKVMixin;
+        local extraEnv = [{name: key, value: envKVMixin[key]} for key in std.objectFields(envKVMixin)];
 
         local queryFrontendPorts = {
             http: {
@@ -27,6 +33,7 @@ local kube = import 'kube-libsonnet/kube.libsonnet';
         local queryFrontendContainer = kube.Container(name) + {
             image: $._config.queryFrontend.image,
             args+: args + extraArgs,
+            env: env + extraEnv,
             ports_: queryFrontendPorts,
             resources+: $._config.queryFrontend.resources,
         };

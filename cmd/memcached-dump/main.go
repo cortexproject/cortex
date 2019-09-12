@@ -37,7 +37,7 @@ func main() {
 	throttle := time.Tick(rate)
 
 	mc := memcache.New(address)
-	mc.Timeout = time.Second
+	mc.Timeout = 2 * time.Second
 	for _, key := range keys {
 		item, err := mc.Get(key)
 		if err != nil {

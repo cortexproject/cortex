@@ -25,7 +25,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
-
 	"strconv"
 	"strings"
 	"sync"
@@ -196,7 +195,12 @@ func (cn *conn) condRelease(err *error) {
 	if *err == nil || resumableError(*err) {
 		cn.release()
 	} else {
-		cn.nc.Close()
+		// In the background, consume the results and then close it.
+		// Naive attempt to reduce CLOSE_WAITS on the memcached.
+		go func() {
+			io.Copy(ioutil.Discard, cn.nc)
+			cn.nc.Close()
+		}()
 	}
 }
 

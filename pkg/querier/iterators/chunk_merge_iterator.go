@@ -48,7 +48,7 @@ func buildIterators(cs []chunk.Chunk) []*nonOverlappingIterator {
 	for i := range cs {
 		chunks[i] = &chunkIterator{
 			Chunk: cs[i],
-			it:    cs[i].Data.NewIterator(),
+			it:    cs[i].Data.NewIterator(nil),
 		}
 	}
 	sort.Sort(byFrom(chunks))

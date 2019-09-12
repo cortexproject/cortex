@@ -16,7 +16,7 @@ type chunkIterator struct {
 
 func (i *chunkIterator) reset(chunk chunk.Chunk) {
 	i.chunk = chunk
-	i.it = chunk.Data.NewIterator()
+	i.it = chunk.Data.NewIterator(i.it)
 	i.batch.Length = 0
 	i.batch.Index = 0
 }

@@ -114,6 +114,7 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 	}
 
 	b.chunks = make([]smallChunk, 0, numChunks+1) // allow one extra space in case we want to add new data
+	var reuseIter chunkenc.Iterator
 	for i := uint16(0); i < numChunks; i++ {
 		chunkLen, err := r.ReadUint16()
 		if err != nil {
@@ -130,7 +131,8 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 			return err
 		}
 
-		start, end, err := firstAndLastTimes(chunk)
+		var start, end int64
+		start, end, reuseIter, err = firstAndLastTimes(chunk, reuseIter)
 		if err != nil {
 			return err
 		}
@@ -169,10 +171,20 @@ func (b *bigchunk) Size() int {
 	return sum
 }
 
-func (b *bigchunk) NewIterator() Iterator {
+func (b *bigchunk) NewIterator(reuseIter Iterator) Iterator {
+	if bci, ok := reuseIter.(*bigchunkIterator); ok {
+		bci.bigchunk = b
+		bci.i = 0
+		if len(b.chunks) > 0 {
+			bci.curr = b.chunks[0].Iterator(bci.curr)
+		} else {
+			bci.curr = chunkenc.NewNopIterator()
+		}
+		return bci
+	}
 	var it chunkenc.Iterator
 	if len(b.chunks) > 0 {
-		it = b.chunks[0].Iterator(nil)
+		it = b.chunks[0].Iterator(it)
 	} else {
 		it = chunkenc.NewNopIterator()
 	}
@@ -321,13 +333,13 @@ func (it *bigchunkIterator) Err() error {
 	return nil
 }
 
-func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
+func firstAndLastTimes(c chunkenc.Chunk, iter chunkenc.Iterator) (int64, int64, chunkenc.Iterator, error) {
 	var (
 		first    int64
 		last     int64
 		firstSet bool
-		iter     = c.Iterator(nil)
 	)
+	iter = c.Iterator(iter)
 	for iter.Next() {
 		t, _ := iter.At()
 		if !firstSet {
@@ -336,5 +348,5 @@ func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
 		}
 		last = t
 	}
-	return first, last, iter.Err()
+	return first, last, iter, iter.Err()
 }

@@ -107,13 +107,11 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 
 // Store stores the key in the cache.
 func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	for i := range keys {
-		err := instr.CollectedRequest(ctx, "Redis.Store", c.requestDuration, redisStatusCode, func(ctx context.Context) error {
-			return c.set(ctx, keys[i], bufs[i], c.expiration)
-		})
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to put to redis", "name", c.name, "err", err)
-		}
+	err := instr.CollectedRequest(ctx, "Redis.Store", c.requestDuration, redisStatusCode, func(ctx context.Context) error {
+		return c.mset(ctx, keys, bufs, c.expiration)
+	})
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to put to redis", "name", c.name, "err", err)
 	}
 }
 
@@ -122,8 +120,8 @@ func (c *RedisCache) Stop() error {
 	return c.client.Close()
 }
 
-// set adds a key-value pair to the cache.
-func (c *RedisCache) set(ctx context.Context, key string, buf []byte, ttl int) error {
+// mset adds key-value pairs to the cache.
+func (c *RedisCache) mset(ctx context.Context, keys []string, bufs [][]byte, ttl int) error {
 	res := make(chan error, 1)
 
 	conn := c.client.Connection()
@@ -133,8 +131,18 @@ func (c *RedisCache) set(ctx context.Context, key string, buf []byte, ttl int) e
 	defer cancel()
 
 	go func() {
-		_, err := conn.Do("SETEX", key, ttl, buf)
-		res <- err
+		var err error
+		defer func() { res <- err }()
+
+		if err = conn.Send("MULTI"); err != nil {
+			return
+		}
+		for i := range keys {
+			if err = conn.Send("SETEX", keys[i], ttl, bufs[i]); err != nil {
+				return
+			}
+		}
+		_, err = conn.Do("EXEC")
 	}()
 
 	select {

@@ -36,21 +36,24 @@ func TestRedisCache(t *testing.T) {
 	bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}
 	miss := []string{"miss1", "miss2"}
 
-	// ensure correct input
+	// ensure input correctness
 	nHit := len(keys)
 	require.Len(t, bufs, nHit)
 
-	// mock the data
+	// mock Redis Store
+	mockRedisStore(conn, keys, bufs)
+
+	//mock cache hit
 	keyIntf := make([]interface{}, nHit)
 	bufIntf := make([]interface{}, nHit)
 
 	for i := 0; i < nHit; i++ {
-		conn.Command("SETEX", keys[i], 0, bufs[i]).Expect("ok")
 		keyIntf[i] = keys[i]
 		bufIntf[i] = bufs[i]
 	}
 	conn.Command("MGET", keyIntf...).Expect(bufIntf)
 
+	// mock cache miss
 	nMiss := len(miss)
 	missIntf := make([]interface{}, nMiss)
 	for i, s := range miss {
@@ -82,4 +85,14 @@ func TestRedisCache(t *testing.T) {
 	for i := 0; i < nMiss; i++ {
 		require.Equal(t, miss[i], missed[i])
 	}
+}
+
+func mockRedisStore(conn *redigomock.Conn, keys []string, bufs [][]byte) {
+	conn.Command("MULTI")
+	ret := []interface{}{}
+	for i := range keys {
+		conn.Command("SETEX", keys[i], 0, bufs[i])
+		ret = append(ret, "OK")
+	}
+	conn.Command("EXEC").Expect(ret)
 }

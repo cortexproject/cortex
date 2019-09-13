@@ -36,6 +36,7 @@ func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) 
 	}, nil
 }
 
+// ListTables lists all of the correctly specified cortex tables in bigtable
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	tables, err := c.client.Tables(ctx)
 	if err != nil {

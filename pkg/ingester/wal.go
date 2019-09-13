@@ -149,15 +149,21 @@ func (w *walWrapper) Log(record *Record) error {
 func (w *walWrapper) run() {
 	defer w.wait.Done()
 
-	for !w.isStopped() {
-		if err := w.checkpoint(); err != nil {
-			level.Error(util.Logger).Log("msg", "Error checkpointing series", "err", err)
-			continue
-		}
+	ticker := time.NewTicker(w.cfg.checkpointDuration)
+	defer ticker.Stop()
 
-		if err := w.truncateSamples(); err != nil {
-			level.Error(util.Logger).Log("msg", "Error truncating wal", "err", err)
-			continue
+	for !w.isStopped() {
+		select {
+		case <-ticker.C:
+			if err := w.checkpoint(); err != nil {
+				level.Error(util.Logger).Log("msg", "Error checkpointing series", "err", err)
+				continue
+			}
+			if err := w.truncateSamples(); err != nil {
+				level.Error(util.Logger).Log("msg", "Error truncating wal", "err", err)
+			}
+		case <-w.quit:
+			return
 		}
 	}
 }
@@ -210,9 +216,6 @@ func (w *walWrapper) checkpoint() (err error) {
 	if numSeries == 0 {
 		return nil
 	}
-	perSeriesDuration := w.cfg.checkpointDuration / time.Duration(numSeries)
-	ticker := time.NewTicker(perSeriesDuration)
-	defer ticker.Stop()
 
 	for userID, state := range w.ingester.userStates.cp() {
 		for pair := range state.fpToSeries.iter() {
@@ -221,11 +224,6 @@ func (w *walWrapper) checkpoint() (err error) {
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return err
-			}
-
-			select {
-			case <-ticker.C:
-			case <-w.quit: // When we're trying to shutdown, finish the checkpoint as fast as possible.
 			}
 		}
 	}

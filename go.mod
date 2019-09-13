@@ -84,3 +84,5 @@ require (
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/yaml.v2 v2.2.2
 )
+
+replace github.com/bradfitz/gomemcache => github.com/tomwilkie/gomemcache v0.0.0-20190913104449-97b55388847b

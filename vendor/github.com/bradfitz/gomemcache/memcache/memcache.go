@@ -32,7 +32,7 @@ import (
 )
 
 // Similar to:
-// http://code.google.com/appengine/docs/go/memcache/reference.html
+// https://godoc.org/google.golang.org/appengine/memcache
 
 var (
 	// ErrCacheMiss means that a Get failed because the item wasn't present.
@@ -198,6 +198,7 @@ func (cn *conn) condRelease(err *error) {
 		// In the background, consume the results and then close it.
 		// Naive attempt to reduce CLOSE_WAITS on the memcached.
 		go func() {
+			cn.nc.SetDeadline(time.Time{})
 			io.Copy(ioutil.Discard, cn.nc)
 			cn.nc.Close()
 		}()
@@ -330,8 +331,9 @@ func (c *Client) Get(key string) (item *Item, err error) {
 
 // Touch updates the expiry for the given key. The seconds parameter is either
 // a Unix timestamp or, if seconds is less than 1 month, the number of seconds
-// into the future at which time the item will expire. ErrCacheMiss is returned if the
-// key is not in the cache. The key must be at most 250 bytes in length.
+// into the future at which time the item will expire. Zero means the item has
+// no expiration time. ErrCacheMiss is returned if the key is not in the cache.
+// The key must be at most 250 bytes in length.
 func (c *Client) Touch(key string, seconds int32) (err error) {
 	return c.withKeyAddr(key, func(addr net.Addr) error {
 		return c.touchFromAddr(addr, []string{key}, seconds)
@@ -485,11 +487,14 @@ func parseGetResponse(r *bufio.Reader, cb func(*Item)) error {
 		if err != nil {
 			return err
 		}
-		it.Value, err = ioutil.ReadAll(io.LimitReader(r, int64(size)+2))
+		it.Value = make([]byte, size+2)
+		_, err = io.ReadFull(r, it.Value)
 		if err != nil {
+			it.Value = nil
 			return err
 		}
 		if !bytes.HasSuffix(it.Value, crlf) {
+			it.Value = nil
 			return fmt.Errorf("memcache: corrupt get result read")
 		}
 		it.Value = it.Value[:size]

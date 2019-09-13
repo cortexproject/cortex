@@ -47,22 +47,21 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 		c.tableExpiration = time.Now().Add(c.cfg.TableCacheExpiration)
 	}
 
-	// Check each table has the right column family.  If not, omit it.
 	output := make([]string, 0, len(tables))
 	for _, table := range tables {
 		info, exists := c.tableInfo[table]
-		if !exists || !c.cfg.TableCacheEnabled {
+		if !c.cfg.TableCacheEnabled || !exists {
 			info, err = c.client.TableInfo(ctx, table)
 			if err != nil {
 				return nil, errors.Wrap(err, "client.TableInfo")
 			}
 		}
 
+		// Check each table has the right column family.  If not, omit it.
 		if hasColumnFamily(info.FamilyInfos) {
 			output = append(output, table)
-			continue
+			c.tableInfo[table] = info
 		}
-		c.tableInfo[table] = info
 	}
 
 	return output, nil

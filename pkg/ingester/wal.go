@@ -61,8 +61,7 @@ type walWrapper struct {
 	quit     chan struct{}
 	wait     sync.WaitGroup
 
-	lastWalSegment int
-	wal            *wal.WAL
+	wal *wal.WAL
 
 	// Checkpoint metrics.
 	checkpointDeleteFail    prometheus.Counter
@@ -76,6 +75,14 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 		return &noop{}, nil
 	}
 
+	level.Info(util.Logger).Log("msg", "recovering from WAL")
+	start := time.Now()
+	if err := recoverFromWAL(ingester); err != nil {
+		return nil, err
+	}
+	elapsed := time.Since(start)
+	level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+
 	var walRegistry prometheus.Registerer
 	if cfg.metricsRegisterer != nil {
 		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, cfg.metricsRegisterer)
@@ -86,11 +93,10 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 	}
 
 	w := &walWrapper{
-		cfg:            cfg,
-		ingester:       ingester,
-		quit:           make(chan struct{}),
-		wal:            tsdbWAL,
-		lastWalSegment: -1,
+		cfg:      cfg,
+		ingester: ingester,
+		quit:     make(chan struct{}),
+		wal:      tsdbWAL,
 	}
 
 	w.checkpointDeleteFail = prometheus.NewCounter(prometheus.CounterOpts{
@@ -117,14 +123,6 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 			w.checkpointCreationTotal,
 		)
 	}
-
-	level.Info(util.Logger).Log("msg", "recovering from WAL")
-	start := time.Now()
-	if err := recoverFromWAL(ingester); err != nil {
-		return nil, err
-	}
-	elapsed := time.Since(start)
-	level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 
 	w.wait.Add(1)
 	go w.run()
@@ -155,13 +153,14 @@ func (w *walWrapper) run() {
 	for !w.isStopped() {
 		select {
 		case <-ticker.C:
+			start := time.Now()
+			level.Info(util.Logger).Log("msg", "starting checkpoint")
 			if err := w.checkpoint(); err != nil {
 				level.Error(util.Logger).Log("msg", "Error checkpointing series", "err", err)
 				continue
 			}
-			if err := w.truncateSamples(); err != nil {
-				level.Error(util.Logger).Log("msg", "Error truncating wal", "err", err)
-			}
+			elapsed := time.Since(start)
+			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 		case <-w.quit:
 			return
 		}
@@ -186,14 +185,21 @@ func (w *walWrapper) checkpoint() (err error) {
 			w.checkpointCreationFail.Inc()
 		}
 	}()
-	_, last, err := lastCheckpoint(w.wal.Dir())
+
+	_, lastSegment, err := w.wal.Segments()
 	if err != nil {
 		return err
 	}
 
-	newIdx := last + 1
+	_, lastCh, err := lastCheckpoint(w.wal.Dir())
+	if err != nil {
+		return err
+	}
+
+	newIdx := lastCh + 1
 
 	cpdir := filepath.Join(w.wal.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", newIdx))
+	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", cpdir)
 	cpdirtmp := cpdir + ".tmp"
 
 	if err := os.MkdirAll(cpdirtmp, 0777); err != nil {
@@ -208,19 +214,11 @@ func (w *walWrapper) checkpoint() (err error) {
 		os.RemoveAll(cpdirtmp)
 	}()
 
-	// Count number of series - we'll use this to rate limit checkpoints.
-	numSeries := 0
-	for _, state := range w.ingester.userStates.cp() {
-		numSeries += state.fpToSeries.length()
-	}
-	if numSeries == 0 {
-		return nil
-	}
-
+	var wireChunkBuf []client.Chunk
 	for userID, state := range w.ingester.userStates.cp() {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
-			err := w.checkpointSeries(cp, userID, pair.fp, pair.series)
+			wireChunkBuf, err = w.checkpointSeries(cp, userID, pair.fp, pair.series, wireChunkBuf)
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return err
@@ -235,8 +233,16 @@ func (w *walWrapper) checkpoint() (err error) {
 		return errors.Wrap(err, "rename checkpoint directory")
 	}
 
-	if last >= 0 {
-		return w.deleteCheckpoints(last)
+	// The last segment might still have been active during the checkpointing,
+	// hence delete only the segments before that.
+	if err := w.wal.Truncate(lastSegment - 1); err != nil {
+		return err
+	}
+
+	if lastCh >= 0 {
+		if err := w.deleteCheckpoints(lastCh); err != nil {
+			level.Error(util.Logger).Log("msg", "error deleting old checkpoint", "err", err)
+		}
 	}
 
 	return nil
@@ -298,10 +304,11 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 	return errs.Err()
 }
 
-func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries) error {
-	wireChunks, err := toWireChunks(series.chunkDescs)
+func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk) ([]client.Chunk, error) {
+	var err error
+	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks)
 	if err != nil {
-		return err
+		return wireChunks, err
 	}
 
 	buf, err := proto.Marshal(&Series{
@@ -311,27 +318,10 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 		Chunks:      wireChunks,
 	})
 	if err != nil {
-		return err
+		return wireChunks, err
 	}
 
-	return cp.Log(buf)
-}
-
-// truncateSamples removed the wal from before the checkpoint.
-func (w *walWrapper) truncateSamples() error {
-	_, last, err := w.wal.Segments()
-	if err != nil {
-		return err
-	}
-
-	// The last segment might still have been active  after the checpoint,
-	// hence delete only the segments before that.
-	if err := w.wal.Truncate(w.lastWalSegment - 1); err != nil {
-		return err
-	}
-
-	w.lastWalSegment = last
-	return nil
+	return wireChunks, cp.Log(buf)
 }
 
 func recoverFromWAL(ingester *Ingester) (err error) {
@@ -347,7 +337,7 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	}
 
 	if idx >= 0 {
-		level.Debug(util.Logger).Log("msg", "recovering from checkpoint", "checkpoint", lastCheckpointDir)
+		level.Info(util.Logger).Log("msg", "recovering from checkpoint", "checkpoint", lastCheckpointDir)
 		// Checkpoint exists.
 		start := time.Now()
 		numSeries := 0
@@ -381,12 +371,17 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 			return err
 		}
 		elapsed := time.Since(start)
-		level.Debug(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String(), "num_series", numSeries, "num_chunks", numChunks)
+		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String(), "num_series", numSeries, "num_chunks", numChunks)
 	} else {
-		level.Debug(util.Logger).Log("msg", "no checkpoint found")
+		level.Info(util.Logger).Log("msg", "no checkpoint found")
 	}
 
-	level.Debug(util.Logger).Log("msg", "recovering from segments", "dir", walDir)
+	if segExists, err := segmentsExist(walDir); err == nil && !segExists {
+		level.Info(util.Logger).Log("msg", "no segments found, skipping recover from segments")
+		return nil
+	}
+
+	level.Info(util.Logger).Log("msg", "recovering from segments", "dir", walDir)
 	numRecords := 0
 	numSeries := 0
 	numSamples := 0
@@ -396,7 +391,7 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 		numRecords++
 		state := userStates.getOrCreate(record.UserId)
 		if numRecords%10000 == 0 {
-			level.Debug(util.Logger).Log("msg", "records milestone", "num_records", numRecords)
+			level.Info(util.Logger).Log("msg", "records milestone", "num_records", numRecords)
 		}
 		for _, labels := range record.Labels {
 			_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
@@ -443,7 +438,7 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 		return err
 	}
 	elapsed := time.Since(start)
-	level.Debug(util.Logger).Log("msg", "recovered from segments", "time", elapsed.String(), "num_new_series", numSeries, "num_records", numRecords, "num_samples", numSamples)
+	level.Info(util.Logger).Log("msg", "recovered from segments", "time", elapsed.String(), "num_new_series", numSeries, "num_records", numRecords, "num_samples", numSamples)
 
 	ingester.userStatesMtx.Lock()
 	ingester.userStates = userStates
@@ -475,4 +470,17 @@ func recoverRecords(name string, ty proto.Message, callback func(proto.Message) 
 	}
 
 	return nil
+}
+
+func segmentsExist(dir string) (bool, error) {
+	files, err := fileutil.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, fn := range files {
+		if _, err := strconv.Atoi(fn); err == nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }

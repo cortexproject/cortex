@@ -126,14 +126,9 @@ func buildProcessGaps() processFunc {
 
 	return func(req *queryrange.CachedResponse, b []byte) {
 		hasGaps := false
-		fmt.Println("Considering key: ", req.Key)
 
 		for _, e := range req.Extents {
-			fmt.Println("Considering extent: ", e.TraceId)
-
 			for _, d := range e.Response.Data.Result {
-				fmt.Println("Consider sample stream: ", d.Labels)
-
 				if len(d.Samples) > 1 {
 					expectedInterval := d.Samples[1].TimestampMs - d.Samples[0].TimestampMs
 
@@ -142,6 +137,10 @@ func buildProcessGaps() processFunc {
 
 						if actualInterval != expectedInterval {
 							hasGaps = true
+							fmt.Println("Gap Found: ")
+							fmt.Println("extent: ", e.TraceId)
+							fmt.Println("stream: ", d.Labels)
+
 							fmt.Printf("Found gap from sample %d to %d.  Expected %d.  Found %d.\n", i, i+1, expectedInterval, actualInterval)
 						}
 					}
@@ -152,7 +151,7 @@ func buildProcessGaps() processFunc {
 		totalQueries++
 		if hasGaps {
 			totalGaps++
-			fmt.Printf("Gap Found: %d/%d\n", totalQueries, totalGaps)
+			fmt.Printf("Gaps/Total: %d/%d\n", totalGaps, totalQueries)
 			fmt.Println(string(b))
 		}
 	}

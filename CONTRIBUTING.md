@@ -55,21 +55,10 @@ make test
 
 First, start `minikube`.
 
-You may need to load the Docker images into your minikube environment. There is
-a convenient rule in the Makefile to do this:
-
-```
-make prime-minikube
-```
-
 Then run Cortex in minikube:
 ```
 kubectl apply -f ./k8s
 ```
-
-(these manifests use `latest` tags, i.e. this will work if you have
-just built the images and they are available on the node(s) in your
-Kubernetes cluster)
 
 Cortex will sit behind an nginx instance exposed on port 30080.  A job is deployed to scrape itself.  Try it:
 

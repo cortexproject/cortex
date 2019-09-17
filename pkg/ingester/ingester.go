@@ -132,7 +132,7 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []cortex_chunk.Chunk) error
-	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]cortex_chunk.Chunk, error)
+	Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]cortex_chunk.Chunk, error)
 }
 
 // New constructs a new Ingester.
@@ -459,7 +459,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		}
 
 		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapaters(series.metric),
+			Labels:  client.FromLabelsToLabelAdapters(series.metric),
 			Samples: modelSamplePairsToClientSamples(values),
 		}
 
@@ -480,7 +480,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 		var err error
 
 		if storeQueryFrom < through {
-			chunks, err = i.chunkStore.Get(ctx, storeQueryFrom, through, matchers...)
+			chunks, err = i.chunkStore.Get(ctx, userID, storeQueryFrom, through, matchers...)
 			if err != nil {
 				return nil, err
 			}
@@ -500,7 +500,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 			fingerPrints[chunk.Fingerprint] = struct{}{}
 
 			ts := client.TimeSeries{
-				Labels:  client.FromLabelsToLabelAdapaters(chunk.Metric),
+				Labels:  client.FromLabelsToLabelAdapters(chunk.Metric),
 				Samples: modelSamplePairsToClientSamples(ss),
 			}
 

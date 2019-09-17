@@ -76,7 +76,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (s *testStore) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (s *testStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
 }
 

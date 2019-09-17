@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"sync"
 	"time"
 
@@ -35,24 +34,21 @@ const (
 
 	updateChanCapacity = 50
 	// ArchiveFileInterval defines interval at which we keep pushing updated or new files
-	ArchiveFileInterval            = 15 * time.Minute
-	removeFilesMovedToArchiveAfter = 30 * time.Minute // We want to preserve newly moved files to archive for some duration to let other ingesters/queriers catch up
+	ArchiveFileInterval = 15 * time.Minute
 )
 
 // Config is for configuring an archiver
 type Config struct {
-	ArchiveAfterCount int           `yaml:"archive_after_count"`
-	CacheLocation     string        `yaml:"cache_location"`
-	CacheTTL          time.Duration `yaml:"cache_ttl"`
-	StoreConfig       store.Config  `yaml:"store_config"`
-	ResyncInterval    time.Duration `yaml:"resync_interval"`
-	IngesterName      string
-	Mode              int
+	CacheLocation  string        `yaml:"cache_location"`
+	CacheTTL       time.Duration `yaml:"cache_ttl"`
+	StoreConfig    store.Config  `yaml:"store_config"`
+	ResyncInterval time.Duration `yaml:"resync_interval"`
+	IngesterName   string
+	Mode           int
 }
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.ArchiveAfterCount, "boltdb.archive.archive-after-count", 1, "Archive boltDB files except N recent ones")
 	f.StringVar(&cfg.CacheLocation, "boltdb.archive.cache-location", "", "Cache location for restoring boltDB files for queries")
 	f.DurationVar(&cfg.CacheTTL, "boltdb.archive.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.archive.resync-interval", 5*time.Minute, "Resync downloaded files with the store")
@@ -72,7 +68,7 @@ type downloadedTable struct {
 }
 
 // Archiver holds its configuration and progress of objects in sync
-// Uploads boltdb files to storage with structure <ingester-name>/<boltdb-filename>
+// Uploads boltdb files to storage with structure <boltdb-filename>/<ingester-name>
 // Keeps syncing locally changed file to the storage and downloading latest changes from storage
 // Cleans up downloaded files as per configured TTL
 type Archiver struct {
@@ -87,6 +83,10 @@ type Archiver struct {
 	uploadedFilesMtime    map[string]time.Time
 	uploadedFilesMtimeMtx sync.RWMutex
 	done                  chan struct{}
+
+	// We would use ingester name and startup timestamp for naming files while uploading so that
+	// ingester does not override old files when using same id
+	ingesterNameAndStartUpTs string
 }
 
 type file struct {
@@ -102,12 +102,13 @@ func NewArchiver(cfg Config, boltDbDirectory string) (*Archiver, error) {
 	}
 
 	archiver := Archiver{
-		cfg:                cfg,
-		boltDbDirectory:    boltDbDirectory,
-		downloadedTables:   map[string]*downloadedTable{},
-		updatesChan:        make(chan Update, updateChanCapacity),
-		uploadedFilesMtime: map[string]time.Time{},
-		done:               make(chan struct{}),
+		cfg:                      cfg,
+		boltDbDirectory:          boltDbDirectory,
+		downloadedTables:         map[string]*downloadedTable{},
+		updatesChan:              make(chan Update, updateChanCapacity),
+		uploadedFilesMtime:       map[string]time.Time{},
+		done:                     make(chan struct{}),
+		ingesterNameAndStartUpTs: fmt.Sprintf("%s-%d", cfg.IngesterName, time.Now().Unix()),
 	}
 
 	var err error
@@ -139,7 +140,7 @@ func (a *Archiver) loop() {
 				level.Error(util.Logger).Log("msg", "error syncing archived boltdb files with store", "err", err)
 			}
 		case <-archiveFileTicker.C:
-			err := a.archiveFiles(context.Background(), removeFilesMovedToArchiveAfter)
+			err := a.archiveFiles(context.Background())
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
 			}
@@ -159,13 +160,13 @@ func (a *Archiver) Stop() {
 	close(a.done)
 
 	// Push all boltdb files to archive before returning
-	err := a.archiveFiles(context.Background(), time.Second)
+	err := a.archiveFiles(context.Background())
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
 	}
 }
 
-func (a *Archiver) archiveFiles(ctx context.Context, removeFilesAfter time.Duration) error {
+func (a *Archiver) archiveFiles(ctx context.Context) error {
 	if a.cfg.Mode == ArchiveModeReadOnly {
 		return nil
 	}
@@ -191,27 +192,13 @@ func (a *Archiver) archiveFiles(ctx context.Context, removeFilesAfter time.Durat
 		}
 
 		// Files are stored with <periodic-table-name>/<ingester-name>
-		objectName := fmt.Sprintf("%s/%s", file.name, a.cfg.IngesterName)
+		objectName := fmt.Sprintf("%s/%s", file.name, a.ingesterNameAndStartUpTs)
 		err = a.storeClient.Put(ctx, objectName, f)
 		if err != nil {
 			return err
 		}
 		a.uploadedFilesMtime[file.path] = file.mtime
 	}
-
-	// Figuring out which files are supposed to be deleted based on mtime
-	sort.Slice(files, func(i, j int) bool {
-		return !files[i].mtime.Before(files[j].mtime)
-	})
-
-	time.AfterFunc(removeFilesAfter, func() {
-		for _, file := range files[a.cfg.ArchiveAfterCount:] {
-			err := os.Remove(file.path)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error removing file moved to archive", "filepath", file.path, "err", err)
-			}
-		}
-	})
 
 	return nil
 }

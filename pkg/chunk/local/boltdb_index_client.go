@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"path"
 	"sync"
@@ -73,17 +72,15 @@ func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
 		archivedDbs: map[string]*archivedDB{},
 	}
 
-	var archiver *archive.Archiver
 	if cfg.EnableArchive {
-		var err error
-		archiver, err = archive.NewArchiver(cfg.ArchiveConfig, cfg.Directory)
+		archiver, err := archive.NewArchiver(cfg.ArchiveConfig, cfg.Directory)
 		if err != nil {
 			return nil, err
 		}
+
+		indexClient.archiver = archiver
 		go indexClient.processArchiverUpdates()
 	}
-
-	indexClient.archiver = archiver
 
 	indexClient.wait.Add(1)
 	go indexClient.loop()
@@ -130,7 +127,8 @@ func (b *boltIndexClient) processArchiverUpdates() {
 			default:
 				level.Error(util.Logger).Log("Invalid update type from archiver", "update", update)
 			}
-			fmt.Println(update)
+		case <-b.done:
+			return
 		}
 	}
 }

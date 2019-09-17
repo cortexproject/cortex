@@ -21,9 +21,8 @@ func createTestArchiver(t *testing.T, parentTempDir, ingesterName, localStoreLoc
 	require.NoError(t, err)
 
 	archiverConfig := Config{
-		ArchiveAfterCount: 1,
-		CacheLocation:     cacheLocation,
-		CacheTTL:          1 * time.Hour,
+		CacheLocation: cacheLocation,
+		CacheTTL:      1 * time.Hour,
 		StoreConfig: store.Config{
 			Store: "local",
 			LocalConfig: local.Config{
@@ -64,7 +63,7 @@ func TestArchiver_Sync(t *testing.T) {
 	require.Equal(t, table1Name, files[0].name)
 
 	// Archive files from archiver1
-	require.NoError(t, archiver1.archiveFiles(context.Background(), time.Millisecond))
+	require.NoError(t, archiver1.archiveFiles(context.Background()))
 
 	// Sync files from archiver2
 	syncedFiles, err := archiver2.Sync(context.Background(), table1Name)
@@ -76,7 +75,7 @@ func TestArchiver_Sync(t *testing.T) {
 
 	// Check whether file created above got synced in archiver2
 	require.Equal(t, 1, len(syncedFiles))
-	syncedFileForTable1Path := filepath.Join(archiver2.cfg.CacheLocation, table1Name, ingesterNameForArchiver1)
+	syncedFileForTable1Path := filepath.Join(archiver2.cfg.CacheLocation, table1Name, archiver1.ingesterNameAndStartUpTs)
 	require.Equal(t, []string{syncedFileForTable1Path}, syncedFiles)
 
 	// Making changes to file created by archiver1
@@ -85,7 +84,7 @@ func TestArchiver_Sync(t *testing.T) {
 	require.NoError(t, err)
 
 	// Archiving files again from archiver1 to push the updates
-	require.NoError(t, archiver1.archiveFiles(context.Background(), time.Millisecond))
+	require.NoError(t, archiver1.archiveFiles(context.Background()))
 
 	// Syncing files from archiver2
 	require.NoError(t, archiver2.syncTable(context.Background(), table1Name, false))

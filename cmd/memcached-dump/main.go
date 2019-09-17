@@ -54,7 +54,7 @@ func main() {
 
 	mc := memcache.New(address)
 	mc.Timeout = 2 * time.Second
-	for _, key := range keys {
+	for i, key := range keys {
 		item, err := mc.Get(key)
 		if err == memcache.ErrCacheMiss {
 			log.Printf("Failed to get key: %v", err)
@@ -78,7 +78,10 @@ func main() {
 		if mode == modeDump {
 			fmt.Println(string(bytes))
 		} else if mode == modeGapSearch {
-			printGaps(req)
+			fmt.Println("Testing Result", i)
+			if hasGaps(req) {
+				fmt.Println(string(bytes))
+			}
 		}
 
 		<-throttle
@@ -114,10 +117,30 @@ func readKeys(path string, order string) ([]string, error) {
 	return lines, nil
 }
 
-func printGaps(req *queryrange.CachedResponse) {
+func hasGaps(req *queryrange.CachedResponse) bool {
+	hasGaps := false
 	fmt.Println("Considering key: ", req.Key)
 
 	for _, e := range req.Extents {
 		fmt.Println("Considering extent: ", e.TraceId)
+
+		for _, d := range e.Response.Data.Result {
+			fmt.Println("Consider sample stream: ", d.Labels)
+
+			if len(d.Samples) > 1 {
+				expectedInterval := d.Samples[1].TimestampMs - d.Samples[0].TimestampMs
+
+				for i := 0; i < len(d.Samples)-2; i++ {
+					actualInterval := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
+
+					if actualInterval != expectedInterval {
+						hasGaps = true
+						fmt.Printf("Found gap from sample %d to %d.  Expected %d.  Found %d.\n", i, i+1, expectedInterval, actualInterval)
+					}
+				}
+			}
+		}
 	}
+
+	return hasGaps
 }

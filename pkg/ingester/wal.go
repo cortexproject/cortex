@@ -3,6 +3,7 @@ package ingester
 import (
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -308,6 +309,7 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 	return errs.Err()
 }
 
+// checkpointSeries write the chunks of the series to the checkpoint.
 func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk) ([]client.Chunk, error) {
 	var err error
 	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks)
@@ -371,19 +373,20 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	return nil
 }
 
+// processCheckpoint loads the chunks of the series present in the last checkpoint.
 func processCheckpoint(name string, userStates *userStates) error {
 	numSeries := 0
 	numChunks := 0
 	walSeries := &Series{}
 
-	segmentReader, err := wal.NewSegmentsReader(name)
+	la := []client.LabelAdapter{}
+
+	reader, closer, err := walReader(name)
 	if err != nil {
 		return err
 	}
-	defer segmentReader.Close()
+	defer closer.Close()
 
-	la := []client.LabelAdapter{}
-	reader := wal.NewReader(segmentReader)
 	for reader.Next() {
 		walSeries.Reset()
 		if err := proto.Unmarshal(reader.Record(), walSeries); err != nil {
@@ -425,11 +428,13 @@ func processCheckpoint(name string, userStates *userStates) error {
 	return nil
 }
 
+// processWAL processes the records in the WAL concurrently.
 func processWAL(name string, userStates *userStates) error {
 	var (
-		chanErr    error
 		numProcs   = runtime.GOMAXPROCS(0)
-		recordChan = make(chan *Record, 1000)
+		recordChan = make(chan *Record, 1024)
+		// errChan is to capture the errors from goroutine.
+		// The channel size is numProcs to not block any worker if all of them error out.
 		errChan    = make(chan error, numProcs)
 		wg         = sync.WaitGroup{}
 		recordPool = sync.Pool{
@@ -439,6 +444,13 @@ func processWAL(name string, userStates *userStates) error {
 		}
 	)
 
+	reader, closer, err := walReader(name)
+	if err != nil {
+		return err
+	}
+	defer closer.Close()
+
+	// Creating workers.
 	wg.Add(numProcs)
 	for i := 0; i < numProcs; i++ {
 		go func() {
@@ -458,13 +470,8 @@ func processWAL(name string, userStates *userStates) error {
 		}()
 	}
 
-	segmentReader, err := wal.NewSegmentsReader(name)
-	if err != nil {
-		return err
-	}
-	defer segmentReader.Close()
-
-	reader := wal.NewReader(segmentReader)
+	// Iterating the WAL records.
+	var errFromChan error
 Loop:
 	for reader.Next() {
 		msg := recordPool.Get().(*Record)
@@ -473,7 +480,9 @@ Loop:
 		}
 
 		select {
-		case chanErr = <-errChan:
+		case errFromChan = <-errChan:
+			// Exit early on an error.
+			// Only acts upon the first error received.
 			break Loop
 		case recordChan <- msg:
 		}
@@ -481,8 +490,8 @@ Loop:
 	close(recordChan)
 	wg.Wait()
 
-	if chanErr != nil {
-		return chanErr
+	if errFromChan != nil {
+		return errFromChan
 	}
 	if err := reader.Err(); err != nil {
 		return err
@@ -492,6 +501,8 @@ Loop:
 
 func processWALRecord(record *Record, userStates *userStates, la []client.LabelAdapter) ([]client.LabelAdapter, error) {
 	state := userStates.getOrCreate(record.UserId)
+
+	// Create the series from labels which do not exist.
 	for _, labels := range record.Labels {
 		_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
 		if ok {
@@ -515,8 +526,13 @@ func processWALRecord(record *Record, userStates *userStates, la []client.LabelA
 		state.fpLocker.Lock(model.Fingerprint(sample.Fingerprint))
 		series, ok := state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
 		if !ok {
+			// This should ideally not happen.
+			// If the series was not created in recovering checkpoint or
+			// from the labels of any records previous to this, there
+			// is no way to get the labels for this fingerprint.
 			state.fpLocker.Unlock(model.Fingerprint(sample.Fingerprint))
-			return la, nil
+			level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "fingerprint", model.Fingerprint(sample.Fingerprint).String())
+			continue
 		}
 
 		err := series.add(model.SamplePair{
@@ -525,7 +541,7 @@ func processWALRecord(record *Record, userStates *userStates, la []client.LabelA
 		})
 		if err != nil {
 			// We can ignore memorySeriesError because duplicate (or) out-of-order samples are possible
-			// here because the WAL is not truncated to align with the checkpoint.
+			// here because the WAL is not truncated to exactly align with the checkpoint.
 			if _, ok := err.(*memorySeriesError); !ok {
 				state.fpLocker.Unlock(model.Fingerprint(sample.Fingerprint))
 				return la, err
@@ -537,6 +553,8 @@ func processWALRecord(record *Record, userStates *userStates, la []client.LabelA
 	return la, nil
 }
 
+// segmentsExist is a stripped down version of
+// https://github.com/prometheus/prometheus/blob/4c648eddf47d7e07fbc74d0b18244402200dca9e/tsdb/wal/wal.go#L739-L760.
 func segmentsExist(dir string) (bool, error) {
 	files, err := fileutil.ReadDir(dir)
 	if err != nil {
@@ -544,8 +562,19 @@ func segmentsExist(dir string) (bool, error) {
 	}
 	for _, fn := range files {
 		if _, err := strconv.Atoi(fn); err == nil {
+			// First filename which is a number.
+			// This is how Prometheus stores and this
+			// is how it checks too.
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+func walReader(name string) (*wal.Reader, io.Closer, error) {
+	segmentReader, err := wal.NewSegmentsReader(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return wal.NewReader(segmentReader), segmentReader, nil
 }

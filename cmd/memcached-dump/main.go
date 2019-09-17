@@ -15,6 +15,8 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 )
 
+type processFunc func(req *queryrange.CachedResponse, b []byte)
+
 const (
 	modeDump      = "dump"
 	modeGapSearch = "gaps"
@@ -50,11 +52,20 @@ func main() {
 		log.Fatalf("Failed to readfile: %v", err)
 	}
 
-	throttle := time.Tick(rate)
-
 	mc := memcache.New(address)
 	mc.Timeout = 2 * time.Second
-	for i, key := range keys {
+
+	if mode == modeDump {
+		loop(keys, mc, rate, processDump)
+	} else if mode == modeGapSearch {
+		loop(keys, mc, rate, buildProcessGaps())
+	}
+}
+
+func loop(keys []string, mc *memcache.Client, rate time.Duration, process processFunc) {
+	throttle := time.Tick(rate)
+
+	for _, key := range keys {
 		item, err := mc.Get(key)
 		if err == memcache.ErrCacheMiss {
 			log.Printf("Failed to get key: %v", err)
@@ -75,15 +86,7 @@ func main() {
 			log.Fatalf("Failed to marshal to json: %v", err)
 		}
 
-		if mode == modeDump {
-			fmt.Println(string(bytes))
-		} else if mode == modeGapSearch {
-			fmt.Println("Testing Result", i)
-			if hasGaps(req) {
-				fmt.Println(string(bytes))
-			}
-		}
-
+		process(req, bytes)
 		<-throttle
 	}
 }
@@ -117,30 +120,44 @@ func readKeys(path string, order string) ([]string, error) {
 	return lines, nil
 }
 
-func hasGaps(req *queryrange.CachedResponse) bool {
-	hasGaps := false
-	fmt.Println("Considering key: ", req.Key)
+func buildProcessGaps() processFunc {
+	totalQueries := 0
+	totalGaps := 0
 
-	for _, e := range req.Extents {
-		fmt.Println("Considering extent: ", e.TraceId)
+	return func(req *queryrange.CachedResponse, b []byte) {
+		hasGaps := false
+		fmt.Println("Considering key: ", req.Key)
 
-		for _, d := range e.Response.Data.Result {
-			fmt.Println("Consider sample stream: ", d.Labels)
+		for _, e := range req.Extents {
+			fmt.Println("Considering extent: ", e.TraceId)
 
-			if len(d.Samples) > 1 {
-				expectedInterval := d.Samples[1].TimestampMs - d.Samples[0].TimestampMs
+			for _, d := range e.Response.Data.Result {
+				fmt.Println("Consider sample stream: ", d.Labels)
 
-				for i := 0; i < len(d.Samples)-2; i++ {
-					actualInterval := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
+				if len(d.Samples) > 1 {
+					expectedInterval := d.Samples[1].TimestampMs - d.Samples[0].TimestampMs
 
-					if actualInterval != expectedInterval {
-						hasGaps = true
-						fmt.Printf("Found gap from sample %d to %d.  Expected %d.  Found %d.\n", i, i+1, expectedInterval, actualInterval)
+					for i := 0; i < len(d.Samples)-2; i++ {
+						actualInterval := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
+
+						if actualInterval != expectedInterval {
+							hasGaps = true
+							fmt.Printf("Found gap from sample %d to %d.  Expected %d.  Found %d.\n", i, i+1, expectedInterval, actualInterval)
+						}
 					}
 				}
 			}
 		}
-	}
 
-	return hasGaps
+		totalQueries++
+		if hasGaps {
+			totalGaps++
+			fmt.Printf("Gap Found: %d/%d\n", totalQueries, totalGaps)
+			fmt.Println(string(b))
+		}
+	}
+}
+
+func processDump(req *queryrange.CachedResponse, b []byte) {
+	fmt.Println(string(b))
 }

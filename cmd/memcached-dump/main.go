@@ -34,6 +34,7 @@ var (
 	rate     time.Duration
 	mode     string
 	keyOrder string
+	minGap   time.Duration
 )
 
 func init() {
@@ -42,6 +43,7 @@ func init() {
 	flag.DurationVar(&rate, "rate", 500*time.Millisecond, "Query rate.")
 	flag.StringVar(&mode, "mode", "dump", "Specify mode for memcached tool [dump, gaps].")
 	flag.StringVar(&keyOrder, "key-order", "random", "Specify order to consider keys [forward, reverse, random].")
+	flag.DurationVar(&minGap, "min-gap", 0, "Minimum gap to report.")
 }
 
 func main() {
@@ -58,7 +60,7 @@ func main() {
 	if mode == modeDump {
 		loop(keys, mc, rate, processDump)
 	} else if mode == modeGapSearch {
-		loop(keys, mc, rate, buildProcessGaps())
+		loop(keys, mc, rate, buildProcessGaps(minGap))
 	}
 }
 
@@ -120,7 +122,7 @@ func readKeys(path string, order string) ([]string, error) {
 	return lines, nil
 }
 
-func buildProcessGaps() processFunc {
+func buildProcessGaps(minGap time.Duration) processFunc {
 	totalQueries := 0
 	totalGaps := 0
 
@@ -130,18 +132,18 @@ func buildProcessGaps() processFunc {
 		for _, e := range req.Extents {
 			for _, d := range e.Response.Data.Result {
 				if len(d.Samples) > 1 {
-					expectedInterval := d.Samples[1].TimestampMs - d.Samples[0].TimestampMs
 
+					expectedIntervalMs := d.Samples[1].TimestampMs - d.Samples[0].TimestampMs
 					for i := 0; i < len(d.Samples)-2; i++ {
-						actualInterval := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
+						actualIntervalMs := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
 
-						if actualInterval != expectedInterval {
+						if actualIntervalMs > expectedIntervalMs && time.Duration(actualIntervalMs)*time.Millisecond > minGap {
 							hasGaps = true
 							fmt.Println("Gap Found: ")
 							fmt.Println("extent: ", e.TraceId)
 							fmt.Println("stream: ", d.Labels)
 
-							fmt.Printf("Found gap from sample %d to %d.  Expected %d.  Found %d.\n", i, i+1, expectedInterval, actualInterval)
+							fmt.Printf("Found gap from sample %d to %d.  Expected %d.  Found %d.\n", i, i+1, expectedIntervalMs, actualIntervalMs)
 						}
 					}
 				}

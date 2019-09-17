@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -156,12 +157,15 @@ func (w *walWrapper) run() {
 			start := time.Now()
 			level.Info(util.Logger).Log("msg", "starting checkpoint")
 			if err := w.checkpoint(); err != nil {
-				level.Error(util.Logger).Log("msg", "Error checkpointing series", "err", err)
+				level.Error(util.Logger).Log("msg", "error checkpointing series", "err", err)
 				continue
 			}
 			elapsed := time.Since(start)
 			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 		case <-w.quit:
+			if err := w.checkpoint(); err != nil {
+				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
+			}
 			return
 		}
 	}
@@ -329,49 +333,20 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	// Use a local userStates, so we don't need to worry about locking.
 	userStates := newUserStates(ingester.limits, ingester.cfg)
 
-	la := []client.LabelAdapter{}
-
 	lastCheckpointDir, idx, err := lastCheckpoint(walDir)
 	if err != nil {
 		return err
 	}
 
 	if idx >= 0 {
-		level.Info(util.Logger).Log("msg", "recovering from checkpoint", "checkpoint", lastCheckpointDir)
 		// Checkpoint exists.
+		level.Info(util.Logger).Log("msg", "recovering from checkpoint", "checkpoint", lastCheckpointDir)
 		start := time.Now()
-		numSeries := 0
-		numChunks := 0
-		if err := recoverRecords(lastCheckpointDir, &Series{}, func(msg proto.Message) error {
-			numSeries++
-			walSeries := msg.(*Series)
-
-			descs, err := fromWireChunks(walSeries.Chunks)
-			if err != nil {
-				return err
-			}
-			numChunks += len(descs)
-
-			state := userStates.getOrCreate(walSeries.UserId)
-
-			la = la[:0]
-			for _, l := range walSeries.Labels {
-				la = append(la, client.LabelAdapter{
-					Name:  string(l.Name),
-					Value: string(l.Value),
-				})
-			}
-			series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, nil, true)
-			if err != nil {
-				return err
-			}
-
-			return series.setChunks(descs)
-		}); err != nil {
+		if err := processCheckpoint(lastCheckpointDir, userStates); err != nil {
 			return err
 		}
 		elapsed := time.Since(start)
-		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String(), "num_series", numSeries, "num_chunks", numChunks)
+		level.Info(util.Logger).Log("msg", "recovered from checkpoint", "time", elapsed.String())
 	} else {
 		level.Info(util.Logger).Log("msg", "no checkpoint found")
 	}
@@ -382,63 +357,12 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	}
 
 	level.Info(util.Logger).Log("msg", "recovering from segments", "dir", walDir)
-	numRecords := 0
-	numSeries := 0
-	numSamples := 0
 	start := time.Now()
-	if err := recoverRecords(walDir, &Record{}, func(msg proto.Message) error {
-		record := msg.(*Record)
-		numRecords++
-		state := userStates.getOrCreate(record.UserId)
-		if numRecords%10000 == 0 {
-			level.Info(util.Logger).Log("msg", "records milestone", "num_records", numRecords)
-		}
-		for _, labels := range record.Labels {
-			_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
-			if ok {
-				continue
-			}
-
-			la = la[:0]
-			for _, l := range labels.Labels {
-				la = append(la, client.LabelAdapter{
-					Name:  string(l.Name),
-					Value: string(l.Value),
-				})
-			}
-			_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, nil, true)
-			if err != nil {
-				return err
-			}
-			numSeries++
-		}
-
-		for _, sample := range record.Samples {
-			series, ok := state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
-			if !ok {
-				return nil
-			}
-
-			err := series.add(model.SamplePair{
-				Timestamp: model.Time(sample.Timestamp),
-				Value:     model.SampleValue(sample.Value),
-			})
-			if err != nil {
-				// We can ignore memorySeriesError because duplicate (or) out-of-order samples are possible
-				// here because the WAL is not truncated to align with the checkpoint.
-				if _, ok := err.(*memorySeriesError); !ok {
-					return err
-				}
-			}
-		}
-		numSamples += len(record.Samples)
-
-		return nil
-	}); err != nil {
+	if err := processWAL(walDir, userStates); err != nil {
 		return err
 	}
 	elapsed := time.Since(start)
-	level.Info(util.Logger).Log("msg", "recovered from segments", "time", elapsed.String(), "num_new_series", numSeries, "num_records", numRecords, "num_samples", numSamples)
+	level.Info(util.Logger).Log("msg", "recovered from segments", "time", elapsed.String())
 
 	ingester.userStatesMtx.Lock()
 	ingester.userStates = userStates
@@ -447,21 +371,48 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	return nil
 }
 
-func recoverRecords(name string, ty proto.Message, callback func(proto.Message) error) error {
+func processCheckpoint(name string, userStates *userStates) error {
+	numSeries := 0
+	numChunks := 0
+	walSeries := &Series{}
+
 	segmentReader, err := wal.NewSegmentsReader(name)
 	if err != nil {
 		return err
 	}
 	defer segmentReader.Close()
 
+	la := []client.LabelAdapter{}
 	reader := wal.NewReader(segmentReader)
 	for reader.Next() {
-		ty.Reset()
-		if err := proto.Unmarshal(reader.Record(), ty); err != nil {
+		walSeries.Reset()
+		if err := proto.Unmarshal(reader.Record(), walSeries); err != nil {
 			return err
 		}
 
-		if err := callback(ty); err != nil {
+		numSeries++
+
+		descs, err := fromWireChunks(walSeries.Chunks)
+		if err != nil {
+			return err
+		}
+		numChunks += len(descs)
+
+		state := userStates.getOrCreate(walSeries.UserId)
+
+		la = la[:0]
+		for _, l := range walSeries.Labels {
+			la = append(la, client.LabelAdapter{
+				Name:  string(l.Name),
+				Value: string(l.Value),
+			})
+		}
+		series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, nil, true)
+		if err != nil {
+			return err
+		}
+
+		if err := series.setChunks(descs); err != nil {
 			return err
 		}
 	}
@@ -469,7 +420,121 @@ func recoverRecords(name string, ty proto.Message, callback func(proto.Message) 
 		return err
 	}
 
+	level.Info(util.Logger).Log("msg", "checkpoint recovery stats", "num_series", numSeries, "num_chunks", numChunks)
+
 	return nil
+}
+
+func processWAL(name string, userStates *userStates) error {
+	var (
+		chanErr    error
+		numProcs   = runtime.GOMAXPROCS(0)
+		recordChan = make(chan *Record, 1000)
+		errChan    = make(chan error, numProcs)
+		wg         = sync.WaitGroup{}
+		recordPool = sync.Pool{
+			New: func() interface{} {
+				return &Record{}
+			},
+		}
+	)
+
+	wg.Add(numProcs)
+	for i := 0; i < numProcs; i++ {
+		go func() {
+			defer func() {
+				wg.Done()
+			}()
+			var err error
+			var la []client.LabelAdapter
+			for record := range recordChan {
+				la, err = processWALRecord(record, userStates, la)
+				recordPool.Put(record)
+				if err != nil {
+					errChan <- err
+					return
+				}
+			}
+		}()
+	}
+
+	segmentReader, err := wal.NewSegmentsReader(name)
+	if err != nil {
+		return err
+	}
+	defer segmentReader.Close()
+
+	reader := wal.NewReader(segmentReader)
+Loop:
+	for reader.Next() {
+		msg := recordPool.Get().(*Record)
+		if err := proto.Unmarshal(reader.Record(), msg); err != nil {
+			return err
+		}
+
+		select {
+		case chanErr = <-errChan:
+			break Loop
+		case recordChan <- msg:
+		}
+	}
+	close(recordChan)
+	wg.Wait()
+
+	if chanErr != nil {
+		return chanErr
+	}
+	if err := reader.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func processWALRecord(record *Record, userStates *userStates, la []client.LabelAdapter) ([]client.LabelAdapter, error) {
+	state := userStates.getOrCreate(record.UserId)
+	for _, labels := range record.Labels {
+		_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
+		if ok {
+			continue
+		}
+
+		la = la[:0]
+		for _, l := range labels.Labels {
+			la = append(la, client.LabelAdapter{
+				Name:  string(l.Name),
+				Value: string(l.Value),
+			})
+		}
+		_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, nil, true)
+		if err != nil {
+			return la, err
+		}
+	}
+
+	for _, sample := range record.Samples {
+		state.fpLocker.Lock(model.Fingerprint(sample.Fingerprint))
+		series, ok := state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
+		if !ok {
+			state.fpLocker.Unlock(model.Fingerprint(sample.Fingerprint))
+			return la, nil
+		}
+
+		err := series.add(model.SamplePair{
+			Timestamp: model.Time(sample.Timestamp),
+			Value:     model.SampleValue(sample.Value),
+		})
+		if err != nil {
+			// We can ignore memorySeriesError because duplicate (or) out-of-order samples are possible
+			// here because the WAL is not truncated to align with the checkpoint.
+			if _, ok := err.(*memorySeriesError); !ok {
+				state.fpLocker.Unlock(model.Fingerprint(sample.Fingerprint))
+				return la, err
+			}
+		}
+		state.fpLocker.Unlock(model.Fingerprint(sample.Fingerprint))
+	}
+
+	return la, nil
 }
 
 func segmentsExist(dir string) (bool, error) {

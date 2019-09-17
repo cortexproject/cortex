@@ -56,6 +56,10 @@ func main() {
 	mc.Timeout = 2 * time.Second
 	for _, key := range keys {
 		item, err := mc.Get(key)
+		if err == memcache.ErrCacheMiss {
+			log.Printf("Failed to get key: %v", err)
+			continue
+		}
 		if err != nil {
 			log.Fatalf("Failed to get key: %v", err)
 		}
@@ -73,6 +77,8 @@ func main() {
 
 		if mode == modeDump {
 			fmt.Println(string(bytes))
+		} else if mode == modeGapSearch {
+			printGaps(req)
 		}
 
 		<-throttle
@@ -106,4 +112,12 @@ func readKeys(path string, order string) ([]string, error) {
 	}
 
 	return lines, nil
+}
+
+func printGaps(req *queryrange.CachedResponse) {
+	fmt.Println("Considering key: ", req.Key)
+
+	for _, e := range req.Extents {
+		fmt.Println("Considering extent: ", e.TraceId)
+	}
 }

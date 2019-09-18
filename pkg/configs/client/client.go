@@ -42,9 +42,6 @@ type Client interface {
 	// GetRules returns all Cortex configurations from a configs API server
 	// that have been updated after the given configs.ID was last updated.
 	GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error)
-
-	// GetAlerts fetches all the alerts that have changes since since.
-	GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error)
 }
 
 // New creates a new ConfigClient.

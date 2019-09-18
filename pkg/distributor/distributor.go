@@ -348,7 +348,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 		keys = append(keys, key)
 		validatedTimeseries = append(validatedTimeseries, client.PreallocTimeseries{
-			TimeSeries: client.TimeSeries{
+			TimeSeries: &client.TimeSeries{
 				Labels:  ts.Labels,
 				Samples: samples,
 			},

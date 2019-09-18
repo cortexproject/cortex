@@ -384,7 +384,7 @@ func makeWriteRequest(samples int) *client.WriteRequest {
 	request := &client.WriteRequest{}
 	for i := 0; i < samples; i++ {
 		ts := client.PreallocTimeseries{
-			TimeSeries: client.TimeSeries{
+			TimeSeries: &client.TimeSeries{
 				Labels: []client.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "bar", Value: "baz"},
@@ -407,7 +407,7 @@ func makeWriteRequestHA(samples int, replica, cluster string) *client.WriteReque
 	request := &client.WriteRequest{}
 	for i := 0; i < samples; i++ {
 		ts := client.PreallocTimeseries{
-			TimeSeries: client.TimeSeries{
+			TimeSeries: &client.TimeSeries{
 				Labels: []client.LabelAdapter{
 					{Name: "__name__", Value: "foo"},
 					{Name: "bar", Value: "baz"},
@@ -548,7 +548,7 @@ func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts
 	response := client.QueryResponse{}
 	for _, ts := range i.timeseries {
 		if match(ts.Labels, matchers) {
-			response.Timeseries = append(response.Timeseries, ts.TimeSeries)
+			response.Timeseries = append(response.Timeseries, *ts.TimeSeries)
 		}
 	}
 	return &response, nil

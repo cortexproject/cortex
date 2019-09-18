@@ -90,7 +90,7 @@ github.com/aws/aws-sdk-go/private/protocol/ec2query
 github.com/beorn7/perks/quantile
 # github.com/blang/semver v3.5.0+incompatible
 github.com/blang/semver
-# github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
+# github.com/bradfitz/gomemcache v0.0.0-20190329173943-551aad21a668
 github.com/bradfitz/gomemcache/memcache
 # github.com/cenkalti/backoff v1.0.0
 github.com/cenkalti/backoff

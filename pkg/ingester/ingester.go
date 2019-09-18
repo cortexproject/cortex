@@ -299,6 +299,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 			return nil, err
 		}
 	}
+	client.ReuseSlice(req.Timeseries)
 
 	if err := i.wal.Log(record); err != nil {
 		return nil, err

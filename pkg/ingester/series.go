@@ -137,7 +137,7 @@ func firstAndLastTimes(c encoding.Chunk) (model.Time, model.Time, error) {
 		first    model.Time
 		last     model.Time
 		firstSet bool
-		iter     = c.NewIterator()
+		iter     = c.NewIterator(nil)
 	)
 	for iter.Scan() {
 		sample := iter.Value()
@@ -196,9 +196,11 @@ func (s *memorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 		OldestInclusive: from,
 		NewestInclusive: through,
 	}
+	var reuseIter encoding.Iterator
 	for idx := fromIdx; idx <= throughIdx; idx++ {
 		cd := s.chunkDescs[idx]
-		chValues, err := encoding.RangeValues(cd.C.NewIterator(), in)
+		reuseIter = cd.C.NewIterator(reuseIter)
+		chValues, err := encoding.RangeValues(reuseIter, in)
 		if err != nil {
 			return nil, err
 		}

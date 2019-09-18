@@ -373,130 +373,92 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	return nil
 }
 
+// segmentsExist is a stripped down version of
+// https://github.com/prometheus/prometheus/blob/4c648eddf47d7e07fbc74d0b18244402200dca9e/tsdb/wal/wal.go#L739-L760.
+func segmentsExist(dir string) (bool, error) {
+	files, err := fileutil.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, fn := range files {
+		if _, err := strconv.Atoi(fn); err == nil {
+			// First filename which is a number.
+			// This is how Prometheus stores and this
+			// is how it checks too.
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // processCheckpoint loads the chunks of the series present in the last checkpoint.
 func processCheckpoint(name string, userStates *userStates) error {
-	numSeries := 0
-	numChunks := 0
-	walSeries := &Series{}
-
-	la := []client.LabelAdapter{}
-
-	reader, closer, err := walReader(name)
-	if err != nil {
-		return err
+	seriesPool := &sync.Pool{
+		New: func() interface{} {
+			return &Series{}
+		},
 	}
-	defer closer.Close()
+	return processRecords(
+		name, seriesPool,
+		func(seriesChan chan proto.Message, errChan chan error) {
+			var la []client.LabelAdapter
+			for s := range seriesChan {
+				walSeries := s.(*Series)
 
-	for reader.Next() {
-		walSeries.Reset()
-		if err := proto.Unmarshal(reader.Record(), walSeries); err != nil {
-			return err
-		}
+				state := userStates.getOrCreate(walSeries.UserId)
 
-		numSeries++
+				la = la[:0]
+				for _, l := range walSeries.Labels {
+					la = append(la, client.LabelAdapter{
+						Name:  string(l.Name),
+						Value: string(l.Value),
+					})
+				}
+				series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, nil, true)
+				if err != nil {
+					errChan <- err
+					return
+				}
 
-		descs, err := fromWireChunks(walSeries.Chunks)
-		if err != nil {
-			return err
-		}
-		numChunks += len(descs)
+				descs, err := fromWireChunks(walSeries.Chunks)
+				if err != nil {
+					errChan <- err
+					return
+				}
 
-		state := userStates.getOrCreate(walSeries.UserId)
+				if err := series.setChunks(descs); err != nil {
+					errChan <- err
+					return
+				}
 
-		la = la[:0]
-		for _, l := range walSeries.Labels {
-			la = append(la, client.LabelAdapter{
-				Name:  string(l.Name),
-				Value: string(l.Value),
-			})
-		}
-		series, err := state.createSeriesWithFingerprint(model.Fingerprint(walSeries.Fingerprint), la, nil, true)
-		if err != nil {
-			return err
-		}
-
-		if err := series.setChunks(descs); err != nil {
-			return err
-		}
-	}
-	if err := reader.Err(); err != nil {
-		return err
-	}
-
-	level.Info(util.Logger).Log("msg", "checkpoint recovery stats", "num_series", numSeries, "num_chunks", numChunks)
-
-	return nil
+				seriesPool.Put(s)
+			}
+		},
+	)
 }
 
 // processWAL processes the records in the WAL concurrently.
 func processWAL(name string, userStates *userStates) error {
-	var (
-		numProcs   = runtime.GOMAXPROCS(0)
-		recordChan = make(chan *Record, 1024)
-		// errChan is to capture the errors from goroutine.
-		// The channel size is numProcs to not block any worker if all of them error out.
-		errChan    = make(chan error, numProcs)
-		wg         = sync.WaitGroup{}
-		recordPool = sync.Pool{
-			New: func() interface{} {
-				return &Record{}
-			},
-		}
-	)
-
-	reader, closer, err := walReader(name)
-	if err != nil {
-		return err
+	recordPool := &sync.Pool{
+		New: func() interface{} {
+			return &Record{}
+		},
 	}
-	defer closer.Close()
-
-	// Creating workers.
-	wg.Add(numProcs)
-	for i := 0; i < numProcs; i++ {
-		go func() {
-			defer func() {
-				wg.Done()
-			}()
+	return processRecords(
+		name, recordPool,
+		func(recordChan chan proto.Message, errChan chan error) {
 			var err error
 			var la []client.LabelAdapter
 			for record := range recordChan {
-				la, err = processWALRecord(record, userStates, la)
+				la, err = processWALRecord(record.(*Record), userStates, la)
 				recordPool.Put(record)
 				if err != nil {
 					errChan <- err
 					return
 				}
 			}
-		}()
-	}
-
-	// Iterating the WAL records.
-	var errFromChan error
-Loop:
-	for reader.Next() {
-		msg := recordPool.Get().(*Record)
-		if err := proto.Unmarshal(reader.Record(), msg); err != nil {
-			return err
-		}
-
-		select {
-		case errFromChan = <-errChan:
-			// Exit early on an error.
-			// Only acts upon the first error received.
-			break Loop
-		case recordChan <- msg:
-		}
-	}
-	close(recordChan)
-	wg.Wait()
-
-	if errFromChan != nil {
-		return errFromChan
-	}
-	if err := reader.Err(); err != nil {
-		return err
-	}
-	return nil
+		},
+	)
 }
 
 func processWALRecord(record *Record, userStates *userStates, la []client.LabelAdapter) ([]client.LabelAdapter, error) {
@@ -553,22 +515,65 @@ func processWALRecord(record *Record, userStates *userStates, la []client.LabelA
 	return la, nil
 }
 
-// segmentsExist is a stripped down version of
-// https://github.com/prometheus/prometheus/blob/4c648eddf47d7e07fbc74d0b18244402200dca9e/tsdb/wal/wal.go#L739-L760.
-func segmentsExist(dir string) (bool, error) {
-	files, err := fileutil.ReadDir(dir)
+func processRecords(name string, msgPool *sync.Pool, workerFunc func(chan proto.Message, chan error)) error {
+	var (
+		numProcs = runtime.GOMAXPROCS(0)
+		msgChan  = make(chan proto.Message, 128*numProcs)
+		// errChan is to capture the errors from goroutine.
+		// The channel size is numProcs to not block any worker if all of them error out.
+		errChan = make(chan error, numProcs)
+		wg      = sync.WaitGroup{}
+	)
+
+	reader, closer, err := walReader(name)
 	if err != nil {
-		return false, err
+		return err
 	}
-	for _, fn := range files {
-		if _, err := strconv.Atoi(fn); err == nil {
-			// First filename which is a number.
-			// This is how Prometheus stores and this
-			// is how it checks too.
-			return true, nil
+	defer closer.Close()
+
+	// Creating workers.
+	wg.Add(numProcs)
+	for i := 0; i < numProcs; i++ {
+		go func() {
+			defer func() {
+				wg.Done()
+			}()
+			workerFunc(msgChan, errChan)
+		}()
+	}
+
+	// Iterating the WAL records.
+	var errFromChan error
+Loop:
+	for reader.Next() {
+		msg := msgPool.Get().(proto.Message)
+		if err := proto.Unmarshal(reader.Record(), msg); err != nil {
+			return err
+		}
+
+		select {
+		case errFromChan = <-errChan:
+			// Exit early on an error.
+			// Only acts upon the first error received.
+			break Loop
+		case msgChan <- msg:
 		}
 	}
-	return false, nil
+	close(msgChan)
+	wg.Wait()
+
+	if errFromChan != nil {
+		return errFromChan
+	}
+	select {
+	case errFromChan = <-errChan:
+		return errFromChan
+	default:
+		if err := reader.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func walReader(name string) (*wal.Reader, io.Closer, error) {

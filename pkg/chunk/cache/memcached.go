@@ -55,7 +55,7 @@ func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, 
 
 // Memcached type caches chunks in memcached
 type Memcached struct {
-	cfg      StoreConfig
+	cfg      MemcachedConfig
 	memcache MemcachedClient
 	name     string
 
@@ -68,7 +68,7 @@ type Memcached struct {
 // NewMemcached makes a new Memcache.
 // TODO(bwplotka): Fix metrics, get them out of globals, separate or allow prefixing.
 // TODO(bwplotka): Remove globals & util packages from cache package entirely (e.g util.Logger).
-func NewMemcached(cfg StoreConfig, client MemcachedClient, name string) *Memcached {
+func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string) *Memcached {
 	c := &Memcached{
 		cfg:      cfg,
 		memcache: client,

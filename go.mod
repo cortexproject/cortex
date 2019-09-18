@@ -53,12 +53,12 @@ require (
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/prometheus/alertmanager v0.15.1
-	github.com/prometheus/client_golang v1.0.0
-	github.com/prometheus/common v0.4.1
-	github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac
-	github.com/prometheus/tsdb v0.9.1
+	github.com/prometheus/alertmanager v0.19.0
+	github.com/prometheus/client_golang v1.1.0
+	github.com/prometheus/common v0.6.0
+	github.com/prometheus/prometheus v0.0.0-20190818123050-43acd0e2e93f
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
+	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect

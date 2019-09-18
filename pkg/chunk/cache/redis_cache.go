@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"flag"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -28,6 +29,15 @@ type RedisCache struct {
 	requestDuration observableVecCollector
 }
 
+// RedisConfig defines how a RedisCache should be constructed.
+type RedisConfig struct {
+	Endpoint       string        `yaml:"endpoint,omitempty"`
+	Timeout        time.Duration `yaml:"timeout,omitempty"`
+	Expiration     time.Duration `yaml:"expiration,omitempty"`
+	MaxIdleConns   int           `yaml:"max_idle_conns,omitempty"`
+	MaxActiveConns int           `yaml:"max_active_conns,omitempty"`
+}
+
 type redisClient struct {
 	pool *redis.Pool
 }
@@ -43,8 +53,17 @@ var (
 	errRedisQueryTimeout = errors.New("redis query timeout")
 )
 
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis service endpoint to use when caching chunks. If empty, no redis will be used.")
+	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
+	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
+	f.IntVar(&cfg.MaxIdleConns, prefix+"redis.max-idle-conns", 80, description+"Maximum number of idle connections in pool.")
+	f.IntVar(&cfg.MaxActiveConns, prefix+"redis.max-active-conns", 0, description+"Maximum number of active connections in pool.")
+}
+
 // NewRedisCache creates a new RedisCache
-func NewRedisCache(cfg StoreConfig, name string, client RedisClient) *RedisCache {
+func NewRedisCache(cfg RedisConfig, name string, client RedisClient) *RedisCache {
 	// client != nil in unit tests
 	if client == nil {
 		client = &redisClient{
@@ -52,7 +71,7 @@ func NewRedisCache(cfg StoreConfig, name string, client RedisClient) *RedisCache
 				MaxIdle:   cfg.MaxIdleConns,
 				MaxActive: cfg.MaxActiveConns,
 				Dial: func() (redis.Conn, error) {
-					c, err := redis.Dial("tcp", cfg.Service)
+					c, err := redis.Dial("tcp", cfg.Endpoint)
 					if err != nil {
 						return nil, err
 					}
@@ -75,7 +94,7 @@ func NewRedisCache(cfg StoreConfig, name string, client RedisClient) *RedisCache
 	}
 
 	if err := cache.ping(context.Background()); err != nil {
-		level.Error(util.Logger).Log("msg", "error connecting to redis", "endpoint", cfg.Service, "err", err)
+		level.Error(util.Logger).Log("msg", "error connecting to redis", "endpoint", cfg.Endpoint, "err", err)
 	}
 
 	return cache

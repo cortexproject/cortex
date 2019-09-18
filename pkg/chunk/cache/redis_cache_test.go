@@ -24,7 +24,7 @@ func (c *redisMockClient) Close() error {
 }
 
 func TestRedisCache(t *testing.T) {
-	cfg := cache.StoreConfig{
+	cfg := cache.RedisConfig{
 		Timeout: 10 * time.Millisecond,
 	}
 

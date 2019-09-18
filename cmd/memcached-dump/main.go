@@ -29,12 +29,13 @@ const (
 )
 
 var (
-	address  string
-	keyfile  string
-	rate     time.Duration
-	mode     string
-	keyOrder string
-	minGap   time.Duration
+	address        string
+	keyfile        string
+	rate           time.Duration
+	mode           string
+	keyOrder       string
+	minGap         time.Duration
+	querierAddress string
 )
 
 func init() {
@@ -44,6 +45,7 @@ func init() {
 	flag.StringVar(&mode, "mode", "dump", "Specify mode for memcached tool [dump, gaps, gaps-validate].")
 	flag.StringVar(&keyOrder, "key-order", "random", "Specify order to consider keys [forward, reverse, random].")
 	flag.DurationVar(&minGap, "min-gap", 0, "Minimum gap to report.")
+	flag.StringVar(&querierAddress, "querier-address", "localhost:8080", "In gaps-validate mode the querier to validate against.")
 }
 
 func main() {
@@ -61,6 +63,8 @@ func main() {
 		loop(keys, mc, rate, processDump)
 	} else if mode == modeGapSearch {
 		loop(keys, mc, rate, buildProcessGaps(minGap))
+	} else if mode == modeGapValidate {
+		loop(keys, mc, rate, buildValidateGaps(minGap, querierAddress))
 	}
 }
 

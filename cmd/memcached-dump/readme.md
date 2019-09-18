@@ -22,7 +22,7 @@ Search for and print found gaps:
 ./main -mode=gaps -min-gap=30m
 ```
 
-After finding a gap, kill the memcached key, requery and determine if there's a difference.
+After finding a gap, re-execute the query directly on a querier and look for differences.
 
 ```
 ./main -mode=gaps-validate

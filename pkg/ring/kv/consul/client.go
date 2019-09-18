@@ -223,7 +223,12 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 
 		kvps, meta, err := c.kv.List(prefix, queryOptions.WithContext(ctx))
 		if err != nil || kvps == nil {
-			level.Error(util.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
+			if kvps == nil {
+				level.Warn(util.Logger).Log("msg", "no items in path", "prefix", prefix)
+			} else {
+				level.Error(util.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
+			}
+
 			backoff.Wait()
 			continue
 		}

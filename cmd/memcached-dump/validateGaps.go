@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ const secondsPerDay = 86400
 func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc {
 	totalQueries := 0
 	totalGaps := 0
+	fakeGaps := 0
 
 	return func(cache *queryrange.CachedResponse, b []byte) {
 		hasGaps := false
@@ -40,36 +42,52 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 
 		totalQueries++
 		if hasGaps {
+			if len(cache.Extents) > 1 {
+				fmt.Println("Oh no!  More than 1 extent!")
+				return
+			}
 
-			err := requery(cache, querierAddress)
+			cached := cache.Extents[0].Response
+			uncached, err := requery(cache, querierAddress)
 
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
 
-			totalGaps++
-			fmt.Printf("Gaps/Total: %d/%d\n", totalGaps, totalQueries)
-			//fmt.Println(string(b))
+			if !reflect.DeepEqual(cached, uncached) {
+				totalGaps++
+
+				jsonCached, _ := json.Marshal(cached)
+				jsonUncached, _ := json.Marshal(uncached)
+				fmt.Println(string(jsonCached))
+				fmt.Println(string(jsonUncached))
+			} else {
+				fakeGaps++
+			}
+
+			fmt.Printf("Fake/Real/Total: %d/%d/%d (%f) \n", fakeGaps, totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))
 		}
 	}
 }
 
-func requery(cache *queryrange.CachedResponse, address string) error {
+func requery(cache *queryrange.CachedResponse, address string) (*queryrange.APIResponse, error) {
 	// build a query string from the cache key
 	parts := strings.Split(cache.Key, ":")
 
-	if len(parts) != 4 {
-		return fmt.Errorf("unable to parse key %s", cache.Key)
+	if len(parts) < 4 {
+		return nil, fmt.Errorf("unable to parse key %s", cache.Key)
 	}
 
 	userID := parts[0]
-	query := parts[1]
-	step := parts[2]
-
-	day, err := strconv.ParseInt(parts[3], 10, 64)
+	query := strings.Join(parts[1:len(parts)-2], ":")
+	step, err := strconv.ParseInt(parts[len(parts)-2], 10, 64)
 	if err != nil {
-		return fmt.Errorf("unable to parse day %s", parts[3])
+		return nil, fmt.Errorf("unable to parse step %s", parts[len(parts)-2])
+	}
+	day, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse day %s", parts[len(parts)-1])
 	}
 
 	u := url.URL{}
@@ -81,8 +99,8 @@ func requery(cache *queryrange.CachedResponse, address string) error {
 	q := u.Query()
 	q.Set("query", query)
 	q.Set("start", fmt.Sprint(day*secondsPerDay))
-	q.Set("end", fmt.Sprint((day+1)*secondsPerDay))
-	q.Set("step", step)
+	q.Set("end", fmt.Sprint((day+1)*secondsPerDay-1)) // -1 : don't grab the first sample of the next day
+	q.Set("step", fmt.Sprint(step/1000))
 
 	u.RawQuery = q.Encode()
 
@@ -95,24 +113,21 @@ func requery(cache *queryrange.CachedResponse, address string) error {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	jsonBytes, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	var value map[string]interface{}
+	var value queryrange.APIResponse
 
 	err = json.Unmarshal(jsonBytes, &value)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	fmt.Println(value)
-
-	return nil
+	return &value, nil
 }

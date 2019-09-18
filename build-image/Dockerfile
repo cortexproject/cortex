@@ -17,8 +17,6 @@ RUN GO111MODULE=on go get -tags netgo \
 		github.com/gogo/protobuf/protoc-gen-gogoslick@v1.2.1 \
 		github.com/gogo/protobuf/gogoproto@v1.2.1 && \
 	rm -rf /go/pkg /go/src
-RUN curl -Ls https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64 -o $GOPATH/bin/dep && \
-  chmod +x $GOPATH/bin/dep
 COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]

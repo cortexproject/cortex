@@ -45,8 +45,5 @@ push_image() {
 }
 
 for image in ${IMAGES}; do
-    if [[ "$image" == *"build"* ]]; then
-        continue
-    fi
     push_image "${image}"
 done

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -96,7 +98,21 @@ func requery(cache *queryrange.CachedResponse, address string) error {
 		return err
 	}
 
-	fmt.Println(resp)
+	jsonBytes, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		return err
+	}
+
+	var value map[string]interface{}
+
+	err = json.Unmarshal(jsonBytes, &value)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(value)
 
 	return nil
 }

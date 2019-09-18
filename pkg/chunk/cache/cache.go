@@ -71,7 +71,7 @@ func New(cfg Config) (Cache, error) {
 	}
 
 	if cfg.MemcacheClient.Host != "" && cfg.Redis.Endpoint != "" {
-		return nil, errors.New("use of multiple cache storage systems is not supported.")
+		return nil, errors.New("use of multiple cache storage systems is not supported")
 	}
 
 	if cfg.MemcacheClient.Host != "" {

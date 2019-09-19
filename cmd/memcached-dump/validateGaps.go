@@ -57,7 +57,7 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 		totalQueries++
 		if hasGaps {
 			cached := e.Response
-			uncached, err := requery(cache, e.Start, e.End, querierAddress)
+			uncached, err := requery(cache, e.Start/1000, e.End/1000, querierAddress)
 
 			if err != nil {
 				fmt.Println(err)
@@ -67,7 +67,6 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 			jsonCached, _ := json.Marshal(cached)
 			jsonUncached, _ := json.Marshal(uncached)
 
-			// if reflect.DeepEqual(cached, uncached) {
 			if string(jsonCached) == string(jsonUncached) {
 				fakeGaps++
 			} else {
@@ -102,7 +101,7 @@ func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds in
 
 	u.RawQuery = q.Encode()
 
-	fmt.Println(query)
+	fmt.Println("Requery: ", u.String())
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", u.String(), nil)

@@ -20,9 +20,20 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 	totalQueries := 0
 	totalGaps := 0
 	fakeGaps := 0
+	totalSkips := 0
 
 	return func(cache *queryrange.CachedResponse, b []byte) {
 		hasGaps := false
+
+		if len(cache.Extents) != 1 {
+			fmt.Println("Support multiple extents.  Found ", len(cache.Extents))
+			totalSkips++
+		}
+
+		e := cache.Extents[0]
+		if e.Response.Status == "error" {
+			return
+		}
 
 		_, _, expectedIntervalMs, _, err := parseCacheKey(cache.Key)
 		if err != nil {
@@ -30,16 +41,14 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 			return
 		}
 
-		for _, e := range cache.Extents {
-			for _, d := range e.Response.Data.Result {
-				if len(d.Samples) > 1 {
+		for _, d := range e.Response.Data.Result {
+			if len(d.Samples) > 1 {
 
-					for i := 0; i < len(d.Samples)-2; i++ {
-						actualIntervalMs := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
+				for i := 0; i < len(d.Samples)-2; i++ {
+					actualIntervalMs := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
 
-						if actualIntervalMs > expectedIntervalMs && time.Duration(actualIntervalMs)*time.Millisecond > minGap {
-							hasGaps = true
-						}
+					if actualIntervalMs > expectedIntervalMs && time.Duration(actualIntervalMs)*time.Millisecond > minGap {
+						hasGaps = true
 					}
 				}
 			}
@@ -47,38 +56,32 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 
 		totalQueries++
 		if hasGaps {
-			if len(cache.Extents) > 1 {
-				fmt.Println("Oh no!  More than 1 extent!  Assume Real Gap.")
-				totalGaps++
-			} else {
+			cached := e.Response
+			uncached, err := requery(cache, e.Start, e.End, querierAddress)
 
-				cached := cache.Extents[0].Response
-				uncached, err := requery(cache, querierAddress)
-
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-
-				if !reflect.DeepEqual(cached, uncached) {
-					totalGaps++
-
-					jsonCached, _ := json.Marshal(cached)
-					jsonUncached, _ := json.Marshal(uncached)
-					fmt.Println(string(jsonCached))
-					fmt.Println(string(jsonUncached))
-				} else {
-					fakeGaps++
-				}
+			if err != nil {
+				fmt.Println(err)
+				return
 			}
 
-			fmt.Printf("Fake/Real/Total: %d/%d/%d (%f) \n", fakeGaps, totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))
+			if !reflect.DeepEqual(cached, uncached) {
+				totalGaps++
+
+				jsonCached, _ := json.Marshal(cached)
+				jsonUncached, _ := json.Marshal(uncached)
+				fmt.Println(string(jsonCached))
+				fmt.Println(string(jsonUncached))
+			} else {
+				fakeGaps++
+			}
+
+			fmt.Printf("Skips/Fake/Real/Total: %d/%d/%d/%d/%d (%f) \n", totalSkips, fakeGaps, totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))
 		}
 	}
 }
 
-func requery(cache *queryrange.CachedResponse, address string) (*queryrange.APIResponse, error) {
-	userID, query, step, day, err := parseCacheKey(cache.Key)
+func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds int64, address string) (*queryrange.APIResponse, error) {
+	userID, query, step, _, err := parseCacheKey(cache.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +94,8 @@ func requery(cache *queryrange.CachedResponse, address string) (*queryrange.APIR
 
 	q := u.Query()
 	q.Set("query", query)
-	q.Set("start", fmt.Sprint(day*secondsPerDay))
-	q.Set("end", fmt.Sprint((day+1)*secondsPerDay-1)) // -1 : don't grab the first sample of the next day
+	q.Set("start", fmt.Sprint(startSeconds))
+	q.Set("end", fmt.Sprint(endSeconds))
 	q.Set("step", fmt.Sprint(step/1000))
 
 	u.RawQuery = q.Encode()

@@ -150,6 +150,13 @@ func (c *haTracker) loop(ctx context.Context) {
 		c.electedLock.Lock()
 		defer c.electedLock.Unlock()
 		chunks := strings.SplitN(key, "/", 2)
+
+		// The prefix has already been stripped, so a valid key would look like cluster/replica,
+		// and a key without a / such as `ring` would be invalid.
+		if len(chunks) != 2 {
+			return true
+		}
+
 		if replica.Replica != c.elected[key].Replica {
 			electedReplicaChanges.WithLabelValues(chunks[0], chunks[1]).Inc()
 		}

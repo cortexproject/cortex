@@ -69,7 +69,7 @@ const (
 var (
 	totalConfigs = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "alertmanager_configs_total",
+		Name:      "alertmanager_configs",
 		Help:      "How many configs the multitenant alertmanager knows about.",
 	})
 	statusTemplate      *template.Template

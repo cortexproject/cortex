@@ -14,11 +14,16 @@ func buildProcessGaps(minGap time.Duration) processFunc {
 	return func(req *queryrange.CachedResponse, b []byte) {
 		hasGaps := false
 
+		_, _, expectedIntervalMs, _, err := parseCacheKey(req.Key)
+		if err != nil {
+			fmt.Println("Error parsing cache key: ", err)
+			return
+		}
+
 		for _, e := range req.Extents {
 			for _, d := range e.Response.Data.Result {
 				if len(d.Samples) > 1 {
 
-					expectedIntervalMs := d.Samples[1].TimestampMs - d.Samples[0].TimestampMs
 					for i := 0; i < len(d.Samples)-2; i++ {
 						actualIntervalMs := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
 
@@ -38,7 +43,7 @@ func buildProcessGaps(minGap time.Duration) processFunc {
 		totalQueries++
 		if hasGaps {
 			totalGaps++
-			fmt.Printf("Gaps/Total: %d/%d\n", totalGaps, totalQueries)
+			fmt.Printf("Gaps/Total: %d/%d (%f)\n", totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))
 			fmt.Println(string(b))
 		}
 	}

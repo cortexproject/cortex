@@ -16,7 +16,7 @@ This cli program dumps all values from the a Cortex frontend memcached server.  
 
 ### gap analysis
 
-Search for and print found gaps:
+Search for and print found gaps.  Streams are considered to have gaps when the difference between any two data points is greater than the requested step.
 
 ```
 ./main -mode=gaps -min-gap=30m

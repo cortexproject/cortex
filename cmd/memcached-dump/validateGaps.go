@@ -24,11 +24,16 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 	return func(cache *queryrange.CachedResponse, b []byte) {
 		hasGaps := false
 
+		_, _, expectedIntervalMs, _, err := parseCacheKey(cache.Key)
+		if err != nil {
+			fmt.Println("Error parsing cache key: ", err)
+			return
+		}
+
 		for _, e := range cache.Extents {
 			for _, d := range e.Response.Data.Result {
 				if len(d.Samples) > 1 {
 
-					expectedIntervalMs := d.Samples[1].TimestampMs - d.Samples[0].TimestampMs
 					for i := 0; i < len(d.Samples)-2; i++ {
 						actualIntervalMs := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
 
@@ -73,22 +78,9 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 }
 
 func requery(cache *queryrange.CachedResponse, address string) (*queryrange.APIResponse, error) {
-	// build a query string from the cache key
-	parts := strings.Split(cache.Key, ":")
-
-	if len(parts) < 4 {
-		return nil, fmt.Errorf("unable to parse key %s", cache.Key)
-	}
-
-	userID := parts[0]
-	query := strings.Join(parts[1:len(parts)-2], ":")
-	step, err := strconv.ParseInt(parts[len(parts)-2], 10, 64)
+	userID, query, step, day, err := parseCacheKey(cache.Key)
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse step %s", parts[len(parts)-2])
-	}
-	day, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse day %s", parts[len(parts)-1])
+		return nil, err
 	}
 
 	u := url.URL{}
@@ -131,4 +123,26 @@ func requery(cache *queryrange.CachedResponse, address string) (*queryrange.APIR
 		return nil, err
 	}
 	return &value, nil
+}
+
+func parseCacheKey(key string) (string, string, int64, int64, error) {
+	// build a query string from the cache key
+	parts := strings.Split(key, ":")
+
+	if len(parts) < 4 {
+		return "", "", 0, 0, fmt.Errorf("unable to parse key %s", key)
+	}
+
+	userID := parts[0]
+	query := strings.Join(parts[1:len(parts)-2], ":")
+	stepMs, err := strconv.ParseInt(parts[len(parts)-2], 10, 64)
+	if err != nil {
+		return "", "", 0, 0, fmt.Errorf("unable to parse step %s", parts[len(parts)-2])
+	}
+	day, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+	if err != nil {
+		return "", "", 0, 0, fmt.Errorf("unable to parse day %s", parts[len(parts)-1])
+	}
+
+	return userID, query, stepMs, day, nil
 }

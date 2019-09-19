@@ -13,8 +13,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 )
 
-const secondsPerDay = 86400
-
 func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc {
 	totalQueries := 0
 	totalGaps := 0
@@ -23,7 +21,7 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 	return func(cache *queryrange.CachedResponse, b []byte) {
 		hasGaps := false
 
-		userId, _, expectedIntervalMs, _, err := parseCacheKey(cache.Key)
+		userID, _, expectedIntervalMs, _, err := parseCacheKey(cache.Key)
 		if err != nil {
 			fmt.Println("Error parsing cache key: ", err)
 			return
@@ -63,7 +61,7 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 					totalGaps++
 
 					fmt.Println("Gap Found: ")
-					fmt.Println("User        : ", userId)
+					fmt.Println("User        : ", userID)
 					fmt.Println("Trace       : ", e.TraceId)
 					fmt.Println("requery url : ", url)
 					fmt.Println("cached: ")

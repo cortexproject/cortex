@@ -123,6 +123,8 @@ jobs:
         path: pkg/ring/ring.pb.go
     - store_artifacts:
         path: pkg/ingester/client/cortex.pb.go
+    - store_artifacts:
+        path: pkg/ruler/rules/rules.pb.go
 
     - run:
         name: Save Images

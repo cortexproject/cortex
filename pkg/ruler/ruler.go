@@ -3,7 +3,7 @@ package ruler
 import (
 	native_ctx "context"
 	"flag"
-	"fmt"
+	"hash/fnv"
 	"net/http"
 	"net/url"
 	"sync"
@@ -16,74 +16,50 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/storage"
+	promRules "github.com/prometheus/prometheus/rules"
+	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/strutil"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
-	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 )
 
 var (
-	evalDuration = instrument.NewHistogramCollectorFromOpts(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "group_evaluation_duration_seconds",
-		Help:      "The duration for a rule group to execute.",
-		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 25},
-	})
-	rulesProcessed = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "rules_processed_total",
-		Help:      "How many rules have been processed.",
-	})
 	ringCheckErrors = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "ruler_ring_check_errors_total",
 		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
-	ruleMetrics *rules.Metrics
+	configUpdatesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ruler_config_updates_total",
+		Help:      "Total number of config updates triggered by a user",
+	}, []string{"user"})
 )
-
-func init() {
-	evalDuration.Register()
-	ruleMetrics = rules.NewGroupMetrics(prometheus.DefaultRegisterer)
-}
 
 // Config is the configuration for the recording rules server.
 type Config struct {
-	// This is used for template expansion in alerts; must be a valid URL
-	ExternalURL flagext.URLValue
+	ExternalURL        flagext.URLValue // This is used for template expansion in alerts; must be a valid URL
+	EvaluationInterval time.Duration    // How frequently to evaluate rules by default.
+	PollInterval       time.Duration    // How frequently to poll for updated rules
+	StoreConfig        RuleStoreConfig  // Rule Storage and Polling configuration
+	RulePath           string           // Path to store rule files for prom manager
 
-	// How frequently to evaluate rules by default.
-	EvaluationInterval time.Duration
-	NumWorkers         int
+	AlertmanagerURL             flagext.URLValue // URL of the Alertmanager to send notifications to.
+	AlertmanagerDiscovery       bool             // Whether to use DNS SRV records to discover alertmanagers.
+	AlertmanagerRefreshInterval time.Duration    // How long to wait between refreshing the list of alertmanagers based on DNS service discovery.
+	AlertmanangerEnableV2API    bool             // Enables the ruler notifier to use the alertmananger V2 API
+	NotificationQueueCapacity   int              // Capacity of the queue for notifications to be sent to the Alertmanager.
+	NotificationTimeout         time.Duration    // HTTP timeout duration when sending notifications to the Alertmanager.
 
-	// URL of the Alertmanager to send notifications to.
-	AlertmanagerURL flagext.URLValue
-	// Whether to use DNS SRV records to discover alertmanagers.
-	AlertmanagerDiscovery bool
-	// How long to wait between refreshing the list of alertmanagers based on
-	// DNS service discovery.
-	AlertmanagerRefreshInterval time.Duration
-	// Enables the ruler notifier to use the alertmananger V2 API
-	AlertmanangerEnableV2API bool
-
-	// Capacity of the queue for notifications to be sent to the Alertmanager.
-	NotificationQueueCapacity int
-	// HTTP timeout duration when sending notifications to the Alertmanager.
-	NotificationTimeout time.Duration
-	// Timeout for rule group evaluation, including sending result to ingester
-	GroupTimeout time.Duration
-
-	EnableSharding bool
-
+	EnableSharding   bool // Enable sharding rule groups
 	SearchPendingFor time.Duration
 	LifecyclerConfig ring.LifecyclerConfig
 	FlushCheckPeriod time.Duration
@@ -92,69 +68,78 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ruler.", f)
+	cfg.StoreConfig.RegisterFlags(f)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
-	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
-	f.IntVar(&cfg.NumWorkers, "ruler.num-workers", 1, "Number of rule evaluator worker routines in this process")
+	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
+	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes")
 	f.Var(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "URL of the Alertmanager to send notifications to.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover alertmanager hosts.")
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing alertmanager hosts.")
 	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", false, "If enabled requests to alertmanager will utilize the V2 API.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
-	f.DurationVar(&cfg.GroupTimeout, "ruler.group-timeout", 10*time.Second, "Timeout for rule group evaluation, including sending result to ingester")
 	if flag.Lookup("promql.lookback-delta") == nil {
 		flag.DurationVar(&promql.LookbackDelta, "promql.lookback-delta", promql.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	}
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
+	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
 }
 
 // Ruler evaluates rules.
 type Ruler struct {
 	cfg         Config
 	engine      *promql.Engine
-	queryable   storage.Queryable
+	queryable   promStorage.Queryable
 	pusher      Pusher
 	alertURL    *url.URL
 	notifierCfg *config.Config
 
-	scheduler *scheduler
-	workerWG  *sync.WaitGroup
-
 	lifecycler *ring.Lifecycler
 	ring       *ring.Ring
+
+	store          rules.RuleStore
+	mapper         *mapper
+	userManagerMtx sync.Mutex
+	userManagers   map[string]*promRules.Manager
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
 	notifiers    map[string]*rulerNotifier
+
+	done       chan struct{}
+	terminated chan struct{}
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, rulesAPI client.Client) (*Ruler, error) {
-	if cfg.NumWorkers <= 0 {
-		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
-	}
-
+func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, d *distributor.Distributor) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	ruler := &Ruler{
-		cfg:         cfg,
-		engine:      engine,
-		queryable:   queryable,
-		pusher:      d,
-		alertURL:    cfg.ExternalURL.URL,
-		notifierCfg: ncfg,
-		notifiers:   map[string]*rulerNotifier{},
-		workerWG:    &sync.WaitGroup{},
+	ruleStore, err := NewRuleStorage(cfg.StoreConfig)
+	if err != nil {
+		return nil, err
 	}
 
-	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup, ruler.removeUser)
+	ruler := &Ruler{
+		cfg:          cfg,
+		engine:       engine,
+		queryable:    queryable,
+		alertURL:     cfg.ExternalURL.URL,
+		notifierCfg:  ncfg,
+		notifiers:    map[string]*rulerNotifier{},
+		store:        ruleStore,
+		pusher:       d,
+		mapper:       newMapper(cfg.RulePath),
+		userManagers: map[string]*promRules.Manager{},
+		done:         make(chan struct{}),
+		terminated:   make(chan struct{}),
+	}
 
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler
@@ -172,19 +157,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		}
 	}
 
-	for i := 0; i < cfg.NumWorkers; i++ {
-		// initialize each worker in a function that signals when
-		// the worker has completed
-		ruler.workerWG.Add(1)
-		go func() {
-			w := newWorker(ruler)
-			w.Run()
-			ruler.workerWG.Done()
-		}()
-	}
-
-	go ruler.scheduler.Run()
-
+	go ruler.run()
 	level.Info(util.Logger).Log("msg", "ruler up and running")
 
 	return ruler, nil
@@ -193,17 +166,14 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 // Stop stops the Ruler.
 // Each function of the ruler is terminated before leaving the ring
 func (r *Ruler) Stop() {
+	close(r.done)
+	<-r.terminated
+
 	r.notifiersMtx.Lock()
 	for _, n := range r.notifiers {
 		n.stop()
 	}
 	r.notifiersMtx.Unlock()
-
-	level.Info(util.Logger).Log("msg", "shutting down rules scheduler")
-	r.scheduler.Stop()
-
-	level.Info(util.Logger).Log("msg", "waiting for workers to finish")
-	r.workerWG.Wait()
 
 	if r.cfg.EnableSharding {
 		level.Info(util.Logger).Log("msg", "attempting shutdown lifecycle")
@@ -211,48 +181,35 @@ func (r *Ruler) Stop() {
 		level.Info(util.Logger).Log("msg", "shutting down the ring")
 		r.ring.Stop()
 	}
-}
 
-func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
-	appendable := &appendableAppender{pusher: r.pusher}
-	notifier, err := r.getOrCreateNotifier(userID)
-	if err != nil {
-		return nil, err
+	level.Info(util.Logger).Log("msg", "stopping user managers")
+	wg := sync.WaitGroup{}
+	r.userManagerMtx.Lock()
+	for user, manager := range r.userManagers {
+		level.Debug(util.Logger).Log("msg", "shutting down user  manager", "user", user)
+		go func(manager *promRules.Manager, user string) {
+			wg.Add(1)
+			manager.Stop()
+			wg.Done()
+			level.Debug(util.Logger).Log("msg", "user manager shut down", "user", user)
+		}(manager, user)
 	}
-	opts := &rules.ManagerOptions{
-		Appendable:  appendable,
-		QueryFunc:   rules.EngineQueryFunc(r.engine, r.queryable),
-		Context:     context.Background(),
-		ExternalURL: r.alertURL,
-		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
-		Logger:      util.Logger,
-		Metrics:     ruleMetrics,
-	}
-	return newGroup(groupName, rls, appendable, opts), nil
-}
-
-func (r *Ruler) removeUser(userID string) error {
-	r.notifiersMtx.Lock()
-	defer r.notifiersMtx.Unlock()
-
-	if n, ok := r.notifiers[userID]; ok {
-		n.stop()
-	}
-	delete(r.notifiers, userID)
-	return nil
+	wg.Wait()
+	r.userManagerMtx.Unlock()
+	level.Info(util.Logger).Log("msg", "all user managers stopped")
 }
 
 // sendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func sendAlerts(n *notifier.Manager, externalURL string) rules.NotifyFunc {
-	return func(ctx native_ctx.Context, expr string, alerts ...*rules.Alert) {
+func sendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
+	return func(ctx native_ctx.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
 			// Only send actually firing alerts.
-			if alert.State == rules.StatePending {
+			if alert.State == promRules.StatePending {
 				continue
 			}
 			a := &notifier.Alert{
@@ -312,48 +269,19 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 	return n.notifier, nil
 }
 
-// Evaluate a list of rules in the given context.
-func (r *Ruler) Evaluate(userID string, item *workItem) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-	logger := util.WithContext(ctx, util.Logger)
-	if r.cfg.EnableSharding && !r.ownsRule(item.hash) {
-		level.Debug(util.Logger).Log("msg", "ruler: skipping evaluation, not owned", "user_id", item.userID, "group", item.groupName)
-		return
-	}
-	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
-	ctx, cancelTimeout := context.WithTimeout(ctx, r.cfg.GroupTimeout)
-	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
-		if span := ot.SpanFromContext(ctx); span != nil {
-			span.SetTag("instance", userID)
-			span.SetTag("groupName", item.groupName)
-		}
-		item.group.Eval(ctx, time.Now())
-		return nil
-	})
-	if err := ctx.Err(); err == nil {
-		cancelTimeout() // release resources
-	} else {
-		level.Warn(logger).Log("msg", "context error", "error", err)
-	}
-
-	rulesProcessed.Add(float64(len(item.group.Rules())))
-}
-
-func (r *Ruler) ownsRule(hash uint32) bool {
-	rlrs, err := r.ring.Get(hash, ring.Read, nil)
-	// If an error occurs evaluate a rule as if it is owned
-	// better to have extra datapoints for a rule than none at all
-	// TODO: add a temporary cache of owned rule values or something to fall back on
+func (r *Ruler) ownsRule(hash uint32) (bool, error) {
+	rlrs, err := r.ring.Get(hash, ring.Read, []ring.IngesterDesc{})
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "error reading ring to verify rule group ownership", "err", err)
 		ringCheckErrors.Inc()
-		return true
+		return false, err
 	}
 	if rlrs.Ingesters[0].Addr == r.lifecycler.Addr {
-		return true
+		level.Debug(util.Logger).Log("msg", "rule group owned", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
+		return true, nil
 	}
-	level.Debug(util.Logger).Log("msg", "rule group not owned, address does not match", "owner", rlrs.Ingesters[0].Addr, "current", r.cfg.LifecyclerConfig.Addr)
-	return false
+	level.Debug(util.Logger).Log("msg", "rule group not owned, address does not match", "owner_addr", rlrs.Ingesters[0].Addr, "addr", r.lifecycler.Addr)
+	return false, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -373,6 +301,143 @@ func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				</body>
 			</html>`
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(unshardedPage))
+		_, err := w.Write([]byte(unshardedPage))
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to serve status page", "err", err)
+		}
 	}
+}
+
+func (r *Ruler) run() {
+	defer close(r.terminated)
+
+	tick := time.NewTicker(r.cfg.PollInterval)
+	defer tick.Stop()
+
+	r.loadRules()
+	for {
+		select {
+		case <-r.done:
+			return
+		case <-tick.C:
+			r.loadRules()
+		}
+	}
+}
+
+func (r *Ruler) loadRules() {
+	ringHasher := fnv.New32a()
+
+	configs, err := r.store.ListAllRuleGroups(context.Background())
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "unable to poll for rules", "err", err)
+		return
+	}
+
+	// Iterate through each users configuration and determine if the on-disk
+	// configurations need to be updated
+	for user, cfg := range configs {
+		filteredGroups := store.RuleGroupList{}
+
+		// If sharding is enabled, prune the rule group to only contain rules
+		// this ruler is responsible for.
+		if r.cfg.EnableSharding {
+			for _, g := range cfg {
+				id := g.User + "/" + g.Namespace + "/" + g.Name
+				ringHasher.Reset()
+				_, err = ringHasher.Write([]byte(id))
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "failed to create group for user", "user", user, "namespace", g.Namespace, "group", g.Name, "err", err)
+					continue
+				}
+				hash := ringHasher.Sum32()
+				owned, err := r.ownsRule(hash)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "unable to verify rule group ownership ownership, will retry on the next poll", "err", err)
+					return
+				}
+				if owned {
+					filteredGroups = append(filteredGroups, g)
+				}
+			}
+		} else {
+			filteredGroups = cfg
+		}
+
+		// Map the files to disk and return the file names to be passed to the users manager
+		update, files, err := r.mapper.MapRules(user, filteredGroups.Formatted())
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to map rule files", "user", user, "err", err)
+			continue
+		}
+
+		if update {
+			configUpdatesTotal.WithLabelValues(user).Inc()
+			r.userManagerMtx.Lock()
+			manager, exists := r.userManagers[user]
+			r.userManagerMtx.Unlock()
+			if !exists {
+				manager, err = r.newManager(user)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
+					continue
+				}
+				manager.Run()
+
+				r.userManagerMtx.Lock()
+				r.userManagers[user] = manager
+				r.userManagerMtx.Unlock()
+			}
+			err = manager.Update(r.cfg.EvaluationInterval, files, nil)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
+				continue
+			}
+		}
+	}
+
+	// Check for deleted users and remove them
+	r.userManagerMtx.Lock()
+	defer r.userManagerMtx.Unlock()
+	for user, mngr := range r.userManagers {
+		if _, exists := configs[user]; !exists {
+			go mngr.Stop()
+			delete(r.userManagers, user)
+			level.Info(util.Logger).Log("msg", "deleting rule manager", "user", user)
+		}
+	}
+
+}
+
+// newManager creates a prometheus rule manager wrapped with a user id
+// configured storage, appendable, notifier, and instrumentation
+func (r *Ruler) newManager(userID string) (*promRules.Manager, error) {
+	db := &tsdb{
+		appender: &appendableAppender{
+			pusher: r.pusher,
+			userID: userID,
+		},
+		queryable: r.queryable,
+	}
+
+	notifier, err := r.getOrCreateNotifier(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap registerer with userID and cortex_ prefix
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, prometheus.DefaultRegisterer)
+	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
+
+	opts := &promRules.ManagerOptions{
+		Appendable:  db,
+		TSDB:        db,
+		QueryFunc:   promRules.EngineQueryFunc(r.engine, r.queryable),
+		Context:     user.InjectOrgID(context.Background(), userID),
+		ExternalURL: r.alertURL,
+		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
+		Logger:      util.Logger,
+		Registerer:  reg,
+	}
+	return promRules.NewManager(opts), nil
 }

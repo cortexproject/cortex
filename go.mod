@@ -64,6 +64,7 @@ require (
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
+	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.4.0
 	github.com/thanos-io/thanos v0.8.1
 	github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d // indirect

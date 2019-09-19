@@ -1,42 +1,34 @@
 package ruler
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/configs"
-	client_config "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
 )
 
-type mockRuleStore struct{}
-
-func (m *mockRuleStore) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	return map[string]configs.VersionedRulesConfig{}, nil
-}
-
-func (m *mockRuleStore) GetAlerts(ctx context.Context, since configs.ID) (*client_config.ConfigsResponse, error) {
-	return nil, nil
-}
-
 func defaultRulerConfig() Config {
 	codec := codec.Proto{Factory: ring.ProtoDescFactory}
 	consul := consul.NewInMemoryClient(codec)
-	cfg := Config{}
+	cfg := Config{
+		StoreConfig: RuleStoreConfig{
+			mock: newMockRuleStore(),
+		},
+	}
 	flagext.DefaultValues(&cfg)
 	flagext.DefaultValues(&cfg.LifecyclerConfig)
 	cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
@@ -59,7 +51,7 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 		Timeout:       2 * time.Minute,
 	})
 	queryable := querier.NewQueryable(nil, nil, nil, 0)
-	ruler, err := NewRuler(cfg, engine, queryable, nil, &mockRuleStore{})
+	ruler, err := NewRuler(cfg, engine, queryable, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +70,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	defer ts.Close()
 
 	cfg := defaultRulerConfig()
-	cfg.AlertmanagerURL.Set(ts.URL)
+	err := cfg.AlertmanagerURL.Set(ts.URL)
+	require.NoError(t, err)
 	cfg.AlertmanagerDiscovery = false
 
 	r := newTestRuler(t, cfg)

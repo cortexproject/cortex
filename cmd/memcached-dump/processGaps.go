@@ -22,19 +22,16 @@ func buildProcessGaps(minGap time.Duration) processFunc {
 
 		for _, e := range req.Extents {
 			for _, d := range e.Response.Data.Result {
-				if len(d.Samples) > 1 {
+				for i := 0; i < len(d.Samples)-1; i++ {
+					actualIntervalMs := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
 
-					for i := 0; i < len(d.Samples)-2; i++ {
-						actualIntervalMs := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
+					if actualIntervalMs > expectedIntervalMs && time.Duration(actualIntervalMs)*time.Millisecond > minGap {
+						hasGaps = true
+						fmt.Println("Gap Found: ")
+						fmt.Println("extent: ", e.TraceId)
+						fmt.Println("stream: ", d.Labels)
 
-						if actualIntervalMs > expectedIntervalMs && time.Duration(actualIntervalMs)*time.Millisecond > minGap {
-							hasGaps = true
-							fmt.Println("Gap Found: ")
-							fmt.Println("extent: ", e.TraceId)
-							fmt.Println("stream: ", d.Labels)
-
-							fmt.Printf("Found gap from sample %d to %d.  Expected %d.  Found %d.\n", i, i+1, expectedIntervalMs, actualIntervalMs)
-						}
+						fmt.Printf("Found gap from sample %d to %d.  Expected %d.  Found %d.\n", i, i+1, expectedIntervalMs, actualIntervalMs)
 					}
 				}
 			}

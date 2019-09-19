@@ -43,27 +43,28 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 		totalQueries++
 		if hasGaps {
 			if len(cache.Extents) > 1 {
-				fmt.Println("Oh no!  More than 1 extent!")
-				return
-			}
-
-			cached := cache.Extents[0].Response
-			uncached, err := requery(cache, querierAddress)
-
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-
-			if !reflect.DeepEqual(cached, uncached) {
+				fmt.Println("Oh no!  More than 1 extent!  Assume Real Gap.")
 				totalGaps++
-
-				jsonCached, _ := json.Marshal(cached)
-				jsonUncached, _ := json.Marshal(uncached)
-				fmt.Println(string(jsonCached))
-				fmt.Println(string(jsonUncached))
 			} else {
-				fakeGaps++
+
+				cached := cache.Extents[0].Response
+				uncached, err := requery(cache, querierAddress)
+
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+				if !reflect.DeepEqual(cached, uncached) {
+					totalGaps++
+
+					jsonCached, _ := json.Marshal(cached)
+					jsonUncached, _ := json.Marshal(uncached)
+					fmt.Println(string(jsonCached))
+					fmt.Println(string(jsonUncached))
+				} else {
+					fakeGaps++
+				}
 			}
 
 			fmt.Printf("Fake/Real/Total: %d/%d/%d (%f) \n", fakeGaps, totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))

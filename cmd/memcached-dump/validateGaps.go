@@ -19,32 +19,23 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 	totalQueries := 0
 	totalGaps := 0
 	fakeGaps := 0
-	totalSkips := 0
 
 	return func(cache *queryrange.CachedResponse, b []byte) {
 		hasGaps := false
 
-		if len(cache.Extents) != 1 {
-			fmt.Println("Support multiple extents.  Found ", len(cache.Extents))
-			totalSkips++
-			return
-		}
-
-		e := cache.Extents[0]
-		if e.Response.Status == "error" {
-			return
-		}
-
-		_, _, expectedIntervalMs, _, err := parseCacheKey(cache.Key)
+		userId, _, expectedIntervalMs, _, err := parseCacheKey(cache.Key)
 		if err != nil {
 			fmt.Println("Error parsing cache key: ", err)
 			return
 		}
 
-		for _, d := range e.Response.Data.Result {
-			if len(d.Samples) > 1 {
+		for _, e := range cache.Extents {
+			if e.Response.Status == "error" {
+				return
+			}
 
-				for i := 0; i < len(d.Samples)-2; i++ {
+			for _, d := range e.Response.Data.Result {
+				for i := 0; i < len(d.Samples)-1; i++ {
 					actualIntervalMs := d.Samples[i+1].TimestampMs - d.Samples[i].TimestampMs
 
 					if actualIntervalMs > expectedIntervalMs && time.Duration(actualIntervalMs)*time.Millisecond > minGap {
@@ -52,39 +43,45 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 					}
 				}
 			}
-		}
 
-		totalQueries++
-		if hasGaps {
-			cached := e.Response
-			uncached, err := requery(cache, e.Start/1000, e.End/1000, querierAddress)
+			totalQueries++
+			if hasGaps {
+				cached := e.Response
+				uncached, url, err := requery(cache, e.Start/1000, e.End/1000, querierAddress)
 
-			if err != nil {
-				fmt.Println(err)
-				return
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+				jsonCached, _ := json.Marshal(cached)
+				jsonUncached, _ := json.Marshal(uncached)
+
+				if string(jsonCached) == string(jsonUncached) {
+					fakeGaps++
+				} else {
+					totalGaps++
+
+					fmt.Println("Gap Found: ")
+					fmt.Println("User        : ", userId)
+					fmt.Println("Trace       : ", e.TraceId)
+					fmt.Println("requery url : ", url)
+					fmt.Println("cached: ")
+					fmt.Println(string(jsonCached))
+					fmt.Println("uncached: ")
+					fmt.Println(string(jsonUncached))
+				}
+
+				fmt.Printf("Fake/Real/Total: %d/%d/%d (%f) \n", fakeGaps, totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))
 			}
-
-			jsonCached, _ := json.Marshal(cached)
-			jsonUncached, _ := json.Marshal(uncached)
-
-			if string(jsonCached) == string(jsonUncached) {
-				fakeGaps++
-			} else {
-				totalGaps++
-
-				fmt.Println(string(jsonCached))
-				fmt.Println(string(jsonUncached))
-			}
-
-			fmt.Printf("Skips/Fake/Real/Total: %d/%d/%d/%d (%f) \n", totalSkips, fakeGaps, totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))
 		}
 	}
 }
 
-func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds int64, address string) (*queryrange.APIResponse, error) {
+func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds int64, address string) (*queryrange.APIResponse, string, error) {
 	userID, query, step, _, err := parseCacheKey(cache.Key)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	u := url.URL{}
@@ -101,8 +98,6 @@ func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds in
 
 	u.RawQuery = q.Encode()
 
-	fmt.Println("Requery: ", u.String())
-
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", u.String(), nil)
 	req.Header.Add("X-Scope-OrgID", userID)
@@ -110,13 +105,13 @@ func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds in
 	resp, err := client.Do(req)
 
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	jsonBytes, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	var value queryrange.APIResponse
@@ -124,9 +119,9 @@ func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds in
 	err = json.Unmarshal(jsonBytes, &value)
 
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return &value, nil
+	return &value, u.String(), nil
 }
 
 func parseCacheKey(key string) (string, string, int64, int64, error) {

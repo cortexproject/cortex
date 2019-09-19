@@ -24,6 +24,14 @@
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
 * [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
 * [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
+* [CHANGE] In table-manager, default DynamoDB capacity was reduced from 3,000 units to 1,000 units. We recommend you do not run with the defaults: find out what figures are needed for your environment and set that via `-dynamodb.periodic-table.write-throughput` and `-dynamodb.chunk-table.write-throughput`.
+* [CHANGE] Flags changed with transition to upstream Prometheus rules manager:
+  * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`
+  * `ruler.group-timeout`has been removed
+  * `ruler.num-workers` has been removed
+  * `ruler.rule-path` has been added to specify where the prometheus rule manager will sync rule files
+  * `ruler.storage.type` has beem added to specify the rule store backend type, currently only the configdb.
+  * `ruler.poll-interval` has been added to specify the interval in which to poll new rule groups.
 
 ## 0.3.0 / 2019-10-11
 

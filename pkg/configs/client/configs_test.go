@@ -34,7 +34,7 @@ func TestDoRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	resp, err := doRequest(server.URL, 1*time.Second, 0)
+	resp, err := doRequest(server.URL, 1*time.Second, 0, "TestDoRequest")
 	assert.Nil(t, err)
 
 	expected := ConfigsResponse{Configs: map[string]configs.View{

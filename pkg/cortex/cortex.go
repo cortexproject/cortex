@@ -74,6 +74,7 @@ type Config struct {
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB           tsdb.Config              `yaml:"tsdb"`
 
+	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
 	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
@@ -109,7 +110,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigDB.RegisterFlags(f)
-	c.ConfigStore.RegisterFlags(f)
+	c.ConfigStore.RegisterFlagsWithPrefix("alertmanager.", f)
 	c.Alertmanager.RegisterFlags(f)
 
 	// These don't seem to have a home.

@@ -182,6 +182,23 @@ func (c RulesConfig) Parse() (map[string][]rules.Rule, error) {
 	}
 }
 
+// ParseFormatted returns the rulefmt map of a users rules configs. It allows
+// for rules to be mapped to disk and read by the prometheus rules manager.
+func (c RulesConfig) ParseFormatted() (map[string]rulefmt.RuleGroups, error) {
+	ruleMap := map[string]rulefmt.RuleGroups{}
+	for fn, content := range c.Files {
+		rgs, errs := rulefmt.Parse([]byte(content))
+		if errs != nil {
+			for _, err := range errs {
+				return nil, err
+			}
+		}
+		ruleMap[fn] = *rgs
+
+	}
+	return ruleMap, nil
+}
+
 // parseV2 parses and validates the content of the rule files in a RulesConfig
 // according to the Prometheus 2.x rule format.
 //

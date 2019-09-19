@@ -129,6 +129,7 @@ type serverOptions struct {
 	readBufferSize        int
 	connectionTimeout     time.Duration
 	maxHeaderListSize     *uint32
+	compressionFactor     int
 }
 
 var defaultServerOptions = serverOptions{
@@ -137,6 +138,7 @@ var defaultServerOptions = serverOptions{
 	connectionTimeout:     120 * time.Second,
 	writeBufferSize:       defaultWriteBufSize,
 	readBufferSize:        defaultReadBufSize,
+	compressionFactor:     2,
 }
 
 // A ServerOption sets options such as credentials, codec and keepalive parameters, etc.
@@ -255,6 +257,14 @@ func RPCCompressor(cp Compressor) ServerOption {
 func RPCDecompressor(dc Decompressor) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		o.dc = dc
+	})
+}
+
+// CompressionFactor returns a ServerOption to set the expected compression factor, used to size buffers.
+// If this is not set, gRPC uses the default factor 2.
+func CompressionFactor(f int) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.compressionFactor = f
 	})
 }
 
@@ -960,7 +970,7 @@ func (s *Server) processUnaryRPC(t transport.ServerTransport, stream *transport.
 	if sh != nil || binlog != nil {
 		payInfo = &payloadInfo{}
 	}
-	d, err := recvAndDecompress(&parser{r: stream}, stream, dc, s.opts.maxReceiveMessageSize, payInfo, decomp)
+	d, err := recvAndDecompress(&parser{r: stream}, stream, dc, s.opts.maxReceiveMessageSize, payInfo, decomp, s.opts.compressionFactor)
 	if err != nil {
 		if st, ok := status.FromError(err); ok {
 			if e := t.WriteStatus(stream, st); e != nil {
@@ -1126,6 +1136,7 @@ func (s *Server) processStreamingRPC(t transport.ServerTransport, stream *transp
 		codec:                 s.getCodec(stream.ContentSubtype()),
 		maxReceiveMessageSize: s.opts.maxReceiveMessageSize,
 		maxSendMessageSize:    s.opts.maxSendMessageSize,
+		compressionFactor:     s.opts.compressionFactor,
 		trInfo:                trInfo,
 		statsHandler:          sh,
 	}

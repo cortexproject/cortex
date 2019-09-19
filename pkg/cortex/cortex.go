@@ -143,6 +143,9 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex.setupAuthMiddleware(&cfg)
+	cfg.Server.GRPCOptions = []grpc.ServerOption{
+		grpc.CompressionFactor(40),
+	}
 
 	if err := cortex.init(&cfg, cfg.Target); err != nil {
 		return nil, err

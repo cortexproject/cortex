@@ -1627,6 +1627,55 @@ filesystem:
   # CLI flag: -local.chunk-directory
   [directory: <string> | default = ""]
 
+elastic:
+  # Address of ElasticSearch.
+  # CLI flag: -experimental.elastic.address
+  [address: <string> | default = "http://127.0.0.1:9200"]
+
+  # Template name in ElasticSearch.
+  # CLI flag: -experimental.elastic.template-name
+  [template_name: <string> | default = "cortextemplate"]
+
+  # Index Type used in ElasticSearch.
+  # CLI flag: -experimental.elastic.index-type
+  [index_type: <string> | default = "cortexindex"]
+
+  # Max Fetch Docs for one page.
+  # CLI flag: -experimental.elastic.max-fetch-docs
+  [max_fetch_docs: <int> | default = 1000]
+
+  # Number of shards in creating template.
+  # CLI flag: -experimental.elastic.number-of-shards
+  [number_of_shards: <int> | default = 3]
+
+  # Number of replicas in creating template.
+  # CLI flag: -experimental.elastic.number-of-replicas
+  [number_of_replicas: <int> | default = 1]
+
+  # User used in ElasticSearch Basic Auth.
+  # CLI flag: -experimental.elastic.username
+  [username: <string> | default = ""]
+
+  # Password used in ElasticSearch Basic Auth.
+  # CLI flag: -experimental.elastic.password
+  [password: <string> | default = ""]
+
+  # Skip tls verify or not. Default is not to skip.
+  # CLI flag: -experimental.elastic.tls-skip-verify
+  [tls_skip_verify: <boolean> | default = false]
+
+  # Cert File Location used in TLS Verify.
+  # CLI flag: -experimental.elastic.cert-file
+  [cert_file: <string> | default = ""]
+
+  # Key File Location used in TLS Verify.
+  # CLI flag: -experimental.elastic.key-file
+  [key_file: <string> | default = ""]
+
+  # CA File Location used in TLS Verify.
+  # CLI flag: -experimental.elastic.ca-file
+  [ca_file: <string> | default = ""]
+
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
 # CLI flag: -store.index-cache-validity

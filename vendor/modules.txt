@@ -320,6 +320,7 @@ github.com/lib/pq
 github.com/lib/pq/oid
 github.com/lib/pq/scram
 # github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e
+github.com/mailru/easyjson
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
@@ -354,6 +355,10 @@ github.com/mwitkow/go-conntrack
 github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
 github.com/oklog/ulid
+# github.com/olivere/elastic v6.2.23+incompatible
+github.com/olivere/elastic
+github.com/olivere/elastic/config
+github.com/olivere/elastic/uritemplates
 # github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9

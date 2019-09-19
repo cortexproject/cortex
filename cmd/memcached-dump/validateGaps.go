@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +27,7 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 		if len(cache.Extents) != 1 {
 			fmt.Println("Support multiple extents.  Found ", len(cache.Extents))
 			totalSkips++
+			return
 		}
 
 		e := cache.Extents[0]
@@ -64,18 +64,20 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 				return
 			}
 
-			if !reflect.DeepEqual(cached, uncached) {
+			jsonCached, _ := json.Marshal(cached)
+			jsonUncached, _ := json.Marshal(uncached)
+
+			// if reflect.DeepEqual(cached, uncached) {
+			if string(jsonCached) == string(jsonUncached) {
+				fakeGaps++
+			} else {
 				totalGaps++
 
-				jsonCached, _ := json.Marshal(cached)
-				jsonUncached, _ := json.Marshal(uncached)
 				fmt.Println(string(jsonCached))
 				fmt.Println(string(jsonUncached))
-			} else {
-				fakeGaps++
 			}
 
-			fmt.Printf("Skips/Fake/Real/Total: %d/%d/%d/%d/%d (%f) \n", totalSkips, fakeGaps, totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))
+			fmt.Printf("Skips/Fake/Real/Total: %d/%d/%d/%d (%f) \n", totalSkips, fakeGaps, totalGaps, totalQueries, float64(totalGaps)/float64(totalQueries))
 		}
 	}
 }

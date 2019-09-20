@@ -206,7 +206,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 		false,                              // Disable admin APIs.
 		util.Logger,
 		querier.DummyRulesRetriever{},
-		0, 0, // Remote read samples and concurrency limit.
+		0, 0, 0, // Remote read samples and concurrency limit.
 		regexp.MustCompile(".*"),
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")

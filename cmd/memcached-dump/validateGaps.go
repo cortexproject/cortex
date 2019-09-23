@@ -45,7 +45,7 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 			totalQueries++
 			if hasGaps {
 				cached := e.Response
-				uncached, url, err := requery(cache, e.Start/1000, e.End/1000, querierAddress)
+				uncached, url, err := requery(cache, e.Start/1000, e.End/1000, e.TraceId, querierAddress)
 
 				if err != nil {
 					fmt.Println(err)
@@ -76,7 +76,7 @@ func buildValidateGaps(minGap time.Duration, querierAddress string) processFunc 
 	}
 }
 
-func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds int64, address string) (*queryrange.APIResponse, string, error) {
+func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds int64, traceid string, address string) (*queryrange.APIResponse, string, error) {
 	userID, query, step, _, err := parseCacheKey(cache.Key)
 	if err != nil {
 		return nil, "", err
@@ -99,6 +99,7 @@ func requery(cache *queryrange.CachedResponse, startSeconds int64, endSeconds in
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", u.String(), nil)
 	req.Header.Add("X-Scope-OrgID", userID)
+	req.Header.Add("jaeger-debug-id", traceid)
 
 	resp, err := client.Do(req)
 

@@ -26,7 +26,7 @@ func init() {
 	bosRequestDuration.Register()
 }
 
-type objectStorageClient struct {
+type ObjectStorageClient struct {
 	bos             *bos.Client
 	bucket          string
 	objectKeyPrefix string
@@ -40,23 +40,23 @@ type ObjectStorageConfig struct {
 	ObjectKeyPrefix string `yaml:"object_key_prefix"`
 }
 
-func New(c ObjectStorageConfig) (*objectStorageClient, error) {
+func New(c ObjectStorageConfig) (*ObjectStorageClient, error) {
 	bosClient, err := bos.NewClient(c.AccessKey, c.SecretKey, c.Endpoint)
 	if err != nil {
 		return nil, err
 	}
-	return &objectStorageClient{
+	return &ObjectStorageClient{
 		bos:             bosClient,
 		bucket:          c.Bucket,
 		objectKeyPrefix: c.ObjectKeyPrefix,
 	}, nil
 }
 
-func (client *objectStorageClient) Stop() {
+func (client *ObjectStorageClient) Stop() {
 	// nothing to do
 }
 
-func (client *objectStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (client *ObjectStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	bosChunkKeys := make([]string, 0, len(chunks))
 	bosChunkBufs := make([][]byte, 0, len(chunks))
 
@@ -88,18 +88,18 @@ func (client *objectStorageClient) PutChunks(ctx context.Context, chunks []chunk
 	return lastErr
 }
 
-func (client *objectStorageClient) putChunk(ctx context.Context, key string, buf []byte) error {
+func (client *ObjectStorageClient) putChunk(ctx context.Context, key string, buf []byte) error {
 	return instrument.CollectedRequest(ctx, "bos.PutObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		_, err := client.bos.PutObjectFromBytes(client.bucket, key, buf, nil)
 		return err
 	})
 }
 
-func (client *objectStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (client *ObjectStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, chunks, client.getChunk)
 }
 
-func (client objectStorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+func (client ObjectStorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	var result *bosAPI.GetObjectResult
 	key := client.objectKeyPrefix + c.ExternalKey()
 

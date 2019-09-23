@@ -44,6 +44,8 @@ github.com/asaskevich/govalidator v0.0.0-20180720115003-f9ffefc3facf/go.mod h1:l
 github.com/aws/aws-sdk-go v1.15.24/go.mod h1:mFuSZ37Z9YOHbQEwBWztmVzqXrEkub65tZoCYDt7FT0=
 github.com/aws/aws-sdk-go v1.15.90 h1:W8qBrxaKIK6nPqO/UUDcjgokmS9wJQ45D273clpoBA4=
 github.com/aws/aws-sdk-go v1.15.90/go.mod h1:es1KtYUFs7le0xQ3rOihkuoVD90z7D0fR2Qm4S00/gU=
+github.com/baidubce/bce-sdk-go v0.0.0-20190912031300-59b06d14ba99 h1:U+JZrfx7YfBdBeJhCUeOvH10MDLlD4BOQQ5m8vIf1u4=
+github.com/baidubce/bce-sdk-go v0.0.0-20190912031300-59b06d14ba99/go.mod h1:T3yEA2H7hXAlvniSEJRsPlDYlh8OEZZzH0zlIP/1JIY=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973 h1:xJ4a3vCFaGF/jqvzLMYoU8P317H5OQ+Via4RmuPwCS0=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/beorn7/perks v1.0.0 h1:HWo1m869IqiPhD389kmkxeTalrjNbbJTC8LXupb+sl0=

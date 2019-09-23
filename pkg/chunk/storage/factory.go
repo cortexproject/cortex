@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
+	"github.com/cortexproject/cortex/pkg/chunk/baidu"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
@@ -27,12 +28,13 @@ type StoreLimits interface {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AWSStorageConfig       aws.StorageConfig  `yaml:"aws"`
-	GCPStorageConfig       gcp.Config         `yaml:"bigtable"`
-	GCSConfig              gcp.GCSConfig      `yaml:"gcs"`
-	CassandraStorageConfig cassandra.Config   `yaml:"cassandra"`
-	BoltDBConfig           local.BoltDBConfig `yaml:"boltdb"`
-	FSConfig               local.FSConfig     `yaml:"filesystem"`
+	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
+	GCPStorageConfig       gcp.Config                `yaml:"bigtable"`
+	GCSConfig              gcp.GCSConfig             `yaml:"gcs"`
+	CassandraStorageConfig cassandra.Config          `yaml:"cassandra"`
+	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb"`
+	FSConfig               local.FSConfig            `yaml:"filesystem"`
+	BOSConfig              baidu.ObjectStorageConfig `yaml:"bos"`
 
 	IndexCacheValidity time.Duration
 
@@ -152,6 +154,8 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":
 		return local.NewFSObjectClient(cfg.FSConfig)
+	case "bos":
+		return baidu.New(cfg.BOSConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}

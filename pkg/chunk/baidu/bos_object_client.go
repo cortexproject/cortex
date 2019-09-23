@@ -26,12 +26,13 @@ func init() {
 	bosRequestDuration.Register()
 }
 
-type ObjectStorageClient struct {
+type objectStorageClient struct {
 	bos             *bos.Client
 	bucket          string
 	objectKeyPrefix string
 }
 
+// Configuration for Baidu Object Storage (BOS).
 type ObjectStorageConfig struct {
 	Endpoint        string `yaml:"endpoint"`
 	AccessKey       string `yaml:"ak"`
@@ -40,23 +41,26 @@ type ObjectStorageConfig struct {
 	ObjectKeyPrefix string `yaml:"object_key_prefix"`
 }
 
-func New(c ObjectStorageConfig) (*ObjectStorageClient, error) {
+// New return bos-backed object client.
+func New(c ObjectStorageConfig) (chunk.ObjectClient, error) {
 	bosClient, err := bos.NewClient(c.AccessKey, c.SecretKey, c.Endpoint)
 	if err != nil {
 		return nil, err
 	}
-	return &ObjectStorageClient{
+	return &objectStorageClient{
 		bos:             bosClient,
 		bucket:          c.Bucket,
 		objectKeyPrefix: c.ObjectKeyPrefix,
 	}, nil
 }
 
-func (client *ObjectStorageClient) Stop() {
+// Stop implements chunk.ObjectClient interface.
+func (client *objectStorageClient) Stop() {
 	// nothing to do
 }
 
-func (client *ObjectStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+// PutChunks implements chunk.ObjectClient interface, put chunks parallelly.
+func (client *objectStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	bosChunkKeys := make([]string, 0, len(chunks))
 	bosChunkBufs := make([][]byte, 0, len(chunks))
 
@@ -88,18 +92,19 @@ func (client *ObjectStorageClient) PutChunks(ctx context.Context, chunks []chunk
 	return lastErr
 }
 
-func (client *ObjectStorageClient) putChunk(ctx context.Context, key string, buf []byte) error {
+func (client *objectStorageClient) putChunk(ctx context.Context, key string, buf []byte) error {
 	return instrument.CollectedRequest(ctx, "bos.PutObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		_, err := client.bos.PutObjectFromBytes(client.bucket, key, buf, nil)
 		return err
 	})
 }
 
-func (client *ObjectStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+// GutChunks implements chunk.ObjectClient interface, get chunks parallelly.
+func (client *objectStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, chunks, client.getChunk)
 }
 
-func (client ObjectStorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+func (client objectStorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	var result *bosAPI.GetObjectResult
 	key := client.objectKeyPrefix + c.ExternalKey()
 

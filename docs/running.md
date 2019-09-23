@@ -3,6 +3,10 @@
 This document assumes you have read the
 [architecture](architecture.md) document.
 
+In addition to the general advice in this document, please see these
+platform-specific notes:
+ - [AWS](aws-specific.md)
+
 ## Planning
 
 ### Tenants

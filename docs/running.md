@@ -224,3 +224,7 @@ the same data:
         -ingester.chunk-age-jitter=0
 
 Add a chunk cache via `-memcached.hostname` to allow writes to be de-duplicated.
+
+As recommended under [Chunk encoding](#chunk_encoding), use Bigchunk:
+
+        -ingester.chunk-encoding=3 # bigchunk

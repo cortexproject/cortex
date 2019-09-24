@@ -10,6 +10,7 @@ set -e
 
 echo Start first ingester
 docker run $RUN_ARGS -d --name=i1 --hostname=i1 "$IMAGE_PREFIX"cortex:$IMAGE_TAG -target=ingester $INGESTER_ARGS -ingester.claim-on-rollout=true
+docker run $RUN_ARGS -d --name=querier --hostname=querier "$IMAGE_PREFIX"cortex:$IMAGE_TAG -target=querier $COMMON_ARGS $STORAGE_ARGS -distributor.replication-factor=1 -store.min-chunk-age=10m
 
 I1_ADDR=$(container_ip i1)
 wait_for "curl -s -f -m 3 $I1_ADDR/ready" "ingester ready"
@@ -30,3 +31,6 @@ docker stop i1
 
 I2_ADDR=$(container_ip i2)
 wait_for "curl -s -f -m 3 $I2_ADDR/ready" "ingester ready"
+
+QUERIER_ADDR=$(container_ip querier)
+curl -H "X-Scope-OrgID: 0" "$QUERIER_ADDR/api/prom/api/v1/query?query=count(avalanche_metric_mmmmm_0_0)"

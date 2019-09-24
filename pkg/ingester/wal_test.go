@@ -21,12 +21,13 @@ func TestWAL(t *testing.T) {
 
 	cfg := defaultIngesterTestConfig()
 	cfg.WALConfig.enabled = true
+	cfg.WALConfig.recover = true
 	cfg.WALConfig.dir = dirname
-	cfg.WALConfig.checkpointDuration = 10 * time.Millisecond
+	cfg.WALConfig.checkpointDuration = 100 * time.Millisecond
 
-	numSeries := 10
-	numSamplesPerSeriesPerPush := 1000
-	numRestarts := 5
+	numSeries := 100
+	numSamplesPerSeriesPerPush := 10
+	numRestarts := 3
 
 	// Build an ingester, add some samples, then shut it down.
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
@@ -34,6 +35,9 @@ func TestWAL(t *testing.T) {
 	ing.Shutdown()
 
 	for r := 0; r < numRestarts; r++ {
+		if r == numRestarts-1 {
+			cfg.WALConfig.enabled = false
+		}
 		// Start a new ingester and recover the WAL.
 		_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
 
@@ -42,15 +46,11 @@ func TestWAL(t *testing.T) {
 		}
 		// Check the samples are still there!
 		retrieveTestSamples(t, ing, userIDs, testData)
-		userIDs, testData = pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, (r+1)*numSamplesPerSeriesPerPush)
+
+		if r != numRestarts-1 {
+			userIDs, testData = pushTestSamples(t, ing, numSeries, numSamplesPerSeriesPerPush, (r+1)*numSamplesPerSeriesPerPush)
+		}
+
 		ing.Shutdown()
 	}
-
-	_, ing = newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig())
-	defer ing.Shutdown()
-
-	for i, userID := range userIDs {
-		testData[userID] = buildTestMatrix(numSeries, (numRestarts+1)*numSamplesPerSeriesPerPush, i)
-	}
-	retrieveTestSamples(t, ing, userIDs, testData)
 }

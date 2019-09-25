@@ -103,7 +103,7 @@ func NewRedisCache(cfg RedisConfig, name string, client RedisClient) *RedisCache
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
 func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var data [][]byte
-	err := instr.CollectedRequest(ctx, "Redis.Fetch", c.requestDuration, redisStatusCode, func(ctx context.Context) (err error) {
+	err := instr.CollectedRequest(ctx, "fetch", c.requestDuration, redisStatusCode, func(ctx context.Context) (err error) {
 		data, err = c.mget(ctx, keys)
 		return err
 	})
@@ -126,7 +126,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 
 // Store stores the key in the cache.
 func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	err := instr.CollectedRequest(ctx, "Redis.Store", c.requestDuration, redisStatusCode, func(ctx context.Context) error {
+	err := instr.CollectedRequest(ctx, "store", c.requestDuration, redisStatusCode, func(ctx context.Context) error {
 		return c.mset(ctx, keys, bufs, c.expiration)
 	})
 	if err != nil {

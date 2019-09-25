@@ -90,8 +90,8 @@ func New(cfg Config) (Cache, error) {
 		if cfg.Redis.Expiration == 0 && cfg.DefaultValidity != 0 {
 			cfg.Redis.Expiration = cfg.DefaultValidity
 		}
-		cache := NewRedisCache(cfg.Redis, cfg.Prefix, nil)
 		cacheName := cfg.Prefix + "redis"
+		cache := NewRedisCache(cfg.Redis, cacheName, nil)
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache)))
 	}
 

@@ -8,7 +8,7 @@ require (
 	github.com/Azure/go-autorest v11.5.1+incompatible // indirect
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/aws/aws-sdk-go v1.22.4
+	github.com/aws/aws-sdk-go v1.23.12
 	github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932 // indirect
 	github.com/blang/semver v3.5.0+incompatible
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
@@ -55,14 +55,13 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/alertmanager v0.19.0
 	github.com/prometheus/client_golang v1.1.0
-	github.com/prometheus/common v0.6.0
-	github.com/prometheus/prometheus v0.0.0-20190818123050-43acd0e2e93f
+	github.com/prometheus/common v0.7.0
+	github.com/prometheus/prometheus v1.8.2-0.20190918104050-8744afdd1ea0
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
-	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/stretchr/testify v1.3.0
+	github.com/stretchr/testify v1.4.0
 	github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/uber-go/atomic v1.3.2 // indirect

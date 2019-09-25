@@ -3,6 +3,10 @@
 This document assumes you have read the
 [architecture](architecture.md) document.
 
+In addition to the general advice in this document, please see these
+platform-specific notes:
+ - [AWS](aws-specific.md)
+
 ## Planning
 
 ### Tenants
@@ -220,3 +224,7 @@ the same data:
         -ingester.chunk-age-jitter=0
 
 Add a chunk cache via `-memcached.hostname` to allow writes to be de-duplicated.
+
+As recommended under [Chunk encoding](#chunk_encoding), use Bigchunk:
+
+        -ingester.chunk-encoding=3 # bigchunk

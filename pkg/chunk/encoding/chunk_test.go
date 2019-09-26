@@ -131,6 +131,12 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 	require.False(t, iter.Scan())
 	require.NoError(t, iter.Err())
 
+	// Check seek works after unmarshal
+	iter = chunk.NewIterator(iter)
+	for i := 0; i < samples; i += samples / 10 {
+		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
+	}
+
 	// Check the byte representation after another Marshall is the same.
 	buf = bytes.Buffer{}
 	err = chunk.Marshal(&buf)
@@ -147,6 +153,14 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 
 	iter := chunk.NewIterator(nil)
 	for i := 0; i < samples; i += samples / 10 {
+		if i > 0 {
+			// Seek one millisecond before the actual time
+			require.True(t, iter.FindAtOrAfter(model.Time(i*step-1)), "1ms before step %d not found", i)
+			sample := iter.Value()
+			require.EqualValues(t, model.Time(i*step), sample.Timestamp)
+			require.EqualValues(t, model.SampleValue(i), sample.Value)
+		}
+		// Now seek to exactly the right time
 		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
 		sample := iter.Value()
 		require.EqualValues(t, model.Time(i*step), sample.Timestamp)
@@ -162,6 +176,8 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 		require.False(t, iter.Scan())
 		require.NoError(t, iter.Err())
 	}
+	// Check seek past the end of the chunk returns failure
+	require.False(t, iter.FindAtOrAfter(model.Time(samples*step+1)))
 }
 
 func testChunkSeekForward(t *testing.T, encoding Encoding, samples int) {

@@ -272,7 +272,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	}
 
 	var record *Record
-	if i.cfg.WALConfig.enabled {
+	if i.cfg.WALConfig.walEnabled {
 		record = &Record{
 			UserId:  userID,
 			Samples: make([]Sample, 0, len(req.Timeseries)),

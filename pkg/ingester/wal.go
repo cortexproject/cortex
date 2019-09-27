@@ -28,7 +28,8 @@ import (
 
 // WALConfig is config for the Write Ahead Log.
 type WALConfig struct {
-	enabled            bool
+	walEnabled         bool
+	checkpointEnabled  bool
 	recover            bool
 	dir                string
 	checkpointDuration time.Duration
@@ -37,7 +38,8 @@ type WALConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.enabled, "ingester.wal-enable", false, "Enable the WAL.")
+	f.BoolVar(&cfg.walEnabled, "ingester.wal-enable", false, "Enable the WAL.")
+	f.BoolVar(&cfg.walEnabled, "ingester.checkpoint-enable", false, "Enable checkpointing.")
 	f.BoolVar(&cfg.recover, "ingester.recover-from-wal", false, "Recover data from existing WAL.")
 	f.StringVar(&cfg.dir, "ingester.wal-dir", "", "Directory to store the WAL.")
 	f.DurationVar(&cfg.checkpointDuration, "ingester.checkpoint-duration", 1*time.Hour, "Duration over which to checkpoint.")
@@ -85,7 +87,7 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 	}
 
-	if !cfg.enabled {
+	if !cfg.walEnabled {
 		return &noop{}, nil
 	}
 
@@ -188,6 +190,9 @@ func (w *walWrapper) isStopped() bool {
 const checkpointPrefix = "checkpoint."
 
 func (w *walWrapper) checkpoint() (err error) {
+	if !w.cfg.checkpointEnabled {
+		return nil
+	}
 	w.checkpointCreationTotal.Inc()
 	defer func() {
 		if err != nil {
@@ -606,6 +611,12 @@ Loop:
 		}
 	}
 	wg.Wait()
+	// If any worker errored out, some input channels might not be empty.
+	// Hence drain them.
+	for i := 0; i < nWorkers; i++ {
+		for range inputs[i] {
+		}
+	}
 
 	if errFromChan != nil {
 		return errFromChan
@@ -633,31 +644,26 @@ func processWALSamples(userStates *userStates, input <-chan []sampleWithUserID, 
 	for samples := range input {
 		for _, sample := range samples {
 			state := userStates.getOrCreate(sample.userID)
-			state.fpLocker.Lock(model.Fingerprint(sample.Fingerprint))
 			series, ok := state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
 			if !ok {
 				// This should ideally not happen.
 				// If the series was not created in recovering checkpoint or
 				// from the labels of any records previous to this, there
 				// is no way to get the labels for this fingerprint.
-				state.fpLocker.Unlock(model.Fingerprint(sample.Fingerprint))
 				level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", sample.userID, "fingerprint", model.Fingerprint(sample.Fingerprint).String())
 				continue
 			}
 
 			sp.Timestamp = model.Time(sample.Timestamp)
 			sp.Value = model.SampleValue(sample.Value)
-			err := series.add(sp)
-			if err != nil {
-				// We can ignore memorySeriesError because duplicate (or) out-of-order samples are possible
-				// here because the WAL is not truncated to exactly align with the checkpoint.
-				if _, ok := err.(*memorySeriesError); !ok {
-					state.fpLocker.Unlock(model.Fingerprint(sample.Fingerprint))
+			// There can be many out of order samples because of checkpoint and WAL overlap.
+			// Checking this beforehand avoids the allocation of lots of error messages.
+			if sp.Timestamp.After(series.lastTime) {
+				if err := series.add(sp); err != nil {
 					errChan <- err
 					return
 				}
 			}
-			state.fpLocker.Unlock(model.Fingerprint(sample.Fingerprint))
 		}
 	}
 }

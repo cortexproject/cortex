@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/blang/semver"
@@ -57,20 +56,27 @@ func CompressionTypeFor(version string) CompressionType {
 }
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
-func ParseProtoReader(ctx context.Context, reader io.Reader, req proto.Message, compression CompressionType) ([]byte, error) {
+func ParseProtoReader(ctx context.Context, reader io.Reader, size int, req proto.Message, compression CompressionType) ([]byte, error) {
 	var body []byte
 	var err error
 	sp := opentracing.SpanFromContext(ctx)
 	if sp != nil {
 		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
 	}
+	var buf bytes.Buffer
+	if size > 0 {
+		buf.Grow(size + bytes.MinRead) // extra space guarantees no reallocation
+	}
 	switch compression {
 	case NoCompression:
-		body, err = ioutil.ReadAll(reader)
+		_, err = buf.ReadFrom(reader)
+		body = buf.Bytes()
 	case FramedSnappy:
-		body, err = ioutil.ReadAll(snappy.NewReader(reader))
+		_, err = buf.ReadFrom(snappy.NewReader(reader))
+		body = buf.Bytes()
 	case RawSnappy:
-		body, err = ioutil.ReadAll(reader)
+		_, err = buf.ReadFrom(reader)
+		body = buf.Bytes()
 		if sp != nil {
 			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
 				otlog.Int("size", len(body)))

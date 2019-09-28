@@ -33,7 +33,7 @@ func TestMarshall(t *testing.T) {
 
 	{
 		req := WriteRequest{}
-		_, err := util.ParseProtoReader(context.Background(), recorder.Body, &req, util.RawSnappy)
+		_, err := util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), &req, util.RawSnappy)
 		require.NoError(t, err)
 	}
 }

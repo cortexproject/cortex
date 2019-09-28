@@ -17,7 +17,7 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 		ctx := r.Context()
 		var req client.ReadRequest
 		logger := util.WithContext(r.Context(), util.Logger)
-		if _, err := util.ParseProtoReader(ctx, r.Body, &req, compressionType); err != nil {
+		if _, err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), &req, compressionType); err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

@@ -321,7 +321,7 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 // checkpointSeries write the chunks of the series to the checkpoint.
 func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk) ([]client.Chunk, error) {
 	var err error
-	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks)
+	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks[:0])
 	if err != nil {
 		return wireChunks, err
 	}
@@ -496,9 +496,9 @@ func processCheckpointRecord(userStates *userStates, seriesPool *sync.Pool, seri
 	}
 }
 
-type sampleWithUserID struct {
-	Sample
-	userID string
+type samplesWithUserID struct {
+	samples []Sample
+	userID  string
 }
 
 // processWAL processes the records in the WAL concurrently.
@@ -506,8 +506,8 @@ func processWAL(name string, userStates *userStates) error {
 	var (
 		wg       sync.WaitGroup
 		nWorkers = runtime.GOMAXPROCS(0)
-		inputs   = make([]chan []sampleWithUserID, nWorkers)
-		outputs  = make([]chan []sampleWithUserID, nWorkers)
+		inputs   = make([]chan *samplesWithUserID, nWorkers)
+		outputs  = make([]chan *samplesWithUserID, nWorkers)
 		// errChan is to capture the errors from goroutine.
 		// The channel size is nWorkers to not block any worker if all of them error out.
 		errChan = make(chan error, nWorkers)
@@ -515,10 +515,10 @@ func processWAL(name string, userStates *userStates) error {
 
 	wg.Add(nWorkers)
 	for i := 0; i < nWorkers; i++ {
-		outputs[i] = make(chan []sampleWithUserID, 300)
-		inputs[i] = make(chan []sampleWithUserID, 300)
+		outputs[i] = make(chan *samplesWithUserID, 300)
+		inputs[i] = make(chan *samplesWithUserID, 300)
 
-		go func(input <-chan []sampleWithUserID, output chan<- []sampleWithUserID) {
+		go func(input <-chan *samplesWithUserID, output chan<- *samplesWithUserID) {
 			processWALSamples(userStates, input, output, errChan)
 			wg.Done()
 		}(inputs[i], outputs[i])
@@ -534,7 +534,7 @@ func processWAL(name string, userStates *userStates) error {
 		la          []client.LabelAdapter
 		errFromChan error
 		record      = &Record{}
-		shards      = make([][]sampleWithUserID, nWorkers)
+		shards      = make([]*samplesWithUserID, nWorkers)
 	)
 Loop:
 	for reader.Next() {
@@ -582,22 +582,23 @@ Loop:
 				m = len(record.Samples)
 			}
 			for i := 0; i < nWorkers; i++ {
-				var buf []sampleWithUserID
 				select {
-				case buf = <-outputs[i]:
+				case buf := <-outputs[i]:
+					buf.samples = buf.samples[:0]
+					buf.userID = record.UserId
+					shards[i] = buf
 				default:
+					shards[i] = &samplesWithUserID{
+						userID: record.UserId,
+					}
 				}
-				shards[i] = buf[:0]
 			}
 			for _, sam := range record.Samples[:m] {
 				mod := sam.Fingerprint % uint64(nWorkers)
-				shards[mod] = append(shards[mod], sampleWithUserID{
-					Sample: sam,
-					userID: record.UserId,
-				})
+				shards[mod].samples = append(shards[mod].samples, sam)
 			}
 			for i := 0; i < nWorkers; i++ {
-				if len(shards[i]) > 0 {
+				if len(shards[i].samples) > 0 {
 					inputs[i] <- shards[i]
 				}
 			}
@@ -637,21 +638,22 @@ Loop:
 	return nil
 }
 
-func processWALSamples(userStates *userStates, input <-chan []sampleWithUserID, output chan<- []sampleWithUserID, errChan chan error) {
+func processWALSamples(userStates *userStates, input <-chan *samplesWithUserID, output chan<- *samplesWithUserID, errChan chan error) {
 	defer close(output)
 
 	stateCache := make(map[string]*userState)
 	seriesCache := make(map[string]map[uint64]*memorySeries)
 	sp := model.SamplePair{}
 	for samples := range input {
-		for _, sample := range samples {
-			state, ok := stateCache[sample.userID]
-			if !ok {
-				state = userStates.getOrCreate(sample.userID)
-				stateCache[sample.userID] = state
-				seriesCache[sample.userID] = make(map[uint64]*memorySeries)
-			}
-			series, ok := seriesCache[sample.userID][sample.Fingerprint]
+		state, ok := stateCache[samples.userID]
+		if !ok {
+			state = userStates.getOrCreate(samples.userID)
+			stateCache[samples.userID] = state
+			seriesCache[samples.userID] = make(map[uint64]*memorySeries)
+		}
+		sc := seriesCache[samples.userID]
+		for _, sample := range samples.samples {
+			series, ok := sc[sample.Fingerprint]
 			if !ok {
 				series, ok = state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
 				if !ok {
@@ -659,7 +661,7 @@ func processWALSamples(userStates *userStates, input <-chan []sampleWithUserID, 
 					// If the series was not created in recovering checkpoint or
 					// from the labels of any records previous to this, there
 					// is no way to get the labels for this fingerprint.
-					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", sample.userID, "fingerprint", model.Fingerprint(sample.Fingerprint).String())
+					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(sample.Fingerprint).String())
 					continue
 				}
 			}
@@ -675,6 +677,7 @@ func processWALSamples(userStates *userStates, input <-chan []sampleWithUserID, 
 				}
 			}
 		}
+		output <- samples
 	}
 }
 

@@ -640,18 +640,28 @@ Loop:
 func processWALSamples(userStates *userStates, input <-chan []sampleWithUserID, output chan<- []sampleWithUserID, errChan chan error) {
 	defer close(output)
 
+	stateCache := make(map[string]*userState)
+	seriesCache := make(map[string]map[uint64]*memorySeries)
 	sp := model.SamplePair{}
 	for samples := range input {
 		for _, sample := range samples {
-			state := userStates.getOrCreate(sample.userID)
-			series, ok := state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
+			state, ok := stateCache[sample.userID]
 			if !ok {
-				// This should ideally not happen.
-				// If the series was not created in recovering checkpoint or
-				// from the labels of any records previous to this, there
-				// is no way to get the labels for this fingerprint.
-				level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", sample.userID, "fingerprint", model.Fingerprint(sample.Fingerprint).String())
-				continue
+				state = userStates.getOrCreate(sample.userID)
+				stateCache[sample.userID] = state
+				seriesCache[sample.userID] = make(map[uint64]*memorySeries)
+			}
+			series, ok := seriesCache[sample.userID][sample.Fingerprint]
+			if !ok {
+				series, ok = state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
+				if !ok {
+					// This should ideally not happen.
+					// If the series was not created in recovering checkpoint or
+					// from the labels of any records previous to this, there
+					// is no way to get the labels for this fingerprint.
+					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", sample.userID, "fingerprint", model.Fingerprint(sample.Fingerprint).String())
+					continue
+				}
 			}
 
 			sp.Timestamp = model.Time(sample.Timestamp)

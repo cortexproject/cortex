@@ -54,6 +54,9 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 				err = instance.forSeriesMatching(ctx, tc.matchers,
 					func(_ context.Context, _ model.Fingerprint, s *memorySeries) error {
 						batch++
+						if s.token != 1234 {
+							return fmt.Errorf("memorySeries missing token used for push")
+						}
 						return nil
 					},
 					func(context.Context) error {

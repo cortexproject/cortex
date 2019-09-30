@@ -29,6 +29,9 @@ type ingesterMetrics struct {
 	memSeriesCreatedTotal *prometheus.CounterVec
 	memSeriesRemovedTotal *prometheus.CounterVec
 	walReplayDuration     prometheus.Gauge
+	unexpectedSeries      prometheus.Gauge
+	unexpectedSeriesTotal *prometheus.CounterVec
+	rejectedSamplesTotal  prometheus.Counter
 }
 
 func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithTSDB bool) *ingesterMetrics {
@@ -87,6 +90,21 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 			Name: "cortex_ingester_wal_replay_duration_seconds",
 			Help: "Time taken to replay the checkpoint and the WAL.",
 		}),
+		unexpectedSeries: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "cortex",
+			Name:      "ingester_unexpected_series",
+			Help:      "Current number of unexpected series found in the ingester.",
+		}),
+		unexpectedSeriesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "ingester_unexpected_series_total",
+			Help:      "Total number of unexpected series found.",
+		}, []string{"source"}),
+		rejectedSamplesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "ingester_rejected_samples_total",
+			Help:      "Total number of rejected samples due to in-progress transfers.",
+		}),
 	}
 
 	if r != nil {
@@ -101,6 +119,9 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 			m.memSeries,
 			m.memUsers,
 			m.walReplayDuration,
+			m.unexpectedSeries,
+			m.unexpectedSeriesTotal,
+			m.rejectedSamplesTotal,
 		)
 
 		if registerMetricsConflictingWithTSDB {

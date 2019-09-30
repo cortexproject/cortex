@@ -2,8 +2,10 @@ package ring
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"sort"
 	"sync"
@@ -38,20 +40,29 @@ var (
 	}, []string{"op", "status", "name"})
 )
 
+// TokenGeneratorFunc is any function that will generate a series
+// of tokens to apply to a new lifecycler.
+type TokenGeneratorFunc func(numTokens int, taken []uint32) []uint32
+
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring,omitempty"`
 
 	// Config for the ingester lifecycle control
-	ListenPort       *int          `yaml:"-"`
-	NumTokens        int           `yaml:"num_tokens,omitempty"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
-	ObservePeriod    time.Duration `yaml:"observe_period,omitempty"`
-	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
-	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
-	InfNames         []string      `yaml:"interface_names"`
-	FinalSleep       time.Duration `yaml:"final_sleep"`
-	TokensFilePath   string        `yaml:"tokens_file_path,omitempty"`
+	ListenPort               *int          `yaml:"-"`
+	NumTokens                int           `yaml:"num_tokens,omitempty"`
+	HeartbeatPeriod          time.Duration `yaml:"heartbeat_period,omitempty"`
+	ObservePeriod            time.Duration `yaml:"observe_period,omitempty"`
+	JoinAfter                time.Duration `yaml:"join_after,omitempty"`
+	MinReadyDuration         time.Duration `yaml:"min_ready_duration,omitempty"`
+	InfNames                 []string      `yaml:"interface_names"`
+	FinalSleep               time.Duration `yaml:"final_sleep"`
+	TokensFilePath           string        `yaml:"tokens_file_path,omitempty"`
+	JoinIncrementalTransfer  bool          `yaml:"join_incremental_transfer,omitempty"`
+	LeaveIncrementalTransfer bool          `yaml:"leave_incremental_transfer,omitempty"`
+	MinIncrementalJoinJitter time.Duration `yaml:"min_incremental_join_jitter,omitempty"`
+	MaxIncrementalJoinJitter time.Duration `yaml:"max_incremental_join_jitter,omitempty"`
+	TransferFinishDelay      time.Duration `yaml:"transfer_finish_delay,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address" doc:"hidden"`
@@ -62,6 +73,10 @@ type LifecyclerConfig struct {
 	// graveyard for unused flags.
 	UnusedFlag  bool `yaml:"claim_on_rollout,omitempty"` // DEPRECATED - left for backwards-compatibility
 	UnusedFlag2 bool `yaml:"normalise_tokens,omitempty"` // DEPRECATED - left for backwards-compatibility
+
+	// Function used to generate tokens, can be mocked from
+	// tests
+	GenerateTokens TokenGeneratorFunc `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -86,6 +101,11 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	flagext.DeprecatedFlag(f, prefix+"normalise-tokens", "DEPRECATED. This feature is no longer optional.")
+	f.BoolVar(&cfg.JoinIncrementalTransfer, prefix+"join-incremental-transfer", false, "Request chunks from neighboring ingesters on join. Disables the handoff process when set and ignores the -ingester.join-after flag.")
+	f.BoolVar(&cfg.LeaveIncrementalTransfer, prefix+"leave-incremental-transfer", false, "Send chunks to neighboring ingesters on leave. Takes precedence over chunk flushing when set and disables handoff.")
+	f.DurationVar(&cfg.MinIncrementalJoinJitter, prefix+"min-incremental-join-jitter", 0*time.Second, "Minimum amount of time to wait before incrementally joining the ring. Allows time to receieve ring updates so two ingesters do not join at once.")
+	f.DurationVar(&cfg.MaxIncrementalJoinJitter, prefix+"max-incremental-join-jitter", 2*time.Second, "Maximum amount of time to wait before incrementally joining the ring. Allows time to receieve ring updates so two ingesters do not join at once.")
+	f.DurationVar(&cfg.TransferFinishDelay, prefix+"transfer-finish-delay", 5*time.Second, "How long after the incremental join process to notify the target ingesters to clean up any blocked token ranges.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
 	f.StringVar(&cfg.TokensFilePath, prefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
@@ -102,10 +122,33 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
 }
 
+// IncrementalTransferer controls partial transfer of chunks as the tokens in a
+// ring grows or shrinks.
+type IncrementalTransferer interface {
+	// SendChunkRanges should connect to the target addr and send all chunks for
+	// streams whose fingerprint falls within the provided token ranges.
+	SendChunkRanges(ctx context.Context, ranges []TokenRange, targetAddr string) error
+
+	// RequestChunkRanges should connect to the target addr and request all chunks
+	// for streams whose fingerprint falls within the provided token ranges.
+	//
+	// If move is true, transferred data should be removed from the target's memory.
+	RequestChunkRanges(ctx context.Context, ranges []TokenRange, targetAddr string, move bool) error
+
+	// RequestComplete, when called, indicates that a request of data has been processed.
+	// The targetAddr ingester should use the opportunity to do cleanup.
+	RequestComplete(ctx context.Context, ranges []TokenRange, targetAddr string)
+
+	// MemoryStreamTokens should return a list of tokens corresponding to in-memory
+	// streams for the ingester. Used for reporting purposes.
+	MemoryStreamTokens() []uint32
+}
+
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
 type Lifecycler struct {
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
+	incTransferer   IncrementalTransferer
 	KVStore         kv.Client
 
 	// Controls the lifecycle of the ingester
@@ -124,22 +167,26 @@ type Lifecycler struct {
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
-	stateMtx sync.RWMutex
-	state    IngesterState
-	tokens   Tokens
+	stateMtx            sync.RWMutex
+	state               IngesterState
+	transitioningTokens Tokens
+	tokens              Tokens
 
 	// Controls the ready-reporting
 	readyLock sync.Mutex
 	startTime time.Time
 	ready     bool
 
-	// Keeps stats updated at every heartbeat period
+	// Keeps stats and ring updated at every heartbeat period
 	countersLock          sync.RWMutex
 	healthyInstancesCount int
+	lastRing              *Desc
+
+	generateTokens TokenGeneratorFunc
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, incTransferer IncrementalTransferer, ringName, ringKey string, flushOnShutdown bool) (*Lifecycler, error) {
 
 	addr := cfg.Addr
 	if addr == "" {
@@ -168,6 +215,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	l := &Lifecycler{
 		cfg:             cfg,
 		flushTransferer: flushTransferer,
+		incTransferer:   incTransferer,
 		KVStore:         store,
 
 		Addr:            fmt.Sprintf("%s:%d", addr, port),
@@ -179,8 +227,13 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		quit:      make(chan struct{}),
 		actorChan: make(chan func()),
 
-		state:     PENDING,
-		startTime: time.Now(),
+		state:          PENDING,
+		startTime:      time.Now(),
+		generateTokens: cfg.GenerateTokens,
+	}
+
+	if l.generateTokens == nil {
+		l.generateTokens = GenerateTokens
 	}
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
@@ -256,10 +309,55 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error
 	return <-err
 }
 
+func (i *Lifecycler) getTransitioningTokens() Tokens {
+	i.stateMtx.RLock()
+	defer i.stateMtx.RUnlock()
+	ret := make([]uint32, len(i.transitioningTokens))
+	copy(ret, i.transitioningTokens)
+	return ret
+}
+
 func (i *Lifecycler) getTokens() Tokens {
 	i.stateMtx.RLock()
 	defer i.stateMtx.RUnlock()
-	return i.tokens
+	ret := make([]uint32, len(i.tokens))
+	copy(ret, i.tokens)
+	return ret
+}
+
+// addToken adds a new token into the ring. The newest token must be larger
+// than the last token in the set to maintain internal sorted order.
+func (i *Lifecycler) addToken(token uint32) {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+
+	if len(i.tokens) > 0 && token <= i.tokens[len(i.tokens)-1] {
+		panic("addToken invoked without maintaining token order")
+	}
+
+	tokensOwned.WithLabelValues(i.RingName).Inc()
+	i.tokens = append(i.tokens, token)
+}
+
+func (i *Lifecycler) removeToken(token uint32) {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+
+	for idx, tok := range i.tokens {
+		if tok == token {
+			tokensOwned.WithLabelValues(i.RingName).Dec()
+			i.tokens = append(i.tokens[:idx], i.tokens[idx+1:]...)
+			return
+		}
+	}
+}
+
+func (i *Lifecycler) setTransitioningTokens(tokens Tokens) {
+	i.stateMtx.Lock()
+	defer i.stateMtx.Unlock()
+
+	i.transitioningTokens = make([]uint32, len(tokens))
+	copy(i.transitioningTokens, tokens)
 }
 
 func (i *Lifecycler) setTokens(tokens Tokens) {
@@ -268,7 +366,9 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 
-	i.tokens = tokens
+	i.tokens = make([]uint32, len(tokens))
+	copy(i.tokens, tokens)
+
 	if i.cfg.TokensFilePath != "" {
 		if err := i.tokens.StoreToFile(i.cfg.TokensFilePath); err != nil {
 			level.Error(util.Logger).Log("msg", "error storing tokens to disk", "path", i.cfg.TokensFilePath, "err", err)
@@ -299,6 +399,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 			ing := ringDesc.Ingesters[i.ID]
 			ing.Timestamp = time.Now().Unix()
 			ringDesc.Ingesters[i.ID] = ing
+
 			return ringDesc, true, nil
 		}
 
@@ -328,7 +429,6 @@ func (i *Lifecycler) HealthyInstancesCount() int {
 // - remove config from Consul.
 // - block until we've successfully shutdown.
 func (i *Lifecycler) Shutdown() {
-	// This will prevent us accepting any more samples
 	i.flushTransferer.StopIncomingRequests()
 
 	// closing i.quit triggers loop() to exit, which in turn will trigger
@@ -351,11 +451,34 @@ func (i *Lifecycler) loop() {
 	}
 
 	// We do various period tasks
-	autoJoinAfter := time.After(i.cfg.JoinAfter)
+	autoJoinTimer := time.NewTimer(i.cfg.JoinAfter)
+	autoJoinAfter := autoJoinTimer.C
 	var observeChan <-chan time.Time = nil
 
 	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTicker.Stop()
+
+	if i.cfg.JoinIncrementalTransfer {
+		if !autoJoinTimer.Stop() {
+			// Drain the value if one was available.
+			<-autoJoinTimer.C
+		}
+
+		level.Info(util.Logger).Log("msg", "joining cluster")
+		if err := i.waitCleanRing(context.Background()); err != nil {
+			// If this fails, we'll get spill over of data, but we can safely continue here.
+			level.Error(util.Logger).Log("msg", "failed to wait for a clean ring to join", "err", err)
+		}
+
+		if err := i.autoJoin(context.Background(), JOINING); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
+			os.Exit(1)
+		}
+
+		if err := i.joinIncrementalTransfer(context.Background()); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to obtain chunks on join", "err", err)
+		}
+	}
 
 loop:
 	for {
@@ -406,7 +529,6 @@ loop:
 				// keep observing
 				observeChan = time.After(i.cfg.ObservePeriod)
 			}
-
 		case <-heartbeatTicker.C:
 			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
@@ -455,6 +577,72 @@ heartbeatLoop:
 	}
 }
 
+// waitCleanRing incrementally reads from the KV store and waits
+// until there are no JOINING or LEAVING ingesters.
+func (i *Lifecycler) waitCleanRing(ctx context.Context) error {
+	max := i.cfg.MaxIncrementalJoinJitter.Milliseconds()
+	min := i.cfg.MinIncrementalJoinJitter.Milliseconds()
+
+	// Sleep for a random period between [min, max). Used to stagger multiple nodes
+	// all waiting for the ring to be clean.
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	sleepMs := r.Int63n(max-min) + min
+	time.Sleep(time.Duration(sleepMs) * time.Millisecond)
+
+	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 5 * time.Second,
+	})
+
+	for backoff.Ongoing() {
+		select {
+		case <-i.quit:
+			return errors.New("shutting down")
+		default:
+		}
+
+		ok, err := i.checkCleanRing(ctx)
+		if err != nil {
+			return err
+		} else if ok {
+			return nil
+		}
+
+		backoff.Wait()
+	}
+
+	return backoff.Err()
+}
+
+// checkCleanRing returns true when the ring has no JOINING
+// or LEAVING ingesters. "clean" implies that it is safe for a
+// new node to join.
+func (i *Lifecycler) checkCleanRing(ctx context.Context) (bool, error) {
+	d, err := i.KVStore.Get(ctx, i.RingKey)
+	if err != nil {
+		return false, err
+	} else if d == nil {
+		return false, nil
+	}
+
+	desc, ok := d.(*Desc)
+	if !ok {
+		return false, fmt.Errorf("could not convert ring to Desc")
+	}
+
+	unclean := 0
+	for k, ing := range desc.Ingesters {
+		if k == i.ID {
+			continue
+		}
+		if ing.State == JOINING || ing.State == LEAVING {
+			unclean++
+		}
+	}
+
+	return unclean == 0, nil
+}
+
 // initRing is the first thing we do when we start. It:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
@@ -483,20 +671,23 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
+			state := i.GetState()
+			incremental := i.incrementalFromState(state)
+
 			// We use the tokens from the file only if it does not exist in the ring yet.
 			if len(tokensFromFile) > 0 {
 				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 				if len(tokensFromFile) >= i.cfg.NumTokens {
 					i.setState(ACTIVE)
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState())
+				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState(), incremental)
 				i.setTokens(tokensFromFile)
 				return ringDesc, true, nil
 			}
 
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "instance not found in ring, adding with no tokens", "ring", i.RingName)
-			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState())
+			ringDesc.AddIngester(i.ID, i.Addr, nil, state, incremental)
 			return ringDesc, true, nil
 		}
 
@@ -516,9 +707,10 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		return nil, true, nil
 	})
 
-	// Update counters
+	// Update counters and ring.
 	if err == nil {
 		i.updateCounters(ringDesc)
+		i.updateLastRing(ringDesc)
 	}
 
 	return err
@@ -546,14 +738,16 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			needTokens := i.cfg.NumTokens - len(ringTokens)
 
 			level.Info(util.Logger).Log("msg", "generating new tokens", "count", needTokens, "ring", i.RingName)
-			newTokens := GenerateTokens(needTokens, takenTokens)
+			newTokens := i.generateTokens(needTokens, takenTokens)
 
-			ringTokens = append(ringTokens, newTokens...)
-			sort.Sort(ringTokens)
+			addTokens := Tokens(append(ringTokens, newTokens...))
+			sort.Sort(addTokens)
 
-			ringDesc.AddIngester(i.ID, i.Addr, ringTokens, i.GetState())
+			state := i.GetState()
+			incremental := i.incrementalFromState(state)
+			ringDesc.AddIngester(i.ID, i.Addr, addTokens, state, incremental)
 
-			i.setTokens(ringTokens)
+			i.setTokens(addTokens)
 
 			return ringDesc, true, nil
 		}
@@ -606,21 +800,36 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 			level.Error(util.Logger).Log("msg", "tokens already exist for this instance - wasn't expecting any!", "num_tokens", len(myTokens), "ring", i.RingName)
 		}
 
-		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
+		newTokens := i.generateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)
 
-		myTokens = append(myTokens, newTokens...)
-		sort.Sort(myTokens)
-		i.setTokens(myTokens)
+		// When we're incrementally joining the ring, tokens are only inserted
+		// incrementally during the join process.
+		insertTokens := newTokens
+		if i.cfg.JoinIncrementalTransfer {
+			insertTokens = nil
+		}
 
-		ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState())
+		state := i.GetState()
+		incremental := i.incrementalFromState(state)
+		ringDesc.AddIngester(i.ID, i.Addr, insertTokens, state, incremental)
+
+		tokens := append(myTokens, newTokens...)
+		sort.Sort(Tokens(tokens))
+
+		if i.cfg.JoinIncrementalTransfer {
+			i.setTransitioningTokens(tokens)
+		} else {
+			i.setTokens(tokens)
+		}
 
 		return ringDesc, true, nil
 	})
 
-	// Update counters
+	// Update counters and ring.
 	if err == nil {
 		i.updateCounters(ringDesc)
+		i.updateLastRing(ringDesc)
 	}
 
 	return err
@@ -642,23 +851,37 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens", "ring", i.RingName)
-			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState())
+			state := i.GetState()
+			incremental := i.incrementalFromState(state)
+			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), state, incremental)
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()
 			ingesterDesc.Addr = i.Addr
+			ingesterDesc.Incremental = i.incrementalFromState(ingesterDesc.State)
 			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 
+		// Re-sync token states for the current lifecycler if they've changed.
+		ringDesc.SetIngesterTokens(i.ID, i.tokens)
 		return ringDesc, true, nil
 	})
 
-	// Update counters
+	// Update counters and ring.
 	if err == nil {
 		i.updateCounters(ringDesc)
+		i.updateLastRing(ringDesc)
 	}
 
 	return err
+}
+
+// incrementalFromState determines if the ingester should be tagged as being in an
+// "incremental state", flagging to the distributors to treat JOINING/LEAVING as
+// healthy.
+func (i *Lifecycler) incrementalFromState(state IngesterState) bool {
+	return (state == JOINING && i.cfg.JoinIncrementalTransfer) ||
+		(state == LEAVING && i.cfg.LeaveIncrementalTransfer)
 }
 
 // changeState updates consul with state transitions for us.  NB this must be
@@ -677,6 +900,14 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 	level.Info(util.Logger).Log("msg", "changing instance state from", "old_state", currState, "new_state", state, "ring", i.RingName)
 	i.setState(state)
 	return i.updateConsul(ctx)
+}
+
+// getLastRing returns a copy of the last ring saved.
+func (i *Lifecycler) getLastRing() *Desc {
+	i.countersLock.Lock()
+	defer i.countersLock.Unlock()
+
+	return i.lastRing
 }
 
 func (i *Lifecycler) updateCounters(ringDesc *Desc) {
@@ -708,19 +939,39 @@ func (i *Lifecycler) SetFlushOnShutdown(flushOnShutdown bool) {
 	i.flushOnShutdown = flushOnShutdown
 }
 
+func (i *Lifecycler) updateLastRing(ringDesc *Desc) {
+	i.countersLock.Lock()
+	defer i.countersLock.Unlock()
+
+	i.lastRing = ringDesc
+}
+
 func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := i.flushOnShutdown
 	transferStart := time.Now()
-	if err := i.flushTransferer.TransferOut(ctx); err != nil {
-		if err == ErrTransferDisabled {
-			level.Info(util.Logger).Log("msg", "transfers are disabled")
+
+	if i.cfg.LeaveIncrementalTransfer {
+		if err := i.leaveIncrementalTransfer(ctx); err != nil {
+			level.Error(util.Logger).Log("msg", "Failed to incrementally transfer chunks to another ingester", "err", err)
+			shutdownDuration.WithLabelValues("incremental_transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
 		} else {
-			level.Error(util.Logger).Log("msg", "failed to transfer chunks to another instance", "ring", i.RingName, "err", err)
-			shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
+			// The ingester may still have data that wasn't transferred if it got any
+			// unexpected writes (or if there's a bug!). We'll keep flushRequired as true
+			// to make sure this remaining data gets flushed.
+			shutdownDuration.WithLabelValues("incremental_transfer", "success", i.RingName).Observe(time.Since(transferStart).Seconds())
 		}
 	} else {
-		flushRequired = false
-		shutdownDuration.WithLabelValues("transfer", "success", i.RingName).Observe(time.Since(transferStart).Seconds())
+		if err := i.flushTransferer.TransferOut(ctx); err != nil {
+			if err == ErrTransferDisabled {
+				level.Info(util.Logger).Log("msg", "transfers are disabled")
+			} else {
+				level.Error(util.Logger).Log("msg", "failed to transfer chunks to another instance", "ring", i.RingName, "err", err)
+				shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
+			}
+		} else {
+			flushRequired = false
+			shutdownDuration.WithLabelValues("transfer", "success", i.RingName).Observe(time.Since(transferStart).Seconds())
+		}
 	}
 
 	if flushRequired {

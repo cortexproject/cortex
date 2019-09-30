@@ -37,6 +37,7 @@ func defaultIngesterTestConfig() Config {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	flagext.DefaultValues(&cfg.TSDBConfig)
+	cfg.RangeBlockPeriod = 5 * time.Second
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1

@@ -163,7 +163,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable promStorage.Queryable
 	// the ruler
 	if cfg.EnableSharding {
 		lifecyclerCfg := cfg.Ring.ToLifecyclerConfig()
-		ruler.lifecycler, err = ring.NewLifecycler(lifecyclerCfg, ruler, "ruler", ring.RulerRingKey, true)
+		ruler.lifecycler, err = ring.NewLifecycler(lifecyclerCfg, ruler, nil, "ruler", ring.RulerRingKey, true)
 		if err != nil {
 			return nil, err
 		}

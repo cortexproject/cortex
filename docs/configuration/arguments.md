@@ -274,6 +274,18 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](../guides/ingester-handover.md). Each attempt takes a second or so. Negative value or zero disables hand-over process completely. (default 10)
 
+- `-ingester.join-incremental-transfer`
+
+  Enables incremental transfer of chunks when joining the ring. When enabled, a joining ingester will insert its tokens into the ring one at a time. For each token that is inserted, the ingester will request chunks from its peers. The mechanism used to determine what chunks an ingester requests is based on the inserted token and its position in the ring.
+
+  When this flag is enabled, the hand-over process is disabled and the ingester.join-after flag is ignored.
+
+- `-ingester.leave-incremental-transfer`
+
+  Enables incremental transfer of chunks when leaving the ring. When enabled, a leaving ingester will remove its tokens from the ring one at a time. For each token that is removed, the ingester will send chunks to its peers. The mechanism used to determine what chunks an ingester sends is based on the leaving token and its position in the ring.
+
+  When this flag is enabled, the hand-over process is disabled. Flushing chunks will still occur to flush any data that could not be transferred.
+
 - `-ingester.normalise-tokens`
 
    Deprecated. New ingesters always write "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.

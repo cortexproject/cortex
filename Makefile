@@ -118,7 +118,7 @@ $(EXES):
 protos: $(PROTO_GOS)
 
 %.pb.go:
-	protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
+	protoc -I $(GOPATH)/src:./vendor:./$(@D):. --gogoslick_out=paths=source_relative,plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
 lint:
 	misspell -error docs

@@ -79,13 +79,14 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	}
 
 	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, false),
-		limits:       limits,
-		chunkStore:   nil,
-		quit:         make(chan struct{}),
-		wal:          &noopWAL{},
+		cfg:           cfg,
+		clientConfig:  clientConfig,
+		metrics:       newIngesterMetrics(registerer, false),
+		limits:        limits,
+		chunkStore:    nil,
+		blockedRanges: make(map[ring.TokenRange]bool),
+		quit:          make(chan struct{}),
+		wal:           &noopWAL{},
 		TSDBState: TSDBState{
 			dbs:         make(map[string]*userTSDB),
 			bucket:      bucketClient,
@@ -103,7 +104,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		}, i.numSeriesInTSDB))
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, nil, "ingester", ring.IngesterRingKey, true)
 	if err != nil {
 		return nil, err
 	}

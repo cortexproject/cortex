@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -36,7 +40,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	for i := 0; i < numIngester; i++ {
 		tokens := GenerateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
+		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE, false)
 	}
 
 	cfg := Config{}
@@ -97,7 +101,7 @@ func TestAddIngester(t *testing.T) {
 
 	ing1Tokens := GenerateTokens(128, nil)
 
-	r.AddIngester(ingName, "addr", ing1Tokens, ACTIVE)
+	r.AddIngester(ingName, "addr", ing1Tokens, ACTIVE, false)
 
 	require.Equal(t, "addr", r.Ingesters[ingName].Addr)
 	require.Equal(t, ing1Tokens, r.Ingesters[ingName].Tokens)
@@ -115,7 +119,7 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 
 	newTokens := GenerateTokens(128, nil)
 
-	r.AddIngester(ing1Name, "addr", newTokens, ACTIVE)
+	r.AddIngester(ing1Name, "addr", newTokens, ACTIVE, false)
 
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
 }
@@ -129,7 +133,7 @@ func TestSubring(t *testing.T) {
 		name := fmt.Sprintf("ing%v", i)
 		ingTokens := GenerateTokens(128, prevTokens)
 
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE)
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE, false)
 
 		prevTokens = append(prevTokens, ingTokens...)
 	}
@@ -141,7 +145,7 @@ func TestSubring(t *testing.T) {
 			HeartbeatTimeout: time.Hour,
 		},
 		ringDesc:   r,
-		ringTokens: r.getTokens(),
+		ringTokens: r.GetNavigator(),
 	}
 
 	// Subring of 0 invalid
@@ -183,7 +187,7 @@ func TestStableSubring(t *testing.T) {
 		name := fmt.Sprintf("ing%v", i)
 		ingTokens := GenerateTokens(128, prevTokens)
 
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE)
+		r.AddIngester(name, fmt.Sprintf("addr%v", i), ingTokens, ACTIVE, false)
 
 		prevTokens = append(prevTokens, ingTokens...)
 	}
@@ -195,7 +199,7 @@ func TestStableSubring(t *testing.T) {
 			HeartbeatTimeout: time.Hour,
 		},
 		ringDesc:   r,
-		ringTokens: r.getTokens(),
+		ringTokens: r.GetNavigator(),
 	}
 
 	// Generate the same subring multiple times
@@ -221,5 +225,269 @@ func TestStableSubring(t *testing.T) {
 			next = 0
 		}
 		require.Equal(t, subrings[i], subrings[next])
+	}
+}
+
+type namedRing struct {
+	*Desc
+	namedTokens map[string]uint32
+	tokenStates map[uint32]IngesterState
+}
+
+func (r *namedRing) FindTokensByState(s IngesterState) []uint32 {
+	var ret []uint32
+	for t, state := range r.tokenStates {
+		if state == s {
+			ret = append(ret, t)
+		}
+	}
+	return ret
+}
+
+func (r *namedRing) TokenHealthChecker(op Operation) HealthCheckFunc {
+	return func(t TokenDesc) bool {
+		state := ACTIVE
+		if s, ok := r.tokenStates[t.Token]; ok {
+			state = s
+		}
+
+		if op == Write && state != ACTIVE {
+			return false
+		} else if op == Read && state == JOINING {
+			return false
+		}
+
+		return true
+	}
+}
+
+// Name gets a token's name by its value
+func (r *namedRing) TokenName(t *testing.T, value uint32) string {
+	t.Helper()
+	for n, v := range r.namedTokens {
+		if v == value {
+			return n
+		}
+	}
+	t.Fatalf("could not find %d in ring", value)
+	return ""
+}
+
+// Token gets a token by its name.
+func (r *namedRing) Token(t *testing.T, name string) uint32 {
+	t.Helper()
+	v, ok := r.namedTokens[name]
+	if !ok {
+		t.Fatalf("no token named %s in ring", name)
+	}
+	return v
+}
+
+// Token gets a TokenDesc by its name.
+func (r *namedRing) TokenDesc(t *testing.T, name string) TokenDesc {
+	t.Helper()
+	v := r.Token(t, name)
+	for name, ing := range r.Desc.Ingesters {
+		for _, tok := range ing.Tokens {
+			if tok == v {
+				return TokenDesc{Token: tok, Ingester: name}
+			}
+		}
+	}
+	t.Fatalf("could not find %s in ring", name)
+	return TokenDesc{}
+}
+
+// BindStates binds token states to the ingesters.
+func (r *namedRing) BindStates(t *testing.T) {
+	for name, ing := range r.Desc.Ingesters {
+		for _, tok := range ing.Tokens {
+			state := ACTIVE
+			for t, s := range r.tokenStates {
+				if tok == t {
+					state = s
+					break
+				}
+			}
+
+			ing := r.Desc.Ingesters[name]
+			ing.State = state
+			r.Desc.Ingesters[name] = ing
+		}
+	}
+}
+
+// generateRing generates a namedRing given a schema describing tokens in the
+// ring. The schema is a space-delimited list of letters followed by an
+// optional number and a state suffix. If a letter is specified more than once,
+// each instance must have a number to differentiate between the two:
+//
+// A B C D1 E D2 F G
+//
+// This example creates a ring of 7 ingesters, where ingester with id "D" has
+// two tokens, D1 and D2. Tokens are assigned values of the previous token's
+// value plus one.
+//
+// Each token can be suffixed with a state marker to affect the token's state:
+//
+// .: ACTIVE
+// ?: PENDING
+// +: JOINING
+// -: LEAVING
+//
+// If no suffix is specified, the default state will be ACTIVE.
+func generateRing(t *testing.T, desc string) *namedRing {
+	t.Helper()
+
+	regex, err := regexp.Compile(
+		"(?P<ingester>[A-Z])(?P<token>\\d*)(?P<state>\\+|\\-|\\?|\\.)?",
+	)
+	if err != nil {
+		t.Fatalf("unexpected regex err %v", err)
+	}
+
+	r := &namedRing{
+		Desc:        &Desc{},
+		namedTokens: make(map[string]uint32),
+		tokenStates: make(map[uint32]IngesterState),
+	}
+	r.Ingesters = make(map[string]IngesterDesc)
+
+	tokens := strings.Split(desc, " ")
+	var nextToken uint32 = 1
+
+	for _, tokDesc := range tokens {
+		if tokDesc == "" {
+			continue
+		}
+
+		submatches := regex.FindStringSubmatch(tokDesc)
+		if submatches == nil {
+			t.Fatalf("invalid token desc %s", tokDesc)
+			continue
+		}
+
+		ingester := submatches[1]
+		tokenIndex := 1
+		state := ACTIVE
+
+		if submatches[2] != "" {
+			tokenIndex, err = strconv.Atoi(submatches[2])
+			if err != nil {
+				t.Fatalf("invalid token index %s in %s", submatches[2], tokDesc)
+			}
+		}
+		if submatches[3] != "" {
+			switch stateStr := submatches[3]; stateStr {
+			case ".":
+				state = ACTIVE
+			case "?":
+				state = PENDING
+			case "+":
+				state = JOINING
+			case "-":
+				state = LEAVING
+			default:
+				t.Fatalf("invalid token state operator %s in %s", stateStr, tokDesc)
+			}
+		}
+
+		ing, ok := r.Ingesters[ingester]
+		if !ok {
+			ing = IngesterDesc{
+				Addr:      ingester,
+				State:     ACTIVE,
+				Timestamp: time.Now().Unix(),
+			}
+		}
+
+		if tokenIndex != len(ing.Tokens)+1 {
+			t.Fatalf("invalid token index %d in %s, should be %d", tokenIndex, tokDesc, len(ing.Tokens)+1)
+		}
+
+		ing.Tokens = append(ing.Tokens, nextToken)
+		r.tokenStates[nextToken] = state
+		r.namedTokens[tokDesc] = nextToken
+		r.Ingesters[ingester] = ing
+		nextToken++
+	}
+
+	for id, ing := range r.Ingesters {
+		r.Ingesters[id] = ing
+	}
+
+	return r
+}
+
+func TestGenerateRing(t *testing.T) {
+	tt := []struct {
+		desc      string
+		ingesters int
+		active    int
+		pending   int
+		leaving   int
+		joining   int
+	}{
+		{"A B C", 3, 3, 0, 0, 0},
+		{"A1 B A2 C", 3, 4, 0, 0, 0},
+		{"A1. B? A2+ C-", 3, 1, 1, 1, 1},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.desc, func(t *testing.T) {
+			r := generateRing(t, tc.desc)
+
+			require.Equal(t, tc.active, len(r.FindTokensByState(ACTIVE)))
+			require.Equal(t, tc.pending, len(r.FindTokensByState(PENDING)))
+			require.Equal(t, tc.leaving, len(r.FindTokensByState(LEAVING)))
+			require.Equal(t, tc.joining, len(r.FindTokensByState(JOINING)))
+			require.Equal(t, tc.ingesters, len(r.Desc.Ingesters))
+		})
+	}
+}
+
+func TestRingGet(t *testing.T) {
+	tt := []struct {
+		name   string
+		desc   string
+		key    uint32
+		op     Operation
+		expect []string
+	}{
+		{"all active", "A B C", 0, Read, []string{"A", "B", "C"}},
+		{"wrap around", "A B C", 2, Read, []string{"C", "A", "B"}},
+		{"skip joining on read", "A B+ C+ D E", 0, Read, []string{"A", "D", "E"}},
+		{"skip joining on write", "A B+ C+ D E", 0, Write, []string{"A", "D", "E"}},
+		{"skip leaving on write", "A B- C- D E", 0, Write, []string{"A", "D", "E"}},
+		{"don't skip leaving on read", "A B- C- D E", 0, Read, []string{"A", "B", "C"}},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var ringConfig Config
+			flagext.DefaultValues(&ringConfig)
+			ringConfig.ReplicationFactor = 3
+			ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+			r, err := New(ringConfig, "ingester", "ring")
+			require.NoError(t, err)
+			// Stop is slow, run it in a goroutine and don't wait for it
+			defer func() { go r.Stop() }()
+
+			nr := generateRing(t, tc.desc)
+			nr.BindStates(t)
+
+			r.ringDesc = nr.Desc
+			r.ringTokens = r.ringDesc.GetNavigator()
+			rs, err := r.Get(tc.key, tc.op, nil)
+			require.NoError(t, err)
+
+			names := []string{}
+			for _, ing := range rs.Ingesters {
+				names = append(names, ing.Addr)
+			}
+
+			require.Equal(t, tc.expect, names)
+		})
 	}
 }

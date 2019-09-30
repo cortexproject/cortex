@@ -541,7 +541,7 @@ func processCheckpointRecord(userStates *userStates, seriesPool *sync.Pool, stat
 				Value: string(l.Value),
 			})
 		}
-		series, err := state.createSeriesWithFingerprint(model.Fingerprint(s.Fingerprint), la, nil, true)
+		series, err := state.createSeriesWithFingerprint(model.Fingerprint(s.Fingerprint), 0, la, nil, true)
 		if err != nil {
 			errChan <- err
 			return
@@ -630,7 +630,7 @@ Loop:
 				if ok {
 					continue
 				}
-				_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), labels.Labels, nil, true)
+				_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), 0, labels.Labels, nil, true)
 				if err != nil {
 					// We don't return here in order to close/drain all the channels and
 					// make sure all goroutines exit.

@@ -26,6 +26,8 @@ import (
 )
 
 var (
+	fakeOrgID = "-1"
+
 	sentChunks = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_sent_chunks",
 		Help: "The total number of chunks sent by this ingester whilst leaving.",
@@ -51,6 +53,13 @@ var (
 		Help: "The total number of bytes sent by this ingester whilst leaving",
 	})
 	errTransferNoPendingIngesters = errors.New("no pending ingesters")
+
+	ignoredSeries = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_ignored_series",
+		Help: "The total number of series ignored by this ingester",
+	})
+
+	once *sync.Once
 )
 
 func init() {
@@ -60,57 +69,175 @@ func init() {
 	prometheus.MustRegister(receivedBytes)
 	prometheus.MustRegister(receivedFiles)
 	prometheus.MustRegister(sentBytes)
+	prometheus.MustRegister(ignoredSeries)
+}
+
+type chunkStream interface {
+	Context() context.Context
+	Recv() (*client.TimeSeriesChunk, error)
+}
+
+type acceptChunksOptions struct {
+	States                *userStates
+	Stream                chunkStream
+	ValidateRemoteLeaving bool
+}
+
+func (i *Ingester) acceptChunksFromStream(opts acceptChunksOptions) (fromIngesterID string, seriesReceived int, err error) {
+	for {
+		wireSeries, err := opts.Stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fromIngesterID, seriesReceived, err
+		}
+
+		// We can't send "extra" fields with a streaming call, so we repeat
+		// wireSeries.FromIngesterId and assume it is the same every time
+		// round this loop.
+		if fromIngesterID == "" {
+			fromIngesterID = wireSeries.FromIngesterId
+			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+		}
+		if opts.ValidateRemoteLeaving {
+			// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later.
+			err := i.checkFromIngesterIsInLeavingState(opts.Stream.Context(), fromIngesterID)
+			if err != nil {
+				return fromIngesterID, seriesReceived, errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
+			}
+		}
+
+		descs, err := fromWireChunks(wireSeries.Chunks)
+		if err != nil {
+			return fromIngesterID, seriesReceived, errors.Wrap(err, "TransferChunks: fromWireChunks")
+		}
+
+		if wireSeries.Token == 0 {
+			level.Warn(util.Logger).Log("msg", "unexpected token 0 in wireSeries")
+		}
+
+		state, fp, series, sstate, err := opts.States.getOrCreateSeries(opts.Stream.Context(), wireSeries.UserId, wireSeries.Labels, nil, wireSeries.Token)
+		if err != nil {
+			return fromIngesterID, seriesReceived, errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
+		}
+		prevNumChunks := len(series.chunkDescs)
+
+		if i.cfg.CheckOnTransfer && !i.tokenChecker.TokenExpected(wireSeries.Token) {
+			level.Debug(util.Logger).Log("msg", "unexpected stream transferred to ingester", "token", wireSeries.Token)
+			i.metrics.unexpectedSeriesTotal.WithLabelValues("transfer").Inc()
+		}
+
+		if sstate == seriesCreated {
+			// If the series already exists, we'll trust its data over ours.
+			err = series.setChunks(descs)
+		} else {
+			ignoredSeries.Inc()
+		}
+
+		state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
+		if err != nil {
+			return fromIngesterID, seriesReceived, err
+		}
+
+		seriesReceived++
+		memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+		receivedChunks.Add(float64(len(descs)))
+	}
+
+	return fromIngesterID, seriesReceived, nil
+}
+
+type chunkPushStream interface {
+	Send(*client.TimeSeriesChunk) error
+}
+
+type pushChunksOptions struct {
+	States        map[string]*userState
+	Stream        chunkPushStream
+	IncludeFunc   func(pair fingerprintSeriesPair) bool
+	MarkAsFlushed bool
+}
+
+func (i *Ingester) pushChunksToStream(opts pushChunksOptions) error {
+	var curCh <-chan fingerprintSeriesPair
+	defer func() {
+		if curCh == nil {
+			return
+		}
+
+		for range curCh {
+			// Drain latest channel, needed if we exit on error
+		}
+	}()
+
+	for userID, state := range opts.States {
+		curCh = state.fpToSeries.iter()
+		for pair := range curCh {
+			err := i.pushChunksPair(opts, userID, state, pair)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (i *Ingester) pushChunksPair(opts pushChunksOptions, userID string, state *userState, pair fingerprintSeriesPair) error {
+	state.fpLocker.Lock(pair.fp)
+	defer state.fpLocker.Unlock(pair.fp)
+
+	if opts.IncludeFunc != nil && !opts.IncludeFunc(pair) {
+		return nil
+	}
+
+	if len(pair.series.chunkDescs) == 0 {
+		return nil
+	}
+
+	chunks, err := toWireChunks(pair.series.chunkDescs, []client.Chunk{})
+	if err != nil {
+		return errors.Wrap(err, "toWireChunks")
+	}
+
+	err = opts.Stream.Send(&client.TimeSeriesChunk{
+		FromIngesterId: i.lifecycler.ID,
+		UserId:         userID,
+		Labels:         client.FromLabelsToLabelAdapters(pair.series.metric),
+		Chunks:         chunks,
+		Token:          pair.series.token,
+	})
+	if err == nil && opts.MarkAsFlushed {
+		// Mark all the chunks as "flushed". They'll retain in memory until the idle limit kicks in.
+		for _, desc := range pair.series.chunkDescs {
+			desc.flushed = true
+		}
+	}
+
+	if err != nil {
+		return errors.Wrap(err, "Send")
+	}
+
+	sentChunks.Add(float64(len(chunks)))
+	return nil
 }
 
 // TransferChunks receives all the chunks from another ingester.
 func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) error {
 	fromIngesterID := ""
 	seriesReceived := 0
+
 	xfer := func() error {
 		userStates := newUserStates(i.limiter, i.cfg, i.metrics)
 
-		for {
-			wireSeries, err := stream.Recv()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return errors.Wrap(err, "TransferChunks: Recv")
-			}
-
-			// We can't send "extra" fields with a streaming call, so we repeat
-			// wireSeries.FromIngesterId and assume it is the same every time
-			// round this loop.
-			if fromIngesterID == "" {
-				fromIngesterID = wireSeries.FromIngesterId
-				level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
-
-				// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
-				err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
-				if err != nil {
-					return errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
-				}
-			}
-			descs, err := fromWireChunks(wireSeries.Chunks)
-			if err != nil {
-				return errors.Wrap(err, "TransferChunks: fromWireChunks")
-			}
-
-			state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels, nil)
-			if err != nil {
-				return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
-			}
-			prevNumChunks := len(series.chunkDescs)
-
-			err = series.setChunks(descs)
-			state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
-			if err != nil {
-				return errors.Wrapf(err, "TransferChunks: setChunks: user %s series %s", wireSeries.UserId, wireSeries.Labels)
-			}
-
-			seriesReceived++
-			memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-			receivedChunks.Add(float64(len(descs)))
+		fromIngesterID, seriesReceived, err := i.acceptChunksFromStream(acceptChunksOptions{
+			States:                userStates,
+			Stream:                stream,
+			ValidateRemoteLeaving: true,
+		})
+		if err != nil {
+			return err
 		}
 
 		if seriesReceived == 0 {
@@ -131,7 +258,6 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		defer i.userStatesMtx.Unlock()
 
 		i.userStates = userStates
-
 		return nil
 	}
 
@@ -185,14 +311,14 @@ func (i *Ingester) transfer(ctx context.Context, xfer func() error) error {
 	// method, and as such we have to ensure we unlock the mutex.
 	defer func() {
 		state := i.lifecycler.GetState()
-		if i.lifecycler.GetState() == ring.ACTIVE {
+		if state == ring.ACTIVE {
 			return
 		}
 
 		level.Error(util.Logger).Log("msg", "TransferChunks failed, not in ACTIVE state.", "state", state)
 
 		// Enter PENDING state (only valid from JOINING)
-		if i.lifecycler.GetState() == ring.JOINING {
+		if state == ring.JOINING {
 			if err := i.lifecycler.ChangeState(ctx, ring.PENDING); err != nil {
 				level.Error(util.Logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
 				os.Exit(1)
@@ -451,41 +577,19 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 	}
 	defer c.Close()
 
-	ctx = user.InjectOrgID(ctx, "-1")
+	ctx = user.InjectOrgID(ctx, fakeOrgID)
 	stream, err := c.TransferChunks(ctx)
 	if err != nil {
 		return errors.Wrap(err, "TransferChunks")
 	}
 
-	var chunks []client.Chunk
-	for userID, state := range userStatesCopy {
-		for pair := range state.fpToSeries.iter() {
-			state.fpLocker.Lock(pair.fp)
-
-			if len(pair.series.chunkDescs) == 0 { // Nothing to send?
-				state.fpLocker.Unlock(pair.fp)
-				continue
-			}
-
-			chunks, err = toWireChunks(pair.series.chunkDescs, chunks)
-			if err != nil {
-				state.fpLocker.Unlock(pair.fp)
-				return errors.Wrap(err, "toWireChunks")
-			}
-
-			err = stream.Send(&client.TimeSeriesChunk{
-				FromIngesterId: i.lifecycler.ID,
-				UserId:         userID,
-				Labels:         client.FromLabelsToLabelAdapters(pair.series.metric),
-				Chunks:         chunks,
-			})
-			state.fpLocker.Unlock(pair.fp)
-			if err != nil {
-				return errors.Wrap(err, "Send")
-			}
-
-			sentChunks.Add(float64(len(chunks)))
-		}
+	err = i.pushChunksToStream(pushChunksOptions{
+		States:        userStatesCopy,
+		Stream:        stream,
+		MarkAsFlushed: false,
+	})
+	if err != nil {
+		return err
 	}
 
 	_, err = stream.CloseAndRecv()
@@ -568,7 +672,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	}
 	defer c.Close()
 
-	ctx = user.InjectOrgID(ctx, "-1")
+	ctx = user.InjectOrgID(ctx, fakeOrgID)
 	stream, err := c.TransferTSDB(ctx)
 	if err != nil {
 		return errors.Wrap(err, "TransferTSDB() has failed")

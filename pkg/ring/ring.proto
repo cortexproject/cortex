@@ -7,6 +7,8 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
+option go_package = "github.com/cortexproject/cortex/pkg/ring";
+
 message Desc {
 	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
 	reserved 2;
@@ -16,9 +18,16 @@ message IngesterDesc {
 	reserved 4, 5; // old, deprecated fields
 
 	string addr = 1;
-	int64 timestamp = 2; // unix timestamp
+
+	// Timestamp is the Unix timestamp for the last heartbeat an ingester
+	// gave.
+	int64 timestamp = 2;
 	IngesterState state = 3;
 	repeated uint32 tokens = 6;
+
+	// Incremental refers to if the state the ingester is in is utilizing incremental
+	// transfers. Only meaningful for JOINING and LEAVING states.
+	bool incremental = 7;
 }
 
 enum IngesterState {
@@ -32,3 +41,11 @@ enum IngesterState {
 	// ingesters that have been removed from the ring. Ring users should not use it directly.
 	LEFT = 4;
 }
+
+// TokenRange represents a range of tokens, starting inclusively
+// with From and ending exclusively at To.
+message TokenRange {
+	uint32 from = 1;
+	uint32 to = 2;
+}
+

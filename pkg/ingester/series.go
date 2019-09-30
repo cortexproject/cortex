@@ -30,6 +30,9 @@ type memorySeries struct {
 	// Sorted by start time, overlapping chunk ranges are forbidden.
 	chunkDescs []*desc
 
+	// Token used by the distributor to shard into this series
+	token uint32
+
 	// Whether the current head chunk has already been finished.  If true,
 	// the current head chunk must not be modified anymore.
 	headChunkClosed bool
@@ -43,10 +46,11 @@ type memorySeries struct {
 
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
-func newMemorySeries(m labels.Labels) *memorySeries {
+func newMemorySeries(m labels.Labels, token uint32) *memorySeries {
 	return &memorySeries{
 		metric:   m,
 		lastTime: model.Earliest,
+		token:    token,
 	}
 }
 

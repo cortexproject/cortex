@@ -5,11 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/status"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -42,8 +45,11 @@ type Config struct {
 	WALConfig        WALConfig             `yaml:"walconfig,omitempty"`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
+	TokenCheckerConfig ring.TokenCheckerConfig `yaml:"token_checker,omitempty"`
+
 	// Config for transferring chunks. Zero or negative = no retries.
-	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
+	MaxTransferRetries int           `yaml:"max_transfer_retries,omitempty"`
+	RangeBlockPeriod   time.Duration `yaml:"range_block_period"`
 
 	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration
@@ -55,6 +61,11 @@ type Config struct {
 	ChunkAgeJitter    time.Duration
 	ConcurrentFlushes int
 	SpreadFlushes     bool
+
+	// Config for checking tokens.
+	CheckOnCreate   bool `yaml:"check_token_on_create,omitempty"`
+	CheckOnAppend   bool `yaml:"check_token_on_append,omitempty"`
+	CheckOnTransfer bool `yaml:"check_token_on_transfer,omitempty"`
 
 	RateUpdatePeriod time.Duration
 
@@ -74,8 +85,10 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 	cfg.WALConfig.RegisterFlags(f)
+	cfg.TokenCheckerConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. Negative value or zero disables hand-over.")
+	f.DurationVar(&cfg.RangeBlockPeriod, "ingester.range-block-period", 1*time.Minute, "Period after which write blocks on ranges expire.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.retain-period", 5*time.Minute, "Period chunks will remain in memory after flushing.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
@@ -85,6 +98,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 20*time.Minute, "Range of time to subtract from MaxChunkAge to spread out flushes")
 	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", false, "If true, spread series flushes across the whole period of MaxChunkAge")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
+	f.BoolVar(&cfg.CheckOnCreate, "ingester.check-token-on-create", false, "Check that newly created streams fall within expected token ranges")
+	f.BoolVar(&cfg.CheckOnAppend, "ingester.check-token-on-append", false, "Check that existing streams appended to fall within expected token ranges")
+	f.BoolVar(&cfg.CheckOnTransfer, "ingester.check-token-on-transfer", false, "Check that streams transferred in using the transfer mechanism fall within expected token ranges")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 }
 
@@ -96,10 +112,11 @@ type Ingester struct {
 
 	metrics *ingesterMetrics
 
-	chunkStore ChunkStore
-	lifecycler *ring.Lifecycler
-	limits     *validation.Overrides
-	limiter    *SeriesLimiter
+	chunkStore   ChunkStore
+	lifecycler   *ring.Lifecycler
+	tokenChecker *ring.TokenChecker
+	limits       *validation.Overrides
+	limiter      *SeriesLimiter
 
 	quit chan struct{}
 	done sync.WaitGroup
@@ -115,6 +132,10 @@ type Ingester struct {
 
 	// This should never be nil.
 	wal WAL
+
+	// Stops specific appends
+	blockedTokenMtx sync.RWMutex
+	blockedRanges   map[ring.TokenRange]bool
 
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
@@ -152,20 +173,21 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true),
-		limits:       limits,
-		chunkStore:   chunkStore,
-		quit:         make(chan struct{}),
-		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		cfg:           cfg,
+		clientConfig:  clientConfig,
+		metrics:       newIngesterMetrics(registerer, true),
+		limits:        limits,
+		chunkStore:    chunkStore,
+		quit:          make(chan struct{}),
+		blockedRanges: make(map[ring.TokenRange]bool),
+		flushQueues:   make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 	}
 
 	var err error
 	// During WAL recovery, it will create new user states which requires the limiter.
 	// Hence initialise the limiter before creating the WAL.
 	// The '!cfg.WALConfig.WALEnabled' argument says don't flush on shutdown if the WAL is enabled.
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.WALEnabled)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.WALEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +217,9 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
+
+	ringConfig := cfg.LifecyclerConfig.RingConfig
+	i.tokenChecker = ring.NewTokenChecker(cfg.TokenCheckerConfig, ringConfig, i.lifecycler, i.unexpectedStreamsHandler)
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
@@ -246,6 +271,11 @@ func (i *Ingester) Shutdown() {
 
 		// Next initiate our graceful exit from the ring.
 		i.lifecycler.Shutdown()
+
+		// Shut down the token checker. Nil when using TSDB.
+		if i.tokenChecker != nil {
+			i.tokenChecker.Shutdown()
+		}
 	}
 }
 
@@ -263,9 +293,28 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 
 // StopIncomingRequests is called during the shutdown process.
 func (i *Ingester) StopIncomingRequests() {
-	i.userStatesMtx.Lock()
-	defer i.userStatesMtx.Unlock()
-	i.stopped = true
+	// If we're not incrementally transferring tokens out, we want
+	// to stop all traffic.
+	if !i.cfg.LifecyclerConfig.LeaveIncrementalTransfer {
+		i.userStatesMtx.Lock()
+		defer i.userStatesMtx.Unlock()
+		i.stopped = true
+		return
+	}
+
+	// When we are incrementally transferring tokens, we want to wait
+	// for there to be no blocked ranges on our local ingester.
+	for {
+		i.blockedTokenMtx.RLock()
+		numBlocked := len(i.blockedRanges)
+		i.blockedTokenMtx.RUnlock()
+
+		if numBlocked == 0 {
+			return
+		}
+
+		time.Sleep(time.Millisecond * 250)
+	}
 }
 
 // Push implements client.IngesterServer
@@ -298,7 +347,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
-			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, record)
+			err := i.append(ctx, userID, ts.Token, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, record)
 			if err == nil {
 				continue
 			}
@@ -328,7 +377,24 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 	return &client.WriteResponse{}, nil
 }
 
-func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *Record) error {
+// isTokenBlocked checks to see if a token is in a blocked range.
+func (i *Ingester) isTokenBlocked(token uint32) error {
+	i.blockedTokenMtx.RLock()
+	defer i.blockedTokenMtx.RUnlock()
+
+	for rg := range i.blockedRanges {
+		if rg.Contains(token) {
+			return &validationError{
+				err:  errors.New("transfer in progress"),
+				code: http.StatusServiceUnavailable,
+			}
+		}
+	}
+
+	return nil
+}
+
+func (i *Ingester) append(ctx context.Context, userID string, token uint32, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *Record) error {
 	labels.removeBlanks()
 
 	var (
@@ -346,7 +412,12 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		return fmt.Errorf("ingester stopping")
 	}
 
-	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels, record)
+	if err := i.isTokenBlocked(token); err != nil {
+		i.metrics.rejectedSamplesTotal.Inc()
+		return err
+	}
+
+	state, fp, series, sstate, err := i.userStates.getOrCreateSeries(ctx, userID, labels, record, token)
 	if err != nil {
 		if ve, ok := err.(*validationError); ok {
 			state.discardedSamples.WithLabelValues(ve.errorType).Inc()
@@ -356,6 +427,18 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		// in case of error, because that lock has already been released on error.
 		state = nil
 		return err
+	}
+
+	if sstate == seriesCreated && i.cfg.CheckOnCreate {
+		if ok := i.tokenChecker.TokenExpected(token); !ok {
+			level.Debug(util.Logger).Log("msg", "unexpected stream created in ingester", "token", token)
+			i.metrics.unexpectedSeriesTotal.WithLabelValues("create").Inc()
+		}
+	} else if i.cfg.CheckOnAppend {
+		if ok := i.tokenChecker.TokenExpected(token); !ok {
+			level.Debug(util.Logger).Log("msg", "unexpected stream appended in ingester", "token", token)
+			i.metrics.unexpectedSeriesTotal.WithLabelValues("append").Inc()
+		}
 	}
 
 	prevNumChunks := len(series.chunkDescs)
@@ -701,4 +784,23 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
 	}
+}
+
+func (i *Ingester) unexpectedStreamsHandler(tokens []uint32) {
+	i.metrics.unexpectedSeries.Set(float64(len(tokens)))
+	if len(tokens) == 0 {
+		return
+	}
+
+	// Cut list of invalid tokens to first 20
+	if len(tokens) > 20 {
+		tokens = tokens[:20]
+	}
+
+	tokenStr := make([]string, len(tokens))
+	for i, tok := range tokens {
+		tokenStr[i] = strconv.FormatUint(uint64(tok), 10)
+	}
+
+	level.Debug(util.Logger).Log("msg", "unexpected tokens found", "tokens", strings.Join(tokenStr, ", "))
 }

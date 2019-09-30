@@ -18,6 +18,17 @@ func (ts ByToken) Len() int           { return len(ts) }
 func (ts ByToken) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts ByToken) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
 
+// Contains indicates that a key falls within a given range.
+func (r TokenRange) Contains(key uint32) bool {
+	if r.From > r.To {
+		// Wraps around the ring. It's in the range as long as the
+		// key is in the range of [from, 2<<32-1] or [0, to).
+		return key >= r.From || key < r.To
+	}
+
+	return key >= r.From && key < r.To
+}
+
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
 	return NewDesc()
@@ -37,19 +48,31 @@ func NewDesc() *Desc {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
+func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState, incremental bool) {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
 
-	ingester := IngesterDesc{
-		Addr:      addr,
-		Timestamp: time.Now().Unix(),
-		State:     state,
-		Tokens:    tokens,
+	d.Ingesters[id] = IngesterDesc{
+		Addr:        addr,
+		Timestamp:   time.Now().Unix(),
+		State:       state,
+		Incremental: incremental,
 	}
 
-	d.Ingesters[id] = ingester
+	// Add tokens
+	d.SetIngesterTokens(id, tokens)
+}
+
+// SetIngesterTokens updates the tokens in the ring with the provided tokens.
+func (d *Desc) SetIngesterTokens(id string, tokens []uint32) {
+	ing, ok := d.Ingesters[id]
+	if !ok {
+		return
+	}
+
+	ing.Tokens = tokens
+	d.Ingesters[id] = ing
 }
 
 // RemoveIngester removes the given ingester and all its tokens.
@@ -64,6 +87,7 @@ func (d *Desc) RemoveIngester(id string) {
 func (d *Desc) ClaimTokens(from, to string) Tokens {
 	var result Tokens
 
+	// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
 	if fromDesc, found := d.Ingesters[from]; found {
 		result = fromDesc.Tokens
 		fromDesc.Tokens = nil
@@ -107,9 +131,9 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 }
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.
-func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
-	takenTokens, myTokens := Tokens{}, Tokens{}
-	for _, token := range d.getTokens() {
+func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
+	var takenTokens, myTokens []uint32
+	for _, token := range d.GetNavigator() {
 		takenTokens = append(takenTokens, token.Token)
 		if token.Ingester == id {
 			myTokens = append(myTokens, token.Token)
@@ -118,8 +142,16 @@ func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 	return myTokens, takenTokens
 }
 
-// IsHealthy checks whether the ingester appears to be alive and heartbeating
-func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
+// IsHealthyState checks whether or not the ingester state is valid.
+//
+// When ingesters are using the handoff mechanism, writes should not go to
+// ingesters that are not ACTIVE and reads should not go to ingesters that
+// are JOINING.
+//
+// However, when ingesters are using incremental transfers, the state is
+// just informational. Since tokens are added/removed as they transfer,
+// both writes and reads can go to JOINING/LEAVING incremental ingesters.
+func (i *IngesterDesc) IsHealthyState(op Operation) bool {
 	healthy := false
 
 	switch op {
@@ -133,7 +165,16 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 		healthy = true
 	}
 
-	return healthy && time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
+	return healthy
+}
+
+// IsHealthy checks whether the ingester appears to be alive and heartbeating
+func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
+	if !i.IsHealthyState(op) {
+		return false
+	}
+
+	return time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
 // Merge merges other ring into this one. Returns sub-ring that represents the change,
@@ -374,18 +415,29 @@ func (d *Desc) RemoveTombstones(limit time.Time) {
 	}
 }
 
+// HealthChecker generates a health check function that wraps around
+// IngesterDesc.IsHealthyState, validating both the token state and the
+// last heartbeat of the ingester.
+func (d *Desc) HealthChecker(op Operation, heartbeatTimeout time.Duration) HealthCheckFunc {
+	return func(t TokenDesc) bool {
+		ing := d.Ingesters[t.Ingester]
+		return ing.IsHealthy(op, heartbeatTimeout)
+	}
+}
+
 type TokenDesc struct {
 	Token    uint32
 	Ingester string
 }
 
-// Returns sorted list of tokens with ingester names.
-func (d *Desc) getTokens() []TokenDesc {
+// GetNavigator returns a TokenNavigator from the Desc.
+func (d *Desc) GetNavigator() TokenNavigator {
 	numTokens := 0
 	for _, ing := range d.Ingesters {
 		numTokens += len(ing.Tokens)
 	}
 	tokens := make([]TokenDesc, 0, numTokens)
+
 	for key, ing := range d.Ingesters {
 		for _, token := range ing.Tokens {
 			tokens = append(tokens, TokenDesc{Token: token, Ingester: key})

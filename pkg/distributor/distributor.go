@@ -188,7 +188,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true)
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, nil, "distributor", ring.DistributorRingKey, true)
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +288,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Validates a single series from a write request. Will remove labels if
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
-func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (client.PreallocTimeseries, error) {
+func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string, token uint32) (client.PreallocTimeseries, error) {
 	labelsHistogram.Observe(float64(len(ts.Labels)))
 	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
 		return emptyPreallocSeries, err
@@ -307,6 +307,7 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 			TimeSeries: &client.TimeSeries{
 				Labels:  ts.Labels,
 				Samples: samples,
+				Token:   token,
 			},
 		},
 		nil
@@ -384,7 +385,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			return nil, err
 		}
 
-		validatedSeries, err := d.validateSeries(ts, userID)
+		validatedSeries, err := d.validateSeries(ts, userID, key)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.

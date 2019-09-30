@@ -155,13 +155,20 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 	return state, ok, nil
 }
 
-func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record) (*userState, model.Fingerprint, *memorySeries, error) {
+type seriesState int
+
+const (
+	seriesCreated seriesState = iota
+	seriesExists
+)
+
+func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record, token uint32) (*userState, model.Fingerprint, *memorySeries, seriesState, error) {
 	state := us.getOrCreate(userID)
-	fp, series, err := state.getSeries(labels, record)
-	return state, fp, series, err
+	fp, series, sstate, err := state.getSeries(labels, record, token)
+	return state, fp, series, sstate, err
 }
 
-func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerprint, *memorySeries, error) {
+func (u *userState) getSeries(metric labelPairs, record *Record, token uint32) (model.Fingerprint, *memorySeries, seriesState, error) {
 	rawFP := client.FastFingerprint(metric)
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -172,19 +179,24 @@ func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerpr
 
 	series, ok := u.fpToSeries.get(fp)
 	if ok {
-		return fp, series, nil
+		if token != series.token {
+			level.Warn(util.Logger).Log("msg", fmt.Sprintf("new token value for metric %s", metric), "previous", series.token, "new", token)
+			series.token = token
+		}
+
+		return fp, series, seriesExists, nil
 	}
 
-	series, err := u.createSeriesWithFingerprint(fp, metric, record, false)
+	series, err := u.createSeriesWithFingerprint(fp, token, metric, record, false)
 	if err != nil {
 		u.fpLocker.Unlock(fp)
-		return 0, nil, err
+		return 0, nil, seriesCreated, err
 	}
 
-	return fp, series, nil
+	return fp, series, seriesCreated, nil
 }
 
-func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record, recovery bool) (*memorySeries, error) {
+func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, token uint32, metric labelPairs, record *Record, recovery bool) (*memorySeries, error) {
 	// There's theoretically a relatively harmless race here if multiple
 	// goroutines get the length of the series map at the same time, then
 	// all proceed to add a new series. This is likely not worth addressing,
@@ -220,7 +232,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	}
 
 	labels := u.index.Add(metric, fp)
-	series := newMemorySeries(labels)
+	series := newMemorySeries(labels, token)
 	u.fpToSeries.put(fp, series)
 
 	return series, nil

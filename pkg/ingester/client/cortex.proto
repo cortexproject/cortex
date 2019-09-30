@@ -5,6 +5,7 @@ package cortex;
 option go_package = "client";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "pkg/ring/ring.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -20,11 +21,26 @@ service Ingester {
   rpc AllUserStats(UserStatsRequest) returns (UsersStatsResponse) {};
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
 
-  // TransferChunks allows leaving ingester (client) to stream chunks directly to joining ingesters (server).
+  // TransferChunks allows leaving ingester (client) to stream chunks directly
+  // to joining ingesters (server). Called during the hand-off process, and is a
+  // full transfer from the client.
   rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
 
   // TransferTSDB transfers all files of a tsdb to a joining ingester
   rpc TransferTSDB(stream TimeSeriesFile) returns (TransferTSDBResponse) {};
+
+  // TransferChunksSubset is invoked by a leaving ingester (client), streaming
+  // a subset of its chunks directly to an existing ingester.
+  rpc TransferChunksSubset(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
+
+  // GetChunksSubset is invoked by a joining ingester (client). A subset of the
+  // serving ingester's chunks will be sent as a stream.
+  rpc GetChunksSubset(GetChunksRequest) returns (stream TimeSeriesChunk) {};
+
+  // UnblockRanges is invoked by a joining ingester after it has successfully
+  // joined the ring. When invoked, it is safe to forcefully remove blocked
+  // ranges without waiting for them to time out.
+  rpc UnblockRanges(UnblockRangesRequest) returns (UnblockRangesResponse) {};
 }
 
 message WriteRequest {
@@ -109,6 +125,7 @@ message TimeSeriesChunk {
   string user_id = 2;
   repeated LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
+  uint32 token = 5;
 }
 
 message Chunk {
@@ -125,6 +142,25 @@ message TimeSeries {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
   // Sorted by time, oldest sample first.
   repeated Sample samples   = 2 [(gogoproto.nullable) = false];
+
+  // Token used by the distributor.
+  uint32 token = 3;
+}
+
+message GetChunksRequest {
+  string from_ingester_id = 1;
+  repeated ring.TokenRange ranges = 2 [(gogoproto.nullable) = false];
+
+  // If true, remove the chunks from the server's memory when the
+  // send completes.
+  bool move = 3;
+}
+
+message UnblockRangesRequest {
+  repeated ring.TokenRange ranges = 2 [(gogoproto.nullable) = false];
+}
+
+message UnblockRangesResponse {
 }
 
 message LabelPair {

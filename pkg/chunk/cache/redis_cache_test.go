@@ -11,26 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type redisMockClient struct {
-	conn redis.Conn
-}
-
-func (c *redisMockClient) Connection() redis.Conn {
-	return c.conn
-}
-
-func (c *redisMockClient) Close() error {
-	return nil
-}
-
 func TestRedisCache(t *testing.T) {
 	cfg := cache.RedisConfig{
 		Timeout: 10 * time.Millisecond,
 	}
 
 	conn := redigomock.NewConn()
-	client := &redisMockClient{conn: conn}
 	conn.Clear()
+	pool := redis.NewPool(func() (redis.Conn, error) {
+		return conn, nil
+	}, 10)
 
 	keys := []string{"key1", "key2", "key3"}
 	bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}
@@ -62,7 +52,7 @@ func TestRedisCache(t *testing.T) {
 	conn.Command("MGET", missIntf...).ExpectError(nil)
 
 	// mock the cache
-	c := cache.NewRedisCache(cfg, "mock", client)
+	c := cache.NewRedisCache(cfg, "mock", pool)
 	ctx := context.Background()
 
 	c.Store(ctx, keys, bufs)

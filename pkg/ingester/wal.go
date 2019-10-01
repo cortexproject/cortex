@@ -349,11 +349,19 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 		return err
 	}
 
+	nWorkers := runtime.GOMAXPROCS(0)
+	stateCache := make([]map[string]*userState, nWorkers)
+	seriesCache := make([]map[string]map[uint64]*memorySeries, nWorkers)
+	for i := 0; i < nWorkers; i++ {
+		stateCache[i] = make(map[string]*userState)
+		seriesCache[i] = make(map[string]map[uint64]*memorySeries)
+	}
+
 	if idx >= 0 {
 		// Checkpoint exists.
 		level.Info(util.Logger).Log("msg", "recovering from checkpoint", "checkpoint", lastCheckpointDir)
 		start := time.Now()
-		if err := processCheckpoint(lastCheckpointDir, userStates); err != nil {
+		if err := processCheckpoint(lastCheckpointDir, userStates, nWorkers, stateCache, seriesCache); err != nil {
 			return err
 		}
 		elapsed := time.Since(start)
@@ -369,7 +377,7 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 
 	level.Info(util.Logger).Log("msg", "recovering from segments", "dir", walDir)
 	start := time.Now()
-	if err := processWAL(walDir, userStates); err != nil {
+	if err := processWAL(walDir, userStates, nWorkers, stateCache, seriesCache); err != nil {
 		return err
 	}
 	elapsed := time.Since(start)
@@ -401,10 +409,10 @@ func segmentsExist(dir string) (bool, error) {
 }
 
 // processCheckpoint loads the chunks of the series present in the last checkpoint.
-func processCheckpoint(name string, userStates *userStates) error {
+func processCheckpoint(name string, userStates *userStates, nWorkers int,
+	stateCache []map[string]*userState, seriesCache []map[string]map[uint64]*memorySeries) error {
 	var (
-		nWorkers   = runtime.GOMAXPROCS(0)
-		seriesChan = make(chan *Series, 128*nWorkers)
+		inputs = make([]chan *Series, nWorkers)
 		// errChan is to capture the errors from goroutine.
 		// The channel size is nWorkers to not block any worker if all of them error out.
 		errChan    = make(chan error, nWorkers)
@@ -424,10 +432,11 @@ func processCheckpoint(name string, userStates *userStates) error {
 
 	wg.Add(nWorkers)
 	for i := 0; i < nWorkers; i++ {
-		go func() {
-			processCheckpointRecord(userStates, seriesPool, seriesChan, errChan)
+		inputs[i] = make(chan *Series, 300)
+		go func(input <-chan *Series, stateCache map[string]*userState, seriesCache map[string]map[uint64]*memorySeries) {
+			processCheckpointRecord(userStates, seriesPool, stateCache, seriesCache, input, errChan)
 			wg.Done()
-		}()
+		}(inputs[i], stateCache[i], seriesCache[i])
 	}
 
 	var errFromChan error
@@ -443,10 +452,14 @@ Loop:
 			// Exit early on an error.
 			// Only acts upon the first error received.
 			break Loop
-		case seriesChan <- s:
+		default:
+			mod := s.Fingerprint % uint64(nWorkers)
+			inputs[mod] <- s
 		}
 	}
-	close(seriesChan)
+	for i := 0; i < nWorkers; i++ {
+		close(inputs[i])
+	}
 	wg.Wait()
 
 	if errFromChan != nil {
@@ -463,10 +476,16 @@ Loop:
 	return nil
 }
 
-func processCheckpointRecord(userStates *userStates, seriesPool *sync.Pool, seriesChan chan *Series, errChan chan error) {
+func processCheckpointRecord(userStates *userStates, seriesPool *sync.Pool, stateCache map[string]*userState,
+	seriesCache map[string]map[uint64]*memorySeries, seriesChan <-chan *Series, errChan chan error) {
 	var la []client.LabelAdapter
 	for s := range seriesChan {
-		state := userStates.getOrCreate(s.UserId)
+		state, ok := stateCache[s.UserId]
+		if !ok {
+			state = userStates.getOrCreate(s.UserId)
+			stateCache[s.UserId] = state
+			seriesCache[s.UserId] = make(map[uint64]*memorySeries)
+		}
 
 		la = la[:0]
 		for _, l := range s.Labels {
@@ -492,6 +511,7 @@ func processCheckpointRecord(userStates *userStates, seriesPool *sync.Pool, seri
 			return
 		}
 
+		seriesCache[s.UserId][s.Fingerprint] = series
 		seriesPool.Put(s)
 	}
 }
@@ -502,26 +522,29 @@ type samplesWithUserID struct {
 }
 
 // processWAL processes the records in the WAL concurrently.
-func processWAL(name string, userStates *userStates) error {
+func processWAL(name string, userStates *userStates, nWorkers int,
+	stateCache []map[string]*userState, seriesCache []map[string]map[uint64]*memorySeries) error {
 	var (
-		wg       sync.WaitGroup
-		nWorkers = runtime.GOMAXPROCS(0)
-		inputs   = make([]chan *samplesWithUserID, nWorkers)
-		outputs  = make([]chan *samplesWithUserID, nWorkers)
+		wg      sync.WaitGroup
+		inputs  = make([]chan *samplesWithUserID, nWorkers)
+		outputs = make([]chan *samplesWithUserID, nWorkers)
 		// errChan is to capture the errors from goroutine.
 		// The channel size is nWorkers to not block any worker if all of them error out.
 		errChan = make(chan error, nWorkers)
+		shards  = make([]*samplesWithUserID, nWorkers)
 	)
 
 	wg.Add(nWorkers)
 	for i := 0; i < nWorkers; i++ {
 		outputs[i] = make(chan *samplesWithUserID, 300)
 		inputs[i] = make(chan *samplesWithUserID, 300)
+		shards[i] = &samplesWithUserID{}
 
-		go func(input <-chan *samplesWithUserID, output chan<- *samplesWithUserID) {
-			processWALSamples(userStates, input, output, errChan)
+		go func(input <-chan *samplesWithUserID, output chan<- *samplesWithUserID,
+			stateCache map[string]*userState, seriesCache map[string]map[uint64]*memorySeries) {
+			processWALSamples(userStates, stateCache, seriesCache, input, output, errChan)
 			wg.Done()
-		}(inputs[i], outputs[i])
+		}(inputs[i], outputs[i], stateCache[i], seriesCache[i])
 	}
 
 	reader, closer, err := newWalReader(name)
@@ -534,7 +557,6 @@ func processWAL(name string, userStates *userStates) error {
 		la          []client.LabelAdapter
 		errFromChan error
 		record      = &Record{}
-		shards      = make([]*samplesWithUserID, nWorkers)
 	)
 Loop:
 	for reader.Next() {
@@ -582,6 +604,12 @@ Loop:
 				m = len(record.Samples)
 			}
 			for i := 0; i < nWorkers; i++ {
+				if len(shards[i].samples) == 0 {
+					// It is possible that the previous iteration did not put
+					// anything in this shard. In that case no need to get a new buffer.
+					shards[i].userID = record.UserId
+					continue
+				}
 				select {
 				case buf := <-outputs[i]:
 					buf.samples = buf.samples[:0]
@@ -638,11 +666,10 @@ Loop:
 	return nil
 }
 
-func processWALSamples(userStates *userStates, input <-chan *samplesWithUserID, output chan<- *samplesWithUserID, errChan chan error) {
+func processWALSamples(userStates *userStates, stateCache map[string]*userState, seriesCache map[string]map[uint64]*memorySeries,
+	input <-chan *samplesWithUserID, output chan<- *samplesWithUserID, errChan chan error) {
 	defer close(output)
 
-	stateCache := make(map[string]*userState)
-	seriesCache := make(map[string]map[uint64]*memorySeries)
 	sp := model.SamplePair{}
 	for samples := range input {
 		state, ok := stateCache[samples.userID]

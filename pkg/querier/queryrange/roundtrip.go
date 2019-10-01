@@ -17,9 +17,13 @@ package queryrange
 
 import (
 	"context"
+	"flag"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/go-kit/kit/log"
 
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
@@ -27,6 +31,21 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
+
+type Config struct {
+	SplitQueriesByDay    bool `yaml:"split_queries_by_day"`
+	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
+	ResultsCacheConfig   `yaml:"results_cache"`
+	CacheResults         bool `yaml:"cache_results"`
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
+	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
+	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
+	cfg.ResultsCacheConfig.RegisterFlags(f)
+}
 
 // Limits allows us to specify per-tenant runtime limits on the behaviour of
 // the query handling code.
@@ -76,6 +95,32 @@ type roundTripper struct {
 	next    http.RoundTripper
 	handler Handler
 	limits  Limits
+}
+
+// NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
+func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripperware, error) {
+	var queryRangeMiddleware []Middleware
+	if cfg.AlignQueriesWithStep {
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
+	}
+	if cfg.SplitQueriesByDay {
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_day"), SplitByDayMiddleware(limits))
+	}
+	if cfg.CacheResults {
+		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits)
+		if err != nil {
+			return nil, err
+		}
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache"), queryCacheMiddleware)
+	}
+
+	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
+		// Finally, if the user selected any query range middleware, stitch it in.
+		if len(queryRangeMiddleware) > 0 {
+			return NewRoundTripper(next, MergeMiddlewares(queryRangeMiddleware...).Wrap(&ToRoundTripperMiddleware{Next: next}), limits)
+		}
+		return next
+	}), nil
 }
 
 // NewRoundTripper wraps a QueryRange Handler and allows it to send requests

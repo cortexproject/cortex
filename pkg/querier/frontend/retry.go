@@ -1,7 +1,7 @@
-package queryrange
+package frontend
 
 import (
-	"context"
+	"net/http"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -19,14 +19,14 @@ var retries = promauto.NewHistogram(prometheus.HistogramOpts{
 
 type retry struct {
 	log        log.Logger
-	next       Handler
+	next       http.RoundTripper
 	maxRetries int
 }
 
-// NewRetryMiddleware returns a middleware that retries requests if they
+// NewRetryTripperware returns a middleware that retries requests if they
 // fail with 500 or a non-HTTP error.
-func NewRetryMiddleware(log log.Logger, maxRetries int) Middleware {
-	return MiddlewareFunc(func(next Handler) Handler {
+func NewRetryTripperware(log log.Logger, maxRetries int) Tripperware {
+	return Tripperware(func(next http.RoundTripper) http.RoundTripper {
 		return retry{
 			log:        log,
 			next:       next,
@@ -35,13 +35,16 @@ func NewRetryMiddleware(log log.Logger, maxRetries int) Middleware {
 	})
 }
 
-func (r retry) Do(ctx context.Context, req *Request) (*APIResponse, error) {
+func (r retry) RoundTrip(req *http.Request) (*http.Response, error) {
 	tries := 0
 	defer func() { retries.Observe(float64(tries)) }()
 
 	var lastErr error
 	for ; tries < r.maxRetries; tries++ {
-		resp, err := r.next.Do(ctx, req)
+		if req.Context().Err() != nil {
+			return nil, req.Context().Err()
+		}
+		resp, err := r.next.RoundTrip(req)
 		if err == nil {
 			return resp, nil
 		}

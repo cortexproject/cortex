@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
@@ -55,20 +57,22 @@ type Config struct {
 	PrintConfig bool       `yaml:"-"`
 	HTTPPrefix  string     `yaml:"http_prefix"`
 
-	Server         server.Config            `yaml:"server,omitempty"`
-	Distributor    distributor.Config       `yaml:"distributor,omitempty"`
-	Querier        querier.Config           `yaml:"querier,omitempty"`
-	IngesterClient client.Config            `yaml:"ingester_client,omitempty"`
-	Ingester       ingester.Config          `yaml:"ingester,omitempty"`
-	Storage        storage.Config           `yaml:"storage,omitempty"`
-	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store,omitempty"`
-	Schema         chunk.SchemaConfig       `yaml:"schema,omitempty"`
-	LimitsConfig   validation.Limits        `yaml:"limits,omitempty"`
-	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty"`
-	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
-	Frontend       frontend.Config          `yaml:"frontend,omitempty"`
-	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
-	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
+	Server         server.Config         `yaml:"server,omitempty"`
+	Distributor    distributor.Config    `yaml:"distributor,omitempty"`
+	Querier        querier.Config        `yaml:"querier,omitempty"`
+	IngesterClient client.Config         `yaml:"ingester_client,omitempty"`
+	Ingester       ingester.Config       `yaml:"ingester,omitempty"`
+	Storage        storage.Config        `yaml:"storage,omitempty"`
+	ChunkStore     chunk.StoreConfig     `yaml:"chunk_store,omitempty"`
+	Schema         chunk.SchemaConfig    `yaml:"schema,omitempty"`
+	LimitsConfig   validation.Limits     `yaml:"limits,omitempty"`
+	Prealloc       client.PreallocConfig `yaml:"prealloc,omitempty"`
+	Worker         frontend.WorkerConfig `yaml:"frontend_worker,omitempty"`
+	Frontend       frontend.Config       `yaml:"frontend,omitempty"`
+	QueryRange     queryrange.Config     `yaml:"query_range,omitempty"`
+
+	TableManager chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Encoding     encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
@@ -97,6 +101,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Prealloc.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
+	c.QueryRange.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
 

@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
@@ -261,10 +263,15 @@ func (t *Cortex) stopStore() error {
 }
 
 func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
-	t.frontend, err = frontend.New(cfg.Frontend, util.Logger, t.overrides)
+	t.frontend, err = frontend.New(cfg.Frontend, util.Logger)
 	if err != nil {
 		return
 	}
+	tripperware, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides)
+	if err != nil {
+		return err
+	}
+	t.frontend.Wrap("query_range", tripperware)
 
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 	t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Handler(

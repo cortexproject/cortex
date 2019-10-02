@@ -159,7 +159,7 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	frontend, err := New(config, logger, defaultOverrides(t))
+	frontend, err := New(config, logger)
 	require.NoError(t, err)
 	defer frontend.Close()
 

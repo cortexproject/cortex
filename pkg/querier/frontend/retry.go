@@ -23,7 +23,7 @@ type retry struct {
 	maxRetries int
 }
 
-// NewRetryTripperware returns a middleware that retries requests if they
+// NewRetryTripperware returns a tripperware that retries requests if they
 // fail with 500 or a non-HTTP error.
 func NewRetryTripperware(log log.Logger, maxRetries int) Tripperware {
 	return Tripperware(func(next http.RoundTripper) http.RoundTripper {

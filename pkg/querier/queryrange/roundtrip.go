@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+// Config for query_range middleware chain.
 type Config struct {
 	SplitQueriesByDay    bool `yaml:"split_queries_by_day"`
 	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`

@@ -679,22 +679,22 @@ func processWALSamples(userStates *userStates, stateCache map[string]*userState,
 			seriesCache[samples.userID] = make(map[uint64]*memorySeries)
 		}
 		sc := seriesCache[samples.userID]
-		for _, sample := range samples.samples {
-			series, ok := sc[sample.Fingerprint]
+		for i := range samples.samples {
+			series, ok := sc[samples.samples[i].Fingerprint]
 			if !ok {
-				series, ok = state.fpToSeries.get(model.Fingerprint(sample.Fingerprint))
+				series, ok = state.fpToSeries.get(model.Fingerprint(samples.samples[i].Fingerprint))
 				if !ok {
 					// This should ideally not happen.
 					// If the series was not created in recovering checkpoint or
 					// from the labels of any records previous to this, there
 					// is no way to get the labels for this fingerprint.
-					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(sample.Fingerprint).String())
+					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(samples.samples[i].Fingerprint).String())
 					continue
 				}
 			}
 
-			sp.Timestamp = model.Time(sample.Timestamp)
-			sp.Value = model.SampleValue(sample.Value)
+			sp.Timestamp = model.Time(samples.samples[i].Timestamp)
+			sp.Value = model.SampleValue(samples.samples[i].Value)
 			// There can be many out of order samples because of checkpoint and WAL overlap.
 			// Checking this beforehand avoids the allocation of lots of error messages.
 			if sp.Timestamp.After(series.lastTime) {

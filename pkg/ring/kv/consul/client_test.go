@@ -115,7 +115,8 @@ func TestReset(t *testing.T) {
 
 func observeValueForSomeTime(client *Client, key string, timeout time.Duration) []string {
 	observed := []string(nil)
-	ctx, _ := context.WithTimeout(context.Background(), timeout) // little over 1 second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout) // little over 1 second
+	defer cancel()
 	client.WatchKey(ctx, key, func(i interface{}) bool {
 		s, ok := i.(string)
 		if !ok {

@@ -78,11 +78,9 @@ func (tc *simpleTestCase) Query(ctx context.Context, client v1.API, selectors st
 		return nil, fmt.Errorf("didn't get matrix from Prom")
 	}
 
-	result := []model.SamplePair{}
+	var result []model.SamplePair
 	for _, stream := range ms {
-		for _, pair := range stream.Values {
-			result = append(result, pair)
-		}
+		result = append(result, stream.Values...)
 	}
 	return result, nil
 }

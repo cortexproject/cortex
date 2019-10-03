@@ -39,7 +39,7 @@ type WALConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.walEnabled, "ingester.wal-enable", false, "Enable the WAL.")
-	f.BoolVar(&cfg.walEnabled, "ingester.checkpoint-enable", false, "Enable checkpointing.")
+	f.BoolVar(&cfg.checkpointEnabled, "ingester.checkpoint-enable", false, "Enable checkpointing.")
 	f.BoolVar(&cfg.recover, "ingester.recover-from-wal", false, "Recover data from existing WAL.")
 	f.StringVar(&cfg.dir, "ingester.wal-dir", "", "Directory to store the WAL.")
 	f.DurationVar(&cfg.checkpointDuration, "ingester.checkpoint-duration", 1*time.Hour, "Duration over which to checkpoint.")
@@ -170,9 +170,9 @@ func (w *walWrapper) run() {
 			elapsed := time.Since(start)
 			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 		case <-w.quit:
-			if err := w.checkpoint(); err != nil {
-				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
-			}
+			// if err := w.checkpoint(); err != nil {
+			// 	level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
+			// }
 			return
 		}
 	}

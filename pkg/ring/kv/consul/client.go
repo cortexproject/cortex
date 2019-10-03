@@ -31,6 +31,9 @@ var (
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	}
+
+	rateLimiterCreditsPerSecond = 1.0
+	rateLimiterMaxBalance       = 5.0
 )
 
 // Config to create a ConsulClient
@@ -170,7 +173,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
-		limiter = util.NewRateLimiter(1, 5)
+		limiter = util.NewRateLimiter(rateLimiterCreditsPerSecond, rateLimiterMaxBalance)
 	)
 
 	for backoff.Ongoing() {

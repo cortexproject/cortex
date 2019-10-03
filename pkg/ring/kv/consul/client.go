@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
-	cleanhttp "github.com/hashicorp/go-cleanhttp"
+	"github.com/hashicorp/go-cleanhttp"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -170,8 +170,20 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
+		limiter = util.NewRateLimiter(1, 5)
 	)
+
 	for backoff.Ongoing() {
+		rateOk, wait := limiter.CheckCredit(1)
+		if !rateOk {
+			select {
+			case <-time.After(wait):
+				continue
+			case <-ctx.Done():
+				return
+			}
+		}
+
 		queryOptions := &consul.QueryOptions{
 			AllowStale:        !c.cfg.ConsistentReads,
 			RequireConsistent: c.cfg.ConsistentReads,
@@ -187,12 +199,21 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		}
 		backoff.Reset()
 
-		// Skip if the index is the same as last time, because the key value is
-		// guaranteed to be the same as last time
-		if index == meta.LastIndex {
+		// See https://www.consul.io/api/features/blocking.html#implementation-details for logic behind these checks.
+		if meta.LastIndex == 0 {
+			// Don't just keep using index=0.
+			// After blocking request, returned index must be at least 1.
+			index = 1
+		} else if meta.LastIndex < index {
+			// Index reset.
+			index = 0
+		} else if index == meta.LastIndex {
+			// Skip if the index is the same as last time, because the key value is
+			// guaranteed to be the same as last time
 			continue
+		} else {
+			index = meta.LastIndex
 		}
-		index = meta.LastIndex
 
 		out, err := c.codec.Decode(kvp.Value)
 		if err != nil {

@@ -193,6 +193,9 @@ github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/wrappers
 # github.com/golang/snappy v0.0.1
 github.com/golang/snappy
+# github.com/gomodule/redigo v2.0.0+incompatible
+github.com/gomodule/redigo/internal
+github.com/gomodule/redigo/redis
 # github.com/google/btree v1.0.0
 github.com/google/btree
 # github.com/google/go-cmp v0.3.1
@@ -440,6 +443,8 @@ github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/util/treecache
 github.com/prometheus/prometheus/web/api/v1
+# github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
+github.com/rafaeljusto/redigomock
 # github.com/rs/cors v1.6.0
 github.com/rs/cors
 # github.com/samuel/go-zookeeper v0.0.0-20190810000440-0ceca61e4d75

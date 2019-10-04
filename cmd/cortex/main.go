@@ -77,11 +77,21 @@ func main() {
 }
 
 // LoadConfig read YAML-formatted config from filename into cfg.
-func LoadConfig(filename string, cfg interface{}) error {
+func LoadConfig(filename string, cfg *cortex.Config) error {
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")
 	}
 
-	return yaml.UnmarshalStrict(buf, cfg)
+	err = yaml.UnmarshalStrict(buf, cfg)
+	if err != nil {
+		return errors.Wrap(err, "Error parsing config file")
+	}
+
+	err = cfg.Validate()
+	if err != nil {
+		return errors.Wrap(err, "Error validating config file")
+	}
+
+	return nil
 }

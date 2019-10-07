@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -19,13 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/tsdb"
-	lbls "github.com/prometheus/prometheus/tsdb/labels"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
-	"github.com/thanos-io/thanos/pkg/runutil"
-	"github.com/thanos-io/thanos/pkg/shipper"
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -125,14 +117,7 @@ type Config struct {
 	RateUpdatePeriod time.Duration
 
 	// Use tsdb block storage
-	V2          bool
-	BlockRanges time.Duration
-	Retention   time.Duration
-	TSDBDir     string
-	S3Key       string
-	S3Secret    string
-	S3Bucket    string
-	S3Endpoint  string
+	V2 V2Config
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
@@ -154,14 +139,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 
 	// Prometheus 2.x block storage
-	f.BoolVar(&cfg.V2, "ingester.v2.enable", false, "If true, use Prometheus block storage for metrics")
-	f.DurationVar(&cfg.BlockRanges, "ingester.v2.blockranges", 1*time.Hour, "TSDB block ranges")
-	f.DurationVar(&cfg.Retention, "ingester.v2.retention", 6*time.Hour, "TSDB block retention")
-	f.StringVar(&cfg.TSDBDir, "ingester.v2.dir", "tsdb", "directory to place all tsdb's into")
-	f.StringVar(&cfg.S3Key, "ingester.v2.key", "", "s3 skey")
-	f.StringVar(&cfg.S3Secret, "ingester.v2.secret", "", "s3 secret")
-	f.StringVar(&cfg.S3Bucket, "ingester.v2.bucket", "", "s3 bucket")
-	f.StringVar(&cfg.S3Endpoint, "ingester.v2.endpoint", "", "s3 endpoint")
+	f.BoolVar(&cfg.V2.Enabled, "ingester.v2.enable", false, "If true, use Prometheus block storage for metrics")
+	f.DurationVar(&cfg.V2.BlockRanges, "ingester.v2.blockranges", 1*time.Hour, "TSDB block ranges")
+	f.DurationVar(&cfg.V2.Retention, "ingester.v2.retention", 6*time.Hour, "TSDB block retention")
+	f.StringVar(&cfg.V2.TSDBDir, "ingester.v2.dir", "tsdb", "directory to place all tsdb's into")
+	f.StringVar(&cfg.V2.S3Key, "ingester.v2.key", "", "s3 skey")
+	f.StringVar(&cfg.V2.S3Secret, "ingester.v2.secret", "", "s3 secret")
+	f.StringVar(&cfg.V2.S3Bucket, "ingester.v2.bucket", "", "s3 bucket")
+	f.StringVar(&cfg.V2.S3Endpoint, "ingester.v2.endpoint", "", "s3 endpoint")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -192,12 +177,7 @@ type Ingester struct {
 	preFlushUserSeries func()
 
 	// Prometheus block storage
-	V2          bool                // indicates that the prometheus block storage should be used
-	dbs         map[string]*tsdb.DB // tsdb sharded by userID
-	bucket      objstore.Bucket
-	tsdbDir     string
-	blockRanges time.Duration
-	retention   time.Duration
+	V2 V2Config
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -211,7 +191,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
-	if cfg.V2 {
+	if cfg.V2.Enabled {
 		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
 	}
 
@@ -243,49 +223,6 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	i.done.Add(1)
 	go i.loop()
-
-	return i, nil
-}
-
-// NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
-func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
-
-	var bkt *s3.Bucket
-	s3Cfg := s3.Config{
-		Bucket:    cfg.S3Bucket,
-		Endpoint:  cfg.S3Endpoint,
-		AccessKey: cfg.S3Key,
-		SecretKey: cfg.S3Secret,
-	}
-	var err error
-	bkt, err = s3.NewBucketWithConfig(util.Logger, s3Cfg, "cortex")
-	if err != nil {
-		return nil, err
-	}
-
-	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-
-		metrics: newIngesterMetrics(registerer),
-
-		limits:     limits,
-		chunkStore: chunkStore,
-		userStates: newUserStates(limits, cfg),
-
-		quit:        make(chan struct{}),
-		V2:          cfg.V2,
-		dbs:         make(map[string]*tsdb.DB),
-		bucket:      bkt,
-		blockRanges: cfg.BlockRanges,
-		retention:   cfg.Retention,
-		tsdbDir:     cfg.TSDBDir,
-	}
-
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
-	if err != nil {
-		return nil, err
-	}
 
 	return i, nil
 }
@@ -332,7 +269,7 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	if i.V2 {
+	if i.V2.Enabled {
 		return i.v2Push(ctx, req)
 	}
 
@@ -364,99 +301,6 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	client.ReuseSlice(req.Timeseries)
 
 	return &client.WriteResponse{}, lastPartialErr
-}
-
-// v2Push adds metrics to a block
-func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no user id")
-	}
-
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Walk the samples, appending them to the users database
-	app := db.Appender()
-	for _, ts := range req.Timeseries {
-		for _, s := range ts.Samples {
-			if i.stopped {
-				return nil, fmt.Errorf("ingester stopping")
-			}
-			lset := make(lbls.Labels, len(ts.Labels))
-			for i := range ts.Labels {
-				lset[i] = lbls.Label{
-					Name:  ts.Labels[i].Name,
-					Value: ts.Labels[i].Value,
-				}
-			}
-			if _, err := app.Add(lset, s.TimestampMs, s.Value); err != nil {
-				if err := app.Rollback(); err != nil {
-					level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID)
-				}
-				return nil, err
-			}
-		}
-	}
-	if err := app.Commit(); err != nil {
-		return nil, err
-	}
-
-	client.ReuseSlice(req.Timeseries)
-
-	return &client.WriteResponse{}, nil
-}
-
-func (i *Ingester) getTSDB(userID string) *tsdb.DB {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
-	db, _ := i.dbs[userID]
-	return db
-}
-
-func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
-	db := i.getTSDB(userID)
-	if db == nil {
-		i.userStatesMtx.Lock()
-		defer i.userStatesMtx.Unlock()
-		udir := i.userDir(userID)
-
-		// Create a new user database
-		var err error
-		db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
-			RetentionDuration: uint64(i.retention / time.Millisecond),
-			BlockRanges:       []int64{int64(i.blockRanges / time.Millisecond)},
-			NoLockfile:        true,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		// Create a new shipper for this database
-		l := lbls.Labels{
-			{
-				Name:  "user",
-				Value: userID,
-			},
-		}
-		s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
-		i.done.Add(1)
-		go func() {
-			defer i.done.Done()
-			runutil.Repeat(30*time.Second, i.quit, func() error {
-				if uploaded, err := s.Sync(context.Background()); err != nil {
-					level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
-				}
-				return nil
-			})
-		}()
-
-		i.dbs[userID] = db
-	}
-
-	return db, nil
 }
 
 func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
@@ -524,7 +368,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
-	if i.V2 {
+	if i.V2.Enabled {
 		return i.v2Query(ctx, req)
 	}
 
@@ -585,85 +429,9 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	return result, err
 }
 
-func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	from, through, matchers, err := client.FromQueryRequest(req)
-	if err != nil {
-		return nil, err
-	}
-
-	i.metrics.queries.Inc()
-
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db")
-	}
-
-	q, err := db.Querier(int64(from), int64(through))
-	if err != nil {
-		return nil, err
-	}
-	defer q.Close()
-
-	// two different versions of the labels package are being used, converting matchers must be done
-	var converted []lbls.Matcher
-	for _, m := range matchers {
-		switch m.Type {
-		case labels.MatchEqual:
-			converted = append(converted, lbls.NewEqualMatcher(m.Name, m.Value))
-		case labels.MatchNotEqual:
-			converted = append(converted, lbls.Not(lbls.NewEqualMatcher(m.Name, m.Value)))
-		case labels.MatchRegexp:
-			rm, err := lbls.NewRegexpMatcher(m.Name, m.Value)
-			if err != nil {
-				return nil, err
-			}
-			converted = append(converted, rm)
-		case labels.MatchNotRegexp:
-			rm, err := lbls.NewRegexpMatcher(m.Name, m.Value)
-			if err != nil {
-				return nil, err
-			}
-			converted = append(converted, lbls.Not(rm))
-		}
-	}
-	ss, err := q.Select(converted...)
-	if err != nil {
-		return nil, err
-	}
-
-	result := &client.QueryResponse{}
-	for ss.Next() {
-		series := ss.At()
-
-		// convert labels to LabelAdapter
-		var adapters []client.LabelAdapter
-		for _, l := range series.Labels() {
-			adapters = append(adapters, client.LabelAdapter(l))
-		}
-		ts := client.TimeSeries{
-			Labels: adapters,
-		}
-
-		it := series.Iterator()
-		for it.Next() {
-			t, v := it.At()
-			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
-		}
-
-		result.Timeseries = append(result.Timeseries, ts)
-	}
-
-	return result, ss.Err()
-}
-
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
-	if i.V2 {
+	if i.V2.Enabled {
 		return fmt.Errorf("Unimplemented for V2")
 	}
 
@@ -739,7 +507,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	if i.V2 {
+	if i.V2.Enabled {
 		return i.v2LabelValues(ctx, req)
 	}
 
@@ -758,38 +526,9 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 	return resp, nil
 }
 
-func (i *Ingester) v2LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db")
-	}
-
-	through := time.Now()
-	from := through.Add(-i.retention)
-	q, err := db.Querier(from.Unix()*1000, through.Unix()*1000)
-	if err != nil {
-		return nil, err
-	}
-	defer q.Close()
-
-	vals, err := q.LabelValues(req.LabelName)
-	if err != nil {
-		return nil, err
-	}
-
-	return &client.LabelValuesResponse{
-		LabelValues: vals,
-	}, nil
-}
-
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
-	if i.V2 {
+	if i.V2.Enabled {
 		return i.v2LabelNames(ctx, req)
 	}
 
@@ -806,35 +545,6 @@ func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest
 	resp.LabelNames = append(resp.LabelNames, state.index.LabelNames()...)
 
 	return resp, nil
-}
-
-func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db")
-	}
-
-	through := time.Now()
-	from := through.Add(-i.retention)
-	q, err := db.Querier(from.Unix()*1000, through.Unix()*1000)
-	if err != nil {
-		return nil, err
-	}
-	defer q.Close()
-
-	names, err := q.LabelNames()
-	if err != nil {
-		return nil, err
-	}
-
-	return &client.LabelNamesResponse{
-		LabelNames: names,
-	}, nil
 }
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
@@ -942,5 +652,3 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not ready: "+err.Error(), http.StatusServiceUnavailable)
 	}
 }
-
-func (i *Ingester) userDir(userID string) string { return filepath.Join(i.tsdbDir, userID) }

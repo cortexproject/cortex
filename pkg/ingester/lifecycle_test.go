@@ -424,12 +424,12 @@ func TestV2IngesterTransfer(t *testing.T) {
 
 	// Start the first ingester, and get it into ACTIVE state.
 	cfg1 := defaultIngesterTestConfig()
-	cfg1.V2 = true
-	cfg1.S3Key = "dummy"
-	cfg1.S3Secret = "dummy"
-	cfg1.S3Bucket = "dummy"
-	cfg1.S3Endpoint = "dummy"
-	cfg1.TSDBDir = dir1
+	cfg1.V2.Enabled = true
+	cfg1.V2.S3Key = "dummy"
+	cfg1.V2.S3Secret = "dummy"
+	cfg1.V2.S3Bucket = "dummy"
+	cfg1.V2.S3Endpoint = "dummy"
+	cfg1.V2.TSDBDir = dir1
 	cfg1.LifecyclerConfig.ID = "ingester1"
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
@@ -472,12 +472,12 @@ func TestV2IngesterTransfer(t *testing.T) {
 
 	// Start a second ingester, but let it go into PENDING
 	cfg2 := defaultIngesterTestConfig()
-	cfg2.V2 = true
-	cfg2.S3Key = "dummy"
-	cfg2.S3Secret = "dummy"
-	cfg2.S3Bucket = "dummy"
-	cfg2.S3Endpoint = "dummy"
-	cfg2.TSDBDir = dir2
+	cfg2.V2.Enabled = true
+	cfg2.V2.S3Key = "dummy"
+	cfg2.V2.S3Secret = "dummy"
+	cfg2.V2.S3Bucket = "dummy"
+	cfg2.V2.S3Endpoint = "dummy"
+	cfg2.V2.TSDBDir = dir2
 	cfg2.LifecyclerConfig.RingConfig.KVStore.Mock = cfg1.LifecyclerConfig.RingConfig.KVStore.Mock
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"

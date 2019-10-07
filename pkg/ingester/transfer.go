@@ -207,11 +207,11 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 
 		// TODO(thor) To avoid corruption from errors, it's probably best to write to a temp dir, and then move that to the final location
 		createfile := func(f *client.TimeSeriesFile) (*os.File, error) {
-			dir := filepath.Join(i.tsdbDir, filepath.Dir(f.Filename))
+			dir := filepath.Join(i.V2.TSDBDir, filepath.Dir(f.Filename))
 			if err := os.MkdirAll(dir, 0777); err != nil {
 				return nil, err
 			}
-			file, err := os.Create(filepath.Join(i.tsdbDir, f.Filename))
+			file, err := os.Create(filepath.Join(i.V2.TSDBDir, f.Filename))
 			if err != nil {
 				return nil, err
 			}
@@ -329,7 +329,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 }
 
 func (i *Ingester) transferOut(ctx context.Context) error {
-	if i.V2 {
+	if i.V2.Enabled {
 		return i.v2TransferOut(ctx)
 	}
 
@@ -403,7 +403,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 }
 
 func (i *Ingester) v2TransferOut(ctx context.Context) error {
-	if len(i.dbs) == 0 {
+	if len(i.V2.dbs) == 0 {
 		level.Info(util.Logger).Log("msg", "nothing to transfer")
 		return nil
 	}
@@ -412,8 +412,8 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	wg := &sync.WaitGroup{}
 	// Only perform a shutdown once
 	once.Do(func() {
-		wg.Add(len(i.dbs))
-		for _, db := range i.dbs {
+		wg.Add(len(i.V2.dbs))
+		for _, db := range i.V2.dbs {
 			go func(closer io.Closer) {
 				defer wg.Done()
 				if err := closer.Close(); err != nil {
@@ -444,7 +444,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	wg.Wait() // wait for all databases to have closed
 
 	// Grab a list of all blocks that need to be shipped
-	blocks, err := unshippedBlocks(i.tsdbDir)
+	blocks, err := unshippedBlocks(i.V2.TSDBDir)
 	if err != nil {
 		return err
 	}
@@ -452,7 +452,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	for user, blockIDs := range blocks {
 		// Transfer the users TSDB
 		// TODO(thor) transferring users can be done concurrently
-		transferUser(ctx, stream, i.tsdbDir, i.lifecycler.ID, user, blockIDs)
+		transferUser(ctx, stream, i.V2.TSDBDir, i.lifecycler.ID, user, blockIDs)
 	}
 
 	_, err = stream.CloseAndRecv()

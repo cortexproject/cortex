@@ -195,12 +195,12 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	}
 
 	var store querier.ChunkStore
-	if cfg.Ingester.V2 {
+	if cfg.Ingester.V2.Enabled {
 		s3cfg := s3.Config{
-			Bucket:    cfg.Ingester.S3Bucket,
-			Endpoint:  cfg.Ingester.S3Endpoint,
-			AccessKey: cfg.Ingester.S3Key,
-			SecretKey: cfg.Ingester.S3Secret,
+			Bucket:    cfg.Ingester.V2.S3Bucket,
+			Endpoint:  cfg.Ingester.V2.S3Endpoint,
+			AccessKey: cfg.Ingester.V2.S3Key,
+			SecretKey: cfg.Ingester.V2.S3Secret,
 		}
 		store, err = querier.NewBlockQuerier(s3cfg, prometheus.DefaultRegisterer)
 		if err != nil {

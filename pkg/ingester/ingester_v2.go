@@ -272,39 +272,46 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 	if db == nil {
 		i.userStatesMtx.Lock()
 		defer i.userStatesMtx.Unlock()
-		udir := i.userDir(userID)
 
-		// Create a new user database
-		var err error
-		db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
-			RetentionDuration: uint64(i.V2.Retention / time.Millisecond),
-			BlockRanges:       []int64{int64(i.V2.BlockRanges / time.Millisecond)},
-			NoLockfile:        true,
-		})
-		if err != nil {
-			return nil, err
-		}
+		// Check again for DB in the event it was created in-between locks
+		var ok bool
+		db, ok = i.V2.dbs[userID]
+		if !ok {
 
-		// Create a new shipper for this database
-		l := lbls.Labels{
-			{
-				Name:  "user",
-				Value: userID,
-			},
-		}
-		s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.V2.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
-		i.done.Add(1)
-		go func() {
-			defer i.done.Done()
-			runutil.Repeat(30*time.Second, i.quit, func() error {
-				if uploaded, err := s.Sync(context.Background()); err != nil {
-					level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
-				}
-				return nil
+			udir := i.userDir(userID)
+
+			// Create a new user database
+			var err error
+			db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+				RetentionDuration: uint64(i.V2.Retention / time.Millisecond),
+				BlockRanges:       []int64{int64(i.V2.BlockRanges / time.Millisecond)},
+				NoLockfile:        true,
 			})
-		}()
+			if err != nil {
+				return nil, err
+			}
 
-		i.V2.dbs[userID] = db
+			// Create a new shipper for this database
+			l := lbls.Labels{
+				{
+					Name:  "user",
+					Value: userID,
+				},
+			}
+			s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.V2.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
+			i.done.Add(1)
+			go func() {
+				defer i.done.Done()
+				runutil.Repeat(30*time.Second, i.quit, func() error {
+					if uploaded, err := s.Sync(context.Background()); err != nil {
+						level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
+					}
+					return nil
+				})
+			}()
+
+			i.V2.dbs[userID] = db
+		}
 	}
 
 	return db, nil

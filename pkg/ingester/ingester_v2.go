@@ -159,13 +159,13 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 		case labels.MatchNotEqual:
 			converted = append(converted, lbls.Not(lbls.NewEqualMatcher(m.Name, m.Value)))
 		case labels.MatchRegexp:
-			rm, err := lbls.NewRegexpMatcher(m.Name, m.Value)
+			rm, err := lbls.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
 			if err != nil {
 				return nil, err
 			}
 			converted = append(converted, rm)
 		case labels.MatchNotRegexp:
-			rm, err := lbls.NewRegexpMatcher(m.Name, m.Value)
+			rm, err := lbls.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
 			if err != nil {
 				return nil, err
 			}

@@ -187,8 +187,8 @@ func (r *Ruler) Stop() {
 	r.userManagerMtx.Lock()
 	for user, manager := range r.userManagers {
 		level.Debug(util.Logger).Log("msg", "shutting down user  manager", "user", user)
+		wg.Add(1)
 		go func(manager *promRules.Manager, user string) {
-			wg.Add(1)
 			manager.Stop()
 			wg.Done()
 			level.Debug(util.Logger).Log("msg", "user manager shut down", "user", user)
@@ -314,21 +314,21 @@ func (r *Ruler) run() {
 	tick := time.NewTicker(r.cfg.PollInterval)
 	defer tick.Stop()
 
-	r.loadRules()
+	r.loadRules(context.Background())
 	for {
 		select {
 		case <-r.done:
 			return
 		case <-tick.C:
-			r.loadRules()
+			r.loadRules(context.Background())
 		}
 	}
 }
 
-func (r *Ruler) loadRules() {
+func (r *Ruler) loadRules(ctx context.Context) {
 	ringHasher := fnv.New32a()
 
-	configs, err := r.store.ListAllRuleGroups(context.Background())
+	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "unable to poll for rules", "err", err)
 		return
@@ -377,7 +377,7 @@ func (r *Ruler) loadRules() {
 			manager, exists := r.userManagers[user]
 			r.userManagerMtx.Unlock()
 			if !exists {
-				manager, err = r.newManager(user)
+				manager, err = r.newManager(ctx, user)
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
 					continue
@@ -411,7 +411,7 @@ func (r *Ruler) loadRules() {
 
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
-func (r *Ruler) newManager(userID string) (*promRules.Manager, error) {
+func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
 	db := &tsdb{
 		appender: &appendableAppender{
 			pusher: r.pusher,
@@ -433,7 +433,7 @@ func (r *Ruler) newManager(userID string) (*promRules.Manager, error) {
 		Appendable:  db,
 		TSDB:        db,
 		QueryFunc:   promRules.EngineQueryFunc(r.engine, r.queryable),
-		Context:     user.InjectOrgID(context.Background(), userID),
+		Context:     user.InjectOrgID(ctx, userID),
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
 		Logger:      util.Logger,

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs"
@@ -160,11 +159,4 @@ func (c *ConfigDBClient) ListAllRuleGroups(ctx context.Context) (map[string]rule
 	}
 
 	return newRules, nil
-}
-
-// decomposeGroupSlug breaks the group slug from Parse
-// into it's group name and file name
-func decomposeGroupSlug(slug string) (string, string) {
-	components := strings.Split(slug, ";")
-	return components[0], components[1]
 }

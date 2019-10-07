@@ -154,7 +154,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 
 	// Prometheus 2.x block storage
-	f.BoolVar(&cfg.V2, "ingester.v2", false, "If true, use Prometheus block storage for metrics")
+	f.BoolVar(&cfg.V2, "ingester.v2.enable", false, "If true, use Prometheus block storage for metrics")
 	f.DurationVar(&cfg.BlockRanges, "ingester.v2.blockranges", 1*time.Hour, "TSDB block ranges")
 	f.DurationVar(&cfg.Retention, "ingester.v2.retention", 6*time.Hour, "TSDB block retention")
 	f.StringVar(&cfg.TSDBDir, "ingester.v2.dir", "tsdb", "directory to place all tsdb's into")

@@ -26,16 +26,17 @@ import (
 
 // V2Config is the config for IngesterV2
 type V2Config struct {
-	Enabled     bool                // indicates that the prometheus block storage should be used
-	dbs         map[string]*tsdb.DB // tsdb sharded by userID
-	bucket      objstore.Bucket
-	TSDBDir     string
-	BlockRanges time.Duration
-	Retention   time.Duration
-	S3Endpoint  string
-	S3Bucket    string
-	S3Secret    string
-	S3Key       string
+	Enabled      bool                // indicates that the prometheus block storage should be used
+	dbs          map[string]*tsdb.DB // tsdb sharded by userID
+	bucket       objstore.Bucket
+	TSDBDir      string
+	BlockRanges  time.Duration
+	Retention    time.Duration
+	ShipInterval time.Duration
+	S3Endpoint   string
+	S3Bucket     string
+	S3Secret     string
+	S3Key        string
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -66,12 +67,13 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		quit:       make(chan struct{}),
 
 		V2: V2Config{
-			Enabled:     cfg.V2.Enabled,
-			dbs:         make(map[string]*tsdb.DB),
-			bucket:      bkt,
-			BlockRanges: cfg.V2.BlockRanges,
-			Retention:   cfg.V2.Retention,
-			TSDBDir:     cfg.V2.TSDBDir,
+			Enabled:      cfg.V2.Enabled,
+			dbs:          make(map[string]*tsdb.DB),
+			bucket:       bkt,
+			BlockRanges:  cfg.V2.BlockRanges,
+			Retention:    cfg.V2.Retention,
+			TSDBDir:      cfg.V2.TSDBDir,
+			ShipInterval: cfg.V2.ShipInterval,
 		},
 	}
 
@@ -302,7 +304,7 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 			i.done.Add(1)
 			go func() {
 				defer i.done.Done()
-				runutil.Repeat(30*time.Second, i.quit, func() error {
+				runutil.Repeat(i.V2.ShipInterval, i.quit, func() error {
 					if uploaded, err := s.Sync(context.Background()); err != nil {
 						level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
 					}

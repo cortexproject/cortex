@@ -61,7 +61,7 @@ func createTSDB(t *testing.T, dir string, users []*userTSDB) {
 			createAndWrite(t, filepath.Join(userdir, "wal", "checkpoint.000419", "000000"))
 
 			// Record if this block is to be "shipped"
-			if rnd.Intn(100) <= user.shipPercent {
+			if rnd.Intn(100) < user.shipPercent {
 				user.meta.Uploaded = append(user.meta.Uploaded, u)
 			} else {
 				user.unshipped = append(user.unshipped, u.String())

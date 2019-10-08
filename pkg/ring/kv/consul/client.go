@@ -203,20 +203,10 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		}
 		backoff.Reset()
 
-		// See https://www.consul.io/api/features/blocking.html#implementation-details for logic behind these checks.
-		if meta.LastIndex == 0 {
-			// Don't just keep using index=0.
-			// After blocking request, returned index must be at least 1.
-			index = 1
-		} else if meta.LastIndex < index {
-			// Index reset.
-			index = 0
-		} else if index == meta.LastIndex {
-			// Skip if the index is the same as last time, because the key value is
-			// guaranteed to be the same as last time
+		skip := false
+		index, skip = checkLastIndex(index, meta.LastIndex)
+		if skip {
 			continue
-		} else {
-			index = meta.LastIndex
 		}
 
 		out, err := c.codec.Decode(kvp.Value)
@@ -263,9 +253,10 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 			continue
 		}
 		backoff.Reset()
-		// Skip if the index is the same as last time, because the key value is
-		// guaranteed to be the same as last time
-		if index == meta.LastIndex {
+
+		skip := false
+		index, skip = checkLastIndex(index, meta.LastIndex)
+		if skip {
 			continue
 		}
 
@@ -297,6 +288,24 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 		return nil, nil
 	}
 	return c.codec.Decode(kvp.Value)
+}
+
+func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {
+	// See https://www.consul.io/api/features/blocking.html#implementation-details for logic behind these checks.
+	if metaLastIndex == 0 {
+		// Don't just keep using index=0.
+		// After blocking request, returned index must be at least 1.
+		return 1, false
+	} else if metaLastIndex < index {
+		// Index reset.
+		return 0, false
+	} else if index == metaLastIndex {
+		// Skip if the index is the same as last time, because the key value is
+		// guaranteed to be the same as last time
+		return metaLastIndex, true
+	} else {
+		return metaLastIndex, false
+	}
 }
 
 func (c *Client) createRateLimiter() *rate.Limiter {

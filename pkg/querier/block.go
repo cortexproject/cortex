@@ -52,7 +52,7 @@ func NewBlockQuerier(s3cfg s3.Config, r prometheus.Registerer) (*BlockQuerier, e
 	stopc := make(chan struct{})
 	go runutil.Repeat(30*time.Second, stopc, func() error {
 		ts := time.Now()
-		if err := us.SyncStores(context.Background()); err != nil {
+		if err := us.SyncStores(context.Background()); err != nil && err != io.EOF {
 			level.Warn(util.Logger).Log("msg", "sync stores failed", "err", err)
 		}
 		b.syncTimes.Observe(time.Since(ts).Seconds())

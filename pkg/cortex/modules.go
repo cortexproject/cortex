@@ -263,6 +263,9 @@ func (t *Cortex) stopIngester() error {
 }
 
 func (t *Cortex) initStore(cfg *Config) (err error) {
+	if cfg.Ingester.V2.Enabled { // no store for v2
+		return nil
+	}
 	err = cfg.Schema.Load()
 	if err != nil {
 		return

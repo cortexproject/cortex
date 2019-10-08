@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 
+	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/configs/client"
+
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 )
 
@@ -37,4 +40,67 @@ func (l RuleGroupList) Formatted() map[string][]rulefmt.RuleGroup {
 
 	}
 	return ruleMap
+}
+
+// ConfigRuleStore is a concrete implementation of RuleStore that sources rules from the config service
+type ConfigRuleStore struct {
+	configClient client.Client
+	since        configs.ID
+}
+
+// NewConfigRuleStore constructs a ConfigRuleStore
+func NewConfigRuleStore(c client.Client) *ConfigRuleStore {
+	return &ConfigRuleStore{
+		configClient: c,
+		since:        0,
+	}
+}
+
+// ListAllRuleGroups implements RuleStore
+func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error) {
+
+	configs, err := c.configClient.GetRules(ctx, c.since)
+
+	if err != nil {
+		return nil, err
+	}
+
+	newRules := map[string]RuleGroupList{}
+
+	for user, cfg := range configs {
+		userRules := RuleGroupList{}
+		if cfg.IsDeleted() {
+			newRules[user] = RuleGroupList{}
+		}
+		rMap, err := cfg.Config.ParseFormatted()
+		if err != nil {
+			return nil, err
+		}
+		for file, rgs := range rMap {
+			for _, rg := range rgs.Groups {
+				userRules = append(userRules, ToProto(user, file, rg))
+			}
+		}
+		newRules[user] = userRules
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	c.since = getLatestConfigID(configs, c.since)
+
+	return newRules, nil
+}
+
+// getLatestConfigID gets the latest configs ID.
+// max [latest, max (map getID cfgs)]
+func getLatestConfigID(cfgs map[string]configs.VersionedRulesConfig, latest configs.ID) configs.ID {
+	ret := latest
+	for _, config := range cfgs {
+		if config.ID > ret {
+			ret = config.ID
+		}
+	}
+	return ret
 }

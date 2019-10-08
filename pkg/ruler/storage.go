@@ -30,7 +30,13 @@ func NewRuleStorage(cfg RuleStoreConfig) (rules.RuleStore, error) {
 
 	switch cfg.Type {
 	case "configdb":
-		return client.New(cfg.ConfigDB)
+		c, err := client.New(cfg.ConfigDB)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return rules.NewConfigRuleStore(c), nil
 	default:
 		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb", cfg.Type)
 	}

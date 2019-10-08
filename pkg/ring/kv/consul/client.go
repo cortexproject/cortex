@@ -12,6 +12,7 @@ import (
 	consul "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/weaveworks/common/instrument"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -32,8 +33,8 @@ var (
 		MaxBackoff: 1 * time.Minute,
 	}
 
-	rateLimiterCreditsPerSecond = 1.0
-	rateLimiterMaxBalance       = 5.0
+	watchKeyRate  = rate.Limit(1)
+	watchKeyBurst = 3
 )
 
 // Config to create a ConsulClient
@@ -173,18 +174,15 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
-		limiter = util.NewRateLimiter(rateLimiterCreditsPerSecond, rateLimiterMaxBalance)
+		limiter = rate.NewLimiter(watchKeyRate, watchKeyBurst)
 	)
 
 	for backoff.Ongoing() {
-		rateOk, wait := limiter.CheckCredit(1)
-		if !rateOk {
-			select {
-			case <-time.After(wait):
-				continue
-			case <-ctx.Done():
-				return
-			}
+		err := limiter.Wait(ctx)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
+			backoff.Wait()
+			continue
 		}
 
 		queryOptions := &consul.QueryOptions{

@@ -21,6 +21,10 @@ type mockKV struct {
 
 // NewInMemoryClient makes a new mock consul client.
 func NewInMemoryClient(codec codec.Codec) *Client {
+	return NewInMemoryClientWithConfig(codec, Config{})
+}
+
+func NewInMemoryClientWithConfig(codec codec.Codec, cfg Config) *Client {
 	m := mockKV{
 		kvps: map[string]*consul.KVPair{},
 	}
@@ -29,6 +33,7 @@ func NewInMemoryClient(codec codec.Codec) *Client {
 	return &Client{
 		kv:    &m,
 		codec: codec,
+		cfg:   cfg,
 	}
 }
 

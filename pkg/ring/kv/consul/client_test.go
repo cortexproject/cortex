@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
-	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -36,17 +35,10 @@ func (c stringCodec) Decode(d []byte) (interface{}, error) {
 var _ codec.Codec = &stringCodec{}
 
 func TestWatchKey(t *testing.T) {
-	oldWatchKeyRate := watchKeyRate
-	oldWatchKeyBurst := watchKeyBurst
-	defer func() {
-		watchKeyRate = oldWatchKeyRate
-		watchKeyBurst = oldWatchKeyBurst
-	}()
-
-	watchKeyRate = rate.Limit(5.0)
-	watchKeyBurst = 1
-
-	c := NewInMemoryClient(&stringCodec{})
+	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
+		WatchKeyRate:  5.0,
+		WatchKeyBurst: 1,
+	})
 
 	const key = "test"
 	const max = 100
@@ -85,17 +77,10 @@ func TestWatchKey(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	oldWatchKeyRate := watchKeyRate
-	oldWatchKeyBurst := watchKeyBurst
-	defer func() {
-		watchKeyRate = oldWatchKeyRate
-		watchKeyBurst = oldWatchKeyBurst
-	}()
-
-	watchKeyRate = rate.Limit(1.0)
-	watchKeyBurst = 5
-
-	c := NewInMemoryClient(&stringCodec{})
+	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
+		WatchKeyRate:  1,
+		WatchKeyBurst: 5,
+	})
 
 	const key = "test"
 	const max = 5

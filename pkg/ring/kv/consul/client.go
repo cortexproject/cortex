@@ -32,9 +32,6 @@ var (
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	}
-
-	watchKeyRate  = rate.Limit(1)
-	watchKeyBurst = 3
 )
 
 // Config to create a ConsulClient
@@ -43,6 +40,8 @@ type Config struct {
 	ACLToken          string
 	HTTPClientTimeout time.Duration
 	ConsistentReads   bool
+	WatchKeyRate      float64 // Zero disables rate limit
+	WatchKeyBurst     int     // Burst when doing rate-limit, defaults to 1
 }
 
 type kv interface {
@@ -66,6 +65,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
 	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul")
 	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to Consul.")
+	f.Float64Var(&cfg.WatchKeyRate, prefix+"consul.watch-rate", 0, "Rate limit when watching key or prefix in Consul, in requests per second. Zero disables the rate limit.")
+	f.IntVar(&cfg.WatchKeyBurst, prefix+"consul.watch-burst", 1, "Burst size used in rate limit. Values less than 1 are treated as 1.")
 }
 
 // NewClient returns a new Client.
@@ -174,15 +175,17 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
-		limiter = rate.NewLimiter(watchKeyRate, watchKeyBurst)
+		limiter = c.createRateLimiter()
 	)
 
 	for backoff.Ongoing() {
-		err := limiter.Wait(ctx)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
-			backoff.Wait()
-			continue
+		if limiter != nil {
+			err := limiter.Wait(ctx)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
+				backoff.Wait()
+				continue
+			}
 		}
 
 		queryOptions := &consul.QueryOptions{
@@ -234,8 +237,18 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
+		limiter = c.createRateLimiter()
 	)
 	for backoff.Ongoing() {
+		if limiter != nil {
+			err := limiter.Wait(ctx)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
+				backoff.Wait()
+				continue
+			}
+		}
+
 		queryOptions := &consul.QueryOptions{
 			AllowStale:        !c.cfg.ConsistentReads,
 			RequireConsistent: c.cfg.ConsistentReads,
@@ -256,7 +269,6 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 			continue
 		}
 
-		index = meta.LastIndex
 		for _, kvp := range kvps {
 			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
@@ -285,4 +297,15 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 		return nil, nil
 	}
 	return c.codec.Decode(kvp.Value)
+}
+
+func (c *Client) createRateLimiter() *rate.Limiter {
+	if c.cfg.WatchKeyRate <= 0 {
+		return nil
+	}
+	burst := c.cfg.WatchKeyBurst
+	if burst < 1 {
+		burst = 1
+	}
+	return rate.NewLimiter(rate.Limit(c.cfg.WatchKeyRate), burst)
 }

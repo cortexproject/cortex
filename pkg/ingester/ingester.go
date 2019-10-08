@@ -147,6 +147,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.V2.S3Secret, "ingester.v2.secret", "", "s3 secret")
 	f.StringVar(&cfg.V2.S3Bucket, "ingester.v2.bucket", "", "s3 bucket")
 	f.StringVar(&cfg.V2.S3Endpoint, "ingester.v2.endpoint", "", "s3 endpoint")
+	f.BoolVar(&cfg.V2.S3Insecure, "ingester.v2.s3insecure", false, "use http for s3 endpoints")
 	f.DurationVar(&cfg.V2.ShipInterval, "ingester.v2.shipinterval", 30*time.Second, "the frequency at which tsdb blocks are scanned for shipping")
 }
 

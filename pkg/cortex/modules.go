@@ -201,6 +201,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 			Endpoint:  cfg.Ingester.V2.S3Endpoint,
 			AccessKey: cfg.Ingester.V2.S3Key,
 			SecretKey: cfg.Ingester.V2.S3Secret,
+			Insecure:  cfg.Ingester.V2.S3Insecure,
 		}
 		store, err = querier.NewBlockQuerier(s3cfg, prometheus.DefaultRegisterer)
 		if err != nil {

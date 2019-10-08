@@ -37,6 +37,7 @@ type V2Config struct {
 	S3Bucket     string
 	S3Secret     string
 	S3Key        string
+	S3Insecure   bool // useful for test clusters without https
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -48,6 +49,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		Endpoint:  cfg.V2.S3Endpoint,
 		AccessKey: cfg.V2.S3Key,
 		SecretKey: cfg.V2.S3Secret,
+		Insecure:  cfg.V2.S3Insecure,
 	}
 	var err error
 	bkt, err = s3.NewBucketWithConfig(util.Logger, s3Cfg, "cortex")

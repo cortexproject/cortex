@@ -113,9 +113,15 @@ func TestMergeAPIResponses(t *testing.T) {
 	}{
 		// No responses shouldn't panic.
 		{
+<<<<<<< HEAD
 			input: []Response{},
 			expected: &PrometheusResponse{
 				Status: statusSuccess,
+=======
+			input: []*APIResponse{},
+			expected: &APIResponse{
+				Status: StatusSuccess,
+>>>>>>> query sharding middleware
 			},
 		},
 
@@ -129,9 +135,15 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 			},
+<<<<<<< HEAD
 			expected: &PrometheusResponse{
 				Status: statusSuccess,
 				Data: PrometheusData{
+=======
+			expected: &APIResponse{
+				Status: StatusSuccess,
+				Data: Response{
+>>>>>>> query sharding middleware
 					ResultType: matrix,
 					Result:     []SampleStream{},
 				},
@@ -154,9 +166,15 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 			},
+<<<<<<< HEAD
 			expected: &PrometheusResponse{
 				Status: statusSuccess,
 				Data: PrometheusData{
+=======
+			expected: &APIResponse{
+				Status: StatusSuccess,
+				Data: Response{
+>>>>>>> query sharding middleware
 					ResultType: matrix,
 					Result:     []SampleStream{},
 				},
@@ -195,9 +213,15 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 			},
+<<<<<<< HEAD
 			expected: &PrometheusResponse{
 				Status: statusSuccess,
 				Data: PrometheusData{
+=======
+			expected: &APIResponse{
+				Status: StatusSuccess,
+				Data: Response{
+>>>>>>> query sharding middleware
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
@@ -220,9 +244,15 @@ func TestMergeAPIResponses(t *testing.T) {
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[0,"0"],[1,"1"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
+<<<<<<< HEAD
 			expected: &PrometheusResponse{
 				Status: statusSuccess,
 				Data: PrometheusData{
+=======
+			expected: &APIResponse{
+				Status: StatusSuccess,
+				Data: Response{
+>>>>>>> query sharding middleware
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
@@ -244,9 +274,15 @@ func TestMergeAPIResponses(t *testing.T) {
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
+<<<<<<< HEAD
 			expected: &PrometheusResponse{
 				Status: statusSuccess,
 				Data: PrometheusData{
+=======
+			expected: &APIResponse{
+				Status: StatusSuccess,
+				Data: Response{
+>>>>>>> query sharding middleware
 					ResultType: matrix,
 					Result: []SampleStream{
 						{

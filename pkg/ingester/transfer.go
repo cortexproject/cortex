@@ -56,9 +56,90 @@ func init() {
 
 // TransferChunks receives all the chunks from another ingester.
 func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) error {
+	fromIngesterID := ""
+	seriesReceived := 0
+	xfer := func() error {
+		userStates := newUserStates(i.limits, i.cfg)
+
+		for {
+			wireSeries, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return errors.Wrap(err, "TransferChunks: Recv")
+			}
+
+			// We can't send "extra" fields with a streaming call, so we repeat
+			// wireSeries.FromIngesterId and assume it is the same every time
+			// round this loop.
+			if fromIngesterID == "" {
+				fromIngesterID = wireSeries.FromIngesterId
+				level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+			}
+			descs, err := fromWireChunks(wireSeries.Chunks)
+			if err != nil {
+				return errors.Wrap(err, "TransferChunks: fromWireChunks")
+			}
+
+			state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels)
+			if err != nil {
+				return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
+			}
+			prevNumChunks := len(series.chunkDescs)
+
+			err = series.setChunks(descs)
+			state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
+			if err != nil {
+				return errors.Wrapf(err, "TransferChunks: setChunks: user %s series %s", wireSeries.UserId, wireSeries.Labels)
+			}
+
+			seriesReceived++
+			memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+			receivedChunks.Add(float64(len(descs)))
+		}
+
+		if seriesReceived == 0 {
+			level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
+			return fmt.Errorf("TransferChunks: no series")
+		}
+
+		if fromIngesterID == "" {
+			level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
+			return fmt.Errorf("no ingester id")
+		}
+
+		if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
+			return errors.Wrap(err, "TransferChunks: ClaimTokensFor")
+		}
+
+		i.userStatesMtx.Lock()
+		defer i.userStatesMtx.Unlock()
+
+		i.userStates = userStates
+
+		return nil
+	}
+
+	if err := i.transfer(stream.Context(), xfer); err != nil {
+		return err
+	}
+
+	// Close the stream last, as this is what tells the "from" ingester that
+	// it's OK to shut down.
+	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
+		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "from_ingester", fromIngesterID, "err", err)
+		return err
+	}
+	level.Info(util.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID, "series_received", seriesReceived)
+
+	return nil
+}
+
+func (i *Ingester) transfer(ctx context.Context, xfer func() error) error {
 	// Enter JOINING state (only valid from PENDING)
-	if err := i.lifecycler.ChangeState(stream.Context(), ring.JOINING); err != nil {
-		return errors.Wrap(err, "TransferChunks: ChangeState")
+	if err := i.lifecycler.ChangeState(ctx, ring.JOINING); err != nil {
+		return err
 	}
 
 	// The ingesters state effectively works as a giant mutex around this whole
@@ -73,181 +154,99 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 
 		// Enter PENDING state (only valid from JOINING)
 		if i.lifecycler.GetState() == ring.JOINING {
-			if err := i.lifecycler.ChangeState(stream.Context(), ring.PENDING); err != nil {
+			if err := i.lifecycler.ChangeState(ctx, ring.PENDING); err != nil {
 				level.Error(util.Logger).Log("msg", "error rolling back failed TransferChunks", "err", err)
 				os.Exit(1)
 			}
 		}
 	}()
 
-	userStates := newUserStates(i.limits, i.cfg)
-	fromIngesterID := ""
-	seriesReceived := 0
-
-	for {
-		wireSeries, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return errors.Wrap(err, "TransferChunks: Recv")
-		}
-
-		// We can't send "extra" fields with a streaming call, so we repeat
-		// wireSeries.FromIngesterId and assume it is the same every time
-		// round this loop.
-		if fromIngesterID == "" {
-			fromIngesterID = wireSeries.FromIngesterId
-			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
-		}
-		descs, err := fromWireChunks(wireSeries.Chunks)
-		if err != nil {
-			return errors.Wrap(err, "TransferChunks: fromWireChunks")
-		}
-
-		state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels)
-		if err != nil {
-			return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
-		}
-		prevNumChunks := len(series.chunkDescs)
-
-		err = series.setChunks(descs)
-		state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
-		if err != nil {
-			return errors.Wrapf(err, "TransferChunks: setChunks: user %s series %s", wireSeries.UserId, wireSeries.Labels)
-		}
-
-		seriesReceived++
-		memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-		receivedChunks.Add(float64(len(descs)))
-	}
-
-	if seriesReceived == 0 {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
-		return fmt.Errorf("TransferChunks: no series")
-	}
-
-	if fromIngesterID == "" {
-		level.Error(util.Logger).Log("msg", "received TransferChunks request with no ID from ingester")
-		return fmt.Errorf("no ingester id")
-	}
-
-	if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
-		return errors.Wrap(err, "TransferChunks: ClaimTokensFor")
-	}
-
-	i.userStatesMtx.Lock()
-	defer i.userStatesMtx.Unlock()
-
-	if err := i.lifecycler.ChangeState(stream.Context(), ring.ACTIVE); err != nil {
-		return errors.Wrap(err, "TransferChunks: ChangeState")
-	}
-	i.userStates = userStates
-
-	// Close the stream last, as this is what tells the "from" ingester that
-	// it's OK to shut down.
-	if err := stream.SendAndClose(&client.TransferChunksResponse{}); err != nil {
-		level.Error(util.Logger).Log("msg", "Error closing TransferChunks stream", "from_ingester", fromIngesterID, "err", err)
+	if err := xfer(); err != nil {
 		return err
 	}
-	level.Info(util.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID, "series_received", seriesReceived)
+
+	if err := i.lifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
+		return errors.Wrap(err, "Transfer: ChangeState")
+	}
+
 	return nil
 }
 
 // TransferTSDB receives all the file chunks from another ingester, and writes them to tsdb directories
 func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error {
-	// Enter JOINING state (only valid from PENDING)
-	if err := i.lifecycler.ChangeState(stream.Context(), ring.JOINING); err != nil {
-		return err
-	}
-
-	// The ingesters state effectively works as a giant mutex around this whole
-	// method, and as such we have to ensure we unlock the mutex.
-	defer func() {
-		state := i.lifecycler.GetState()
-		if i.lifecycler.GetState() == ring.ACTIVE {
-			return
-		}
-
-		level.Error(util.Logger).Log("msg", "TransferTSDB failed, not in ACTIVE state.", "state", state)
-
-		// Enter PENDING state (only valid from JOINING)
-		if i.lifecycler.GetState() == ring.JOINING {
-			if err := i.lifecycler.ChangeState(stream.Context(), ring.PENDING); err != nil {
-				level.Error(util.Logger).Log("msg", "error rolling back failed TransferTSDB", "err", err)
-				os.Exit(1)
-			}
-		}
-	}()
-
-	filesXfer := 0
 	fromIngesterID := ""
 
-	files := make(map[string]*os.File)
-	defer func() {
-		for _, f := range files {
-			if err := f.Close(); err != nil {
-				level.Warn(util.Logger).Log("msg", "failed to close xfer file", "err", err)
-			}
-		}
-	}()
-	for {
-		f, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if fromIngesterID == "" {
-			fromIngesterID = f.FromIngesterId
-			level.Info(util.Logger).Log("msg", "processing TransferTSDB request", "from_ingester", fromIngesterID)
-		}
-		filesXfer++
+	xfer := func() error {
+		filesXfer := 0
 
-		// TODO(thor) To avoid corruption from errors, it's probably best to write to a temp dir, and then move that to the final location
-		createfile := func(f *client.TimeSeriesFile) (*os.File, error) {
-			dir := filepath.Join(i.V2.TSDBDir, filepath.Dir(f.Filename))
-			if err := os.MkdirAll(dir, 0777); err != nil {
-				return nil, err
+		files := make(map[string]*os.File)
+		defer func() {
+			for _, f := range files {
+				if err := f.Close(); err != nil {
+					level.Warn(util.Logger).Log("msg", "failed to close xfer file", "err", err)
+				}
 			}
-			file, err := os.Create(filepath.Join(i.V2.TSDBDir, f.Filename))
+		}()
+		for {
+			f, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
 			if err != nil {
-				return nil, err
+				return errors.Wrap(err, "TransferTSDB: Recv")
+			}
+			if fromIngesterID == "" {
+				fromIngesterID = f.FromIngesterId
+				level.Info(util.Logger).Log("msg", "processing TransferTSDB request", "from_ingester", fromIngesterID)
+			}
+			filesXfer++
+
+			// TODO(thor) To avoid corruption from errors, it's probably best to write to a temp dir, and then move that to the final location
+			createfile := func(f *client.TimeSeriesFile) (*os.File, error) {
+				dir := filepath.Join(i.V2.TSDBDir, filepath.Dir(f.Filename))
+				if err := os.MkdirAll(dir, 0777); err != nil {
+					return nil, errors.Wrap(err, "TransferTSDB: MkdirAll")
+				}
+				file, err := os.Create(filepath.Join(i.V2.TSDBDir, f.Filename))
+				if err != nil {
+					return nil, errors.Wrap(err, "TransferTSDB: Create")
+				}
+
+				_, err = file.Write(f.Data)
+				return file, errors.Wrap(err, "TransferTSDB: Write")
 			}
 
-			_, err = file.Write(f.Data)
-			return file, err
+			// Create or get existing open file
+			file, ok := files[f.Filename]
+			if !ok {
+				file, err = createfile(f)
+				if err != nil {
+					return err
+				}
+
+				files[f.Filename] = file
+			} else {
+
+				// Write to existing file
+				if _, err := file.Write(f.Data); err != nil {
+					return errors.Wrap(err, "TransferTSDB: Write")
+				}
+			}
 		}
 
-		// Create or get existing open file
-		file, ok := files[f.Filename]
-		if !ok {
-			file, err = createfile(f)
-			if err != nil {
-				return err
-			}
-
-			files[f.Filename] = file
-		} else {
-
-			// Write to existing file
-			if _, err := file.Write(f.Data); err != nil {
-				return err
-			}
+		if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
+			return errors.Wrap(err, "TransferTSDB: ClaimTokensFor")
 		}
+
+		receivedFiles.Add(float64(filesXfer))
+		level.Error(util.Logger).Log("msg", "Total files xfer", "from_ingester", fromIngesterID, "num", filesXfer)
+
+		return nil
 	}
 
-	if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
+	if err := i.transfer(stream.Context(), xfer); err != nil {
 		return err
 	}
-
-	if err := i.lifecycler.ChangeState(stream.Context(), ring.ACTIVE); err != nil {
-		return err
-	}
-
-	receivedFiles.Add(float64(filesXfer))
-	level.Error(util.Logger).Log("msg", "Total files xfer", "from_ingester", fromIngesterID, "num", filesXfer)
 
 	// Close the stream last, as this is what tells the "from" ingester that
 	// it's OK to shut down.
@@ -256,6 +255,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 		return err
 	}
 	level.Info(util.Logger).Log("msg", "Successfully transferred tsdbs", "from_ingester", fromIngesterID)
+
 	return nil
 }
 

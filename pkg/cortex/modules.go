@@ -277,7 +277,9 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 }
 
 func (t *Cortex) stopStore() error {
-	t.store.Stop()
+	if t.store != nil {
+		t.store.Stop()
+	}
 	return nil
 }
 

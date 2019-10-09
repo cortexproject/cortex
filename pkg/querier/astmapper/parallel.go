@@ -36,7 +36,7 @@ func CanParallel(node promql.Node) bool {
 		}
 
 	case *promql.BinaryExpr:
-		// since binary exprs use each side for mapping, they cannot be parallelized
+		// since binary exprs use each side for merging, they cannot be parallelized
 		return false
 
 	case *promql.Call:
@@ -63,7 +63,6 @@ func CanParallel(node promql.Node) bool {
 		return true
 
 	case *promql.EvalStmt:
-		// cant' find an example for this -- defaulting to using the subexpr
 		return CanParallel(n.Expr)
 
 	case *promql.MatrixSelector, *promql.NumberLiteral, *promql.StringLiteral, *promql.VectorSelector:

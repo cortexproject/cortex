@@ -16,8 +16,11 @@ const (
 func QueryShardMiddleware() queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return &queryShard{
-			next:   next,
-			mapper: astmapper.NewShardSummer(astmapper.DEFAULT_SHARDS, astmapper.Squash),
+			next: next,
+			mapper: astmapper.NewMultiMapper(
+				astmapper.NewShardSummer(astmapper.DEFAULT_SHARDS, astmapper.Squash),
+				astmapper.MapperFunc(astmapper.ShallowEmbedSelectors),
+			),
 		}
 	})
 }

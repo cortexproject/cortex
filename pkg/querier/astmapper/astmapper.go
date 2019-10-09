@@ -50,15 +50,6 @@ func NewMultiMapper(xs ...ASTMapper) *MultiMapper {
 	return m
 }
 
-// Transform runs a mapper against an AST, producing the new mapped AST
-func Transform(m ASTMapper, n promql.Node) (promql.Node, error) {
-	cloned, err := CloneNode(n)
-	if err != nil {
-		return nil, err
-	}
-	return m.Map(cloned)
-}
-
 // helper function to clone a node.
 func CloneNode(node promql.Node) (promql.Node, error) {
 	return promql.ParseExpr(node.String())

@@ -181,7 +181,7 @@ func (summer *ShardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 		}
 
 		if summer.squash != nil {
-			subSum, err = Squash(subSum)
+			subSum, err = summer.squash(subSum)
 		}
 
 		if err != nil {

@@ -60,16 +60,6 @@ type ConfigDBClient struct {
 	Timeout time.Duration
 }
 
-// GetAlerts implements Client.
-func (c ConfigDBClient) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
-	suffix := ""
-	if since != 0 {
-		suffix = fmt.Sprintf("?since=%d", since)
-	}
-	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.URL.String(), suffix)
-	return doRequest(endpoint, c.Timeout, since, "GetAlerts")
-}
-
 // GetRules implements Client
 func (c ConfigDBClient) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	suffix := ""
@@ -89,6 +79,16 @@ func (c ConfigDBClient) GetRules(ctx context.Context, since configs.ID) (map[str
 		}
 	}
 	return configs, nil
+}
+
+// GetAlerts implements Client.
+func (c ConfigDBClient) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
+	suffix := ""
+	if since != 0 {
+		suffix = fmt.Sprintf("?since=%d", since)
+	}
+	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.URL.String(), suffix)
+	return doRequest(endpoint, c.Timeout, since, "GetAlerts")
 }
 
 func doRequest(endpoint string, timeout time.Duration, since configs.ID, operation string) (*ConfigsResponse, error) {

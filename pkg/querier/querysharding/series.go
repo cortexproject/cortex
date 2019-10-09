@@ -74,7 +74,7 @@ func (set *downstreamSeriesSet) At() storage.Series {
 // impls storage.SeriesSet
 func (set *downstreamSeriesSet) Err() error {
 	if set.i >= len(set.set) {
-		return errors.Errorf("downStreamSeriesSet out of bounds: cannot request series %d of %d", set.i, len(set.set))
+		return errors.Errorf("downStreamSeriesSet out of bounds: cannot request series index %d of length %d", set.i, len(set.set))
 	}
 	return nil
 }
@@ -106,20 +106,13 @@ func (series *downstreamSeries) Iterator() storage.SeriesIterator {
 // Seek advances the iterator forward to the value at or after
 // the given timestamp.
 func (series *downstreamSeries) Seek(t int64) bool {
-	inBounds := func(i int) bool {
-		return i < len(series.points)
-	}
 
-	// zero length series always returns false
-	if !inBounds(series.i) {
-		return false
-	}
-
-	for i := 0; inBounds(i); i++ {
-		if series.points[i].T >= t {
-			series.i = i
+	for series.Err() == nil {
+		ts, _ := series.At()
+		if ts >= t {
 			return true
 		}
+		series.Next()
 	}
 
 	return false

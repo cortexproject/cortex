@@ -20,6 +20,7 @@ import (
 	"flag"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/weaveworks/common/user"
@@ -27,19 +28,23 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 )
 
+const day = 24 * time.Hour
+
 // Config for query_range middleware chain.
 type Config struct {
-	SplitQueriesByDay    bool `yaml:"split_queries_by_day"`
-	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
-	ResultsCacheConfig   `yaml:"results_cache"`
-	CacheResults         bool `yaml:"cache_results"`
-	MaxRetries           int  `yaml:"max_retries"`
+	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
+	SplitQueriesByDay      bool          `yaml:"split_queries_by_day"`
+	AlignQueriesWithStep   bool          `yaml:"align_queries_with_step"`
+	ResultsCacheConfig     `yaml:"results_cache"`
+	CacheResults           bool `yaml:"cache_results"`
+	MaxRetries             int  `yaml:"max_retries"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
-	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
+	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Deprecated: Split queries by day and execute in parallel.")
+	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks.")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
@@ -88,8 +93,12 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
 	}
-	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_day"), SplitByDayMiddleware(limits, codec))
+	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
+	if cfg.SplitQueriesByDay == true {
+		cfg.SplitQueriesByInterval = day
+	}
+	if cfg.SplitQueriesByInterval != 0 {
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
 	if cfg.CacheResults {
 		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)

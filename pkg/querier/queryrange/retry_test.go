@@ -18,36 +18,36 @@ func TestRetry(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		handler Handler
-		resp    *APIResponse
+		resp    Response
 		err     error
 	}{
 		{
 			name: "retry failures",
-			handler: HandlerFunc(func(_ context.Context, req *Request) (*APIResponse, error) {
+			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 				if atomic.AddInt32(&try, 1) == 5 {
-					return &APIResponse{Status: "Hello World"}, nil
+					return &PrometheusResponse{Status: "Hello World"}, nil
 				}
 				return nil, fmt.Errorf("fail")
 			}),
-			resp: &APIResponse{Status: "Hello World"},
+			resp: &PrometheusResponse{Status: "Hello World"},
 		},
 		{
 			name: "don't retry 400s",
-			handler: HandlerFunc(func(_ context.Context, req *Request) (*APIResponse, error) {
+			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 			}),
 			err: httpgrpc.Errorf(http.StatusBadRequest, "Bad Request"),
 		},
 		{
 			name: "retry 500s",
-			handler: HandlerFunc(func(_ context.Context, req *Request) (*APIResponse, error) {
+			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error")
 			}),
 			err: httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error"),
 		},
 		{
 			name: "last error",
-			handler: HandlerFunc(func(_ context.Context, req *Request) (*APIResponse, error) {
+			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 				if atomic.AddInt32(&try, 1) == 5 {
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 				}

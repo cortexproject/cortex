@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -46,18 +47,18 @@ func TestNextDayBoundary(t *testing.T) {
 
 func TestSplitQuery(t *testing.T) {
 	for i, tc := range []struct {
-		input    *Request
-		expected []*Request
+		input    Request
+		expected []Request
 	}{
 		{
-			input: &Request{
+			input: &PrometheusRequest{
 				Start: 0,
 				End:   60 * 60 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []*Request{
-				{
+			expected: []Request{
+				&PrometheusRequest{
 					Start: 0,
 					End:   60 * 60 * seconds,
 					Step:  15 * seconds,
@@ -66,14 +67,14 @@ func TestSplitQuery(t *testing.T) {
 			},
 		},
 		{
-			input: &Request{
+			input: &PrometheusRequest{
 				Start: 0,
 				End:   24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []*Request{
-				{
+			expected: []Request{
+				&PrometheusRequest{
 					Start: 0,
 					End:   24 * 3600 * seconds,
 					Step:  15 * seconds,
@@ -82,20 +83,20 @@ func TestSplitQuery(t *testing.T) {
 			},
 		},
 		{
-			input: &Request{
+			input: &PrometheusRequest{
 				Start: 0,
 				End:   2 * 24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []*Request{
-				{
+			expected: []Request{
+				&PrometheusRequest{
 					Start: 0,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
-				{
+				&PrometheusRequest{
 					Start: 24 * 3600 * seconds,
 					End:   2 * 24 * 3600 * seconds,
 					Step:  15 * seconds,
@@ -104,26 +105,26 @@ func TestSplitQuery(t *testing.T) {
 			},
 		},
 		{
-			input: &Request{
+			input: &PrometheusRequest{
 				Start: 3 * 3600 * seconds,
 				End:   3 * 24 * 3600 * seconds,
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []*Request{
-				{
+			expected: []Request{
+				&PrometheusRequest{
 					Start: 3 * 3600 * seconds,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
-				{
+				&PrometheusRequest{
 					Start: 24 * 3600 * seconds,
 					End:   (2 * 24 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
-				{
+				&PrometheusRequest{
 					Start: 2 * 24 * 3600 * seconds,
 					End:   3 * 24 * 3600 * seconds,
 					Step:  15 * seconds,
@@ -140,38 +141,11 @@ func TestSplitQuery(t *testing.T) {
 }
 
 func TestSplitByDay(t *testing.T) {
-	s := httptest.NewServer(
-		middleware.AuthenticateUser.Wrap(
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte(responseBody))
-			}),
-		),
-	)
-	defer s.Close()
 
-	u, err := url.Parse(s.URL)
+	mergedResponse, err := PrometheusCodec.MergeResponse(parsedResponse, parsedResponse)
 	require.NoError(t, err)
 
-	roundtripper := roundTripper{
-		handler: splitByDay{
-			next: ToRoundTripperMiddleware{
-				Next: singleHostRoundTripper{
-					host: u.Host,
-					next: http.DefaultTransport,
-				},
-			},
-			limits: fakeLimits{},
-		},
-		limits: fakeLimits{},
-	}
-
-	mergedResponse, err := mergeAPIResponses([]*APIResponse{
-		parsedResponse,
-		parsedResponse,
-	})
-	require.NoError(t, err)
-
-	mergedHTTPResponse, err := mergedResponse.toHTTPResponse(context.Background())
+	mergedHTTPResponse, err := PrometheusCodec.EncodeResponse(context.Background(), mergedResponse)
 	require.NoError(t, err)
 
 	mergedHTTPResponseBody, err := ioutil.ReadAll(mergedHTTPResponse.Body)
@@ -179,10 +153,31 @@ func TestSplitByDay(t *testing.T) {
 
 	for i, tc := range []struct {
 		path, expectedBody string
+		expectedQueryCount int32
 	}{
-		{query, string(mergedHTTPResponseBody)},
+		{query, string(mergedHTTPResponseBody), 2},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+
+			actualCount := int32(0)
+			s := httptest.NewServer(
+				middleware.AuthenticateUser.Wrap(
+					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						atomic.AddInt32(&actualCount, 1)
+						w.Write([]byte(responseBody))
+					}),
+				),
+			)
+			defer s.Close()
+
+			u, err := url.Parse(s.URL)
+			require.NoError(t, err)
+
+			roundtripper := NewRoundTripper(singleHostRoundTripper{
+				host: u.Host,
+				next: http.DefaultTransport,
+			}, PrometheusCodec, LimitsMiddleware(fakeLimits{}), SplitByDayMiddleware(fakeLimits{}, PrometheusCodec))
+
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
 
@@ -196,6 +191,7 @@ func TestSplitByDay(t *testing.T) {
 			bs, err := ioutil.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedBody, string(bs))
+			require.Equal(t, tc.expectedQueryCount, actualCount)
 		})
 	}
 }

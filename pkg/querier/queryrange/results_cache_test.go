@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
+	"github.com/gogo/protobuf/types"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -23,16 +23,16 @@ const (
 )
 
 var (
-	parsedRequest = &Request{
+	parsedRequest = &PrometheusRequest{
 		Path:  "/api/v1/query_range",
 		Start: 1536673680 * 1e3,
 		End:   1536716898 * 1e3,
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
-	parsedResponse = &APIResponse{
+	parsedResponse = &PrometheusResponse{
 		Status: "success",
-		Data: Response{
+		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result: []SampleStream{
 				{
@@ -49,7 +49,27 @@ var (
 	}
 )
 
-func mkAPIResponse(start, end, step int64) *APIResponse {
+var dummyResponse = &PrometheusResponse{
+	Status: statusSuccess,
+	Data: PrometheusData{
+		ResultType: matrix,
+		Result: []SampleStream{
+			{
+				Labels: []client.LabelAdapter{
+					{Name: "foo", Value: "bar"},
+				},
+				Samples: []client.Sample{
+					{
+						TimestampMs: 60,
+						Value:       60,
+					},
+				},
+			},
+		},
+	},
+}
+
+func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 	var samples []client.Sample
 	for i := start; i <= end; i += step {
 		samples = append(samples, client.Sample{
@@ -58,9 +78,9 @@ func mkAPIResponse(start, end, step int64) *APIResponse {
 		})
 	}
 
-	return &APIResponse{
+	return &PrometheusResponse{
 		Status: statusSuccess,
-		Data: Response{
+		Data: PrometheusData{
 			ResultType: matrix,
 			Result: []SampleStream{
 				{
@@ -75,73 +95,79 @@ func mkAPIResponse(start, end, step int64) *APIResponse {
 }
 
 func mkExtent(start, end int64) Extent {
+	res := mkAPIResponse(start, end, 10)
+	any, err := types.MarshalAny(res)
+	if err != nil {
+		panic(err)
+	}
 	return Extent{
 		Start:    start,
 		End:      end,
-		Response: mkAPIResponse(start, end, 10),
+		Response: any,
 	}
 }
 
 func TestPartiton(t *testing.T) {
 	for i, tc := range []struct {
-		input                  *Request
+		input                  Request
 		prevCachedResponse     []Extent
-		expectedRequests       []*Request
-		expectedCachedResponse []*APIResponse
+		expectedRequests       []Request
+		expectedCachedResponse []Response
 	}{
 		// 1. Test a complete hit.
 		{
-			input: &Request{
+			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(0, 100),
 			},
-			expectedCachedResponse: []*APIResponse{
+			expectedCachedResponse: []Response{
 				mkAPIResponse(0, 100, 10),
 			},
 		},
 
 		// Test with a complete miss.
 		{
-			input: &Request{
+			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(110, 210),
 			},
-			expectedRequests: []*Request{{
-				Start: 0,
-				End:   100,
-			}},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 0,
+					End:   100,
+				}},
 			expectedCachedResponse: nil,
 		},
 
 		// Test a partial hit.
 		{
-			input: &Request{
+			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(50, 100),
 			},
-			expectedRequests: []*Request{
-				{
+			expectedRequests: []Request{
+				&PrometheusRequest{
 					Start: 0,
 					End:   50,
 				},
 			},
-			expectedCachedResponse: []*APIResponse{
+			expectedCachedResponse: []Response{
 				mkAPIResponse(50, 100, 10),
 			},
 		},
 
 		// Test multiple partial hits.
 		{
-			input: &Request{
+			input: &PrometheusRequest{
 				Start: 100,
 				End:   200,
 			},
@@ -149,20 +175,21 @@ func TestPartiton(t *testing.T) {
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
-			expectedRequests: []*Request{
-				{
+			expectedRequests: []Request{
+				&PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
 			},
-			expectedCachedResponse: []*APIResponse{
+			expectedCachedResponse: []Response{
 				mkAPIResponse(100, 120, 10),
 				mkAPIResponse(160, 200, 10),
 			},
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			reqs, resps := partition(tc.input, tc.prevCachedResponse)
+			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor)
+			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
 		})
@@ -189,10 +216,12 @@ func TestResultsCache(t *testing.T) {
 			},
 		},
 		fakeLimits{},
+		PrometheusCodec,
+		PrometheusResponseExtractor,
 	)
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req *Request) (*APIResponse, error) {
+	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 		calls++
 		return parsedResponse, nil
 	}))
@@ -209,9 +238,8 @@ func TestResultsCache(t *testing.T) {
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing request with new end time should do one more query.
-	req := parsedRequest.copy()
-	req.End += 100
-	resp, err = rc.Do(ctx, &req)
+	req := parsedRequest.WithStartEnd(parsedRequest.GetStart(), parsedRequest.GetEnd()+100)
+	resp, err = rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
 }
@@ -220,30 +248,70 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{})
+	rcm, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
 	require.NoError(t, err)
 
-	req := parsedRequest.copy()
-	req.End = int64(model.Now())
-	req.Start = req.End - (60 * 1e3)
+	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
 
 	calls := 0
-	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, r *Request) (*APIResponse, error) {
+	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, r Request) (Response, error) {
 		calls++
-		assert.Equal(t, r, &req)
+		assert.Equal(t, r, req)
 		return parsedResponse, nil
 	}))
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	// Request should result in a query.
-	resp, err := rc.Do(ctx, &req)
+	resp, err := rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing same request again should result in another query.
-	resp, err = rc.Do(ctx, &req)
+	resp, err = rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
 	require.Equal(t, parsedResponse, resp)
+}
+
+func Test_resultsCache_MissingData(t *testing.T) {
+	rm, err := NewResultsCacheMiddleware(
+		log.NewNopLogger(),
+		ResultsCacheConfig{
+			CacheConfig: cache.Config{
+				Cache: cache.NewMockCache(),
+			},
+		},
+		fakeLimits{},
+		PrometheusCodec,
+		PrometheusResponseExtractor,
+	)
+	require.NoError(t, err)
+	rc := rm.Wrap(nil).(*resultsCache)
+	ctx := context.Background()
+
+	// fill up the cache
+	rc.put(ctx, "empty", []Extent{{
+		Start:    100,
+		End:      200,
+		Response: nil,
+	}})
+	rc.put(ctx, "notempty", []Extent{mkExtent(100, 120)})
+	rc.put(ctx, "mixed", []Extent{mkExtent(100, 120), {
+		Start:    120,
+		End:      200,
+		Response: nil,
+	}})
+
+	extents, hit := rc.get(ctx, "empty")
+	require.Empty(t, extents)
+	require.False(t, hit)
+
+	extents, hit = rc.get(ctx, "notempty")
+	require.Equal(t, len(extents), 1)
+	require.True(t, hit)
+
+	extents, hit = rc.get(ctx, "mixed")
+	require.Equal(t, len(extents), 0)
+	require.False(t, hit)
 }

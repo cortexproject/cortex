@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -67,6 +68,7 @@ type Config struct {
 	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty"`
 	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
 	Frontend       frontend.Config          `yaml:"frontend,omitempty"`
+	QueryRange     queryrange.Config        `yaml:"query_range,omitempty"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 
@@ -98,6 +100,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Prealloc.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
+	c.QueryRange.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
 

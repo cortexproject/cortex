@@ -44,15 +44,17 @@ func (l RuleGroupList) Formatted() map[string][]rulefmt.RuleGroup {
 
 // ConfigRuleStore is a concrete implementation of RuleStore that sources rules from the config service
 type ConfigRuleStore struct {
-	configClient client.Client
-	since        configs.ID
+	configClient  client.Client
+	since         configs.ID
+	ruleGroupList map[string]RuleGroupList
 }
 
 // NewConfigRuleStore constructs a ConfigRuleStore
 func NewConfigRuleStore(c client.Client) *ConfigRuleStore {
 	return &ConfigRuleStore{
-		configClient: c,
-		since:        0,
+		configClient:  c,
+		since:         0,
+		ruleGroupList: make(map[string]RuleGroupList),
 	}
 }
 
@@ -65,12 +67,10 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]Rul
 		return nil, err
 	}
 
-	newRules := map[string]RuleGroupList{}
-
 	for user, cfg := range configs {
 		userRules := RuleGroupList{}
 		if cfg.IsDeleted() {
-			newRules[user] = RuleGroupList{}
+			c.ruleGroupList[user] = RuleGroupList{}
 		}
 		rMap, err := cfg.Config.ParseFormatted()
 		if err != nil {
@@ -81,7 +81,7 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]Rul
 				userRules = append(userRules, ToProto(user, file, rg))
 			}
 		}
-		newRules[user] = userRules
+		c.ruleGroupList[user] = userRules
 	}
 
 	if err != nil {
@@ -90,7 +90,7 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]Rul
 
 	c.since = getLatestConfigID(configs, c.since)
 
-	return newRules, nil
+	return c.ruleGroupList, nil
 }
 
 // getLatestConfigID gets the latest configs ID.

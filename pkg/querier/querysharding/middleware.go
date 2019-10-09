@@ -18,7 +18,7 @@ func QueryShardMiddleware() queryrange.Middleware {
 		return &queryShard{
 			next: next,
 			mapper: astmapper.NewMultiMapper(
-				astmapper.NewShardSummer(astmapper.DEFAULT_SHARDS, astmapper.Squash),
+				astmapper.NewShardSummer(astmapper.DEFAULT_SHARDS, astmapper.VectorSquasher),
 				astmapper.MapperFunc(astmapper.ShallowEmbedSelectors),
 			),
 		}

@@ -1,9 +1,22 @@
 ## master / unreleased
 
-* [CHANGE] In table-manager, default DynamoDB capacity was reduced from 3,000 units to 1,000 units. We recommend you do not run with the defaults: find out what figures are needed for your environment and set that via `-dynamodb.periodic-table.write-throughput` and `-dynamodb.chunk-table.write-throughput`.
+## 0.3.0-rc.0 / 2019-10-07
+
+This release adds support for Redis as an alternative to Memcached, and also includes many optimisations which reduce CPU and memory usage.
+
+* [CHANGE] Gauge metrics were renamed to drop the `_total` suffix.	#1685
+  * In Alertmanager, `alertmanager_configs_total` is now `alertmanager_configs`
+  * In Ruler, `scheduler_configs_total` is now `scheduler_configs`
+  * `scheduler_groups_total` is now `scheduler_groups`.
 * [CHANGE] `--alertmanager.configs.auto-slack-root` flag was dropped as auto Slack root is not supported anymore. #1597
+* [CHANGE] In table-manager, default DynamoDB capacity was reduced from 3,000 units to 1,000 units. We recommend you do not run with the defaults: find out what figures are needed for your environment and set that via `-dynamodb.periodic-table.write-throughput` and `-dynamodb.chunk-table.write-throughput`.
 * [FEATURE] Add Redis support for caching #1612
+* [FEATURE] Allow spreading chunk writes across multiple S3 buckets	#1625
 * [ENHANCEMENT] Upgraded Prometheus to 2.12.0 and Alertmanager to 0.19.0. #1597
+* [ENHANCEMENT] Cortex is now built with Go 1.13 #1675, #1676, #1679
+* [ENHANCEMENT] Many optimisations, mostly impacting ingester and querier: #1574, #1624, #1638, #1644, #1649, #1654, #1702
+
+Full list of changes: https://github.com/cortexproject/cortex/compare/v0.2.0...v0.3.0-rc.0
 
 
 ## 0.2.0 / 2019-09-05

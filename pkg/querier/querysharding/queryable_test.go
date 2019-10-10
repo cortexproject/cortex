@@ -20,7 +20,7 @@ func TestSelect(t *testing.T) {
 	}{
 		{
 			name: "errors non embedded query",
-			querier: querier(
+			querier: mkQuerier(
 				nil,
 			),
 			fn: func(t *testing.T, q *DownstreamQuerier) {
@@ -31,7 +31,7 @@ func TestSelect(t *testing.T) {
 		},
 		{
 			name: "replaces query",
-			querier: querier(mockHandler(
+			querier: mkQuerier(mockHandler(
 				&queryrange.APIResponse{},
 				nil,
 			)),
@@ -62,7 +62,7 @@ func TestSelect(t *testing.T) {
 		},
 		{
 			name: "propagates response error",
-			querier: querier(mockHandler(
+			querier: mkQuerier(mockHandler(
 				&queryrange.APIResponse{
 					Error: "SomeErr",
 				},
@@ -80,7 +80,7 @@ func TestSelect(t *testing.T) {
 		},
 		{
 			name: "returns SeriesSet",
-			querier: querier(mockHandler(
+			querier: mkQuerier(mockHandler(
 				&queryrange.APIResponse{
 					Data: queryrange.Response{
 						ResultType: promql.ValueTypeVector,
@@ -94,6 +94,26 @@ func TestSelect(t *testing.T) {
 									client.Sample{
 										Value:       1,
 										TimestampMs: 1,
+									},
+									client.Sample{
+										Value:       2,
+										TimestampMs: 2,
+									},
+								},
+							},
+							{
+								Labels: []client.LabelAdapter{
+									{"a", "a2"},
+									{"b", "b2"},
+								},
+								Samples: []client.Sample{
+									client.Sample{
+										Value:       8,
+										TimestampMs: 1,
+									},
+									client.Sample{
+										Value:       9,
+										TimestampMs: 2,
 									},
 								},
 							},
@@ -111,19 +131,40 @@ func TestSelect(t *testing.T) {
 				require.Nil(t, err)
 				require.Equal(
 					t,
-					&downstreamSeriesSet{
-						set: []*downstreamSeries{
-							{
-								metric: []labels.Label{
-									{"a", "a1"},
-									{"b", "b1"},
+					newSeriesSet([]queryrange.SampleStream{
+						{
+							Labels: []client.LabelAdapter{
+								{"a", "a1"},
+								{"b", "b1"},
+							},
+							Samples: []client.Sample{
+								client.Sample{
+									Value:       1,
+									TimestampMs: 1,
 								},
-								points: []promql.Point{
-									{1, 1},
+								client.Sample{
+									Value:       2,
+									TimestampMs: 2,
 								},
 							},
 						},
-					},
+						{
+							Labels: []client.LabelAdapter{
+								{"a", "a2"},
+								{"b", "b2"},
+							},
+							Samples: []client.Sample{
+								client.Sample{
+									Value:       8,
+									TimestampMs: 1,
+								},
+								client.Sample{
+									Value:       9,
+									TimestampMs: 2,
+								},
+							},
+						},
+					}),
 					set,
 				)
 			},
@@ -146,7 +187,7 @@ func exactMatch(k, v string) *labels.Matcher {
 
 }
 
-func querier(handler queryrange.Handler) *DownstreamQuerier {
+func mkQuerier(handler queryrange.Handler) *DownstreamQuerier {
 	return &DownstreamQuerier{context.Background(), &queryrange.Request{}, handler}
 }
 

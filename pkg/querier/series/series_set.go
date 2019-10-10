@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package querier
+package series
 
 import (
 	"sort"
@@ -70,7 +70,7 @@ func (c *ConcreteSeries) Labels() labels.Labels {
 }
 
 func (c *ConcreteSeries) Iterator() storage.SeriesIterator {
-	return newConcreteSeriesIterator(c)
+	return NewConcreteSeriesIterator(c)
 }
 
 // concreteSeriesIterator implements storage.SeriesIterator.
@@ -79,7 +79,7 @@ type concreteSeriesIterator struct {
 	series *ConcreteSeries
 }
 
-func newConcreteSeriesIterator(series *ConcreteSeries) storage.SeriesIterator {
+func NewConcreteSeriesIterator(series *ConcreteSeries) storage.SeriesIterator {
 	return &concreteSeriesIterator{
 		cur:    -1,
 		series: series,
@@ -107,6 +107,10 @@ func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
 
+func NewErrIterator(err error) errIterator {
+	return errIterator{err}
+}
+
 // errIterator implements storage.SeriesIterator, just returning an error.
 type errIterator struct {
 	err error
@@ -128,7 +132,7 @@ func (e errIterator) Err() error {
 	return e.err
 }
 
-func matrixToSeriesSet(m model.Matrix) storage.SeriesSet {
+func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(m))
 	for _, ss := range m {
 		series = append(series, &ConcreteSeries{
@@ -139,7 +143,7 @@ func matrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	return NewConcreteSeriesSet(series)
 }
 
-func metricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
+func MetricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {
 		series = append(series, &ConcreteSeries{

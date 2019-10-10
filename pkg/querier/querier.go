@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -183,7 +184,7 @@ func (q querier) metadataQuery(matchers ...*labels.Matcher) (storage.SeriesSet, 
 	if err != nil {
 		return nil, nil, err
 	}
-	return metricsToSeriesSet(ms), nil, nil
+	return seriesset.MetricsToSeriesSet(ms), nil, nil
 }
 
 func (querier) Close() error {

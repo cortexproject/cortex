@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/weaveworks/common/user"
 )
@@ -109,5 +110,5 @@ func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...
 		serieses = append(serieses, series)
 	}
 
-	return NewConcreteSeriesSet(serieses), nil, nil
+	return seriesset.NewConcreteSeriesSet(serieses), nil, nil
 }

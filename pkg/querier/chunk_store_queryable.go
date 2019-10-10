@@ -11,6 +11,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 type chunkIteratorFunc func(chunks []chunk.Chunk, from, through model.Time) storage.SeriesIterator
@@ -65,7 +66,7 @@ func (q *chunkStoreQuerier) partitionChunks(chunks []chunk.Chunk) storage.Series
 		})
 	}
 
-	return NewConcreteSeriesSet(series)
+	return seriesset.NewConcreteSeriesSet(series)
 }
 
 func (q *chunkStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

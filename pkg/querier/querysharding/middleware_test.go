@@ -13,7 +13,6 @@ import (
 )
 
 func TestMiddleware(t *testing.T) {
-	expired, _ := context.WithDeadline(context.Background(), time.Now())
 	var testExpr = []struct {
 		name     string
 		next     queryrange.Handler
@@ -21,6 +20,7 @@ func TestMiddleware(t *testing.T) {
 		ctx      context.Context
 		expected *queryrange.APIResponse
 		err      bool
+		override func(*testing.T, queryrange.Handler)
 	}{
 		{
 			name: "invalid query error",
@@ -52,32 +52,24 @@ func TestMiddleware(t *testing.T) {
 			err: false,
 		},
 		{
-			name: "context expiry",
-			next: mockHandler(&queryrange.APIResponse{
-				Status: "",
-				Data: queryrange.Response{
-					ResultType: promql.ValueTypeVector,
-					Result:     []queryrange.SampleStream{},
-				},
-				ErrorType: "",
-				Error:     "",
-			}, nil),
-			input: defaultReq(),
-			ctx:   expired,
-			expected: &queryrange.APIResponse{
-				Status:    queryrange.StatusFailure,
-				ErrorType: downStreamErrType,
-				Error:     "query timed out in query execution",
+			name: "expiration",
+			next: mockHandler(sampleMatrixResponse(), nil),
+			override: func(t *testing.T, handler queryrange.Handler) {
+				expired, _ := context.WithDeadline(context.Background(), time.Unix(0, 0))
+				res, err := handler.Do(expired, defaultReq())
+				require.Nil(t, err)
+				require.NotEqual(t, "", res.Error)
 			},
-			err: false,
 		},
 		{
-			name:     "successful trip",
-			next:     mockHandler(sampleMatrixResponse(), nil),
-			input:    defaultReq(),
-			ctx:      context.Background(),
-			expected: sampleMatrixResponse(),
-			err:      false,
+			name: "successful trip",
+			next: mockHandler(sampleMatrixResponse(), nil),
+			override: func(t *testing.T, handler queryrange.Handler) {
+				out, err := handler.Do(context.Background(), defaultReq())
+				require.Nil(t, err)
+				require.Equal(t, promql.ValueTypeMatrix, out.Data.ResultType)
+				require.Equal(t, sampleMatrixResponse(), out)
+			},
 		},
 	}
 
@@ -91,8 +83,15 @@ func TestMiddleware(t *testing.T) {
 				Timeout:       time.Minute,
 			})
 
-			mware := QueryShardMiddleware(engine).Wrap(c.next)
-			out, err := mware.Do(c.ctx, c.input)
+			handler := QueryShardMiddleware(engine).Wrap(c.next)
+
+			// escape hatch for custom tests
+			if c.override != nil {
+				c.override(t, handler)
+				return
+			}
+
+			out, err := handler.Do(c.ctx, c.input)
 
 			if c.err {
 				require.NotNil(t, err)
@@ -118,12 +117,12 @@ func sampleMatrixResponse() *queryrange.APIResponse {
 					},
 					Samples: []client.Sample{
 						client.Sample{
+							TimestampMs: 5000,
 							Value:       1,
-							TimestampMs: 1,
 						},
 						client.Sample{
+							TimestampMs: 10000,
 							Value:       2,
-							TimestampMs: 2,
 						},
 					},
 				},
@@ -134,12 +133,12 @@ func sampleMatrixResponse() *queryrange.APIResponse {
 					},
 					Samples: []client.Sample{
 						client.Sample{
+							TimestampMs: 5000,
 							Value:       8,
-							TimestampMs: 1,
 						},
 						client.Sample{
+							TimestampMs: 10000,
 							Value:       9,
-							TimestampMs: 2,
 						},
 					},
 				},
@@ -161,10 +160,11 @@ func mockHandler(resp *queryrange.APIResponse, err error) queryrange.Handler {
 func defaultReq() *queryrange.Request {
 	return &queryrange.Request{
 		Path:    "/query_range",
-		Start:   10,
-		End:     20,
+		Start:   00,
+		End:     10,
 		Step:    5,
 		Timeout: time.Minute,
-		Query:   `__embedded_query__{__cortex_query__="687474705f72657175657374735f746f74616c7b636c75737465723d2270726f64227d"}`,
+		// encoding of: `http_requests_total{cluster="prod"}`
+		Query: `__embedded_query__{__cortex_query__="687474705f72657175657374735f746f74616c7b636c75737465723d2270726f64227d"}`,
 	}
 }

@@ -58,6 +58,9 @@ func Test_ResponseToSeries(t *testing.T) {
 
 		sampleCt := 0
 		for iter.Next() {
+			ts, v := iter.At()
+			require.Equal(t, input.Result[setCt].Samples[sampleCt].TimestampMs, ts)
+			require.Equal(t, input.Result[setCt].Samples[sampleCt].Value, v)
 			sampleCt++
 		}
 		require.Equal(t, len(input.Result[setCt].Samples), sampleCt)

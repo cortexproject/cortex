@@ -1,8 +1,8 @@
 package querysharding
 
 import (
-	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -42,7 +42,7 @@ func newSeriesSet(results []queryrange.SampleStream) storage.SeriesSet {
 		for _, l := range stream.Labels {
 			ls = append(ls, labels.Label(l))
 		}
-		set = append(set, querier.NewConcreteSeries(ls, samples))
+		set = append(set, series.NewConcreteSeries(ls, samples))
 	}
-	return querier.NewConcreteSeriesSet(set)
+	return series.NewConcreteSeriesSet(set)
 }

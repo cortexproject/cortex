@@ -1,4 +1,4 @@
-package querier
+package series
 
 import (
 	"testing"
@@ -39,7 +39,7 @@ func TestMatrixToSeriesSetSortsMetricLabels(t *testing.T) {
 			Values: []model.SamplePair{{Timestamp: 0, Value: 0}},
 		},
 	}
-	ss := matrixToSeriesSet(matrix)
+	ss := MatrixToSeriesSet(matrix)
 	require.True(t, ss.Next())
 	require.NoError(t, ss.Err())
 

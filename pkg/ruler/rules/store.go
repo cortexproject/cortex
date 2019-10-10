@@ -70,7 +70,8 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]Rul
 	for user, cfg := range configs {
 		userRules := RuleGroupList{}
 		if cfg.IsDeleted() {
-			c.ruleGroupList[user] = RuleGroupList{}
+			delete(c.ruleGroupList, user)
+			continue
 		}
 		rMap, err := cfg.Config.ParseFormatted()
 		if err != nil {

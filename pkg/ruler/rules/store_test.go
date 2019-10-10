@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var zeroTime time.Time
+
 type MockClient struct {
 	cfgs map[string]configs.VersionedRulesConfig
 	err  error
@@ -43,7 +45,7 @@ func Test_ConfigRuleStoreReturn(t *testing.T) {
 			"user": {
 				ID:        id,
 				Config:    fakeRuleConfig(),
-				DeletedAt: time.Unix(0, 0),
+				DeletedAt: zeroTime,
 			},
 		},
 		err: nil,
@@ -62,7 +64,7 @@ func Test_ConfigRuleStoreDelete(t *testing.T) {
 			"user": {
 				ID:        1,
 				Config:    fakeRuleConfig(),
-				DeletedAt: time.Unix(0, 0),
+				DeletedAt: zeroTime,
 			},
 		},
 		err: nil,
@@ -88,7 +90,7 @@ func Test_ConfigRuleStoreAppend(t *testing.T) {
 			"user": {
 				ID:        1,
 				Config:    fakeRuleConfig(),
-				DeletedAt: time.Unix(0, 0),
+				DeletedAt: zeroTime,
 			},
 		},
 		err: nil,
@@ -101,7 +103,7 @@ func Test_ConfigRuleStoreAppend(t *testing.T) {
 	mock.cfgs["user2"] = configs.VersionedRulesConfig{
 		ID:        1,
 		Config:    fakeRuleConfig(),
-		DeletedAt: time.Unix(0, 0),
+		DeletedAt: zeroTime,
 	}
 
 	rules, _ := store.ListAllRuleGroups(nil)
@@ -115,17 +117,17 @@ func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 			"user": {
 				ID:        1,
 				Config:    fakeRuleConfig(),
-				DeletedAt: time.Unix(0, 0),
+				DeletedAt: zeroTime,
 			},
 			"user1": {
 				ID:        10,
 				Config:    fakeRuleConfig(),
-				DeletedAt: time.Unix(0, 0),
+				DeletedAt: zeroTime,
 			},
 			"user2": {
 				ID:        100,
 				Config:    fakeRuleConfig(),
-				DeletedAt: time.Unix(0, 0),
+				DeletedAt: zeroTime,
 			},
 		},
 		err: nil,
@@ -140,7 +142,7 @@ func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 	mock.cfgs["user2"] = configs.VersionedRulesConfig{
 		ID:        50,
 		Config:    fakeRuleConfig(),
-		DeletedAt: time.Unix(0, 0),
+		DeletedAt: zeroTime,
 	}
 
 	store.ListAllRuleGroups(nil)
@@ -149,7 +151,7 @@ func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 	mock.cfgs["user2"] = configs.VersionedRulesConfig{
 		ID:        101,
 		Config:    fakeRuleConfig(),
-		DeletedAt: time.Unix(0, 0),
+		DeletedAt: zeroTime,
 	}
 
 	store.ListAllRuleGroups(nil)

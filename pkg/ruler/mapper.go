@@ -47,6 +47,8 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGrou
 
 		rgs := rulefmt.RuleGroups{Groups: groups}
 		file := path + f
+		filenames = append(filenames, file)
+
 		d, err := yaml.Marshal(&rgs)
 		if err != nil {
 			return false, nil, err
@@ -72,7 +74,6 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]rulefmt.RuleGrou
 			return false, nil, err
 		}
 		update = true
-		filenames = append(filenames, file)
 	}
 	return update, filenames, nil
 }

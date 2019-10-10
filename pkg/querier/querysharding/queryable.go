@@ -10,6 +10,11 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
+const (
+	missingEmbeddedQueryMsg = "missing embedded query"
+	nonEmbeddedErrMsg       = "DownstreamQuerier cannot handle a non-embedded query"
+)
+
 // DownstreamQueryable is a wrapper for and implementor of the Queryable interface.
 type DownstreamQueryable struct {
 	Req     *queryrange.Request
@@ -29,17 +34,31 @@ type DownstreamQuerier struct {
 
 // Select returns a set of series that matches the given label matchers.
 func (q *DownstreamQuerier) Select(
-	sp *storage.SelectParams,
+	_ *storage.SelectParams,
 	matchers ...*labels.Matcher,
 ) (storage.SeriesSet, storage.Warnings, error) {
+	var embeddedQuery string
+	var isEmbedded bool
 	for _, matcher := range matchers {
-		if matcher.Name == astmapper.EMBEDDED_QUERY_FLAG {
-			// this is an embedded query
-			return q.handleEmbeddedQuery(matcher.Value)
+		if matcher.Name == "__name__" && matcher.Value == astmapper.EMBEDDED_QUERY_FLAG {
+			isEmbedded = true
+		}
+
+		if matcher.Name == astmapper.QUERY_LABEL {
+			embeddedQuery = matcher.Value
 		}
 	}
 
-	return nil, nil, errors.Errorf("DownstreamQuerier cannot handle a non-embedded query")
+	if isEmbedded {
+		if embeddedQuery != "" {
+			return q.handleEmbeddedQuery(embeddedQuery)
+		} else {
+			return nil, nil, errors.Errorf(missingEmbeddedQueryMsg)
+		}
+
+	}
+
+	return nil, nil, errors.Errorf(nonEmbeddedErrMsg)
 }
 
 // handleEmbeddedQuery defers execution of an encoded query to a downstream Handler

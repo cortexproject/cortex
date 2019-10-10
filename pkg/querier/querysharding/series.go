@@ -52,13 +52,19 @@ func NewSeriesSet(results []queryrange.SampleStream) *downstreamSeriesSet {
 
 // downstreamSeriesSet is an in-memory series that's mapped from a promql.Value (vector or matrix)
 type downstreamSeriesSet struct {
-	i   int
-	set []*downstreamSeries
+	i     int
+	set   []*downstreamSeries
+	begun bool
 }
 
 // impls storage.SeriesSet
 func (set *downstreamSeriesSet) Next() bool {
-	set.i++
+	if !set.begun {
+		set.begun = true
+	} else {
+		set.i++
+	}
+
 	if set.i >= len(set.set) {
 		return false
 	}
@@ -73,9 +79,6 @@ func (set *downstreamSeriesSet) At() storage.Series {
 
 // impls storage.SeriesSet
 func (set *downstreamSeriesSet) Err() error {
-	if set.i >= len(set.set) {
-		return errors.Errorf("downStreamSeriesSet out of bounds: cannot request series index %d of length %d", set.i, len(set.set))
-	}
 	return nil
 }
 
@@ -83,6 +86,7 @@ type downstreamSeries struct {
 	metric labels.Labels
 	i      int
 	points []promql.Point
+	begun  bool
 }
 
 // impls storage.Series
@@ -107,12 +111,13 @@ func (series *downstreamSeries) Iterator() storage.SeriesIterator {
 // the given timestamp.
 func (series *downstreamSeries) Seek(t int64) bool {
 
-	for series.Err() == nil {
+	// TODO(owen): Is this supposed to automatically advance the iterator or should it return the current
+	// series if satisfies t?
+	for series.Next() {
 		ts, _ := series.At()
 		if ts >= t {
 			return true
 		}
-		series.Next()
 	}
 
 	return false
@@ -128,7 +133,12 @@ func (series *downstreamSeries) At() (t int64, v float64) {
 // impls storage.SeriesIterator
 // Next advances the iterator by one.
 func (series *downstreamSeries) Next() bool {
-	series.i++
+	if !series.begun {
+		series.begun = true
+	} else {
+		series.i++
+	}
+
 	if series.i >= len(series.points) {
 		return false
 	}
@@ -138,9 +148,5 @@ func (series *downstreamSeries) Next() bool {
 // impls storage.SeriesIterator
 // Err returns the current error.
 func (series *downstreamSeries) Err() error {
-	if series.i >= len(series.points) {
-		return errors.Errorf("downstreamSeries out of bounds: cannot request point %d of %d", series.i, len(series.points))
-	}
 	return nil
-
 }

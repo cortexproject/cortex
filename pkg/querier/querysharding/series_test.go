@@ -154,14 +154,13 @@ func Test_downstreamSeriesSet_impls_storage_SeriesSet(t *testing.T) {
 		},
 	}
 
-	for i := 0; i < len(set.set)-1; i++ {
+	for i := 0; i < len(set.set); i++ {
 		require.Nil(t, set.Err())
-		require.Equal(t, set.At(), set.set[i])
 		require.Equal(t, set.Next(), true)
+		require.Equal(t, set.At(), set.set[i])
 	}
 
 	require.Equal(t, set.Next(), false)
-	require.NotNil(t, set.Err())
 }
 
 func Test_downstreamSeries_impls_storage_Series(t *testing.T) {
@@ -171,49 +170,6 @@ func Test_downstreamSeries_impls_storage_Series(t *testing.T) {
 	require.Equal(t, series, series.Iterator())
 
 	require.Equal(t, series.Labels(), series.metric)
-}
-
-func Test_downstreamSeries_impls_storage_SeriesIterator_Err(t *testing.T) {
-	var testExpr = []struct {
-		name  string
-		input *downstreamSeries
-		f     func(*testing.T, *downstreamSeries)
-	}{
-		{
-			"empty",
-			&downstreamSeries{},
-			func(t *testing.T, series *downstreamSeries) {
-				require.NotNil(t, series.Err())
-			},
-		},
-		{
-			"past bounds",
-			initSeries(),
-			func(t *testing.T, series *downstreamSeries) {
-				//advance internal index to end of data
-				series.i = len(series.points)
-
-				require.NotNil(t, series.Err())
-			},
-		},
-		{
-			"past bounds via next",
-			initSeries(),
-			func(t *testing.T, series *downstreamSeries) {
-				for i := 0; i < len(series.points); i++ {
-					series.Next()
-				}
-
-				require.NotNil(t, series.Err())
-			},
-		},
-	}
-
-	for _, c := range testExpr {
-		t.Run(c.name, func(t *testing.T) {
-			c.f(t, c.input)
-		})
-	}
 }
 
 func Test_downstreamSeries_impls_storage_SeriesIterator_Next(t *testing.T) {
@@ -226,10 +182,9 @@ func Test_downstreamSeries_impls_storage_SeriesIterator_Next(t *testing.T) {
 			"next advances series",
 			initSeries(),
 			func(t *testing.T, series *downstreamSeries) {
-				for i := 0; i < len(series.points)-1; i++ {
-					require.Equal(t, i, series.i)
+				for i := 0; i < len(series.points); i++ {
 					require.Equal(t, true, series.Next())
-					require.Equal(t, i+1, series.i)
+					require.Equal(t, i, series.i)
 				}
 			},
 		},
@@ -237,7 +192,7 @@ func Test_downstreamSeries_impls_storage_SeriesIterator_Next(t *testing.T) {
 			"next returns false at end of series",
 			initSeries(),
 			func(t *testing.T, series *downstreamSeries) {
-				for i := 0; i < len(series.points)-1; i++ {
+				for i := 0; i < len(series.points); i++ {
 					series.Next()
 				}
 
@@ -264,10 +219,10 @@ func Test_downstreamSeries_impls_storage_SeriesIterator_At(t *testing.T) {
 			initSeries(),
 			func(t *testing.T, series *downstreamSeries) {
 				for i := 0; i < len(series.points); i++ {
+					series.Next()
 					timestamp, val := series.At()
 					require.Equal(t, series.points[i].T, timestamp)
 					require.Equal(t, series.points[i].V, val)
-					series.Next()
 				}
 			},
 		},
@@ -309,16 +264,6 @@ func Test_downstreamSeries_impls_storage_SeriesIterator_Seek(t *testing.T) {
 				require.Equal(t, true, series.Seek(3))
 				ts, _ := series.At()
 				require.Equal(t, int64(4), ts)
-			},
-		},
-		{
-			"doesnt unnecessarily advancer iter",
-			initSeries(),
-			func(t *testing.T, series *downstreamSeries) {
-				require.Equal(t, true, series.Seek(2))
-				require.Equal(t, true, series.Seek(2))
-				ts, _ := series.At()
-				require.Equal(t, int64(2), ts)
 			},
 		},
 		{

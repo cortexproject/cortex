@@ -440,10 +440,6 @@ github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/util/treecache
 github.com/prometheus/prometheus/web/api/v1
-# github.com/prometheus/tsdb v0.10.0
-github.com/prometheus/tsdb/errors
-github.com/prometheus/tsdb/fileutil
-github.com/prometheus/tsdb/wal
 # github.com/rs/cors v1.6.0
 github.com/rs/cors
 # github.com/samuel/go-zookeeper v0.0.0-20190810000440-0ceca61e4d75

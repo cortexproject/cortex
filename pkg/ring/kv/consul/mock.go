@@ -24,6 +24,7 @@ func NewInMemoryClient(codec codec.Codec) *Client {
 	return NewInMemoryClientWithConfig(codec, Config{})
 }
 
+// NewInMemoryClientWithConfig makes a new mock consul client with supplied Config.
 func NewInMemoryClientWithConfig(codec codec.Codec, cfg Config) *Client {
 	m := mockKV{
 		kvps: map[string]*consul.KVPair{},

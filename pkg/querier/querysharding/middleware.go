@@ -13,10 +13,11 @@ const (
 	parseErrType      = "parse error"
 )
 
-func QueryShardMiddleware() queryrange.Middleware {
+func QueryShardMiddleware(engine *promql.Engine) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return &queryShard{
-			next: next,
+			next:   next,
+			engine: engine,
 			mapper: astmapper.NewMultiMapper(
 				astmapper.NewShardSummer(astmapper.DEFAULT_SHARDS, astmapper.VectorSquasher),
 				astmapper.MapperFunc(astmapper.ShallowEmbedSelectors),
@@ -42,15 +43,12 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 	)
 
 	if err != nil {
-		return &queryrange.APIResponse{
-			Status:    queryrange.StatusFailure,
-			ErrorType: parseErrType,
-			Error:     err.Error(),
-		}, nil
+		return nil, err
 	}
 
 	res := qry.Exec(ctx)
 
+	// TODO(owen): Unclear on whether error belongs in APIResponse struct or as 2nd value in return tuple
 	if res.Err != nil {
 		return &queryrange.APIResponse{
 			Status:    queryrange.StatusFailure,

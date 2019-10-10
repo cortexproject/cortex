@@ -153,9 +153,3 @@ func querier(handler queryrange.Handler) *DownstreamQuerier {
 func hexEncode(str string) string {
 	return hex.EncodeToString([]byte(str))
 }
-
-func mockHandler(res *queryrange.APIResponse, err error) queryrange.Handler {
-	return queryrange.HandlerFunc(func(ctx context.Context, req *queryrange.Request) (*queryrange.APIResponse, error) {
-		return res, err
-	})
-}

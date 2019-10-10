@@ -474,7 +474,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 		http.Error(w, fmt.Sprintf("no Alertmanager for this user ID"), http.StatusNotFound)
 		return
 	}
-	userAM.router.ServeHTTP(w, req)
+	userAM.mux.ServeHTTP(w, req)
 }
 
 // GetStatusHandler returns the status handler for this multi-tenant

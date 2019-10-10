@@ -109,5 +109,5 @@ func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...
 		serieses = append(serieses, series)
 	}
 
-	return newConcreteSeriesSet(serieses), nil, nil
+	return NewConcreteSeriesSet(serieses), nil, nil
 }

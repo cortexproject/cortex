@@ -20,5 +20,5 @@ func mergeChunks(chunks []chunk.Chunk, from, through model.Time) storage.SeriesI
 	}
 
 	merged := util.MergeNSampleSets(samples...)
-	return newConcreteSeriesIterator(newConcreteSeries(nil, merged))
+	return newConcreteSeriesIterator(NewConcreteSeries(nil, merged))
 }

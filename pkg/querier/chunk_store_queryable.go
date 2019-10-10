@@ -65,7 +65,7 @@ func (q *chunkStoreQuerier) partitionChunks(chunks []chunk.Chunk) storage.Series
 		})
 	}
 
-	return newConcreteSeriesSet(series)
+	return NewConcreteSeriesSet(series)
 }
 
 func (q *chunkStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {

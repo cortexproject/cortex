@@ -108,14 +108,14 @@ func Test_mapper_MapRules(t *testing.T) {
 	t.Run("identical rulegroup", func(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, initialRuleSet)
 		require.False(t, updated)
-		require.Len(t, files, 0)
+		require.Len(t, files, 1)
 		require.NoError(t, err)
 	})
 
 	t.Run("out of order identical rulegroup", func(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, outOfOrderRuleSet)
 		require.False(t, updated)
-		require.Len(t, files, 0)
+		require.Len(t, files, 1)
 		require.NoError(t, err)
 
 	})
@@ -125,6 +125,132 @@ func Test_mapper_MapRules(t *testing.T) {
 		require.True(t, updated)
 		require.Len(t, files, 1)
 		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.NoError(t, err)
+	})
+}
+
+var (
+	twoFilesRuleSet = map[string][]rulefmt.RuleGroup{
+		"file_one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+		},
+		"file_two": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+		},
+	}
+
+	twoFilesUpdatedRuleSet = map[string][]rulefmt.RuleGroup{
+		"file_one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+		},
+		"file_two": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.Rule{
+					{
+						Record: "example_ruleupdated",
+						Expr:   "example_exprupdated",
+					},
+				},
+			},
+		},
+	}
+
+	twoFilesDeletedRuleSet = map[string][]rulefmt.RuleGroup{
+		"file_one": {
+			{
+				Name: "rulegroup_one",
+				Rules: []rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+			{
+				Name: "rulegroup_two",
+				Rules: []rulefmt.Rule{
+					{
+						Record: "example_rule",
+						Expr:   "example_expr",
+					},
+				},
+			},
+		},
+	}
+)
+
+func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
+	m := &mapper{
+		Path: "/rules",
+		FS:   afero.NewMemMapFs(),
+	}
+
+	t.Run("basic rulegroup", func(t *testing.T) {
+		updated, files, err := m.MapRules(testUser, initialRuleSet)
+		require.True(t, updated)
+		require.Len(t, files, 1)
+		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.NoError(t, err)
+	})
+
+	t.Run("add a file", func(t *testing.T) {
+		updated, files, err := m.MapRules(testUser, twoFilesRuleSet)
+		require.True(t, updated)
+		require.Len(t, files, 2)
+		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, "/rules/user1/file_two", files[1])
+		require.NoError(t, err)
+	})
+
+	t.Run("update one file", func(t *testing.T) {
+		updated, files, err := m.MapRules(testUser, twoFilesUpdatedRuleSet)
+		require.True(t, updated)
+		require.Len(t, files, 2)
+		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.Equal(t, "/rules/user1/file_two", files[1])
 		require.NoError(t, err)
 	})
 }

@@ -103,12 +103,20 @@ func Test_mapper_MapRules(t *testing.T) {
 		require.Len(t, files, 1)
 		require.Equal(t, "/rules/user1/file_one", files[0])
 		require.NoError(t, err)
+
+		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		require.True(t, exists)
+		require.NoError(t, err)
 	})
 
 	t.Run("identical rulegroup", func(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, initialRuleSet)
 		require.False(t, updated)
 		require.Len(t, files, 1)
+		require.NoError(t, err)
+
+		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		require.True(t, exists)
 		require.NoError(t, err)
 	})
 
@@ -118,6 +126,9 @@ func Test_mapper_MapRules(t *testing.T) {
 		require.Len(t, files, 1)
 		require.NoError(t, err)
 
+		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		require.True(t, exists)
+		require.NoError(t, err)
 	})
 
 	t.Run("updated rulegroup", func(t *testing.T) {
@@ -125,6 +136,10 @@ func Test_mapper_MapRules(t *testing.T) {
 		require.True(t, updated)
 		require.Len(t, files, 1)
 		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.NoError(t, err)
+
+		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		require.True(t, exists)
 		require.NoError(t, err)
 	})
 }
@@ -234,6 +249,10 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		require.Len(t, files, 1)
 		require.Equal(t, "/rules/user1/file_one", files[0])
 		require.NoError(t, err)
+
+		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		require.True(t, exists)
+		require.NoError(t, err)
 	})
 
 	t.Run("add a file", func(t *testing.T) {
@@ -243,6 +262,13 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		require.Equal(t, "/rules/user1/file_one", files[0])
 		require.Equal(t, "/rules/user1/file_two", files[1])
 		require.NoError(t, err)
+
+		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		require.True(t, exists)
+		require.NoError(t, err)
+		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		require.True(t, exists)
+		require.NoError(t, err)
 	})
 
 	t.Run("update one file", func(t *testing.T) {
@@ -251,6 +277,28 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		require.Len(t, files, 2)
 		require.Equal(t, "/rules/user1/file_one", files[0])
 		require.Equal(t, "/rules/user1/file_two", files[1])
+		require.NoError(t, err)
+
+		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		require.True(t, exists)
+		require.NoError(t, err)
+		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		require.True(t, exists)
+		require.NoError(t, err)
+	})
+
+	t.Run("delete one file", func(t *testing.T) {
+		updated, files, err := m.MapRules(testUser, twoFilesDeletedRuleSet)
+		require.True(t, updated)
+		require.Len(t, files, 1)
+		require.Equal(t, "/rules/user1/file_one", files[0])
+		require.NoError(t, err)
+
+		exists, err := afero.Exists(m.FS, "/rules/user1/file_one")
+		require.True(t, exists)
+		require.NoError(t, err)
+		exists, err = afero.Exists(m.FS, "/rules/user1/file_two")
+		require.False(t, exists)
 		require.NoError(t, err)
 	})
 }

@@ -40,7 +40,7 @@ func init() {
 func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) error {
 	// Enter JOINING state (only valid from PENDING)
 	if err := i.lifecycler.ChangeState(stream.Context(), ring.JOINING); err != nil {
-		return err
+		return errors.Wrap(err, "TransferChunks: ChangeState")
 	}
 
 	// The ingesters state effectively works as a giant mutex around this whole
@@ -72,7 +72,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			break
 		}
 		if err != nil {
-			return err
+			return errors.Wrap(err, "TransferChunks: Recv")
 		}
 
 		// We can't send "extra" fields with a streaming call, so we repeat
@@ -84,19 +84,19 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 		}
 		descs, err := fromWireChunks(wireSeries.Chunks)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "TransferChunks: fromWireChunks")
 		}
 
 		state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
 		}
 		prevNumChunks := len(series.chunkDescs)
 
 		err = series.setChunks(descs)
 		state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "TransferChunks: setChunks: user %s series %s", wireSeries.UserId, wireSeries.Labels)
 		}
 
 		seriesReceived++
@@ -106,7 +106,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 
 	if seriesReceived == 0 {
 		level.Error(util.Logger).Log("msg", "received TransferChunks request with no series", "from_ingester", fromIngesterID)
-		return fmt.Errorf("no series")
+		return fmt.Errorf("TransferChunks: no series")
 	}
 
 	if fromIngesterID == "" {
@@ -115,14 +115,14 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	}
 
 	if err := i.lifecycler.ClaimTokensFor(stream.Context(), fromIngesterID); err != nil {
-		return err
+		return errors.Wrap(err, "TransferChunks: ClaimTokensFor")
 	}
 
 	i.userStatesMtx.Lock()
 	defer i.userStatesMtx.Unlock()
 
 	if err := i.lifecycler.ChangeState(stream.Context(), ring.ACTIVE); err != nil {
-		return err
+		return errors.Wrap(err, "TransferChunks: ChangeState")
 	}
 	i.userStates = userStates
 

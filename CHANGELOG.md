@@ -1,6 +1,6 @@
 ## master / unreleased
 
-## 0.3.0-rc.0 / 2019-10-07
+## 0.3.0 / 2019-10-11
 
 This release adds support for Redis as an alternative to Memcached, and also includes many optimisations which reduce CPU and memory usage.
 
@@ -16,7 +16,7 @@ This release adds support for Redis as an alternative to Memcached, and also inc
 * [ENHANCEMENT] Cortex is now built with Go 1.13 #1675, #1676, #1679
 * [ENHANCEMENT] Many optimisations, mostly impacting ingester and querier: #1574, #1624, #1638, #1644, #1649, #1654, #1702
 
-Full list of changes: https://github.com/cortexproject/cortex/compare/v0.2.0...v0.3.0-rc.0
+Full list of changes: https://github.com/cortexproject/cortex/compare/v0.2.0...v0.3.0
 
 
 ## 0.2.0 / 2019-09-05

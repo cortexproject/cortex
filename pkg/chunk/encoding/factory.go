@@ -24,6 +24,11 @@ func (Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&DefaultEncoding, "ingester.chunk-encoding", "Encoding version to use for chunks.")
 	flag.BoolVar(&alwaysMarshalFullsizeChunks, "store.fullsize-chunks", alwaysMarshalFullsizeChunks, "When saving varbit chunks, pad to 1024 bytes")
 	flag.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
+
+	if DefaultEncoding == Delta {
+		// Delta is depricated. Use DoubleDelta if it is set to Delta.
+		DefaultEncoding = DoubleDelta
+	}
 }
 
 // String implements flag.Value.
@@ -35,7 +40,8 @@ func (e Encoding) String() string {
 }
 
 const (
-	// Delta encoding
+	// Delta encoding is no longer supported and will be automatically changed to DoubleDelta.
+	// It still exists here to not change the `ingester.chunk-encoding` flag values.
 	Delta Encoding = iota
 	// DoubleDelta encoding
 	DoubleDelta
@@ -51,12 +57,6 @@ type encoding struct {
 }
 
 var encodings = map[Encoding]encoding{
-	Delta: {
-		Name: "Delta",
-		New: func() Chunk {
-			return newDeltaEncodedChunk(d1, d0, true, ChunkLen)
-		},
-	},
 	DoubleDelta: {
 		Name: "DoubleDelta",
 		New: func() Chunk {

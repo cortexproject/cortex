@@ -260,17 +260,20 @@ func newVarbitChunk(enc varbitValueEncoding) *varbitChunk {
 }
 
 // Add implements chunk.
-func (c *varbitChunk) Add(s model.SamplePair) ([]Chunk, error) {
+func (c *varbitChunk) Add(s model.SamplePair) (Chunk, error) {
 	offset := c.nextSampleOffset()
 	switch {
 	case c.closed():
-		return addToOverflowChunk(c, s)
+		return addToOverflowChunk(s)
 	case offset > varbitNextSampleBitOffsetThreshold:
-		return c.addLastSample(s), nil
+		c.addLastSample(s)
+		return nil, nil
 	case offset == varbitFirstSampleBitOffset:
-		return c.addFirstSample(s), nil
+		c.addFirstSample(s)
+		return nil, nil
 	case offset == varbitSecondSampleBitOffset:
-		return c.addSecondSample(s)
+		err := c.addSecondSample(s)
+		return nil, err
 	}
 	return c.addLaterSample(s, offset)
 }
@@ -298,8 +301,8 @@ func (c varbitChunk) Marshal(w io.Writer) error {
 }
 
 // UnmarshalFromBuf implements chunk.
-func (c varbitChunk) UnmarshalFromBuf(buf []byte) error {
-	if copied := copy(c, buf); copied != cap(c) && copied != c.marshalLen() {
+func (c *varbitChunk) UnmarshalFromBuf(buf []byte) error {
+	if copied := copy((*c), buf); copied != cap((*c)) && copied != c.marshalLen() {
 		return fmt.Errorf("incorrect byte count copied from buffer during unmarshalling, want %d or %d, got %d", c.marshalLen(), ChunkLen, copied)
 	}
 	return nil
@@ -401,13 +404,13 @@ func (c varbitChunk) lastTimeDelta() model.Time {
 
 // setLastTimeDelta must not be called if the chunk is closed already. It most
 // not be called with a time that doesn't fit into 24bit, either.
-func (c varbitChunk) setLastTimeDelta(dT model.Time) {
+func (c *varbitChunk) setLastTimeDelta(dT model.Time) {
 	if dT > varbitMaxTimeDelta {
 		panic("Δt overflows 24 bit")
 	}
-	c[varbitLastTimeDeltaOffset] = byte(dT >> 16)
-	c[varbitLastTimeDeltaOffset+1] = byte(dT >> 8)
-	c[varbitLastTimeDeltaOffset+2] = byte(dT)
+	(*c)[varbitLastTimeDeltaOffset] = byte(dT >> 16)
+	(*c)[varbitLastTimeDeltaOffset+1] = byte(dT >> 8)
+	(*c)[varbitLastTimeDeltaOffset+2] = byte(dT)
 }
 
 // lastValueDelta returns an undefined result if the chunk is closed already.
@@ -432,12 +435,12 @@ func (c varbitChunk) valueEncoding() varbitValueEncoding {
 	return varbitValueEncoding(c[varbitFlagOffset] & 0x03)
 }
 
-func (c varbitChunk) setValueEncoding(enc varbitValueEncoding) {
+func (c *varbitChunk) setValueEncoding(enc varbitValueEncoding) {
 	if enc > varbitDirectEncoding {
 		panic("invalid varbit value encoding")
 	}
-	c[varbitFlagOffset] &^= 0x03     // Clear.
-	c[varbitFlagOffset] |= byte(enc) // Set.
+	(*c)[varbitFlagOffset] &^= 0x03     // Clear.
+	(*c)[varbitFlagOffset] |= byte(enc) // Set.
 }
 
 func (c varbitChunk) closed() bool {
@@ -452,11 +455,11 @@ func (c varbitChunk) zeroDDTRepeats() (repeats uint64, offset uint16) {
 	return c.readBitPattern(offset, 7) + 1, offset
 }
 
-func (c varbitChunk) setZeroDDTRepeats(repeats uint64, offset uint16) {
+func (c *varbitChunk) setZeroDDTRepeats(repeats uint64, offset uint16) {
 	switch repeats {
 	case 0:
 		// Just clear the offset.
-		binary.BigEndian.PutUint16(c[varbitCountOffsetBitOffset:], 0)
+		binary.BigEndian.PutUint16((*c)[varbitCountOffsetBitOffset:], 0)
 		return
 	case 1:
 		// First time we set a repeat here, so set the offset. But only
@@ -465,34 +468,34 @@ func (c varbitChunk) setZeroDDTRepeats(repeats uint64, offset uint16) {
 		// later anyway because no more samples will be added to this
 		// chunk.)
 		if offset+7 <= varbitNextSampleBitOffsetThreshold {
-			binary.BigEndian.PutUint16(c[varbitCountOffsetBitOffset:], offset)
+			binary.BigEndian.PutUint16((*c)[varbitCountOffsetBitOffset:], offset)
 		}
 	default:
 		// For a change, we are writing somewhere where we have written
 		// before. We need to clear the bits first.
 		posIn1stByte := offset % 8
-		c[offset/8] &^= bitMask[7][posIn1stByte]
+		(*c)[offset/8] &^= bitMask[7][posIn1stByte]
 		if posIn1stByte > 1 {
-			c[offset/8+1] &^= bitMask[posIn1stByte-1][0]
+			(*c)[offset/8+1] &^= bitMask[posIn1stByte-1][0]
 		}
 	}
 	c.addBitPattern(offset, repeats-1, 7)
 }
 
-func (c varbitChunk) setLastSample(s model.SamplePair) {
+func (c *varbitChunk) setLastSample(s model.SamplePair) {
 	binary.BigEndian.PutUint64(
-		c[varbitLastTimeOffset:],
+		(*c)[varbitLastTimeOffset:],
 		uint64(s.Timestamp),
 	)
 	binary.BigEndian.PutUint64(
-		c[varbitLastValueOffset:],
+		(*c)[varbitLastValueOffset:],
 		math.Float64bits(float64(s.Value)),
 	)
 }
 
 // addFirstSample is a helper method only used by c.add(). It adds timestamp and
 // value as base time and value.
-func (c *varbitChunk) addFirstSample(s model.SamplePair) []Chunk {
+func (c *varbitChunk) addFirstSample(s model.SamplePair) {
 	binary.BigEndian.PutUint64(
 		(*c)[varbitFirstTimeOffset:],
 		uint64(s.Timestamp),
@@ -503,21 +506,21 @@ func (c *varbitChunk) addFirstSample(s model.SamplePair) []Chunk {
 	)
 	c.setLastSample(s) // To simplify handling of single-sample chunks.
 	c.setNextSampleOffset(varbitSecondSampleBitOffset)
-	return []Chunk{c}
 }
 
 // addSecondSample is a helper method only used by c.add(). It calculates the
 // first time delta from the provided sample and adds it to the chunk together
 // with the provided sample as the last sample.
-func (c *varbitChunk) addSecondSample(s model.SamplePair) ([]Chunk, error) {
+func (c *varbitChunk) addSecondSample(s model.SamplePair) error {
 	firstTimeDelta := s.Timestamp - c.firstTime()
 	if firstTimeDelta < 0 {
-		return nil, fmt.Errorf("first Δt is less than zero: %v", firstTimeDelta)
+		return fmt.Errorf("first Δt is less than zero: %v", firstTimeDelta)
 	}
 	if firstTimeDelta > varbitMaxTimeDelta {
 		// A time delta too great. Still, we can add it as a last sample
 		// before overflowing.
-		return c.addLastSample(s), nil
+		c.addLastSample(s)
+		return nil
 	}
 	(*c)[varbitFirstTimeDeltaOffset] = byte(firstTimeDelta >> 16)
 	(*c)[varbitFirstTimeDeltaOffset+1] = byte(firstTimeDelta >> 8)
@@ -529,7 +532,7 @@ func (c *varbitChunk) addSecondSample(s model.SamplePair) ([]Chunk, error) {
 
 	c.setLastSample(s)
 	c.setNextSampleOffset(varbitThirdSampleBitOffset)
-	return []Chunk{c}, nil
+	return nil
 }
 
 // addLastSample is a helper method only used by c.add() and in other helper
@@ -538,15 +541,15 @@ func (c *varbitChunk) addSecondSample(s model.SamplePair) ([]Chunk, error) {
 // adds the very last sample added to this chunk ever, while setLastSample sets
 // the sample most recently added to the chunk so that it can be used for the
 // calculations required to add the next sample.
-func (c *varbitChunk) addLastSample(s model.SamplePair) []Chunk {
+func (c *varbitChunk) addLastSample(s model.SamplePair) {
 	c.setLastSample(s)
 	(*c)[varbitFlagOffset] |= 0x80
-	return []Chunk{c}
+	return
 }
 
 // addLaterSample is a helper method only used by c.add(). It adds a third or
 // later sample.
-func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) ([]Chunk, error) {
+func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) (Chunk, error) {
 	var (
 		lastTime      = c.lastTime()
 		lastTimeDelta = c.lastTimeDelta()
@@ -564,39 +567,88 @@ func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) ([]Chunk
 	if newTimeDelta > varbitMaxTimeDelta {
 		// A time delta too great. Still, we can add it as a last sample
 		// before overflowing.
-		return c.addLastSample(s), nil
+		c.addLastSample(s)
+		return nil, nil
 	}
 
 	// Analyze worst case, does it fit? If not, set new sample as the last.
 	if int(offset)+varbitWorstCaseBitsPerSample[encoding] > ChunkLen*8 {
-		return c.addLastSample(s), nil
+		c.addLastSample(s)
+		return nil, nil
 	}
 
 	// Transcoding/overflow decisions first.
 	if encoding == varbitZeroEncoding && s.Value != lastValue {
 		// Cannot go on with zero encoding.
-		if offset > ChunkLen*4 {
-			// Chunk already half full. Don't transcode, overflow instead.
-			return addToOverflowChunk(c, s)
+		if offset <= ChunkLen*4 {
+			var result []Chunk
+			var err error
+			if isInt32(s.Value - lastValue) {
+				// Trying int encoding looks promising.
+				result, err = transcodeAndAdd(newVarbitChunk(varbitIntDoubleDeltaEncoding), c, s)
+			} else {
+				result, err = transcodeAndAdd(newVarbitChunk(varbitXOREncoding), c, s)
+			}
+			if err != nil {
+				return nil, err
+			}
+
+			// We cannot handle >2 chunks returned as we can only return 1 chunk.
+			// Ideally there wont be >2 chunks, but if it happens to be >2,
+			// we fall through to perfom `addToOverflowChunk` instead.
+			if len(result) == 1 {
+				// Replace the current chunk with the new bigger chunk.
+				c0 := result[0].(*varbitChunk)
+				*c = *c0
+				return nil, nil
+			} else if len(result) == 2 {
+				// Replace the current chunk with the new bigger chunk
+				// and return the additional chunk.
+				c0 := result[0].(*varbitChunk)
+				c1 := result[1].(*varbitChunk)
+				*c = *c0
+				return c1, nil
+			}
 		}
-		if isInt32(s.Value - lastValue) {
-			// Trying int encoding looks promising.
-			return transcodeAndAdd(newVarbitChunk(varbitIntDoubleDeltaEncoding), c, s)
-		}
-		return transcodeAndAdd(newVarbitChunk(varbitXOREncoding), c, s)
+
+		// Chunk is already half full. Better create a new one and save the transcoding efforts.
+		// We also perform this if `transcodeAndAdd` resulted in >2 chunks.
+		return addToOverflowChunk(s)
 	}
 	if encoding == varbitIntDoubleDeltaEncoding && !isInt32(s.Value-lastValue) {
 		// Cannot go on with int encoding.
-		if offset > ChunkLen*4 {
-			// Chunk already half full. Don't transcode, overflow instead.
-			return addToOverflowChunk(c, s)
+		if offset <= ChunkLen*4 {
+			result, err := transcodeAndAdd(newVarbitChunk(varbitXOREncoding), c, s)
+			if err != nil {
+				return nil, err
+			}
+			// We cannot handle >2 chunks returned as we can only return 1 chunk.
+			// Ideally there wont be >2 chunks, but if it happens to be >2,
+			// we fall through to perfom `addToOverflowChunk` instead.
+			if len(result) == 1 {
+				// Replace the current chunk with the new bigger chunk.
+				c0 := result[0].(*varbitChunk)
+				*c = *c0
+				return nil, nil
+			} else if len(result) == 2 {
+				// Replace the current chunk with the new bigger chunk
+				// and return the additional chunk.
+				c0 := result[0].(*varbitChunk)
+				c1 := result[1].(*varbitChunk)
+				*c = *c0
+				return c1, nil
+			}
 		}
-		return transcodeAndAdd(newVarbitChunk(varbitXOREncoding), c, s)
+
+		// Chunk is already half full. Better create a new one and save the transcoding efforts.
+		// We also perform this if `transcodeAndAdd` resulted in >2 chunks.
+		return addToOverflowChunk(s)
 	}
 
 	offset, overflow := c.addDDTime(offset, lastTimeDelta, newTimeDelta)
 	if overflow {
-		return c.addLastSample(s), nil
+		c.addLastSample(s)
+		return nil, nil
 	}
 	switch encoding {
 	case varbitZeroEncoding:
@@ -613,10 +665,10 @@ func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) ([]Chunk
 
 	c.setNextSampleOffset(offset)
 	c.setLastSample(s)
-	return []Chunk{c}, nil
+	return nil, nil
 }
 
-func (c varbitChunk) prepForThirdSample(
+func (c *varbitChunk) prepForThirdSample(
 	lastValue, newValue model.SampleValue, encoding varbitValueEncoding,
 ) (uint16, varbitValueEncoding) {
 	var (
@@ -638,7 +690,7 @@ func (c varbitChunk) prepForThirdSample(
 	case encoding <= varbitIntDoubleDeltaEncoding && isInt32(firstValueDelta):
 		encoding = varbitIntDoubleDeltaEncoding
 		binary.BigEndian.PutUint32(
-			c[varbitFirstValueDeltaOffset:],
+			(*c)[varbitFirstValueDeltaOffset:],
 			uint32(int32(firstValueDelta)),
 		)
 		c.setLastValueDelta(int32(firstValueDelta))
@@ -650,7 +702,7 @@ func (c varbitChunk) prepForThirdSample(
 		encoding = varbitDirectEncoding
 		// Put bit pattern directly where otherwise the delta would have gone.
 		binary.BigEndian.PutUint64(
-			c[varbitFirstValueDeltaOffset:],
+			(*c)[varbitFirstValueDeltaOffset:],
 			math.Float64bits(float64(lastValue)),
 		)
 		offset += 64
@@ -732,7 +784,7 @@ func (c varbitChunk) addDDValue(offset uint16, lastValue, newValue model.SampleV
 	}
 }
 
-func (c varbitChunk) addXORValue(offset uint16, lastValue, newValue model.SampleValue) uint16 {
+func (c *varbitChunk) addXORValue(offset uint16, lastValue, newValue model.SampleValue) uint16 {
 	lastPattern := math.Float64bits(float64(lastValue))
 	newPattern := math.Float64bits(float64(newValue))
 	xor := lastPattern ^ newPattern
@@ -740,8 +792,8 @@ func (c varbitChunk) addXORValue(offset uint16, lastValue, newValue model.Sample
 		return c.addZeroBit(offset)
 	}
 
-	lastLeadingBits := c[varbitLastLeadingZerosCountOffset]
-	lastSignificantBits := c[varbitLastSignificantBitsCountOffset]
+	lastLeadingBits := (*c)[varbitLastLeadingZerosCountOffset]
+	lastSignificantBits := (*c)[varbitLastSignificantBitsCountOffset]
 	newLeadingBits, newSignificantBits := countBits(xor)
 
 	// Short entry if the new significant bits fit into the same box as the
@@ -761,8 +813,8 @@ func (c varbitChunk) addXORValue(offset uint16, lastValue, newValue model.Sample
 	}
 
 	// Long entry.
-	c[varbitLastLeadingZerosCountOffset] = newLeadingBits
-	c[varbitLastSignificantBitsCountOffset] = newSignificantBits
+	(*c)[varbitLastLeadingZerosCountOffset] = newLeadingBits
+	(*c)[varbitLastSignificantBitsCountOffset] = newSignificantBits
 	offset = c.addOneBits(offset, 2)
 	offset = c.addBitPattern(offset, uint64(newLeadingBits), 5)
 	offset = c.addBitPattern(offset, uint64(newSignificantBits-1), 6) // Note -1!
@@ -773,22 +825,22 @@ func (c varbitChunk) addXORValue(offset uint16, lastValue, newValue model.Sample
 	)
 }
 
-func (c varbitChunk) addZeroBit(offset uint16) uint16 {
+func (c *varbitChunk) addZeroBit(offset uint16) uint16 {
 	if offset < varbitNextSampleBitOffsetThreshold {
 		// Writing a zero to a never touched area is a no-op.
 		// Just increase the offset.
 		return offset + 1
 	}
-	newByte := c[offset/8] &^ bitMask[1][offset%8]
-	c[offset/8] = newByte
+	newByte := (*c)[offset/8] &^ bitMask[1][offset%8]
+	(*c)[offset/8] = newByte
 	// TODO(beorn7): The two lines above could be written as
-	//     c[offset/8] &^= bitMask[1][offset%8]
+	//     (*c)[offset/8] &^= bitMask[1][offset%8]
 	// However, that tickles a compiler bug with GOARCH=386.
 	// See https://github.com/prometheus/prometheus/issues/1509
 	return offset + 1
 }
 
-func (c varbitChunk) addOneBits(offset uint16, n uint16) uint16 {
+func (c *varbitChunk) addOneBits(offset uint16, n uint16) uint16 {
 	if n > 7 {
 		panic("unexpected number of control bits")
 	}
@@ -796,11 +848,11 @@ func (c varbitChunk) addOneBits(offset uint16, n uint16) uint16 {
 	if b > n {
 		b = n
 	}
-	c[offset/8] |= bitMask[b][offset%8]
+	(*c)[offset/8] |= bitMask[b][offset%8]
 	offset += b
 	b = n - b
 	if b > 0 {
-		c[offset/8] |= bitMask[b][0]
+		(*c)[offset/8] |= bitMask[b][0]
 		offset += b
 	}
 	return offset
@@ -821,7 +873,7 @@ func (c varbitChunk) addSignedInt(offset uint16, i int64, n uint16) uint16 {
 
 // addBitPattern adds the last n bits of the given pattern. Other bits in the
 // pattern must be 0.
-func (c varbitChunk) addBitPattern(offset uint16, pattern uint64, n uint16) uint16 {
+func (c *varbitChunk) addBitPattern(offset uint16, pattern uint64, n uint16) uint16 {
 	var (
 		byteOffset  = offset / 8
 		bitsToWrite = 8 - offset%8
@@ -842,17 +894,17 @@ func (c varbitChunk) addBitPattern(offset uint16, pattern uint64, n uint16) uint
 			if bitsToClear > 8-posInByte {
 				bitsToClear = 8 - posInByte
 			}
-			c[pos/8] &^= bitMask[bitsToClear][posInByte]
+			(*c)[pos/8] &^= bitMask[bitsToClear][posInByte]
 			pos += bitsToClear
 		}
 	}
 
 	for n > 0 {
 		if n <= bitsToWrite {
-			c[byteOffset] |= byte(pattern << (bitsToWrite - n))
+			(*c)[byteOffset] |= byte(pattern << (bitsToWrite - n))
 			break
 		}
-		c[byteOffset] |= byte(pattern >> (n - bitsToWrite))
+		(*c)[byteOffset] |= byte(pattern >> (n - bitsToWrite))
 		n -= bitsToWrite
 		bitsToWrite = 8
 		byteOffset++
@@ -862,7 +914,7 @@ func (c varbitChunk) addBitPattern(offset uint16, pattern uint64, n uint16) uint
 
 // readBitPattern reads n bits at the given offset and returns them as the last
 // n bits in a uint64.
-func (c varbitChunk) readBitPattern(offset, n uint16) uint64 {
+func (c *varbitChunk) readBitPattern(offset, n uint16) uint64 {
 	var (
 		result                   uint64
 		byteOffset               = offset / 8
@@ -879,7 +931,7 @@ func (c varbitChunk) readBitPattern(offset, n uint16) uint64 {
 		}
 		result <<= bitsToRead
 		result |= uint64(
-			(c[byteOffset] & bitMask[bitsToRead][bitOffset]) >> trailingBits,
+			((*c)[byteOffset] & bitMask[bitsToRead][bitOffset]) >> trailingBits,
 		)
 		n -= bitsToRead
 		byteOffset++

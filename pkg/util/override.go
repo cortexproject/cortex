@@ -1,10 +1,9 @@
-package validation
+package util
 
 import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -15,25 +14,31 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Whether the last overrides reload attempt was successful.",
 })
 
-// OverridesLoader loads the overrides
-type OverridesLoader func(string) (map[string]interface{}, error)
+// OverridesLoader loads the configuration from file.
+type OverridesLoader func(filename string) (interface{}, error)
+
+// OverridesListener gets notified when new overrides is loaded
+type OverridesListener func(newConfig interface{})
 
 // OverridesManagerConfig holds the config for an OverridesManager instance.
-// It holds config related to loading per-tentant overrides and the default limits
+// It holds config related to loading per-tenant overrides.
 type OverridesManagerConfig struct {
 	OverridesReloadPeriod time.Duration
 	OverridesLoadPath     string
 	OverridesLoader       OverridesLoader
-	Defaults              interface{}
 }
 
-// OverridesManager manages default and per user limits i.e overrides.
-// It can periodically keep reloading overrides based on config.
+// OverridesManager periodically reloads configuration from a file, and keeps this
+// configuration available for clients.
 type OverridesManager struct {
-	cfg          OverridesManagerConfig
-	overrides    map[string]interface{}
+	cfg  OverridesManagerConfig
+	quit chan struct{}
+
+	listenersMtx sync.Mutex
+	listeners    []OverridesListener
+
 	overridesMtx sync.RWMutex
-	quit         chan struct{}
+	overrides    interface{}
 }
 
 // NewOverridesManager creates an instance of OverridesManager and starts reload overrides loop based on config
@@ -46,14 +51,27 @@ func NewOverridesManager(cfg OverridesManagerConfig) (*OverridesManager, error) 
 	if cfg.OverridesLoadPath != "" {
 		if err := overridesManager.loadOverrides(); err != nil {
 			// Log but don't stop on error - we don't want to halt all ingesters because of a typo
-			level.Error(util.Logger).Log("msg", "failed to load limit overrides", "err", err)
+			level.Error(Logger).Log("msg", "failed to load overrides", "err", err)
 		}
 		go overridesManager.loop()
 	} else {
-		level.Info(util.Logger).Log("msg", "per-tenant overrides disabled")
+		level.Info(Logger).Log("msg", "overrides disabled")
 	}
 
 	return &overridesManager, nil
+}
+
+// AddListener registers new listener function, that will receive updates configuration.
+// Listener is called asynchronously to avoid blocking main reloading loop.
+func (om *OverridesManager) AddListener(l OverridesListener) {
+	if l == nil {
+		panic("nil listener")
+	}
+
+	om.listenersMtx.Lock()
+	defer om.listenersMtx.Unlock()
+
+	om.listeners = append(om.listeners, l)
 }
 
 func (om *OverridesManager) loop() {
@@ -66,7 +84,7 @@ func (om *OverridesManager) loop() {
 			err := om.loadOverrides()
 			if err != nil {
 				// Log but don't stop on error - we don't want to halt all ingesters because of a typo
-				level.Error(util.Logger).Log("msg", "failed to load limit overrides", "err", err)
+				level.Error(Logger).Log("msg", "failed to load overrides", "err", err)
 			}
 		case <-om.quit:
 			return
@@ -82,10 +100,24 @@ func (om *OverridesManager) loadOverrides() error {
 	}
 	overridesReloadSuccess.Set(1)
 
+	om.setOverrides(overrides)
+	om.callListeners(overrides)
+
+	return nil
+}
+
+func (om *OverridesManager) setOverrides(overrides interface{}) {
 	om.overridesMtx.Lock()
 	defer om.overridesMtx.Unlock()
 	om.overrides = overrides
-	return nil
+}
+
+func (om *OverridesManager) callListeners(newValue interface{}) {
+	om.listenersMtx.Lock()
+	defer om.listenersMtx.Unlock()
+	for _, l := range om.listeners {
+		go l(newValue)
+	}
 }
 
 // Stop stops the OverridesManager
@@ -93,15 +125,10 @@ func (om *OverridesManager) Stop() {
 	close(om.quit)
 }
 
-// GetLimits returns Limits for a specific userID if its set otherwise the default Limits
-func (om *OverridesManager) GetLimits(userID string) interface{} {
+// GetOverrides returns last loaded overrides value, possibly nil.
+func (om *OverridesManager) GetOverrides() interface{} {
 	om.overridesMtx.RLock()
 	defer om.overridesMtx.RUnlock()
 
-	override, ok := om.overrides[userID]
-	if !ok {
-		return om.cfg.Defaults
-	}
-
-	return override
+	return om.overrides
 }

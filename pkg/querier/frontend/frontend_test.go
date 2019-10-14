@@ -136,7 +136,7 @@ func TestFrontendCancel(t *testing.T) {
 func defaultOverrides(t *testing.T) *validation.Overrides {
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
-	overrides, err := validation.NewOverrides(limits)
+	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 	return overrides
 }

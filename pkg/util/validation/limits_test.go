@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLimits_Validate(t *testing.T) {
@@ -38,4 +39,36 @@ func TestLimits_Validate(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.limits.Validate(testData.shardByAllLabels))
 		})
 	}
+}
+
+func TestOverridesManager_GetOverrides(t *testing.T) {
+	tenantLimits := map[string]*Limits{}
+
+	defaults := Limits{
+		MaxLabelNamesPerSeries: 100,
+	}
+	ov, err := NewOverrides(defaults, func(userID string) *Limits {
+		return tenantLimits[userID]
+	})
+
+	require.NoError(t, err)
+
+	require.Equal(t, 100, ov.MaxLabelNamesPerSeries("user1"))
+	require.Equal(t, 0, ov.MaxLabelValueLength("user1"))
+
+	// Update limits for tenant user1. We only update single field, the rest is copied from defaults.
+	// (That is how limits work when loaded from YAML)
+	l := Limits{}
+	l = defaults
+	l.MaxLabelValueLength = 150
+
+	tenantLimits["user1"] = &l
+
+	// Checking whether overrides were enforced
+	require.Equal(t, 100, ov.MaxLabelNamesPerSeries("user1"))
+	require.Equal(t, 150, ov.MaxLabelValueLength("user1"))
+
+	// Verifying user2 limits are not impacted by overrides
+	require.Equal(t, 100, ov.MaxLabelNamesPerSeries("user2"))
+	require.Equal(t, 0, ov.MaxLabelValueLength("user2"))
 }

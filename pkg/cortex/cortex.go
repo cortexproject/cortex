@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -79,6 +80,9 @@ type Config struct {
 	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
 	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
 	Alertmanager alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
+
+	RuntimeConfigFile       string        `yaml:"runtime_config_file"`
+	RuntimeConfigLoadPeriod time.Duration `yaml:"runtime_config_load_period"`
 }
 
 // RegisterFlags registers flag.
@@ -90,6 +94,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
+	f.StringVar(&c.RuntimeConfigFile, "runtime-config.file", "", "File with configuration that can be updated in runtime.")
+	f.DurationVar(&c.RuntimeConfigLoadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
 
 	c.Server.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
@@ -146,16 +152,17 @@ type Cortex struct {
 	target             moduleName
 	httpAuthMiddleware middleware.Interface
 
-	server       *server.Server
-	ring         *ring.Ring
-	overrides    *validation.Overrides
-	distributor  *distributor.Distributor
-	ingester     *ingester.Ingester
-	store        chunk.Store
-	worker       frontend.Worker
-	frontend     *frontend.Frontend
-	tableManager *chunk.TableManager
-	cache        cache.Cache
+	server        *server.Server
+	ring          *ring.Ring
+	overrides     *validation.Overrides
+	distributor   *distributor.Distributor
+	ingester      *ingester.Ingester
+	store         chunk.Store
+	worker        frontend.Worker
+	frontend      *frontend.Frontend
+	tableManager  *chunk.TableManager
+	cache         cache.Cache
+	runtimeConfig *util.OverridesManager
 
 	ruler        *ruler.Ruler
 	configAPI    *api.API

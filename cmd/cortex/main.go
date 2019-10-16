@@ -49,6 +49,14 @@ func main() {
 	// Parse a second time, as command line flags should take precedent over the config file.
 	flag.Parse()
 
+	// Validate the config once both the config file has been loaded
+	// and CLI flags parsed.
+	err := cfg.Validate()
+	if err != nil {
+		fmt.Printf("error validating config: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
 	ballast := make([]byte, ballastBytes)
 
@@ -86,11 +94,6 @@ func LoadConfig(filename string, cfg *cortex.Config) error {
 	err = yaml.UnmarshalStrict(buf, cfg)
 	if err != nil {
 		return errors.Wrap(err, "Error parsing config file")
-	}
-
-	err = cfg.Validate()
-	if err != nil {
-		return errors.Wrap(err, "Error validating config file")
 	}
 
 	return nil

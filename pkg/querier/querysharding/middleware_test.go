@@ -2,10 +2,12 @@ package querysharding
 
 import (
 	"context"
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -83,7 +85,14 @@ func TestMiddleware(t *testing.T) {
 				Timeout:       time.Minute,
 			})
 
-			handler := QueryShardMiddleware(engine).Wrap(c.next)
+			handler := QueryShardMiddleware(
+				engine,
+				ShardingConfigs{
+					{
+						Shards: 3,
+					},
+				},
+			).Wrap(c.next)
 
 			// escape hatch for custom tests
 			if c.override != nil {
@@ -167,4 +176,104 @@ func defaultReq() *queryrange.Request {
 		// encoding of: `http_requests_total{cluster="prod"}`
 		Query: `__embedded_query__{__cortex_query__="687474705f72657175657374735f746f74616c7b636c75737465723d2270726f64227d"}`,
 	}
+}
+
+func TestShardingConfigs_ValidRange(t *testing.T) {
+	reqWith := func(start, end string) *queryrange.Request {
+		r := defaultReq()
+
+		if start != "" {
+			r.Start = int64(parseDate(start))
+		}
+
+		if end != "" {
+			r.End = int64(parseDate(end))
+		}
+
+		return r
+	}
+
+	var testExpr = []struct {
+		name     string
+		confs    ShardingConfigs
+		req      *queryrange.Request
+		expected ShardingConfig
+		err      error
+	}{
+		{
+			name:  "0 ln configs fail",
+			confs: ShardingConfigs{},
+			req:   defaultReq(),
+			err:   invalidShardingRange,
+		},
+		{
+			name: "request starts before beginning config",
+			confs: ShardingConfigs{
+				{
+					From:   chunk.DayTime{parseDate("2019-10-16")},
+					Shards: 1,
+				},
+			},
+			req: reqWith("2019-10-15", ""),
+			err: invalidShardingRange,
+		},
+		{
+			name: "request spans multiple configs",
+			confs: ShardingConfigs{
+				{
+					From:   chunk.DayTime{parseDate("2019-10-16")},
+					Shards: 1,
+				},
+				{
+					From:   chunk.DayTime{parseDate("2019-11-16")},
+					Shards: 2,
+				},
+			},
+			req: reqWith("2019-10-15", "2019-11-17"),
+			err: invalidShardingRange,
+		},
+		{
+			name: "selects correct config ",
+			confs: ShardingConfigs{
+				{
+					From:   chunk.DayTime{parseDate("2019-10-16")},
+					Shards: 1,
+				},
+				{
+					From:   chunk.DayTime{parseDate("2019-11-16")},
+					Shards: 2,
+				},
+				{
+					From:   chunk.DayTime{parseDate("2019-12-16")},
+					Shards: 3,
+				},
+			},
+			req: reqWith("2019-11-20", "2019-11-25"),
+			expected: ShardingConfig{
+				From:   chunk.DayTime{parseDate("2019-11-16")},
+				Shards: 2,
+			},
+		},
+	}
+
+	for _, c := range testExpr {
+		t.Run(c.name, func(t *testing.T) {
+			out, err := c.confs.ValidRange(c.req.Start, c.req.End)
+
+			if c.err != nil {
+				require.EqualError(t, err, c.err.Error())
+			} else {
+				require.Nil(t, err)
+				require.Equal(t, c.expected, out)
+			}
+		})
+	}
+}
+
+func parseDate(in string) model.Time {
+	t, err := time.Parse("2006-01-02", in)
+	if err != nil {
+		panic(err)
+	}
+	return model.Time(t.UnixNano())
 }

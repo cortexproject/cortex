@@ -108,6 +108,17 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
 }
 
+// Validate the cortex config and returns an error if the validation
+// doesn't pass
+func (c *Config) Validate() error {
+	err := c.Schema.Validate()
+	if err != nil {
+		return errors.Wrap(err, "invalid schema config")
+	}
+
+	return nil
+}
+
 // Cortex is the root datastructure for Cortex.
 type Cortex struct {
 	target             moduleName

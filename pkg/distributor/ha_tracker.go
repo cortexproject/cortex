@@ -54,6 +54,10 @@ var (
 	errInvalidFailoverTimeout         = "HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)"
 )
 
+const (
+	fallbackClusterName = "none"
+)
+
 // ProtoReplicaDescFactory makes new InstanceDescs
 func ProtoReplicaDescFactory() proto.Message {
 	return NewReplicaDesc()
@@ -269,19 +273,25 @@ func replicasNotMatchError(replica, elected string) error {
 	return httpgrpc.Errorf(http.StatusAccepted, "replicas did not mach, rejecting sample: replica=%s, elected=%s", replica, elected)
 }
 
-// Modifies the labels parameter in place, removing labels that match
-// the replica or cluster label and returning their values. Returns an error
-// if we find one but not both of the labels.
+// Searches for the values of replicaLabel and clusterLabel
+// returning their values. Returns an error if we find one but not both of the labels.
 func findHALabels(replicaLabel, clusterLabel string, labels []client.LabelAdapter) (string, string) {
 	var cluster, replica string
-	var pair client.LabelAdapter
 
-	for _, pair = range labels {
+	// If cluster has been explicitly set to "", it means we only care about the replica label, so use a placeholder value for KV
+	if clusterLabel == "" {
+		cluster = fallbackClusterName
+	}
+
+	for _, pair := range labels {
 		if pair.Name == replicaLabel {
 			replica = string(pair.Value)
 		}
 		if pair.Name == clusterLabel {
 			cluster = string(pair.Value)
+		}
+		if cluster != "" && replica != "" {
+			break
 		}
 	}
 

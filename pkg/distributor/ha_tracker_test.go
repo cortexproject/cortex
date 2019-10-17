@@ -468,6 +468,7 @@ func TestFindHALabels(t *testing.T) {
 		cluster string
 		replica string
 	}
+
 	cases := []struct {
 		labelsIn []client.LabelAdapter
 		expected expectedOutput
@@ -503,8 +504,13 @@ func TestFindHALabels(t *testing.T) {
 	}
 
 	for _, c := range cases {
+		// Both labels are set
 		cluster, replica := findHALabels(replicaLabel, clusterLabel, c.labelsIn)
 		assert.Equal(t, c.expected.cluster, cluster)
+		assert.Equal(t, c.expected.replica, replica)
+		// only replica is set
+		cluster, replica = findHALabels(replicaLabel, "", c.labelsIn)
+		assert.Equal(t, fallbackClusterName, cluster)
 		assert.Equal(t, c.expected.replica, replica)
 	}
 }

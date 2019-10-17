@@ -2243,6 +2243,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [accept_ha_samples: <boolean> | default = false]
 
 # Prometheus label to look for in samples to identify a Prometheus HA cluster.
+# If set to empty string, it will only dedup with replica label
 # CLI flag: -distributor.ha-tracker.cluster
 [ha_cluster_label: <string> | default = "cluster"]
 

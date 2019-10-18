@@ -144,11 +144,13 @@ prefix these flags with `distributor.ha-tracker.`
 
 ### HA Tracker
 
-HA tracking has two of it's own flags:
+HA tracking has three of its own flags:
 - `distributor.ha-tracker.cluster`
    Prometheus label to look for in samples to identify a Prometheus HA cluster. (default "cluster")
 - `distributor.ha-tracker.replica`
    Prometheus label to look for in samples to identify a Prometheus HA replica. (default "`__replica__`")
+- `distributor.ha-tracker.drop-cluster-label`
+   Drops the cluster label before ingesting samples. The replica label is always dropped. This flag should only be used for users who already have some combination of more than two labels to uniquely identify a Prometheus replica, but for whom it is not feasible to switch over to a new set of just two labels.
 
 It's reasonable to assume people probably already have a `cluster` label, or something similar. If not, they should add one along with `__replica__` via external labels in their Prometheus config. If you stick to these default values your Prometheus config could look like this (`POD_NAME` is an environment variable which must be set by you):
 

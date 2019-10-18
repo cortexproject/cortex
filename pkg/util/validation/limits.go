@@ -17,6 +17,7 @@ type Limits struct {
 	AcceptHASamples        bool          `yaml:"accept_ha_samples"`
 	HAClusterLabel         string        `yaml:"ha_cluster_label"`
 	HAReplicaLabel         string        `yaml:"ha_replica_label"`
+	HADropClusterLabel     bool          `yaml:"drop_cluster_label"`
 	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
 	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
 	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
@@ -48,8 +49,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples). Warning, very high limits will be reset every -distributor.limiter-reload-period.")
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
-	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
+	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
+	f.BoolVar(&l.HADropClusterLabel, "distributor.ha-tracker.drop-cluster-label", false, "Enable this flag to drop the cluster label when ingesting HA samples for a user, in addition to dropping the replica label. Note that this flag should only be used when users already have their own combination of more than two labels to uniquely identify Prometheus replicas.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -142,14 +144,19 @@ func (o *Overrides) AcceptHASamples(userID string) bool {
 	return o.overridesManager.GetLimits(userID).(*Limits).AcceptHASamples
 }
 
+// HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
+func (o *Overrides) HAClusterLabel(userID string) string {
+	return o.overridesManager.GetLimits(userID).(*Limits).HAClusterLabel
+}
+
 // HAReplicaLabel returns the replica label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAReplicaLabel(userID string) string {
 	return o.overridesManager.GetLimits(userID).(*Limits).HAReplicaLabel
 }
 
-// HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
-func (o *Overrides) HAClusterLabel(userID string) string {
-	return o.overridesManager.GetLimits(userID).(*Limits).HAClusterLabel
+// HADropClusterLabel returns whether the cluster label should be dropped when ingesting HA samples for the user.
+func (o *Overrides) HADropClusterLabel(userID string) bool {
+	return o.overridesManager.GetLimits(userID).(*Limits).HADropClusterLabel
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.

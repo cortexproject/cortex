@@ -59,12 +59,6 @@ var (
 		Name:      "distributor_deduped_samples_total",
 		Help:      "The total number of deduplicated samples.",
 	}, []string{"user", "cluster"})
-	sendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "distributor_send_duration_seconds",
-		Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
-		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
-	}, []string{"method", "status_code"})
 	labelsHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "labels_per_sample",

@@ -15,7 +15,7 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/api"
-	"github.com/prometheus/client_golang/api/prometheus/v1"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
@@ -270,18 +270,4 @@ func (r *Runner) valueEpsilonCorrect(f func(time.Time) float64, pair model.Sampl
 func epsilonCorrect(actual, expected, epsilon float64) bool {
 	delta := math.Abs((actual - expected) / expected)
 	return delta < epsilon
-}
-
-func maxDuration(a, b time.Duration) time.Duration {
-	if a < b {
-		return b
-	}
-	return a
-}
-
-func minDuration(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
 }

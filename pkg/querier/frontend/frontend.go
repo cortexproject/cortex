@@ -45,7 +45,6 @@ var (
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"method", "status_code"})
 
-	errServerClosing  = httpgrpc.Errorf(http.StatusTeapot, "server closing down")
 	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 	errCanceled       = httpgrpc.Errorf(http.StatusInternalServerError, "context cancelled")
 )

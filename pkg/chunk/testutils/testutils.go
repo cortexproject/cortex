@@ -71,14 +71,6 @@ func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chun
 	return keys, chunks, nil
 }
 
-func dummyChunk(now model.Time) chunk.Chunk {
-	return dummyChunkFor(now, labels.Labels{
-		{Name: model.MetricNameLabel, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "toms", Value: "code"},
-	})
-}
-
 func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 	cs, _ := promchunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
 	chunk := chunk.NewChunk(

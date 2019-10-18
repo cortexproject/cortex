@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 	"sync"
@@ -296,6 +297,80 @@ func TestDistributorPushQuery(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedResponse.String(), response.String())
 		})
+	}
+}
+
+func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
+	ctx = user.InjectOrgID(context.Background(), "user")
+
+	type testcase struct {
+		series        client.PreallocTimeseries
+		outputSeries  client.PreallocTimeseries
+		removeReplica bool
+	}
+
+	cases := []testcase{
+		{ // Remove replica label.
+			series: client.PreallocTimeseries{
+				TimeSeries: &client.TimeSeries{
+					Labels: []client.LabelAdapter{
+						{Name: "__name__", Value: "some_metric"},
+						{Name: "cluster", Value: "one"},
+						{Name: "__replica__", Value: "two"}},
+				},
+			},
+			outputSeries: client.PreallocTimeseries{
+				TimeSeries: &client.TimeSeries{
+					Labels: []client.LabelAdapter{
+						{Name: "__name__", Value: "some_metric"},
+						{Name: "cluster", Value: "one"},
+					},
+					Samples: []client.Sample{},
+				},
+			},
+			removeReplica: true,
+		},
+		{ // Don't remove either HA.
+			series: client.PreallocTimeseries{
+				TimeSeries: &client.TimeSeries{
+					Labels: []client.LabelAdapter{
+						{Name: "__name__", Value: "some_metric"},
+						{Name: "cluster", Value: "one"},
+						{Name: "__replica__", Value: "two"}},
+				},
+			},
+			outputSeries: client.PreallocTimeseries{
+				TimeSeries: &client.TimeSeries{
+					Labels: []client.LabelAdapter{
+						{Name: "__name__", Value: "some_metric"},
+						{Name: "cluster", Value: "one"},
+						{Name: "__replica__", Value: "two"},
+					},
+					Samples: []client.Sample{},
+				},
+			},
+			removeReplica: false,
+		},
+	}
+
+	for _, tc := range cases {
+		var err error
+		var limits validation.Limits
+		flagext.DefaultValues(&limits)
+		d := prepare(t, 1, 1, 0, true, &limits)
+
+		userID, err := user.ExtractOrgID(ctx)
+		assert.NoError(t, err)
+
+		key, err := d.tokenForLabels(userID, tc.series.Labels)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+
+		series, err := d.validateSeries(key, tc.series, userID, tc.removeReplica)
+		if !reflect.DeepEqual(series, tc.outputSeries) {
+			t.Fatalf("output of validate series did not match expected output:\n\texpected: %+v\n\t got: %+v", tc.outputSeries, series)
+		}
 	}
 }
 

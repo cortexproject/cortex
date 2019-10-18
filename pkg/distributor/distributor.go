@@ -96,6 +96,7 @@ var (
 		Name:      "distributor_replication_factor",
 		Help:      "The configured replication factor.",
 	})
+	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -280,6 +281,42 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 	return true, nil
 }
 
+
+// Validates a single series from a write request. Will remove HA labels if necessary.
+// Takes a pointer for a partial error so that we can get partial errors, errors during validation
+// of a single sample, back from the function without adding an additional return param.
+// Returns a token for the series if it is valid, the validated series with it's labels/samples, and any fatal error.
+func (d *Distributor) validateSeries(key uint32, ts ingester_client.PreallocTimeseries, userID string, removeReplica bool) (client.PreallocTimeseries, error) {
+	// If we found both the cluster and replica labels, we only want to include the cluster label when
+	// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+	// series we're trying to dedupe when HA tracking moves over to a different replica.
+	if removeReplica {
+		removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+	}
+
+	labelsHistogram.Observe(float64(len(ts.Labels)))
+	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
+		return emptyPreallocSeries, err
+	}
+
+	metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
+	samples := make([]client.Sample, 0, len(ts.Samples))
+	for _, s := range ts.Samples {
+		if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
+			return emptyPreallocSeries, err
+		}
+		samples = append(samples, s)
+	}
+
+	return client.PreallocTimeseries{
+			TimeSeries: &client.TimeSeries{
+				Labels:  ts.Labels,
+				Samples: samples,
+			},
+		},
+		nil
+}
+
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
@@ -307,7 +344,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			}
 			return nil, err
 		}
-		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels
+		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
 		if !removeReplica {
 			nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
 		}
@@ -319,20 +356,18 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	keys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
 	for _, ts := range req.Timeseries {
-		// If we found both the cluster and replica labels, we only want to include the cluster label when
-		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
-		// series we're trying to dedupe when HA tracking moves over to a different replica.
-		if removeReplica {
-			removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
-		}
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
 			return nil, err
 		}
 
-		labelsHistogram.Observe(float64(len(ts.Labels)))
-		if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
+		validatedSeries, err := d.validateSeries(key, ts, userID, removeReplica)
+		if err != nil {
 			lastPartialErr = err
+		}
+
+		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
+		if validatedSeries == emptyPreallocSeries {
 			continue
 		}
 
@@ -347,13 +382,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		keys = append(keys, key)
-		validatedTimeseries = append(validatedTimeseries, client.PreallocTimeseries{
-			TimeSeries: &client.TimeSeries{
-				Labels:  ts.Labels,
-				Samples: samples,
-			},
-		})
-
+		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedSamples += len(ts.Samples)
 	}
 	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))

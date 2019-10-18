@@ -25,11 +25,6 @@ func (Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&DefaultEncoding, "ingester.chunk-encoding", "Encoding version to use for chunks.")
 	flag.BoolVar(&alwaysMarshalFullsizeChunks, "store.fullsize-chunks", alwaysMarshalFullsizeChunks, "When saving varbit chunks, pad to 1024 bytes")
 	flag.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
-
-	if DefaultEncoding == Delta {
-		// Delta is deprecated. Use DoubleDelta if it is set to Delta.
-		DefaultEncoding = DoubleDelta
-	}
 }
 
 // Validate errors out if the encoding is set to Delta.

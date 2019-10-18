@@ -751,7 +751,7 @@ func TestRemoveReplicaLabel(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		removeReplicaLabel(replicaLabel, &c.labelsIn)
+		removeLabel(replicaLabel, &c.labelsIn)
 		assert.Equal(t, c.labelsOut, c.labelsIn)
 	}
 }

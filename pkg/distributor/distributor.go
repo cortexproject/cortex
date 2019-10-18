@@ -249,11 +249,11 @@ func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, erro
 	return h, nil
 }
 
-// Remove the replica label from a slice of LabelPairs if it exists.
-func removeReplicaLabel(replica string, labels *[]client.LabelAdapter) {
+// Remove the label labelname from a slice of LabelPairs if it exists.
+func removeLabel(labelName string, labels *[]client.LabelAdapter) {
 	for i := 0; i < len(*labels); i++ {
 		pair := (*labels)[i]
-		if pair.Name == replica {
+		if pair.Name == labelName {
 			*labels = append((*labels)[:i], (*labels)[i+1:]...)
 			return
 		}
@@ -323,7 +323,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
 		// series we're trying to dedupe when HA tracking moves over to a different replica.
 		if removeReplica {
-			removeReplicaLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+			removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
 		}
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {

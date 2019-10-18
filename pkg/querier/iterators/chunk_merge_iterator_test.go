@@ -102,13 +102,12 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 	pc, err := promchunk.NewForEncoding(encoding)
 	require.NoError(t, err)
 	for i := mint; i.Before(maxt); i = i.Add(step) {
-		pcs, err := pc.Add(model.SamplePair{
+		npc, err := pc.Add(model.SamplePair{
 			Timestamp: i,
 			Value:     model.SampleValue(float64(i)),
 		})
 		require.NoError(t, err)
-		require.Len(t, pcs, 1)
-		pc = pcs[0]
+		require.Nil(t, npc)
 	}
 	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
 }

@@ -1,5 +1,8 @@
 ## master / unreleased
 
+* [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
+* [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
+
 ## 0.3.0 / 2019-10-11
 
 This release adds support for Redis as an alternative to Memcached, and also includes many optimisations which reduce CPU and memory usage.

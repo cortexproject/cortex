@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -542,17 +543,32 @@ func BenchmarkIngesterPush(b *testing.B) {
 		allSamples = append(allSamples, client.Sample{TimestampMs: 0, Value: float64(j)})
 	}
 	ctx := user.InjectOrgID(context.Background(), "1")
-	b.ResetTimer()
-	for iter := 0; iter < b.N; iter++ {
-		_, ing := newTestStore(b, cfg, clientCfg, limits)
-		// Bump the timestamp on each of our test samples each time round the loop
-		for j := 0; j < samples; j++ {
-			for i := range allSamples {
-				allSamples[i].TimestampMs = int64(j + 1)
-			}
-			_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, client.API))
-			require.NoError(b, err)
-		}
-		ing.Shutdown()
+
+	encodings := []struct {
+		name string
+		e    promchunk.Encoding
+	}{
+		{"DoubleDelta", promchunk.DoubleDelta},
+		{"Varbit", promchunk.Varbit},
+		{"Bigchunk", promchunk.Bigchunk},
 	}
+
+	for _, enc := range encodings {
+		b.Run(fmt.Sprintf("encoding=%s", enc.name), func(b *testing.B) {
+			b.ResetTimer()
+			for iter := 0; iter < b.N; iter++ {
+				_, ing := newTestStore(b, cfg, clientCfg, limits)
+				// Bump the timestamp on each of our test samples each time round the loop
+				for j := 0; j < samples; j++ {
+					for i := range allSamples {
+						allSamples[i].TimestampMs = int64(j + 1)
+					}
+					_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, client.API))
+					require.NoError(b, err)
+				}
+				ing.Shutdown()
+			}
+		})
+	}
+
 }

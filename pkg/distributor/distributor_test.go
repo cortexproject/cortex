@@ -575,31 +575,39 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 		}
 
 		c := encoding.New()
+		chunks := []encoding.Chunk{c}
 		for _, sample := range ts.Samples {
-			cs, err := c.Add(model.SamplePair{
+			newChunk, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(sample.TimestampMs),
 				Value:     model.SampleValue(sample.Value),
 			})
 			if err != nil {
 				panic(err)
 			}
-			c = cs[0]
+			if newChunk != nil {
+				c = newChunk
+				chunks = append(chunks, newChunk)
+			}
 		}
 
-		var buf bytes.Buffer
-		chunk := client.Chunk{
-			Encoding: int32(c.Encoding()),
+		wireChunks := []client.Chunk{}
+		for _, c := range chunks {
+			var buf bytes.Buffer
+			chunk := client.Chunk{
+				Encoding: int32(c.Encoding()),
+			}
+			if err := c.Marshal(&buf); err != nil {
+				panic(err)
+			}
+			chunk.Data = buf.Bytes()
+			wireChunks = append(wireChunks, chunk)
 		}
-		if err := c.Marshal(&buf); err != nil {
-			panic(err)
-		}
-		chunk.Data = buf.Bytes()
 
 		results = append(results, &client.QueryStreamResponse{
 			Timeseries: []client.TimeSeriesChunk{
 				{
 					Labels: ts.Labels,
-					Chunks: []client.Chunk{chunk},
+					Chunks: wireChunks,
 				},
 			},
 		})

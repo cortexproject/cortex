@@ -111,11 +111,12 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate the cortex config and returns an error if the validation
 // doesn't pass
 func (c *Config) Validate() error {
-	err := c.Schema.Validate()
-	if err != nil {
+	if err := c.Schema.Validate(); err != nil {
 		return errors.Wrap(err, "invalid schema config")
 	}
-
+	if err := c.Encoding.Validate(); err != nil {
+		return errors.Wrap(err, "invalid encoding config")
+	}
 	return nil
 }
 

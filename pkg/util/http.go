@@ -56,7 +56,7 @@ func CompressionTypeFor(version string) CompressionType {
 }
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
-func ParseProtoReader(ctx context.Context, reader io.Reader, size int, req proto.Message, compression CompressionType) ([]byte, error) {
+func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize int, req proto.Message, compression CompressionType) ([]byte, error) {
 	var body []byte
 	var err error
 	sp := opentracing.SpanFromContext(ctx)
@@ -64,8 +64,8 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, size int, req proto
 		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
 	}
 	var buf bytes.Buffer
-	if size > 0 {
-		buf.Grow(size + bytes.MinRead) // extra space guarantees no reallocation
+	if expectedSize > 0 {
+		buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
 	}
 	switch compression {
 	case NoCompression:

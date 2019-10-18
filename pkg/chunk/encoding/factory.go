@@ -1,6 +1,7 @@
 package encoding
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"strconv"
@@ -26,9 +27,18 @@ func (Config) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
 
 	if DefaultEncoding == Delta {
-		// Delta is depricated. Use DoubleDelta if it is set to Delta.
+		// Delta is deprecated. Use DoubleDelta if it is set to Delta.
 		DefaultEncoding = DoubleDelta
 	}
+}
+
+// Validate errors out if the encoding is set to Delta.
+func (Config) Validate() error {
+	if DefaultEncoding == Delta {
+		// Delta is deprecated.
+		return errors.New("delta encoding is deprecated")
+	}
+	return nil
 }
 
 // String implements flag.Value.

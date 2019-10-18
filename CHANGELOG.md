@@ -1,6 +1,6 @@
 ## master / unreleased
 
-* [CHANGE] Removed `Delta` encoding. If `ingester.chunk-encoding` is set to `Delta`, then it will be automatically changed to `DoubleDelta`. #1706
+* [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
 
 ## 0.3.0 / 2019-10-11

@@ -150,8 +150,6 @@ func (s resultsCache) handleHit(ctx context.Context, r *Request, extents []Exten
 			continue
 		}
 
-		log.Log("msg", "merging extent", "start", accumulator.Start, "old_end", accumulator.End, "new_end", extents[i].End, "from_trace", accumulator.TraceId, "with_trace", accumulator.TraceId)
-
 		accumulator.TraceId = jaegerTraceID(ctx)
 		accumulator.End = extents[i].End
 		accumulator.Response, err = mergeAPIResponses([]*APIResponse{accumulator.Response, extents[i].Response})

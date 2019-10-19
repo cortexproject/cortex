@@ -2,7 +2,6 @@ package astmapper
 
 import (
 	"encoding/hex"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"time"
@@ -62,90 +61,11 @@ func VectorSquasher(node promql.Node) (promql.Expr, error) {
 
 // ShallowEmbedSelectors encodes selector queries if they do not already have the EMBEDDED_QUERY_FLAG.
 // This is primarily useful for deferring query execution.
-func ShallowEmbedSelectors(node promql.Node) (promql.Node, error) {
+var ShallowEmbedSelectors = &NodeMapper{MapperFunc(shallowEmbedSelectors)}
+
+func shallowEmbedSelectors(node promql.Node) (promql.Node, error) {
 
 	switch n := node.(type) {
-	case nil:
-		// nil handles cases where we check optional fields that are not set
-		return nil, nil
-
-	case promql.Expressions:
-		for i, e := range n {
-			if mapped, err := ShallowEmbedSelectors(e); err != nil {
-				return nil, err
-			} else {
-				n[i] = mapped.(promql.Expr)
-			}
-		}
-		return n, nil
-
-	case *promql.AggregateExpr:
-		expr, err := ShallowEmbedSelectors(n.Expr)
-		if err != nil {
-			return nil, err
-		}
-		n.Expr = expr.(promql.Expr)
-		return n, nil
-
-	case *promql.BinaryExpr:
-		if lhs, err := ShallowEmbedSelectors(n.LHS); err != nil {
-			return nil, err
-		} else {
-			n.LHS = lhs.(promql.Expr)
-		}
-
-		if rhs, err := ShallowEmbedSelectors(n.RHS); err != nil {
-			return nil, err
-		} else {
-			n.RHS = rhs.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.Call:
-		for i, e := range n.Args {
-			if mapped, err := ShallowEmbedSelectors(e); err != nil {
-				return nil, err
-			} else {
-				n.Args[i] = mapped.(promql.Expr)
-			}
-		}
-		return n, nil
-
-	case *promql.SubqueryExpr:
-		if mapped, err := ShallowEmbedSelectors(n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.ParenExpr:
-		if mapped, err := ShallowEmbedSelectors(n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.UnaryExpr:
-		if mapped, err := ShallowEmbedSelectors(n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.EvalStmt:
-		if mapped, err := ShallowEmbedSelectors(n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.NumberLiteral, *promql.StringLiteral:
-		return n, nil
-
 	case *promql.VectorSelector:
 		if n.Name == EMBEDDED_QUERY_FLAG {
 			return n, nil
@@ -159,6 +79,6 @@ func ShallowEmbedSelectors(node promql.Node) (promql.Node, error) {
 		return Squash(n, true)
 
 	default:
-		panic(errors.Errorf("ShallowEmbedSelectors: unhandled node type %T", node))
+		return n, nil
 	}
 }

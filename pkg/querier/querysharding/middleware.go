@@ -82,7 +82,7 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 	mappedQuery, err := mapQuery(
 		astmapper.NewMultiMapper(
 			astmapper.NewShardSummer(conf.Shards, astmapper.VectorSquasher),
-			astmapper.MapperFunc(astmapper.ShallowEmbedSelectors),
+			astmapper.ShallowEmbedSelectors,
 		),
 		r.Query,
 	)

@@ -54,3 +54,104 @@ func NewMultiMapper(xs ...ASTMapper) *MultiMapper {
 func CloneNode(node promql.Node) (promql.Node, error) {
 	return promql.ParseExpr(node.String())
 }
+
+// NodeMapper is an ASTMapper adapter which recursively evaluates mapped subtrees.
+// This is helpful because it allows mappers to only implement logic for node types they want to change.
+// It makes some mappers trivially easy to implement (see Squash from embedded.go)
+type NodeMapper struct {
+	mapper ASTMapper
+}
+
+func (nm *NodeMapper) Map(node promql.Node) (promql.Node, error) {
+	node, err := nm.mapper.Map(node)
+
+	if err != nil {
+		return nil, err
+	}
+
+	switch n := node.(type) {
+	case nil:
+		// nil handles cases where we check optional fields that are not set
+		return nil, nil
+
+	case promql.Expressions:
+		for i, e := range n {
+			if mapped, err := nm.Map(e); err != nil {
+				return nil, err
+			} else {
+				n[i] = mapped.(promql.Expr)
+			}
+		}
+		return n, nil
+
+	case *promql.AggregateExpr:
+		expr, err := nm.Map(n.Expr)
+		if err != nil {
+			return nil, err
+		}
+		n.Expr = expr.(promql.Expr)
+		return n, nil
+
+	case *promql.BinaryExpr:
+		if lhs, err := nm.Map(n.LHS); err != nil {
+			return nil, err
+		} else {
+			n.LHS = lhs.(promql.Expr)
+		}
+
+		if rhs, err := nm.Map(n.RHS); err != nil {
+			return nil, err
+		} else {
+			n.RHS = rhs.(promql.Expr)
+		}
+		return n, nil
+
+	case *promql.Call:
+		for i, e := range n.Args {
+			if mapped, err := nm.Map(e); err != nil {
+				return nil, err
+			} else {
+				n.Args[i] = mapped.(promql.Expr)
+			}
+		}
+		return n, nil
+
+	case *promql.SubqueryExpr:
+		if mapped, err := nm.Map(n.Expr); err != nil {
+			return nil, err
+		} else {
+			n.Expr = mapped.(promql.Expr)
+		}
+		return n, nil
+
+	case *promql.ParenExpr:
+		if mapped, err := nm.Map(n.Expr); err != nil {
+			return nil, err
+		} else {
+			n.Expr = mapped.(promql.Expr)
+		}
+		return n, nil
+
+	case *promql.UnaryExpr:
+		if mapped, err := nm.Map(n.Expr); err != nil {
+			return nil, err
+		} else {
+			n.Expr = mapped.(promql.Expr)
+		}
+		return n, nil
+
+	case *promql.EvalStmt:
+		if mapped, err := nm.Map(n.Expr); err != nil {
+			return nil, err
+		} else {
+			n.Expr = mapped.(promql.Expr)
+		}
+		return n, nil
+
+	case *promql.NumberLiteral, *promql.StringLiteral, *promql.VectorSelector, *promql.MatrixSelector:
+		return n, nil
+
+	default:
+		panic(errors.Errorf("NodeMapper: unhandled node type %T", node))
+	}
+}

@@ -55,10 +55,9 @@ func TestShallowEmbedSelectors(t *testing.T) {
 
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			mapper := MapperFunc(ShallowEmbedSelectors)
 			expr, err := promql.ParseExpr(c.input)
 			require.Nil(t, err)
-			res, err := mapper.Map(expr)
+			res, err := ShallowEmbedSelectors.Map(expr)
 			require.Nil(t, err)
 
 			require.Equal(t, c.expected, res.String())

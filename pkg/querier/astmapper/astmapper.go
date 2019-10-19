@@ -55,18 +55,38 @@ func CloneNode(node promql.Node) (promql.Node, error) {
 	return promql.ParseExpr(node.String())
 }
 
-// NodeMapper is an ASTMapper adapter which recursively evaluates mapped subtrees.
+// a NodeMapper either maps a single AST node or returns the unaltered node.
+// It also returns a bool to signal that no further recursion is necessary.
 // This is helpful because it allows mappers to only implement logic for node types they want to change.
-// It makes some mappers trivially easy to implement (see Squash from embedded.go)
-type NodeMapper struct {
-	mapper ASTMapper
+// It makes some mappers trivially easy to implement (see ShallowEmbedSelectors from embedded.go)
+type NodeMapper interface {
+	MapNode(node promql.Node) (mapped promql.Node, err error, finished bool)
 }
 
-func (nm *NodeMapper) Map(node promql.Node) (promql.Node, error) {
-	node, err := nm.mapper.Map(node)
+type NodeMapperFunc func(node promql.Node) (promql.Node, error, bool)
+
+func (f NodeMapperFunc) MapNode(node promql.Node) (promql.Node, error, bool) {
+	return f(node)
+}
+
+func NewNodeMapper(mapper NodeMapper) *nodeMapper {
+	return &nodeMapper{mapper}
+}
+
+// nodeMapper is an ASTMapper adapter which uses a NodeMapper internally.
+type nodeMapper struct {
+	NodeMapper
+}
+
+func (nm *nodeMapper) Map(node promql.Node) (promql.Node, error) {
+	node, err, fin := nm.MapNode(node)
 
 	if err != nil {
 		return nil, err
+	}
+
+	if fin {
+		return node, nil
 	}
 
 	switch n := node.(type) {
@@ -152,6 +172,6 @@ func (nm *NodeMapper) Map(node promql.Node) (promql.Node, error) {
 		return n, nil
 
 	default:
-		panic(errors.Errorf("NodeMapper: unhandled node type %T", node))
+		panic(errors.Errorf("nodeMapper: unhandled node type %T", node))
 	}
 }

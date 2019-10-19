@@ -2,7 +2,6 @@ package astmapper
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -14,144 +13,66 @@ const (
 
 type squasher = func(promql.Node) (promql.Expr, error)
 
-type ShardSummer struct {
-	shards int
-	squash squasher
+type shardSummer struct {
+	shards   int
+	curshard *int
+	squash   squasher
 }
 
-func NewShardSummer(shards int, squasher func(promql.Node) (promql.Expr, error)) *ShardSummer {
+func NewShardSummer(shards int, squasher squasher) ASTMapper {
 	if shards == 0 {
 		shards = DEFAULT_SHARDS
 	}
 
-	return &ShardSummer{shards, squasher}
+	return NewNodeMapper(&shardSummer{
+		shards:   shards,
+		squash:   squasher,
+		curshard: nil,
+	})
 }
 
-// a MapperFunc adapter
-func ShardSummerFunc(shards int, squash squasher) MapperFunc {
-	summer := NewShardSummer(shards, squash)
-
-	return summer.Map
+// CopyWithCurshard clones a shardSummer with a new current shard. This facilitates recursive sharding.
+func (summer *shardSummer) CopyWithCurshard(curshard int) *shardSummer {
+	s := *summer
+	s.curshard = &curshard
+	return &s
 }
 
-// ShardSummer expands a query AST by sharding and re-summing when possible
-func (summer *ShardSummer) Map(node promql.Node) (promql.Node, error) {
-	return summer.mapWithOpts(MappingOpts{}, node)
-}
-
-type MappingOpts struct {
-	isParallel bool
-	// curShard's ptr denotes existence. This helps prevent selectors in non-sum queries from sharding themselves as they'll always register true for isParallel.
-	curShard *int
-}
-
-// mapWithOpts carries information about whether the node is in a subtree that is a parallelism candidate.
-func (summer *ShardSummer) mapWithOpts(opts MappingOpts, node promql.Node) (promql.Node, error) {
-	// since mapWithOpts is called recursively, the new subtree may be parallelizable even if its parent is not
-	opts.isParallel = opts.isParallel || CanParallel(node)
+// shardSummer expands a query AST by sharding and re-summing when possible
+func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, error, bool) {
 
 	switch n := node.(type) {
-	case promql.Expressions:
-		for i, e := range n {
-			if mapped, err := summer.mapWithOpts(opts, e); err != nil {
-				return nil, err
-			} else {
-				n[i] = mapped.(promql.Expr)
-			}
-		}
-		return n, nil
-
 	case *promql.AggregateExpr:
-		if opts.isParallel {
-			return summer.shardSum(n)
+		if CanParallel(n) {
+			result, err := summer.shardSum(n)
+			return result, err, true
 		}
 
-		if mapped, err := summer.mapWithOpts(opts, n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.BinaryExpr:
-		if lhs, err := summer.mapWithOpts(opts, n.LHS); err != nil {
-			return nil, err
-		} else {
-			n.LHS = lhs.(promql.Expr)
-		}
-
-		if rhs, err := summer.mapWithOpts(opts, n.RHS); err != nil {
-			return nil, err
-		} else {
-			n.RHS = rhs.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.Call:
-		for i, e := range n.Args {
-			if mapped, err := summer.mapWithOpts(opts, e); err != nil {
-				return nil, err
-			} else {
-				n.Args[i] = mapped.(promql.Expr)
-			}
-		}
-		return n, nil
-
-	case *promql.SubqueryExpr:
-		if mapped, err := summer.mapWithOpts(opts, n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.ParenExpr:
-		if mapped, err := summer.mapWithOpts(opts, n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.UnaryExpr:
-		if mapped, err := summer.mapWithOpts(opts, n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.EvalStmt:
-		if mapped, err := summer.mapWithOpts(opts, n.Expr); err != nil {
-			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
-		}
-		return n, nil
-
-	case *promql.NumberLiteral, *promql.StringLiteral:
-		return n, nil
+		return n, nil, false
 
 	case *promql.VectorSelector:
-		if opts.isParallel && opts.curShard != nil {
-			return shardVectorSelector(*opts.curShard, summer.shards, n)
+		if summer.curshard != nil {
+			mapped, err := shardVectorSelector(*summer.curshard, summer.shards, n)
+			return mapped, err, true
 		} else {
-			return n, nil
+			return n, nil, true
 		}
 
 	case *promql.MatrixSelector:
-		if opts.isParallel && opts.curShard != nil {
-			return shardMatrixSelector(*opts.curShard, summer.shards, n)
+		if summer.curshard != nil {
+			mapped, err := shardMatrixSelector(*summer.curshard, summer.shards, n)
+			return mapped, err, true
 		} else {
-			return n, nil
+			return n, nil, true
 		}
 
 	default:
-		panic(errors.Errorf("ShardSummer: unhandled node type %T", node))
+		return n, nil, false
 	}
 }
 
-func (summer *ShardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, error) {
+// shardSum contains the logic for how we split/stitch legs of a parallelized query
+func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, error) {
 
 	if summer.shards < 2 {
 		return expr, nil
@@ -165,9 +86,8 @@ func (summer *ShardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 			return nil, err
 		}
 
-		sharded, err := summer.mapWithOpts(MappingOpts{
-			curShard: &i,
-		}, cloned)
+		subSummer := NewNodeMapper(summer.CopyWithCurshard(i))
+		sharded, err := subSummer.Map(cloned)
 		if err != nil {
 			return nil, err
 		}

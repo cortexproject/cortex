@@ -41,7 +41,7 @@ func TestShardSummer(t *testing.T) {
 			  )
 			)`,
 		},
-		// This is currently redundant: sums split into sharded versions, including summed sums.
+		// This is currently redundant but still equivalent: sums split into sharded versions, including summed sums.
 		{
 			2,
 			`sum(sum by(foo) (rate(bar1{baz="blip"}[1m])))`,

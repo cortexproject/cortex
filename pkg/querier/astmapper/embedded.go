@@ -27,8 +27,7 @@ const (
 	EMBEDDED_QUERY_FLAG = "__embedded_query__"
 )
 
-// Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl. The important part is that return types align.
-// TODO(owen): handle inferring return types from different functions/operators
+// Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.
 func Squash(node promql.Node, isMatrix bool) (promql.Expr, error) {
 	// promql's label charset is not a subset of promql's syntax charset. Therefor we use hex as an intermediary
 	encoded := hex.EncodeToString([]byte(node.String()))
@@ -61,24 +60,25 @@ func VectorSquasher(node promql.Node) (promql.Expr, error) {
 
 // ShallowEmbedSelectors encodes selector queries if they do not already have the EMBEDDED_QUERY_FLAG.
 // This is primarily useful for deferring query execution.
-var ShallowEmbedSelectors = &NodeMapper{MapperFunc(shallowEmbedSelectors)}
+var ShallowEmbedSelectors = NewNodeMapper(NodeMapperFunc(shallowEmbedSelectors))
 
-func shallowEmbedSelectors(node promql.Node) (promql.Node, error) {
-
+func shallowEmbedSelectors(node promql.Node) (promql.Node, error, bool) {
 	switch n := node.(type) {
 	case *promql.VectorSelector:
 		if n.Name == EMBEDDED_QUERY_FLAG {
-			return n, nil
+			return n, nil, true
 		}
-		return Squash(n, false)
+		squashed, err := Squash(n, false)
+		return squashed, err, true
 
 	case *promql.MatrixSelector:
 		if n.Name == EMBEDDED_QUERY_FLAG {
-			return n, nil
+			return n, nil, true
 		}
-		return Squash(n, true)
+		squashed, err := Squash(n, true)
+		return squashed, err, true
 
 	default:
-		return n, nil
+		return n, nil, false
 	}
 }

@@ -78,8 +78,9 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 	queryable := &DownstreamQueryable{r, qs.next}
 
 	conf, err := qs.confs.ValidRange(r.Start, r.End)
+	// query exists across multiple sharding configs, so don't try to do AST mapping.
 	if err != nil {
-		return nil, err
+		return qs.next.Do(ctx, r)
 	}
 
 	mappedQuery, err := mapQuery(

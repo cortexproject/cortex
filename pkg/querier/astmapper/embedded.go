@@ -2,9 +2,10 @@ package astmapper
 
 import (
 	"encoding/hex"
+	"time"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"time"
 )
 
 /*
@@ -23,8 +24,8 @@ Ideally the promql.Engine could be an interface instead of a concrete type, allo
 */
 
 const (
-	QUERY_LABEL         = "__cortex_query__"
-	EMBEDDED_QUERY_FLAG = "__embedded_query__"
+	QueryLabel        = "__cortex_query__"   // reserved label containing an embedded query
+	EmbeddedQueryFlag = "__embedded_query__" // reserved label (metric name) denoting an embedded query
 )
 
 // Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.
@@ -32,7 +33,7 @@ func Squash(node promql.Node, isMatrix bool) (promql.Expr, error) {
 	// promql's label charset is not a subset of promql's syntax charset. Therefor we use hex as an intermediary
 	encoded := hex.EncodeToString([]byte(node.String()))
 
-	embedded_query, err := labels.NewMatcher(labels.MatchEqual, QUERY_LABEL, encoded)
+	embedded_query, err := labels.NewMatcher(labels.MatchEqual, QueryLabel, encoded)
 
 	if err != nil {
 		return nil, err
@@ -40,16 +41,16 @@ func Squash(node promql.Node, isMatrix bool) (promql.Expr, error) {
 
 	if isMatrix {
 		return &promql.MatrixSelector{
-			Name:          EMBEDDED_QUERY_FLAG,
+			Name:          EmbeddedQueryFlag,
 			Range:         time.Minute,
 			LabelMatchers: []*labels.Matcher{embedded_query},
 		}, nil
-	} else {
-		return &promql.VectorSelector{
-			Name:          EMBEDDED_QUERY_FLAG,
-			LabelMatchers: []*labels.Matcher{embedded_query},
-		}, nil
 	}
+
+	return &promql.VectorSelector{
+		Name:          EmbeddedQueryFlag,
+		LabelMatchers: []*labels.Matcher{embedded_query},
+	}, nil
 }
 
 // VectorSquasher always uses a VectorSelector as the substitution node.
@@ -58,27 +59,27 @@ func VectorSquasher(node promql.Node) (promql.Expr, error) {
 	return Squash(node, false)
 }
 
-// ShallowEmbedSelectors encodes selector queries if they do not already have the EMBEDDED_QUERY_FLAG.
+// ShallowEmbedSelectors encodes selector queries if they do not already have the EmbeddedQueryFlag.
 // This is primarily useful for deferring query execution.
 var ShallowEmbedSelectors = NewNodeMapper(NodeMapperFunc(shallowEmbedSelectors))
 
-func shallowEmbedSelectors(node promql.Node) (promql.Node, error, bool) {
+func shallowEmbedSelectors(node promql.Node) (promql.Node, bool, error) {
 	switch n := node.(type) {
 	case *promql.VectorSelector:
-		if n.Name == EMBEDDED_QUERY_FLAG {
-			return n, nil, true
+		if n.Name == EmbeddedQueryFlag {
+			return n, true, nil
 		}
 		squashed, err := Squash(n, false)
-		return squashed, err, true
+		return squashed, true, err
 
 	case *promql.MatrixSelector:
-		if n.Name == EMBEDDED_QUERY_FLAG {
-			return n, nil, true
+		if n.Name == EmbeddedQueryFlag {
+			return n, true, nil
 		}
 		squashed, err := Squash(n, true)
-		return squashed, err, true
+		return squashed, true, err
 
 	default:
-		return n, nil, false
+		return n, false, nil
 	}
 }

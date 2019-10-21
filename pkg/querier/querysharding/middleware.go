@@ -19,23 +19,25 @@ const (
 var (
 	nanosecondsInMillisecond = int64(time.Millisecond / time.Nanosecond)
 
-	invalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
+	errInvalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
 )
 
-// Sharding configuration. Will eventually support ranges like chunk.PeriodConfig for meshing togethe multiple queryShard(s).
+// ShardingConfig will eventually support ranges like chunk.PeriodConfig for meshing togethe multiple queryShard(s).
 // This will enable compatibility for deployments which change their shard factors over time.
 type ShardingConfig struct {
 	From   chunk.DayTime `yaml:"from"`
 	Shards int           `yaml:"shards"`
 }
 
+// ShardingConfigs is a slice of shards
 type ShardingConfigs []ShardingConfig
 
+// ValidRange extracts a non-overlapping sharding configuration from a list of configs and a time range.
 func (confs ShardingConfigs) ValidRange(start, end int64) (ShardingConfig, error) {
 	for i, conf := range confs {
 		if start < int64(conf.From.Time) {
 			// the query starts before this config's range
-			return ShardingConfig{}, invalidShardingRange
+			return ShardingConfig{}, errInvalidShardingRange
 		} else if i == len(confs)-1 {
 			// the last configuration has no upper bound
 			return conf, nil
@@ -47,7 +49,7 @@ func (confs ShardingConfigs) ValidRange(start, end int64) (ShardingConfig, error
 		}
 	}
 
-	return ShardingConfig{}, invalidShardingRange
+	return ShardingConfig{}, errInvalidShardingRange
 
 }
 
@@ -59,6 +61,7 @@ func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
 	return mapper.Map(expr)
 }
 
+// QueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func QueryShardMiddleware(engine *promql.Engine, confs ShardingConfigs) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return &queryShard{

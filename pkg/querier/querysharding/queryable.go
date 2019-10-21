@@ -3,6 +3,7 @@ package querysharding
 import (
 	"context"
 	"encoding/hex"
+
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/pkg/errors"
@@ -15,7 +16,7 @@ const (
 	nonEmbeddedErrMsg       = "DownstreamQuerier cannot handle a non-embedded query"
 )
 
-// DownstreamQueryable is a wrapper for and implementor of the Queryable interface.
+// DownstreamQueryable is an implementor of the Queryable interface.
 type DownstreamQueryable struct {
 	Req     *queryrange.Request
 	Handler queryrange.Handler
@@ -25,7 +26,7 @@ func (q *DownstreamQueryable) Querier(ctx context.Context, mint, maxt int64) (st
 	return &DownstreamQuerier{ctx, q.Req, q.Handler}, nil
 }
 
-// DownstreamQueryable is a an implementor of the Queryable interface.
+// DownstreamQuerier is a an implementor of the Querier interface.
 type DownstreamQuerier struct {
 	Ctx     context.Context
 	Req     *queryrange.Request
@@ -40,11 +41,11 @@ func (q *DownstreamQuerier) Select(
 	var embeddedQuery string
 	var isEmbedded bool
 	for _, matcher := range matchers {
-		if matcher.Name == "__name__" && matcher.Value == astmapper.EMBEDDED_QUERY_FLAG {
+		if matcher.Name == "__name__" && matcher.Value == astmapper.EmbeddedQueryFlag {
 			isEmbedded = true
 		}
 
-		if matcher.Name == astmapper.QUERY_LABEL {
+		if matcher.Name == astmapper.QueryLabel {
 			embeddedQuery = matcher.Value
 		}
 	}
@@ -52,9 +53,8 @@ func (q *DownstreamQuerier) Select(
 	if isEmbedded {
 		if embeddedQuery != "" {
 			return q.handleEmbeddedQuery(embeddedQuery)
-		} else {
-			return nil, nil, errors.Errorf(missingEmbeddedQueryMsg)
 		}
+		return nil, nil, errors.Errorf(missingEmbeddedQueryMsg)
 
 	}
 
@@ -82,7 +82,6 @@ func (q *DownstreamQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesS
 
 }
 
-// other storage.Querier impls that are not used by engine
 // LabelValues returns all potential values for a label name.
 func (q *DownstreamQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.Errorf("unimplemented")
@@ -98,7 +97,7 @@ func (q *DownstreamQuerier) Close() error {
 	return nil
 }
 
-// take advantage of pass by value to clone a request with a new query
+// ReplaceQuery clones a request with a new query
 func ReplaceQuery(req queryrange.Request, query string) *queryrange.Request {
 	req.Query = query
 	return &req

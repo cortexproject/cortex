@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	StatusSuccess = "success"
-	StatusFailure = "failure"
+	StatusSuccess = "success" // Successful status
+	StatusFailure = "failure" // Failure status
 )
 
 var (

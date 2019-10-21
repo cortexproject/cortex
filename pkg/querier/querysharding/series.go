@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
-// needed to map back from api response to the underlying series data
+// ResponseToSeries is needed to map back from api response to the underlying series data
 func ResponseToSeries(resp queryrange.Response) (storage.SeriesSet, error) {
 	switch resp.ResultType {
 	case promql.ValueTypeVector, promql.ValueTypeMatrix:

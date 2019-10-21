@@ -205,7 +205,7 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 			name:  "0 ln configs fail",
 			confs: ShardingConfigs{},
 			req:   defaultReq(),
-			err:   invalidShardingRange,
+			err:   errInvalidShardingRange,
 		},
 		{
 			name: "request starts before beginning config",
@@ -216,7 +216,7 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 				},
 			},
 			req: reqWith("2019-10-15", ""),
-			err: invalidShardingRange,
+			err: errInvalidShardingRange,
 		},
 		{
 			name: "request spans multiple configs",
@@ -231,7 +231,7 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 				},
 			},
 			req: reqWith("2019-10-15", "2019-11-17"),
-			err: invalidShardingRange,
+			err: errInvalidShardingRange,
 		},
 		{
 			name: "selects correct config ",

@@ -10,12 +10,15 @@ type ASTMapper interface {
 	Map(node promql.Node) (promql.Node, error)
 }
 
+// MapperFunc is a function adapter for ASTMapper
 type MapperFunc func(node promql.Node) (promql.Node, error)
 
+// Map applies a mapperfunc as an ASTMapper
 func (fn MapperFunc) Map(node promql.Node) (promql.Node, error) {
 	return fn(node)
 }
 
+// MultiMapper can compose multiple ASTMappers
 type MultiMapper struct {
 	mappers []ASTMapper
 }
@@ -38,39 +41,44 @@ func (m *MultiMapper) Map(node promql.Node) (promql.Node, error) {
 
 }
 
-// since registered functions are applied in the order they're registered, it's advised to register them
+// Register adds ASTMappers into a multimapper.
+// Since registered functions are applied in the order they're registered, it's advised to register them
 // in decreasing priority and only operate on nodes that each function cares about, defaulting to CloneNode.
 func (m *MultiMapper) Register(xs ...ASTMapper) {
 	m.mappers = append(m.mappers, xs...)
 }
 
+// NewMultiMapper instaniates an ASTMapper from multiple ASTMappers
 func NewMultiMapper(xs ...ASTMapper) *MultiMapper {
 	m := &MultiMapper{}
 	m.Register(xs...)
 	return m
 }
 
-// helper function to clone a node.
+// CloneNode is a helper function to clone a node.
 func CloneNode(node promql.Node) (promql.Node, error) {
 	return promql.ParseExpr(node.String())
 }
 
-// a NodeMapper either maps a single AST node or returns the unaltered node.
+// NodeMapper either maps a single AST node or returns the unaltered node.
 // It also returns a bool to signal that no further recursion is necessary.
 // This is helpful because it allows mappers to only implement logic for node types they want to change.
 // It makes some mappers trivially easy to implement (see ShallowEmbedSelectors from embedded.go)
 type NodeMapper interface {
-	MapNode(node promql.Node) (mapped promql.Node, err error, finished bool)
+	MapNode(node promql.Node) (mapped promql.Node, finished bool, err error)
 }
 
-type NodeMapperFunc func(node promql.Node) (promql.Node, error, bool)
+// NodeMapperFunc is an adapter for NodeMapper
+type NodeMapperFunc func(node promql.Node) (promql.Node, bool, error)
 
-func (f NodeMapperFunc) MapNode(node promql.Node) (promql.Node, error, bool) {
+// MapNode applies a NodeMapperFunc as a NodeMapper
+func (f NodeMapperFunc) MapNode(node promql.Node) (promql.Node, bool, error) {
 	return f(node)
 }
 
-func NewNodeMapper(mapper NodeMapper) *nodeMapper {
-	return &nodeMapper{mapper}
+// NewNodeMapper creates an ASTMapper from a NodeMapper
+func NewNodeMapper(mapper NodeMapper) nodeMapper {
+	return nodeMapper{mapper}
 }
 
 // nodeMapper is an ASTMapper adapter which uses a NodeMapper internally.
@@ -78,8 +86,9 @@ type nodeMapper struct {
 	NodeMapper
 }
 
-func (nm *nodeMapper) Map(node promql.Node) (promql.Node, error) {
-	node, err, fin := nm.MapNode(node)
+// Map impls ASTMapper from a NodeMapper
+func (nm nodeMapper) Map(node promql.Node) (promql.Node, error) {
+	node, fin, err := nm.MapNode(node)
 
 	if err != nil {
 		return nil, err
@@ -96,11 +105,11 @@ func (nm *nodeMapper) Map(node promql.Node) (promql.Node, error) {
 
 	case promql.Expressions:
 		for i, e := range n {
-			if mapped, err := nm.Map(e); err != nil {
+			mapped, err := nm.Map(e)
+			if err != nil {
 				return nil, err
-			} else {
-				n[i] = mapped.(promql.Expr)
 			}
+			n[i] = mapped.(promql.Expr)
 		}
 		return n, nil
 
@@ -113,59 +122,59 @@ func (nm *nodeMapper) Map(node promql.Node) (promql.Node, error) {
 		return n, nil
 
 	case *promql.BinaryExpr:
-		if lhs, err := nm.Map(n.LHS); err != nil {
+		lhs, err := nm.Map(n.LHS)
+		if err != nil {
 			return nil, err
-		} else {
-			n.LHS = lhs.(promql.Expr)
 		}
+		n.LHS = lhs.(promql.Expr)
 
-		if rhs, err := nm.Map(n.RHS); err != nil {
+		rhs, err := nm.Map(n.RHS)
+		if err != nil {
 			return nil, err
-		} else {
-			n.RHS = rhs.(promql.Expr)
 		}
+		n.RHS = rhs.(promql.Expr)
 		return n, nil
 
 	case *promql.Call:
 		for i, e := range n.Args {
-			if mapped, err := nm.Map(e); err != nil {
+			mapped, err := nm.Map(e)
+			if err != nil {
 				return nil, err
-			} else {
-				n.Args[i] = mapped.(promql.Expr)
 			}
+			n.Args[i] = mapped.(promql.Expr)
 		}
 		return n, nil
 
 	case *promql.SubqueryExpr:
-		if mapped, err := nm.Map(n.Expr); err != nil {
+		mapped, err := nm.Map(n.Expr)
+		if err != nil {
 			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
 		}
+		n.Expr = mapped.(promql.Expr)
 		return n, nil
 
 	case *promql.ParenExpr:
-		if mapped, err := nm.Map(n.Expr); err != nil {
+		mapped, err := nm.Map(n.Expr)
+		if err != nil {
 			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
 		}
+		n.Expr = mapped.(promql.Expr)
 		return n, nil
 
 	case *promql.UnaryExpr:
-		if mapped, err := nm.Map(n.Expr); err != nil {
+		mapped, err := nm.Map(n.Expr)
+		if err != nil {
 			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
 		}
+		n.Expr = mapped.(promql.Expr)
 		return n, nil
 
 	case *promql.EvalStmt:
-		if mapped, err := nm.Map(n.Expr); err != nil {
+		mapped, err := nm.Map(n.Expr)
+		if err != nil {
 			return nil, err
-		} else {
-			n.Expr = mapped.(promql.Expr)
 		}
+		n.Expr = mapped.(promql.Expr)
 		return n, nil
 
 	case *promql.NumberLiteral, *promql.StringLiteral, *promql.VectorSelector, *promql.MatrixSelector:

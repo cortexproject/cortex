@@ -31,6 +31,7 @@ type ConcreteSeriesSet struct {
 	series []storage.Series
 }
 
+// NewConcreteSeriesSet instantiates an in-memory series set from a series
 func NewConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
 	sort.Sort(byLabels(series))
 	return &ConcreteSeriesSet{
@@ -39,15 +40,18 @@ func NewConcreteSeriesSet(series []storage.Series) storage.SeriesSet {
 	}
 }
 
+// Next iterates through a series set and impls storage.SeriesSet
 func (c *ConcreteSeriesSet) Next() bool {
 	c.cur++
 	return c.cur < len(c.series)
 }
 
+// At returns the current series and impls storage.SeriesSet
 func (c *ConcreteSeriesSet) At() storage.Series {
 	return c.series[c.cur]
 }
 
+// Err impls storage.SeriesSet
 func (c *ConcreteSeriesSet) Err() error {
 	return nil
 }
@@ -58,6 +62,7 @@ type ConcreteSeries struct {
 	samples []model.SamplePair
 }
 
+// NewConcreteSeries instantiates an in memory series from a list of samples & labels
 func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSeries {
 	return &ConcreteSeries{
 		labels:  ls,
@@ -65,10 +70,12 @@ func NewConcreteSeries(ls labels.Labels, samples []model.SamplePair) *ConcreteSe
 	}
 }
 
+// Labels impls storage.Series
 func (c *ConcreteSeries) Labels() labels.Labels {
 	return c.labels
 }
 
+// Iterator impls storage.Series
 func (c *ConcreteSeries) Iterator() storage.SeriesIterator {
 	return NewConcreteSeriesIterator(c)
 }
@@ -79,6 +86,7 @@ type concreteSeriesIterator struct {
 	series *ConcreteSeries
 }
 
+// NewConcreteSeries instaniates an in memory storage.SeriesIterator
 func NewConcreteSeriesIterator(series *ConcreteSeries) storage.SeriesIterator {
 	return &concreteSeriesIterator{
 		cur:    -1,
@@ -107,6 +115,7 @@ func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
 
+// NewErrIterator instantiates an errIterator
 func NewErrIterator(err error) errIterator {
 	return errIterator{err}
 }
@@ -132,6 +141,7 @@ func (e errIterator) Err() error {
 	return e.err
 }
 
+// MatrixToSeriesSet creates a storage.SeriesSet from a model.Matrix
 func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(m))
 	for _, ss := range m {
@@ -143,6 +153,7 @@ func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
 	return NewConcreteSeriesSet(series)
 }
 
+// MetricsToSeriesSet creates a storage.SeriesSet from a []metric.Metric
 func MetricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {

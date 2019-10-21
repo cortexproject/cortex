@@ -3,13 +3,14 @@ package querysharding
 import (
 	"context"
 	"encoding/hex"
+	"testing"
+
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestSelect(t *testing.T) {
@@ -54,8 +55,8 @@ func TestSelect(t *testing.T) {
 
 				_, _, err := q.Select(
 					nil,
-					exactMatch("__name__", astmapper.EMBEDDED_QUERY_FLAG),
-					exactMatch(astmapper.QUERY_LABEL, hexEncode(`http_requests_total{cluster="prod"}`)),
+					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
+					exactMatch(astmapper.QueryLabel, hexEncode(`http_requests_total{cluster="prod"}`)),
 				)
 				require.Nil(t, err)
 			},
@@ -71,8 +72,8 @@ func TestSelect(t *testing.T) {
 			fn: func(t *testing.T, q *DownstreamQuerier) {
 				set, _, err := q.Select(
 					nil,
-					exactMatch("__name__", astmapper.EMBEDDED_QUERY_FLAG),
-					exactMatch(astmapper.QUERY_LABEL, hexEncode(`http_requests_total{cluster="prod"}`)),
+					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
+					exactMatch(astmapper.QueryLabel, hexEncode(`http_requests_total{cluster="prod"}`)),
 				)
 				require.Nil(t, set)
 				require.EqualError(t, err, "SomeErr")
@@ -125,8 +126,8 @@ func TestSelect(t *testing.T) {
 			fn: func(t *testing.T, q *DownstreamQuerier) {
 				set, _, err := q.Select(
 					nil,
-					exactMatch("__name__", astmapper.EMBEDDED_QUERY_FLAG),
-					exactMatch(astmapper.QUERY_LABEL, hexEncode(`http_requests_total{cluster="prod"}`)),
+					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
+					exactMatch(astmapper.QueryLabel, hexEncode(`http_requests_total{cluster="prod"}`)),
 				)
 				require.Nil(t, err)
 				require.Equal(

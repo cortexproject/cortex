@@ -2,13 +2,14 @@ package astmapper
 
 import (
 	"fmt"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
 
 const (
-	DEFAULT_SHARDS = 12
-	SHARD_LABEL    = "__cortex_shard__"
+	DefaultShards = 12                 // default shard factor to assume
+	ShardLabel    = "__cortex_shard__" // reserved label referencing a cortex shard
 )
 
 type squasher = func(promql.Node) (promql.Expr, error)
@@ -19,9 +20,10 @@ type shardSummer struct {
 	squash   squasher
 }
 
+// NewShardSummer instantiates an ASTMapper which will fan out sums queries by shard
 func NewShardSummer(shards int, squasher squasher) ASTMapper {
 	if shards == 0 {
-		shards = DEFAULT_SHARDS
+		shards = DefaultShards
 	}
 
 	return NewNodeMapper(&shardSummer{
@@ -39,35 +41,33 @@ func (summer *shardSummer) CopyWithCurshard(curshard int) *shardSummer {
 }
 
 // shardSummer expands a query AST by sharding and re-summing when possible
-func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, error, bool) {
+func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) {
 
 	switch n := node.(type) {
 	case *promql.AggregateExpr:
 		if CanParallel(n) {
 			result, err := summer.shardSum(n)
-			return result, err, true
+			return result, true, err
 		}
 
-		return n, nil, false
+		return n, false, nil
 
 	case *promql.VectorSelector:
 		if summer.curshard != nil {
 			mapped, err := shardVectorSelector(*summer.curshard, summer.shards, n)
-			return mapped, err, true
-		} else {
-			return n, nil, true
+			return mapped, true, err
 		}
+		return n, true, nil
 
 	case *promql.MatrixSelector:
 		if summer.curshard != nil {
 			mapped, err := shardMatrixSelector(*summer.curshard, summer.shards, n)
-			return mapped, err, true
-		} else {
-			return n, nil, true
+			return mapped, true, err
 		}
+		return n, true, nil
 
 	default:
-		return n, nil, false
+		return n, false, nil
 	}
 }
 
@@ -134,7 +134,7 @@ func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 }
 
 func shardVectorSelector(curshard, shards int, selector *promql.VectorSelector) (promql.Node, error) {
-	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, SHARD_LABEL, fmt.Sprintf("%d_of_%d", curshard, shards))
+	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, ShardLabel, fmt.Sprintf("%d_of_%d", curshard, shards))
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func shardVectorSelector(curshard, shards int, selector *promql.VectorSelector) 
 }
 
 func shardMatrixSelector(curshard, shards int, selector *promql.MatrixSelector) (promql.Node, error) {
-	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, SHARD_LABEL, fmt.Sprintf("%d_of_%d", curshard, shards))
+	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, ShardLabel, fmt.Sprintf("%d_of_%d", curshard, shards))
 	if err != nil {
 		return nil, err
 	}

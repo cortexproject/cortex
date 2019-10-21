@@ -5,14 +5,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
-// matrixselector & vectorselector need to have shard annotations added
-/*
-Design:
-1) annotate subtrees as parallelizable. A subtree is parallelizable if all of it's components are parallelizable
-2) deal with splitting/stiching against queriers after mapping into the parallel-compatible AST
-*/
-
-// function to annotate subtrees as parallelizable. Inefficient, but illustrative.
+// CanParallel annotates subtrees as parallelizable.
+// A subtree is parallelizable if all of it's components are parallelizable.
 func CanParallel(node promql.Node) bool {
 	switch n := node.(type) {
 	case nil:
@@ -31,16 +25,15 @@ func CanParallel(node promql.Node) bool {
 		// currently we only support sum for expediency.
 		if n.Op != promql.ItemSum || !CanParallel(n.Param) || !CanParallel(n.Expr) {
 			return false
-		} else {
-			return true
 		}
+		return true
 
 	case *promql.BinaryExpr:
 		// since binary exprs use each side for merging, they cannot be parallelized
 		return false
 
 	case *promql.Call:
-		if !FuncParallel(n.Func) {
+		if !funcParallel(n.Func) {
 			return false
 		}
 
@@ -75,7 +68,7 @@ func CanParallel(node promql.Node) bool {
 	return false
 }
 
-func FuncParallel(f *promql.Function) bool {
+func funcParallel(f *promql.Function) bool {
 	// flagging all functions as parallel for expediency -- this is certainly not correct (i.e. avg).
 	return true
 }

@@ -40,8 +40,8 @@ type Config struct {
 	ACLToken          string
 	HTTPClientTimeout time.Duration
 	ConsistentReads   bool
-	WatchKeyRate      float64 // Zero disables rate limit
-	WatchKeyBurst     int     // Burst when doing rate-limit, defaults to 1
+	WatchKeyRateLimit float64 // Zero disables rate limit
+	WatchKeyBurstSize int     // Burst when doing rate-limit, defaults to 1
 }
 
 type kv interface {
@@ -65,8 +65,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
 	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul")
 	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to Consul.")
-	f.Float64Var(&cfg.WatchKeyRate, prefix+"consul.watch-rate", 0, "Rate limit when watching key or prefix in Consul, in requests per second. Zero disables the rate limit.")
-	f.IntVar(&cfg.WatchKeyBurst, prefix+"consul.watch-burst", 1, "Burst size used in rate limit. Values less than 1 are treated as 1.")
+	f.Float64Var(&cfg.WatchKeyRateLimit, prefix+"consul.watch-rate-limit", 0, "Rate limit when watching key or prefix in Consul, in requests per second. Zero disables the rate limit.")
+	f.IntVar(&cfg.WatchKeyBurstSize, prefix+"consul.watch-burst-size", 1, "Burst size used in rate limit. Values less than 1 are treated as 1.")
 }
 
 // NewClient returns a new Client.
@@ -305,13 +305,13 @@ func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {
 }
 
 func (c *Client) createRateLimiter() *rate.Limiter {
-	if c.cfg.WatchKeyRate <= 0 {
+	if c.cfg.WatchKeyRateLimit <= 0 {
 		// burst is ignored when limit = rate.Inf
 		return rate.NewLimiter(rate.Inf, 0)
 	}
-	burst := c.cfg.WatchKeyBurst
+	burst := c.cfg.WatchKeyBurstSize
 	if burst < 1 {
 		burst = 1
 	}
-	return rate.NewLimiter(rate.Limit(c.cfg.WatchKeyRate), burst)
+	return rate.NewLimiter(rate.Limit(c.cfg.WatchKeyRateLimit), burst)
 }

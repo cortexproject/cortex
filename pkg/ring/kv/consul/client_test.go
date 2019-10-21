@@ -46,8 +46,8 @@ func writeValuesToKV(client *Client, key string, start, end int, sleep time.Dura
 
 func TestWatchKey(t *testing.T) {
 	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
-		WatchKeyRate:  5.0,
-		WatchKeyBurst: 1,
+		WatchKeyRateLimit: 5.0,
+		WatchKeyBurstSize: 1,
 	})
 
 	const key = "test"
@@ -81,7 +81,7 @@ func TestWatchKey(t *testing.T) {
 
 func TestWatchKeyNoRateLimit(t *testing.T) {
 	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
-		WatchKeyRate: 0,
+		WatchKeyRateLimit: 0,
 	})
 
 	const key = "test"

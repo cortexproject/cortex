@@ -2,12 +2,13 @@ package querysharding
 
 import (
 	"context"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
-	"time"
 )
 
 const (
@@ -15,6 +16,8 @@ const (
 )
 
 var (
+	nanosecondsInMillisecond = int64(time.Millisecond / time.Nanosecond)
+
 	invalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
 )
 
@@ -94,8 +97,9 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
 		mappedQuery.String(),
-		time.Unix(r.Start, 0), time.Unix(r.End, 0),
-		time.Duration(r.Step)*time.Second,
+		TimeFromMillis(r.Start),
+		TimeFromMillis(r.End),
+		time.Duration(r.Step)*time.Millisecond,
 	)
 
 	if err != nil {
@@ -129,4 +133,10 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 			},
 		}, nil
 	}
+}
+
+func TimeFromMillis(ms int64) time.Time {
+	secs := ms / 1000
+	rem := ms - (secs * 1000)
+	return time.Unix(secs, rem*nanosecondsInMillisecond)
 }

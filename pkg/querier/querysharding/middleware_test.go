@@ -2,6 +2,9 @@ package querysharding
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -10,8 +13,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestMiddleware(t *testing.T) {
@@ -126,11 +127,11 @@ func sampleMatrixResponse() *queryrange.APIResponse {
 					},
 					Samples: []client.Sample{
 						client.Sample{
-							TimestampMs: 5000,
+							TimestampMs: 5,
 							Value:       1,
 						},
 						client.Sample{
-							TimestampMs: 10000,
+							TimestampMs: 10,
 							Value:       2,
 						},
 					},
@@ -142,11 +143,11 @@ func sampleMatrixResponse() *queryrange.APIResponse {
 					},
 					Samples: []client.Sample{
 						client.Sample{
-							TimestampMs: 5000,
+							TimestampMs: 5,
 							Value:       8,
 						},
 						client.Sample{
-							TimestampMs: 10000,
+							TimestampMs: 10,
 							Value:       9,
 						},
 					},
@@ -266,6 +267,23 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 				require.Nil(t, err)
 				require.Equal(t, c.expected, out)
 			}
+		})
+	}
+}
+
+func TestTimeFromMillis(t *testing.T) {
+	var testExpr = []struct {
+		input    int64
+		expected time.Time
+	}{
+		{1000, time.Unix(1, 0)},
+		{1500, time.Unix(1, 500*nanosecondsInMillisecond)},
+	}
+
+	for i, c := range testExpr {
+		t.Run(string(i), func(t *testing.T) {
+			res := TimeFromMillis(c.input)
+			require.Equal(t, c.expected, res)
 		})
 	}
 }

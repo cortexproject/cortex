@@ -39,6 +39,7 @@ func writeValuesToKV(client *Client, key string, start, end int, sleep time.Dura
 	go func() {
 		defer close(ch)
 		for i := start; i <= end; i++ {
+			level.Debug(util.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
 			_, _ = client.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
 			time.Sleep(sleep)
 		}
@@ -106,10 +107,7 @@ func TestWatchKeyNoRateLimit(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
-		WatchKeyRate:  1,
-		WatchKeyBurst: 5,
-	})
+	c := NewInMemoryClient(&stringCodec{})
 
 	const key = "test"
 	const max = 5
@@ -121,6 +119,7 @@ func TestReset(t *testing.T) {
 	go func() {
 		defer close(ch)
 		for i := 0; i <= max; i++ {
+			level.Debug(util.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
 			_, _ = c.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
 			if i == 1 {
 				c.kv.(*mockKV).ResetIndex()
@@ -132,17 +131,17 @@ func TestReset(t *testing.T) {
 		}
 	}()
 
-	observed := observeValueForSomeTime(c, key, 1200*time.Millisecond) // little over 1 second
+	observed := observeValueForSomeTime(c, key, 25*max*time.Millisecond)
 
 	// wait until updater finishes
 	<-ch
 
-	// Let's see how many updates we have observed. Given the rate limit and our observing time, it should be 6
+	// Let's see how many updates we have observed. Given the rate limit and our observing time, we should see all numeric values
 	if testing.Verbose() {
 		t.Log(observed)
 	}
-	if len(observed) < 5 {
-		t.Error("Expected at least 5 observed values, got", observed)
+	if len(observed) < max {
+		t.Error("Expected all values, got", observed)
 	} else if observed[len(observed)-1] != fmt.Sprintf("%d", max) {
 		t.Error("Expected to see last written value, got", observed)
 	}
@@ -150,14 +149,14 @@ func TestReset(t *testing.T) {
 
 func observeValueForSomeTime(client *Client, key string, timeout time.Duration) []string {
 	observed := []string(nil)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout) // little over 1 second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	client.WatchKey(ctx, key, func(i interface{}) bool {
 		s, ok := i.(string)
 		if !ok {
 			return false
 		}
-		level.Debug(util.Logger).Log("msg", "observed value", "val", s, "time", time.Now())
+		level.Debug(util.Logger).Log("ts", time.Now(), "msg", "observed value", "val", s)
 		observed = append(observed, s)
 		return true
 	})

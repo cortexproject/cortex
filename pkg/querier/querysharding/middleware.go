@@ -6,6 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
@@ -75,7 +76,7 @@ type queryShard struct {
 }
 
 func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrange.APIResponse, error) {
-	queryable := &DownstreamQueryable{r, qs.next}
+	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
 
 	conf, err := qs.confs.ValidRange(r.Start, r.End)
 	// query exists across multiple sharding configs, so don't try to do AST mapping.

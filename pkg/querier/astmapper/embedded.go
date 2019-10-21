@@ -24,8 +24,10 @@ Ideally the promql.Engine could be an interface instead of a concrete type, allo
 */
 
 const (
-	QueryLabel        = "__cortex_query__"   // reserved label containing an embedded query
-	EmbeddedQueryFlag = "__embedded_query__" // reserved label (metric name) denoting an embedded query
+	// QueryLabel is a reserved label containing an embedded query
+	QueryLabel = "__cortex_query__"
+	// EmbeddedQueryFlag is a reserved label (metric name) denoting an embedded query
+	EmbeddedQueryFlag = "__embedded_query__"
 )
 
 // Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.
@@ -33,7 +35,7 @@ func Squash(node promql.Node, isMatrix bool) (promql.Expr, error) {
 	// promql's label charset is not a subset of promql's syntax charset. Therefor we use hex as an intermediary
 	encoded := hex.EncodeToString([]byte(node.String()))
 
-	embedded_query, err := labels.NewMatcher(labels.MatchEqual, QueryLabel, encoded)
+	embeddedQuery, err := labels.NewMatcher(labels.MatchEqual, QueryLabel, encoded)
 
 	if err != nil {
 		return nil, err
@@ -43,13 +45,13 @@ func Squash(node promql.Node, isMatrix bool) (promql.Expr, error) {
 		return &promql.MatrixSelector{
 			Name:          EmbeddedQueryFlag,
 			Range:         time.Minute,
-			LabelMatchers: []*labels.Matcher{embedded_query},
+			LabelMatchers: []*labels.Matcher{embeddedQuery},
 		}, nil
 	}
 
 	return &promql.VectorSelector{
 		Name:          EmbeddedQueryFlag,
-		LabelMatchers: []*labels.Matcher{embedded_query},
+		LabelMatchers: []*labels.Matcher{embeddedQuery},
 	}, nil
 }
 
@@ -61,7 +63,7 @@ func VectorSquasher(node promql.Node) (promql.Expr, error) {
 
 // ShallowEmbedSelectors encodes selector queries if they do not already have the EmbeddedQueryFlag.
 // This is primarily useful for deferring query execution.
-var ShallowEmbedSelectors = NewNodeMapper(NodeMapperFunc(shallowEmbedSelectors))
+var ShallowEmbedSelectors = NewASTNodeMapper(NodeMapperFunc(shallowEmbedSelectors))
 
 func shallowEmbedSelectors(node promql.Node) (promql.Node, bool, error) {
 	switch n := node.(type) {

@@ -86,7 +86,7 @@ type concreteSeriesIterator struct {
 	series *ConcreteSeries
 }
 
-// NewConcreteSeries instaniates an in memory storage.SeriesIterator
+// NewConcreteSeriesIterator instaniates an in memory storage.SeriesIterator
 func NewConcreteSeriesIterator(series *ConcreteSeries) storage.SeriesIterator {
 	return &concreteSeriesIterator{
 		cur:    -1,
@@ -116,7 +116,7 @@ func (c *concreteSeriesIterator) Err() error {
 }
 
 // NewErrIterator instantiates an errIterator
-func NewErrIterator(err error) errIterator {
+func NewErrIterator(err error) storage.SeriesIterator {
 	return errIterator{err}
 }
 

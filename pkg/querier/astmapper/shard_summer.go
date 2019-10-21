@@ -8,8 +8,10 @@ import (
 )
 
 const (
-	DefaultShards = 12                 // default shard factor to assume
-	ShardLabel    = "__cortex_shard__" // reserved label referencing a cortex shard
+	// DefaultShards factor to assume
+	DefaultShards = 12
+	// ShardLabel is a reserved label referencing a cortex shard
+	ShardLabel = "__cortex_shard__"
 )
 
 type squasher = func(promql.Node) (promql.Expr, error)
@@ -26,7 +28,7 @@ func NewShardSummer(shards int, squasher squasher) ASTMapper {
 		shards = DefaultShards
 	}
 
-	return NewNodeMapper(&shardSummer{
+	return NewASTNodeMapper(&shardSummer{
 		shards:   shards,
 		squash:   squasher,
 		curshard: nil,
@@ -86,7 +88,7 @@ func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 			return nil, err
 		}
 
-		subSummer := NewNodeMapper(summer.CopyWithCurshard(i))
+		subSummer := NewASTNodeMapper(summer.CopyWithCurshard(i))
 		sharded, err := subSummer.Map(cloned)
 		if err != nil {
 			return nil, err

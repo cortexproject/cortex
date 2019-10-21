@@ -11,10 +11,12 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
+// LazyQueryable wraps a storage.Queryable
 type LazyQueryable struct {
 	q storage.Queryable
 }
 
+// Querier impls storage.Queryable
 func (lq LazyQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	q, err := lq.q.Querier(ctx, mint, maxt)
 	if err != nil {
@@ -24,10 +26,12 @@ func (lq LazyQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.
 	return NewLazyQuerier(q), nil
 }
 
+// NewLazyQueryable returns a lazily wrapped queryable
 func NewLazyQueryable(q storage.Queryable) storage.Queryable {
 	return LazyQueryable{q}
 }
 
+// LazyQuerier is a lazy-loaded adapter for a storage.Querier
 type LazyQuerier struct {
 	next storage.Querier
 }
@@ -38,6 +42,7 @@ func NewLazyQuerier(next storage.Querier) storage.Querier {
 	return LazyQuerier{next}
 }
 
+// Select impls Storage.Querier
 func (l LazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	future := make(chan storage.SeriesSet)
 	go func() {
@@ -53,14 +58,17 @@ func (l LazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Ma
 	}, nil, nil
 }
 
+// LabelValues impls Storage.Querier
 func (l LazyQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return l.next.LabelValues(name)
 }
 
+// LabelNames impls Storage.Querier
 func (l LazyQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return l.next.LabelNames()
 }
 
+// Close impls Storage.Querier
 func (l LazyQuerier) Close() error {
 	return l.next.Close()
 }

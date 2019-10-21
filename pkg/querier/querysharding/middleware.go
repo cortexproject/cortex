@@ -113,7 +113,7 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 
 	res := qry.Exec(ctx)
 
-	// TODO(owen): Unclear on whether error belongs in APIResponse struct or as 2nd value in return tuple
+	// TODO(owen-d): Unclear on whether error belongs in APIResponse struct or as 2nd value in return tuple
 	if res.Err != nil {
 		return &queryrange.APIResponse{
 			Status:    queryrange.StatusFailure,
@@ -122,24 +122,25 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 		}, nil
 	}
 
-	if extracted, err := FromValue(res.Value); err != nil {
+	extracted, err := FromValue(res.Value)
+	if err != nil {
 		return &queryrange.APIResponse{
 			Status:    queryrange.StatusFailure,
 			ErrorType: downStreamErrType,
 			Error:     err.Error(),
 		}, nil
 
-	} else {
-		return &queryrange.APIResponse{
-			Status: queryrange.StatusSuccess,
-			Data: queryrange.Response{
-				ResultType: string(res.Value.Type()),
-				Result:     extracted,
-			},
-		}, nil
 	}
+	return &queryrange.APIResponse{
+		Status: queryrange.StatusSuccess,
+		Data: queryrange.Response{
+			ResultType: string(res.Value.Type()),
+			Result:     extracted,
+		},
+	}, nil
 }
 
+// TimeFromMillis is a helper to turn milliseconds -> time.Time
 func TimeFromMillis(ms int64) time.Time {
 	secs := ms / 1000
 	rem := ms - (secs * 1000)

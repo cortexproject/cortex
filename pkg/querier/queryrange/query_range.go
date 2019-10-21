@@ -22,9 +22,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
+// Exported statuses for downstream queries
 const (
-	StatusSuccess = "success" // Successful status
-	StatusFailure = "failure" // Failure status
+	StatusSuccess = "success"
+	StatusFailure = "failure"
 )
 
 var (

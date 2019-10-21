@@ -101,12 +101,10 @@ func doRequest(endpoint string, timeout time.Duration, since configs.ID, operati
 
 	start := time.Now()
 	resp, err := client.Do(req)
-	if resp != nil {
-		configsRequestDuration.WithLabelValues(operation, resp.Status).Observe(time.Since(start).Seconds())
-	}
 	if err != nil {
 		return nil, err
 	}
+	configsRequestDuration.WithLabelValues(operation, resp.Status).Observe(time.Since(start).Seconds())
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

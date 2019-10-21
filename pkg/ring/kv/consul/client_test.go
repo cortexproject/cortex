@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -31,8 +30,6 @@ func (c stringCodec) Encode(d interface{}) ([]byte, error) {
 func (c stringCodec) Decode(d []byte) (interface{}, error) {
 	return string(d), nil
 }
-
-var _ codec.Codec = &stringCodec{}
 
 func writeValuesToKV(client *Client, key string, start, end int, sleep time.Duration) <-chan struct{} {
 	ch := make(chan struct{})

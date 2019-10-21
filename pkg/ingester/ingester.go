@@ -244,6 +244,15 @@ func (i *Ingester) Shutdown() {
 	i.lifecycler.Shutdown()
 }
 
+// ShutdownHandler triggers the following set of operations in order:
+//     * Change the state of ring to stop accepting writes.
+//     * Flush all the chunks.
+func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	i.Shutdown()
+	i.Flush()
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // StopIncomingRequests is called during the shutdown process.
 func (i *Ingester) StopIncomingRequests() {
 	i.userStatesMtx.Lock()

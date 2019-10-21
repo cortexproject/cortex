@@ -119,6 +119,11 @@ func (m *mockKV) Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consu
 
 	if q.WaitIndex >= value.ModifyIndex && q.WaitTime > 0 {
 		deadline := time.Now().Add(q.WaitTime)
+		if ctxDeadline, ok := q.Context().Deadline(); ok && ctxDeadline.Before(deadline) {
+			// respect deadline from context, if set.
+			deadline = ctxDeadline
+		}
+
 		// simply wait until value.ModifyIndex changes. This allows us to test reporting old index values by resetting them.
 		startModify := value.ModifyIndex
 		for startModify == value.ModifyIndex && time.Now().Before(deadline) {

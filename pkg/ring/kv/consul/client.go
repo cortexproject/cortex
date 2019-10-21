@@ -179,13 +179,11 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	)
 
 	for backoff.Ongoing() {
-		if limiter != nil {
-			err := limiter.Wait(ctx)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
-				backoff.Wait()
-				continue
-			}
+		err := limiter.Wait(ctx)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
+			backoff.Wait()
+			continue
 		}
 
 		queryOptions := &consul.QueryOptions{
@@ -230,13 +228,11 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		limiter = c.createRateLimiter()
 	)
 	for backoff.Ongoing() {
-		if limiter != nil {
-			err := limiter.Wait(ctx)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
-				backoff.Wait()
-				continue
-			}
+		err := limiter.Wait(ctx)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
+			backoff.Wait()
+			continue
 		}
 
 		queryOptions := &consul.QueryOptions{
@@ -310,7 +306,8 @@ func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {
 
 func (c *Client) createRateLimiter() *rate.Limiter {
 	if c.cfg.WatchKeyRate <= 0 {
-		return nil
+		// burst is ignored when limit = rate.Inf
+		return rate.NewLimiter(rate.Inf, 0)
 	}
 	burst := c.cfg.WatchKeyBurst
 	if burst < 1 {

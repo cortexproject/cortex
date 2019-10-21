@@ -34,6 +34,18 @@ func (c stringCodec) Decode(d []byte) (interface{}, error) {
 
 var _ codec.Codec = &stringCodec{}
 
+func writeValuesToKV(client *Client, key string, start, end int, sleep time.Duration) <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		defer close(ch)
+		for i := start; i <= end; i++ {
+			_, _ = client.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
+			time.Sleep(sleep)
+		}
+	}()
+	return ch
+}
+
 func TestWatchKey(t *testing.T) {
 	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
 		WatchKeyRate:  5.0,
@@ -46,14 +58,7 @@ func TestWatchKey(t *testing.T) {
 	// Make sure to start with non-empty value, otherwise WatchKey will bail
 	_, _ = c.Put(&consul.KVPair{Key: key, Value: []byte("start")}, nil)
 
-	ch := make(chan error)
-	go func() {
-		defer close(ch)
-		for i := 0; i <= max; i++ {
-			_, _ = c.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
-			time.Sleep(10 * time.Millisecond)
-		}
-	}()
+	ch := writeValuesToKV(c, key, 0, max, 10*time.Millisecond)
 
 	observed := observeValueForSomeTime(c, key, 1200*time.Millisecond) // little over 1 second
 
@@ -71,8 +76,32 @@ func TestWatchKey(t *testing.T) {
 	}
 	last := observed[len(observed)-1]
 	n, _ := strconv.Atoi(last)
-	if n < 50 {
+	if n < max/2 {
 		t.Error("Expected to see high last observed value, got", observed)
+	}
+}
+
+func TestWatchKeyNoRateLimit(t *testing.T) {
+	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
+		WatchKeyRate: 0,
+	})
+
+	const key = "test"
+	const max = 100
+
+	// Make sure to start with non-empty value, otherwise WatchKey will bail
+	_, _ = c.Put(&consul.KVPair{Key: key, Value: []byte("start")}, nil)
+
+	ch := writeValuesToKV(c, key, 0, max, time.Millisecond)
+	observed := observeValueForSomeTime(c, key, 500*time.Millisecond)
+
+	// wait until updater finishes
+	<-ch
+
+	// With no limit, we should see most written values (we can lose some values if watching
+	// code is busy while multiple new values are written)
+	if len(observed) < 3*max/4 {
+		t.Error("Expected at least 3/4 of all values, got", observed)
 	}
 }
 

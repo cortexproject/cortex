@@ -18,6 +18,8 @@ This release adds support for Redis as an alternative to Memcached, and also inc
 * [ENHANCEMENT] Upgraded Prometheus to 2.12.0 and Alertmanager to 0.19.0. #1597
 * [ENHANCEMENT] Cortex is now built with Go 1.13 #1675, #1676, #1679
 * [ENHANCEMENT] Many optimisations, mostly impacting ingester and querier: #1574, #1624, #1638, #1644, #1649, #1654, #1702
+* [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
+* [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
 
 Full list of changes: https://github.com/cortexproject/cortex/compare/v0.2.0...v0.3.0
 

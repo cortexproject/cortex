@@ -73,7 +73,7 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 			in: HATrackerConfig{
 				EnableHATracker: true,
 				UpdateTimeout:   time.Second,
-				FailoverTimeout: 999 * time.Millisecond,
+				FailoverTimeout: 1999 * time.Millisecond,
 				KVStore: kv.Config{
 					Store: "inmemory",
 				},
@@ -84,7 +84,18 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 			in: HATrackerConfig{
 				EnableHATracker: true,
 				UpdateTimeout:   time.Second,
-				FailoverTimeout: 1001 * time.Millisecond,
+				FailoverTimeout: 2000 * time.Millisecond,
+				KVStore: kv.Config{
+					Store: "inmemory",
+				},
+			},
+			fail: false,
+		},
+		{
+			in: HATrackerConfig{
+				EnableHATracker: true,
+				UpdateTimeout:   time.Second,
+				FailoverTimeout: 2001 * time.Millisecond,
 				KVStore: kv.Config{
 					Store: "inmemory",
 				},
@@ -94,7 +105,7 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		_, err := newClusterTracker(c.in)
+		err := c.in.Validate()
 		fail := err != nil
 		assert.Equal(t, c.fail, fail, "unexpected result: %s", err)
 	}

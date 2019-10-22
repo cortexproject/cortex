@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -62,9 +63,10 @@ func NewReplicaDesc() *ReplicaDesc {
 // Track the replica we're accepting samples from
 // for each HA cluster we know about.
 type haTracker struct {
-	logger log.Logger
-	cfg    HATrackerConfig
-	client kv.Client
+	logger              log.Logger
+	cfg                 HATrackerConfig
+	client              kv.Client
+	updateTimeoutJitter time.Duration
 
 	// Replicas we are accepting samples from.
 	electedLock sync.RWMutex
@@ -80,7 +82,8 @@ type HATrackerConfig struct {
 	// We should only update the timestamp if the difference
 	// between the stored timestamp and the time we received a sample at
 	// is more than this duration.
-	UpdateTimeout time.Duration `yaml:"ha_tracker_update_timeout"`
+	UpdateTimeout          time.Duration `yaml:"ha_tracker_update_timeout"`
+	UpdateTimeoutJitterMax time.Duration `yaml:"ha_tracker_update_timeout_jitter_max"`
 	// We should only failover to accepting samples from a replica
 	// other than the replica written in the KVStore if the difference
 	// between the stored timestamp and the time we received a sample is
@@ -100,6 +103,10 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 		"distributor.ha-tracker.update-timeout",
 		15*time.Second,
 		"Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.")
+	f.DurationVar(&cfg.UpdateTimeoutJitterMax,
+		"distributor.ha-tracker.update-timeout-jitter-max",
+		5*time.Second,
+		"To spread the HA deduping heartbeats out over time.")
 	f.DurationVar(&cfg.FailoverTimeout,
 		"distributor.ha-tracker.failover-timeout",
 		30*time.Second,
@@ -108,21 +115,33 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ha-tracker.", f)
 }
 
+// Validate config and returns error on failure
+func (cfg *HATrackerConfig) Validate() error {
+	if cfg.FailoverTimeout < cfg.UpdateTimeout+cfg.UpdateTimeoutJitterMax+time.Second {
+		return fmt.Errorf("HA Tracker failover timeout (%v) must be at least 1s greater than update timeout (%v)",
+			cfg.FailoverTimeout, cfg.UpdateTimeout+cfg.UpdateTimeoutJitterMax+time.Second)
+	}
+	return nil
+}
+
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store.
 func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 
-	if cfg.FailoverTimeout <= cfg.UpdateTimeout {
-		return nil, fmt.Errorf("HA Tracker failover timeout must be greater than update timeout, %d is <= %d", cfg.FailoverTimeout, cfg.UpdateTimeout)
+	var jitter time.Duration
+	if cfg.UpdateTimeoutJitterMax > 0 {
+		jitter = time.Duration(rand.Int63n(int64(2*cfg.UpdateTimeoutJitterMax))) - cfg.UpdateTimeoutJitterMax
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	t := haTracker{
-		logger:  util.Logger,
-		cfg:     cfg,
-		done:    make(chan struct{}),
-		elected: map[string]ReplicaDesc{},
-		cancel:  cancel,
+		logger:              util.Logger,
+		cfg:                 cfg,
+		updateTimeoutJitter: jitter,
+		done:                make(chan struct{}),
+		elected:             map[string]ReplicaDesc{},
+		cancel:              cancel,
 	}
 
 	if cfg.EnableHATracker {
@@ -213,7 +232,7 @@ func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now t
 
 			// We don't need to CAS and update the timestamp in the KV store if the timestamp we've received
 			// this sample at is less than updateTimeout amount of time since the timestamp in the KV store.
-			if desc.Replica == replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.cfg.UpdateTimeout {
+			if desc.Replica == replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.cfg.UpdateTimeout+c.updateTimeoutJitter {
 				return nil, false, nil
 			}
 

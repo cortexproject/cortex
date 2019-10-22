@@ -447,7 +447,7 @@ func TestDefaultFilterIndexQueries(t *testing.T) {
 
 	for _, c := range testExprs {
 		t.Run(c.name, func(t *testing.T) {
-			filtered := defaultFilterIndexQueries(c.queries, c.shard)
+			filtered := defaultFilterReadQueries(c.queries, c.shard)
 			require.Equal(t, c.expected, filtered)
 		})
 	}

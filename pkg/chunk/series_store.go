@@ -364,7 +364,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	}
 	level.Debug(log).Log("queries", len(queries))
 
-	queries = c.schema.FilterIndexQueries(queries, shard)
+	queries = c.schema.FilterReadQueries(queries, shard)
 
 	level.Debug(log).Log("filtered queries", len(queries))
 

@@ -58,7 +58,8 @@ func TestMiddleware(t *testing.T) {
 			name: "expiration",
 			next: mockHandler(sampleMatrixResponse(), nil),
 			override: func(t *testing.T, handler queryrange.Handler) {
-				expired, _ := context.WithDeadline(context.Background(), time.Unix(0, 0))
+				expired, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
+				defer cancel()
 				res, err := handler.Do(expired, defaultReq())
 				require.Nil(t, err)
 				require.NotEqual(t, "", res.Error)
@@ -122,15 +123,15 @@ func sampleMatrixResponse() *queryrange.APIResponse {
 			Result: []queryrange.SampleStream{
 				{
 					Labels: []client.LabelAdapter{
-						{"a", "a1"},
-						{"b", "b1"},
+						{Name: "a", Value: "a1"},
+						{Name: "b", Value: "b1"},
 					},
 					Samples: []client.Sample{
-						client.Sample{
+						{
 							TimestampMs: 5,
 							Value:       1,
 						},
-						client.Sample{
+						{
 							TimestampMs: 10,
 							Value:       2,
 						},
@@ -138,15 +139,15 @@ func sampleMatrixResponse() *queryrange.APIResponse {
 				},
 				{
 					Labels: []client.LabelAdapter{
-						{"a", "a2"},
-						{"b", "b2"},
+						{Name: "a", Value: "a1"},
+						{Name: "b", Value: "b1"},
 					},
 					Samples: []client.Sample{
-						client.Sample{
+						{
 							TimestampMs: 5,
 							Value:       8,
 						},
-						client.Sample{
+						{
 							TimestampMs: 10,
 							Value:       9,
 						},
@@ -211,7 +212,7 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 			name: "request starts before beginning config",
 			confs: ShardingConfigs{
 				{
-					From:   chunk.DayTime{parseDate("2019-10-16")},
+					From:   chunk.DayTime{Time: parseDate("2019-10-16")},
 					Shards: 1,
 				},
 			},
@@ -222,11 +223,11 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 			name: "request spans multiple configs",
 			confs: ShardingConfigs{
 				{
-					From:   chunk.DayTime{parseDate("2019-10-16")},
+					From:   chunk.DayTime{Time: parseDate("2019-10-16")},
 					Shards: 1,
 				},
 				{
-					From:   chunk.DayTime{parseDate("2019-11-16")},
+					From:   chunk.DayTime{Time: parseDate("2019-11-16")},
 					Shards: 2,
 				},
 			},
@@ -237,21 +238,21 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 			name: "selects correct config ",
 			confs: ShardingConfigs{
 				{
-					From:   chunk.DayTime{parseDate("2019-10-16")},
+					From:   chunk.DayTime{Time: parseDate("2019-10-16")},
 					Shards: 1,
 				},
 				{
-					From:   chunk.DayTime{parseDate("2019-11-16")},
+					From:   chunk.DayTime{Time: parseDate("2019-11-16")},
 					Shards: 2,
 				},
 				{
-					From:   chunk.DayTime{parseDate("2019-12-16")},
+					From:   chunk.DayTime{Time: parseDate("2019-12-16")},
 					Shards: 3,
 				},
 			},
 			req: reqWith("2019-11-20", "2019-11-25"),
 			expected: ShardingConfig{
-				From:   chunk.DayTime{parseDate("2019-11-16")},
+				From:   chunk.DayTime{Time: parseDate("2019-11-16")},
 				Shards: 2,
 			},
 		},
@@ -276,8 +277,8 @@ func TestTimeFromMillis(t *testing.T) {
 		input    int64
 		expected time.Time
 	}{
-		{1000, time.Unix(1, 0)},
-		{1500, time.Unix(1, 500*nanosecondsInMillisecond)},
+		{input: 1000, expected: time.Unix(1, 0)},
+		{input: 1500, expected: time.Unix(1, 500*nanosecondsInMillisecond)},
 	}
 
 	for i, c := range testExpr {

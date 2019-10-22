@@ -88,15 +88,15 @@ func TestSelect(t *testing.T) {
 						Result: []queryrange.SampleStream{
 							{
 								Labels: []client.LabelAdapter{
-									{"a", "a1"},
-									{"b", "b1"},
+									{Name: "a", Value: "a1"},
+									{Name: "b", Value: "b1"},
 								},
 								Samples: []client.Sample{
-									client.Sample{
+									{
 										Value:       1,
 										TimestampMs: 1,
 									},
-									client.Sample{
+									{
 										Value:       2,
 										TimestampMs: 2,
 									},
@@ -104,15 +104,15 @@ func TestSelect(t *testing.T) {
 							},
 							{
 								Labels: []client.LabelAdapter{
-									{"a", "a2"},
-									{"b", "b2"},
+									{Name: "a", Value: "a1"},
+									{Name: "b", Value: "b1"},
 								},
 								Samples: []client.Sample{
-									client.Sample{
+									{
 										Value:       8,
 										TimestampMs: 1,
 									},
-									client.Sample{
+									{
 										Value:       9,
 										TimestampMs: 2,
 									},
@@ -135,15 +135,15 @@ func TestSelect(t *testing.T) {
 					newSeriesSet([]queryrange.SampleStream{
 						{
 							Labels: []client.LabelAdapter{
-								{"a", "a1"},
-								{"b", "b1"},
+								{Name: "a", Value: "a1"},
+								{Name: "b", Value: "b1"},
 							},
 							Samples: []client.Sample{
-								client.Sample{
+								{
 									Value:       1,
 									TimestampMs: 1,
 								},
-								client.Sample{
+								{
 									Value:       2,
 									TimestampMs: 2,
 								},
@@ -151,15 +151,15 @@ func TestSelect(t *testing.T) {
 						},
 						{
 							Labels: []client.LabelAdapter{
-								{"a", "a2"},
-								{"b", "b2"},
+								{Name: "a", Value: "a1"},
+								{Name: "b", Value: "b1"},
 							},
 							Samples: []client.Sample{
-								client.Sample{
+								{
 									Value:       8,
 									TimestampMs: 1,
 								},
-								client.Sample{
+								{
 									Value:       9,
 									TimestampMs: 2,
 								},

@@ -65,7 +65,6 @@ func CanParallel(node promql.Node) bool {
 		panic(errors.Errorf("CanParallel: unhandled node type %T", node))
 	}
 
-	return false
 }
 
 func funcParallel(f *promql.Function) bool {

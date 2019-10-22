@@ -2,11 +2,12 @@ package astmapper
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestCloneNode(t *testing.T) {
@@ -16,8 +17,16 @@ func TestCloneNode(t *testing.T) {
 	}{
 		// simple unmodified case
 		{
-			&promql.BinaryExpr{promql.ItemADD, &promql.NumberLiteral{1}, &promql.NumberLiteral{1}, nil, false},
-			&promql.BinaryExpr{promql.ItemADD, &promql.NumberLiteral{1}, &promql.NumberLiteral{1}, nil, false},
+			&promql.BinaryExpr{
+				Op:  promql.ItemADD,
+				LHS: &promql.NumberLiteral{Val: 1},
+				RHS: &promql.NumberLiteral{Val: 1},
+			},
+			&promql.BinaryExpr{
+				Op:  promql.ItemADD,
+				LHS: &promql.NumberLiteral{Val: 1},
+				RHS: &promql.NumberLiteral{Val: 1},
+			},
 		},
 		{
 			&promql.AggregateExpr{
@@ -60,16 +69,16 @@ func TestCloneNode_String(t *testing.T) {
 		expected string
 	}{
 		{
-			`rate(http_requests_total{cluster="us-central1"}[1m])`,
-			`rate(http_requests_total{cluster="us-central1"}[1m])`,
+			input:    `rate(http_requests_total{cluster="us-central1"}[1m])`,
+			expected: `rate(http_requests_total{cluster="us-central1"}[1m])`,
 		},
 		{
-			`sum(
+			input: `sum(
 sum(rate(http_requests_total{cluster="us-central1"}[1m]))
 /
 sum(rate(http_requests_total{cluster="ops-tools1"}[1m]))
 )`,
-			`sum(sum(rate(http_requests_total{cluster="us-central1"}[1m])) / sum(rate(http_requests_total{cluster="ops-tools1"}[1m])))`,
+			expected: `sum(sum(rate(http_requests_total{cluster="us-central1"}[1m])) / sum(rate(http_requests_total{cluster="ops-tools1"}[1m])))`,
 		},
 	}
 

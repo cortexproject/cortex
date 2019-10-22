@@ -13,9 +13,9 @@ func FromValue(val promql.Value) ([]queryrange.SampleStream, error) {
 	switch v := val.(type) {
 	case promql.Scalar:
 		return []queryrange.SampleStream{
-			queryrange.SampleStream{
+			{
 				Samples: []client.Sample{
-					client.Sample{
+					{
 						Value:       v.V,
 						TimestampMs: v.T,
 					},

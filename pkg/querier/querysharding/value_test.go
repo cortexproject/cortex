@@ -2,12 +2,13 @@ package querysharding
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestFromValue(t *testing.T) {
@@ -18,17 +19,17 @@ func TestFromValue(t *testing.T) {
 	}{
 		// string (errors)
 		{
-			input: promql.String{1, "hi"},
+			input: promql.String{T: 1, V: "hi"},
 			err:   true,
 		},
 		// Scalar
 		{
-			input: promql.Scalar{1, 1},
+			input: promql.Scalar{T: 1, V: 1},
 			err:   false,
 			expected: []queryrange.SampleStream{
 				{
 					Samples: []client.Sample{
-						client.Sample{
+						{
 							Value:       1,
 							TimestampMs: 1,
 						},
@@ -40,17 +41,17 @@ func TestFromValue(t *testing.T) {
 		{
 			input: promql.Vector{
 				promql.Sample{
-					promql.Point{1, 1},
-					labels.Labels{
-						{"a", "a1"},
-						{"b", "b1"},
+					Point: promql.Point{T: 1, V: 1},
+					Metric: labels.Labels{
+						{Name: "a", Value: "a1"},
+						{Name: "b", Value: "b1"},
 					},
 				},
 				promql.Sample{
-					promql.Point{2, 2},
-					labels.Labels{
-						{"a", "a2"},
-						{"b", "b2"},
+					Point: promql.Point{T: 2, V: 2},
+					Metric: labels.Labels{
+						{Name: "a", Value: "a2"},
+						{Name: "b", Value: "b2"},
 					},
 				},
 			},
@@ -58,11 +59,11 @@ func TestFromValue(t *testing.T) {
 			expected: []queryrange.SampleStream{
 				{
 					Labels: []client.LabelAdapter{
-						{"a", "a1"},
-						{"b", "b1"},
+						{Name: "a", Value: "a1"},
+						{Name: "b", Value: "b1"},
 					},
 					Samples: []client.Sample{
-						client.Sample{
+						{
 							Value:       1,
 							TimestampMs: 1,
 						},
@@ -70,11 +71,11 @@ func TestFromValue(t *testing.T) {
 				},
 				{
 					Labels: []client.LabelAdapter{
-						{"a", "a2"},
-						{"b", "b2"},
+						{Name: "a", Value: "a2"},
+						{Name: "b", Value: "b2"},
 					},
 					Samples: []client.Sample{
-						client.Sample{
+						{
 							Value:       2,
 							TimestampMs: 2,
 						},
@@ -87,22 +88,22 @@ func TestFromValue(t *testing.T) {
 			input: promql.Matrix{
 				{
 					Metric: labels.Labels{
-						{"a", "a1"},
-						{"b", "b1"},
+						{Name: "a", Value: "a1"},
+						{Name: "b", Value: "b1"},
 					},
 					Points: []promql.Point{
-						{1, 1},
-						{2, 2},
+						{T: 1, V: 1},
+						{T: 2, V: 2},
 					},
 				},
 				{
 					Metric: labels.Labels{
-						{"a", "a2"},
-						{"b", "b2"},
+						{Name: "a", Value: "a2"},
+						{Name: "b", Value: "b2"},
 					},
 					Points: []promql.Point{
-						{1, 8},
-						{2, 9},
+						{T: 1, V: 8},
+						{T: 2, V: 9},
 					},
 				},
 			},
@@ -110,15 +111,15 @@ func TestFromValue(t *testing.T) {
 			expected: []queryrange.SampleStream{
 				{
 					Labels: []client.LabelAdapter{
-						{"a", "a1"},
-						{"b", "b1"},
+						{Name: "a", Value: "a1"},
+						{Name: "b", Value: "b1"},
 					},
 					Samples: []client.Sample{
-						client.Sample{
+						{
 							Value:       1,
 							TimestampMs: 1,
 						},
-						client.Sample{
+						{
 							Value:       2,
 							TimestampMs: 2,
 						},
@@ -126,15 +127,15 @@ func TestFromValue(t *testing.T) {
 				},
 				{
 					Labels: []client.LabelAdapter{
-						{"a", "a2"},
-						{"b", "b2"},
+						{Name: "a", Value: "a2"},
+						{Name: "b", Value: "b2"},
 					},
 					Samples: []client.Sample{
-						client.Sample{
+						{
 							Value:       8,
 							TimestampMs: 1,
 						},
-						client.Sample{
+						{
 							Value:       9,
 							TimestampMs: 2,
 						},

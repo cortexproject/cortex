@@ -237,6 +237,7 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
 	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
+	t.server.HTTP.Path("/shutdown").Handler(http.HandlerFunc(t.ingester.ShutdownHandler))
 	return
 }
 

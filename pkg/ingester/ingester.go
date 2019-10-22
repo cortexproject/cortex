@@ -249,7 +249,6 @@ func (i *Ingester) Shutdown() {
 //     * Flush all the chunks.
 func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 	i.Shutdown()
-	i.Flush()
 	w.WriteHeader(http.StatusNoContent)
 }
 

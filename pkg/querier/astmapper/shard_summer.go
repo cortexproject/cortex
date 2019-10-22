@@ -3,6 +3,13 @@ package astmapper
 import (
 	"fmt"
 
+	"regexp"
+
+	"strings"
+
+	"strconv"
+
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -12,6 +19,13 @@ const (
 	DefaultShards = 12
 	// ShardLabel is a reserved label referencing a cortex shard
 	ShardLabel = "__cortex_shard__"
+	// ShardLabelFmt is the fmt of the ShardLabel key.
+	ShardLabelFmt = "%d_of_%d"
+)
+
+var (
+	// ShardLabelRE matches a value in ShardLabelFmt
+	ShardLabelRE = regexp.MustCompile("^[0-9]+_of_[0-9]+$")
 )
 
 type squasher = func(promql.Node) (promql.Expr, error)
@@ -136,7 +150,7 @@ func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 }
 
 func shardVectorSelector(curshard, shards int, selector *promql.VectorSelector) (promql.Node, error) {
-	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, ShardLabel, fmt.Sprintf("%d_of_%d", curshard, shards))
+	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, ShardLabel, fmt.Sprintf(ShardLabelFmt, curshard, shards))
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +166,7 @@ func shardVectorSelector(curshard, shards int, selector *promql.VectorSelector) 
 }
 
 func shardMatrixSelector(curshard, shards int, selector *promql.MatrixSelector) (promql.Node, error) {
-	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, ShardLabel, fmt.Sprintf("%d_of_%d", curshard, shards))
+	shardMatcher, err := labels.NewMatcher(labels.MatchEqual, ShardLabel, fmt.Sprintf(ShardLabelFmt, curshard, shards))
 	if err != nil {
 		return nil, err
 	}
@@ -166,4 +180,26 @@ func shardMatrixSelector(curshard, shards int, selector *promql.MatrixSelector) 
 			selector.LabelMatchers...,
 		),
 	}, nil
+}
+
+// ParseShard will extract the shard information encoded in ShardLabelFmt
+func ParseShard(input string) (x, of int, err error) {
+	if !ShardLabelRE.MatchString(input) {
+		return 0, 0, errors.Errorf("Invalid ShardLabel value: [%s]", input)
+	}
+
+	matches := strings.Split(input, "_")
+	x, err = strconv.Atoi(matches[0])
+	if err != nil {
+		return 0, 0, err
+	}
+	of, err = strconv.Atoi(matches[2])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if x >= of {
+		return 0, 0, errors.Errorf("Shards out of bounds: [%d] >= [%d]", x, of)
+	}
+	return x, of, err
 }

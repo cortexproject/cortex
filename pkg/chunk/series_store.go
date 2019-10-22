@@ -14,6 +14,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -255,12 +256,34 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
 		indexLookupsPerQuery.Observe(1)
-		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil)
+		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, nil)
 		if err != nil {
 			preIntersectionPerQuery.Observe(float64(len(series)))
 			postIntersectionPerQuery.Observe(float64(len(series)))
 		}
 		return series, err
+	}
+
+	// Check if one of the labels is a shard annotation, pass that information to lookupSeriesByMetricNameMatcher,
+	// and remove the label.
+	var (
+		shard           *int
+		shardLabelIndex *int
+	)
+	for i, matcher := range matchers {
+		if matcher.Type == labels.MatchEqual && matcher.Name == astmapper.ShardLabel {
+			cur := i
+			shardLabelIndex = &cur
+			s, _, err := astmapper.ParseShard(matcher.Value)
+			if err != nil {
+				return nil, err
+			}
+			shard = &s
+		}
+	}
+
+	if shardLabelIndex != nil {
+		matchers = append(matchers[:*shardLabelIndex], matchers[*shardLabelIndex+1:]...)
 	}
 
 	// Otherwise get series which include other matchers
@@ -269,7 +292,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	indexLookupsPerQuery.Observe(float64(len(matchers)))
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
-			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher)
+			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, shard)
 			if err != nil {
 				incomingErrors <- err
 				return
@@ -320,7 +343,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	return ids, nil
 }
 
-func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher) ([]string, error) {
+func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *int) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
 	defer log.Span.Finish()
 
@@ -340,6 +363,10 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 		return nil, err
 	}
 	level.Debug(log).Log("queries", len(queries))
+
+	queries = c.schema.FilterIndexQueries(queries, shard)
+
+	level.Debug(log).Log("filtered queries", len(queries))
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if e, ok := err.(CardinalityExceededError); ok {

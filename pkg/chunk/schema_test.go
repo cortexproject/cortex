@@ -386,5 +386,69 @@ func BenchmarkEncodeLabelsString(b *testing.B) {
 	}
 	b.Log("data size", len(data))
 	b.Log("decode", decoded)
+}
 
+// Ensure all currently defined entries can inhabit the entries interface
+func TestEnsureEntriesInhabitInterface(t *testing.T) {
+	var _ = []entries{
+		originalEntries{},
+		base64Entries{},
+		labelNameInHashKeyEntries{},
+		v5Entries{},
+		v6Entries{},
+		v9Entries{},
+		v10Entries{},
+		v11Entries{},
+	}
+}
+
+func TestDefaultFilterIndexQueries(t *testing.T) {
+	fromShards := func(n int) (res []IndexQuery) {
+		for i := 0; i < n; i++ {
+			res = append(res, IndexQuery{
+				TableName:       "tbl",
+				HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, "hash", "metric", "label"),
+				RangeValueStart: []byte(string(i)),
+				ValueEqual:      []byte(string(i)),
+			})
+		}
+		return res
+	}
+
+	nPtr := func(n int) *int {
+		return &n
+	}
+
+	var testExprs = []struct {
+		name     string
+		queries  []IndexQuery
+		shard    *int
+		expected []IndexQuery
+	}{
+		{
+			name:     "passthrough when no shard specified",
+			queries:  fromShards(2),
+			shard:    nil,
+			expected: fromShards(2),
+		},
+		{
+			name:     "out of bounds shard returns 0 matches",
+			queries:  fromShards(2),
+			shard:    nPtr(3),
+			expected: nil,
+		},
+		{
+			name:     "return correct shard",
+			queries:  fromShards(2),
+			shard:    nPtr(1),
+			expected: []IndexQuery{fromShards(2)[1]},
+		},
+	}
+
+	for _, c := range testExprs {
+		t.Run(c.name, func(t *testing.T) {
+			filtered := defaultFilterIndexQueries(c.queries, c.shard)
+			require.Equal(t, c.expected, filtered)
+		})
+	}
 }

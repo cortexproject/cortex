@@ -96,3 +96,43 @@ func TestShardSummer(t *testing.T) {
 		})
 	}
 }
+
+func TestParseShard(t *testing.T) {
+	var testExpr = []struct {
+		input string
+		err   bool
+		x     int
+		of    int
+	}{
+		{
+			input: "lsdjf",
+			err:   true,
+		},
+		{
+			input: "a_of_3",
+			err:   true,
+		},
+		{
+			input: "3_of_3",
+			err:   true,
+		},
+		{
+			input: "1_of_2",
+			x:     1,
+			of:    2,
+		},
+	}
+
+	for _, c := range testExpr {
+		t.Run(fmt.Sprint(c.input), func(t *testing.T) {
+			x, of, err := ParseShard(c.input)
+			if c.err {
+				require.NotNil(t, err)
+			} else {
+				require.Equal(t, c.x, x)
+				require.Equal(t, c.of, of)
+			}
+		})
+	}
+
+}

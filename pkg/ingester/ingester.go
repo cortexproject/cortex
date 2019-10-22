@@ -30,10 +30,6 @@ import (
 )
 
 const (
-	// Reasons to discard samples.
-	outOfOrderTimestamp = "timestamp_out_of_order"
-	duplicateSample     = "multiple_values_for_timestamp"
-
 	// Number of timeseries to return in each batch of a QueryStream.
 	queryStreamBatchSize = 128
 )

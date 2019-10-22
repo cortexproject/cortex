@@ -59,10 +59,6 @@ func NewReplicaDesc() *ReplicaDesc {
 	return &ReplicaDesc{}
 }
 
-const (
-	longPollDuration = 10 * time.Second
-)
-
 // Track the replica we're accepting samples from
 // for each HA cluster we know about.
 type haTracker struct {

@@ -118,37 +118,3 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 	result.reset()
 	return result
 }
-
-func mergeBatchTimes(a, b promchunk.Batch, size int) promchunk.Batch {
-	i, j, k := 0, 0, 0
-	var result promchunk.Batch
-	for i < a.Length && j < b.Length && k < size {
-		t1, t2 := a.Timestamps[i], b.Timestamps[j]
-		if t1 < t2 {
-			result.Timestamps[k] = t1
-			i++
-			k++
-		} else if t1 > t2 {
-			result.Timestamps[k] = t2
-			j++
-			k++
-		} else {
-			result.Timestamps[k] = t2
-			i++
-			j++
-			k++
-		}
-	}
-	for i < a.Length && k < size {
-		result.Timestamps[k] = a.Timestamps[i]
-		i++
-		k++
-	}
-	for j < b.Length && k < size {
-		result.Timestamps[k] = b.Timestamps[j]
-		j++
-		k++
-	}
-	result.Length = k
-	return result
-}

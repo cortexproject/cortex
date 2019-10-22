@@ -49,26 +49,6 @@ var (
 	}
 )
 
-var dummyResponse = &APIResponse{
-	Status: statusSuccess,
-	Data: Response{
-		ResultType: matrix,
-		Result: []SampleStream{
-			{
-				Labels: []client.LabelAdapter{
-					{Name: "foo", Value: "bar"},
-				},
-				Samples: []client.Sample{
-					{
-						TimestampMs: 60,
-						Value:       60,
-					},
-				},
-			},
-		},
-	},
-}
-
 func mkAPIResponse(start, end, step int64) *APIResponse {
 	var samples []client.Sample
 	for i := start; i <= end; i += step {

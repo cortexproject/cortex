@@ -68,7 +68,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
 
 	ft := &flushTransferer{}
-	l1, err := NewLifecycler(lifecyclerConfig1, ft, "ingester")
+	l1, err := NewLifecycler(lifecyclerConfig1, ft, "ingester", "")
 	require.NoError(t, err)
 
 	// Check this ingester joined, is active, and has one token.
@@ -85,7 +85,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	lifecyclerConfig2.JoinAfter = 100 * time.Second
 	lifecyclerConfig2.NormaliseTokens = true
 
-	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester")
+	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", "")
 	require.NoError(t, err)
 
 	// This will block until l1 has successfully left the ring.
@@ -122,7 +122,7 @@ func TestRingRestart(t *testing.T) {
 	// Add an 'ingester' with normalised tokens.
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
 	lifecyclerConfig1.NormaliseTokens = true
-	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester")
+	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", "")
 	require.NoError(t, err)
 
 	// Check this ingester joined, is active, and has one token.
@@ -135,7 +135,7 @@ func TestRingRestart(t *testing.T) {
 	token := l1.tokens[0]
 
 	// Add a second ingester with the same settings, so it will think it has restarted
-	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester")
+	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", "")
 	require.NoError(t, err)
 
 	// Check the new ingester picked up the same token
@@ -195,7 +195,7 @@ func TestCheckReady(t *testing.T) {
 	defer r.Stop()
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
-	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester")
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", "")
 	l1.setTokens([]uint32{1})
 	require.NoError(t, err)
 

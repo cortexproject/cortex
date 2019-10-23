@@ -2,9 +2,11 @@ package ring
 
 import (
 	"context"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"os"
+	"path"
 	"sort"
 	"sync"
 	"time"
@@ -36,6 +38,10 @@ var (
 		Help:    "Duration (in seconds) of cortex shutdown procedure (ie transfer or flush).",
 		Buckets: prometheus.ExponentialBuckets(10, 2, 8), // Biggest bucket is 10*2^(9-1) = 2560, or 42 mins.
 	}, []string{"op", "status", "name"})
+)
+
+const (
+	tokensFileName = "tokens"
 )
 
 // LifecyclerConfig is the config to build a Lifecycler.
@@ -108,6 +114,7 @@ type Lifecycler struct {
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
 	KVStore         kv.Client
+	tokenDir        string
 
 	// Controls the lifecycle of the ingester
 	quit      chan struct{}
@@ -132,7 +139,7 @@ type Lifecycler struct {
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name string) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name, tokenDir string) (*Lifecycler, error) {
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -155,6 +162,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 		cfg:             cfg,
 		flushTransferer: flushTransferer,
 		KVStore:         store,
+		tokenDir:        tokenDir,
 
 		Addr:     fmt.Sprintf("%s:%d", addr, port),
 		ID:       cfg.ID,
@@ -242,12 +250,32 @@ func (i *Lifecycler) getTokens() []uint32 {
 	return i.tokens
 }
 
+func (i *Lifecycler) flushTokensToFile() {
+	tokenFilePath := path.Join(i.tokenDir, tokensFileName)
+	f, err := os.OpenFile(tokenFilePath, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error in creating token file", "err", err)
+		return
+	}
+
+	b := make([]byte, 4*len(i.tokens))
+	for idx, token := range i.tokens {
+		binary.BigEndian.PutUint32(b[idx*4:], token)
+	}
+
+	if _, err = f.Write(b); err != nil {
+		level.Error(util.Logger).Log("msg", "error in writing token file", "err", err)
+		return
+	}
+}
+
 func (i *Lifecycler) setTokens(tokens []uint32) {
 	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 	i.tokens = tokens
+	i.flushTokensToFile()
 }
 
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.

@@ -12,10 +12,11 @@ import (
 
 // TestMarshall is useful to try out various optimisation on the unmarshalling code.
 func TestMarshall(t *testing.T) {
+	const numSeries = 10
 	recorder := httptest.NewRecorder()
 	{
 		req := WriteRequest{}
-		for i := 0; i < 10; i++ {
+		for i := 0; i < numSeries; i++ {
 			req.Timeseries = append(req.Timeseries, PreallocTimeseries{
 				&TimeSeries{
 					Labels: []LabelAdapter{
@@ -32,8 +33,15 @@ func TestMarshall(t *testing.T) {
 	}
 
 	{
+		const (
+			tooSmallSize = 1
+			plentySize   = 1024 * 1024
+		)
 		req := WriteRequest{}
-		_, err := util.ParseProtoReader(context.Background(), recorder.Body, &req, util.RawSnappy)
+		_, err := util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), tooSmallSize, &req, util.RawSnappy)
+		require.Error(t, err)
+		_, err = util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), plentySize, &req, util.RawSnappy)
 		require.NoError(t, err)
+		require.Equal(t, numSeries, len(req.Timeseries))
 	}
 }

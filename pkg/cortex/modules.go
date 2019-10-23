@@ -304,6 +304,10 @@ func (t *Cortex) stopQueryFrontend() (err error) {
 }
 
 func (t *Cortex) initTableManager(cfg *Config) error {
+	if cfg.Ingester.V2.Enabled {
+		return nil // table manager isn't used in v2
+	}
+
 	err := cfg.Schema.Load()
 	if err != nil {
 		return err
@@ -342,7 +346,10 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 }
 
 func (t *Cortex) stopTableManager() error {
-	t.tableManager.Stop()
+	if t.tableManager != nil {
+		t.tableManager.Stop()
+	}
+
 	return nil
 }
 

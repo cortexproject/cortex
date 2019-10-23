@@ -3,8 +3,10 @@ package ring
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 	"sort"
@@ -269,6 +271,28 @@ func (i *Lifecycler) flushTokensToFile() {
 	}
 }
 
+func (i *Lifecycler) getTokensFromFile() ([]uint32, error) {
+	tokenFilePath := path.Join(i.tokenDir, tokensFileName)
+	b, err := ioutil.ReadFile(tokenFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if len(b)%4 != 0 {
+		return nil, errors.New("token data is not 4 byte aligned")
+	}
+
+	numTokens := len(b) >> 2
+	tokens := make([]uint32, 0, numTokens)
+	for i := 0; i < numTokens; i++ {
+		tokens = append(tokens, binary.BigEndian.Uint32(b[i<<2:]))
+	}
+
+	return tokens, nil
+}
+
 func (i *Lifecycler) setTokens(tokens []uint32) {
 	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
@@ -417,6 +441,19 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
+			// We load the tokens from the file only if it does not exist in the ring yet.
+			tokens, err := i.getTokensFromFile()
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
+			} else if len(tokens) > 0 {
+				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokens))
+				if len(tokens) == i.cfg.NumTokens {
+					i.setState(ACTIVE)
+				}
+				ringDesc.AddIngester(i.ID, i.Addr, tokens, i.GetState(), i.cfg.NormaliseTokens)
+				return ringDesc, true, nil
+			}
+
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
 			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)

@@ -6,8 +6,24 @@
 IMAGE_PREFIX ?= quay.io/cortexproject/
 # Use CIRCLE_TAG if present for releases.
 IMAGE_TAG ?= $(if $(CIRCLE_TAG),$(CIRCLE_TAG),$(shell ./tools/image-tag))
-GIT_REVISION := $(shell git rev-parse HEAD)
 UPTODATE := .uptodate
+
+# Boiler plate for building Cortex's Golang binary.
+VERSION := $(shell cat VERSION)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+GIT_REVISION := $(shell git rev-parse HEAD)
+GO_LDFLAGS := -X github.com/prometheus/common/version.Version=$(VERSION) \
+	-X github.com/prometheus/common/version.Branch=${GIT_BRANCH} \
+	-X github.com/prometheus/common/version.Revision=$(GIT_REVISION)
+GO_FLAGS := -ldflags "$(GO_LDFLAGS) -extldflags \"-static\" -s -w" -tags netgo
+NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
+       rm $@; \
+       echo "\nYour go standard library was built without the 'netgo' build tag."; \
+       echo "To fix that, run"; \
+       echo "    sudo go clean -i net"; \
+       echo "    sudo go install -tags netgo std"; \
+       false; \
+}
 
 # Building Docker images is now automated. The convention is every directory
 # with a Dockerfile in it builds an image calls quay.io/cortexproject/<dirname>.
@@ -73,15 +89,6 @@ RM := --rm
 # as it currently disallows TTY devices. This value needs to be overridden
 # in any custom cloudbuild.yaml files
 TTY := --tty
-GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
-NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
-       rm $@; \
-       echo "\nYour go standard library was built without the 'netgo' build tag."; \
-       echo "To fix that, run"; \
-       echo "    sudo go clean -i net"; \
-       echo "    sudo go install -tags netgo std"; \
-       false; \
-}
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 

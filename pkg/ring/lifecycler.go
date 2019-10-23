@@ -253,6 +253,9 @@ func (i *Lifecycler) getTokens() []uint32 {
 }
 
 func (i *Lifecycler) flushTokensToFile() {
+	if i.cfg.TokenFileDir == "" {
+		return
+	}
 	tokenFilePath := path.Join(i.cfg.TokenFileDir, tokensFileName)
 	f, err := os.OpenFile(tokenFilePath, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {

@@ -61,7 +61,7 @@ func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) 
 
 	switch n := node.(type) {
 	case *promql.AggregateExpr:
-		if CanParallel(n) {
+		if CanParallel(n) && n.Op == promql.ItemSum {
 			result, err := summer.shardSum(n)
 			return result, true, err
 		}
@@ -94,43 +94,12 @@ func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 		return expr, nil
 	}
 
-	subSums := make([]promql.Expr, 0, summer.shards)
-
-	for i := 0; i < summer.shards; i++ {
-		cloned, err := CloneNode(expr.Expr)
-		if err != nil {
-			return nil, err
-		}
-
-		subSummer := NewASTNodeMapper(summer.CopyWithCurshard(i))
-		sharded, err := subSummer.Map(cloned)
-		if err != nil {
-			return nil, err
-		}
-
-		var subSum promql.Expr = &promql.AggregateExpr{
-			Op:       expr.Op,
-			Expr:     sharded.(promql.Expr),
-			Param:    expr.Param,
-			Grouping: expr.Grouping,
-			Without:  expr.Without,
-		}
-
-		if summer.squash != nil {
-			subSum, err = summer.squash(subSum)
-		}
-
-		if err != nil {
-			return nil, err
-		}
-
-		subSums = append(subSums,
-			subSum,
-		)
-
+	parent, subSums, err := summer.splitSum(expr)
+	if err != nil {
+		return nil, err
 	}
 
-	var combinedSums promql.Expr = subSums[0]
+	var combinedSums = subSums[0]
 	for i := 1; i < len(subSums); i++ {
 		combinedSums = &promql.BinaryExpr{
 			Op:  promql.ItemLOR,
@@ -138,15 +107,101 @@ func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 			RHS: subSums[i],
 		}
 	}
+	parent.Expr = combinedSums
+	return parent, nil
+}
 
-	return &promql.AggregateExpr{
-			Op:       expr.Op,
-			Expr:     combinedSums,
-			Param:    expr.Param,
-			Grouping: expr.Grouping,
-			Without:  expr.Without,
-		},
-		nil
+// splitSum takes a shardFactor and a sum expr and will form the new parent and child legs of a parallel variant
+func (summer *shardSummer) splitSum(
+	expr *promql.AggregateExpr,
+) (
+	parent *promql.AggregateExpr,
+	children []promql.Expr,
+	err error,
+) {
+	parent = &promql.AggregateExpr{
+		Op:       expr.Op,
+		Param:    expr.Param,
+		Grouping: expr.Grouping,
+		Without:  expr.Without,
+	}
+	var mkChild func(sharded *promql.AggregateExpr) promql.Expr
+
+	if expr.Without {
+		/*
+			parallelizing a sum using without(foo) is representable as
+			sum without(foo) (
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+			)
+		*/
+		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
+			sharded.Grouping = []string{ShardLabel}
+			sharded.Without = true
+			return sharded
+		}
+	} else if len(expr.Grouping) > 0 {
+		/*
+			parallelizing a sum using by(foo) is representable as
+			sum by(foo) (
+			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
+			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m]))
+			)
+		*/
+		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
+			groups := make([]string, 0, len(expr.Grouping)+1)
+			groups = append(groups, expr.Grouping...)
+			groups = append(groups, ShardLabel)
+			sharded.Grouping = groups
+			return sharded
+		}
+	} else {
+		/*
+			parallelizing a non-parameterized sum is representable as
+			sum(
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m]))
+			)
+		*/
+		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
+			sharded.Grouping = []string{ShardLabel}
+			sharded.Without = true
+			return sharded
+		}
+	}
+
+	// iterate across shardFactor to create children
+	for i := 0; i < summer.shards; i++ {
+		cloned, err := CloneNode(expr.Expr)
+		if err != nil {
+			return parent, children, err
+		}
+
+		subSummer := NewASTNodeMapper(summer.CopyWithCurshard(i))
+		sharded, err := subSummer.Map(cloned)
+		if err != nil {
+			return parent, children, err
+		}
+
+		subSum := mkChild(&promql.AggregateExpr{
+			Op:   expr.Op,
+			Expr: sharded.(promql.Expr),
+		})
+
+		if summer.squash != nil {
+			subSum, err = summer.squash(subSum)
+		}
+
+		if err != nil {
+			return parent, children, err
+		}
+
+		children = append(children,
+			subSum,
+		)
+	}
+
+	return parent, children, nil
 }
 
 func shardVectorSelector(curshard, shards int, selector *promql.VectorSelector) (promql.Node, error) {

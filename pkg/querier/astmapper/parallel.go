@@ -5,6 +5,15 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
+var summableAggregates = map[promql.ItemType]struct{}{
+	promql.ItemSum:     {},
+	promql.ItemMin:     {},
+	promql.ItemMax:     {},
+	promql.ItemTopK:    {},
+	promql.ItemBottomK: {},
+	promql.ItemCount:   {},
+}
+
 // CanParallel annotates subtrees as parallelizable.
 // A subtree is parallelizable if all of it's components are parallelizable.
 func CanParallel(node promql.Node) bool {
@@ -22,27 +31,19 @@ func CanParallel(node promql.Node) bool {
 		return true
 
 	case *promql.AggregateExpr:
-		// currently we only support sum for expediency.
-		if n.Op != promql.ItemSum || !CanParallel(n.Param) || !CanParallel(n.Expr) {
-			return false
-		}
-		return true
+		_, ok := summableAggregates[n.Op]
+		return ok && CanParallel(n.Expr)
 
 	case *promql.BinaryExpr:
 		// since binary exprs use each side for merging, they cannot be parallelized
 		return false
 
 	case *promql.Call:
-		if !funcParallel(n.Func) {
-			return false
-		}
-
 		for _, e := range n.Args {
 			if !CanParallel(e) {
 				return false
 			}
 		}
-
 		return true
 
 	case *promql.SubqueryExpr:
@@ -65,9 +66,4 @@ func CanParallel(node promql.Node) bool {
 		panic(errors.Errorf("CanParallel: unhandled node type %T", node))
 	}
 
-}
-
-func funcParallel(f *promql.Function) bool {
-	// flagging all functions as parallel for expediency -- this is certainly not correct (i.e. avg).
-	return true
 }

@@ -69,9 +69,9 @@ func Test_PromQL(t *testing.T) {
 		{
 			`sum(bar1{baz="blip"})`,
 			`sum(
-				sum by(__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
-				sum by(__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
-				sum by(__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
+				sum without(__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
+				sum without(__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
+				sum without(__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
 			  )`,
 			true,
 		},
@@ -84,16 +84,6 @@ func Test_PromQL(t *testing.T) {
 			  )`,
 			true,
 		},
-		// __cortex_shard__ needs to be removed but after the or operation
-		{
-			`sum without (foo,bar) (bar1{baz="blip"})`,
-			`sum without (foo,bar,__cortex_shard__)(
-				sum without(foo,bar) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
-				sum without(foo,bar) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
-				sum without(foo,bar) (bar1{__cortex_shard__="2_of_3",baz="blip"})
-			  )`,
-			true,
-		},
 		{
 			`sum by (foo,bar) (bar1{baz="blip"})`,
 			`sum by (foo,bar)(
@@ -103,6 +93,7 @@ func Test_PromQL(t *testing.T) {
 			  )`,
 			true,
 		},
+		// since series are unique to a shard, it's safe to sum without shard first, then reaggregate
 		{
 			`sum without (foo,bar) (bar1{baz="blip"})`,
 			`sum without (foo,bar)(
@@ -228,42 +219,24 @@ func Test_PromQL(t *testing.T) {
                           "__cortex_shard__","","","")`,
 			true,
 		},
-		// {
-		// 	`sum by (foo,bar) (rate(bar1{baz="blip"}[1m]))`,
-		// 	` sum by (foo,bar)(
-		// 		sum by(foo,bar,__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
-		// 		sum by(foo,bar,__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
-		// 		sum by(foo,bar,__cortex_shard__) (rate(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
-		// 	  )`,
-		// 	true,
-		// },
-		// {
-		// 	`sum by (foo,bar) (count_over_time(bar1{baz="blip"}[1m]))`,
-		// 	` sum by (foo,bar)(
-		// 		sum by(foo,bar,__cortex_shard__) (count_over_time(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
-		// 		sum by(foo,bar,__cortex_shard__) (count_over_time(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
-		// 		sum by(foo,bar,__cortex_shard__) (count_over_time(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
-		// 	  )`,
-		// 	true,
-		// },
-		// {
-		// 	`sum by (foo,bar) (avg_over_time(bar1{baz="blip"}[1m]))`,
-		// 	` sum by (foo,bar)(
-		// 		sum by(foo,bar,__cortex_shard__) (avg_over_time(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
-		// 		sum by(foo,bar,__cortex_shard__) (avg_over_time(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
-		// 		sum by(foo,bar,__cortex_shard__) (avg_over_time(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
-		// 	  )`,
-		// 	true,
-		// },
-		// {
-		// 	`sum by (foo,bar) (min_over_time(bar1{baz="blip"}[1m]))`,
-		// 	` sum by (foo,bar)(
-		// 		sum by(foo,bar,__cortex_shard__) (min_over_time(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
-		// 		sum by(foo,bar,__cortex_shard__) (min_over_time(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
-		// 		sum by(foo,bar,__cortex_shard__) (min_over_time(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
-		// 	  )`,
-		// 	true,
-		// },
+		{
+			`sum by (foo,bar) (avg_over_time(bar1{baz="blip"}[1m]))`,
+			`sum by (foo,bar)(
+				sum by(foo,bar,__cortex_shard__) (avg_over_time(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
+				sum by(foo,bar,__cortex_shard__) (avg_over_time(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
+				sum by(foo,bar,__cortex_shard__) (avg_over_time(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
+			  )`,
+			true,
+		},
+		{
+			`sum by (foo,bar) (min_over_time(bar1{baz="blip"}[1m]))`,
+			`sum by (foo,bar)(
+				sum by(foo,bar,__cortex_shard__) (min_over_time(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
+				sum by(foo,bar,__cortex_shard__) (min_over_time(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
+				sum by(foo,bar,__cortex_shard__) (min_over_time(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
+			  )`,
+			true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -292,12 +265,12 @@ func Test_PromQL(t *testing.T) {
 var shardAwareQueryable = storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	return &matrix{
 		series: []*promql.StorageSeries{
-			newSeries(labels.Labels{{"__name__", "bar1"}, {"baz", "blip"}, {"bar", "blop"}, {"foo", "barr"}}, factor(5)),
-			newSeries(labels.Labels{{"__name__", "bar1"}, {"baz", "blip"}, {"bar", "blop"}, {"foo", "bazz"}}, factor(7)),
-			newSeries(labels.Labels{{"__name__", "bar1"}, {"baz", "blip"}, {"bar", "blap"}, {"foo", "buzz"}}, factor(12)),
-			newSeries(labels.Labels{{"__name__", "bar1"}, {"baz", "blip"}, {"bar", "blap"}, {"foo", "bozz"}}, factor(11)),
-			newSeries(labels.Labels{{"__name__", "bar1"}, {"baz", "blip"}, {"bar", "blop"}, {"foo", "buzz"}}, factor(8)),
-			newSeries(labels.Labels{{"__name__", "bar1"}, {"baz", "blip"}, {"bar", "blap"}, {"foo", "bazz"}}, identity),
+			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "barr"}}, factor(5)),
+			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "bazz"}}, factor(7)),
+			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blap"}, {Name: "foo", Value: "buzz"}}, factor(12)),
+			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blap"}, {Name: "foo", Value: "bozz"}}, factor(11)),
+			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "buzz"}}, factor(8)),
+			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blap"}, {Name: "foo", Value: "bazz"}}, identity),
 		},
 	}, nil
 })

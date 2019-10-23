@@ -14,13 +14,25 @@ func TestShardSummer(t *testing.T) {
 		input    string
 		expected string
 	}{
+		// Series are grouped on a single shard,
+		// so if we’re not reducing label cardinality,
+		// remove the reference to __cortex_shard__ (it shouldn’t be in the return value).
+		{
+			shards: 3,
+			input:  `sum(rate(bar1{baz="blip"}[1m]))`,
+			expected: `sum(
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
+			)`,
+		},
 		{
 			shards: 3,
 			input:  `sum by(foo) (rate(bar1{baz="blip"}[1m]))`,
 			expected: `sum by(foo) (
-			  sum by(foo) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
-			  sum by(foo) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
-			  sum by(foo) (rate(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
+			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
+			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
+			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
 			)`,
 		},
 		{
@@ -32,13 +44,13 @@ func TestShardSummer(t *testing.T) {
 			)`,
 			expected: `sum(
 			  sum by(foo) (
-				sum by(foo) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-				sum by(foo) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+				sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+				sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			  )
 			  /
 			  sum by(foo) (
-				sum by(foo) (rate(foo{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-				sum by(foo) (rate(foo{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+				sum by(foo, __cortex_shard__) (rate(foo{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+				sum by(foo, __cortex_shard__) (rate(foo{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			  )
 			)`,
 		},
@@ -47,16 +59,16 @@ func TestShardSummer(t *testing.T) {
 			shards: 2,
 			input:  `sum(sum by(foo) (rate(bar1{baz="blip"}[1m])))`,
 			expected: `sum(
-			  sum(
+			  sum without(__cortex_shard__) (
 				sum by(foo) (
-				  sum by(foo) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-				  sum by(foo) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 				)
 			  ) or
-			  sum(
+			  sum without(__cortex_shard__)(
 				sum by(foo) (
-				  sum by(foo) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-				  sum by(foo) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 				)
 			  )
 			)`,
@@ -66,8 +78,8 @@ func TestShardSummer(t *testing.T) {
 			shards: 2,
 			input:  `sum without(foo) (rate(bar1{baz="blip"}[1m]))`,
 			expected: `sum without(foo) (
-			  sum without(foo) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-			  sum without(foo) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			)`,
 		},
 		// multiple dimensions
@@ -75,8 +87,8 @@ func TestShardSummer(t *testing.T) {
 			shards: 2,
 			input:  `sum by(foo, bom) (rate(bar1{baz="blip"}[1m]))`,
 			expected: `sum by(foo, bom) (
-			  sum by(foo, bom) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-			  sum by(foo, bom) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+			  sum by(foo, bom, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			  sum by(foo, bom, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			)`,
 		},
 	}

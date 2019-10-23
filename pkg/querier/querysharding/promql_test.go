@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	start  = time.Now()
+	start  = time.Unix(1000, 0)
 	end    = start.Add(3 * time.Minute)
 	step   = 30 * time.Second
 	ctx    = context.Background()
@@ -56,7 +56,7 @@ func Test_PromQL(t *testing.T) {
 			)`,
 			true,
 		},
-		// __cortex_shard_ label is required otherwise the or will keep only the first series.
+		// __cortex_shard__ label is required otherwise the or will keep only the first series.
 		{
 			`sum(bar1{baz="blip"})`,
 			`sum(
@@ -87,7 +87,7 @@ func Test_PromQL(t *testing.T) {
 		// __cortex_shard__ needs to be removed but after the or operation
 		{
 			`sum without (foo,bar) (bar1{baz="blip"})`,
-			` sum without (foo,bar,__cortex_shard__)(
+			`sum without (foo,bar,__cortex_shard__)(
 				sum without(foo,bar) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
 				sum without(foo,bar) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
 				sum without(foo,bar) (bar1{__cortex_shard__="2_of_3",baz="blip"})
@@ -96,7 +96,7 @@ func Test_PromQL(t *testing.T) {
 		},
 		{
 			`sum by (foo,bar) (bar1{baz="blip"})`,
-			` sum by (foo,bar)(
+			`sum by (foo,bar)(
 				sum by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
 				sum by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
 				sum by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
@@ -104,35 +104,17 @@ func Test_PromQL(t *testing.T) {
 			true,
 		},
 		{
-			`avg(bar1{baz="blip"})`,
-			` avg(
-				avg by(__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
-				avg by(__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
-				avg by(__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
-			  )`,
-			false,
-		},
-		{
-			`avg by (foo,bar) (bar1{baz="blip"})`,
-			` avg by (foo,bar)(
-				avg by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
-				avg by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
-				avg by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
+			`sum without (foo,bar) (bar1{baz="blip"})`,
+			`sum without (foo,bar)(
+				sum without(__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
+				sum without(__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
+				sum without(__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
 			  )`,
 			true,
 		},
 		{
-			`avg without (foo) (bar1{baz="blip"})`,
-			` avg without (foo,__cortex_shard__)(
-				avg without(foo) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
-				avg without(foo) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
-				avg without(foo) (bar1{__cortex_shard__="2_of_3",baz="blip"})
-			  )`,
-			false,
-		},
-		{
 			`min by (foo,bar) (bar1{baz="blip"})`,
-			` min by (foo,bar)(
+			`min by (foo,bar)(
 				min by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
 				min by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
 				min by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
@@ -147,6 +129,16 @@ func Test_PromQL(t *testing.T) {
 				max by(foo,bar,__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
 			  )`,
 			true,
+		},
+		// avg generally cant be parallelized
+		{
+			`avg(bar1{baz="blip"})`,
+			`avg(
+				avg by(__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
+				avg by(__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
+				avg by(__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
+			  )`,
+			false,
 		},
 		// stddev can't be parallelized.
 		{
@@ -186,6 +178,7 @@ func Test_PromQL(t *testing.T) {
 			)`,
 			true,
 		},
+		// different ways to represent count without.
 		{
 			`count without (foo) (bar1{baz="blip"})`,
 			`count without (foo) (
@@ -196,12 +189,43 @@ func Test_PromQL(t *testing.T) {
 			true,
 		},
 		{
+			`count without (foo) (bar1{baz="blip"})`,
+			`sum without (__cortex_shard__) (
+				count without (foo) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
+				count without (foo) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
+				count without (foo) (bar1{__cortex_shard__="2_of_3",baz="blip"})
+			)`,
+			true,
+		},
+		{
+			`count without (foo, bar) (bar1{baz="blip"})`,
+			`count without (foo, bar) (
+				count without (__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
+				count without (__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
+				count without (__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
+			)`,
+			true,
+		},
+		{
 			`topk(2,bar1{baz="blip"})`,
-			`topk(2,
-				topk(2,(bar1{__cortex_shard__="0_of_3",baz="blip"})) without(__cortex_shard__) or
-				topk(2,(bar1{__cortex_shard__="1_of_3",baz="blip"})) without(__cortex_shard__) or
-				topk(2,(bar1{__cortex_shard__="2_of_3",baz="blip"})) without(__cortex_shard__)
-			  )`,
+			`label_replace(
+				topk(2,
+					topk(2,(bar1{__cortex_shard__="0_of_3",baz="blip"})) without(__cortex_shard__) or
+					topk(2,(bar1{__cortex_shard__="1_of_3",baz="blip"})) without(__cortex_shard__) or
+					topk(2,(bar1{__cortex_shard__="2_of_3",baz="blip"})) without(__cortex_shard__)
+				),
+                          "__cortex_shard__","","","")`,
+			true,
+		},
+		{
+			`bottomk(2,bar1{baz="blip"})`,
+			`label_replace(
+				bottomk(2,
+					bottomk(2,(bar1{__cortex_shard__="0_of_3",baz="blip"})) without(__cortex_shard__) or
+					bottomk(2,(bar1{__cortex_shard__="1_of_3",baz="blip"})) without(__cortex_shard__) or
+					bottomk(2,(bar1{__cortex_shard__="2_of_3",baz="blip"})) without(__cortex_shard__)
+				),
+                          "__cortex_shard__","","","")`,
 			true,
 		},
 		// {
@@ -245,7 +269,7 @@ func Test_PromQL(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.normalQuery, func(t *testing.T) {
-			t.Parallel()
+			// t.Parallel()
 
 			baseQuery, err := engine.NewRangeQuery(shardAwareQueryable, tt.normalQuery, start, end, step)
 			require.Nil(t, err)
@@ -290,7 +314,7 @@ func (m *matrix) At() storage.Series {
 	return res
 }
 
-func (s matrix) Err() error { return nil }
+func (m *matrix) Err() error { return nil }
 
 func (m *matrix) Select(selectParams *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	shardIndex := -1
@@ -317,11 +341,11 @@ func (m *matrix) Select(selectParams *storage.SelectParams, matchers ...*labels.
 	return m, nil, nil
 }
 
-func (f *matrix) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m *matrix) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
-func (f *matrix) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
-func (f *matrix) Close() error                                    { return nil }
+func (m *matrix) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
+func (m *matrix) Close() error                                    { return nil }
 
 func newSeries(metric labels.Labels, generator func(float64) float64) *promql.StorageSeries {
 	sort.Sort(metric)

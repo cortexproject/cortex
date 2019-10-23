@@ -74,7 +74,6 @@ type Config struct {
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB           tsdb.Config              `yaml:"tsdb"`
 
-	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
 	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`

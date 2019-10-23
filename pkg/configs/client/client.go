@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/instrument"
 )
 
 // Config says where we can find the ruler configs.
@@ -29,12 +29,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ClientTimeout, prefix+"configs.client-timeout", 5*time.Second, "Timeout for requests to Weave Cloud configs service.")
 }
 
-var configsRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+var configsRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "cortex",
 	Name:      "configs_request_duration_seconds",
 	Help:      "Time spent requesting configs.",
 	Buckets:   prometheus.DefBuckets,
-}, []string{"operation", "status_code"})
+}, []string{"operation", "status_code"}))
 
 // Client is what the ruler and altermanger needs from a config store to process rules.
 type Client interface {
@@ -67,7 +67,12 @@ func (c ConfigDBClient) GetRules(ctx context.Context, since configs.ID) (map[str
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
 	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.URL.String(), suffix)
-	response, err := doRequest(endpoint, c.Timeout, since, "GetRules")
+	var response *ConfigsResponse
+	err := instrument.CollectedRequest(ctx, "GetRules", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		response, err = doRequest(endpoint, c.Timeout, since)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -88,10 +93,16 @@ func (c ConfigDBClient) GetAlerts(ctx context.Context, since configs.ID) (*Confi
 		suffix = fmt.Sprintf("?since=%d", since)
 	}
 	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.URL.String(), suffix)
-	return doRequest(endpoint, c.Timeout, since, "GetAlerts")
+	var response *ConfigsResponse
+	err := instrument.CollectedRequest(ctx, "GetAlerts", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		response, err = doRequest(endpoint, c.Timeout, since)
+		return err
+	})
+	return response, err
 }
 
-func doRequest(endpoint string, timeout time.Duration, since configs.ID, operation string) (*ConfigsResponse, error) {
+func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*ConfigsResponse, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -99,12 +110,10 @@ func doRequest(endpoint string, timeout time.Duration, since configs.ID, operati
 
 	client := &http.Client{Timeout: timeout}
 
-	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	configsRequestDuration.WithLabelValues(operation, resp.Status).Observe(time.Since(start).Seconds())
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

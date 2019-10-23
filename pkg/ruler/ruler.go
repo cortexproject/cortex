@@ -70,6 +70,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ruler.", f)
 	cfg.StoreConfig.RegisterFlags(f)
 
+	// Deprecated Flags that will be maintained to avoid user disruption
+	flagext.DeprecatedFlag(f, "ruler.client-timeout", "This flag has been renamed to ruler.configs.client-timeout")
+	flagext.DeprecatedFlag(f, "ruler.group-timeout", "This flag is no longer functional.")
+	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended")
+
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules")
@@ -412,11 +417,9 @@ func (r *Ruler) loadRules(ctx context.Context) {
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
 func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
-	db := &tsdb{
-		appender: &appendableAppender{
-			pusher: r.pusher,
-			userID: userID,
-		},
+	tsdb := &tsdb{
+		pusher:    r.pusher,
+		userID:    userID,
 		queryable: r.queryable,
 	}
 
@@ -430,8 +433,8 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 
 	opts := &promRules.ManagerOptions{
-		Appendable:  db,
-		TSDB:        db,
+		Appendable:  tsdb,
+		TSDB:        tsdb,
 		QueryFunc:   promRules.EngineQueryFunc(r.engine, r.queryable),
 		Context:     user.InjectOrgID(ctx, userID),
 		ExternalURL: r.alertURL,

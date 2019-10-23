@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -23,25 +24,27 @@ import (
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
-	logger log.Logger
-	cfg    s3.Config
-	bucket objstore.BucketReader
-	stores map[string]*store.BucketStore
-	client storepb.StoreClient
+	logger  log.Logger
+	cfg     s3.Config
+	bucket  objstore.BucketReader
+	stores  map[string]*store.BucketStore
+	client  storepb.StoreClient
+	baseDir string
 }
 
 // NewUserStore returns a new UserStore
-func NewUserStore(logger log.Logger, s3cfg s3.Config) (*UserStore, error) {
+func NewUserStore(logger log.Logger, s3cfg s3.Config, baseDir string) (*UserStore, error) {
 	bkt, err := s3.NewBucketWithConfig(logger, s3cfg, "cortex-userstore")
 	if err != nil {
 		return nil, err
 	}
 
 	u := &UserStore{
-		logger: logger,
-		cfg:    s3cfg,
-		bucket: bkt,
-		stores: make(map[string]*store.BucketStore),
+		logger:  logger,
+		cfg:     s3cfg,
+		bucket:  bkt,
+		stores:  make(map[string]*store.BucketStore),
+		baseDir: baseDir,
 	}
 
 	serv := grpc.NewServer()
@@ -121,7 +124,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			bs, err = store.NewBucketStore(u.logger,
 				nil,
 				userBkt,
-				user,
+				filepath.Join(u.baseDir, user),
 				indexCache,
 				uint64(2*units.Gibibyte),
 				0,

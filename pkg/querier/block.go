@@ -27,7 +27,7 @@ type BlockQuerier struct {
 }
 
 // NewBlockQuerier returns a client to query a s3 block store
-func NewBlockQuerier(s3cfg s3.Config, r prometheus.Registerer) (*BlockQuerier, error) {
+func NewBlockQuerier(s3cfg s3.Config, baseDir string, r prometheus.Registerer) (*BlockQuerier, error) {
 
 	b := &BlockQuerier{
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
@@ -39,7 +39,7 @@ func NewBlockQuerier(s3cfg s3.Config, r prometheus.Registerer) (*BlockQuerier, e
 
 	r.MustRegister(b.syncTimes)
 
-	us, err := NewUserStore(util.Logger, s3cfg)
+	us, err := NewUserStore(util.Logger, s3cfg, baseDir)
 	if err != nil {
 		return nil, err
 	}

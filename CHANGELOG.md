@@ -1,5 +1,8 @@
+# Changelog
+
 ## master / unreleased
 
+* [CHANGE] Remove direct DB/API access from the ruler
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
 * [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708

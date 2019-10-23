@@ -60,6 +60,7 @@ type LifecyclerConfig struct {
 	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
+	TokenFileDir     string        `yaml:"token_file_dir,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address"`
@@ -90,6 +91,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
+	f.StringVar(&cfg.TokenFileDir, "ingester.token-file-dir", "", "Directory in which the token file is to be stored.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -116,7 +118,6 @@ type Lifecycler struct {
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
 	KVStore         kv.Client
-	tokenDir        string
 
 	// Controls the lifecycle of the ingester
 	quit      chan struct{}
@@ -141,7 +142,7 @@ type Lifecycler struct {
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name, tokenDir string) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name string) (*Lifecycler, error) {
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -164,7 +165,6 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name, 
 		cfg:             cfg,
 		flushTransferer: flushTransferer,
 		KVStore:         store,
-		tokenDir:        tokenDir,
 
 		Addr:     fmt.Sprintf("%s:%d", addr, port),
 		ID:       cfg.ID,
@@ -253,7 +253,7 @@ func (i *Lifecycler) getTokens() []uint32 {
 }
 
 func (i *Lifecycler) flushTokensToFile() {
-	tokenFilePath := path.Join(i.tokenDir, tokensFileName)
+	tokenFilePath := path.Join(i.cfg.TokenFileDir, tokensFileName)
 	f, err := os.OpenFile(tokenFilePath, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error in creating token file", "err", err)
@@ -272,7 +272,7 @@ func (i *Lifecycler) flushTokensToFile() {
 }
 
 func (i *Lifecycler) getTokensFromFile() ([]uint32, error) {
-	tokenFilePath := path.Join(i.tokenDir, tokensFileName)
+	tokenFilePath := path.Join(i.cfg.TokenFileDir, tokensFileName)
 	b, err := ioutil.ReadFile(tokenFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -280,7 +280,9 @@ func (i *Lifecycler) getTokensFromFile() ([]uint32, error) {
 		}
 		return nil, err
 	}
-	if len(b)%4 != 0 {
+	if len(b) == 0 {
+		return nil, nil
+	} else if len(b)%4 != 0 {
 		return nil, errors.New("token data is not 4 byte aligned")
 	}
 

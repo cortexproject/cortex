@@ -1,8 +1,11 @@
 package ingester
 
 import (
+	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
+	"os"
 	"testing"
 	"time"
 
@@ -91,11 +94,17 @@ func TestIngesterTransfer(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
 	require.NoError(t, err)
 
+	tokenDir1, err := ioutil.TempDir(os.TempDir(), "ingester_transfer")
+	require.NoError(t, err)
+	tokenDir2, err := ioutil.TempDir(os.TempDir(), "ingester_transfer")
+	require.NoError(t, err)
+
 	// Start the first ingester, and get it into ACTIVE state.
 	cfg1 := defaultIngesterTestConfig()
 	cfg1.LifecyclerConfig.ID = "ingester1"
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
+	cfg1.LifecyclerConfig.TokenFileDir = tokenDir1
 	cfg1.MaxTransferRetries = 10
 	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
@@ -139,6 +148,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
+	cfg2.LifecyclerConfig.TokenFileDir = tokenDir2
 	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 
@@ -178,11 +188,15 @@ func TestIngesterBadTransfer(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
 	require.NoError(t, err)
 
+	tokenDir, err := ioutil.TempDir(os.TempDir(), "ingester_bad_transfer")
+	require.NoError(t, err)
+
 	// Start ingester in PENDING.
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.ID = "ingester1"
 	cfg.LifecyclerConfig.Addr = "ingester1"
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
+	cfg.LifecyclerConfig.TokenFileDir = tokenDir
 	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 
@@ -198,6 +212,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	require.Error(t, err)
 
 	// Check the ingester is still waiting.
+	fmt.Println(ing.lifecycler.GetState().String())
 	require.Equal(t, ring.PENDING, ing.lifecycler.GetState())
 }
 

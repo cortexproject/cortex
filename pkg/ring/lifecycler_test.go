@@ -210,3 +210,73 @@ func TestCheckReady(t *testing.T) {
 	err = l1.CheckReady(context.Background())
 	require.Error(t, err)
 }
+
+type noopFlushTransferer struct {
+	lifecycler *Lifecycler
+}
+
+func (f *noopFlushTransferer) StopIncomingRequests()                 {}
+func (f *noopFlushTransferer) Flush()                                {}
+func (f *noopFlushTransferer) TransferOut(ctx context.Context) error { return nil }
+
+func TestTokensOnDisk(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	r, err := New(ringConfig, "ingester")
+	require.NoError(t, err)
+	defer r.Stop()
+
+	lifecyclerConfig := testLifecyclerConfig(t, ringConfig, "ing1")
+	lifecyclerConfig.NumTokens = 512
+
+	// Start first ingester.
+	ft := &noopFlushTransferer{}
+	l1, err := NewLifecycler(lifecyclerConfig, ft, "ingester")
+	require.NoError(t, err)
+	// Check this ingester joined, is active, and has 512 token.
+	var expTokens []TokenDesc
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		if ok {
+			expTokens = desc.Tokens
+		}
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing1"].State == ACTIVE &&
+			len(desc.Ingesters["ing1"].Tokens) == 0 &&
+			len(desc.Tokens) == 512
+	})
+
+	l1.Shutdown()
+
+	// Start new ingester at same token directory.
+	lifecyclerConfig.ID = "ing2"
+	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester")
+	require.NoError(t, err)
+	defer l2.Shutdown()
+
+	// Check this ingester joined, is active, and has 512 token.
+	var actTokens []TokenDesc
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		if ok {
+			actTokens = desc.Tokens
+		}
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing2"].State == ACTIVE &&
+			len(desc.Ingesters["ing2"].Tokens) == 0 &&
+			len(desc.Tokens) == 512
+	})
+
+	// Check for same tokens.
+	for i := 0; i < 512; i++ {
+		require.Equal(t, expTokens[i].Token, actTokens[i].Token)
+	}
+}

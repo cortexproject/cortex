@@ -119,7 +119,7 @@ type Config struct {
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
-	MaxRecvMsgSize      int           `yaml:"max_send_msg_size"`
+	MaxRecvMsgSize      int           `yaml:"max_recv_msg_size"`
 	RemoteTimeout       time.Duration `yaml:"remote_timeout,omitempty"`
 	ExtraQueryDelay     time.Duration `yaml:"extra_queue_delay,omitempty"`
 	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period,omitempty"`

@@ -195,15 +195,16 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	}
 
 	var store querier.ChunkStore
-	if cfg.Ingester.V2.Enabled {
+
+	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		s3cfg := s3.Config{
-			Bucket:    cfg.Ingester.V2.S3Bucket,
-			Endpoint:  cfg.Ingester.V2.S3Endpoint,
-			AccessKey: cfg.Ingester.V2.S3Key,
-			SecretKey: cfg.Ingester.V2.S3Secret,
-			Insecure:  cfg.Ingester.V2.S3Insecure,
+			Bucket:    cfg.TSDB.S3.BucketName,
+			Endpoint:  cfg.TSDB.S3.Endpoint,
+			AccessKey: cfg.TSDB.S3.AccessKeyID,
+			SecretKey: cfg.TSDB.S3.SecretAccessKey,
+			Insecure:  cfg.TSDB.S3.Insecure,
 		}
-		store, err = querier.NewBlockQuerier(s3cfg, cfg.Ingester.V2.TSDBDir, prometheus.DefaultRegisterer)
+		store, err = querier.NewBlockQuerier(s3cfg, cfg.TSDB.Dir, prometheus.DefaultRegisterer)
 		if err != nil {
 			return err
 		}
@@ -246,6 +247,9 @@ func (t *Cortex) stopQuerier() error {
 
 func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
+	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
+	cfg.Ingester.TSDBConfig = cfg.TSDB
+
 	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
@@ -264,7 +268,7 @@ func (t *Cortex) stopIngester() error {
 }
 
 func (t *Cortex) initStore(cfg *Config) (err error) {
-	if cfg.Ingester.V2.Enabled { // no store for v2
+	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		return nil
 	}
 	err = cfg.Schema.Load()
@@ -304,7 +308,7 @@ func (t *Cortex) stopQueryFrontend() (err error) {
 }
 
 func (t *Cortex) initTableManager(cfg *Config) error {
-	if cfg.Ingester.V2.Enabled {
+	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		return nil // table manager isn't used in v2
 	}
 

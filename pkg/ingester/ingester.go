@@ -22,6 +22,7 @@ import (
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -117,7 +118,8 @@ type Config struct {
 	RateUpdatePeriod time.Duration
 
 	// Use tsdb block storage
-	V2 V2Config
+	TSDBEnabled bool        `yaml:"-"`
+	TSDBConfig  tsdb.Config `yaml:"-"`
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
@@ -137,18 +139,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", false, "If true, spread series flushes across the whole period of MaxChunkAge")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-
-	// Prometheus 2.x block storage
-	f.BoolVar(&cfg.V2.Enabled, "ingester.v2.enable", false, "If true, use Prometheus block storage for metrics")
-	f.DurationVar(&cfg.V2.BlockRanges, "ingester.v2.blockranges", 1*time.Hour, "TSDB block ranges")
-	f.DurationVar(&cfg.V2.Retention, "ingester.v2.retention", 6*time.Hour, "TSDB block retention")
-	f.StringVar(&cfg.V2.TSDBDir, "ingester.v2.dir", "tsdb", "directory to place all tsdb's into")
-	f.StringVar(&cfg.V2.S3Key, "ingester.v2.key", "", "s3 skey")
-	f.StringVar(&cfg.V2.S3Secret, "ingester.v2.secret", "", "s3 secret")
-	f.StringVar(&cfg.V2.S3Bucket, "ingester.v2.bucket", "", "s3 bucket")
-	f.StringVar(&cfg.V2.S3Endpoint, "ingester.v2.endpoint", "", "s3 endpoint")
-	f.BoolVar(&cfg.V2.S3Insecure, "ingester.v2.s3insecure", false, "use http for s3 endpoints")
-	f.DurationVar(&cfg.V2.ShipInterval, "ingester.v2.shipinterval", 30*time.Second, "the frequency at which tsdb blocks are scanned for shipping")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -179,7 +169,7 @@ type Ingester struct {
 	preFlushUserSeries func()
 
 	// Prometheus block storage
-	V2 V2Config
+	TSDBState TSDBState
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -193,7 +183,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
-	if cfg.V2.Enabled {
+	if cfg.TSDBEnabled {
 		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
 	}
 
@@ -271,7 +261,7 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	if i.V2.Enabled {
+	if i.cfg.TSDBEnabled {
 		return i.v2Push(ctx, req)
 	}
 
@@ -370,7 +360,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
-	if i.V2.Enabled {
+	if i.cfg.TSDBEnabled {
 		return i.v2Query(ctx, req)
 	}
 
@@ -433,7 +423,7 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
-	if i.V2.Enabled {
+	if i.cfg.TSDBEnabled {
 		return fmt.Errorf("Unimplemented for V2")
 	}
 
@@ -509,7 +499,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	if i.V2.Enabled {
+	if i.cfg.TSDBEnabled {
 		return i.v2LabelValues(ctx, req)
 	}
 
@@ -530,7 +520,7 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
-	if i.V2.Enabled {
+	if i.cfg.TSDBEnabled {
 		return i.v2LabelNames(ctx, req)
 	}
 

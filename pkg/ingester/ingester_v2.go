@@ -24,32 +24,21 @@ import (
 	old_ctx "golang.org/x/net/context"
 )
 
-// V2Config is the config for IngesterV2
-type V2Config struct {
-	Enabled      bool                // indicates that the prometheus block storage should be used
-	dbs          map[string]*tsdb.DB // tsdb sharded by userID
-	bucket       objstore.Bucket
-	TSDBDir      string
-	BlockRanges  time.Duration
-	Retention    time.Duration
-	ShipInterval time.Duration
-	S3Endpoint   string
-	S3Bucket     string
-	S3Secret     string
-	S3Key        string
-	S3Insecure   bool // useful for test clusters without https
+// TSDBState holds data structures used by the TSDB storage engine
+type TSDBState struct {
+	dbs    map[string]*tsdb.DB // tsdb sharded by userID
+	bucket objstore.Bucket
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
-
 	var bkt *s3.Bucket
 	s3Cfg := s3.Config{
-		Bucket:    cfg.V2.S3Bucket,
-		Endpoint:  cfg.V2.S3Endpoint,
-		AccessKey: cfg.V2.S3Key,
-		SecretKey: cfg.V2.S3Secret,
-		Insecure:  cfg.V2.S3Insecure,
+		Bucket:    cfg.TSDBConfig.S3.BucketName,
+		Endpoint:  cfg.TSDBConfig.S3.Endpoint,
+		AccessKey: cfg.TSDBConfig.S3.AccessKeyID,
+		SecretKey: cfg.TSDBConfig.S3.SecretAccessKey,
+		Insecure:  cfg.TSDBConfig.S3.Insecure,
 	}
 	var err error
 	bkt, err = s3.NewBucketWithConfig(util.Logger, s3Cfg, "cortex")
@@ -68,14 +57,9 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		userStates: newUserStates(limits, cfg),
 		quit:       make(chan struct{}),
 
-		V2: V2Config{
-			Enabled:      cfg.V2.Enabled,
-			dbs:          make(map[string]*tsdb.DB),
-			bucket:       bkt,
-			BlockRanges:  cfg.V2.BlockRanges,
-			Retention:    cfg.V2.Retention,
-			TSDBDir:      cfg.V2.TSDBDir,
-			ShipInterval: cfg.V2.ShipInterval,
+		TSDBState: TSDBState{
+			dbs:    make(map[string]*tsdb.DB),
+			bucket: bkt,
 		},
 	}
 
@@ -145,7 +129,7 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 
 	db, err := i.getOrCreateTSDB(userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db")
+		return nil, fmt.Errorf("failed to find/create user db: %v", err)
 	}
 
 	q, err := db.Querier(int64(from), int64(through))
@@ -214,11 +198,11 @@ func (i *Ingester) v2LabelValues(ctx old_ctx.Context, req *client.LabelValuesReq
 
 	db, err := i.getOrCreateTSDB(userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db")
+		return nil, fmt.Errorf("failed to find/create user db: %v", err)
 	}
 
 	through := time.Now()
-	from := through.Add(-i.V2.Retention)
+	from := through.Add(-i.cfg.TSDBConfig.Retention)
 	q, err := db.Querier(from.Unix()*1000, through.Unix()*1000)
 	if err != nil {
 		return nil, err
@@ -243,11 +227,11 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 
 	db, err := i.getOrCreateTSDB(userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db")
+		return nil, fmt.Errorf("failed to find/create user db: %v", err)
 	}
 
 	through := time.Now()
-	from := through.Add(-i.V2.Retention)
+	from := through.Add(-i.cfg.TSDBConfig.Retention)
 	q, err := db.Querier(from.Unix()*1000, through.Unix()*1000)
 	if err != nil {
 		return nil, err
@@ -267,7 +251,7 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 func (i *Ingester) getTSDB(userID string) *tsdb.DB {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	db, _ := i.V2.dbs[userID]
+	db, _ := i.TSDBState.dbs[userID]
 	return db
 }
 
@@ -279,7 +263,7 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 
 		// Check again for DB in the event it was created in-between locks
 		var ok bool
-		db, ok = i.V2.dbs[userID]
+		db, ok = i.TSDBState.dbs[userID]
 		if !ok {
 
 			udir := i.userDir(userID)
@@ -287,8 +271,8 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 			// Create a new user database
 			var err error
 			db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
-				RetentionDuration: uint64(i.V2.Retention / time.Millisecond),
-				BlockRanges:       []int64{int64(i.V2.BlockRanges / time.Millisecond)},
+				RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
+				BlockRanges:       []int64{int64(i.cfg.TSDBConfig.BlockRanges / time.Millisecond)},
 				NoLockfile:        true,
 			})
 			if err != nil {
@@ -302,11 +286,11 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 					Value: userID,
 				},
 			}
-			s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.V2.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
+			s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
 			i.done.Add(1)
 			go func() {
 				defer i.done.Done()
-				runutil.Repeat(i.V2.ShipInterval, i.quit, func() error {
+				runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
 					if uploaded, err := s.Sync(context.Background()); err != nil {
 						level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
 					}
@@ -314,11 +298,11 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 				})
 			}()
 
-			i.V2.dbs[userID] = db
+			i.TSDBState.dbs[userID] = db
 		}
 	}
 
 	return db, nil
 }
 
-func (i *Ingester) userDir(userID string) string { return filepath.Join(i.V2.TSDBDir, userID) }
+func (i *Ingester) userDir(userID string) string { return filepath.Join(i.cfg.TSDBConfig.Dir, userID) }

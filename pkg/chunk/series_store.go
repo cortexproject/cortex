@@ -132,6 +132,15 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 		return nil, err
 	}
 
+	// inject artificial __cortex_shard__ labels if present in the query
+	shard, _, err := astmapper.ShardFromMatchers(allMatchers)
+	if err != nil {
+		return nil, err
+	}
+	if shard != nil {
+		injectShardLabels(allChunks, *shard)
+	}
+
 	// Filter out chunks based on the empty matchers in the query.
 	filteredChunks := filterChunksByMatchers(allChunks, allMatchers)
 	return filteredChunks, nil

@@ -258,3 +258,30 @@ func ParseShard(input string) (x, of int, err error) {
 	}
 	return x, of, err
 }
+
+// ShardAnnotation is a convenience struct which holds data from a parsed shard label
+type ShardAnnotation struct {
+	Shard int
+	Of    int
+}
+
+func (shard ShardAnnotation) String() string {
+	return fmt.Sprintf(ShardLabelFmt, shard.Shard, shard.Of)
+}
+
+// ShardFromMatchers extracts a ShardAnnotation and the index it was pulled from in the matcher list
+func ShardFromMatchers(matchers []*labels.Matcher) (shard *ShardAnnotation, idx int, err error) {
+	for i, matcher := range matchers {
+		if matcher.Type == labels.MatchEqual && matcher.Name == ShardLabel {
+			s, of, err := ParseShard(matcher.Value)
+			if err != nil {
+				return nil, i, err
+			}
+			return &ShardAnnotation{
+				Shard: s,
+				Of:    of,
+			}, i, nil
+		}
+	}
+	return nil, 0, nil
+}

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -415,14 +416,10 @@ func TestDefaultFilterIndexQueries(t *testing.T) {
 		return res
 	}
 
-	nPtr := func(n int) *int {
-		return &n
-	}
-
 	var testExprs = []struct {
 		name     string
 		queries  []IndexQuery
-		shard    *int
+		shard    *astmapper.ShardAnnotation
 		expected []IndexQuery
 	}{
 		{
@@ -432,15 +429,19 @@ func TestDefaultFilterIndexQueries(t *testing.T) {
 			expected: fromShards(2),
 		},
 		{
-			name:     "out of bounds shard returns 0 matches",
-			queries:  fromShards(2),
-			shard:    nPtr(3),
+			name:    "out of bounds shard returns 0 matches",
+			queries: fromShards(2),
+			shard: &astmapper.ShardAnnotation{
+				Shard: 3,
+			},
 			expected: nil,
 		},
 		{
-			name:     "return correct shard",
-			queries:  fromShards(2),
-			shard:    nPtr(1),
+			name:    "return correct shard",
+			queries: fromShards(2),
+			shard: &astmapper.ShardAnnotation{
+				Shard: 1,
+			},
 			expected: []IndexQuery{fromShards(2)[1]},
 		},
 	}

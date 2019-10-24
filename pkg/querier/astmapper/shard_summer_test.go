@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 )
@@ -143,6 +144,65 @@ func TestParseShard(t *testing.T) {
 			} else {
 				require.Equal(t, c.x, x)
 				require.Equal(t, c.of, of)
+			}
+		})
+	}
+
+}
+
+func TestShardFromMatchers(t *testing.T) {
+	var testExpr = []struct {
+		input []*labels.Matcher
+		shard *ShardAnnotation
+		idx   int
+		err   bool
+	}{
+		{
+			input: []*labels.Matcher{
+				{},
+				{
+					Name:  ShardLabel,
+					Type:  labels.MatchEqual,
+					Value: fmt.Sprintf(ShardLabelFmt, 10, 16),
+				},
+				{},
+			},
+			shard: &ShardAnnotation{
+				Shard: 10,
+				Of:    16,
+			},
+			idx: 1,
+			err: false,
+		},
+		{
+			input: []*labels.Matcher{
+				{
+					Name:  ShardLabel,
+					Type:  labels.MatchEqual,
+					Value: "invalid-fmt",
+				},
+			},
+			shard: nil,
+			idx:   0,
+			err:   true,
+		},
+		{
+			input: []*labels.Matcher{},
+			shard: nil,
+			idx:   0,
+			err:   false,
+		},
+	}
+
+	for i, c := range testExpr {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			shard, idx, err := ShardFromMatchers(c.input)
+			if c.err {
+				require.NotNil(t, err)
+			} else {
+				require.Nil(t, err)
+				require.Equal(t, c.shard, shard)
+				require.Equal(t, c.idx, idx)
 			}
 		})
 	}

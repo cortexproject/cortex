@@ -266,24 +266,13 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 
 	// Check if one of the labels is a shard annotation, pass that information to lookupSeriesByMetricNameMatcher,
 	// and remove the label.
-	var (
-		shard           *int
-		shardLabelIndex *int
-	)
-	for i, matcher := range matchers {
-		if matcher.Type == labels.MatchEqual && matcher.Name == astmapper.ShardLabel {
-			cur := i
-			shardLabelIndex = &cur
-			s, _, err := astmapper.ParseShard(matcher.Value)
-			if err != nil {
-				return nil, err
-			}
-			shard = &s
-		}
+	shard, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
+	if err != nil {
+		return nil, err
 	}
 
-	if shardLabelIndex != nil {
-		matchers = append(matchers[:*shardLabelIndex], matchers[*shardLabelIndex+1:]...)
+	if shard != nil {
+		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
 	}
 
 	// Otherwise get series which include other matchers
@@ -343,7 +332,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	return ids, nil
 }
 
-func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *int) ([]string, error) {
+func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
 	defer log.Span.Finish()
 

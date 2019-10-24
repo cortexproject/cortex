@@ -39,6 +39,13 @@ func CanParallel(node promql.Node) bool {
 		return false
 
 	case *promql.Call:
+		if n.Func == nil {
+			return false
+		}
+		if !ParallelFunc(*n.Func) {
+			return false
+		}
+
 		for _, e := range n.Args {
 			if !CanParallel(e) {
 				return false
@@ -66,4 +73,9 @@ func CanParallel(node promql.Node) bool {
 		panic(errors.Errorf("CanParallel: unhandled node type %T", node))
 	}
 
+}
+
+// ParallelFunc ensures that a promql function can be part of a parallel query.
+func ParallelFunc(f promql.Function) bool {
+	return true
 }

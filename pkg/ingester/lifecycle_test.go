@@ -1,7 +1,6 @@
 package ingester
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
@@ -212,7 +211,6 @@ func TestIngesterBadTransfer(t *testing.T) {
 	require.Error(t, err)
 
 	// Check the ingester is still waiting.
-	fmt.Println(ing.lifecycler.GetState().String())
 	require.Equal(t, ring.PENDING, ing.lifecycler.GetState())
 }
 

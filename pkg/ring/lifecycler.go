@@ -456,6 +456,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 					i.setState(ACTIVE)
 				}
 				ringDesc.AddIngester(i.ID, i.Addr, tokens, i.GetState(), i.cfg.NormaliseTokens)
+				i.setTokens(tokens)
 				return ringDesc, true, nil
 			}
 

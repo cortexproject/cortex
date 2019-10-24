@@ -16,6 +16,7 @@ const (
 // Config holds the config information for TSDB storage
 type Config struct {
 	Dir          string        `yaml:"dir"`
+	SyncDir      string        `yaml:"sync-dir"`
 	BlockRanges  time.Duration `yaml:"block_ranges_period"`
 	Retention    time.Duration `yaml:"retention_period"`
 	ShipInterval time.Duration `yaml:"ship_interval"`
@@ -30,6 +31,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 
 	f.StringVar(&cfg.Dir, "experimental.tsdb.dir", "tsdb", "directory to place all TSDB's into")
+	f.StringVar(&cfg.SyncDir, "experimental.tsdb.sync-dir", "tsdb-sync", "directory to place synced tsdb indicies")
 	f.DurationVar(&cfg.BlockRanges, "experimental.tsdb.block-ranges-period", 1*time.Hour, "TSDB block ranges")
 	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB block retention")
 	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 30*time.Second, "the frequency at which tsdb blocks are scanned for shipping")

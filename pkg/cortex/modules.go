@@ -204,7 +204,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 			SecretKey: cfg.TSDB.S3.SecretAccessKey,
 			Insecure:  cfg.TSDB.S3.Insecure,
 		}
-		store, err = querier.NewBlockQuerier(s3cfg, cfg.TSDB.Dir, prometheus.DefaultRegisterer)
+		store, err = querier.NewBlockQuerier(s3cfg, cfg.TSDB.SyncDir, prometheus.DefaultRegisterer)
 		if err != nil {
 			return err
 		}

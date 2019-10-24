@@ -238,25 +238,28 @@ func shardMatrixSelector(curshard, shards int, selector *promql.MatrixSelector) 
 }
 
 // ParseShard will extract the shard information encoded in ShardLabelFmt
-func ParseShard(input string) (x, of int, err error) {
+func ParseShard(input string) (parsed ShardAnnotation, err error) {
 	if !ShardLabelRE.MatchString(input) {
-		return 0, 0, errors.Errorf("Invalid ShardLabel value: [%s]", input)
+		return parsed, errors.Errorf("Invalid ShardLabel value: [%s]", input)
 	}
 
 	matches := strings.Split(input, "_")
-	x, err = strconv.Atoi(matches[0])
+	x, err := strconv.Atoi(matches[0])
 	if err != nil {
-		return 0, 0, err
+		return parsed, err
 	}
-	of, err = strconv.Atoi(matches[2])
+	of, err := strconv.Atoi(matches[2])
 	if err != nil {
-		return 0, 0, err
+		return parsed, err
 	}
 
 	if x >= of {
-		return 0, 0, errors.Errorf("Shards out of bounds: [%d] >= [%d]", x, of)
+		return parsed, errors.Errorf("Shards out of bounds: [%d] >= [%d]", x, of)
 	}
-	return x, of, err
+	return ShardAnnotation{
+		Shard: x,
+		Of:    of,
+	}, err
 }
 
 // ShardAnnotation is a convenience struct which holds data from a parsed shard label
@@ -273,14 +276,11 @@ func (shard ShardAnnotation) String() string {
 func ShardFromMatchers(matchers []*labels.Matcher) (shard *ShardAnnotation, idx int, err error) {
 	for i, matcher := range matchers {
 		if matcher.Type == labels.MatchEqual && matcher.Name == ShardLabel {
-			s, of, err := ParseShard(matcher.Value)
+			shard, err := ParseShard(matcher.Value)
 			if err != nil {
 				return nil, i, err
 			}
-			return &ShardAnnotation{
-				Shard: s,
-				Of:    of,
-			}, i, nil
+			return &shard, i, nil
 		}
 	}
 	return nil, 0, nil

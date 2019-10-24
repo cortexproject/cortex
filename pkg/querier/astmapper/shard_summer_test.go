@@ -112,38 +112,42 @@ func TestShardSummer(t *testing.T) {
 
 func TestParseShard(t *testing.T) {
 	var testExpr = []struct {
-		input string
-		err   bool
-		x     int
-		of    int
+		input  string
+		output ShardAnnotation
+		err    bool
 	}{
 		{
-			input: "lsdjf",
-			err:   true,
+			input:  "lsdjf",
+			output: ShardAnnotation{},
+			err:    true,
 		},
 		{
-			input: "a_of_3",
-			err:   true,
+			input:  "a_of_3",
+			output: ShardAnnotation{},
+			err:    true,
 		},
 		{
-			input: "3_of_3",
-			err:   true,
+			input:  "3_of_3",
+			output: ShardAnnotation{},
+			err:    true,
 		},
 		{
 			input: "1_of_2",
-			x:     1,
-			of:    2,
+			output: ShardAnnotation{
+				Shard: 1,
+				Of:    2,
+			},
 		},
 	}
 
 	for _, c := range testExpr {
 		t.Run(fmt.Sprint(c.input), func(t *testing.T) {
-			x, of, err := ParseShard(c.input)
+			shard, err := ParseShard(c.input)
 			if c.err {
 				require.NotNil(t, err)
 			} else {
-				require.Equal(t, c.x, x)
-				require.Equal(t, c.of, of)
+				require.Nil(t, err)
+				require.Equal(t, c.output, shard)
 			}
 		})
 	}

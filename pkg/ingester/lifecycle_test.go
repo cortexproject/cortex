@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -33,6 +34,7 @@ func defaultIngesterTestConfig() Config {
 	consul := consul.NewInMemoryClient(ring.GetCodec())
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg.TSDBConfig)
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
@@ -424,12 +426,14 @@ func TestV2IngesterTransfer(t *testing.T) {
 
 	// Start the first ingester, and get it into ACTIVE state.
 	cfg1 := defaultIngesterTestConfig()
-	cfg1.V2.Enabled = true
-	cfg1.V2.S3Key = "dummy"
-	cfg1.V2.S3Secret = "dummy"
-	cfg1.V2.S3Bucket = "dummy"
-	cfg1.V2.S3Endpoint = "dummy"
-	cfg1.V2.TSDBDir = dir1
+	cfg1.TSDBEnabled = true
+	cfg1.TSDBConfig.Dir = dir1
+	cfg1.TSDBConfig.S3 = s3.Config{
+		Endpoint:        "dummy",
+		BucketName:      "dummy",
+		SecretAccessKey: "dummy",
+		AccessKeyID:     "dummy",
+	}
 	cfg1.LifecyclerConfig.ID = "ingester1"
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
@@ -472,12 +476,14 @@ func TestV2IngesterTransfer(t *testing.T) {
 
 	// Start a second ingester, but let it go into PENDING
 	cfg2 := defaultIngesterTestConfig()
-	cfg2.V2.Enabled = true
-	cfg2.V2.S3Key = "dummy"
-	cfg2.V2.S3Secret = "dummy"
-	cfg2.V2.S3Bucket = "dummy"
-	cfg2.V2.S3Endpoint = "dummy"
-	cfg2.V2.TSDBDir = dir2
+	cfg2.TSDBEnabled = true
+	cfg2.TSDBConfig.Dir = dir2
+	cfg2.TSDBConfig.S3 = s3.Config{
+		Endpoint:        "dummy",
+		BucketName:      "dummy",
+		SecretAccessKey: "dummy",
+		AccessKeyID:     "dummy",
+	}
 	cfg2.LifecyclerConfig.RingConfig.KVStore.Mock = cfg1.LifecyclerConfig.RingConfig.KVStore.Mock
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"

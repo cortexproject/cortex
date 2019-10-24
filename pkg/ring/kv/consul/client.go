@@ -247,7 +247,9 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		}
 
 		kvps, meta, err := c.kv.List(prefix, queryOptions.WithContext(ctx))
-		if err != nil || kvps == nil {
+		// kvps being nil here is not an error -- quite the opposite. Consul returns index,
+		// which makes next query blocking, so there is no need to detect this and act on it.
+		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
 			backoff.Wait()
 			continue

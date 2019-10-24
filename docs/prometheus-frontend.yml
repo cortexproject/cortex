@@ -16,7 +16,7 @@ server:
   http_listen_port: 9091
 
 frontend:
-  log_queries_longer_than: 1 # in seconds
+  log_queries_longer_than: 1s
   split_queries_by_day: true
   align_queries_with_step: true
   cache_results: true

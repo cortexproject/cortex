@@ -147,8 +147,14 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Now().Sub(startTime)
 
+	userID, err := user.ExtractOrgID(r.Context())
+	if err != nil {
+		server.WriteError(w, err)
+		return
+	}
+
 	if queryResponseTime > f.cfg.LogQueriesLongerThan {
-		level.Info(f.log).Log("msg", "slow query", "url", fmt.Sprintf("http://%s/", r.URL.Host+r.URL.Path+r.URL.RawQuery), "time", queryResponseTime.String())
+		level.Warn(f.log).Log("msg", "slow query", "orgID", userID, "url", fmt.Sprintf("http://%s", r.Host+r.RequestURI), "time-taken", queryResponseTime.String())
 	}
 
 	if err != nil {

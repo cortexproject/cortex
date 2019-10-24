@@ -121,6 +121,10 @@ type Config struct {
 	TSDBEnabled bool        `yaml:"-"`
 	TSDBConfig  tsdb.Config `yaml:"-"`
 
+	// Injected at runtime and read from the distributor config, required
+	// to accurately apply global limits.
+	ShardByAllLabels bool `yaml:"-"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
@@ -152,6 +156,7 @@ type Ingester struct {
 	chunkStore ChunkStore
 	lifecycler *ring.Lifecycler
 	limits     *validation.Overrides
+	limiter    *SeriesLimiter
 
 	quit chan struct{}
 	done sync.WaitGroup
@@ -178,7 +183,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, readRing ring.ReadRing, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -187,6 +192,8 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
 	}
 
+	limiter := NewSeriesLimiter(limits, readRing, cfg.ShardByAllLabels)
+
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
@@ -194,8 +201,9 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		metrics: newIngesterMetrics(registerer),
 
 		limits:     limits,
+		limiter:    limiter,
 		chunkStore: chunkStore,
-		userStates: newUserStates(limits, cfg),
+		userStates: newUserStates(limiter, cfg),
 
 		quit:        make(chan struct{}),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),

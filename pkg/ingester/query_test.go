@@ -31,7 +31,7 @@ func BenchmarkQueryStream(b *testing.B) {
 	)
 
 	encoding.DefaultEncoding = encoding.Bigchunk
-	limits.MaxSeriesPerMetric = numSeries
+	limits.MaxLocalSeriesPerMetric = numSeries
 	limits.MaxSeriesPerQuery = numSeries
 	cfg.FlushCheckPeriod = 15 * time.Minute
 	_, ing := newTestStore(b, cfg, clientCfg, limits)

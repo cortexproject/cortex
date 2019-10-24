@@ -242,6 +242,7 @@ func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, erro
 		h = client.HashAdd32(h, label.Name)
 		h = client.HashAdd32(h, label.Value)
 	}
+
 	return h, nil
 }
 

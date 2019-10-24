@@ -43,13 +43,13 @@ var (
 )
 
 type userStates struct {
-	states sync.Map
-	limits *validation.Overrides
-	cfg    Config
+	states  sync.Map
+	limiter *SeriesLimiter
+	cfg     Config
 }
 
 type userState struct {
-	limits              *validation.Overrides
+	limiter             *SeriesLimiter
 	userID              string
 	fpLocker            *fingerprintLocker
 	fpToSeries          *seriesMap
@@ -78,10 +78,10 @@ type metricCounterShard struct {
 	m   map[string]int
 }
 
-func newUserStates(limits *validation.Overrides, cfg Config) *userStates {
+func newUserStates(limiter *SeriesLimiter, cfg Config) *userStates {
 	return &userStates{
-		limits: limits,
-		cfg:    cfg,
+		limiter: limiter,
+		cfg:     cfg,
 	}
 }
 
@@ -147,7 +147,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labe
 		// us, in which case this userState will be discarded
 		state = &userState{
 			userID:              userID,
-			limits:              us.limits,
+			limiter:             us.limiter,
 			fpToSeries:          newSeriesMap(),
 			fpLocker:            newFingerprintLocker(16 * 1024),
 			index:               index.New(),
@@ -190,10 +190,11 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	// all proceed to add a new series. This is likely not worth addressing,
 	// as this should happen rarely (all samples from one push are added
 	// serially), and the overshoot in allowed series would be minimal.
-	if u.fpToSeries.length() >= u.limits.MaxSeriesPerUser(u.userID) {
+	err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.length())
+	if err != nil {
 		u.fpLocker.Unlock(fp)
 		u.discardedSamples.WithLabelValues(perUserSeriesLimit).Inc()
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user series limit (%d) exceeded", u.limits.MaxSeriesPerUser(u.userID))
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 	}
 
 	metricName, err := extract.MetricNameFromLabelAdapters(metric)
@@ -202,10 +203,12 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 		return fp, nil, err
 	}
 
-	if !u.canAddSeriesFor(string(metricName)) {
+	// Check if the per-metric limit has been exceeded
+	err = u.canAddSeriesFor(string(metricName))
+	if err != nil {
 		u.fpLocker.Unlock(fp)
 		u.discardedSamples.WithLabelValues(perMetricSeriesLimit).Inc()
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-metric series limit (%d) exceeded for %s: %s", u.limits.MaxSeriesPerMetric(u.userID), metricName, metric)
+		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s for: %s", err.Error(), metric)
 	}
 
 	u.memSeriesCreatedTotal.Inc()
@@ -218,16 +221,18 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	return fp, series, nil
 }
 
-func (u *userState) canAddSeriesFor(metric string) bool {
+func (u *userState) canAddSeriesFor(metric string) error {
 	shard := &u.seriesInMetric[util.HashFP(model.Fingerprint(fnv1a.HashString64(string(metric))))%metricCounterShards]
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
-	if shard.m[metric] >= u.limits.MaxSeriesPerMetric(u.userID) {
-		return false
+	err := u.limiter.AssertMaxSeriesPerMetric(u.userID, shard.m[metric])
+	if err != nil {
+		return err
 	}
+
 	shard.m[metric]++
-	return true
+	return nil
 }
 
 func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
@@ -271,7 +276,7 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	fps := u.index.Lookup(matchers)
-	if len(fps) > u.limits.MaxSeriesPerQuery(u.userID) {
+	if len(fps) > u.limiter.MaxSeriesPerQuery(u.userID) {
 		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
 	}
 

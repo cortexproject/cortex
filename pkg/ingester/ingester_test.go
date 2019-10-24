@@ -41,7 +41,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	overrides, err := validation.NewOverrides(limits)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, clientConfig, overrides, store, nil)
+	ing, err := New(cfg, clientConfig, overrides, store, nil, nil)
 	require.NoError(t, err)
 
 	return store, ing
@@ -357,7 +357,7 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 
 func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
-	limits.MaxSeriesPerUser = 1
+	limits.MaxLocalSeriesPerUser = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
 	defer ing.Shutdown()
@@ -414,7 +414,7 @@ func TestIngesterUserSeriesLimitExceeded(t *testing.T) {
 
 func TestIngesterMetricSeriesLimitExceeded(t *testing.T) {
 	limits := defaultLimitsTestConfig()
-	limits.MaxSeriesPerMetric = 1
+	limits.MaxLocalSeriesPerMetric = 1
 
 	_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits)
 	defer ing.Shutdown()

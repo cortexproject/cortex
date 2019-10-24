@@ -59,7 +59,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	fromIngesterID := ""
 	seriesReceived := 0
 	xfer := func() error {
-		userStates := newUserStates(i.limits, i.cfg)
+		userStates := newUserStates(i.limiter, i.cfg)
 
 		for {
 			wireSeries, err := stream.Recv()

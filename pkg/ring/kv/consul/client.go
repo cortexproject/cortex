@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -194,7 +193,10 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		}
 
 		kvp, meta, err := c.kv.Get(key, queryOptions.WithContext(ctx))
-		if err != nil || kvp == nil {
+
+		// Don't backoff if value is not found (kvp == nil). In that case, Consul still returns index value,
+		// and next call to Get will block as expected. We handle missing value below.
+		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting path", "key", key, "err", err)
 			backoff.Wait()
 			continue
@@ -207,13 +209,15 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 			continue
 		}
 
-		out, err := c.codec.Decode(kvp.Value)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
-			continue
-		}
-		if !f(out) {
-			return
+		if kvp != nil {
+			out, err := c.codec.Decode(kvp.Value)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+				continue
+			}
+			if !f(out) {
+				return
+			}
 		}
 	}
 }
@@ -250,24 +254,29 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		}
 		backoff.Reset()
 
-		skip := false
-		index, skip = checkLastIndex(index, meta.LastIndex)
+		newIndex, skip := checkLastIndex(index, meta.LastIndex)
 		if skip {
 			continue
 		}
 
 		for _, kvp := range kvps {
+			// We asked for values newer than 'index', but Consul returns all values below given prefix,
+			// even those that haven't changed. We don't need to report all of them as updated.
+			if index > 0 && kvp.ModifyIndex <= index && kvp.CreateIndex <= index {
+				continue
+			}
+
 			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error decoding list of values for prefix:key", "prefix", prefix, "key", kvp.Key, "err", err)
 				continue
 			}
-			// We should strip the prefix from the front of the key.
-			key := strings.TrimPrefix(kvp.Key, prefix)
-			if !f(key, out) {
+			if !f(kvp.Key, out) {
 				return
 			}
 		}
+
+		index = newIndex
 	}
 }
 

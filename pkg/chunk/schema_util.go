@@ -48,7 +48,8 @@ func labelsString(ls labels.Labels) string {
 	return b.String()
 }
 
-func labelsSeriesID(ls labels.Labels) []byte {
+// LabelsSeriesID hashes a label set
+func LabelsSeriesID(ls labels.Labels) []byte {
 	h := sha256.Sum256([]byte(labelsString(ls)))
 	return encodeBase64Bytes(h[:])
 }

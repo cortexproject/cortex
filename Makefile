@@ -10,7 +10,7 @@ UPTODATE := .uptodate
 
 # Boiler plate for building Cortex's Golang binary.
 VERSION := $(shell cat VERSION)
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+GIT_BRANCH := $(shell ./tools/image-tag)
 GIT_REVISION := $(shell git rev-parse HEAD)
 GO_LDFLAGS := -X github.com/prometheus/common/version.Version=$(VERSION) \
 	-X github.com/prometheus/common/version.Branch=${GIT_BRANCH} \

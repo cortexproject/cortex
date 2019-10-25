@@ -146,10 +146,9 @@ func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
 				continue
 			}
 
-			ch = overflow[0]
-			if len(overflow) > 1 {
-				chunks = append(chunks, chunk.NewChunk(userID, client.Fingerprint(lbls), lbls, overflow[0], model.Time(c.MinTime), model.Time(c.MaxTime)))
-				ch = overflow[1]
+			if overflow != nil {
+				chunks = append(chunks, chunk.NewChunk(userID, client.Fingerprint(lbls), lbls, ch, model.Time(c.MinTime), model.Time(c.MaxTime)))
+				ch = overflow
 			}
 		}
 

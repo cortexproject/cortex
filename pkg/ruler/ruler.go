@@ -156,7 +156,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler
 	if cfg.EnableSharding {
-		ruler.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, ruler, "ruler")
+		ruler.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, ruler, "ruler", true)
 		if err != nil {
 			return nil, err
 		}

@@ -115,9 +115,10 @@ type Lifecycler struct {
 	actorChan chan func()
 
 	// These values are initialised at startup, and never change
-	ID       string
-	Addr     string
-	RingName string
+	ID              string
+	Addr            string
+	RingName        string
+	flushOnShutdown bool
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
@@ -132,7 +133,7 @@ type Lifecycler struct {
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name string) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name string, flushOnShutdown bool) (*Lifecycler, error) {
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -156,9 +157,10 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 		flushTransferer: flushTransferer,
 		KVStore:         store,
 
-		Addr:     fmt.Sprintf("%s:%d", addr, port),
-		ID:       cfg.ID,
-		RingName: name,
+		Addr:            fmt.Sprintf("%s:%d", addr, port),
+		ID:              cfg.ID,
+		RingName:        name,
+		flushOnShutdown: flushOnShutdown,
 
 		quit:      make(chan struct{}),
 		actorChan: make(chan func()),
@@ -479,7 +481,7 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {
-	flushRequired := true
+	flushRequired := i.flushOnShutdown
 	transferStart := time.Now()
 	if err := i.flushTransferer.TransferOut(ctx); err != nil {
 		level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)

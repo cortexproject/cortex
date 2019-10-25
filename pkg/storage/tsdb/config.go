@@ -16,7 +16,7 @@ const (
 // Config holds the config information for TSDB storage
 type Config struct {
 	Dir          string        `yaml:"dir"`
-	SyncDir      string        `yaml:"sync-dir"`
+	SyncDir      string        `yaml:"sync_dir"`
 	BlockRanges  time.Duration `yaml:"block_ranges_period"`
 	Retention    time.Duration `yaml:"retention_period"`
 	ShipInterval time.Duration `yaml:"ship_interval"`

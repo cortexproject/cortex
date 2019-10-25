@@ -99,11 +99,13 @@ func TestWatchKey(t *testing.T) {
 		go func() {
 			defer close(ch)
 			for i := 0; i < max; i++ {
+				// Start with sleeping, so that watching client see empty KV store at the beginning.
+				time.Sleep(sleep)
+
 				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 					return fmt.Sprintf("%d", i), true, nil
 				})
 				require.NoError(t, err)
-				time.Sleep(sleep)
 			}
 		}()
 
@@ -151,12 +153,14 @@ func TestWatchPrefix(t *testing.T) {
 		go func() {
 			defer close(ch)
 			for i := 0; i < max; i++ {
+				// Start with sleeping, so that watching client see empty KV store at the beginning.
+				time.Sleep(sleep)
+
 				key := fmt.Sprintf("%s%d", prefix, i)
 				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 					return key, true, nil
 				})
 				require.NoError(t, err)
-				time.Sleep(sleep)
 			}
 		}()
 

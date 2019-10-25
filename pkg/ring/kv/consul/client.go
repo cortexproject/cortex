@@ -168,8 +168,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 // under said key changes, the f callback is called with the deserialised
 // value. To construct the deserialised value, a factory function should be
 // supplied which generates an empty struct for WatchKey to deserialise
-// into. Values in Consul are assumed to be JSON. This function blocks until
-// the context is cancelled.
+// into. This function blocks until the context is cancelled or f returns false.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)

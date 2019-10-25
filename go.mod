@@ -4,8 +4,11 @@ go 1.12
 
 require (
 	cloud.google.com/go v0.44.1
-	github.com/Azure/azure-sdk-for-go v26.3.0+incompatible // indirect
-	github.com/Azure/go-autorest v11.5.1+incompatible // indirect
+	github.com/Azure/azure-storage-blob-go v0.8.0
+	github.com/Azure/go-autorest/autorest v0.9.2 // indirect
+	github.com/Azure/go-autorest/autorest/adal v0.8.0 // indirect
+	github.com/Azure/go-autorest/autorest/to v0.3.0 // indirect
+	github.com/Azure/go-autorest/autorest/validation v0.2.0 // indirect
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4
@@ -72,6 +75,10 @@ require (
 	google.golang.org/grpc v1.25.1
 	gopkg.in/yaml.v2 v2.2.2
 )
+
+replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
+
+replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+incompatible
 
 // Override since git.apache.org is down.  The docs say to fetch from github.
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999

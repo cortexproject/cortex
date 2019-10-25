@@ -197,16 +197,11 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-
-		metrics: newIngesterMetrics(registerer),
-
-		limits:     limits,
-		limiter:    limiter,
-		chunkStore: chunkStore,
-		userStates: newUserStates(limiter, cfg),
-
-		quit:        make(chan struct{}),
-		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		metrics:      newIngesterMetrics(registerer),
+		limits:       limits,
+		chunkStore:   chunkStore,
+		quit:         make(chan struct{}),
+		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 	}
 
 	var err error
@@ -214,6 +209,13 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	if err != nil {
 		return nil, err
 	}
+
+	// Init the limter and instantiate the user states which depend on it
+	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.userStates = newUserStates(i.limiter, cfg)
+
+	// Now that user states have been created, we can start the lifecycler
+	i.lifecycler.Start()
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {

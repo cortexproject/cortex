@@ -252,7 +252,7 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.TSDBConfig = cfg.TSDB
 	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
 
-	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, t.ring, prometheus.DefaultRegisterer)
+	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -460,7 +460,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Overrides, Store, Ring, Server},
+		deps: []moduleName{Overrides, Store, Server},
 		init: (*Cortex).initIngester,
 		stop: (*Cortex).stopIngester,
 	},

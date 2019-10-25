@@ -158,3 +158,13 @@ func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
 	}
 	return myTokens, takenTokens
 }
+
+// IsHealthy checks whether the ingester appears to be alive and heartbeating
+func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
+	if op == Write && i.State != ACTIVE {
+		return false
+	} else if op == Read && i.State == JOINING {
+		return false
+	}
+	return time.Now().Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
+}

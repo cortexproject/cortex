@@ -5,9 +5,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ring/testutils"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,9 +83,8 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
-			ring := testutils.NewReadRingMock()
-			ring.On("ReplicationFactor").Return(testData.ringReplicationFactor)
-			ring.On("IngesterCount").Return(testData.ringIngesterCount)
+			ring := &ringCountMock{}
+			ring.On("HealthyIngestersCount").Return(testData.ringIngesterCount)
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -94,7 +93,7 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			limiter := NewSeriesLimiter(limits, ring, testData.shardByAllLabels)
+			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
 			actual := limiter.maxSeriesPerMetric("test")
 
 			assert.Equal(t, testData.expected, actual)
@@ -174,9 +173,8 @@ func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
-			ring := testutils.NewReadRingMock()
-			ring.On("ReplicationFactor").Return(testData.ringReplicationFactor)
-			ring.On("IngesterCount").Return(testData.ringIngesterCount)
+			ring := &ringCountMock{}
+			ring.On("HealthyIngestersCount").Return(testData.ringIngesterCount)
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -185,7 +183,7 @@ func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			limiter := NewSeriesLimiter(limits, ring, testData.shardByAllLabels)
+			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
 			actual := limiter.maxSeriesPerUser("test")
 
 			assert.Equal(t, testData.expected, actual)
@@ -237,9 +235,8 @@ func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
-			ring := testutils.NewReadRingMock()
-			ring.On("ReplicationFactor").Return(testData.ringReplicationFactor)
-			ring.On("IngesterCount").Return(testData.ringIngesterCount)
+			ring := &ringCountMock{}
+			ring.On("HealthyIngestersCount").Return(testData.ringIngesterCount)
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -248,7 +245,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			limiter := NewSeriesLimiter(limits, ring, testData.shardByAllLabels)
+			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
 			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -300,9 +297,8 @@ func TestSeriesLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
-			ring := testutils.NewReadRingMock()
-			ring.On("ReplicationFactor").Return(testData.ringReplicationFactor)
-			ring.On("IngesterCount").Return(testData.ringIngesterCount)
+			ring := &ringCountMock{}
+			ring.On("HealthyIngestersCount").Return(testData.ringIngesterCount)
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -311,7 +307,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			limiter := NewSeriesLimiter(limits, ring, testData.shardByAllLabels)
+			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -358,8 +354,17 @@ func TestSeriesLimiter_minNonZero(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			limiter := NewSeriesLimiter(nil, nil, false)
+			limiter := NewSeriesLimiter(nil, nil, 0, false)
 			assert.Equal(t, testData.expected, limiter.minNonZero(testData.first, testData.second))
 		})
 	}
+}
+
+type ringCountMock struct {
+	mock.Mock
+}
+
+func (m *ringCountMock) HealthyIngestersCount() int {
+	args := m.Called()
+	return args.Int(0)
 }

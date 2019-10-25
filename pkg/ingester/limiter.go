@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -13,20 +12,28 @@ const (
 	errMaxSeriesPerUserLimitExceeded   = "per-user series limit (local: %d global: %d actual local: %d) exceeded"
 )
 
+// RingCount is the interface exposed by a ring implementation which allows
+// to count members
+type RingCount interface {
+	HealthyIngestersCount() int
+}
+
 // SeriesLimiter implements primitives to get the maximum number of series
 // an ingester can handle for a specific tenant
 type SeriesLimiter struct {
-	limits           *validation.Overrides
-	ring             ring.ReadRing
-	shardByAllLabels bool
+	limits            *validation.Overrides
+	ring              RingCount
+	replicationFactor int
+	shardByAllLabels  bool
 }
 
 // NewSeriesLimiter makes a new in-memory series limiter
-func NewSeriesLimiter(limits *validation.Overrides, ring ring.ReadRing, shardByAllLabels bool) *SeriesLimiter {
+func NewSeriesLimiter(limits *validation.Overrides, ring RingCount, replicationFactor int, shardByAllLabels bool) *SeriesLimiter {
 	return &SeriesLimiter{
-		limits:           limits,
-		ring:             ring,
-		shardByAllLabels: shardByAllLabels,
+		limits:            limits,
+		ring:              ring,
+		replicationFactor: replicationFactor,
+		shardByAllLabels:  shardByAllLabels,
 	}
 }
 
@@ -120,12 +127,12 @@ func (l *SeriesLimiter) convertGlobalToLocalLimit(globalLimit int) int {
 	// topology changes) and we prefer to always be in favor of the tenant,
 	// we can use a per-ingester limit equal to:
 	// (global limit / number of ingesters) * replication factor
-	numIngesters := l.ring.IngesterCount()
+	numIngesters := l.ring.HealthyIngestersCount()
 
-	// May happen as soon as the first ingester in the cluster start or if the
-	// read ring hasn't synched yet right after the ingester starts
+	// May happen because the number of ingesters is asynchronously updated.
+	// If happens, we just temporarily ignore the global limit.
 	if numIngesters > 0 {
-		return int((float64(globalLimit) / float64(numIngesters)) * float64(l.ring.ReplicationFactor()))
+		return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
 	}
 
 	return 0

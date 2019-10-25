@@ -129,6 +129,10 @@ type Lifecycler struct {
 	readyLock sync.Mutex
 	startTime time.Time
 	ready     bool
+
+	// Keeps stats updated at every heartbeat period
+	countersLock          sync.Mutex
+	healthyIngestersCount int
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
@@ -169,9 +173,13 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
-	l.done.Add(1)
-	go l.loop()
 	return l, nil
+}
+
+// Start the lifecycler
+func (i *Lifecycler) Start() {
+	i.done.Add(1)
+	go i.loop()
 }
 
 // CheckReady is used to rate limit the number of ingesters that can be coming or
@@ -276,6 +284,15 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	}
 
 	return <-err
+}
+
+// HealthyIngestersCount returns the number of healthy ingesters in the ring, updated
+// during the last heartbeat period
+func (i *Lifecycler) HealthyIngestersCount() int {
+	i.countersLock.Lock()
+	defer i.countersLock.Unlock()
+
+	return i.healthyIngestersCount
 }
 
 // Shutdown the lifecycle.  It will:
@@ -392,6 +409,9 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
 			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
+
+			i.updateCounters(ringDesc)
+
 			return ringDesc, true, nil
 		}
 
@@ -399,6 +419,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.setState(ingesterDesc.State)
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
+
+		i.updateCounters(ringDesc)
 
 		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
 		return ringDesc, true, nil
@@ -429,6 +451,8 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 		sort.Sort(sortableUint32(tokens))
 		i.setTokens(tokens)
 
+		i.updateCounters(ringDesc)
+
 		return ringDesc, true, nil
 	})
 }
@@ -456,6 +480,11 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 
+		// Update local counters. There's no guarantee this CAS operation will succeed but,
+		// if will fail, will be soon retried and we do accept a short-term inconsistency in
+		// counters as much as we accept counters are updated at every heartbeat period.
+		i.updateCounters(ringDesc)
+
 		return ringDesc, true, nil
 	})
 }
@@ -476,6 +505,20 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 	level.Info(util.Logger).Log("msg", "changing ingester state from", "old_state", currState, "new_state", state)
 	i.setState(state)
 	return i.updateConsul(ctx)
+}
+
+func (i *Lifecycler) updateCounters(ringDesc *Desc) {
+	i.countersLock.Lock()
+	defer i.countersLock.Unlock()
+
+	// Count the number of healthy ingesters for Write operation
+	i.healthyIngestersCount = 0
+
+	for _, ingester := range ringDesc.Ingesters {
+		if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
+			i.healthyIngestersCount++
+		}
+	}
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {

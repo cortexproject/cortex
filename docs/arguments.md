@@ -175,6 +175,14 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
   The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created. (default 12h)
 
+- `-ingester.max-chunk-idle`
+  
+  If a series doesn't receive a sample for this duration, it is flushed and removed from memory.
+
+- `-ingester.max-stale-chunk-idle`
+  
+  If a series receives a [staleness marker](https://www.robustperception.io/staleness-and-promql), then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be atleast 2x the scrape interval as you don't want a single failed scrape to cause a chunk flush. 
+
 - `-ingester.chunk-age-jitter`
 
   To reduce load on the database exactly 12 hours after starting, the age limit is reduced by a varying amount up to this. (default 20m)

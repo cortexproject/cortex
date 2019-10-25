@@ -8,6 +8,7 @@
 * [FEATURE] Global limit on the max series per user and metric #1760
   * `-ingester.max-global-series-per-user`
   * `-ingester.max-global-series-per-metric`
+* [FEATURE] Flush chunks with stale markers early with `ingester.max-stale-chunk-idle`. #1759
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
 * [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
 * [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708

@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
+// StatusSuccess Prometheus success result.
 const StatusSuccess = "success"
 
 var (

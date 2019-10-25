@@ -24,9 +24,12 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/querier/querysharding"
 )
 
 const day = 24 * time.Hour
@@ -39,6 +42,7 @@ type Config struct {
 	ResultsCacheConfig     `yaml:"results_cache"`
 	CacheResults           bool `yaml:"cache_results"`
 	MaxRetries             int  `yaml:"max_retries"`
+	SumShards              bool `yaml:"sum_shards"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -48,6 +52,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks.")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
+	f.BoolVar(&cfg.SumShards, "querier.sum-shards", false, "Parse the ast and parallelize sums by shard.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
@@ -89,10 +94,21 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, error) {
+func NewTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	codec Codec,
+	cacheExtractor Extractor,
+	schema chunk.SchemaConfig,
+	engineOpts promql.EngineOpts,
+) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
+	}
+	if cfg.SumShards {
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("sum_shards"), querysharding.QueryShardMiddleware(promql.NewEngine(engineOpts), schema.Configs))
 	}
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
 	if cfg.SplitQueriesByDay {

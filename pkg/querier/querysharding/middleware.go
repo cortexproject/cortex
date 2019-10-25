@@ -22,22 +22,15 @@ var (
 	errInvalidShardingRange = errors.New("Query does not fit in a single sharding configuration")
 )
 
-// ShardingConfig will eventually support ranges like chunk.PeriodConfig for meshing togethe multiple queryShard(s).
-// This will enable compatibility for deployments which change their shard factors over time.
-type ShardingConfig struct {
-	From   chunk.DayTime `yaml:"from"`
-	Shards int           `yaml:"shards"`
-}
-
-// ShardingConfigs is a slice of shards
-type ShardingConfigs []ShardingConfig
+// ShardingConfigs is a slice of chunk shard configs
+type ShardingConfigs []chunk.PeriodConfig
 
 // ValidRange extracts a non-overlapping sharding configuration from a list of configs and a time range.
-func (confs ShardingConfigs) ValidRange(start, end int64) (ShardingConfig, error) {
+func (confs ShardingConfigs) ValidRange(start, end int64) (chunk.PeriodConfig, error) {
 	for i, conf := range confs {
 		if start < int64(conf.From.Time) {
 			// the query starts before this config's range
-			return ShardingConfig{}, errInvalidShardingRange
+			return chunk.PeriodConfig{}, errInvalidShardingRange
 		} else if i == len(confs)-1 {
 			// the last configuration has no upper bound
 			return conf, nil
@@ -49,8 +42,16 @@ func (confs ShardingConfigs) ValidRange(start, end int64) (ShardingConfig, error
 		}
 	}
 
-	return ShardingConfig{}, errInvalidShardingRange
+	return chunk.PeriodConfig{}, errInvalidShardingRange
+}
 
+func (confs ShardingConfigs) hasShards() bool {
+	for _, conf := range confs {
+		if conf.RowShards > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
@@ -64,6 +65,9 @@ func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
 // QueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func QueryShardMiddleware(engine *promql.Engine, confs ShardingConfigs) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+		if !confs.hasShards() {
+			return next
+		}
 		return &queryShard{
 			confs:  confs,
 			next:   next,
@@ -82,14 +86,14 @@ func (qs *queryShard) Do(ctx context.Context, r queryrange.Request) (queryrange.
 	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
 
 	conf, err := qs.confs.ValidRange(r.GetStart(), r.GetEnd())
-	// query exists across multiple sharding configs, so don't try to do AST mapping.
-	if err != nil {
+	// query exists across multiple sharding configs or doesn't have sharding, so don't try to do AST mapping.
+	if err != nil || conf.RowShards == 0 {
 		return qs.next.Do(ctx, r)
 	}
 
 	mappedQuery, err := mapQuery(
 		astmapper.NewMultiMapper(
-			astmapper.NewShardSummer(conf.Shards, astmapper.VectorSquasher),
+			astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher),
 			astmapper.ShallowEmbedSelectors,
 		),
 		r.GetQuery(),

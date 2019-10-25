@@ -76,7 +76,7 @@ func TestMiddleware(t *testing.T) {
 				engine,
 				ShardingConfigs{
 					{
-						Shards: 3,
+						RowShards: 3,
 					},
 				},
 			).Wrap(c.next)
@@ -184,7 +184,7 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 		name     string
 		confs    ShardingConfigs
 		req      *queryrange.PrometheusRequest
-		expected ShardingConfig
+		expected chunk.PeriodConfig
 		err      error
 	}{
 		{
@@ -197,8 +197,8 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 			name: "request starts before beginning config",
 			confs: ShardingConfigs{
 				{
-					From:   chunk.DayTime{Time: parseDate("2019-10-16")},
-					Shards: 1,
+					From:      chunk.DayTime{Time: parseDate("2019-10-16")},
+					RowShards: 1,
 				},
 			},
 			req: reqWith("2019-10-15", ""),
@@ -208,12 +208,12 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 			name: "request spans multiple configs",
 			confs: ShardingConfigs{
 				{
-					From:   chunk.DayTime{Time: parseDate("2019-10-16")},
-					Shards: 1,
+					From:      chunk.DayTime{Time: parseDate("2019-10-16")},
+					RowShards: 1,
 				},
 				{
-					From:   chunk.DayTime{Time: parseDate("2019-11-16")},
-					Shards: 2,
+					From:      chunk.DayTime{Time: parseDate("2019-11-16")},
+					RowShards: 2,
 				},
 			},
 			req: reqWith("2019-10-15", "2019-11-17"),
@@ -223,22 +223,22 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 			name: "selects correct config ",
 			confs: ShardingConfigs{
 				{
-					From:   chunk.DayTime{Time: parseDate("2019-10-16")},
-					Shards: 1,
+					From:      chunk.DayTime{Time: parseDate("2019-10-16")},
+					RowShards: 1,
 				},
 				{
-					From:   chunk.DayTime{Time: parseDate("2019-11-16")},
-					Shards: 2,
+					From:      chunk.DayTime{Time: parseDate("2019-11-16")},
+					RowShards: 2,
 				},
 				{
-					From:   chunk.DayTime{Time: parseDate("2019-12-16")},
-					Shards: 3,
+					From:      chunk.DayTime{Time: parseDate("2019-12-16")},
+					RowShards: 3,
 				},
 			},
 			req: reqWith("2019-11-20", "2019-11-25"),
-			expected: ShardingConfig{
-				From:   chunk.DayTime{Time: parseDate("2019-11-16")},
-				Shards: 2,
+			expected: chunk.PeriodConfig{
+				From:      chunk.DayTime{Time: parseDate("2019-11-16")},
+				RowShards: 2,
 			},
 		},
 	}

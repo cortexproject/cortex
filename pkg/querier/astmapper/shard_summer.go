@@ -15,8 +15,6 @@ import (
 )
 
 const (
-	// DefaultShards factor to assume
-	DefaultShards = 12
 	// ShardLabel is a reserved label referencing a cortex shard
 	ShardLabel = "__cortex_shard__"
 	// ShardLabelFmt is the fmt of the ShardLabel key.
@@ -38,9 +36,6 @@ type shardSummer struct {
 
 // NewShardSummer instantiates an ASTMapper which will fan out sums queries by shard
 func NewShardSummer(shards int, squasher squasher) ASTMapper {
-	if shards == 0 {
-		shards = DefaultShards
-	}
 
 	return NewASTNodeMapper(&shardSummer{
 		shards:   shards,

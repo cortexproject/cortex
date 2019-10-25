@@ -122,6 +122,14 @@ func (c *Config) Validate() error {
 	if err := c.Encoding.Validate(); err != nil {
 		return errors.Wrap(err, "invalid encoding config")
 	}
+
+	if err := c.Storage.Validate(); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
+
+	if err := c.TSDB.Validate(); err != nil {
+		return errors.Wrap(err, "invalid TSDB config")
+	}
 	return nil
 }
 

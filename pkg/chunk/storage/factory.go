@@ -61,7 +61,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // Validate config and returns error on failure
-// TODO need to rebase to call it, because Config validation has been added just recently
 func (cfg *Config) Validate() error {
 	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineTSDB {
 		return errors.New("unsupported storage engine")

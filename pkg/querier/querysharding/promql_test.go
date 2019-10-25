@@ -242,7 +242,6 @@ func Test_PromQL(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.normalQuery, func(t *testing.T) {
-			// t.Parallel()
 
 			baseQuery, err := engine.NewRangeQuery(shardAwareQueryable, tt.normalQuery, start, end, step)
 			require.Nil(t, err)
@@ -257,6 +256,231 @@ func Test_PromQL(t *testing.T) {
 				return
 			}
 			require.NotEqual(t, baseResult, shardResult)
+		})
+	}
+
+}
+
+func Test_FunctionParallelism(t *testing.T) {
+	tpl := `sum(<fn>(bar1{}<fArgs>))`
+	shardTpl := `sum(
+				sum without(__cortex_shard__) (<fn>(bar1{__cortex_shard__="0_of_3"}<fArgs>)) or
+				sum without(__cortex_shard__) (<fn>(bar1{__cortex_shard__="1_of_3"}<fArgs>)) or
+				sum without(__cortex_shard__) (<fn>(bar1{__cortex_shard__="2_of_3"}<fArgs>))
+			  )`
+
+	mkQuery := func(tpl, fn string, matrix bool, fArgs []string) (result string) {
+		result = strings.Replace(tpl, "<fn>", fn, -1)
+
+		if matrix {
+			// turn selectors into ranges
+			result = strings.Replace(result, "}<fArgs>", "}[1m]<fArgs>", -1)
+		}
+
+		if fArgs != nil && len(fArgs) > 0 {
+			args := "," + strings.Join(fArgs, ",")
+			result = strings.Replace(result, "<fArgs>", args, -1)
+		} else {
+			result = strings.Replace(result, "<fArgs>", "", -1)
+		}
+
+		return result
+	}
+
+	for _, tc := range []struct {
+		fn          string
+		fArgs       []string
+		isMatrix    bool
+		approximate bool
+	}{
+		{
+			fn: "abs",
+		},
+		{
+			fn: "absent",
+		},
+		{
+			fn:       "avg_over_time",
+			isMatrix: true,
+		},
+		{
+			fn: "ceil",
+		},
+		{
+			fn:       "changes",
+			isMatrix: true,
+		},
+		{
+			fn:       "count_over_time",
+			isMatrix: true,
+		},
+		{
+			fn: "days_in_month",
+		},
+		{
+			fn: "day_of_month",
+		},
+		{
+			fn: "day_of_week",
+		},
+		{
+			fn:       "delta",
+			isMatrix: true,
+		},
+		{
+			fn:          "deriv",
+			isMatrix:    true,
+			approximate: true,
+		},
+		{
+			fn: "exp",
+		},
+		{
+			fn: "floor",
+		},
+		{
+			fn: "hour",
+		},
+		{
+			fn:       "idelta",
+			isMatrix: true,
+		},
+		{
+			fn:       "increase",
+			isMatrix: true,
+		},
+		{
+			fn:          "irate",
+			isMatrix:    true,
+			approximate: true,
+		},
+		{
+			fn:          "ln",
+			approximate: true,
+		},
+		{
+			fn:          "log10",
+			approximate: true,
+		},
+		{
+			fn:          "log2",
+			approximate: true,
+		},
+		{
+			fn:       "max_over_time",
+			isMatrix: true,
+		},
+		{
+			fn:       "min_over_time",
+			isMatrix: true,
+		},
+		{
+			fn: "minute",
+		},
+		{
+			fn: "month",
+		},
+		{
+			fn:       "rate",
+			isMatrix: true,
+		},
+		{
+			fn:       "resets",
+			isMatrix: true,
+		},
+		{
+			fn: "sort",
+		},
+		{
+			fn: "sort_desc",
+		},
+		{
+			fn:          "sqrt",
+			approximate: true,
+		},
+		{
+			fn:       "stddev_over_time",
+			isMatrix: true,
+		},
+		{
+			fn:          "stdvar_over_time",
+			isMatrix:    true,
+			approximate: true,
+		},
+		{
+			fn:       "sum_over_time",
+			isMatrix: true,
+		},
+		{
+			fn: "timestamp",
+		},
+		{
+			fn: "year",
+		},
+		{
+			fn:    "clamp_max",
+			fArgs: []string{"5"},
+		},
+		{
+			fn:    "clamp_min",
+			fArgs: []string{"5"},
+		},
+		{
+			fn:       "predict_linear",
+			isMatrix: true,
+			fArgs:    []string{"1"},
+		},
+		{
+			fn:    "round",
+			fArgs: []string{"20"},
+		},
+		{
+			fn:       "holt_winters",
+			isMatrix: true,
+			fArgs:    []string{"0.5", "0.7"},
+		},
+	} {
+
+		t.Run(tc.fn, func(t *testing.T) {
+			baseQuery, err := engine.NewRangeQuery(
+				shardAwareQueryable,
+				mkQuery(tpl, tc.fn, tc.isMatrix, tc.fArgs),
+				start,
+				end,
+				step,
+			)
+			require.Nil(t, err)
+			shardQuery, err := engine.NewRangeQuery(
+				shardAwareQueryable,
+				mkQuery(shardTpl, tc.fn, tc.isMatrix, tc.fArgs),
+				start,
+				end,
+				step,
+			)
+			require.Nil(t, err)
+			baseResult := baseQuery.Exec(ctx)
+			shardResult := shardQuery.Exec(ctx)
+			t.Logf("base: %+v\n", baseResult)
+			t.Logf("shard: %+v\n", shardResult)
+			if !tc.approximate {
+				require.Equal(t, baseResult, shardResult)
+			} else {
+				// Some functions yield tiny differences when sharded due to combining floating point calculations.
+				baseSeries := baseResult.Value.(promql.Matrix)[0]
+				shardSeries := shardResult.Value.(promql.Matrix)[0]
+
+				require.Equal(t, len(baseSeries.Points), len(shardSeries.Points))
+				for i, basePt := range baseSeries.Points {
+					shardPt := shardSeries.Points[i]
+					require.Equal(t, basePt.T, shardPt.T)
+					require.Equal(
+						t,
+						fmt.Sprintf("%.6f", basePt.V),
+						fmt.Sprintf("%.6f", shardPt.V),
+					)
+				}
+
+			}
 		})
 	}
 

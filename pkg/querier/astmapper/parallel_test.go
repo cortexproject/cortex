@@ -2,11 +2,12 @@ package astmapper
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestCanParallel(t *testing.T) {
@@ -94,6 +95,16 @@ func TestCanParallel_String(t *testing.T) {
 		{
 			`sum by (foo) (rate(bar1{baz="blip"}[1m]))`,
 			true,
+		},
+		{
+			`sum by (foo) (histogram_quantile(0.9, rate(http_request_duration_seconds_bucket[10m])))`,
+			false,
+		},
+		{
+			`sum by (foo) (
+			  quantile_over_time(0.9, http_request_duration_seconds_bucket[10m])
+			)`,
+			false,
 		},
 	}
 

@@ -77,5 +77,15 @@ func CanParallel(node promql.Node) bool {
 
 // ParallelFunc ensures that a promql function can be part of a parallel query.
 func ParallelFunc(f promql.Function) bool {
+	unallowed := []string{
+		"histogram_quantile",
+		"quantile_over_time",
+	}
+
+	for _, v := range unallowed {
+		if v == f.Name {
+			return false
+		}
+	}
 	return true
 }

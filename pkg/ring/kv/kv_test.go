@@ -146,23 +146,29 @@ func TestWatchKey(t *testing.T) {
 func TestWatchPrefix(t *testing.T) {
 	withFixtures(t, func(t *testing.T, client Client) {
 		const prefix = "test/"
+		const prefix2 = "ignore/"
+
 		const max = 100
 		const sleep = time.Millisecond * 10
 
-		ch := make(chan struct{})
-		go func() {
+		gen := func(p string, ch chan struct{}) {
 			defer close(ch)
 			for i := 0; i < max; i++ {
 				// Start with sleeping, so that watching client see empty KV store at the beginning.
 				time.Sleep(sleep)
 
-				key := fmt.Sprintf("%s%d", prefix, i)
+				key := fmt.Sprintf("%s%d", p, i)
 				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 					return key, true, nil
 				})
 				require.NoError(t, err)
 			}
-		}()
+		}
+
+		ch1 := make(chan struct{})
+		ch2 := make(chan struct{})
+		go gen(prefix, ch1)
+		go gen(prefix2, ch2) // we don't want to see these keys reported
 
 		observedKeys := map[string]int{}
 		ctx, cfn := context.WithTimeout(context.Background(), 1.5*max*sleep)
@@ -173,16 +179,22 @@ func TestWatchPrefix(t *testing.T) {
 			return true
 		})
 
-		// wait until updater finishes (should be done by now)
-		<-ch
+		// wait until updaters finish (should be done by now)
+		<-ch1
+		<-ch2
 
-		// verify that each key was reported once
+		// verify that each key was reported once, and keys outside prefix were not reported
 		for i := 0; i < max; i++ {
 			key := fmt.Sprintf("%s%d", prefix, i)
 
 			if observedKeys[key] != 1 {
 				t.Errorf("key %s has incorrect value %d", key, observedKeys[key])
 			}
+			delete(observedKeys, key)
+		}
+
+		if len(observedKeys) > 0 {
+			t.Errorf("unexpected keys reported: %v", observedKeys)
 		}
 	})
 }

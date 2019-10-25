@@ -214,6 +214,13 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 	fromIngesterID := ""
 
 	xfer := func() error {
+
+		dir, err := ioutil.TempDir("", "tsdb_xfer")
+		if err != nil {
+			return err
+		}
+		defer os.Remove(dir)
+
 		filesXfer := 0
 
 		files := make(map[string]*os.File)
@@ -244,9 +251,8 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			}
 			filesXfer++
 
-			// TODO(thor) To avoid corruption from errors, it's probably best to write to a temp dir, and then move that to the final location
 			createfile := func(f *client.TimeSeriesFile) (*os.File, error) {
-				dir := filepath.Join(i.cfg.TSDBConfig.Dir, filepath.Dir(f.Filename))
+				dir := filepath.Join(dir, filepath.Dir(f.Filename))
 				if err := os.MkdirAll(dir, 0777); err != nil {
 					return nil, errors.Wrap(err, "TransferTSDB: MkdirAll")
 				}
@@ -284,7 +290,8 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 		receivedFiles.Add(float64(filesXfer))
 		level.Error(util.Logger).Log("msg", "Total files xfer", "from_ingester", fromIngesterID, "num", filesXfer)
 
-		return nil
+		// Move the tmpdir to the final location
+		return os.Rename(dir, i.cfg.TSDBConfig.Dir)
 	}
 
 	if err := i.transfer(stream.Context(), xfer); err != nil {

@@ -78,10 +78,10 @@ type queryShard struct {
 	engine *promql.Engine
 }
 
-func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrange.APIResponse, error) {
+func (qs *queryShard) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
 
-	conf, err := qs.confs.ValidRange(r.Start, r.End)
+	conf, err := qs.confs.ValidRange(r.GetStart(), r.GetEnd())
 	// query exists across multiple sharding configs, so don't try to do AST mapping.
 	if err != nil {
 		return qs.next.Do(ctx, r)
@@ -92,7 +92,7 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 			astmapper.NewShardSummer(conf.Shards, astmapper.VectorSquasher),
 			astmapper.ShallowEmbedSelectors,
 		),
-		r.Query,
+		r.GetQuery(),
 	)
 
 	if err != nil {
@@ -102,38 +102,23 @@ func (qs *queryShard) Do(ctx context.Context, r *queryrange.Request) (*queryrang
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
 		mappedQuery.String(),
-		TimeFromMillis(r.Start),
-		TimeFromMillis(r.End),
-		time.Duration(r.Step)*time.Millisecond,
+		TimeFromMillis(r.GetStart()),
+		TimeFromMillis(r.GetEnd()),
+		time.Duration(r.GetStep())*time.Millisecond,
 	)
 
 	if err != nil {
 		return nil, err
 	}
-
 	res := qry.Exec(ctx)
-
-	// TODO(owen-d): Unclear on whether error belongs in APIResponse struct or as 2nd value in return tuple
-	if res.Err != nil {
-		return &queryrange.APIResponse{
-			Status:    queryrange.StatusFailure,
-			ErrorType: downStreamErrType,
-			Error:     res.Err.Error(),
-		}, nil
-	}
-
-	extracted, err := FromValue(res.Value)
+	extracted, err := FromResult(res)
 	if err != nil {
-		return &queryrange.APIResponse{
-			Status:    queryrange.StatusFailure,
-			ErrorType: downStreamErrType,
-			Error:     err.Error(),
-		}, nil
+		return nil, err
 
 	}
-	return &queryrange.APIResponse{
+	return &queryrange.PrometheusResponse{
 		Status: queryrange.StatusSuccess,
-		Data: queryrange.Response{
+		Data: queryrange.PrometheusData{
 			ResultType: string(res.Value.Type()),
 			Result:     extracted,
 		},

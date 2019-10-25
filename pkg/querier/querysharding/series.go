@@ -12,14 +12,21 @@ import (
 
 // ResponseToSeries is needed to map back from api response to the underlying series data
 func ResponseToSeries(resp queryrange.Response) (storage.SeriesSet, error) {
-	switch resp.ResultType {
+	promRes, ok := resp.(*queryrange.PrometheusResponse)
+	if !ok {
+		return nil, errors.Errorf("error invalid response type: %T, expected: %T", resp, &queryrange.PrometheusResponse{})
+	}
+	if promRes.Error != "" {
+		return nil, errors.New(promRes.Error)
+	}
+	switch promRes.Data.ResultType {
 	case promql.ValueTypeVector, promql.ValueTypeMatrix:
-		return newSeriesSet(resp.Result), nil
+		return newSeriesSet(promRes.Data.Result), nil
 	}
 
 	return nil, errors.Errorf(
 		"Invalid promql.Value type: [%s]. Only %s and %s supported",
-		resp.ResultType,
+		promRes.Data.ResultType,
 		promql.ValueTypeVector,
 		promql.ValueTypeMatrix,
 	)

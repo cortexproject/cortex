@@ -33,22 +33,22 @@ func TestSelect(t *testing.T) {
 		{
 			name: "replaces query",
 			querier: mkQuerier(mockHandler(
-				&queryrange.APIResponse{},
+				&queryrange.PrometheusResponse{},
 				nil,
 			)),
 			fn: func(t *testing.T, q *DownstreamQuerier) {
 
-				expected := &queryrange.APIResponse{
+				expected := &queryrange.PrometheusResponse{
 					Status: "success",
-					Data: queryrange.Response{
+					Data: queryrange.PrometheusData{
 						ResultType: promql.ValueTypeVector,
 					},
 				}
 
 				// override handler func to assert new query has been substituted
 				q.Handler = queryrange.HandlerFunc(
-					func(ctx context.Context, req *queryrange.Request) (*queryrange.APIResponse, error) {
-						require.Equal(t, `http_requests_total{cluster="prod"}`, req.Query)
+					func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+						require.Equal(t, `http_requests_total{cluster="prod"}`, req.GetQuery())
 						return expected, nil
 					},
 				)
@@ -64,7 +64,7 @@ func TestSelect(t *testing.T) {
 		{
 			name: "propagates response error",
 			querier: mkQuerier(mockHandler(
-				&queryrange.APIResponse{
+				&queryrange.PrometheusResponse{
 					Error: "SomeErr",
 				},
 				nil,
@@ -82,8 +82,8 @@ func TestSelect(t *testing.T) {
 		{
 			name: "returns SeriesSet",
 			querier: mkQuerier(mockHandler(
-				&queryrange.APIResponse{
-					Data: queryrange.Response{
+				&queryrange.PrometheusResponse{
+					Data: queryrange.PrometheusData{
 						ResultType: promql.ValueTypeVector,
 						Result: []queryrange.SampleStream{
 							{
@@ -189,7 +189,7 @@ func exactMatch(k, v string) *labels.Matcher {
 }
 
 func mkQuerier(handler queryrange.Handler) *DownstreamQuerier {
-	return &DownstreamQuerier{context.Background(), &queryrange.Request{}, handler}
+	return &DownstreamQuerier{context.Background(), &queryrange.PrometheusRequest{}, handler}
 }
 
 func hexEncode(str string) string {

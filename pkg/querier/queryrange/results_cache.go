@@ -54,7 +54,7 @@ func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
 var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Response) Response {
 	promRes := from.(*PrometheusResponse)
 	return &PrometheusResponse{
-		Status: statusSuccess,
+		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: promRes.Data.ResultType,
 			Result:     extractMatrix(start, end, promRes.Data.Result),

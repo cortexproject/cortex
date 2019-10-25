@@ -18,7 +18,7 @@ const (
 
 // DownstreamQueryable is an implementor of the Queryable interface.
 type DownstreamQueryable struct {
-	Req     *queryrange.Request
+	Req     queryrange.Request
 	Handler queryrange.Handler
 }
 
@@ -30,7 +30,7 @@ func (q *DownstreamQueryable) Querier(ctx context.Context, mint, maxt int64) (st
 // DownstreamQuerier is a an implementor of the Querier interface.
 type DownstreamQuerier struct {
 	Ctx     context.Context
-	Req     *queryrange.Request
+	Req     queryrange.Request
 	Handler queryrange.Handler
 }
 
@@ -69,16 +69,12 @@ func (q *DownstreamQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesS
 		return nil, nil, err
 	}
 
-	resp, err := q.Handler.Do(q.Ctx, ReplaceQuery(*q.Req, string(decoded)))
+	resp, err := q.Handler.Do(q.Ctx, q.Req.WithQuery(string(decoded)))
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if resp.Error != "" {
-		return nil, nil, errors.Errorf(resp.Error)
-	}
-
-	set, err := ResponseToSeries(resp.Data)
+	set, err := ResponseToSeries(resp)
 	return set, nil, err
 
 }
@@ -96,10 +92,4 @@ func (q *DownstreamQuerier) LabelNames() ([]string, storage.Warnings, error) {
 // Close releases the resources of the Querier.
 func (q *DownstreamQuerier) Close() error {
 	return nil
-}
-
-// ReplaceQuery clones a request with a new query
-func ReplaceQuery(req queryrange.Request, query string) *queryrange.Request {
-	req.Query = query
-	return &req
 }

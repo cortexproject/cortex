@@ -6,6 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -13,18 +14,22 @@ import (
 
 func TestFromValue(t *testing.T) {
 	var testExpr = []struct {
-		input    promql.Value
+		input    *promql.Result
 		err      bool
 		expected []queryrange.SampleStream
 	}{
 		// string (errors)
 		{
-			input: promql.String{T: 1, V: "hi"},
+			input: &promql.Result{Value: promql.String{T: 1, V: "hi"}},
+			err:   true,
+		},
+		{
+			input: &promql.Result{Err: errors.New("foo")},
 			err:   true,
 		},
 		// Scalar
 		{
-			input: promql.Scalar{T: 1, V: 1},
+			input: &promql.Result{Value: promql.Scalar{T: 1, V: 1}},
 			err:   false,
 			expected: []queryrange.SampleStream{
 				{
@@ -39,19 +44,21 @@ func TestFromValue(t *testing.T) {
 		},
 		// Vector
 		{
-			input: promql.Vector{
-				promql.Sample{
-					Point: promql.Point{T: 1, V: 1},
-					Metric: labels.Labels{
-						{Name: "a", Value: "a1"},
-						{Name: "b", Value: "b1"},
+			input: &promql.Result{
+				Value: promql.Vector{
+					promql.Sample{
+						Point: promql.Point{T: 1, V: 1},
+						Metric: labels.Labels{
+							{Name: "a", Value: "a1"},
+							{Name: "b", Value: "b1"},
+						},
 					},
-				},
-				promql.Sample{
-					Point: promql.Point{T: 2, V: 2},
-					Metric: labels.Labels{
-						{Name: "a", Value: "a2"},
-						{Name: "b", Value: "b2"},
+					promql.Sample{
+						Point: promql.Point{T: 2, V: 2},
+						Metric: labels.Labels{
+							{Name: "a", Value: "a2"},
+							{Name: "b", Value: "b2"},
+						},
 					},
 				},
 			},
@@ -85,25 +92,27 @@ func TestFromValue(t *testing.T) {
 		},
 		// Matrix
 		{
-			input: promql.Matrix{
-				{
-					Metric: labels.Labels{
-						{Name: "a", Value: "a1"},
-						{Name: "b", Value: "b1"},
+			input: &promql.Result{
+				Value: promql.Matrix{
+					{
+						Metric: labels.Labels{
+							{Name: "a", Value: "a1"},
+							{Name: "b", Value: "b1"},
+						},
+						Points: []promql.Point{
+							{T: 1, V: 1},
+							{T: 2, V: 2},
+						},
 					},
-					Points: []promql.Point{
-						{T: 1, V: 1},
-						{T: 2, V: 2},
-					},
-				},
-				{
-					Metric: labels.Labels{
-						{Name: "a", Value: "a2"},
-						{Name: "b", Value: "b2"},
-					},
-					Points: []promql.Point{
-						{T: 1, V: 8},
-						{T: 2, V: 9},
+					{
+						Metric: labels.Labels{
+							{Name: "a", Value: "a2"},
+							{Name: "b", Value: "b2"},
+						},
+						Points: []promql.Point{
+							{T: 1, V: 8},
+							{T: 2, V: 9},
+						},
 					},
 				},
 			},
@@ -147,7 +156,7 @@ func TestFromValue(t *testing.T) {
 
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			result, err := FromValue(c.input)
+			result, err := FromResult(c.input)
 			if c.err {
 				require.NotNil(t, err)
 			} else {

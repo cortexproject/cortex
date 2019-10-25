@@ -8,9 +8,12 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
-// FromValue transforms a promql query result into a samplestream
-func FromValue(val promql.Value) ([]queryrange.SampleStream, error) {
-	switch v := val.(type) {
+// FromResult transforms a promql query result into a samplestream
+func FromResult(res *promql.Result) ([]queryrange.SampleStream, error) {
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	switch v := res.Value.(type) {
 	case promql.Scalar:
 		return []queryrange.SampleStream{
 			{
@@ -45,7 +48,7 @@ func FromValue(val promql.Value) ([]queryrange.SampleStream, error) {
 
 	}
 
-	return nil, errors.Errorf("Unexpected value type: [%s]", val.Type())
+	return nil, errors.Errorf("Unexpected value type: [%s]", res.Value.Type())
 }
 
 func mapLabels(ls labels.Labels) []client.LabelAdapter {

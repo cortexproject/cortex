@@ -19,51 +19,36 @@ func TestMiddleware(t *testing.T) {
 	var testExpr = []struct {
 		name     string
 		next     queryrange.Handler
-		input    *queryrange.Request
+		input    queryrange.Request
 		ctx      context.Context
-		expected *queryrange.APIResponse
+		expected *queryrange.PrometheusResponse
 		err      bool
 		override func(*testing.T, queryrange.Handler)
 	}{
 		{
 			name: "invalid query error",
 			// if the query parses correctly force it to succeed
-			next: mockHandler(&queryrange.APIResponse{
+			next: mockHandler(&queryrange.PrometheusResponse{
 				Status: "",
-				Data: queryrange.Response{
+				Data: queryrange.PrometheusData{
 					ResultType: promql.ValueTypeVector,
 					Result:     []queryrange.SampleStream{},
 				},
 				ErrorType: "",
 				Error:     "",
 			}, nil),
-			input:    &queryrange.Request{Query: "^GARBAGE"},
+			input:    &queryrange.PrometheusRequest{Query: "^GARBAGE"},
 			ctx:      context.Background(),
 			expected: nil,
 			err:      true,
 		},
 		{
-			name:  "downstream err",
-			next:  mockHandler(nil, errors.Errorf("some err")),
-			input: defaultReq(),
-			ctx:   context.Background(),
-			expected: &queryrange.APIResponse{
-				Status:    queryrange.StatusFailure,
-				ErrorType: downStreamErrType,
-				Error:     "some err",
-			},
-			err: false,
-		},
-		{
-			name: "expiration",
-			next: mockHandler(sampleMatrixResponse(), nil),
-			override: func(t *testing.T, handler queryrange.Handler) {
-				expired, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
-				defer cancel()
-				res, err := handler.Do(expired, defaultReq())
-				require.Nil(t, err)
-				require.NotEqual(t, "", res.Error)
-			},
+			name:     "downstream err",
+			next:     mockHandler(nil, errors.Errorf("some err")),
+			input:    defaultReq(),
+			ctx:      context.Background(),
+			expected: nil,
+			err:      true,
 		},
 		{
 			name: "successful trip",
@@ -71,7 +56,7 @@ func TestMiddleware(t *testing.T) {
 			override: func(t *testing.T, handler queryrange.Handler) {
 				out, err := handler.Do(context.Background(), defaultReq())
 				require.Nil(t, err)
-				require.Equal(t, promql.ValueTypeMatrix, out.Data.ResultType)
+				require.Equal(t, promql.ValueTypeMatrix, out.(*queryrange.PrometheusResponse).Data.ResultType)
 				require.Equal(t, sampleMatrixResponse(), out)
 			},
 		},
@@ -115,10 +100,10 @@ func TestMiddleware(t *testing.T) {
 	}
 }
 
-func sampleMatrixResponse() *queryrange.APIResponse {
-	return &queryrange.APIResponse{
+func sampleMatrixResponse() *queryrange.PrometheusResponse {
+	return &queryrange.PrometheusResponse{
 		Status: queryrange.StatusSuccess,
-		Data: queryrange.Response{
+		Data: queryrange.PrometheusData{
 			ResultType: promql.ValueTypeMatrix,
 			Result: []queryrange.SampleStream{
 				{
@@ -158,8 +143,8 @@ func sampleMatrixResponse() *queryrange.APIResponse {
 	}
 }
 
-func mockHandler(resp *queryrange.APIResponse, err error) queryrange.Handler {
-	return queryrange.HandlerFunc(func(ctx context.Context, req *queryrange.Request) (*queryrange.APIResponse, error) {
+func mockHandler(resp *queryrange.PrometheusResponse, err error) queryrange.Handler {
+	return queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
 		if expired := ctx.Err(); expired != nil {
 			return nil, expired
 		}
@@ -168,8 +153,8 @@ func mockHandler(resp *queryrange.APIResponse, err error) queryrange.Handler {
 	})
 }
 
-func defaultReq() *queryrange.Request {
-	return &queryrange.Request{
+func defaultReq() *queryrange.PrometheusRequest {
+	return &queryrange.PrometheusRequest{
 		Path:    "/query_range",
 		Start:   00,
 		End:     10,
@@ -181,7 +166,7 @@ func defaultReq() *queryrange.Request {
 }
 
 func TestShardingConfigs_ValidRange(t *testing.T) {
-	reqWith := func(start, end string) *queryrange.Request {
+	reqWith := func(start, end string) *queryrange.PrometheusRequest {
 		r := defaultReq()
 
 		if start != "" {
@@ -198,7 +183,7 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 	var testExpr = []struct {
 		name     string
 		confs    ShardingConfigs
-		req      *queryrange.Request
+		req      *queryrange.PrometheusRequest
 		expected ShardingConfig
 		err      error
 	}{

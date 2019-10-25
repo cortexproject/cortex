@@ -12,8 +12,6 @@ import (
 )
 
 func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
-	t.Parallel()
-
 	tests := map[string]struct {
 		maxLocalSeriesPerMetric  int
 		maxGlobalSeriesPerMetric int
@@ -105,8 +103,6 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 }
 
 func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
-	t.Parallel()
-
 	tests := map[string]struct {
 		maxLocalSeriesPerUser  int
 		maxGlobalSeriesPerUser int
@@ -198,8 +194,6 @@ func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 }
 
 func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
-	t.Parallel()
-
 	tests := map[string]struct {
 		maxLocalSeriesPerMetric  int
 		maxGlobalSeriesPerMetric int
@@ -263,8 +257,6 @@ func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 }
 
 func TestSeriesLimiter_AssertMaxSeriesPerUser(t *testing.T) {
-	t.Parallel()
-
 	tests := map[string]struct {
 		maxLocalSeriesPerUser  int
 		maxGlobalSeriesPerUser int

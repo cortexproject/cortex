@@ -22,11 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
-// Exported statuses for downstream queries
-const (
-	StatusSuccess = "success"
-	StatusFailure = "failure"
-)
+const statusSuccess = "success"
 
 var (
 	matrix            = model.ValMatrix.String()

@@ -302,6 +302,7 @@ func Test_FunctionParallelism(t *testing.T) {
 		{
 			fn:           "avg_over_time",
 			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
 			fn: "ceil",
@@ -326,6 +327,7 @@ func Test_FunctionParallelism(t *testing.T) {
 		{
 			fn:           "delta",
 			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
 			fn:           "deriv",
@@ -333,7 +335,8 @@ func Test_FunctionParallelism(t *testing.T) {
 			approximate:  true,
 		},
 		{
-			fn: "exp",
+			fn:          "exp",
+			approximate: true,
 		},
 		{
 			fn: "floor",
@@ -344,10 +347,12 @@ func Test_FunctionParallelism(t *testing.T) {
 		{
 			fn:           "idelta",
 			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
 			fn:           "increase",
 			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
 			fn:           "irate",
@@ -402,6 +407,7 @@ func Test_FunctionParallelism(t *testing.T) {
 		{
 			fn:           "stddev_over_time",
 			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
 			fn:           "stdvar_over_time",
@@ -429,6 +435,7 @@ func Test_FunctionParallelism(t *testing.T) {
 		{
 			fn:           "predict_linear",
 			isTestMatrix: true,
+			approximate:  true,
 			fArgs:        []string{"1"},
 		},
 		{
@@ -439,6 +446,7 @@ func Test_FunctionParallelism(t *testing.T) {
 			fn:           "holt_winters",
 			isTestMatrix: true,
 			fArgs:        []string{"0.5", "0.7"},
+			approximate:  true,
 		},
 	} {
 

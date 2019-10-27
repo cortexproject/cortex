@@ -1,7 +1,6 @@
-package querysharding
+package queryrange
 
 import (
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -11,10 +10,10 @@ import (
 )
 
 // ResponseToSeries is needed to map back from api response to the underlying series data
-func ResponseToSeries(resp queryrange.Response) (storage.SeriesSet, error) {
-	promRes, ok := resp.(*queryrange.PrometheusResponse)
+func ResponseToSeries(resp Response) (storage.SeriesSet, error) {
+	promRes, ok := resp.(*PrometheusResponse)
 	if !ok {
-		return nil, errors.Errorf("error invalid response type: %T, expected: %T", resp, &queryrange.PrometheusResponse{})
+		return nil, errors.Errorf("error invalid response type: %T, expected: %T", resp, &PrometheusResponse{})
 	}
 	if promRes.Error != "" {
 		return nil, errors.New(promRes.Error)
@@ -32,7 +31,7 @@ func ResponseToSeries(resp queryrange.Response) (storage.SeriesSet, error) {
 	)
 }
 
-func newSeriesSet(results []queryrange.SampleStream) storage.SeriesSet {
+func newSeriesSet(results []SampleStream) storage.SeriesSet {
 
 	set := make([]storage.Series, 0, len(results))
 

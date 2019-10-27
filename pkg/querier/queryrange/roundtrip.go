@@ -29,7 +29,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
-	"github.com/cortexproject/cortex/pkg/querier/querysharding"
 )
 
 const day = 24 * time.Hour
@@ -108,7 +107,7 @@ func NewTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
 	}
 	if cfg.SumShards {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("sum_shards"), querysharding.QueryShardMiddleware(promql.NewEngine(engineOpts), schema.Configs))
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("sum_shards"), QueryShardMiddleware(promql.NewEngine(engineOpts), schema.Configs))
 	}
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
 	if cfg.SplitQueriesByDay {

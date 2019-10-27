@@ -1,4 +1,4 @@
-package querysharding
+package queryrange
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -63,8 +62,8 @@ func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
 }
 
 // QueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
-func QueryShardMiddleware(engine *promql.Engine, confs ShardingConfigs) queryrange.Middleware {
-	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
+func QueryShardMiddleware(engine *promql.Engine, confs ShardingConfigs) Middleware {
+	return MiddlewareFunc(func(next Handler) Handler {
 		if !confs.hasShards() {
 			return next
 		}
@@ -78,11 +77,11 @@ func QueryShardMiddleware(engine *promql.Engine, confs ShardingConfigs) queryran
 
 type queryShard struct {
 	confs  ShardingConfigs
-	next   queryrange.Handler
+	next   Handler
 	engine *promql.Engine
 }
 
-func (qs *queryShard) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
 
 	conf, err := qs.confs.ValidRange(r.GetStart(), r.GetEnd())
@@ -120,9 +119,9 @@ func (qs *queryShard) Do(ctx context.Context, r queryrange.Request) (queryrange.
 		return nil, err
 
 	}
-	return &queryrange.PrometheusResponse{
-		Status: queryrange.StatusSuccess,
-		Data: queryrange.PrometheusData{
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
 			ResultType: string(res.Value.Type()),
 			Result:     extracted,
 		},

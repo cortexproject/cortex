@@ -1,11 +1,10 @@
-package querysharding
+package queryrange
 
 import (
 	"fmt"
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -16,7 +15,7 @@ func TestFromValue(t *testing.T) {
 	var testExpr = []struct {
 		input    *promql.Result
 		err      bool
-		expected []queryrange.SampleStream
+		expected []SampleStream
 	}{
 		// string (errors)
 		{
@@ -31,7 +30,7 @@ func TestFromValue(t *testing.T) {
 		{
 			input: &promql.Result{Value: promql.Scalar{T: 1, V: 1}},
 			err:   false,
-			expected: []queryrange.SampleStream{
+			expected: []SampleStream{
 				{
 					Samples: []client.Sample{
 						{
@@ -63,7 +62,7 @@ func TestFromValue(t *testing.T) {
 				},
 			},
 			err: false,
-			expected: []queryrange.SampleStream{
+			expected: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{
 						{Name: "a", Value: "a1"},
@@ -117,7 +116,7 @@ func TestFromValue(t *testing.T) {
 				},
 			},
 			err: false,
-			expected: []queryrange.SampleStream{
+			expected: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{
 						{Name: "a", Value: "a1"},

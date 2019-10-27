@@ -1,21 +1,20 @@
-package querysharding
+package queryrange
 
 import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
 
 // FromResult transforms a promql query result into a samplestream
-func FromResult(res *promql.Result) ([]queryrange.SampleStream, error) {
+func FromResult(res *promql.Result) ([]SampleStream, error) {
 	if res.Err != nil {
 		return nil, res.Err
 	}
 	switch v := res.Value.(type) {
 	case promql.Scalar:
-		return []queryrange.SampleStream{
+		return []SampleStream{
 			{
 				Samples: []client.Sample{
 					{
@@ -27,9 +26,9 @@ func FromResult(res *promql.Result) ([]queryrange.SampleStream, error) {
 		}, nil
 
 	case promql.Vector:
-		res := make([]queryrange.SampleStream, 0, len(v))
+		res := make([]SampleStream, 0, len(v))
 		for _, sample := range v {
-			res = append(res, queryrange.SampleStream{
+			res = append(res, SampleStream{
 				Labels:  mapLabels(sample.Metric),
 				Samples: mapPoints(sample.Point),
 			})
@@ -37,9 +36,9 @@ func FromResult(res *promql.Result) ([]queryrange.SampleStream, error) {
 		return res, nil
 
 	case promql.Matrix:
-		res := make([]queryrange.SampleStream, 0, len(v))
+		res := make([]SampleStream, 0, len(v))
 		for _, series := range v {
-			res = append(res, queryrange.SampleStream{
+			res = append(res, SampleStream{
 				Labels:  mapLabels(series.Metric),
 				Samples: mapPoints(series.Points...),
 			})

@@ -1,4 +1,4 @@
-package querysharding
+package queryrange
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -18,26 +17,26 @@ import (
 func TestMiddleware(t *testing.T) {
 	var testExpr = []struct {
 		name     string
-		next     queryrange.Handler
-		input    queryrange.Request
+		next     Handler
+		input    Request
 		ctx      context.Context
-		expected *queryrange.PrometheusResponse
+		expected *PrometheusResponse
 		err      bool
-		override func(*testing.T, queryrange.Handler)
+		override func(*testing.T, Handler)
 	}{
 		{
 			name: "invalid query error",
 			// if the query parses correctly force it to succeed
-			next: mockHandler(&queryrange.PrometheusResponse{
+			next: mockHandler(&PrometheusResponse{
 				Status: "",
-				Data: queryrange.PrometheusData{
+				Data: PrometheusData{
 					ResultType: promql.ValueTypeVector,
-					Result:     []queryrange.SampleStream{},
+					Result:     []SampleStream{},
 				},
 				ErrorType: "",
 				Error:     "",
 			}, nil),
-			input:    &queryrange.PrometheusRequest{Query: "^GARBAGE"},
+			input:    &PrometheusRequest{Query: "^GARBAGE"},
 			ctx:      context.Background(),
 			expected: nil,
 			err:      true,
@@ -53,10 +52,10 @@ func TestMiddleware(t *testing.T) {
 		{
 			name: "successful trip",
 			next: mockHandler(sampleMatrixResponse(), nil),
-			override: func(t *testing.T, handler queryrange.Handler) {
+			override: func(t *testing.T, handler Handler) {
 				out, err := handler.Do(context.Background(), defaultReq())
 				require.Nil(t, err)
-				require.Equal(t, promql.ValueTypeMatrix, out.(*queryrange.PrometheusResponse).Data.ResultType)
+				require.Equal(t, promql.ValueTypeMatrix, out.(*PrometheusResponse).Data.ResultType)
 				require.Equal(t, sampleMatrixResponse(), out)
 			},
 		},
@@ -100,12 +99,12 @@ func TestMiddleware(t *testing.T) {
 	}
 }
 
-func sampleMatrixResponse() *queryrange.PrometheusResponse {
-	return &queryrange.PrometheusResponse{
-		Status: queryrange.StatusSuccess,
-		Data: queryrange.PrometheusData{
+func sampleMatrixResponse() *PrometheusResponse {
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
 			ResultType: promql.ValueTypeMatrix,
-			Result: []queryrange.SampleStream{
+			Result: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{
 						{Name: "a", Value: "a1"},
@@ -143,8 +142,8 @@ func sampleMatrixResponse() *queryrange.PrometheusResponse {
 	}
 }
 
-func mockHandler(resp *queryrange.PrometheusResponse, err error) queryrange.Handler {
-	return queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
+func mockHandler(resp *PrometheusResponse, err error) Handler {
+	return HandlerFunc(func(ctx context.Context, req Request) (Response, error) {
 		if expired := ctx.Err(); expired != nil {
 			return nil, expired
 		}
@@ -153,8 +152,8 @@ func mockHandler(resp *queryrange.PrometheusResponse, err error) queryrange.Hand
 	})
 }
 
-func defaultReq() *queryrange.PrometheusRequest {
-	return &queryrange.PrometheusRequest{
+func defaultReq() *PrometheusRequest {
+	return &PrometheusRequest{
 		Path:    "/query_range",
 		Start:   00,
 		End:     10,
@@ -166,7 +165,7 @@ func defaultReq() *queryrange.PrometheusRequest {
 }
 
 func TestShardingConfigs_ValidRange(t *testing.T) {
-	reqWith := func(start, end string) *queryrange.PrometheusRequest {
+	reqWith := func(start, end string) *PrometheusRequest {
 		r := defaultReq()
 
 		if start != "" {
@@ -183,7 +182,7 @@ func TestShardingConfigs_ValidRange(t *testing.T) {
 	var testExpr = []struct {
 		name     string
 		confs    ShardingConfigs
-		req      *queryrange.PrometheusRequest
+		req      *PrometheusRequest
 		expected chunk.PeriodConfig
 		err      error
 	}{

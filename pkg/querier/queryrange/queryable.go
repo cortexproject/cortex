@@ -1,11 +1,10 @@
-package querysharding
+package queryrange
 
 import (
 	"context"
 	"encoding/hex"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -18,8 +17,8 @@ const (
 
 // DownstreamQueryable is an implementor of the Queryable interface.
 type DownstreamQueryable struct {
-	Req     queryrange.Request
-	Handler queryrange.Handler
+	Req     Request
+	Handler Handler
 }
 
 // Querier impls Queryable
@@ -30,8 +29,8 @@ func (q *DownstreamQueryable) Querier(ctx context.Context, mint, maxt int64) (st
 // DownstreamQuerier is a an implementor of the Querier interface.
 type DownstreamQuerier struct {
 	Ctx     context.Context
-	Req     queryrange.Request
-	Handler queryrange.Handler
+	Req     Request
+	Handler Handler
 }
 
 // Select returns a set of series that matches the given label matchers.

@@ -1,4 +1,4 @@
-package querysharding
+package queryrange
 
 import (
 	"context"
@@ -269,10 +269,10 @@ func Test_FunctionParallelism(t *testing.T) {
 				sum without(__cortex_shard__) (<fn>(bar1{__cortex_shard__="2_of_3"}<fArgs>))
 			  )`
 
-	mkQuery := func(tpl, fn string, matrix bool, fArgs []string) (result string) {
+	mkQuery := func(tpl, fn string, testMatrix bool, fArgs []string) (result string) {
 		result = strings.Replace(tpl, "<fn>", fn, -1)
 
-		if matrix {
+		if testMatrix {
 			// turn selectors into ranges
 			result = strings.Replace(result, "}<fArgs>", "}[1m]<fArgs>", -1)
 		}
@@ -288,10 +288,10 @@ func Test_FunctionParallelism(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		fn          string
-		fArgs       []string
-		isMatrix    bool
-		approximate bool
+		fn           string
+		fArgs        []string
+		isTestMatrix bool
+		approximate  bool
 	}{
 		{
 			fn: "abs",
@@ -300,19 +300,19 @@ func Test_FunctionParallelism(t *testing.T) {
 			fn: "absent",
 		},
 		{
-			fn:       "avg_over_time",
-			isMatrix: true,
+			fn:           "avg_over_time",
+			isTestMatrix: true,
 		},
 		{
 			fn: "ceil",
 		},
 		{
-			fn:       "changes",
-			isMatrix: true,
+			fn:           "changes",
+			isTestMatrix: true,
 		},
 		{
-			fn:       "count_over_time",
-			isMatrix: true,
+			fn:           "count_over_time",
+			isTestMatrix: true,
 		},
 		{
 			fn: "days_in_month",
@@ -324,13 +324,13 @@ func Test_FunctionParallelism(t *testing.T) {
 			fn: "day_of_week",
 		},
 		{
-			fn:       "delta",
-			isMatrix: true,
+			fn:           "delta",
+			isTestMatrix: true,
 		},
 		{
-			fn:          "deriv",
-			isMatrix:    true,
-			approximate: true,
+			fn:           "deriv",
+			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
 			fn: "exp",
@@ -342,17 +342,17 @@ func Test_FunctionParallelism(t *testing.T) {
 			fn: "hour",
 		},
 		{
-			fn:       "idelta",
-			isMatrix: true,
+			fn:           "idelta",
+			isTestMatrix: true,
 		},
 		{
-			fn:       "increase",
-			isMatrix: true,
+			fn:           "increase",
+			isTestMatrix: true,
 		},
 		{
-			fn:          "irate",
-			isMatrix:    true,
-			approximate: true,
+			fn:           "irate",
+			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
 			fn:          "ln",
@@ -367,12 +367,12 @@ func Test_FunctionParallelism(t *testing.T) {
 			approximate: true,
 		},
 		{
-			fn:       "max_over_time",
-			isMatrix: true,
+			fn:           "max_over_time",
+			isTestMatrix: true,
 		},
 		{
-			fn:       "min_over_time",
-			isMatrix: true,
+			fn:           "min_over_time",
+			isTestMatrix: true,
 		},
 		{
 			fn: "minute",
@@ -381,12 +381,12 @@ func Test_FunctionParallelism(t *testing.T) {
 			fn: "month",
 		},
 		{
-			fn:       "rate",
-			isMatrix: true,
+			fn:           "rate",
+			isTestMatrix: true,
 		},
 		{
-			fn:       "resets",
-			isMatrix: true,
+			fn:           "resets",
+			isTestMatrix: true,
 		},
 		{
 			fn: "sort",
@@ -399,17 +399,17 @@ func Test_FunctionParallelism(t *testing.T) {
 			approximate: true,
 		},
 		{
-			fn:       "stddev_over_time",
-			isMatrix: true,
+			fn:           "stddev_over_time",
+			isTestMatrix: true,
 		},
 		{
-			fn:          "stdvar_over_time",
-			isMatrix:    true,
-			approximate: true,
+			fn:           "stdvar_over_time",
+			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
-			fn:       "sum_over_time",
-			isMatrix: true,
+			fn:           "sum_over_time",
+			isTestMatrix: true,
 		},
 		{
 			fn: "timestamp",
@@ -426,25 +426,25 @@ func Test_FunctionParallelism(t *testing.T) {
 			fArgs: []string{"5"},
 		},
 		{
-			fn:       "predict_linear",
-			isMatrix: true,
-			fArgs:    []string{"1"},
+			fn:           "predict_linear",
+			isTestMatrix: true,
+			fArgs:        []string{"1"},
 		},
 		{
 			fn:    "round",
 			fArgs: []string{"20"},
 		},
 		{
-			fn:       "holt_winters",
-			isMatrix: true,
-			fArgs:    []string{"0.5", "0.7"},
+			fn:           "holt_winters",
+			isTestMatrix: true,
+			fArgs:        []string{"0.5", "0.7"},
 		},
 	} {
 
 		t.Run(tc.fn, func(t *testing.T) {
 			baseQuery, err := engine.NewRangeQuery(
 				shardAwareQueryable,
-				mkQuery(tpl, tc.fn, tc.isMatrix, tc.fArgs),
+				mkQuery(tpl, tc.fn, tc.isTestMatrix, tc.fArgs),
 				start,
 				end,
 				step,
@@ -452,7 +452,7 @@ func Test_FunctionParallelism(t *testing.T) {
 			require.Nil(t, err)
 			shardQuery, err := engine.NewRangeQuery(
 				shardAwareQueryable,
-				mkQuery(shardTpl, tc.fn, tc.isMatrix, tc.fArgs),
+				mkQuery(shardTpl, tc.fn, tc.isTestMatrix, tc.fArgs),
 				start,
 				end,
 				step,
@@ -487,7 +487,7 @@ func Test_FunctionParallelism(t *testing.T) {
 }
 
 var shardAwareQueryable = storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return &matrix{
+	return &testMatrix{
 		series: []*promql.StorageSeries{
 			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "barr"}}, factor(5)),
 			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "bazz"}}, factor(7)),
@@ -499,21 +499,21 @@ var shardAwareQueryable = storage.QueryableFunc(func(ctx context.Context, mint, 
 	}, nil
 })
 
-type matrix struct {
+type testMatrix struct {
 	series []*promql.StorageSeries
 }
 
-func (m matrix) Next() bool { return len(m.series) != 0 }
+func (m testMatrix) Next() bool { return len(m.series) != 0 }
 
-func (m *matrix) At() storage.Series {
+func (m *testMatrix) At() storage.Series {
 	res := m.series[0]
 	m.series = m.series[1:]
 	return res
 }
 
-func (m *matrix) Err() error { return nil }
+func (m *testMatrix) Err() error { return nil }
 
-func (m *matrix) Select(selectParams *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
+func (m *testMatrix) Select(selectParams *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
 	shardIndex := -1
 	shardTotal := 0
 	var err error
@@ -538,11 +538,11 @@ func (m *matrix) Select(selectParams *storage.SelectParams, matchers ...*labels.
 	return m, nil, nil
 }
 
-func (m *matrix) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m *testMatrix) LabelValues(name string) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
-func (m *matrix) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
-func (m *matrix) Close() error                                    { return nil }
+func (m *testMatrix) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
+func (m *testMatrix) Close() error                                    { return nil }
 
 func newSeries(metric labels.Labels, generator func(float64) float64) *promql.StorageSeries {
 	sort.Sort(metric)
@@ -579,12 +579,12 @@ func factor(f float64) func(float64) float64 {
 // 	return float64(t)
 // }
 
-// splitByShard returns the shard subset of a matrix.
-// e.g if a matrix has 6 series, and we want 3 shard, then each shard will contain
+// splitByShard returns the shard subset of a testMatrix.
+// e.g if a testMatrix has 6 series, and we want 3 shard, then each shard will contain
 // 2 series.
-func splitByShard(shardIndex, shardTotal int, matrixes *matrix) *matrix {
-	res := &matrix{}
-	for i, s := range matrixes.series {
+func splitByShard(shardIndex, shardTotal int, testMatrices *testMatrix) *testMatrix {
+	res := &testMatrix{}
+	for i, s := range testMatrices.series {
 		if i%shardTotal != shardIndex {
 			continue
 		}

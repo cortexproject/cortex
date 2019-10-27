@@ -1,19 +1,18 @@
-package querysharding
+package queryrange
 
 import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_ResponseToSeries(t *testing.T) {
-	input := &queryrange.PrometheusResponse{
-		Data: queryrange.PrometheusData{
+	input := &PrometheusResponse{
+		Data: PrometheusData{
 			ResultType: promql.ValueTypeMatrix,
-			Result: []queryrange.SampleStream{
+			Result: []SampleStream{
 				{
 					Labels: []client.LabelAdapter{
 						{Name: "a", Value: "a1"},

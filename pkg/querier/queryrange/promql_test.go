@@ -383,6 +383,7 @@ func Test_FunctionParallelism(t *testing.T) {
 		{
 			fn:           "rate",
 			isTestMatrix: true,
+			approximate:  true,
 		},
 		{
 			fn:           "resets",

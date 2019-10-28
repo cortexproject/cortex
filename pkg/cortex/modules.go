@@ -171,7 +171,11 @@ func (t *Cortex) stopOverrides() error {
 }
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
-	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring)
+	// Check whether the distributor is going to be initialized as internal
+	// dependency (ie. querier or ruler's dependency)
+	internalDependency := !(cfg.Target == All || cfg.Target == Distributor)
+
+	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring, internalDependency)
 	if err != nil {
 		return
 	}

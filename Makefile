@@ -55,6 +55,7 @@ pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto
+pkg/util/servicediscovery/registry.pb.go: pkg/util/servicediscovery/registry.proto
 all: $(UPTODATE_FILES)
 test: protos
 mod-check: protos

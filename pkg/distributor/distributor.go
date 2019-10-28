@@ -7,10 +7,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	opentracing "github.com/opentracing/opentracing-go"
@@ -23,8 +21,11 @@ import (
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/servicediscovery"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/httpgrpc"
@@ -101,34 +102,34 @@ type Distributor struct {
 	ingesterPool  *ingester_client.Pool
 	limits        *validation.Overrides
 	billingClient *billing.Client
+	registry      *servicediscovery.RegistryLifecycler
 
 	// For handling HA replicas.
 	Replicas *haTracker
 
-	// Per-user rate limiters.
-	ingestLimitersMtx sync.RWMutex
-	ingestLimiters    map[string]*rate.Limiter
-	quit              chan struct{}
+	// Per-user rate limiter.
+	ingestionRateLimiter *limiter.RateLimiter
 }
 
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling bool                       `yaml:"enable_billing,omitempty"`
-	BillingConfig billing.Config             `yaml:"billing,omitempty"`
-	PoolConfig    ingester_client.PoolConfig `yaml:"pool,omitempty"`
+	EnableBilling bool                                      `yaml:"enable_billing,omitempty"`
+	BillingConfig billing.Config                            `yaml:"billing,omitempty"`
+	PoolConfig    ingester_client.PoolConfig                `yaml:"pool,omitempty"`
+	Registry      servicediscovery.RegistryLifecyclerConfig `yaml:"registry"`
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
-	MaxRecvMsgSize      int           `yaml:"max_recv_msg_size"`
-	RemoteTimeout       time.Duration `yaml:"remote_timeout,omitempty"`
-	ExtraQueryDelay     time.Duration `yaml:"extra_queue_delay,omitempty"`
-	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period,omitempty"`
+	MaxRecvMsgSize  int           `yaml:"max_recv_msg_size"`
+	RemoteTimeout   time.Duration `yaml:"remote_timeout,omitempty"`
+	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay,omitempty"`
 
 	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
 
 	// for testing
-	ingesterClientFactory client.Factory
+	ingesterClientFactory client.Factory `yaml:"-"`
+	registryKVStore       kv.Client      `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -136,12 +137,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
 	cfg.HATrackerConfig.RegisterFlags(f)
+	cfg.Registry.RegisterFlagsWithPrefix("distributor.registry.", f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
@@ -151,7 +152,7 @@ func (cfg *Config) Validate() error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ring ring.ReadRing) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ring ring.ReadRing, internalDependency bool) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -175,47 +176,51 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		return nil, err
 	}
 
-	d := &Distributor{
-		cfg:            cfg,
-		ring:           ring,
-		ingesterPool:   ingester_client.NewPool(cfg.PoolConfig, ring, cfg.ingesterClientFactory, util.Logger),
-		billingClient:  billingClient,
-		limits:         limits,
-		ingestLimiters: map[string]*rate.Limiter{},
-		quit:           make(chan struct{}),
-		Replicas:       replicas,
+	// Create the configured ingestion rate limit strategy (local or global). In case
+	// it's an internal dependency (ie. ruler) we skip rate limiting.
+	var ingestionRateStrategy limiter.RateLimiterStrategy
+	var distributorsRegistry *servicediscovery.RegistryLifecycler
+
+	if internalDependency {
+		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
+	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
+		if cfg.registryKVStore != nil {
+			distributorsRegistry, err = servicediscovery.NewRegistryLifecyclerWithKVStore("distributor", cfg.Registry, cfg.registryKVStore, util.Logger)
+		} else {
+			distributorsRegistry, err = servicediscovery.NewRegistryLifecycler("distributor", cfg.Registry, util.Logger)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRegistry)
+	} else {
+		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)
 	}
-	go d.loop()
+
+	d := &Distributor{
+		cfg:                  cfg,
+		ring:                 ring,
+		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ring, cfg.ingesterClientFactory, util.Logger),
+		billingClient:        billingClient,
+		registry:             distributorsRegistry,
+		limits:               limits,
+		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		Replicas:             replicas,
+	}
 
 	return d, nil
 }
 
-func (d *Distributor) loop() {
-	if d.cfg.LimiterReloadPeriod == 0 {
-		return
-	}
-
-	ticker := time.NewTicker(d.cfg.LimiterReloadPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			d.ingestLimitersMtx.Lock()
-			d.ingestLimiters = make(map[string]*rate.Limiter, len(d.ingestLimiters))
-			d.ingestLimitersMtx.Unlock()
-
-		case <-d.quit:
-			return
-		}
-	}
-}
-
 // Stop stops the distributor's maintenance loop.
 func (d *Distributor) Stop() {
-	close(d.quit)
 	d.ingesterPool.Stop()
 	d.Replicas.stop()
+
+	if d.registry != nil {
+		d.registry.Stop()
+	}
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
@@ -410,15 +415,15 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return &client.WriteResponse{}, lastPartialErr
 	}
 
-	limiter := d.getOrCreateIngestLimiter(userID)
-	if !limiter.AllowN(time.Now(), validatedSamples) {
+	now := time.Now()
+	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamples) {
 		// Ensure the request slice is reused if the request is rate limited.
 		client.ReuseSlice(req.Timeseries)
 
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), numSamples)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", d.ingestionRateLimiter.Limit(now, userID), numSamples)
 	}
 
 	err = ring.DoBatch(ctx, d.ring, keys, func(ingester ring.IngesterDesc, indexes []int) error {
@@ -440,24 +445,6 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 	return &client.WriteResponse{}, lastPartialErr
-}
-
-func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
-	d.ingestLimitersMtx.RLock()
-	limiter, ok := d.ingestLimiters[userID]
-	d.ingestLimitersMtx.RUnlock()
-
-	if ok {
-		return limiter
-	}
-
-	limiter = rate.NewLimiter(rate.Limit(d.limits.IngestionRate(userID)), d.limits.IngestionBurstSize(userID))
-
-	d.ingestLimitersMtx.Lock()
-	d.ingestLimiters[userID] = limiter
-	d.ingestLimitersMtx.Unlock()
-
-	return limiter
 }
 
 func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries) error {

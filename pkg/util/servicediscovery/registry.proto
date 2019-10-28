@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package servicediscovery;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message ServiceInstanceDesc {
+	string id = 1;
+	int64 timestamp = 2;
+}
+
+message ServiceRegistryDesc {
+    map<string, ServiceInstanceDesc> instances = 1 [(gogoproto.nullable) = false];
+}

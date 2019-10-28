@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"sort"
 	"strconv"
@@ -31,6 +32,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/servicediscovery"
+	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -42,55 +45,44 @@ var (
 	ctx     = user.InjectOrgID(context.Background(), "user")
 )
 
-func TestDistributorPush(t *testing.T) {
-	for i, tc := range []struct {
+func TestDistributor_Push(t *testing.T) {
+	for name, tc := range map[string]struct {
 		numIngesters     int
 		happyIngesters   int
 		samples          int
 		expectedResponse *client.WriteResponse
 		expectedError    error
 	}{
-		// A push of no samples shouldn't block or return error, even if ingesters are sad
-		{
+		"A push of no samples shouldn't block or return error, even if ingesters are sad": {
 			numIngesters:     3,
 			happyIngesters:   0,
 			expectedResponse: success,
 		},
-
-		// A push to 3 happy ingesters should succeed
-		{
+		"A push to 3 happy ingesters should succeed": {
 			numIngesters:     3,
 			happyIngesters:   3,
 			samples:          10,
 			expectedResponse: success,
 		},
-
-		// A push to 2 happy ingesters should succeed
-		{
+		"A push to 2 happy ingesters should succeed": {
 			numIngesters:     3,
 			happyIngesters:   2,
 			samples:          10,
 			expectedResponse: success,
 		},
-
-		// A push to 1 happy ingesters should fail
-		{
+		"A push to 1 happy ingesters should fail": {
 			numIngesters:   3,
 			happyIngesters: 1,
 			samples:        10,
 			expectedError:  errFail,
 		},
-
-		// A push to 0 happy ingesters should fail
-		{
+		"A push to 0 happy ingesters should fail": {
 			numIngesters:   3,
 			happyIngesters: 0,
 			samples:        10,
 			expectedError:  errFail,
 		},
-
-		// A push exceeding burst size should fail
-		{
+		"A push exceeding burst size should fail": {
 			numIngesters:   3,
 			happyIngesters: 3,
 			samples:        30,
@@ -98,8 +90,13 @@ func TestDistributorPush(t *testing.T) {
 		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
-			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
-				d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, nil)
+			t.Run(fmt.Sprintf("[%s](shardByAllLabels=%v)", name, shardByAllLabels), func(t *testing.T) {
+				limits := &validation.Limits{}
+				flagext.DefaultValues(limits)
+				limits.IngestionRate = 20
+				limits.IngestionBurstSize = 20
+
+				d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, limits, nil)
 				defer d.Stop()
 
 				request := makeWriteRequest(tc.samples)
@@ -111,7 +108,103 @@ func TestDistributorPush(t *testing.T) {
 	}
 }
 
-func TestDistributorPushHAInstances(t *testing.T) {
+func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
+	type testPush struct {
+		samples       int
+		expectedError error
+	}
+
+	tests := map[string]struct {
+		distributors          int
+		ingestionRateStrategy string
+		ingestionRate         float64
+		ingestionBurstSize    int
+		pushes                []testPush
+	}{
+		"local strategy: limit should be set to each distributor": {
+			distributors:          2,
+			ingestionRateStrategy: validation.LocalIngestionRateStrategy,
+			ingestionRate:         10,
+			ingestionBurstSize:    10,
+			pushes: []testPush{
+				{samples: 5, expectedError: nil},
+				{samples: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 6 samples")},
+				{samples: 5, expectedError: nil},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples")},
+			},
+		},
+		"global strategy: limit should be evenly shared across distributors": {
+			distributors:          2,
+			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
+			ingestionRate:         10,
+			ingestionBurstSize:    5,
+			pushes: []testPush{
+				{samples: 3, expectedError: nil},
+				{samples: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 3 samples")},
+				{samples: 2, expectedError: nil},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples")},
+			},
+		},
+		"global strategy: burst should set to each distributor": {
+			distributors:          2,
+			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
+			ingestionRate:         10,
+			ingestionBurstSize:    20,
+			pushes: []testPush{
+				{samples: 15, expectedError: nil},
+				{samples: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 6 samples")},
+				{samples: 5, expectedError: nil},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples")},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.IngestionRateStrategy = testData.ingestionRateStrategy
+			limits.IngestionRate = testData.ingestionRate
+			limits.IngestionBurstSize = testData.ingestionBurstSize
+
+			// Init a shared registry KVStore
+			registryKVStore := consul.NewInMemoryClient(servicediscovery.GetServiceRegistryCodec())
+
+			// Start all expected distributors
+			distributors := make([]*Distributor, testData.distributors)
+			for i := 0; i < testData.distributors; i++ {
+				distributors[i], _ = prepare(t, 1, 1, 0, true, limits, registryKVStore)
+				defer distributors[i].Stop()
+			}
+
+			// If the distributors registry is setup, wait until the first distributor
+			// updates to the expected size
+			if distributors[0].registry != nil {
+				test.Poll(t, time.Second, testData.distributors, func() interface{} {
+					return distributors[0].registry.HealthyCount()
+				})
+			}
+
+			// Push samples in multiple requests to the first distributor
+			for _, push := range testData.pushes {
+				request := makeWriteRequest(push.samples)
+				response, err := distributors[0].Push(ctx, request)
+
+				if push.expectedError == nil {
+					assert.Equal(t, success, response)
+					assert.Nil(t, err)
+				} else {
+					assert.Nil(t, response)
+					assert.Equal(t, push.expectedError, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDistributor_PushHAInstances(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "user")
 
 	for i, tc := range []struct {
@@ -156,7 +249,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 				flagext.DefaultValues(&limits)
 				limits.AcceptHASamples = true
 
-				d, _ := prepare(t, 1, 1, 0, shardByAllLabels, &limits)
+				d, _ := prepare(t, 1, 1, 0, shardByAllLabels, &limits, nil)
 				codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 
@@ -189,7 +282,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 	}
 }
 
-func TestDistributorPushQuery(t *testing.T) {
+func TestDistributor_PushQuery(t *testing.T) {
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	barMatcher := mustEqualMatcher("bar", "baz")
 
@@ -278,7 +371,7 @@ func TestDistributorPushQuery(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil)
+			d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil, nil)
 			defer d.Stop()
 
 			request := makeWriteRequest(tc.samples)
@@ -361,7 +454,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		limits.DropLabels = tc.removeLabels
 		limits.AcceptHASamples = tc.removeReplica
 
-		d, ingesters := prepare(t, 1, 1, 0, true, &limits)
+		d, ingesters := prepare(t, 1, 1, 0, true, &limits, nil)
 		defer d.Stop()
 
 		// Push the series to the distributor
@@ -463,7 +556,7 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			d, ingesters := prepare(t, 1, 1, 0, true, &limits)
+			d, ingesters := prepare(t, 1, 1, 0, true, &limits, nil)
 			defer d.Stop()
 
 			// Push the series to the distributor
@@ -500,7 +593,7 @@ func TestSlowQueries(t *testing.T) {
 			if nIngesters-happy > 1 {
 				expectedErr = promql.ErrStorage{Err: errFail}
 			}
-			d, _ := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels, nil)
+			d, _ := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels, nil, nil)
 			defer d.Stop()
 
 			_, err := d.Query(ctx, 0, 10, nameMatcher)
@@ -566,7 +659,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 	}
 
 	// Create distributor
-	d, _ := prepare(t, 3, 3, time.Duration(0), true, nil)
+	d, _ := prepare(t, 3, 3, time.Duration(0), true, nil, nil)
 	defer d.Stop()
 
 	// Push fixtures
@@ -610,7 +703,7 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) *cli
 	return client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
 }
 
-func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits) (*Distributor, []mockIngester) {
+func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits, registryKVStore kv.Client) (*Distributor, []mockIngester) {
 	ingesters := []mockIngester{}
 	for i := 0; i < happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
@@ -655,16 +748,17 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 		limits = &validation.Limits{}
 		flagext.DefaultValues(limits)
 	}
-	limits.IngestionRate = 20
-	limits.IngestionBurstSize = 20
 	cfg.ingesterClientFactory = factory
 	cfg.ShardByAllLabels = shardByAllLabels
 	cfg.ExtraQueryDelay = 50 * time.Millisecond
+	cfg.Registry.HeartbeatPeriod = 100 * time.Millisecond
+	cfg.Registry.InstanceID = strconv.Itoa(rand.Int())
+	cfg.registryKVStore = registryKVStore
 
 	overrides, err := validation.NewOverrides(*limits)
 	require.NoError(t, err)
 
-	d, err := New(cfg, clientConfig, overrides, ring)
+	d, err := New(cfg, clientConfig, overrides, ring, false)
 	require.NoError(t, err)
 
 	return d, ingesters
@@ -1035,7 +1129,7 @@ func TestDistributorValidation(t *testing.T) {
 			limits.RejectOldSamplesMaxAge = 24 * time.Hour
 			limits.MaxLabelNamesPerSeries = 2
 
-			d, _ := prepare(t, 3, 3, 0, true, &limits)
+			d, _ := prepare(t, 3, 3, 0, true, &limits, nil)
 			defer d.Stop()
 
 			_, err := d.Push(ctx, client.ToWriteRequest(tc.labels, tc.samples, client.API))

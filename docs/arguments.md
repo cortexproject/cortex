@@ -291,12 +291,17 @@ When running Cortex on Kubernetes, store this file in a config map and mount it 
 
 Valid fields are (with their corresponding flags for default values):
 
+- `ingestion_rate_strategy` / `-distributor.ingestion-rate-limit-strategy`
 - `ingestion_rate` / `-distributor.ingestion-rate-limit`
 - `ingestion_burst_size` / `-distributor.ingestion-burst-size`
 
-  The per-tenant rate limit (and burst size), in samples per second. Enforced on a per distributor basis, actual effective rate limit will be N times higher, where N is the number of distributor replicas.
+  The per-tenant rate limit (and burst size), in samples per second. It supports two strategies: `local` (default) and `global`.
 
-  **NB** Limits are reset every `-distributor.limiter-reload-period`, as such if you set a very high burst limit it will never be hit.
+  The `local` strategy enforces the limit on a per distributor basis, actual effective rate limit will be N times higher, where N is the number of distributor replicas.
+
+  The `global` strategy enforces the limit on a per cluster basis, configuring a per-distributor local rate limiter as `ingestion_rate / N`, where N is the number of distributor replicas (it's automatically adjusted if the number of replicas change). The `ingestion_burst_size` refers to the per-distributor local rate limiter (even in the case of the `global` strategy) and should be set at least to the maximum number of samples expected in a single push request.
+
+  The `global` strategy requires the distributor's `registry` (based on the generic KVStore), which is used to keep track of the current number of healthy distributor replicas. The registry is configured by `distributor: { registry: {}}` / `-distributor.registry.*`.
 
 - `max_label_name_length` / `-validation.max-length-label-name`
 - `max_label_value_length` / `-validation.max-length-label-value`

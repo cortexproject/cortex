@@ -97,6 +97,7 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	request.LogToSpan(r.Context())
 
 	userid, err := user.ExtractOrgID(r.Context())
 	if err != nil {

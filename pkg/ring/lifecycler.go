@@ -91,7 +91,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
-	f.StringVar(&cfg.TokenFileDir, "ingester.token-file-dir", "", "Directory in which the token file is to be stored.")
+	f.StringVar(&cfg.TokenFileDir, prefix+"token-file-dir", "", "Directory in which the token file is to be stored.")
 
 	hostname, err := os.Hostname()
 	if err != nil {

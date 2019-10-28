@@ -396,8 +396,9 @@ heartbeatLoop:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
 func (i *Lifecycler) initRing(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *Desc
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -409,9 +410,6 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
 			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
-
-			i.updateCounters(ringDesc)
-
 			return ringDesc, true, nil
 		}
 
@@ -420,17 +418,23 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 
-		i.updateCounters(ringDesc)
-
 		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
 		return ringDesc, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
 // autoJoin selects random tokens & moves state to ACTIVE
 func (i *Lifecycler) autoJoin(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *Desc
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -451,17 +455,23 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 		sort.Sort(sortableUint32(tokens))
 		i.setTokens(tokens)
 
-		i.updateCounters(ringDesc)
-
 		return ringDesc, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
 // updateConsul updates our entries in consul, heartbeating and dealing with
 // consul restarts.
 func (i *Lifecycler) updateConsul(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *Desc
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -480,13 +490,15 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 
-		// Update local counters. There's no guarantee this CAS operation will succeed but,
-		// if will fail, will be soon retried and we do accept a short-term inconsistency in
-		// counters as much as we accept counters are updated at every heartbeat period.
-		i.updateCounters(ringDesc)
-
 		return ringDesc, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
 // changeState updates consul with state transitions for us.  NB this must be

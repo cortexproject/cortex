@@ -9,8 +9,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const (
-	errMaxGlobalSeriesPerUserValidation = "The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled"
+var (
+	errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -85,10 +85,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 // Validate the limits config and returns an error if the validation
 // doesn't pass
 func (l *Limits) Validate(shardByAllLabels bool) error {
-	// The ingester.max-global-series-per-user metric is not support
+	// The ingester.max-global-series-per-user metric is not supported
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
-		return errors.New(errMaxGlobalSeriesPerUserValidation)
+		return errMaxGlobalSeriesPerUserValidation
 	}
 
 	return nil

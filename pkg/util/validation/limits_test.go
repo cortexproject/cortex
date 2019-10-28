@@ -1,7 +1,6 @@
 package validation
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,7 +22,7 @@ func TestLimits_Validate(t *testing.T) {
 		"max-global-series-per-user enabled and shard-by-all-labels=false": {
 			limits:           Limits{MaxGlobalSeriesPerUser: 1000},
 			shardByAllLabels: false,
-			expected:         errors.New(errMaxGlobalSeriesPerUserValidation),
+			expected:         errMaxGlobalSeriesPerUserValidation,
 		},
 		"max-global-series-per-user disabled and shard-by-all-labels=true": {
 			limits:           Limits{MaxGlobalSeriesPerUser: 1000},

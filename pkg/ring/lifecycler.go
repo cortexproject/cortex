@@ -131,7 +131,7 @@ type Lifecycler struct {
 	ready     bool
 
 	// Keeps stats updated at every heartbeat period
-	countersLock          sync.Mutex
+	countersLock          sync.RWMutex
 	healthyIngestersCount int
 }
 
@@ -289,8 +289,8 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 // HealthyIngestersCount returns the number of healthy ingesters in the ring, updated
 // during the last heartbeat period
 func (i *Lifecycler) HealthyIngestersCount() int {
-	i.countersLock.Lock()
-	defer i.countersLock.Unlock()
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
 
 	return i.healthyIngestersCount
 }
@@ -526,9 +526,11 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	// Count the number of healthy ingesters for Write operation
 	i.healthyIngestersCount = 0
 
-	for _, ingester := range ringDesc.Ingesters {
-		if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
-			i.healthyIngestersCount++
+	if ringDesc != nil {
+		for _, ingester := range ringDesc.Ingesters {
+			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
+				i.healthyIngestersCount++
+			}
 		}
 	}
 }

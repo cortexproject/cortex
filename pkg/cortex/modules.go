@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -261,10 +262,15 @@ func (t *Cortex) stopStore() error {
 }
 
 func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
-	t.frontend, err = frontend.New(cfg.Frontend, util.Logger, t.overrides)
+	t.frontend, err = frontend.New(cfg.Frontend, util.Logger)
 	if err != nil {
 		return
 	}
+	tripperware, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
+	if err != nil {
+		return err
+	}
+	t.frontend.Wrap(tripperware)
 
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 	t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Handler(

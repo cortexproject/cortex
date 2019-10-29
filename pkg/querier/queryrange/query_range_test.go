@@ -20,7 +20,7 @@ import (
 func TestRequest(t *testing.T) {
 	for i, tc := range []struct {
 		url         string
-		expected    *Request
+		expected    Request
 		expectedErr error
 	}{
 		{
@@ -59,14 +59,14 @@ func TestRequest(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 			r = r.WithContext(ctx)
 
-			req, err := parseRequest(r)
+			req, err := PrometheusCodec.DecodeRequest(ctx, r)
 			if err != nil {
 				require.EqualValues(t, tc.expectedErr, err)
 				return
 			}
 			require.EqualValues(t, tc.expected, req)
 
-			rdash, err := req.toHTTPRequest(context.Background())
+			rdash, err := PrometheusCodec.EncodeRequest(context.Background(), req)
 			require.NoError(t, err)
 			require.EqualValues(t, tc.url, rdash.RequestURI)
 		})
@@ -76,7 +76,7 @@ func TestRequest(t *testing.T) {
 func TestResponse(t *testing.T) {
 	for i, tc := range []struct {
 		body     string
-		expected *APIResponse
+		expected *PrometheusResponse
 	}{
 		{
 			body:     responseBody,
@@ -89,7 +89,7 @@ func TestResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := parseResponse(context.Background(), response)
+			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, resp)
 
@@ -99,7 +99,7 @@ func TestResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp2, err := resp.toHTTPResponse(context.Background())
+			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -108,30 +108,30 @@ func TestResponse(t *testing.T) {
 
 func TestMergeAPIResponses(t *testing.T) {
 	for i, tc := range []struct {
-		input    []*APIResponse
-		expected *APIResponse
+		input    []Response
+		expected Response
 	}{
 		// No responses shouldn't panic.
 		{
-			input: []*APIResponse{},
-			expected: &APIResponse{
+			input: []Response{},
+			expected: &PrometheusResponse{
 				Status: statusSuccess,
 			},
 		},
 
 		// A single empty response shouldn't panic.
 		{
-			input: []*APIResponse{
-				{
-					Data: Response{
+			input: []Response{
+				&PrometheusResponse{
+					Data: PrometheusData{
 						ResultType: matrix,
 						Result:     []SampleStream{},
 					},
 				},
 			},
-			expected: &APIResponse{
+			expected: &PrometheusResponse{
 				Status: statusSuccess,
-				Data: Response{
+				Data: PrometheusData{
 					ResultType: matrix,
 					Result:     []SampleStream{},
 				},
@@ -140,23 +140,23 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		// Multiple empty responses shouldn't panic.
 		{
-			input: []*APIResponse{
-				{
-					Data: Response{
+			input: []Response{
+				&PrometheusResponse{
+					Data: PrometheusData{
 						ResultType: matrix,
 						Result:     []SampleStream{},
 					},
 				},
-				{
-					Data: Response{
+				&PrometheusResponse{
+					Data: PrometheusData{
 						ResultType: matrix,
 						Result:     []SampleStream{},
 					},
 				},
 			},
-			expected: &APIResponse{
+			expected: &PrometheusResponse{
 				Status: statusSuccess,
-				Data: Response{
+				Data: PrometheusData{
 					ResultType: matrix,
 					Result:     []SampleStream{},
 				},
@@ -165,9 +165,9 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		// Basic merging of two responses.
 		{
-			input: []*APIResponse{
-				{
-					Data: Response{
+			input: []Response{
+				&PrometheusResponse{
+					Data: PrometheusData{
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
@@ -180,8 +180,8 @@ func TestMergeAPIResponses(t *testing.T) {
 						},
 					},
 				},
-				{
-					Data: Response{
+				&PrometheusResponse{
+					Data: PrometheusData{
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
@@ -195,9 +195,9 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 			},
-			expected: &APIResponse{
+			expected: &PrometheusResponse{
 				Status: statusSuccess,
-				Data: Response{
+				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
@@ -216,13 +216,13 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		// Merging of responses when labels are in different order.
 		{
-			input: []*APIResponse{
+			input: []Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[0,"0"],[1,"1"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
-			expected: &APIResponse{
+			expected: &PrometheusResponse{
 				Status: statusSuccess,
-				Data: Response{
+				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
@@ -240,13 +240,13 @@ func TestMergeAPIResponses(t *testing.T) {
 		},
 		// Merging of samples where there is overlap.
 		{
-			input: []*APIResponse{
+			input: []Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
-			expected: &APIResponse{
+			expected: &PrometheusResponse{
 				Status: statusSuccess,
-				Data: Response{
+				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
@@ -262,15 +262,15 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		}} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			output, err := mergeAPIResponses(tc.input)
+			output, err := PrometheusCodec.MergeResponse(tc.input...)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
 		})
 	}
 }
 
-func mustParse(t *testing.T, response string) *APIResponse {
-	var resp APIResponse
+func mustParse(t *testing.T, response string) Response {
+	var resp PrometheusResponse
 	// Needed as goimports automatically add a json import otherwise.
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	require.NoError(t, json.Unmarshal([]byte(response), &resp))

@@ -2,3 +2,4 @@
 ./tools*
 ./vendor*
 ./pkg/configs/legacy_promql*
+./.pkg*

@@ -16,8 +16,8 @@ type stepAlign struct {
 	next Handler
 }
 
-func (s stepAlign) Do(ctx context.Context, r *Request) (*APIResponse, error) {
-	r.Start = (r.Start / r.Step) * r.Step
-	r.End = (r.End / r.Step) * r.Step
-	return s.next.Do(ctx, r)
+func (s stepAlign) Do(ctx context.Context, r Request) (Response, error) {
+	start := (r.GetStart() / r.GetStep()) * r.GetStep()
+	end := (r.GetEnd() / r.GetStep()) * r.GetStep()
+	return s.next.Do(ctx, r.WithStartEnd(start, end))
 }

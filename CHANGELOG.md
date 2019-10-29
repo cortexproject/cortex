@@ -29,7 +29,7 @@
   * `ruler.group-timeout`has been removed
   * `ruler.num-workers` has been removed
   * `ruler.rule-path` has been added to specify where the prometheus rule manager will sync rule files
-  * `ruler.storage.type` has beem added to specify the rule store backend type, currently only the configdb.
+  * `ruler.storage.type` has been added to specify the rule store backend type, currently only the configdb.
   * `ruler.poll-interval` has been added to specify the interval in which to poll new rule groups.
 
 ## 0.3.0 / 2019-10-11

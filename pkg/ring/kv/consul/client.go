@@ -208,15 +208,18 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 			continue
 		}
 
-		if kvp != nil {
-			out, err := c.codec.Decode(kvp.Value)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
-				continue
-			}
-			if !f(out) {
-				return
-			}
+		if kvp == nil {
+			level.Info(util.Logger).Log("msg", "value is nil", "key", key, "index", index)
+			continue
+		}
+
+		out, err := c.codec.Decode(kvp.Value)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+			continue
+		}
+		if !f(out) {
+			return
 		}
 	}
 }

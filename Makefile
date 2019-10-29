@@ -74,14 +74,6 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
-NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
-       rm $@; \
-       echo "\nYour go standard library was built without the 'netgo' build tag."; \
-       echo "To fix that, run"; \
-       echo "    sudo go clean -i net"; \
-       echo "    sudo go install -tags netgo std"; \
-       false; \
-}
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
@@ -121,7 +113,6 @@ exes: $(EXES)
 
 $(EXES):
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
 
 protos: $(PROTO_GOS)
 

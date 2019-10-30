@@ -262,18 +262,6 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
 	defer log.Span.Finish()
 
-	// Just get series for metric if there are no matchers
-	if len(matchers) == 0 {
-		level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers: empty matcher")
-		indexLookupsPerQuery.Observe(1)
-		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, nil)
-		if err != nil {
-			preIntersectionPerQuery.Observe(float64(len(series)))
-			postIntersectionPerQuery.Observe(float64(len(series)))
-		}
-		return series, err
-	}
-
 	// Check if one of the labels is a shard annotation, pass that information to lookupSeriesByMetricNameMatcher,
 	// and remove the label.
 	shard, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
@@ -281,24 +269,23 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		return nil, err
 	}
 
-	level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers:shard", "shard", shard, "label_index", shardLabelIndex, "matchers", len(matchers))
-
 	if shard != nil {
 		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
-		// Just get series for metric if there are no matchers
-		if len(matchers) == 0 {
-			level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers: empty matcher with shard", "shard", shard)
-			indexLookupsPerQuery.Observe(1)
-			series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
-			if err != nil {
-				preIntersectionPerQuery.Observe(float64(len(series)))
-				postIntersectionPerQuery.Observe(float64(len(series)))
-			}
-			return series, err
-		}
 	}
 
-	level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers:matchers", "matchers", len(matchers))
+	level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers:shard", "shard", shard, "label_index", shardLabelIndex, "matchers", len(matchers))
+
+	// Just get series for metric if there are no matchers
+	if len(matchers) == 0 {
+		level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers: empty matcher")
+		indexLookupsPerQuery.Observe(1)
+		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
+		if err != nil {
+			preIntersectionPerQuery.Observe(float64(len(series)))
+			postIntersectionPerQuery.Observe(float64(len(series)))
+		}
+		return series, err
+	}
 
 	// Otherwise get series which include other matchers
 	incomingIDs := make(chan []string)

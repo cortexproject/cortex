@@ -22,6 +22,7 @@ import (
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -116,6 +117,10 @@ type Config struct {
 
 	RateUpdatePeriod time.Duration
 
+	// Use tsdb block storage
+	TSDBEnabled bool        `yaml:"-"`
+	TSDBConfig  tsdb.Config `yaml:"-"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
@@ -162,6 +167,9 @@ type Ingester struct {
 
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
+
+	// Prometheus block storage
+	TSDBState TSDBState
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -173,6 +181,10 @@ type ChunkStore interface {
 func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
+	}
+
+	if cfg.TSDBEnabled {
+		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
 	}
 
 	i := &Ingester{
@@ -249,6 +261,10 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2Push(ctx, req)
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
@@ -344,6 +360,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2Query(ctx, req)
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -403,6 +423,10 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	if i.cfg.TSDBEnabled {
+		return fmt.Errorf("Unimplemented for V2")
+	}
+
 	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
 
 	from, through, matchers, err := client.FromQueryRequest(req)
@@ -475,6 +499,10 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2LabelValues(ctx, req)
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, ok, err := i.userStates.getViaContext(ctx)
@@ -492,6 +520,10 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2LabelNames(ctx, req)
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, ok, err := i.userStates.getViaContext(ctx)

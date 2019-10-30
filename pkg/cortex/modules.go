@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -194,7 +195,25 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 		return
 	}
 
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
+	var store querier.ChunkStore
+
+	if cfg.Storage.Engine == storage.StorageEngineTSDB {
+		s3cfg := s3.Config{
+			Bucket:    cfg.TSDB.S3.BucketName,
+			Endpoint:  cfg.TSDB.S3.Endpoint,
+			AccessKey: cfg.TSDB.S3.AccessKeyID,
+			SecretKey: cfg.TSDB.S3.SecretAccessKey,
+			Insecure:  cfg.TSDB.S3.Insecure,
+		}
+		store, err = querier.NewBlockQuerier(s3cfg, cfg.TSDB.SyncDir, prometheus.DefaultRegisterer)
+		if err != nil {
+			return err
+		}
+	} else {
+		store = t.store
+	}
+
+	queryable, engine := querier.New(cfg.Querier, t.distributor, store)
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -229,6 +248,9 @@ func (t *Cortex) stopQuerier() error {
 
 func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
+	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
+	cfg.Ingester.TSDBConfig = cfg.TSDB
+
 	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
@@ -247,6 +269,9 @@ func (t *Cortex) stopIngester() error {
 }
 
 func (t *Cortex) initStore(cfg *Config) (err error) {
+	if cfg.Storage.Engine == storage.StorageEngineTSDB {
+		return nil
+	}
 	err = cfg.Schema.Load()
 	if err != nil {
 		return
@@ -257,7 +282,9 @@ func (t *Cortex) initStore(cfg *Config) (err error) {
 }
 
 func (t *Cortex) stopStore() error {
-	t.store.Stop()
+	if t.store != nil {
+		t.store.Stop()
+	}
 	return nil
 }
 
@@ -287,6 +314,10 @@ func (t *Cortex) stopQueryFrontend() (err error) {
 }
 
 func (t *Cortex) initTableManager(cfg *Config) error {
+	if cfg.Storage.Engine == storage.StorageEngineTSDB {
+		return nil // table manager isn't used in v2
+	}
+
 	err := cfg.Schema.Load()
 	if err != nil {
 		return err
@@ -325,7 +356,10 @@ func (t *Cortex) initTableManager(cfg *Config) error {
 }
 
 func (t *Cortex) stopTableManager() error {
-	t.tableManager.Stop()
+	if t.tableManager != nil {
+		t.tableManager.Stop()
+	}
+
 	return nil
 }
 

@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"io"
+	"io/ioutil"
 	"math"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/testutils"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -32,6 +34,7 @@ func defaultIngesterTestConfig() Config {
 	consul := consul.NewInMemoryClient(ring.GetCodec())
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg.TSDBConfig)
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
@@ -277,6 +280,76 @@ func (i ingesterClientAdapater) TransferChunks(ctx context.Context, _ ...grpc.Ca
 	return stream, nil
 }
 
+type ingesterTransferTSDBStreamMock struct {
+	ctx  context.Context
+	reqs chan *client.TimeSeriesFile
+	resp chan *client.TransferTSDBResponse
+	err  chan error
+
+	grpc.ServerStream
+	grpc.ClientStream
+}
+
+func (s *ingesterTransferTSDBStreamMock) Send(tsc *client.TimeSeriesFile) error {
+	s.reqs <- tsc
+	return nil
+}
+
+func (s *ingesterTransferTSDBStreamMock) CloseAndRecv() (*client.TransferTSDBResponse, error) {
+	close(s.reqs)
+	select {
+	case resp := <-s.resp:
+		return resp, nil
+	case err := <-s.err:
+		return nil, err
+	}
+}
+
+func (s *ingesterTransferTSDBStreamMock) SendAndClose(resp *client.TransferTSDBResponse) error {
+	s.resp <- resp
+	return nil
+}
+
+func (s *ingesterTransferTSDBStreamMock) ErrorAndClose(err error) {
+	s.err <- err
+}
+
+func (s *ingesterTransferTSDBStreamMock) Recv() (*client.TimeSeriesFile, error) {
+	req, ok := <-s.reqs
+	if !ok {
+		return nil, io.EOF
+	}
+	return req, nil
+}
+
+func (s *ingesterTransferTSDBStreamMock) Context() context.Context {
+	return s.ctx
+}
+
+func (*ingesterTransferTSDBStreamMock) SendMsg(m interface{}) error {
+	return nil
+}
+
+func (*ingesterTransferTSDBStreamMock) RecvMsg(m interface{}) error {
+	return nil
+}
+
+func (i ingesterClientAdapater) TransferTSDB(ctx context.Context, _ ...grpc.CallOption) (client.Ingester_TransferTSDBClient, error) {
+	stream := &ingesterTransferTSDBStreamMock{
+		ctx:  ctx,
+		reqs: make(chan *client.TimeSeriesFile),
+		resp: make(chan *client.TransferTSDBResponse),
+		err:  make(chan error),
+	}
+	go func() {
+		err := i.ingester.TransferTSDB(stream)
+		if err != nil {
+			stream.ErrorAndClose(err)
+		}
+	}()
+	return stream, nil
+}
+
 func (i ingesterClientAdapater) Close() error {
 	return nil
 }
@@ -340,4 +413,112 @@ func TestIngesterFlush(t *testing.T) {
 			},
 		},
 	}, res)
+}
+
+func TestV2IngesterTransfer(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	require.NoError(t, err)
+
+	dir1, err := ioutil.TempDir("", "tsdb")
+	require.NoError(t, err)
+	dir2, err := ioutil.TempDir("", "tsdb")
+	require.NoError(t, err)
+
+	// Start the first ingester, and get it into ACTIVE state.
+	cfg1 := defaultIngesterTestConfig()
+	cfg1.TSDBEnabled = true
+	cfg1.TSDBConfig.Dir = dir1
+	cfg1.TSDBConfig.S3 = s3.Config{
+		Endpoint:        "dummy",
+		BucketName:      "dummy",
+		SecretAccessKey: "dummy",
+		AccessKeyID:     "dummy",
+	}
+	cfg1.LifecyclerConfig.ID = "ingester1"
+	cfg1.LifecyclerConfig.Addr = "ingester1"
+	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
+	cfg1.MaxTransferRetries = 10
+	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
+	require.NoError(t, err)
+
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return ing1.lifecycler.GetState()
+	})
+
+	// Now write a sample to this ingester
+	const ts = 123000
+	const val = 456
+	var (
+		l          = labels.Labels{{Name: labels.MetricName, Value: "foo"}}
+		sampleData = []client.Sample{
+			{
+				TimestampMs: ts,
+				Value:       val,
+			},
+		}
+		expectedResponse = &client.QueryResponse{
+			Timeseries: []client.TimeSeries{
+				{
+					Labels: client.FromLabelsToLabelAdapters(l),
+					Samples: []client.Sample{
+						{
+							Value:       val,
+							TimestampMs: ts,
+						},
+					},
+				},
+			},
+		}
+	)
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err = ing1.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
+	require.NoError(t, err)
+
+	// Start a second ingester, but let it go into PENDING
+	cfg2 := defaultIngesterTestConfig()
+	cfg2.TSDBEnabled = true
+	cfg2.TSDBConfig.Dir = dir2
+	cfg2.TSDBConfig.S3 = s3.Config{
+		Endpoint:        "dummy",
+		BucketName:      "dummy",
+		SecretAccessKey: "dummy",
+		AccessKeyID:     "dummy",
+	}
+	cfg2.LifecyclerConfig.RingConfig.KVStore.Mock = cfg1.LifecyclerConfig.RingConfig.KVStore.Mock
+	cfg2.LifecyclerConfig.ID = "ingester2"
+	cfg2.LifecyclerConfig.Addr = "ingester2"
+	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
+	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
+	require.NoError(t, err)
+
+	// Let ing2 send blocks/wal to ing1
+	ing1.cfg.ingesterClientFactory = func(addr string, _ client.Config) (client.HealthAndIngesterClient, error) {
+		return ingesterClientAdapater{
+			ingester: ing2,
+		}, nil
+	}
+
+	// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
+	ing1.Shutdown()
+	test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
+		return ing2.lifecycler.GetState()
+	})
+
+	// And check the second ingester has the sample
+	matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
+	require.NoError(t, err)
+
+	request, err := client.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*labels.Matcher{matcher})
+	require.NoError(t, err)
+
+	response, err := ing2.Query(ctx, request)
+	require.NoError(t, err)
+	assert.Equal(t, expectedResponse, response)
+
+	// Check we can send the same sample again to the new ingester and get the same result
+	_, err = ing2.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
+	require.NoError(t, err)
+	response, err = ing2.Query(ctx, request)
+	require.NoError(t, err)
+	assert.Equal(t, expectedResponse, response)
 }

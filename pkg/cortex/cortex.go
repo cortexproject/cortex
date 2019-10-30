@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -71,6 +72,7 @@ type Config struct {
 	QueryRange     queryrange.Config        `yaml:"query_range,omitempty"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
+	TSDB           tsdb.Config              `yaml:"tsdb"`
 
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
 	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
@@ -103,6 +105,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.QueryRange.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
+	c.TSDB.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigDB.RegisterFlags(f)
@@ -121,6 +124,14 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Encoding.Validate(); err != nil {
 		return errors.Wrap(err, "invalid encoding config")
+	}
+
+	if err := c.Storage.Validate(); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
+
+	if err := c.TSDB.Validate(); err != nil {
+		return errors.Wrap(err, "invalid TSDB config")
 	}
 	return nil
 }

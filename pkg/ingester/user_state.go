@@ -42,6 +42,8 @@ var (
 	}, []string{"user"})
 )
 
+// userStates holds the userState object for all users (tenants),
+// each one containing all the in-memory series for a given user.
 type userStates struct {
 	states  sync.Map
 	limiter *SeriesLimiter

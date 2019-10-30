@@ -104,7 +104,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	})
 }
 
-func TestLifecycler_HealthyIngestersCount(t *testing.T) {
+func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
@@ -120,13 +120,13 @@ func TestLifecycler_HealthyIngestersCount(t *testing.T) {
 
 	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester")
 	require.NoError(t, err)
-	assert.Equal(t, 0, lifecycler1.HealthyIngestersCount())
+	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
 
 	lifecycler1.Start()
 
 	// Assert the first ingester joined the ring
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		return lifecycler1.HealthyIngestersCount() == 1
+		return lifecycler1.HealthyInstancesCount() == 1
 	})
 
 	// Add the second ingester to the ring
@@ -136,18 +136,18 @@ func TestLifecycler_HealthyIngestersCount(t *testing.T) {
 
 	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester")
 	require.NoError(t, err)
-	assert.Equal(t, 0, lifecycler2.HealthyIngestersCount())
+	assert.Equal(t, 0, lifecycler2.HealthyInstancesCount())
 
 	lifecycler2.Start()
 
 	// Assert the second ingester joined the ring
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		return lifecycler2.HealthyIngestersCount() == 2
+		return lifecycler2.HealthyInstancesCount() == 2
 	})
 
 	// Assert the first ingester count is updated
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		return lifecycler1.HealthyIngestersCount() == 2
+		return lifecycler1.HealthyInstancesCount() == 2
 	})
 }
 

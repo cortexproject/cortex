@@ -15,7 +15,7 @@ const (
 // RingCount is the interface exposed by a ring implementation which allows
 // to count members
 type RingCount interface {
-	HealthyIngestersCount() int
+	HealthyInstancesCount() int
 }
 
 // SeriesLimiter implements primitives to get the maximum number of series
@@ -127,7 +127,7 @@ func (l *SeriesLimiter) convertGlobalToLocalLimit(globalLimit int) int {
 	// topology changes) and we prefer to always be in favor of the tenant,
 	// we can use a per-ingester limit equal to:
 	// (global limit / number of ingesters) * replication factor
-	numIngesters := l.ring.HealthyIngestersCount()
+	numIngesters := l.ring.HealthyInstancesCount()
 
 	// May happen because the number of ingesters is asynchronously updated.
 	// If happens, we just temporarily ignore the global limit.

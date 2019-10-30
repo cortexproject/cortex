@@ -84,7 +84,7 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
 			ring := &ringCountMock{}
-			ring.On("HealthyIngestersCount").Return(testData.ringIngesterCount)
+			ring.On("HealthyInstancesCount").Return(testData.ringIngesterCount)
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -174,7 +174,7 @@ func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
 			ring := &ringCountMock{}
-			ring.On("HealthyIngestersCount").Return(testData.ringIngesterCount)
+			ring.On("HealthyInstancesCount").Return(testData.ringIngesterCount)
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -236,7 +236,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
 			ring := &ringCountMock{}
-			ring.On("HealthyIngestersCount").Return(testData.ringIngesterCount)
+			ring.On("HealthyInstancesCount").Return(testData.ringIngesterCount)
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -298,7 +298,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
 			ring := &ringCountMock{}
-			ring.On("HealthyIngestersCount").Return(testData.ringIngesterCount)
+			ring.On("HealthyInstancesCount").Return(testData.ringIngesterCount)
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -364,7 +364,7 @@ type ringCountMock struct {
 	mock.Mock
 }
 
-func (m *ringCountMock) HealthyIngestersCount() int {
+func (m *ringCountMock) HealthyInstancesCount() int {
 	args := m.Called()
 	return args.Int(0)
 }

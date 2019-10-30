@@ -49,13 +49,10 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-
-		metrics: newIngesterMetrics(registerer),
-
-		limits:     limits,
-		chunkStore: chunkStore,
-		userStates: newUserStates(limits, cfg),
-		quit:       make(chan struct{}),
+		metrics:      newIngesterMetrics(registerer),
+		limits:       limits,
+		chunkStore:   chunkStore,
+		quit:         make(chan struct{}),
 
 		TSDBState: TSDBState{
 			dbs:    make(map[string]*tsdb.DB),
@@ -67,6 +64,13 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	if err != nil {
 		return nil, err
 	}
+
+	// Init the limter and instantiate the user states which depend on it
+	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.userStates = newUserStates(i.limiter, cfg)
+
+	// Now that user states have been created, we can start the lifecycler
+	i.lifecycler.Start()
 
 	return i, nil
 }

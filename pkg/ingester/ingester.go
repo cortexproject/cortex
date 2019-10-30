@@ -183,7 +183,7 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, readRing ring.ReadRing, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -191,8 +191,6 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	if cfg.TSDBEnabled {
 		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
 	}
-
-	limiter := NewSeriesLimiter(limits, readRing, cfg.ShardByAllLabels)
 
 	i := &Ingester{
 		cfg:          cfg,

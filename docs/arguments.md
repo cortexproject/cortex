@@ -301,7 +301,7 @@ Valid fields are (with their corresponding flags for default values):
 
   The `global` strategy enforces the limit on a per cluster basis, configuring a per-distributor local rate limiter as `ingestion_rate / N`, where N is the number of distributor replicas (it's automatically adjusted if the number of replicas change). The `ingestion_burst_size` refers to the per-distributor local rate limiter (even in the case of the `global` strategy) and should be set at least to the maximum number of samples expected in a single push request.
 
-  The `global` strategy requires the distributor's `registry` (based on the generic KVStore), which is used to keep track of the current number of healthy distributor replicas. The registry is configured by `distributor: { registry: {}}` / `-distributor.registry.*`.
+  The `global` strategy requires the distributor's ring (based on the generic KVStore), which is used to keep track of the current number of healthy distributor replicas. The ring is configured by `distributor: { ring: {}}` / `-distributor.ring.*`.
 
 - `max_label_name_length` / `-validation.max-length-label-name`
 - `max_label_value_length` / `-validation.max-length-label-value`

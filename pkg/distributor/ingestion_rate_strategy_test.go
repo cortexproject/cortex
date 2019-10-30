@@ -3,8 +3,8 @@ package distributor
 import (
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	"github.com/cortexproject/cortex/pkg/util/servicediscovery"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,7 +14,7 @@ import (
 func TestIngestionRateStrategy(t *testing.T) {
 	tests := map[string]struct {
 		limits        validation.Limits
-		registry      servicediscovery.ReadRegistry
+		ring          ring.ReadLifecycler
 		expectedLimit float64
 		expectedBurst int
 	}{
@@ -24,7 +24,7 @@ func TestIngestionRateStrategy(t *testing.T) {
 				IngestionRate:         float64(1000),
 				IngestionBurstSize:    10000,
 			},
-			registry:      nil,
+			ring:          nil,
 			expectedLimit: float64(1000),
 			expectedBurst: 10000,
 		},
@@ -34,10 +34,10 @@ func TestIngestionRateStrategy(t *testing.T) {
 				IngestionRate:         float64(1000),
 				IngestionBurstSize:    10000,
 			},
-			registry: func() servicediscovery.ReadRegistry {
-				registry := servicediscovery.NewReadRegistryMock()
-				registry.On("HealthyCount").Return(2)
-				return registry
+			ring: func() ring.ReadLifecycler {
+				ring := ring.NewReadLifecyclerMock()
+				ring.On("HealthyInstancesCount").Return(2)
+				return ring
 			}(),
 			expectedLimit: float64(500),
 			expectedBurst: 10000,
@@ -48,7 +48,7 @@ func TestIngestionRateStrategy(t *testing.T) {
 				IngestionRate:         float64(1000),
 				IngestionBurstSize:    10000,
 			},
-			registry:      nil,
+			ring:          nil,
 			expectedLimit: float64(rate.Inf),
 			expectedBurst: 0,
 		},
@@ -69,7 +69,7 @@ func TestIngestionRateStrategy(t *testing.T) {
 			case validation.LocalIngestionRateStrategy:
 				strategy = newLocalIngestionRateStrategy(overrides)
 			case validation.GlobalIngestionRateStrategy:
-				strategy = newGlobalIngestionRateStrategy(overrides, testData.registry)
+				strategy = newGlobalIngestionRateStrategy(overrides, testData.ring)
 			case "infinite":
 				strategy = newInfiniteIngestionRateStrategy()
 			default:

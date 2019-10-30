@@ -90,7 +90,7 @@ func TestReplicationStrategy(t *testing.T) {
 			},
 			HeartbeatTimeout:  100 * time.Second,
 			ReplicationFactor: tc.RF,
-		}, "ingester")
+		}, "ingester", IngesterRingKey)
 		require.NoError(t, err)
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {

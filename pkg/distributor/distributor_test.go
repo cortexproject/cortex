@@ -32,7 +32,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/servicediscovery"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
@@ -169,21 +168,21 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			limits.IngestionRate = testData.ingestionRate
 			limits.IngestionBurstSize = testData.ingestionBurstSize
 
-			// Init a shared registry KVStore
-			registryKVStore := consul.NewInMemoryClient(servicediscovery.GetServiceRegistryCodec())
+			// Init a shared KVStore
+			kvStore := consul.NewInMemoryClient(ring.GetCodec())
 
 			// Start all expected distributors
 			distributors := make([]*Distributor, testData.distributors)
 			for i := 0; i < testData.distributors; i++ {
-				distributors[i], _ = prepare(t, 1, 1, 0, true, limits, registryKVStore)
+				distributors[i], _ = prepare(t, 1, 1, 0, true, limits, kvStore)
 				defer distributors[i].Stop()
 			}
 
-			// If the distributors registry is setup, wait until the first distributor
+			// If the distributors ring is setup, wait until the first distributor
 			// updates to the expected size
-			if distributors[0].registry != nil {
+			if distributors[0].distributorsRing != nil {
 				test.Poll(t, time.Second, testData.distributors, func() interface{} {
-					return distributors[0].registry.HealthyCount()
+					return distributors[0].distributorsRing.HealthyInstancesCount()
 				})
 			}
 
@@ -703,7 +702,7 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) *cli
 	return client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
 }
 
-func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits, registryKVStore kv.Client) (*Distributor, []mockIngester) {
+func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits, kvStore kv.Client) (*Distributor, []mockIngester) {
 	ingesters := []mockIngester{}
 	for i := 0; i < happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
@@ -717,6 +716,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 		})
 	}
 
+	// Mock the ingesters ring
 	ingesterDescs := []ring.IngesterDesc{}
 	ingestersByAddr := map[string]*mockIngester{}
 	for i := range ingesters {
@@ -728,7 +728,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 		ingestersByAddr[addr] = &ingesters[i]
 	}
 
-	ring := mockRing{
+	ingestersRing := mockRing{
 		Counter: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "foo",
 		}),
@@ -751,14 +751,14 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	cfg.ingesterClientFactory = factory
 	cfg.ShardByAllLabels = shardByAllLabels
 	cfg.ExtraQueryDelay = 50 * time.Millisecond
-	cfg.Registry.HeartbeatPeriod = 100 * time.Millisecond
-	cfg.Registry.InstanceID = strconv.Itoa(rand.Int())
-	cfg.registryKVStore = registryKVStore
+	cfg.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
+	cfg.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
+	cfg.DistributorRing.KVStore.Mock = kvStore
 
 	overrides, err := validation.NewOverrides(*limits)
 	require.NoError(t, err)
 
-	d, err := New(cfg, clientConfig, overrides, ring, false)
+	d, err := New(cfg, clientConfig, overrides, ingestersRing, false)
 	require.NoError(t, err)
 
 	return d, ingesters

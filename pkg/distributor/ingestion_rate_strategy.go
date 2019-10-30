@@ -1,8 +1,8 @@
 package distributor
 
 import (
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	"github.com/cortexproject/cortex/pkg/util/servicediscovery"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"golang.org/x/time/rate"
 )
@@ -26,19 +26,19 @@ func (s *localStrategy) Burst(tenantID string) int {
 }
 
 type globalStrategy struct {
-	limits   *validation.Overrides
-	registry servicediscovery.ReadRegistry
+	limits *validation.Overrides
+	ring   ring.ReadLifecycler
 }
 
-func newGlobalIngestionRateStrategy(limits *validation.Overrides, registry servicediscovery.ReadRegistry) limiter.RateLimiterStrategy {
+func newGlobalIngestionRateStrategy(limits *validation.Overrides, ring ring.ReadLifecycler) limiter.RateLimiterStrategy {
 	return &globalStrategy{
-		limits:   limits,
-		registry: registry,
+		limits: limits,
+		ring:   ring,
 	}
 }
 
 func (s *globalStrategy) Limit(tenantID string) float64 {
-	numDistributors := s.registry.HealthyCount()
+	numDistributors := s.ring.HealthyInstancesCount()
 
 	if numDistributors == 0 {
 		return s.limits.IngestionRate(tenantID)

@@ -38,6 +38,11 @@ var (
 	}, []string{"op", "status", "name"})
 )
 
+// ReadLifecycler represents the read interface to the lifecycler.
+type ReadLifecycler interface {
+	HealthyInstancesCount() int
+}
+
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring,omitempty"`
@@ -100,13 +105,6 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
 }
 
-// FlushTransferer controls the shutdown of an ingester.
-type FlushTransferer interface {
-	StopIncomingRequests()
-	Flush()
-	TransferOut(ctx context.Context) error
-}
-
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
 type Lifecycler struct {
 	cfg             LifecyclerConfig
@@ -122,6 +120,7 @@ type Lifecycler struct {
 	ID       string
 	Addr     string
 	RingName string
+	RingKey  string
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
@@ -140,7 +139,7 @@ type Lifecycler struct {
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name string) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string) (*Lifecycler, error) {
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -159,6 +158,12 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 		return nil, err
 	}
 
+	// We do allow a nil flush transferer, but to keep the ring logic easier we assume
+	// it's always set, so we use a noop transferer
+	if flushTransferer == nil {
+		flushTransferer = NewNoopFlushTransferer()
+	}
+
 	l := &Lifecycler{
 		cfg:             cfg,
 		flushTransferer: flushTransferer,
@@ -166,7 +171,8 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 
 		Addr:     fmt.Sprintf("%s:%d", addr, port),
 		ID:       cfg.ID,
-		RingName: name,
+		RingName: ringName,
+		RingKey:  ringKey,
 
 		quit:      make(chan struct{}),
 		actorChan: make(chan func()),
@@ -203,7 +209,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("waiting for %v after startup", i.cfg.MinReadyDuration)
 	}
 
-	desc, err := i.KVStore.Get(ctx, ConsulKey)
+	desc, err := i.KVStore.Get(ctx, i.RingKey)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error talking to consul", "err", err)
 		return fmt.Errorf("error talking to consul: %s", err)
@@ -294,7 +300,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 			return ringDesc, true, nil
 		}
 
-		if err := i.KVStore.CAS(ctx, ConsulKey, claimTokens); err != nil {
+		if err := i.KVStore.CAS(ctx, i.RingKey, claimTokens); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to write to consul", "err", err)
 		}
 
@@ -468,7 +474,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		level.Info(util.Logger).Log("msg", "not loading tokens from file, tokens file path is empty")
 	}
 
-	err = i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err = i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -518,7 +524,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 	result := false
 
-	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *Desc
 		if in == nil {
 			ringDesc = NewDesc()
@@ -581,7 +587,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) error {
 	var ringDesc *Desc
 
-	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -618,7 +624,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 func (i *Lifecycler) updateConsul(ctx context.Context) error {
 	var ringDesc *Desc
 
-	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -709,7 +715,7 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 func (i *Lifecycler) unregister(ctx context.Context) error {
 	level.Debug(util.Logger).Log("msg", "unregistering member from ring")
 
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	return i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}

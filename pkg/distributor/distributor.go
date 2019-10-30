@@ -21,11 +21,9 @@ import (
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	"github.com/cortexproject/cortex/pkg/util/servicediscovery"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/httpgrpc"
@@ -98,11 +96,14 @@ var (
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
 	cfg           Config
-	ring          ring.ReadRing
+	ingestersRing ring.ReadRing
 	ingesterPool  *ingester_client.Pool
 	limits        *validation.Overrides
 	billingClient *billing.Client
-	registry      *servicediscovery.RegistryLifecycler
+
+	// The global rate limiter requires a distributors ring to count
+	// the number of healthy instances
+	distributorsRing *ring.Lifecycler
 
 	// For handling HA replicas.
 	Replicas *haTracker
@@ -114,10 +115,9 @@ type Distributor struct {
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling bool                                      `yaml:"enable_billing,omitempty"`
-	BillingConfig billing.Config                            `yaml:"billing,omitempty"`
-	PoolConfig    ingester_client.PoolConfig                `yaml:"pool,omitempty"`
-	Registry      servicediscovery.RegistryLifecyclerConfig `yaml:"registry"`
+	EnableBilling bool                       `yaml:"enable_billing,omitempty"`
+	BillingConfig billing.Config             `yaml:"billing,omitempty"`
+	PoolConfig    ingester_client.PoolConfig `yaml:"pool,omitempty"`
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
@@ -127,9 +127,11 @@ type Config struct {
 
 	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
 
+	// Distributors ring
+	DistributorRing DistributorRingConfig `yaml:"ring,omitempty"`
+
 	// for testing
 	ingesterClientFactory client.Factory `yaml:"-"`
-	registryKVStore       kv.Client      `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -137,7 +139,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
 	cfg.HATrackerConfig.RegisterFlags(f)
-	cfg.Registry.RegisterFlagsWithPrefix("distributor.registry.", f)
+	cfg.DistributorRing.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
@@ -152,7 +154,7 @@ func (cfg *Config) Validate() error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ring ring.ReadRing, internalDependency bool) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, internalDependency bool) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -168,7 +170,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		}
 	}
 
-	replicationFactor.Set(float64(ring.ReplicationFactor()))
+	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
 	replicas, err := newClusterTracker(cfg.HATrackerConfig)
@@ -179,32 +181,27 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	// Create the configured ingestion rate limit strategy (local or global). In case
 	// it's an internal dependency (ie. ruler) we skip rate limiting.
 	var ingestionRateStrategy limiter.RateLimiterStrategy
-	var distributorsRegistry *servicediscovery.RegistryLifecycler
+	var distributorsRing *ring.Lifecycler
 
 	if internalDependency {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		if cfg.registryKVStore != nil {
-			distributorsRegistry, err = servicediscovery.NewRegistryLifecyclerWithKVStore("distributor", cfg.Registry, cfg.registryKVStore, util.Logger)
-		} else {
-			distributorsRegistry, err = servicediscovery.NewRegistryLifecycler("distributor", cfg.Registry, util.Logger)
-		}
-
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey)
 		if err != nil {
 			return nil, err
 		}
 
-		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRegistry)
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRing)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)
 	}
 
 	d := &Distributor{
 		cfg:                  cfg,
-		ring:                 ring,
-		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ring, cfg.ingesterClientFactory, util.Logger),
+		ingestersRing:        ingestersRing,
+		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
 		billingClient:        billingClient,
-		registry:             distributorsRegistry,
+		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		Replicas:             replicas,
@@ -218,8 +215,8 @@ func (d *Distributor) Stop() {
 	d.ingesterPool.Stop()
 	d.Replicas.stop()
 
-	if d.registry != nil {
-		d.registry.Stop()
+	if d.distributorsRing != nil {
+		d.distributorsRing.Shutdown()
 	}
 }
 
@@ -426,7 +423,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", d.ingestionRateLimiter.Limit(now, userID), numSamples)
 	}
 
-	err = ring.DoBatch(ctx, d.ring, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+	err = ring.DoBatch(ctx, d.ingestersRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
 		for _, i := range indexes {
 			timeseries = append(timeseries, validatedTimeseries[i])
@@ -468,7 +465,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 
 // forAllIngesters runs f, in parallel, for all ingesters
 func (d *Distributor) forAllIngesters(ctx context.Context, reallyAll bool, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
-	replicationSet, err := d.ring.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll()
 	if err != nil {
 		return nil, err
 	}
@@ -590,8 +587,8 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 		totalStats.NumSeries += r.NumSeries
 	}
 
-	totalStats.IngestionRate /= float64(d.ring.ReplicationFactor())
-	totalStats.NumSeries /= uint64(d.ring.ReplicationFactor())
+	totalStats.IngestionRate /= float64(d.ingestersRing.ReplicationFactor())
+	totalStats.NumSeries /= uint64(d.ingestersRing.ReplicationFactor())
 
 	return totalStats, nil
 }
@@ -611,7 +608,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.forAllIngesters(), so we can fail after first error.
-	replicationSet, err := d.ring.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll()
 	if err != nil {
 		return nil, err
 	}

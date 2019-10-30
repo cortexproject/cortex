@@ -151,7 +151,7 @@ func (t *Cortex) stopServer() (err error) {
 }
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
-	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester")
+	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
 	}
@@ -171,6 +171,8 @@ func (t *Cortex) stopOverrides() error {
 }
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
+	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
+
 	// Check whether the distributor is going to be initialized as internal
 	// dependency (ie. querier or ruler's dependency)
 	internalDependency := !(cfg.Target == All || cfg.Target == Distributor)

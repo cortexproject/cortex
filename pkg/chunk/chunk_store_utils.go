@@ -255,10 +255,11 @@ func (c *Fetcher) processCacheResponse(chunks []Chunk, keys []string, bufs [][]b
 }
 
 func injectShardLabels(chunks []Chunk, shard astmapper.ShardAnnotation) {
-	for _, chunk := range chunks {
+	for i, chunk := range chunks {
 		chunk.Metric = append(chunk.Metric, labels.Label{
 			Name:  astmapper.ShardLabel,
 			Value: shard.String(),
 		})
+		chunks[i] = chunk
 	}
 }

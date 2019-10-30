@@ -520,19 +520,21 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 }
 
 func (i *Lifecycler) updateCounters(ringDesc *Desc) {
-	i.countersLock.Lock()
-	defer i.countersLock.Unlock()
-
 	// Count the number of healthy ingesters for Write operation
-	i.healthyIngestersCount = 0
+	healthyIngestersCount := 0
 
 	if ringDesc != nil {
 		for _, ingester := range ringDesc.Ingesters {
 			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
-				i.healthyIngestersCount++
+				healthyIngestersCount++
 			}
 		}
 	}
+
+	// Update counters
+	i.countersLock.Lock()
+	i.healthyIngestersCount = healthyIngestersCount
+	i.countersLock.Unlock()
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {

@@ -128,7 +128,7 @@ type Config struct {
 	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
 
 	// Distributors ring
-	DistributorRing DistributorRingConfig `yaml:"ring,omitempty"`
+	DistributorRing RingConfig `yaml:"ring,omitempty"`
 
 	// for testing
 	ingesterClientFactory client.Factory `yaml:"-"`

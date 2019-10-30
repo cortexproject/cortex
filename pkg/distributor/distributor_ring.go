@@ -12,11 +12,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 )
 
-// DistributorRingConfig masks the ring lifecycler config which contains
+// RingConfig masks the ring lifecycler config which contains
 // many options not really required by the distributors ring. This config
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
-type DistributorRingConfig struct {
+type RingConfig struct {
 	KVStore          kv.Config     `yaml:"kvstore,omitempty"`
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
 	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout,omitempty"`
@@ -32,7 +32,7 @@ type DistributorRingConfig struct {
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *DistributorRingConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "failed to get hostname", "err", err)
@@ -54,7 +54,7 @@ func (cfg *DistributorRingConfig) RegisterFlags(f *flag.FlagSet) {
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the distributor
 // ring config.
-func (cfg *DistributorRingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
+func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 	return ring.LifecyclerConfig{
 		ListenPort:      &cfg.ListenPort,
 		Addr:            cfg.InstanceAddr,

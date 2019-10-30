@@ -158,8 +158,8 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		return nil, err
 	}
 
-	// We do allow a nil flush transferer, but to keep the ring logic easier we assume
-	// it's always set, so we use a noop transferer
+	// We do allow a nil FlushTransferer, but to keep the ring logic easier we assume
+	// it's always set, so we use a noop FlushTransferer
 	if flushTransferer == nil {
 		flushTransferer = NewNoopFlushTransferer()
 	}

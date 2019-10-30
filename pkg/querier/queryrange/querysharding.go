@@ -89,17 +89,16 @@ type queryShard struct {
 }
 
 func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
-	level.Debug(qs.logger).Log("msg", "queryShard.Do")
 	sp, ctx := spanlogger.New(ctx, "queryShard.Do")
 	defer sp.Finish()
 
 	conf, err := qs.confs.ValidRange(r.GetStart(), r.GetEnd())
 	// query exists across multiple sharding configs or doesn't have sharding, so don't try to do AST mapping.
 	if err != nil || conf.RowShards == 0 {
-		level.Debug(sp).Log("msg", "skipping sum shard", "err", err, "conf", conf)
+		level.Debug(sp).Log("msg", "skipping sum shard", "err", err, "conf", fmt.Sprintf("%+v", conf))
 		return qs.next.Do(ctx, r)
 	}
-	level.Debug(sp).Log("msg", "using shard config", "conf", conf)
+	level.Debug(sp).Log("msg", "using shard config", "conf", fmt.Sprintf("%+v", conf))
 
 	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
 

@@ -264,6 +264,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
+		level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers: empty matcher")
 		indexLookupsPerQuery.Observe(1)
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, nil)
 		if err != nil {
@@ -280,9 +281,24 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		return nil, err
 	}
 
+	level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers:shard", "shard", shard, "label_index", shardLabelIndex, "matchers", len(matchers))
+
 	if shard != nil {
 		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
+		// Just get series for metric if there are no matchers
+		if len(matchers) == 0 {
+			level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers: empty matcher with shard", "shard", shard)
+			indexLookupsPerQuery.Observe(1)
+			series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
+			if err != nil {
+				preIntersectionPerQuery.Observe(float64(len(series)))
+				postIntersectionPerQuery.Observe(float64(len(series)))
+			}
+			return series, err
+		}
 	}
+
+	level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers:matchers", "matchers", len(matchers))
 
 	// Otherwise get series which include other matchers
 	incomingIDs := make(chan []string)
@@ -292,7 +308,8 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		go func(matcher *labels.Matcher) {
 			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, shard)
 			if err != nil {
-				incomingErrors <- err
+				level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatcher:error", "err", err)
+				incomingErrors <- log.Error(err)
 				return
 			}
 			incomingIDs <- ids

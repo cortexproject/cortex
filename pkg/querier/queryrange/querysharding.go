@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
@@ -64,12 +65,13 @@ func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
 }
 
 // QueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
-func QueryShardMiddleware(engine *promql.Engine, confs ShardingConfigs) Middleware {
+func NewQueryShardMiddleware(logger log.Logger, engine *promql.Engine, confs ShardingConfigs) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		if !confs.hasShards() {
 			return next
 		}
 		return &queryShard{
+			logger: log.With(logger, "middleware", "QueryShard"),
 			confs:  confs,
 			next:   next,
 			engine: engine,
@@ -78,40 +80,49 @@ func QueryShardMiddleware(engine *promql.Engine, confs ShardingConfigs) Middlewa
 }
 
 type queryShard struct {
+	logger log.Logger
 	confs  ShardingConfigs
 	next   Handler
 	engine *promql.Engine
 }
 
 func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
-	logger, ctx := spanlogger.New(ctx, "queryShard.Do")
-	defer logger.Finish()
-
-	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
+	sp, ctx := spanlogger.New(ctx, "queryShard.Do")
+	defer sp.Finish()
 
 	conf, err := qs.confs.ValidRange(r.GetStart(), r.GetEnd())
 	// query exists across multiple sharding configs or doesn't have sharding, so don't try to do AST mapping.
 	if err != nil || conf.RowShards == 0 {
-		level.Debug(logger).Log("msg", "skipping sum shard", "err", err, "conf", conf)
+		level.Debug(sp).Log("msg", "skipping sum shard", "err", err, "conf", conf)
 		return qs.next.Do(ctx, r)
 	}
-	level.Debug(logger).Log("msg", "using shard config", "conf", conf)
+	level.Debug(sp).Log("msg", "using shard config", "conf", conf)
 
+	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
+
+	strQuery := r.GetQuery()
 	mappedQuery, err := mapQuery(
 		astmapper.NewMultiMapper(
 			astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher),
 			astmapper.ShallowEmbedSelectors,
 		),
-		r.GetQuery(),
+		strQuery,
 	)
 
 	if err != nil {
 		return nil, err
 	}
 
+	strMappedQuery := mappedQuery.String()
+	if strMappedQuery == strQuery {
+		level.Debug(qs.logger).Log("msg", "unaltered query", "query", strQuery)
+	} else {
+		level.Debug(qs.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
+	}
+
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
-		mappedQuery.String(),
+		strMappedQuery,
 		TimeFromMillis(r.GetStart()),
 		TimeFromMillis(r.GetEnd()),
 		time.Duration(r.GetStep())*time.Millisecond,

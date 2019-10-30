@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
@@ -71,7 +72,8 @@ func TestMiddleware(t *testing.T) {
 				Timeout:       time.Minute,
 			})
 
-			handler := QueryShardMiddleware(
+			handler := NewQueryShardMiddleware(
+				log.NewNopLogger(),
 				engine,
 				ShardingConfigs{
 					{

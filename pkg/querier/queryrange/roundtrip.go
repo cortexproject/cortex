@@ -107,7 +107,11 @@ func NewTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
 	}
 	if cfg.SumShards {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("sum_shards"), QueryShardMiddleware(promql.NewEngine(engineOpts), schema.Configs))
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			InstrumentMiddleware("sum_shards"),
+			NewQueryShardMiddleware(log, promql.NewEngine(engineOpts), schema.Configs),
+		)
 	}
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
 	if cfg.SplitQueriesByDay {

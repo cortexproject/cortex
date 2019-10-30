@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	fmt "fmt"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -68,6 +69,7 @@ func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
 func NewQueryShardMiddleware(logger log.Logger, engine *promql.Engine, confs ShardingConfigs) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		if !confs.hasShards() {
+			level.Warn(logger).Log("msg", "no configuration with shard found", "confs", fmt.Sprintf("%+v", confs))
 			return next
 		}
 		return &queryShard{
@@ -87,6 +89,7 @@ type queryShard struct {
 }
 
 func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
+	level.Debug(qs.logger).Log("msg", "queryShard.Do")
 	sp, ctx := spanlogger.New(ctx, "queryShard.Do")
 	defer sp.Finish()
 

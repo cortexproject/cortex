@@ -63,7 +63,7 @@ func NewUserStore(cfg tsdb.Config, logger log.Logger) (*UserStore, error) {
 	return u, nil
 }
 
-// InitialSync iterates over the s3 bucket creating user bucket stores, and calling InitialSync on each of them
+// InitialSync iterates over the storage bucket creating user bucket stores, and calling InitialSync on each of them
 func (u *UserStore) InitialSync(ctx context.Context) error {
 	if err := u.syncUserStores(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
@@ -74,7 +74,7 @@ func (u *UserStore) InitialSync(ctx context.Context) error {
 	return nil
 }
 
-// SyncStores iterates over the s3 bucket creating user bucket stores
+// SyncStores iterates over the storage bucket creating user bucket stores
 func (u *UserStore) SyncStores(ctx context.Context) error {
 	if err := u.syncUserStores(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)

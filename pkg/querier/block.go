@@ -26,7 +26,7 @@ type BlockQuerier struct {
 	us        *UserStore
 }
 
-// NewBlockQuerier returns a client to query a s3 block store
+// NewBlockQuerier returns a client to query a block store
 func NewBlockQuerier(cfg tsdb.Config, r prometheus.Registerer) (*BlockQuerier, error) {
 	b := &BlockQuerier{
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{

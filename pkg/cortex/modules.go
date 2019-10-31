@@ -250,6 +250,7 @@ func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
+	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
 
 	t.ingester, err = ingester.New(cfg.Ingester, cfg.IngesterClient, t.overrides, t.store, prometheus.DefaultRegisterer)
 	if err != nil {

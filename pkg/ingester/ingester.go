@@ -121,6 +121,10 @@ type Config struct {
 	TSDBEnabled bool        `yaml:"-"`
 	TSDBConfig  tsdb.Config `yaml:"-"`
 
+	// Injected at runtime and read from the distributor config, required
+	// to accurately apply global limits.
+	ShardByAllLabels bool `yaml:"-"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
@@ -152,6 +156,7 @@ type Ingester struct {
 	chunkStore ChunkStore
 	lifecycler *ring.Lifecycler
 	limits     *validation.Overrides
+	limiter    *SeriesLimiter
 
 	quit chan struct{}
 	done sync.WaitGroup
@@ -190,15 +195,11 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-
-		metrics: newIngesterMetrics(registerer),
-
-		limits:     limits,
-		chunkStore: chunkStore,
-		userStates: newUserStates(limits, cfg),
-
-		quit:        make(chan struct{}),
-		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		metrics:      newIngesterMetrics(registerer),
+		limits:       limits,
+		chunkStore:   chunkStore,
+		quit:         make(chan struct{}),
+		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 	}
 
 	var err error
@@ -206,6 +207,13 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	if err != nil {
 		return nil, err
 	}
+
+	// Init the limter and instantiate the user states which depend on it
+	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.userStates = newUserStates(i.limiter, cfg)
+
+	// Now that user states have been created, we can start the lifecycler
+	i.lifecycler.Start()
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {

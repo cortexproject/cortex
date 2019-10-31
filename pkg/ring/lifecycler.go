@@ -129,6 +129,10 @@ type Lifecycler struct {
 	readyLock sync.Mutex
 	startTime time.Time
 	ready     bool
+
+	// Keeps stats updated at every heartbeat period
+	countersLock          sync.RWMutex
+	healthyInstancesCount int
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
@@ -169,9 +173,13 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
-	l.done.Add(1)
-	go l.loop()
 	return l, nil
+}
+
+// Start the lifecycler
+func (i *Lifecycler) Start() {
+	i.done.Add(1)
+	go i.loop()
 }
 
 // CheckReady is used to rate limit the number of ingesters that can be coming or
@@ -278,6 +286,15 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	return <-err
 }
 
+// HealthyInstancesCount returns the number of healthy instances in the ring, updated
+// during the last heartbeat period
+func (i *Lifecycler) HealthyInstancesCount() int {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+
+	return i.healthyInstancesCount
+}
+
 // Shutdown the lifecycle.  It will:
 // - send chunks to another ingester, if it can.
 // - otherwise, flush chunks to the chunk store.
@@ -379,8 +396,9 @@ heartbeatLoop:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
 func (i *Lifecycler) initRing(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *Desc
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -403,12 +421,20 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
 		return ringDesc, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
 // autoJoin selects random tokens & moves state to ACTIVE
 func (i *Lifecycler) autoJoin(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *Desc
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -431,13 +457,21 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 
 		return ringDesc, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
 // updateConsul updates our entries in consul, heartbeating and dealing with
 // consul restarts.
 func (i *Lifecycler) updateConsul(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *Desc
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -458,6 +492,13 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 
 		return ringDesc, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
 // changeState updates consul with state transitions for us.  NB this must be
@@ -476,6 +517,24 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 	level.Info(util.Logger).Log("msg", "changing ingester state from", "old_state", currState, "new_state", state)
 	i.setState(state)
 	return i.updateConsul(ctx)
+}
+
+func (i *Lifecycler) updateCounters(ringDesc *Desc) {
+	// Count the number of healthy instances for Write operation
+	healthyInstancesCount := 0
+
+	if ringDesc != nil {
+		for _, ingester := range ringDesc.Ingesters {
+			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
+				healthyInstancesCount++
+			}
+		}
+	}
+
+	// Update counters
+	i.countersLock.Lock()
+	i.healthyInstancesCount = healthyInstancesCount
+	i.countersLock.Unlock()
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {

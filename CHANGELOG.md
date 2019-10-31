@@ -5,6 +5,9 @@
 * [CHANGE] The frontend component has been refactored to be easier to re-use. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734
 * [CHANGE] Remove direct DB/API access from the ruler
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
+* [FEATURE] Global limit on the max series per user and metric #1760
+  * `-ingester.max-global-series-per-user`
+  * `-ingester.max-global-series-per-metric`
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
 * [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
 * [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708

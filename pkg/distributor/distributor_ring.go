@@ -55,27 +55,32 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 // ToLifecyclerConfig returns a LifecyclerConfig based on the distributor
 // ring config.
 func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
-	return ring.LifecyclerConfig{
-		ListenPort:      &cfg.ListenPort,
-		Addr:            cfg.InstanceAddr,
-		Port:            cfg.InstancePort,
-		ID:              cfg.InstanceID,
-		InfNames:        cfg.InstanceInterfaceNames,
-		SkipUnregister:  false,
-		HeartbeatPeriod: cfg.HeartbeatPeriod,
+	// We have to make sure that the ring.LifecyclerConfig and ring.Config
+	// defaults are preserved
+	lc := ring.LifecyclerConfig{}
+	rc := ring.Config{}
 
-		RingConfig: ring.Config{
-			KVStore:          cfg.KVStore,
-			HeartbeatTimeout: cfg.HeartbeatTimeout,
+	flagext.DefaultValues(&lc)
+	flagext.DefaultValues(&rc)
 
-			// Unused by the distributors ring
-			ReplicationFactor: 1,
-		},
+	// Configure ring
+	rc.KVStore = cfg.KVStore
+	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
+	rc.ReplicationFactor = 1
 
-		// Unused by the distributors ring
-		NumTokens:        1,
-		JoinAfter:        0,
-		MinReadyDuration: 0,
-		FinalSleep:       0,
-	}
+	// Configure lifecycler
+	lc.RingConfig = rc
+	lc.ListenPort = &cfg.ListenPort
+	lc.Addr = cfg.InstanceAddr
+	lc.Port = cfg.InstancePort
+	lc.ID = cfg.InstanceID
+	lc.InfNames = cfg.InstanceInterfaceNames
+	lc.SkipUnregister = false
+	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
+	lc.NumTokens = 1
+	lc.JoinAfter = 0
+	lc.MinReadyDuration = 0
+	lc.FinalSleep = 0
+
+	return lc
 }

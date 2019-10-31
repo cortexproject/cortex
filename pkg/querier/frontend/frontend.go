@@ -55,7 +55,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
-	f.DurationVar(&cfg.LogQueriesLongerThan, "querier.log-queries-longer-than", 1*time.Second, "Log slow queries")
+	f.DurationVar(&cfg.LogQueriesLongerThan, "querier.log-queries-longer-than", 0, "Log slow queries")
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -153,7 +153,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if queryResponseTime > f.cfg.LogQueriesLongerThan {
+	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
 		level.Warn(f.log).Log("msg", "slow query", "orgID", userID, "url", fmt.Sprintf("http://%s", r.Host+r.RequestURI), "time-taken", queryResponseTime.String())
 	}
 

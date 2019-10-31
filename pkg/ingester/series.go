@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/value"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -208,6 +209,10 @@ func (s *memorySeries) setChunks(descs []*desc) error {
 		s.lastTime = descs[len(descs)-1].LastTime
 	}
 	return nil
+}
+
+func (s *memorySeries) isStale() bool {
+	return s.lastSampleValueSet && value.IsStaleNaN(float64(s.lastSampleValue))
 }
 
 type desc struct {

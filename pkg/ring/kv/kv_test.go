@@ -183,18 +183,26 @@ func TestWatchPrefix(t *testing.T) {
 		<-ch1
 		<-ch2
 
-		// verify that each key was reported once, and keys outside prefix were not reported
+		// verify that each key was reported at most once, and keys outside prefix were not reported
+		// also make sure that we get most notifications, if not all.
+		count := 0
 		for i := 0; i < max; i++ {
 			key := fmt.Sprintf("%s%d", prefix, i)
 
-			if observedKeys[key] != 1 {
+			if observedKeys[key] > 1 {
 				t.Errorf("key %s has incorrect value %d", key, observedKeys[key])
 			}
+			count += observedKeys[key]
 			delete(observedKeys, key)
 		}
 
 		if len(observedKeys) > 0 {
 			t.Errorf("unexpected keys reported: %v", observedKeys)
+		}
+
+		const expectedFactor = 0.75
+		if count < expectedFactor*max {
+			t.Errorf("expected at least %.0f%% observed values, got %.0f%% (observed count: %d)", 100*expectedFactor, 100*float64(count)/max, count)
 		}
 	})
 }

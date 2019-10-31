@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/value"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -129,7 +128,7 @@ const (
 	reasonMultipleChunksInSeries
 	reasonAged
 	reasonIdle
-	reasonStaleIdle
+	reasonStale
 )
 
 func (f flushReason) String() string {
@@ -144,8 +143,8 @@ func (f flushReason) String() string {
 		return "Aged"
 	case reasonIdle:
 		return "Idle"
-	case reasonStaleIdle:
-		return "StaleIdle"
+	case reasonStale:
+		return "Stale"
 	default:
 		panic("unrecognised flushReason")
 	}
@@ -183,7 +182,7 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint,
 		return reasonMultipleChunksInSeries
 	} else if len(series.chunkDescs) > 0 {
 		// Otherwise look in more detail at the first chunk
-		return i.shouldFlushChunk(series.chunkDescs[0], fp, value.IsStaleNaN(float64(series.lastSampleValue)))
+		return i.shouldFlushChunk(series.chunkDescs[0], fp, series.isStale())
 	}
 
 	return noFlush
@@ -213,7 +212,7 @@ func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint, lastValueIsSt
 	if i.cfg.MaxStaleChunkIdle > 0 &&
 		lastValueIsStale &&
 		model.Now().Sub(c.LastUpdate) > i.cfg.MaxStaleChunkIdle {
-		return reasonStaleIdle
+		return reasonStale
 	}
 
 	return noFlush
@@ -270,13 +269,13 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 
 	// Assume we're going to flush everything, and maybe don't flush the head chunk if it doesn't need it.
 	chunks := series.chunkDescs
-	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head(), fp, value.IsStaleNaN(float64(series.lastSampleValue))) != noFlush) {
+	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head(), fp, series.isStale()) != noFlush) {
 		series.closeHead()
 	} else {
 		chunks = chunks[:len(chunks)-1]
 	}
 
-	if (reason == reasonIdle || reason == reasonStaleIdle) && series.headChunkClosed {
+	if (reason == reasonIdle || reason == reasonStale) && series.headChunkClosed {
 		if minChunkLength := i.limits.MinChunkLength(userID); minChunkLength > 0 {
 			chunkLength := 0
 			for _, c := range chunks {

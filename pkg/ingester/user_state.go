@@ -279,8 +279,7 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
 	defer log.Finish()
 
-	// Check if one of the labels is a shard annotation, pass that information to lookupSeriesByMetricNameMatcher,
-	// and remove the label.
+	// Check if one of the labels is a shard annotation and remove the label.
 	shard, shardLabelIndex, err := astmapper.ShardFromMatchers(allMatchers)
 	if err != nil {
 		return log.Error(err)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	// Needed for gRPC compatibility.
+
 	old_ctx "golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -21,6 +22,7 @@ import (
 
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -412,6 +414,12 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
+	// Check if one of the labels is a shard annotation.
+	shard, _, err := astmapper.ShardFromMatchers(matchers)
+	if err != nil {
+		return nil, err
+	}
+
 	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
@@ -427,8 +435,16 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
 		}
 
+		metric := series.metric.Copy()
+		if shard != nil {
+			metric = append(metric, labels.Label{
+				Name:  astmapper.ShardLabel,
+				Value: shard.String(),
+			})
+		}
+
 		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapters(series.metric),
+			Labels:  client.FromLabelsToLabelAdapters(metric),
 			Samples: make([]client.Sample, 0, len(values)),
 		}
 		for _, s := range values {

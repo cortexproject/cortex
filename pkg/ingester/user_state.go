@@ -324,10 +324,6 @@ outer:
 				u.fpLocker.Unlock(fp)
 				continue
 			}
-			series.metric = append(series.metric, labels.Label{
-				Name:  astmapper.ShardLabel,
-				Value: shard.String(),
-			})
 			level.Debug(log).Log("shard_matching", series.metric, "shard", shard)
 		}
 

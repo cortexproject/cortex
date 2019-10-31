@@ -211,17 +211,17 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 
 	desc, err := i.KVStore.Get(ctx, i.RingKey)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error talking to consul", "err", err)
-		return fmt.Errorf("error talking to consul: %s", err)
+		level.Error(util.Logger).Log("msg", "error talking to the KV store", "ring", i.RingName, "err", err)
+		return fmt.Errorf("error talking to the KV store: %s", err)
 	}
 
 	if len(i.getTokens()) == 0 {
-		return fmt.Errorf("this ingester owns no tokens")
+		return fmt.Errorf("this instance owns no tokens")
 	}
 
 	ringDesc, ok := desc.(*Desc)
 	if !ok || ringDesc == nil {
-		return fmt.Errorf("no ring returned from consul")
+		return fmt.Errorf("no ring returned from the KV store")
 	}
 
 	if err := ringDesc.Ready(time.Now(), i.cfg.RingConfig.HeartbeatTimeout); err != nil {
@@ -301,7 +301,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 		}
 
 		if err := i.KVStore.CAS(ctx, i.RingKey, claimTokens); err != nil {
-			level.Error(util.Logger).Log("msg", "Failed to write to consul", "err", err)
+			level.Error(util.Logger).Log("msg", "Failed to write to the KV store", "ring", i.RingName, "err", err)
 		}
 
 		i.setTokens(tokens)
@@ -337,14 +337,14 @@ func (i *Lifecycler) Shutdown() {
 
 func (i *Lifecycler) loop() {
 	defer func() {
-		level.Info(util.Logger).Log("msg", "member.loop() exited gracefully")
+		level.Info(util.Logger).Log("msg", "member.loop() exited gracefully", "ring", i.RingName)
 		i.done.Done()
 	}()
 
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
 	if err := i.initRing(context.Background()); err != nil {
-		level.Error(util.Logger).Log("msg", "failed to join consul", "err", err)
+		level.Error(util.Logger).Log("msg", "failed to join the ring", "ring", i.RingName, "err", err)
 		os.Exit(1)
 	}
 
@@ -359,25 +359,25 @@ loop:
 	for {
 		select {
 		case <-autoJoinAfter:
-			level.Debug(util.Logger).Log("msg", "JoinAfter expired")
+			level.Debug(util.Logger).Log("msg", "JoinAfter expired", "ring", i.RingName)
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
 			if i.GetState() == PENDING {
-				level.Info(util.Logger).Log("msg", "auto-joining cluster after timeout")
+				level.Info(util.Logger).Log("msg", "auto-joining cluster after timeout", "ring", i.RingName)
 
 				if i.cfg.ObservePeriod > 0 {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
 					// ingesters, but we also signal that it is not fully functional yet.
 					if err := i.autoJoin(context.Background(), JOINING); err != nil {
-						level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
+						level.Error(util.Logger).Log("msg", "failed to pick tokens in the KV store", "ring", i.RingName, "err", err)
 						os.Exit(1)
 					}
 
-					level.Info(util.Logger).Log("msg", "observing tokens before going ACTIVE")
+					level.Info(util.Logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
 					observeChan = time.After(i.cfg.ObservePeriod)
 				} else {
 					if err := i.autoJoin(context.Background(), ACTIVE); err != nil {
-						level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
+						level.Error(util.Logger).Log("msg", "failed to pick tokens in the KV store", "ring", i.RingName, "err", err)
 						os.Exit(1)
 					}
 				}
@@ -408,7 +408,7 @@ loop:
 		case <-heartbeatTicker.C:
 			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
-				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
+				level.Error(util.Logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 			}
 
 		case f := <-i.actorChan:
@@ -436,7 +436,7 @@ heartbeatLoop:
 		case <-heartbeatTicker.C:
 			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
-				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
+				level.Error(util.Logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 			}
 
 		case <-done:
@@ -446,10 +446,10 @@ heartbeatLoop:
 
 	if !i.cfg.SkipUnregister {
 		if err := i.unregister(context.Background()); err != nil {
-			level.Error(util.Logger).Log("msg", "Failed to unregister from consul", "err", err)
+			level.Error(util.Logger).Log("msg", "Failed to unregister from the KV store", "ring", i.RingName, "err", err)
 			os.Exit(1)
 		}
-		level.Info(util.Logger).Log("msg", "ingester removed from consul")
+		level.Info(util.Logger).Log("msg", "instance removed from the KV store", "ring", i.RingName)
 	}
 
 	i.KVStore.Stop()
@@ -495,7 +495,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			}
 
 			// Either we are a new ingester, or consul must have restarted
-			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
+			level.Info(util.Logger).Log("msg", "instance not found in ring, adding with no tokens", "ring", i.RingName)
 			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
 			return ringDesc, true, nil
 		}
@@ -505,9 +505,14 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 
+<<<<<<< HEAD
 		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
 		// we haven't modified the ring, don't try to store it.
 		return nil, true, nil
+=======
+		level.Info(util.Logger).Log("msg", "existing instance found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
+		return ringDesc, true, nil
+>>>>>>> Removed 'consul' and 'ingester' from ring logs, because it's not necessarily a ring of ingesters backed by consul
 	})
 
 	// Update counters
@@ -597,7 +602,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
 		if len(myTokens) > 0 {
-			level.Error(util.Logger).Log("msg", "tokens already exist for this ingester - wasn't expecting any!", "num_tokens", len(myTokens))
+			level.Error(util.Logger).Log("msg", "tokens already exist for this instance - wasn't expecting any!", "num_tokens", len(myTokens), "ring", i.RingName)
 		}
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
@@ -634,7 +639,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
 			// consul must have restarted
-			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
+			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens", "ring", i.RingName)
 			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState(), i.cfg.NormaliseTokens)
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
@@ -664,10 +669,10 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
 		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
 		(currState == ACTIVE && state == LEAVING)) { // triggered by shutdown
-		return fmt.Errorf("Changing ingester state from %v -> %v is disallowed", currState, state)
+		return fmt.Errorf("Changing instance state from %v -> %v is disallowed", currState, state)
 	}
 
-	level.Info(util.Logger).Log("msg", "changing ingester state from", "old_state", currState, "new_state", state)
+	level.Info(util.Logger).Log("msg", "changing instance state from", "old_state", currState, "new_state", state, "ring", i.RingName)
 	i.setState(state)
 	return i.updateConsul(ctx)
 }
@@ -694,7 +699,7 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := true
 	transferStart := time.Now()
 	if err := i.flushTransferer.TransferOut(ctx); err != nil {
-		level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
+		level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another instance", "ring", i.RingName, "err", err)
 		shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
 	} else {
 		flushRequired = false
@@ -713,7 +718,7 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 
 // unregister removes our entry from consul.
 func (i *Lifecycler) unregister(ctx context.Context) error {
-	level.Debug(util.Logger).Log("msg", "unregistering member from ring")
+	level.Debug(util.Logger).Log("msg", "unregistering instance from ring", "ring", i.RingName)
 
 	return i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
@@ -311,6 +312,7 @@ outer:
 
 		u.fpLocker.Lock(fp)
 		series, ok := u.fpToSeries.get(fp)
+		sort.Sort(series.metric)
 		if !ok {
 			u.fpLocker.Unlock(fp)
 			continue

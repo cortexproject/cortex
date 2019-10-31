@@ -10,11 +10,11 @@ import (
 
 	"github.com/alecthomas/units"
 	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -24,27 +24,25 @@ import (
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
-	logger  log.Logger
-	cfg     s3.Config
-	bucket  objstore.BucketReader
-	stores  map[string]*store.BucketStore
-	client  storepb.StoreClient
-	baseDir string
+	logger log.Logger
+	cfg    tsdb.Config
+	bucket objstore.BucketReader
+	stores map[string]*store.BucketStore
+	client storepb.StoreClient
 }
 
 // NewUserStore returns a new UserStore
-func NewUserStore(logger log.Logger, s3cfg s3.Config, baseDir string) (*UserStore, error) {
-	bkt, err := s3.NewBucketWithConfig(logger, s3cfg, "cortex-userstore")
+func NewUserStore(cfg tsdb.Config, logger log.Logger) (*UserStore, error) {
+	bkt, err := cfg.NewBucketClient(context.Background(), "cortex-userstore", logger)
 	if err != nil {
 		return nil, err
 	}
 
 	u := &UserStore{
-		logger:  logger,
-		cfg:     s3cfg,
-		bucket:  bkt,
-		stores:  make(map[string]*store.BucketStore),
-		baseDir: baseDir,
+		logger: logger,
+		cfg:    cfg,
+		bucket: bkt,
+		stores: make(map[string]*store.BucketStore),
 	}
 
 	serv := grpc.NewServer()
@@ -101,7 +99,11 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 		if bs, ok = u.stores[user]; !ok {
 
 			level.Info(u.logger).Log("msg", "creating user bucket store", "user", user)
-			bkt, err := s3.NewBucketWithConfig(u.logger, u.cfg, fmt.Sprintf("cortex-%s", user))
+
+			// Instance a new bucket used by this tenant's shipper. We're going
+			// to instance a new context instead of reusing the one of this function,
+			// because the bucket client's lifespan is longer.
+			bkt, err := u.cfg.NewBucketClient(context.Background(), fmt.Sprintf("cortex-%s", user), u.logger)
 			if err != nil {
 				return err
 			}
@@ -124,7 +126,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			bs, err = store.NewBucketStore(u.logger,
 				nil,
 				userBkt,
-				filepath.Join(u.baseDir, user),
+				filepath.Join(u.cfg.SyncDir, user),
 				indexCache,
 				uint64(2*units.Gibibyte),
 				0,

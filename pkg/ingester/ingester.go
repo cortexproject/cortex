@@ -435,9 +435,9 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 			return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of samples in a query (%d)", maxSamplesPerQuery)
 		}
 
-		metric := series.metric.Copy()
+		metric := series.metric
 		if shard != nil {
-			metric = append(metric, labels.Label{
+			metric = append(metric.Copy(), labels.Label{
 				Name:  astmapper.ShardLabel,
 				Value: shard.String(),
 			})
@@ -470,6 +470,11 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
 
 	from, through, matchers, err := client.FromQueryRequest(req)
+	if err != nil {
+		return err
+	}
+	// Check if one of the labels is a shard annotation.
+	shard, _, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
 		return err
 	}
@@ -510,8 +515,15 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		}
 
 		numChunks += len(wireChunks)
+		metric := series.metric
+		if shard != nil {
+			metric = append(metric.Copy(), labels.Label{
+				Name:  astmapper.ShardLabel,
+				Value: shard.String(),
+			})
+		}
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelAdapters(series.metric),
+			Labels: client.FromLabelsToLabelAdapters(metric),
 			Chunks: wireChunks,
 		})
 

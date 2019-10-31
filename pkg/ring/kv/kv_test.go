@@ -150,11 +150,24 @@ func TestWatchPrefix(t *testing.T) {
 
 		const max = 100
 		const sleep = time.Millisecond * 10
+		const totalTestTimeout = 3 * max * sleep // total timeout for the test
+		const nextKeyDeadline = 50 * sleep       // how long to wait for next key (allows earlier test end)
 
-		gen := func(p string, ch chan struct{}) {
-			defer close(ch)
-			for i := 0; i < max; i++ {
-				// Start with sleeping, so that watching client see empty KV store at the beginning.
+		observedKeysCh := make(chan string, max)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			// start watching before we even start generating values. values will be buffered
+			client.WatchPrefix(ctx, prefix, func(key string, val interface{}) bool {
+				observedKeysCh <- key
+				return true
+			})
+		}()
+
+		gen := func(p string) {
+			for i := 0; i < max && ctx.Err() == nil; i++ {
+				// Start with sleeping, so that watching client can see empty KV store at the beginning.
 				time.Sleep(sleep)
 
 				key := fmt.Sprintf("%s%d", p, i)
@@ -165,44 +178,48 @@ func TestWatchPrefix(t *testing.T) {
 			}
 		}
 
-		ch1 := make(chan struct{})
-		ch2 := make(chan struct{})
-		go gen(prefix, ch1)
-		go gen(prefix2, ch2) // we don't want to see these keys reported
+		go gen(prefix)
+		go gen(prefix2) // we don't want to see these keys reported
 
 		observedKeys := map[string]int{}
-		ctx, cfn := context.WithTimeout(context.Background(), 1.5*max*sleep)
-		defer cfn()
 
-		client.WatchPrefix(ctx, prefix, func(key string, val interface{}) bool {
-			observedKeys[key] = observedKeys[key] + 1
-			return true
-		})
+		totalDeadline := time.After(totalTestTimeout)
+		var nextTimer = time.NewTimer(nextKeyDeadline)
 
-		// wait until updaters finish (should be done by now)
-		<-ch1
-		<-ch2
+		watching := true
+		for watching {
+			select {
+			case <-totalDeadline:
+				// stop watching
+				cancel()
+				watching = false
+			case <-nextTimer.C:
+				// if we wait for next key for too long, stop
+				cancel()
+				watching = false
+			case key := <-observedKeysCh:
+				observedKeys[key]++
 
-		// verify that each key was reported at most once, and keys outside prefix were not reported
-		// also make sure that we get most notifications, if not all.
-		count := 0
+				// reset timer, as documented in time.Timer.Reset method.
+				if !nextTimer.Stop() {
+					<-nextTimer.C
+				}
+				nextTimer.Reset(nextKeyDeadline)
+			}
+		}
+
+		// verify that each key was reported once, and keys outside prefix were not reported
 		for i := 0; i < max; i++ {
 			key := fmt.Sprintf("%s%d", prefix, i)
 
-			if observedKeys[key] > 1 {
+			if observedKeys[key] != 1 {
 				t.Errorf("key %s has incorrect value %d", key, observedKeys[key])
 			}
-			count += observedKeys[key]
 			delete(observedKeys, key)
 		}
 
 		if len(observedKeys) > 0 {
 			t.Errorf("unexpected keys reported: %v", observedKeys)
-		}
-
-		const expectedFactor = 0.75
-		if count < expectedFactor*max {
-			t.Errorf("expected at least %.0f%% observed values, got %.0f%% (observed count: %d)", 100*expectedFactor, 100*float64(count)/max, count)
 		}
 	})
 }

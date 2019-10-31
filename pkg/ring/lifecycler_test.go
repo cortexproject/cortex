@@ -38,6 +38,8 @@ func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	lifecyclerConfig.NumTokens = 1
 	lifecyclerConfig.ID = id
 	lifecyclerConfig.FinalSleep = 0
+	lifecyclerConfig.HeartbeatPeriod = 100 * time.Millisecond
+
 	return lifecyclerConfig
 }
 
@@ -154,6 +156,54 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	})
 }
 
+func TestLifecycler_NilFlushTransferer(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+
+	// Create a lifecycler with nil FlushTransferer to make sure it operates correctly
+	lifecycler, err := NewLifecycler(lifecyclerConfig, nil, "ingester", IngesterRingKey)
+	require.NoError(t, err)
+
+	// Ensure the lifecycler joined the ring
+	test.Poll(t, time.Second, 1, func() interface{} {
+		return lifecycler.HealthyInstancesCount()
+	})
+
+	lifecycler.Shutdown()
+	assert.Equal(t, 0, lifecycler.HealthyInstancesCount())
+}
+
+func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
+	// Create a shared ring
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	// Create two lifecyclers, each on a separate ring
+	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "instance-1")
+	lifecyclerConfig2 := testLifecyclerConfig(ringConfig, "instance-2")
+
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, nil, "service-1", "ring-1")
+	require.NoError(t, err)
+	defer lifecycler1.Shutdown()
+
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, nil, "service-2", "ring-2")
+	require.NoError(t, err)
+	defer lifecycler2.Shutdown()
+
+	// Ensure each lifecycler reports 1 healthy instance, because they're
+	// in a different ring
+	test.Poll(t, time.Second, 1, func() interface{} {
+		return lifecycler1.HealthyInstancesCount()
+	})
+
+	test.Poll(t, time.Second, 1, func() interface{} {
+		return lifecycler2.HealthyInstancesCount()
+	})
+}
+
 type nopFlushTransferer struct{}
 
 func (f *nopFlushTransferer) StopIncomingRequests() {}
@@ -258,6 +308,8 @@ func TestCheckReady(t *testing.T) {
 	l1.setTokens(Tokens([]uint32{1}))
 	l1.Start()
 	require.NoError(t, err)
+
+	l1.setTokens([]uint32{1})
 
 	// Delete the ring key before checking ready
 	err = l1.CheckReady(context.Background())

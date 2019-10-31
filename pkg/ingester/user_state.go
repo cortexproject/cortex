@@ -283,14 +283,18 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 	// and remove the label.
 	shard, shardLabelIndex, err := astmapper.ShardFromMatchers(allMatchers)
 	if err != nil {
-		return err
+		return log.Error(err)
 	}
 
 	if shard != nil {
+		level.Debug(log).Log("shard", shard, "shard_index", shardLabelIndex)
+		level.Debug(log).Log("matchers", allMatchers)
 		allMatchers = append(allMatchers[:shardLabelIndex], allMatchers[shardLabelIndex+1:]...)
 	}
+	level.Debug(log).Log("matchers_filtered", allMatchers)
 
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
+	level.Debug(log).Log("matchers", matchers, "filters", filters)
 	fps := u.index.Lookup(matchers)
 	if len(fps) > u.limiter.MaxSeriesPerQuery(u.userID) {
 		return httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
@@ -315,6 +319,7 @@ outer:
 
 		if shard != nil {
 			if !matchesShard(shard, series) {
+				level.Debug(log).Log("shard_not_matching", series.metric, "shard", shard)
 				u.fpLocker.Unlock(fp)
 				continue
 			}
@@ -322,7 +327,7 @@ outer:
 				Name:  astmapper.ShardLabel,
 				Value: shard.String(),
 			})
-
+			level.Debug(log).Log("shard_matching", series.metric, "shard", shard)
 		}
 
 		for _, filter := range filters {

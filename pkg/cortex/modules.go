@@ -173,11 +173,12 @@ func (t *Cortex) stopOverrides() error {
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
 	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
 
-	// Check whether the distributor is going to be initialized as internal
-	// dependency (ie. querier or ruler's dependency)
-	internalDependency := !(cfg.Target == All || cfg.Target == Distributor)
+	// Check whether the distributor can join the distributors ring, which is
+	// whenever it's not running as an internal dependency (ie. querier or
+	// ruler's dependency)
+	canJoinRing := (cfg.Target == All || cfg.Target == Distributor)
 
-	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring, internalDependency)
+	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring, canJoinRing)
 	if err != nil {
 		return
 	}

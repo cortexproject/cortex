@@ -758,7 +758,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	overrides, err := validation.NewOverrides(*limits)
 	require.NoError(t, err)
 
-	d, err := New(cfg, clientConfig, overrides, ingestersRing, false)
+	d, err := New(cfg, clientConfig, overrides, ingestersRing, true)
 	require.NoError(t, err)
 
 	return d, ingesters

@@ -154,7 +154,7 @@ func (cfg *Config) Validate() error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, internalDependency bool) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinRing bool) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -179,11 +179,12 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	}
 
 	// Create the configured ingestion rate limit strategy (local or global). In case
-	// it's an internal dependency (ie. ruler) we skip rate limiting.
+	// it's an internal dependency and can't join the distributors ring, we skip rate
+	// limiting.
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsRing *ring.Lifecycler
 
-	if internalDependency {
+	if !canJoinRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey)

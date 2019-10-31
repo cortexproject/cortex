@@ -150,8 +150,7 @@ func TestWatchPrefix(t *testing.T) {
 
 		const max = 100
 		const sleep = time.Millisecond * 10
-		const totalTestTimeout = 3 * max * sleep // total timeout for the test
-		const nextKeyDeadline = 50 * sleep       // how long to wait for next key (allows earlier test end)
+		const totalTestTimeout = 3 * max * sleep
 
 		observedKeysCh := make(chan string, max)
 
@@ -174,6 +173,10 @@ func TestWatchPrefix(t *testing.T) {
 				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 					return key, true, nil
 				})
+
+				if ctx.Err() != nil {
+					break
+				}
 				require.NoError(t, err)
 			}
 		}
@@ -184,29 +187,20 @@ func TestWatchPrefix(t *testing.T) {
 		observedKeys := map[string]int{}
 
 		totalDeadline := time.After(totalTestTimeout)
-		var nextTimer = time.NewTimer(nextKeyDeadline)
 
-		watching := true
-		for watching {
+		for watching := true; watching; {
 			select {
 			case <-totalDeadline:
-				// stop watching
-				cancel()
-				watching = false
-			case <-nextTimer.C:
-				// if we wait for next key for too long, stop
-				cancel()
 				watching = false
 			case key := <-observedKeysCh:
 				observedKeys[key]++
-
-				// reset timer, as documented in time.Timer.Reset method.
-				if !nextTimer.Stop() {
-					<-nextTimer.C
+				if len(observedKeys) == max {
+					watching = false
 				}
-				nextTimer.Reset(nextKeyDeadline)
 			}
 		}
+
+		cancel() // stop all goroutines
 
 		// verify that each key was reported once, and keys outside prefix were not reported
 		for i := 0; i < max; i++ {

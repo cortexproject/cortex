@@ -53,7 +53,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		},
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return nil, err
 	}

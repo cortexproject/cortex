@@ -192,6 +192,8 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			return nil, err
 		}
 
+		distributorsRing.Start()
+
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRing)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)

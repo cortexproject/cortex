@@ -114,7 +114,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
-	r, err := New(ringConfig, "ingester")
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	defer r.Stop()
 
@@ -123,7 +123,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig1.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig1.JoinAfter = 100 * time.Millisecond
 
-	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester")
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
 
@@ -139,7 +139,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig2.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig2.JoinAfter = 100 * time.Millisecond
 
-	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester")
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler2.HealthyInstancesCount())
 
@@ -165,6 +165,7 @@ func TestLifecycler_NilFlushTransferer(t *testing.T) {
 	// Create a lifecycler with nil FlushTransferer to make sure it operates correctly
 	lifecycler, err := NewLifecycler(lifecyclerConfig, nil, "ingester", IngesterRingKey)
 	require.NoError(t, err)
+	lifecycler.Start()
 
 	// Ensure the lifecycler joined the ring
 	test.Poll(t, time.Second, 1, func() interface{} {
@@ -187,10 +188,12 @@ func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
 
 	lifecycler1, err := NewLifecycler(lifecyclerConfig1, nil, "service-1", "ring-1")
 	require.NoError(t, err)
+	lifecycler1.Start()
 	defer lifecycler1.Shutdown()
 
 	lifecycler2, err := NewLifecycler(lifecyclerConfig2, nil, "service-2", "ring-2")
 	require.NoError(t, err)
+	lifecycler2.Start()
 	defer lifecycler2.Shutdown()
 
 	// Ensure each lifecycler reports 1 healthy instance, because they're

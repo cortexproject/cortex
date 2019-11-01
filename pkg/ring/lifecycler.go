@@ -389,18 +389,18 @@ loop:
 
 			observeChan = nil
 			if s := i.GetState(); s != JOINING {
-				level.Error(util.Logger).Log("msg", "unexpected state while observing tokens", "state", s)
+				level.Error(util.Logger).Log("msg", "unexpected state while observing tokens", "state", s, "ring", i.RingName)
 			}
 
 			if i.verifyTokens(context.Background()) {
-				level.Info(util.Logger).Log("msg", "token verification successful")
+				level.Info(util.Logger).Log("msg", "token verification successful", "ring", i.RingName)
 
 				err := i.changeState(context.Background(), ACTIVE)
 				if err != nil {
-					level.Error(util.Logger).Log("msg", "failed to set state to ACTIVE", "err", err)
+					level.Error(util.Logger).Log("msg", "failed to set state to ACTIVE", "ring", i.RingName, "err", err)
 				}
 			} else {
-				level.Info(util.Logger).Log("msg", "token verification failed, observing")
+				level.Info(util.Logger).Log("msg", "token verification failed, observing", "ring", i.RingName)
 				// keep observing
 				observeChan = time.After(i.cfg.ObservePeriod)
 			}
@@ -505,14 +505,9 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 
-<<<<<<< HEAD
-		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
+		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
 		// we haven't modified the ring, don't try to store it.
 		return nil, true, nil
-=======
-		level.Info(util.Logger).Log("msg", "existing instance found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
-		return ringDesc, true, nil
->>>>>>> Removed 'consul' and 'ingester' from ring logs, because it's not necessarily a ring of ingesters backed by consul
 	})
 
 	// Update counters
@@ -544,7 +539,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			// uh, oh... our tokens are not our anymore. Let's try new ones.
 			needTokens := i.cfg.NumTokens - len(ringTokens)
 
-			level.Info(util.Logger).Log("msg", "generating new tokens", "count", needTokens)
+			level.Info(util.Logger).Log("msg", "generating new tokens", "count", needTokens, "ring", i.RingName)
 			newTokens := GenerateTokens(needTokens, takenTokens)
 
 			ringTokens = append(ringTokens, newTokens...)
@@ -563,7 +558,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 	})
 
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to verify tokens", "err", err)
+		level.Error(util.Logger).Log("msg", "failed to verify tokens", "ring", i.RingName, "err", err)
 		return false
 	}
 

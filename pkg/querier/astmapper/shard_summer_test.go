@@ -21,10 +21,10 @@ func TestShardSummer(t *testing.T) {
 		{
 			shards: 3,
 			input:  `sum(rate(bar1{baz="blip"}[1m]))`,
-			expected: `sum(
-			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
-			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
-			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
+			expected: `sum without(__cortex_shard__) (
+			  sum by(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
+			  sum by(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])) or
+			  sum by(__cortex_shard__) (rate(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m]))
 			)`,
 		},
 		{
@@ -59,14 +59,14 @@ func TestShardSummer(t *testing.T) {
 		{
 			shards: 2,
 			input:  `sum(sum by(foo) (rate(bar1{baz="blip"}[1m])))`,
-			expected: `sum(
-			  sum without(__cortex_shard__) (
+			expected: `sum without(__cortex_shard__) (
+			  sum by(__cortex_shard__) (
 				sum by(foo) (
 				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
 				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 				)
 			  ) or
-			  sum without(__cortex_shard__)(
+			  sum by(__cortex_shard__)(
 				sum by(foo) (
 				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
 				  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
@@ -78,9 +78,9 @@ func TestShardSummer(t *testing.T) {
 		{
 			shards: 2,
 			input:  `sum without(foo) (rate(bar1{baz="blip"}[1m]))`,
-			expected: `sum without(foo) (
-			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
-			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+			expected: `sum without(__cortex_shard__) (
+			  sum without(foo) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			  sum without(foo) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			)`,
 		},
 		// multiple dimensions

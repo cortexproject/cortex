@@ -115,23 +115,29 @@ func (summer *shardSummer) splitSum(
 	err error,
 ) {
 	parent = &promql.AggregateExpr{
-		Op:       expr.Op,
-		Param:    expr.Param,
-		Grouping: expr.Grouping,
-		Without:  expr.Without,
+		Op:    expr.Op,
+		Param: expr.Param,
 	}
 	var mkChild func(sharded *promql.AggregateExpr) promql.Expr
 
 	if expr.Without {
 		/*
-			parallelizing a sum using without(foo) is representable as
+			parallelizing a sum using without(foo) is representable naively as
 			sum without(foo) (
 			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
 			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			)
+			or (more optimized):
+			sum without(__cortex_shard__) (
+			  sum without(foo) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			  sum without(foo) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+			)
+
 		*/
+		parent.Grouping = []string{ShardLabel}
+		parent.Without = true
 		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
-			sharded.Grouping = []string{ShardLabel}
+			sharded.Grouping = expr.Grouping
 			sharded.Without = true
 			return sharded
 		}
@@ -139,10 +145,11 @@ func (summer *shardSummer) splitSum(
 		/*
 			parallelizing a sum using by(foo) is representable as
 			sum by(foo) (
-			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
-			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m]))
+			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			  sum by(foo, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			)
 		*/
+		parent.Grouping = expr.Grouping
 		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
 			groups := make([]string, 0, len(expr.Grouping)+1)
 			groups = append(groups, expr.Grouping...)
@@ -154,13 +161,19 @@ func (summer *shardSummer) splitSum(
 		/*
 			parallelizing a non-parameterized sum is representable as
 			sum(
-			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])) or
-			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m]))
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			  sum without(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
+			)
+			or (more optimized):
+			sum without(__cortex_shard__) (
+			  sum by(__cortex_shard__) (rate(bar1{__cortex_shard__="0_of_2",baz="blip"}[1m])) or
+			  sum by(__cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			)
 		*/
+		parent.Grouping = []string{ShardLabel}
+		parent.Without = true
 		mkChild = func(sharded *promql.AggregateExpr) promql.Expr {
 			sharded.Grouping = []string{ShardLabel}
-			sharded.Without = true
 			return sharded
 		}
 	}

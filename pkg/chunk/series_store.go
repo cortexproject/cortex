@@ -273,11 +273,8 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
 	}
 
-	level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers:shard", "shard", shard, "label_index", shardLabelIndex, "matchers", len(matchers))
-
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
-		level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatchers: empty matcher")
 		indexLookupsPerQuery.Observe(1)
 		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
 		if err != nil {
@@ -295,8 +292,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		go func(matcher *labels.Matcher) {
 			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, shard)
 			if err != nil {
-				level.Debug(log).Log("msg", "lookupSeriesByMetricNameMatcher:error", "err", err)
-				incomingErrors <- log.Error(err)
+				incomingErrors <- err
 				return
 			}
 			incomingIDs <- ids
@@ -367,8 +363,6 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	level.Debug(log).Log("queries", len(queries))
 
 	queries = c.schema.FilterReadQueries(queries, shard)
-
-	level.Debug(log).Log("filtered queries", len(queries))
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if e, ok := err.(CardinalityExceededError); ok {

@@ -8,7 +8,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
-	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -89,16 +88,12 @@ type queryShard struct {
 }
 
 func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
-	sp, ctx := spanlogger.New(ctx, "queryShard.Do")
-	defer sp.Finish()
 
 	conf, err := qs.confs.ValidRange(r.GetStart(), r.GetEnd())
 	// query exists across multiple sharding configs or doesn't have sharding, so don't try to do AST mapping.
 	if err != nil || conf.RowShards == 0 {
-		level.Debug(sp).Log("msg", "skipping sum shard", "err", err, "conf", fmt.Sprintf("%+v", conf))
 		return qs.next.Do(ctx, r)
 	}
-	level.Debug(sp).Log("msg", "using shard config", "conf", fmt.Sprintf("%+v", conf))
 
 	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
 

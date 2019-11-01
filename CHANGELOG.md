@@ -10,10 +10,10 @@
   * `-ingester.max-global-series-per-metric`
 * [FEATURE] Flush chunks with stale markers early with `ingester.max-stale-chunk-idle`. #1759
 * [FEATURE] EXPERIMENTAL: Added new KV Store backend based on memberlist library. Components can gossip about tokens and ingester states, instead of using Consul or Etcd. #1721
+* [FEATURE] Allow Query Frontend to log slow queries #1744
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
 * [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
 * [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
-* [FEATURE] Allow Query Frontend to log slow queries #1744
 
 ## 0.3.0 / 2019-10-11
 

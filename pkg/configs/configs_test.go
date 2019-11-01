@@ -47,7 +47,6 @@ func TestUnmarshalLegacyConfigWithMissingRuleFormatVersionSucceeds(t *testing.T)
 	assert.Equal(t, expected, actual)
 }
 
-
 func TestParseLegacyAlerts(t *testing.T) {
 	parsed, err := promql.ParseExpr("up == 0")
 	require.NoError(t, err)
@@ -120,13 +119,12 @@ groups:
 	}
 }
 
-
 func TestParseFormatted(t *testing.T) {
 	dur, err := model.ParseDuration("5m")
 	require.NoError(t, err)
 
 	rules := []rulefmt.Rule{
-		rulefmt.Rule{
+		{
 			Alert: "TestAlert",
 			Expr:  "up == 0",
 			For:   dur,
@@ -151,9 +149,9 @@ func TestParseFormatted(t *testing.T) {
 				},
 			},
 			expected: map[string]rulefmt.RuleGroups{
-				"legacy.rules": rulefmt.RuleGroups{
+				"legacy.rules": {
 					Groups: []rulefmt.RuleGroup{
-						rulefmt.RuleGroup{
+						{
 							Name:  "rg:legacy.rules",
 							Rules: rules,
 						},
@@ -169,9 +167,9 @@ func TestParseFormatted(t *testing.T) {
 				},
 			},
 			expected: map[string]rulefmt.RuleGroups{
-				"alerts.yaml": rulefmt.RuleGroups{
+				"alerts.yaml": {
 					Groups: []rulefmt.RuleGroup{
-						rulefmt.RuleGroup{
+						{
 							Name:  "example",
 							Rules: rules,
 						},

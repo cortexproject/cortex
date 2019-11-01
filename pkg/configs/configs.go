@@ -261,7 +261,7 @@ func (c RulesConfig) parseV1Formatted() (map[string]rulefmt.RuleGroups, error) {
 		}
 		result[fn] = rulefmt.RuleGroups{
 			Groups: []rulefmt.RuleGroup{
-				rulefmt.RuleGroup{
+				{
 					Name:  "rg:" + fn,
 					Rules: ra,
 				},

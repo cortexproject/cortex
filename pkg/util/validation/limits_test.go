@@ -75,18 +75,14 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 }
 
 func TestLimitsLoadingFromYaml(t *testing.T) {
-	defaults := Limits{
+	SetDefaultLimitsForYAMLUnmarshalling(Limits{
 		MaxLabelNameLength: 100,
-	}
-
-	// we call this for its side-effect: setting of defaults
-	_, err := NewOverrides(defaults, nil)
-	require.NoError(t, err)
+	})
 
 	inp := `ingestion_rate: 0.5`
 
 	l := Limits{}
-	err = yaml.Unmarshal([]byte(inp), &l)
+	err := yaml.Unmarshal([]byte(inp), &l)
 	require.NoError(t, err)
 
 	assert.Equal(t, 0.5, l.IngestionRate, "from yaml")

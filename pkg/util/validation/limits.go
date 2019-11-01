@@ -123,6 +123,13 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // find a nicer way I'm afraid.
 var defaultLimits *Limits
 
+// SetDefaultLimitsForYAMLUnmarshalling sets global default limits, used when loading
+// Limits from YAML files. This is used to ensure per-tenant limits are defaulted to
+// those values.
+func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
+	defaultLimits = &defaults
+}
+
 // TenantLimits is a function that returns limits for given tenant, or
 // nil, if there are no tenant-specific limits.
 type TenantLimits func(userID string) *Limits
@@ -135,11 +142,7 @@ type Overrides struct {
 }
 
 // NewOverrides makes a new Overrides.
-// We store the supplied limits in a global variable to ensure per-tenant limits
-// are defaulted to those values.  As such, the last call to NewOverrides will
-// become the new global defaults.
 func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error) {
-	defaultLimits = &defaults
 	return &Overrides{
 		tenantLimits:  tenantLimits,
 		defaultLimits: &defaults,

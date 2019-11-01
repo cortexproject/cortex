@@ -188,6 +188,7 @@ func (t *Cortex) stopRuntimeConfig() (err error) {
 }
 
 func (t *Cortex) initOverrides(cfg *Config) (err error) {
+	validation.SetDefaultLimitsForYAMLUnmarshalling(cfg.LimitsConfig)
 	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
 	return err
 }

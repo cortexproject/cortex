@@ -21,9 +21,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -38,12 +35,6 @@ var (
 		Name:      "query_frontend_queue_length",
 		Help:      "Number of queries in the queue.",
 	})
-	queryRangeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "frontend_query_range_duration_seconds",
-		Help:      "Total time spent in seconds doing query range requests.",
-		Buckets:   prometheus.DefBuckets,
-	}, []string{"method", "status_code"})
 
 	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 	errCanceled       = httpgrpc.Errorf(http.StatusInternalServerError, "context cancelled")
@@ -51,25 +42,15 @@ var (
 
 // Config for a Frontend.
 type Config struct {
-	MaxOutstandingPerTenant       int  `yaml:"max_outstanding_per_tenant"`
-	MaxRetries                    int  `yaml:"max_retries"`
-	SplitQueriesByDay             bool `yaml:"split_queries_by_day"`
-	AlignQueriesWithStep          bool `yaml:"align_queries_with_step"`
-	CacheResults                  bool `yaml:"cache_results"`
-	CompressResponses             bool `yaml:"compress_responses"`
-	queryrange.ResultsCacheConfig `yaml:"results_cache"`
-	DownstreamURL                 string `yaml:"downstream"`
+	MaxOutstandingPerTenant int    `yaml:"max_outstanding_per_tenant"`
+	CompressResponses       bool   `yaml:"compress_responses"`
+	DownstreamURL           string `yaml:"downstream"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
-	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
-	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
-	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
-	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
-	cfg.ResultsCacheConfig.RegisterFlags(f)
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
 }
 
@@ -96,7 +77,7 @@ type request struct {
 }
 
 // New creates a new frontend.
-func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, error) {
+func New(cfg Config, log log.Logger) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
@@ -104,36 +85,16 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 	}
 	f.cond = sync.NewCond(&f.mtx)
 
-	// Stack up the pipeline of various query range middlewares.
-	var queryRangeMiddleware []queryrange.Middleware
-	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("step_align", queryRangeDuration), queryrange.StepAlignMiddleware)
-	}
-	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_day", queryRangeDuration), queryrange.SplitByDayMiddleware(limits))
-	}
-	if cfg.CacheResults {
-		queryCacheMiddleware, err := queryrange.NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits)
-		if err != nil {
-			return nil, err
-		}
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("results_cache", queryRangeDuration), queryCacheMiddleware)
-	}
-	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", queryRangeDuration), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))
-	}
-
-	// If the user has specified a downstream Prometheus, then we should
-	// forward requests to that.  Otherwise we will wait for queries to
-	// contact us.
-	var roundTripper http.RoundTripper = f
+	// The front end implements http.RoundTripper using a GRPC worker queue by default.
+	f.roundTripper = f
+	// However if the user has specified a downstream Prometheus, then we should use that.
 	if cfg.DownstreamURL != "" {
 		u, err := url.Parse(cfg.DownstreamURL)
 		if err != nil {
 			return nil, err
 		}
 
-		roundTripper = RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		f.roundTripper = RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			r.URL.Scheme = u.Scheme
 			r.URL.Host = u.Host
 			r.URL.Path = path.Join(u.Path, r.URL.Path)
@@ -141,17 +102,16 @@ func New(cfg Config, log log.Logger, limits *validation.Overrides) (*Frontend, e
 		})
 	}
 
-	// Finally, if the user selected any query range middleware, stitch it in.
-	if len(queryRangeMiddleware) > 0 {
-		roundTripper = queryrange.NewRoundTripper(
-			roundTripper,
-			queryrange.MergeMiddlewares(queryRangeMiddleware...).Wrap(&queryrange.ToRoundTripperMiddleware{Next: roundTripper}),
-			limits,
-		)
-	}
-	f.roundTripper = roundTripper
 	return f, nil
 }
+
+// Wrap uses a Tripperware to chain a new RoundTripper to the frontend.
+func (f *Frontend) Wrap(trw Tripperware) {
+	f.roundTripper = trw(f.roundTripper)
+}
+
+// Tripperware is a signature for all http client-side middleware.
+type Tripperware func(http.RoundTripper) http.RoundTripper
 
 // RoundTripFunc is to http.RoundTripper what http.HandlerFunc is to http.Handler.
 type RoundTripFunc func(*http.Request) (*http.Response, error)

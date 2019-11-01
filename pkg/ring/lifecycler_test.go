@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -77,6 +78,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	ft := &flushTransferer{}
 	l1, err := NewLifecycler(lifecyclerConfig1, ft, "ingester")
 	require.NoError(t, err)
+	l1.Start()
 
 	// Check this ingester joined, is active, and has one token.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -94,6 +96,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 
 	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester")
 	require.NoError(t, err)
+	l2.Start()
 
 	// This will block until l1 has successfully left the ring.
 	ft.lifecycler = l2 // When l1 shutsdown, call l2.ClaimTokensFor("ing1")
@@ -105,6 +108,53 @@ func TestRingNormaliseMigration(t *testing.T) {
 		require.NoError(t, err)
 		return checkNormalised(d, "ing2") &&
 			d.(*Desc).Ingesters["ing2"].Tokens[0] == token
+	})
+}
+
+func TestLifecycler_HealthyInstancesCount(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	r, err := New(ringConfig, "ingester")
+	require.NoError(t, err)
+	defer r.Stop()
+
+	// Add the first ingester to the ring
+	lifecyclerConfig1 := testLifecyclerConfig(t, ringConfig, "ing1")
+	lifecyclerConfig1.HeartbeatPeriod = 100 * time.Millisecond
+	lifecyclerConfig1.JoinAfter = 100 * time.Millisecond
+
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester")
+	require.NoError(t, err)
+	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
+
+	lifecycler1.Start()
+
+	// Assert the first ingester joined the ring
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		return lifecycler1.HealthyInstancesCount() == 1
+	})
+
+	// Add the second ingester to the ring
+	lifecyclerConfig2 := testLifecyclerConfig(t, ringConfig, "ing2")
+	lifecyclerConfig2.HeartbeatPeriod = 100 * time.Millisecond
+	lifecyclerConfig2.JoinAfter = 100 * time.Millisecond
+
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester")
+	require.NoError(t, err)
+	assert.Equal(t, 0, lifecycler2.HealthyInstancesCount())
+
+	lifecycler2.Start()
+
+	// Assert the second ingester joined the ring
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		return lifecycler2.HealthyInstancesCount() == 2
+	})
+
+	// Assert the first ingester count is updated
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		return lifecycler1.HealthyInstancesCount() == 2
 	})
 }
 
@@ -131,6 +181,7 @@ func TestRingRestart(t *testing.T) {
 	lifecyclerConfig1.NormaliseTokens = true
 	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester")
 	require.NoError(t, err)
+	l1.Start()
 
 	// Check this ingester joined, is active, and has one token.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -144,6 +195,7 @@ func TestRingRestart(t *testing.T) {
 	// Add a second ingester with the same settings, so it will think it has restarted
 	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester")
 	require.NoError(t, err)
+	l2.Start()
 
 	// Check the new ingester picked up the same token
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -151,8 +203,8 @@ func TestRingRestart(t *testing.T) {
 		require.NoError(t, err)
 		l2Tokens := l2.getTokens()
 		return checkNormalised(d, "ing1") &&
-			l2Tokens.Len() == 1 &&
-			l2Tokens.Tokens()[0] == token
+			len(l2Tokens) == 1 &&
+			l2Tokens[0] == token
 	})
 }
 
@@ -191,6 +243,10 @@ func (m *MockClient) WatchPrefix(ctx context.Context, prefix string, f func(stri
 	}
 }
 
+func (m *MockClient) Stop() {
+	// nothing to do
+}
+
 // Ensure a check ready returns error when consul returns a nil key and the ingester already holds keys. This happens if the ring key gets deleted
 func TestCheckReady(t *testing.T) {
 	var ringConfig Config
@@ -205,6 +261,7 @@ func TestCheckReady(t *testing.T) {
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester")
 	l1.setTokens(&tokens)
+	l1.Start()
 	require.NoError(t, err)
 
 	// Delete the ring key before checking ready
@@ -236,6 +293,7 @@ func TestTokensOnDisk(t *testing.T) {
 	ft := &noopFlushTransferer{}
 	l1, err := NewLifecycler(lifecyclerConfig, ft, "ingester")
 	require.NoError(t, err)
+	l1.Start()
 	// Check this ingester joined, is active, and has 512 token.
 	var expTokens []TokenDesc
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -258,6 +316,7 @@ func TestTokensOnDisk(t *testing.T) {
 	lifecyclerConfig.ID = "ing2"
 	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester")
 	require.NoError(t, err)
+	l2.Start()
 	defer l2.Shutdown()
 
 	// Check this ingester joined, is active, and has 512 token.

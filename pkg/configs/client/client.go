@@ -3,13 +3,13 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 )
@@ -26,25 +26,13 @@ type Client interface {
 
 // New creates a new ConfigClient.
 func New(cfg Config) (Client, error) {
-	// All of this falderal is to allow for a smooth transition away from
-	// using the configs server and toward directly connecting to the database.
-	// See https://github.com/cortexproject/cortex/issues/619
-	if cfg.ConfigsAPIURL.URL != nil {
-		return instrumented{
-			next: configsClient{
-				URL:     cfg.ConfigsAPIURL.URL,
-				Timeout: cfg.ClientTimeout,
-			},
-		}, nil
-	}
-
-	db, err := db.New(cfg.DBConfig)
-	if err != nil {
-		return nil, err
+	if cfg.ConfigsAPIURL.URL == nil {
+		return nil, errors.New("configdb url not provided")
 	}
 	return instrumented{
-		next: dbStore{
-			db: db,
+		next: configsClient{
+			URL:     cfg.ConfigsAPIURL.URL,
+			Timeout: cfg.ClientTimeout,
 		},
 	}, nil
 }
@@ -111,37 +99,6 @@ func doRequest(endpoint string, timeout time.Duration, since configs.ID) (*Confi
 
 	config.since = since
 	return &config, nil
-}
-
-type dbStore struct {
-	db db.DB
-}
-
-// GetRules implements ConfigClient.
-func (d dbStore) GetRules(ctx context.Context, since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	if since == 0 {
-		return d.db.GetAllRulesConfigs(ctx)
-	}
-	return d.db.GetRulesConfigs(ctx, since)
-}
-
-// GetAlerts implements ConfigClient.
-func (d dbStore) GetAlerts(ctx context.Context, since configs.ID) (*ConfigsResponse, error) {
-	var resp map[string]configs.View
-	var err error
-	if since == 0 {
-		resp, err = d.db.GetAllConfigs(ctx)
-
-	}
-	resp, err = d.db.GetConfigs(ctx, since)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ConfigsResponse{
-		since:   since,
-		Configs: resp,
-	}, nil
 }
 
 // ConfigsResponse is a response from server for GetConfigs.

@@ -25,8 +25,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -67,10 +69,13 @@ type Config struct {
 	Prealloc       client.PreallocConfig    `yaml:"prealloc,omitempty"`
 	Worker         frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
 	Frontend       frontend.Config          `yaml:"frontend,omitempty"`
+	QueryRange     queryrange.Config        `yaml:"query_range,omitempty"`
 	TableManager   chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
+	TSDB           tsdb.Config              `yaml:"tsdb"`
 
 	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
+	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
 	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
 	Alertmanager alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
 }
@@ -97,10 +102,13 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Prealloc.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
+	c.QueryRange.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Encoding.RegisterFlags(f)
+	c.TSDB.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
+	c.ConfigDB.RegisterFlags(f)
 	c.ConfigStore.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
 
@@ -116,6 +124,15 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Encoding.Validate(); err != nil {
 		return errors.Wrap(err, "invalid encoding config")
+	}
+	if err := c.Storage.Validate(); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
+	if err := c.TSDB.Validate(); err != nil {
+		return errors.Wrap(err, "invalid TSDB config")
+	}
+	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
+		return errors.Wrap(err, "invalid limits config")
 	}
 	return nil
 }

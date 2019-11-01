@@ -9,27 +9,11 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
+	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-type stringCodec struct{}
-
-func (c stringCodec) Encode(d interface{}) ([]byte, error) {
-	if d == nil {
-		return nil, fmt.Errorf("nil")
-	}
-	s, ok := d.(string)
-	if !ok {
-		return nil, fmt.Errorf("not string: %T", d)
-	}
-
-	return []byte(s), nil
-}
-
-func (c stringCodec) Decode(d []byte) (interface{}, error) {
-	return string(d), nil
-}
 
 func writeValuesToKV(client *Client, key string, start, end int, sleep time.Duration) <-chan struct{} {
 	ch := make(chan struct{})
@@ -44,17 +28,14 @@ func writeValuesToKV(client *Client, key string, start, end int, sleep time.Dura
 	return ch
 }
 
-func TestWatchKey(t *testing.T) {
-	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
+func TestWatchKeyWithRateLimit(t *testing.T) {
+	c := NewInMemoryClientWithConfig(codec.String{}, Config{
 		WatchKeyRateLimit: 5.0,
 		WatchKeyBurstSize: 1,
 	})
 
 	const key = "test"
 	const max = 100
-
-	// Make sure to start with non-empty value, otherwise WatchKey will bail
-	_, _ = c.Put(&consul.KVPair{Key: key, Value: []byte("start")}, nil)
 
 	ch := writeValuesToKV(c, key, 0, max, 10*time.Millisecond)
 
@@ -80,15 +61,12 @@ func TestWatchKey(t *testing.T) {
 }
 
 func TestWatchKeyNoRateLimit(t *testing.T) {
-	c := NewInMemoryClientWithConfig(&stringCodec{}, Config{
+	c := NewInMemoryClientWithConfig(codec.String{}, Config{
 		WatchKeyRateLimit: 0,
 	})
 
 	const key = "test"
 	const max = 100
-
-	// Make sure to start with non-empty value, otherwise WatchKey will bail
-	_, _ = c.Put(&consul.KVPair{Key: key, Value: []byte("start")}, nil)
 
 	ch := writeValuesToKV(c, key, 0, max, time.Millisecond)
 	observed := observeValueForSomeTime(c, key, 500*time.Millisecond)
@@ -104,13 +82,10 @@ func TestWatchKeyNoRateLimit(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	c := NewInMemoryClient(&stringCodec{})
+	c := NewInMemoryClient(codec.String{})
 
 	const key = "test"
 	const max = 5
-
-	// Make sure to start with non-empty value, otherwise WatchKey will bail
-	_, _ = c.Put(&consul.KVPair{Key: key, Value: []byte("start")}, nil)
 
 	ch := make(chan error)
 	go func() {
@@ -158,4 +133,35 @@ func observeValueForSomeTime(client *Client, key string, timeout time.Duration) 
 		return true
 	})
 	return observed
+}
+
+func TestWatchKeyWithNoStartValue(t *testing.T) {
+	c := NewInMemoryClient(codec.String{})
+
+	const key = "test"
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		_, err := c.Put(&consul.KVPair{Key: key, Value: []byte("start")}, nil)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+		_, err = c.Put(&consul.KVPair{Key: key, Value: []byte("end")}, nil)
+		require.NoError(t, err)
+	}()
+
+	ctx, fn := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer fn()
+
+	reported := 0
+	c.WatchKey(ctx, key, func(i interface{}) bool {
+		reported++
+		if reported == 2 {
+			return false
+		}
+		return true
+	})
+
+	// we should see both start and end values.
+	require.Equal(t, 2, reported)
 }

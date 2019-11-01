@@ -103,7 +103,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.ID = "ingester1"
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
-	cfg1.LifecyclerConfig.TokenFileDir = tokenDir1
+	cfg1.LifecyclerConfig.TokensFileDir = tokenDir1
 	cfg1.MaxTransferRetries = 10
 	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestIngesterTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
-	cfg2.LifecyclerConfig.TokenFileDir = tokenDir2
+	cfg2.LifecyclerConfig.TokensFileDir = tokenDir2
 	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 
@@ -195,7 +195,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.ID = "ingester1"
 	cfg.LifecyclerConfig.Addr = "ingester1"
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
-	cfg.LifecyclerConfig.TokenFileDir = tokenDir
+	cfg.LifecyclerConfig.TokensFileDir = tokenDir
 	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
 	require.NoError(t, err)
 

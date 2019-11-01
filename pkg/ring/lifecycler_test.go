@@ -39,7 +39,7 @@ func testLifecyclerConfig(t *testing.T, ringConfig Config, id string) Lifecycler
 	lifecyclerConfig.NumTokens = 1
 	lifecyclerConfig.ID = id
 	lifecyclerConfig.FinalSleep = 0
-	lifecyclerConfig.TokenFileDir = tokenDir
+	lifecyclerConfig.TokensFileDir = tokenDir
 
 	return lifecyclerConfig
 }

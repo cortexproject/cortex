@@ -60,7 +60,7 @@ type LifecyclerConfig struct {
 	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
-	TokenFileDir     string        `yaml:"token_file_dir,omitempty"`
+	TokensFileDir    string        `yaml:"token_file_dir,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address"`
@@ -91,7 +91,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
-	f.StringVar(&cfg.TokenFileDir, prefix+"token-file-dir", "", "Directory in which the token file is to be stored.")
+	f.StringVar(&cfg.TokensFileDir, prefix+"token-file-dir", "", "Directory in which the token file is to be stored.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -253,10 +253,10 @@ func (i *Lifecycler) getTokens() []uint32 {
 }
 
 func (i *Lifecycler) flushTokensToFile() {
-	if i.cfg.TokenFileDir == "" {
+	if i.cfg.TokensFileDir == "" {
 		return
 	}
-	tokenFilePath := path.Join(i.cfg.TokenFileDir, tokensFileName)
+	tokenFilePath := path.Join(i.cfg.TokensFileDir, tokensFileName)
 	f, err := os.OpenFile(tokenFilePath, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error in creating token file", "err", err)
@@ -275,7 +275,7 @@ func (i *Lifecycler) flushTokensToFile() {
 }
 
 func (i *Lifecycler) getTokensFromFile() ([]uint32, error) {
-	tokenFilePath := path.Join(i.cfg.TokenFileDir, tokensFileName)
+	tokenFilePath := path.Join(i.cfg.TokensFileDir, tokensFileName)
 	b, err := ioutil.ReadFile(tokenFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -302,8 +302,9 @@ func (i *Lifecycler) setTokens(tokens []uint32) {
 	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
 	i.stateMtx.Lock()
-	defer i.stateMtx.Unlock()
 	i.tokens = tokens
+	i.stateMtx.Unlock()
+
 	i.flushTokensToFile()
 }
 

@@ -2,8 +2,6 @@ package ring
 
 import (
 	"context"
-	"encoding/binary"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -133,7 +131,7 @@ type Lifecycler struct {
 	// back empty.  And it changes during lifecycle of ingester.
 	stateMtx sync.Mutex
 	state    IngesterState
-	tokens   []uint32
+	tokens   Tokens
 
 	// Controls the ready-reporting
 	readyLock sync.Mutex
@@ -207,7 +205,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("error talking to consul: %s", err)
 	}
 
-	if len(i.getTokens()) == 0 {
+	if i.getTokens().Len() == 0 {
 		return fmt.Errorf("this ingester owns no tokens")
 	}
 
@@ -246,9 +244,14 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error
 	return <-err
 }
 
-func (i *Lifecycler) getTokens() []uint32 {
+var emptyTokens Tokens = &SimpleListTokens{}
+
+func (i *Lifecycler) getTokens() Tokens {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
+	if i.tokens == nil {
+		return emptyTokens
+	}
 	return i.tokens
 }
 
@@ -263,18 +266,14 @@ func (i *Lifecycler) flushTokensToFile() {
 		return
 	}
 
-	b := make([]byte, 4*len(i.tokens))
-	for idx, token := range i.tokens {
-		binary.BigEndian.PutUint32(b[idx*4:], token)
-	}
-
+	b := i.tokens.Marshal(nil)
 	if _, err = f.Write(b); err != nil {
 		level.Error(util.Logger).Log("msg", "error in writing token file", "err", err)
 		return
 	}
 }
 
-func (i *Lifecycler) getTokensFromFile() ([]uint32, error) {
+func (i *Lifecycler) getTokensFromFile() (Tokens, error) {
 	tokenFilePath := path.Join(i.cfg.TokensFileDir, tokensFileName)
 	b, err := ioutil.ReadFile(tokenFilePath)
 	if err != nil {
@@ -283,23 +282,12 @@ func (i *Lifecycler) getTokensFromFile() ([]uint32, error) {
 		}
 		return nil, err
 	}
-	if len(b) == 0 {
-		return nil, nil
-	} else if len(b)%4 != 0 {
-		return nil, errors.New("token data is not 4 byte aligned")
-	}
 
-	numTokens := len(b) >> 2
-	tokens := make([]uint32, 0, numTokens)
-	for i := 0; i < numTokens; i++ {
-		tokens = append(tokens, binary.BigEndian.Uint32(b[i<<2:]))
-	}
-
-	return tokens, nil
+	return UnmarshalTokens(b)
 }
 
-func (i *Lifecycler) setTokens(tokens []uint32) {
-	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
+func (i *Lifecycler) setTokens(tokens Tokens) {
+	tokensOwned.WithLabelValues(i.RingName).Set(float64(tokens.Len()))
 
 	i.stateMtx.Lock()
 	i.tokens = tokens
@@ -313,7 +301,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	err := make(chan error)
 
 	i.actorChan <- func() {
-		var tokens []uint32
+		var tokens Tokens
 
 		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
 			ringDesc, ok := in.(*Desc)
@@ -451,12 +439,12 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			tokens, err := i.getTokensFromFile()
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
-			} else if len(tokens) > 0 {
-				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokens))
-				if len(tokens) == i.cfg.NumTokens {
+			} else if tokens != nil && tokens.Len() > 0 {
+				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", tokens.Len())
+				if tokens.Len() == i.cfg.NumTokens {
 					i.setState(ACTIVE)
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, tokens, i.GetState(), i.cfg.NormaliseTokens)
+				ringDesc.AddIngester(i.ID, i.Addr, tokens.Tokens(), i.GetState(), i.cfg.NormaliseTokens)
 				i.setTokens(tokens)
 				return ringDesc, true, nil
 			}
@@ -472,7 +460,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 
-		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
+		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", tokens.Len())
 		return ringDesc, true, nil
 	})
 }
@@ -489,17 +477,17 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
-		if len(myTokens) > 0 {
-			level.Error(util.Logger).Log("msg", "tokens already exist for this ingester - wasn't expecting any!", "num_tokens", len(myTokens))
+		if myTokens.Len() > 0 {
+			level.Error(util.Logger).Log("msg", "tokens already exist for this ingester - wasn't expecting any!", "num_tokens", myTokens.Len())
 		}
 
-		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
+		newTokens := GenerateTokens(i.cfg.NumTokens-myTokens.Len(), takenTokens.Tokens())
 		i.setState(ACTIVE)
 		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
-		tokens := append(myTokens, newTokens...)
-		sort.Sort(sortableUint32(tokens))
-		i.setTokens(tokens)
+		myTokens.Add(newTokens...)
+		sort.Sort(sortableUint32(myTokens.Tokens()))
+		i.setTokens(myTokens)
 
 		return ringDesc, true, nil
 	})
@@ -520,7 +508,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
-			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens().Tokens(), i.GetState(), i.cfg.NormaliseTokens)
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()

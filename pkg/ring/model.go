@@ -75,14 +75,14 @@ func (d *Desc) RemoveIngester(id string) {
 
 // ClaimTokens transfers all the tokens from one ingester to another,
 // returning the claimed token.
-func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
-	var result []uint32
+func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
+	result := &SimpleListTokens{}
 
 	if normaliseTokens {
 
 		// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
 		if fromDesc, found := d.Ingesters[from]; found {
-			result = fromDesc.Tokens
+			result.Add(fromDesc.Tokens...)
 			fromDesc.Tokens = nil
 			d.Ingesters[from] = fromDesc
 		}
@@ -93,16 +93,16 @@ func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
 		// When all ingesters are in normalised mode, d.Tokens is empty here
 		for i := 0; i < len(d.Tokens); {
 			if d.Tokens[i].Ingester == from {
-				result = append(result, d.Tokens[i].Token)
+				result.Add(d.Tokens[i].Token)
 				d.Tokens = d.Tokens[:i+copy(d.Tokens[i:], d.Tokens[i+1:])]
 				continue
 			}
 			i++
 		}
 
-		sort.Sort(uint32s(result))
+		sort.Sort(uint32s(result.Tokens()))
 		ing := d.Ingesters[to]
-		ing.Tokens = result
+		ing.Tokens = result.Tokens()
 		d.Ingesters[to] = ing
 
 	} else {
@@ -110,7 +110,7 @@ func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
 		for i := 0; i < len(d.Tokens); i++ {
 			if d.Tokens[i].Ingester == from {
 				d.Tokens[i].Ingester = to
-				result = append(result, d.Tokens[i].Token)
+				result.Add(d.Tokens[i].Token)
 			}
 		}
 	}
@@ -148,12 +148,12 @@ func (d *Desc) Ready(heartbeatTimeout time.Duration) error {
 }
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.
-func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
-	var takenTokens, myTokens []uint32
+func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
+	takenTokens, myTokens := &SimpleListTokens{}, &SimpleListTokens{}
 	for _, token := range migrateRing(d) {
-		takenTokens = append(takenTokens, token.Token)
+		takenTokens.Add(token.Token)
 		if token.Ingester == id {
-			myTokens = append(myTokens, token.Token)
+			myTokens.Add(token.Token)
 		}
 	}
 	return myTokens, takenTokens

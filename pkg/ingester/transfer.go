@@ -159,7 +159,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 // transfer, as claiming tokens would possibly end up with this ingester owning no tokens, due to conflict
 // resolution in ring merge function. Hopefully the leaving ingester will retry transfer again.
 func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
-	v, err := i.lifecycler.KVStore.Get(ctx, ring.IngesterRingKey)
+	v, err := i.lifecycler.KVStore.Get(ctx, i.lifecycler.RingKey)
 	if err != nil {
 		return errors.Wrap(err, "get ring")
 	}

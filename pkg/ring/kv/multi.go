@@ -316,9 +316,13 @@ func (m *MultiClient) keyUpdated(primary kvclient, key string, newValue interfac
 	}
 }
 
-// Stop the multiClient (mirroring part).
-func (m *MultiClient) stop() {
+// Stop the multiClient (mirroring part), and all configured clients.
+func (m *MultiClient) Stop() {
 	m.cancel()
+
+	for _, kv := range m.clients {
+		kv.client.Stop()
+	}
 }
 
 func createRateLimiter(rateLimit float64, burst int) *rate.Limiter {

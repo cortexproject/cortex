@@ -38,6 +38,8 @@ require (
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/consul/api v1.1.0
 	github.com/hashicorp/go-cleanhttp v0.5.1
+	github.com/hashicorp/go-sockaddr v1.0.2
+	github.com/hashicorp/memberlist v0.1.4
 	github.com/jonboulle/clockwork v0.1.0
 	github.com/json-iterator/go v1.1.7
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect

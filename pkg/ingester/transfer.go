@@ -76,6 +76,12 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			if fromIngesterID == "" {
 				fromIngesterID = wireSeries.FromIngesterId
 				level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+
+				// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
+				err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
+				if err != nil {
+					return err
+				}
 			}
 			descs, err := fromWireChunks(wireSeries.Chunks)
 			if err != nil {
@@ -133,6 +139,37 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	}
 	level.Info(util.Logger).Log("msg", "Successfully transferred chunks", "from_ingester", fromIngesterID, "series_received", seriesReceived)
 
+	return nil
+}
+
+// Ring gossiping: check if "from" ingester is in LEAVING state. It should be, but we may not see that yet
+// when using gossip ring. If we cannot see ingester is the LEAVING state yet, we don't accept this
+// transfer, as claiming tokens would possibly end up with this ingester owning no tokens, due to conflict
+// resolution in ring merge function. Hopefully the leaving ingester will retry transfer again.
+func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
+	v, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
+	if err != nil {
+		return errors.Wrap(err, "TransferChunks: get ring")
+	}
+	if v == nil {
+		return fmt.Errorf("TransferChunks: ring not found when checking state of source ingester")
+	}
+	r, ok := v.(*ring.Desc)
+	if !ok || r == nil {
+		return fmt.Errorf("TransferChunks: ring not found, got %T", v)
+	}
+
+	if r.Ingesters == nil || r.Ingesters[fromIngesterID].State != ring.LEAVING {
+		return fmt.Errorf("TransferChunks: source ingester is not in a LEAVING state, found state=%v", r.Ingesters[fromIngesterID].State)
+	}
+
+	if r.Ingesters == nil || r.Ingesters[fromIngesterID].State != ring.LEAVING {
+		err = fmt.Errorf("source ingester is not in a LEAVING state, found state=%v", r.Ingesters[fromIngesterID].State)
+		util.Logger.Log("msg", "TransferChunks error", "err", err)
+		return err
+	}
+
+	// all fine
 	return nil
 }
 
@@ -198,6 +235,12 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			if fromIngesterID == "" {
 				fromIngesterID = f.FromIngesterId
 				level.Info(util.Logger).Log("msg", "processing TransferTSDB request", "from_ingester", fromIngesterID)
+
+				// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
+				err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
+				if err != nil {
+					return err
+				}
 			}
 			filesXfer++
 

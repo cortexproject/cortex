@@ -139,6 +139,7 @@ type Overrides struct {
 // are defaulted to those values.  As such, the last call to NewOverrides will
 // become the new global defaults.
 func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error) {
+	defaultLimits = &defaults
 	return &Overrides{
 		tenantLimits:  tenantLimits,
 		defaultLimits: &defaults,

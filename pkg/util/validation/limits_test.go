@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 )
 
 func TestLimits_Validate(t *testing.T) {
@@ -71,4 +72,23 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 	// Verifying user2 limits are not impacted by overrides
 	require.Equal(t, 100, ov.MaxLabelNamesPerSeries("user2"))
 	require.Equal(t, 0, ov.MaxLabelValueLength("user2"))
+}
+
+func TestLimitsLoadingFromYaml(t *testing.T) {
+	defaults := Limits{
+		MaxLabelNameLength: 100,
+	}
+
+	// we call this for its side-effect: setting of defaults
+	_, err := NewOverrides(defaults, nil)
+	require.NoError(t, err)
+
+	inp := `ingestion_rate: 0.5`
+
+	l := Limits{}
+	err = yaml.Unmarshal([]byte(inp), &l)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0.5, l.IngestionRate, "from yaml")
+	assert.Equal(t, 100, l.MaxLabelNameLength, "from defaults")
 }

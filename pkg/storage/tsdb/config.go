@@ -12,10 +12,15 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
-// Constants for the supported backends
+// Constants for the config values
 const (
 	BackendS3  = "s3"
 	BackendGCS = "gcs"
+)
+
+// Validation errors
+var (
+	errUnsupportedBackend = errors.New("unsupported TSDB storage backend")
 )
 
 // Config holds the config information for TSDB storage
@@ -47,7 +52,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate the config
 func (cfg *Config) Validate() error {
 	if cfg.Backend != BackendS3 && cfg.Backend != BackendGCS {
-		return errors.New("unsupported TSDB storage backend")
+		return errUnsupportedBackend
 	}
 
 	return nil
@@ -61,6 +66,6 @@ func (cfg *Config) NewBucketClient(ctx context.Context, name string, logger log.
 	case BackendGCS:
 		return cfg.GCS.NewBucketClient(ctx, name, logger)
 	default:
-		return nil, errors.New("unsupported TSDB storage backend")
+		return nil, errUnsupportedBackend
 	}
 }

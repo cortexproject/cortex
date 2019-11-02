@@ -61,8 +61,6 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Time since the last sample after which a time series is considered stale and ignored by expression evaluations.
 
-## Query Frontend
-
 - `-querier.align-querier-with-step`
 
    If set to true, will cause the query frontend to mutate incoming queries and align their start and end parameters to the step parameter of the query.  This improves the cacheability of the query results.
@@ -86,6 +84,20 @@ The ingester query API was improved over time, but defaults to the old behaviour
 - `-redis.{endpoint, timeout}`
 
    Use these flags to specify the location and timeout of the Redis service used to cache query results.
+
+## Query Frontend
+
+- `-frontend.max-outstanding-requests-per-tenant`
+
+   Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.
+
+- `-frontend.compress-http-responses`
+
+   If set to true, will cause the frontend to compress HTTP responses
+
+- `frontend.downstream-url`
+
+   URL of downstream Prometheus. This flag is used when you want to use frontend in front of standalone Prometheus to leverage the frontend features like - [queueing](https://github.com/cortexproject/cortex/blob/master/docs/architecture.md#queueing), [splitting](https://github.com/cortexproject/cortex/blob/master/docs/architecture.md#splitting), [caching](https://github.com/cortexproject/cortex/blob/master/docs/architecture.md#caching) and [parallelism](https://github.com/cortexproject/cortex/blob/master/docs/architecture.md#parallelism).
 
 ## Distributor
 

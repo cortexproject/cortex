@@ -33,7 +33,7 @@ type UserStore struct {
 
 // NewUserStore returns a new UserStore
 func NewUserStore(cfg tsdb.Config, logger log.Logger) (*UserStore, error) {
-	bkt, err := cfg.NewBucketClient(context.Background(), "cortex-userstore", logger)
+	bkt, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", logger)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			// Instance a new bucket used by this tenant's shipper. We're going
 			// to instance a new context instead of reusing the one of this function,
 			// because the bucket client's lifespan is longer.
-			bkt, err := u.cfg.NewBucketClient(context.Background(), fmt.Sprintf("cortex-%s", user), u.logger)
+			bkt, err := tsdb.NewBucketClient(context.Background(), u.cfg, fmt.Sprintf("cortex-%s", user), u.logger)
 			if err != nil {
 				return err
 			}

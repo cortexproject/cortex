@@ -1,15 +1,12 @@
 package tsdb
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
-	"github.com/go-kit/kit/log"
-	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
 // Constants for the config values
@@ -56,16 +53,4 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
-}
-
-// NewBucketClient creates a new bucket client based on the configured backend
-func (cfg *Config) NewBucketClient(ctx context.Context, name string, logger log.Logger) (objstore.Bucket, error) {
-	switch cfg.Backend {
-	case BackendS3:
-		return cfg.S3.NewBucketClient(name, logger)
-	case BackendGCS:
-		return cfg.GCS.NewBucketClient(ctx, name, logger)
-	default:
-		return nil, errUnsupportedBackend
-	}
 }

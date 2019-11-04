@@ -8,6 +8,7 @@
 * [FEATURE] Global limit on the max series per user and metric #1760
   * `-ingester.max-global-series-per-user`
   * `-ingester.max-global-series-per-metric`
+  * Requires `-distributor.replication-factor` and `-distributor.shard-by-all-labels` set for the ingesters too
 * [FEATURE] Flush chunks with stale markers early with `ingester.max-stale-chunk-idle`. #1759
 * [FEATURE] EXPERIMENTAL: Added new KV Store backend based on memberlist library. Components can gossip about tokens and ingester states, instead of using Consul or Etcd. #1721
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706

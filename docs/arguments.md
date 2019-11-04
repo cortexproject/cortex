@@ -314,6 +314,13 @@ Valid fields are (with their corresponding flags for default values):
 
   An active series is a series to which a sample has been written in the last `-ingester.max-chunk-idle` duration, which defaults to 5 minutes.
 
+- `max_global_series_per_user` / `-ingester.max-global-series-per-user`
+- `max_global_series_per_metric` / `-ingester.max-global-series-per-metric`
+
+   Like `max_series_per_user` and `max_series_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
+
+   Requires `-distributor.replication-factor` and `-distributor.shard-by-all-labels` set for the ingesters too.
+
 - `max_series_per_query` / `-ingester.max-series-per-query`
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 

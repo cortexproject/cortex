@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_ResponseToSeries(t *testing.T) {
+func Test_ResponseToSamples(t *testing.T) {
 	input := &PrometheusResponse{
 		Data: PrometheusData{
 			ResultType: promql.ValueTypeMatrix,
@@ -49,8 +49,9 @@ func Test_ResponseToSeries(t *testing.T) {
 		},
 	}
 
-	set, err := ResponseToSeries(input)
+	streams, err := ResponseToSamples(input)
 	require.Nil(t, err)
+	set := NewSeriesSet(streams)
 
 	setCt := 0
 

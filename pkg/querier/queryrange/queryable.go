@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"encoding/hex"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/pkg/errors"
@@ -63,19 +62,47 @@ func (q *DownstreamQuerier) Select(
 
 // handleEmbeddedQuery defers execution of an encoded query to a downstream Handler
 func (q *DownstreamQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet, storage.Warnings, error) {
-	decoded, err := hex.DecodeString(encoded)
+	queries, err := astmapper.HexCodec.Decode(encoded)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	resp, err := q.Handler.Do(q.Ctx, q.Req.WithQuery(string(decoded)))
-	if err != nil {
-		return nil, nil, err
+	ctx, cancel := context.WithCancel(q.Ctx)
+	defer cancel()
+
+	// buffer channels to length of queries to prevent leaking memory due to sending to unbuffered channels after cancel/err
+	errCh := make(chan error, len(queries))
+	samplesCh := make(chan []SampleStream, len(queries))
+	// TODO(owen-d): impl unified concurrency controls, not per middleware
+	for _, query := range queries {
+		go func(query string) {
+			resp, err := q.Handler.Do(ctx, q.Req.WithQuery(query))
+			if err != nil {
+				errCh <- err
+				return
+			}
+			streams, err := ResponseToSamples(resp)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			samplesCh <- streams
+			return
+		}(query)
 	}
 
-	set, err := ResponseToSeries(resp)
-	return set, nil, err
+	var samples []SampleStream
 
+	for i := 0; i < len(queries); i++ {
+		select {
+		case err := <-errCh:
+			return nil, nil, err
+		case streams := <-samplesCh:
+			samples = append(samples, streams...)
+		}
+	}
+
+	return NewSeriesSet(samples), nil, err
 }
 
 // LabelValues returns all potential values for a label name.

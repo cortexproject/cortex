@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
-// ResponseToSeries is needed to map back from api response to the underlying series data
-func ResponseToSeries(resp Response) (storage.SeriesSet, error) {
+// ResponseToSamples is needed to map back from api response to the underlying series data
+func ResponseToSamples(resp Response) ([]SampleStream, error) {
 	promRes, ok := resp.(*PrometheusResponse)
 	if !ok {
 		return nil, errors.Errorf("error invalid response type: %T, expected: %T", resp, &PrometheusResponse{})
@@ -20,7 +20,7 @@ func ResponseToSeries(resp Response) (storage.SeriesSet, error) {
 	}
 	switch promRes.Data.ResultType {
 	case promql.ValueTypeVector, promql.ValueTypeMatrix:
-		return newSeriesSet(promRes.Data.Result), nil
+		return promRes.Data.Result, nil
 	}
 
 	return nil, errors.Errorf(
@@ -31,7 +31,8 @@ func ResponseToSeries(resp Response) (storage.SeriesSet, error) {
 	)
 }
 
-func newSeriesSet(results []SampleStream) storage.SeriesSet {
+// NewSeriesSet returns an in memory storage.SeriesSet from a []SampleStream
+func NewSeriesSet(results []SampleStream) storage.SeriesSet {
 
 	set := make([]storage.Series, 0, len(results))
 

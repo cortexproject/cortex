@@ -97,10 +97,15 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 
 	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
 
+	shardSummer, err := astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher)
+	if err != nil {
+		return nil, err
+	}
+
 	strQuery := r.GetQuery()
 	mappedQuery, err := mapQuery(
 		astmapper.NewMultiMapper(
-			astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher),
+			shardSummer,
 			astmapper.ShallowEmbedSelectors,
 		),
 		strQuery,

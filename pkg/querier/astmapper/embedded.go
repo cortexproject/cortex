@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -31,12 +32,35 @@ const (
 	EmbeddedQueryFlag = "__embedded_queries__"
 )
 
-func HexEncode(input string) string {
-	return hex.EncodeToString([]byte(input))
+// A Codec is responsible for encoding/decoding queries
+type Codec interface {
+	Encode([]string) string
+	Decode(string) ([]string, error)
+}
+
+// HexCodec is a hexadecimal implementation of a Codec
+var HexCodec Codec = hexCodec{}
+
+type hexCodec struct{}
+
+func (c hexCodec) Encode(queries []string) string {
+	return hex.EncodeToString([]byte(strings.Join(queries, "|")))
+}
+
+func (c hexCodec) Decode(encoded string) (queries []string, err error) {
+	decoded, err := hex.DecodeString(encoded)
+	if err != nil {
+		return nil, err
+	}
+
+	return strings.Split(string(decoded), "|"), nil
 }
 
 // Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.
-func Squash(encoder func(string) string, isMatrix bool, nodes ...promql.Node) (promql.Expr, error) {
+func Squash(codec Codec, isMatrix bool, nodes ...promql.Node) (promql.Expr, error) {
+	if codec == nil {
+		return nil, errors.Errorf("nil Codec")
+	}
 
 	// concat OR legs
 	var strs []string
@@ -44,11 +68,7 @@ func Squash(encoder func(string) string, isMatrix bool, nodes ...promql.Node) (p
 		strs = append(strs, node.String())
 	}
 
-	encoded := strings.Join(strs, "|")
-	// Encode query so it can be embedded as a label
-	if encoder != nil {
-		encoded = encoder(encoded)
-	}
+	encoded := codec.Encode(strs)
 
 	embeddedQuery, err := labels.NewMatcher(labels.MatchEqual, QueryLabel, encoded)
 
@@ -73,7 +93,7 @@ func Squash(encoder func(string) string, isMatrix bool, nodes ...promql.Node) (p
 // VectorSquasher always uses a VectorSelector as the substitution node.
 // This is important because logical/set binops can only be applied against vectors and not matrices.
 func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
-	return Squash(HexEncode, false, nodes...)
+	return Squash(HexCodec, false, nodes...)
 }
 
 // ShallowEmbedSelectors encodes selector queries if they do not already have the EmbeddedQueryFlag.
@@ -86,14 +106,14 @@ func shallowEmbedSelectors(node promql.Node) (mapped promql.Node, finished bool,
 		if n.Name == EmbeddedQueryFlag {
 			return n, true, nil
 		}
-		squashed, err := Squash(HexEncode, false, n)
+		squashed, err := Squash(HexCodec, false, n)
 		return squashed, true, err
 
 	case *promql.MatrixSelector:
 		if n.Name == EmbeddedQueryFlag {
 			return n, true, nil
 		}
-		squashed, err := Squash(HexEncode, true, n)
+		squashed, err := Squash(HexCodec, true, n)
 		return squashed, true, err
 
 	default:

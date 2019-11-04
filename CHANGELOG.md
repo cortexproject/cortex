@@ -1,6 +1,7 @@
 ## master / unreleased
 
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
+* [FEATURE] Added `/shutdown` endpoint for ingester to shutdown all operations of the ingester. #1746
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
 
 ## 0.3.0 / 2019-10-11

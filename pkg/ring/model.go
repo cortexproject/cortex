@@ -80,13 +80,13 @@ func (d *Desc) RemoveIngester(id string) {
 // and 'to' ingester uses either normalised or non-normalised tokens, but not both. Tokens list must
 // be sorted properly. If all of this is true, everything will be fine.
 func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
-	result := &SimpleListTokens{}
+	result := Tokens{}
 
 	if normaliseTokens {
 
 		// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
 		if fromDesc, found := d.Ingesters[from]; found {
-			result.Add(fromDesc.Tokens...)
+			result = append(result, fromDesc.Tokens...)
 			fromDesc.Tokens = nil
 			d.Ingesters[from] = fromDesc
 		}
@@ -97,7 +97,7 @@ func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
 		// When all ingesters are in normalised mode, d.Tokens is empty here
 		for i := 0; i < len(d.Tokens); {
 			if d.Tokens[i].Ingester == from {
-				result.Add(d.Tokens[i].Token)
+				result = append(result, d.Tokens[i].Token)
 				d.Tokens = append(d.Tokens[:i], d.Tokens[i+1:]...)
 				continue
 			}
@@ -105,17 +105,17 @@ func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
 		}
 
 		ing := d.Ingesters[to]
-		ing.Tokens = result.Tokens()
+		ing.Tokens = result
 		d.Ingesters[to] = ing
 
 	} else {
 		// If source ingester is normalising, copy its tokens to d.Tokens, and set new owner
 		if fromDesc, found := d.Ingesters[from]; found {
-			result.Add(fromDesc.Tokens...)
+			result = append(result, fromDesc.Tokens...)
 			fromDesc.Tokens = nil
 			d.Ingesters[from] = fromDesc
 
-			for _, t := range result.Tokens() {
+			for _, t := range result {
 				d.Tokens = append(d.Tokens, TokenDesc{Ingester: to, Token: t})
 			}
 
@@ -126,7 +126,7 @@ func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
 		for i := 0; i < len(d.Tokens); i++ {
 			if d.Tokens[i].Ingester == from {
 				d.Tokens[i].Ingester = to
-				result.Add(d.Tokens[i].Token)
+				result = append(result, d.Tokens[i].Token)
 			}
 		}
 	}
@@ -170,11 +170,11 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.
 func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
-	takenTokens, myTokens := &SimpleListTokens{}, &SimpleListTokens{}
+	takenTokens, myTokens := Tokens{}, Tokens{}
 	for _, token := range migrateRing(d) {
-		takenTokens.Add(token.Token)
+		takenTokens = append(takenTokens, token.Token)
 		if token.Ingester == id {
-			myTokens.Add(token.Token)
+			myTokens = append(myTokens, token.Token)
 		}
 	}
 	return myTokens, takenTokens

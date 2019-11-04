@@ -2,6 +2,8 @@ package ring
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -254,17 +256,17 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error
 	return <-err
 }
 
-func (i *Lifecycler) getTokens() []uint32 {
+func (i *Lifecycler) getTokens() Tokens {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 	if i.tokens == nil {
 		return nil
 	}
-	return i.tokens.Tokens()
+	return i.tokens
 }
 
 func (i *Lifecycler) flushTokensToFile() {
-	if i.cfg.TokensFileDir == "" || i.tokens == nil || i.tokens.Len() == 0 {
+	if i.cfg.TokensFileDir == "" || i.tokens == nil || len(i.tokens) == 0 {
 		return
 	}
 	tokenFilePath := path.Join(i.cfg.TokensFileDir, tokensFileName)
@@ -274,7 +276,11 @@ func (i *Lifecycler) flushTokensToFile() {
 		return
 	}
 
-	b := i.tokens.Marshal(nil)
+	b, err := MarshalTokens(i.tokens)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error in marshalling tokens", "err", err)
+		return
+	}
 	if _, err = f.Write(b); err != nil {
 		level.Error(util.Logger).Log("msg", "error in writing token file", "err", err)
 		return
@@ -295,7 +301,7 @@ func (i *Lifecycler) getTokensFromFile() (Tokens, error) {
 }
 
 func (i *Lifecycler) setTokens(tokens Tokens) {
-	tokensOwned.WithLabelValues(i.RingName).Set(float64(tokens.Len()))
+	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
 	i.stateMtx.Lock()
 	i.tokens = tokens
@@ -504,12 +510,12 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			tokens, err := i.getTokensFromFile()
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
-			} else if tokens != nil && tokens.Len() > 0 {
-				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", tokens.Len())
-				if tokens.Len() == i.cfg.NumTokens {
+			} else if tokens != nil && len(tokens) > 0 {
+				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokens))
+				if len(tokens) == i.cfg.NumTokens {
 					i.setState(ACTIVE)
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, tokens.Tokens(), i.GetState(), i.cfg.NormaliseTokens)
+				ringDesc.AddIngester(i.ID, i.Addr, tokens, i.GetState(), i.cfg.NormaliseTokens)
 				i.setTokens(tokens)
 				return ringDesc, true, nil
 			}
@@ -525,7 +531,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 
-		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", tokens.Len())
+		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
 		// we haven't modified the ring, don't try to store it.
 		return nil, true, nil
 	})
@@ -557,15 +563,15 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 
 		if !i.compareTokens(ringTokens) {
 			// uh, oh... our tokens are not our anymore. Let's try new ones.
-			needTokens := i.cfg.NumTokens - ringTokens.Len()
+			needTokens := i.cfg.NumTokens - len(ringTokens)
 
 			level.Info(util.Logger).Log("msg", "generating new tokens", "count", needTokens)
-			newTokens := GenerateTokens(needTokens, takenTokens.Tokens())
+			newTokens := GenerateTokens(needTokens, takenTokens)
 
-			ringTokens.Add(newTokens...)
-			sort.Sort(sortableUint32(ringTokens.Tokens()))
+			ringTokens = append(ringTokens, newTokens...)
+			sort.Sort(sortableUint32(ringTokens))
 
-			ringDesc.AddIngester(i.ID, i.Addr, ringTokens.Tokens(), i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, ringTokens, i.GetState(), i.cfg.NormaliseTokens)
 
 			i.setTokens(ringTokens)
 
@@ -586,18 +592,17 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 }
 
 func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
-	sort.Sort(sortableUint32(fromRing.Tokens()))
+	sort.Sort(sortableUint32(fromRing))
 
 	tokens := i.getTokens()
 	sort.Sort(sortableUint32(tokens))
 
-	if len(tokens) != fromRing.Len() {
+	if len(tokens) != len(fromRing) {
 		return false
 	}
 
-	tokensFromRing := fromRing.Tokens()
 	for i := 0; i < len(tokens); i++ {
-		if tokens[i] != tokensFromRing[i] {
+		if tokens[i] != fromRing[i] {
 			return false
 		}
 	}
@@ -617,17 +622,17 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
-		if myTokens.Len() > 0 {
-			level.Error(util.Logger).Log("msg", "tokens already exist for this ingester - wasn't expecting any!", "num_tokens", myTokens.Len())
+		if len(myTokens) > 0 {
+			level.Error(util.Logger).Log("msg", "tokens already exist for this ingester - wasn't expecting any!", "num_tokens", len(myTokens))
 		}
 
-		newTokens := GenerateTokens(i.cfg.NumTokens-myTokens.Len(), takenTokens.Tokens())
+		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)
 
 		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
-		myTokens.Add(newTokens...)
-		sort.Sort(sortableUint32(myTokens.Tokens()))
+		myTokens = append(myTokens, newTokens...)
+		sort.Sort(sortableUint32(myTokens))
 		i.setTokens(myTokens)
 
 		return ringDesc, true, nil
@@ -746,4 +751,39 @@ func (i *Lifecycler) unregister(ctx context.Context) error {
 		ringDesc.RemoveIngester(i.ID)
 		return ringDesc, true, nil
 	})
+}
+
+// TokenVersion1 is the version is a simple list of tokens.
+const TokenVersion1 = 1
+
+// Tokens is a simple list of tokens.
+type Tokens []uint32
+
+// MarshalTokens encodes given tokens into JSON.
+func MarshalTokens(tokens Tokens) ([]byte, error) {
+	data := tokensJSON{
+		Version: TokenVersion1,
+		Tokens:  tokens,
+	}
+	return json.Marshal(data)
+}
+
+// UnmarshalTokens converts the JSON byte stream into Tokens.
+func UnmarshalTokens(b []byte) (Tokens, error) {
+	tj := tokensJSON{}
+	if err := json.Unmarshal(b, &tj); err != nil {
+		return nil, err
+	}
+	switch tj.Version {
+	case TokenVersion1:
+		tokens := Tokens(tj.Tokens)
+		return tokens, nil
+	default:
+		return nil, errors.New("invalid token type")
+	}
+}
+
+type tokensJSON struct {
+	Version int      `json:"version"`
+	Tokens  []uint32 `json:"tokens"`
 }

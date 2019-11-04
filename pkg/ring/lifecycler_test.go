@@ -87,7 +87,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 		return checkDenormalised(d, "ing1")
 	})
 
-	token := l1.tokens.Tokens()[0]
+	token := l1.tokens[0]
 
 	// Add a second ingester with normalised tokens.
 	var lifecyclerConfig2 = testLifecyclerConfig(t, ringConfig, "ing2")
@@ -190,7 +190,7 @@ func TestRingRestart(t *testing.T) {
 		return checkNormalised(d, "ing1")
 	})
 
-	token := l1.tokens.Tokens()[0]
+	token := l1.tokens[0]
 
 	// Add a second ingester with the same settings, so it will think it has restarted
 	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester")
@@ -253,14 +253,14 @@ func TestCheckReady(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = &MockClient{}
 
-	tokens := SimpleListTokens([]uint32{1})
+	tokens := Tokens([]uint32{1})
 	r, err := New(ringConfig, "ingester")
 	require.NoError(t, err)
 	defer r.Stop()
 	cfg := testLifecyclerConfig(t, ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester")
-	l1.setTokens(&tokens)
+	l1.setTokens(tokens)
 	l1.Start()
 	require.NoError(t, err)
 

@@ -107,23 +107,30 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 			return nil, err
 		}
 
+		// TODO(pracucci) resp.GetWarning() ?
 		chunks = append(chunks, seriesToChunks(userID, resp.GetSeries())...)
 	}
 
 	return chunks, nil
 }
 
+// TODO(pracucci) with only 1 series, why is it called twice?
 func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
-
 	var lbls labels.Labels
-	for i := range series.Labels {
+	for _, label := range series.Labels {
+		// We have to remove the external label set by the shipper
+		if label.Name == tsdb.TenantIDExternalLabel {
+			continue
+		}
+
 		lbls = append(lbls, labels.Label{
-			Name:  series.Labels[i].Name,
-			Value: series.Labels[i].Value,
+			Name:  label.Name,
+			Value: label.Value,
 		})
 	}
 
-	var chunks []chunk.Chunk
+	chunks := make([]chunk.Chunk, 0, len(series.Chunks))
+
 	for _, c := range series.Chunks {
 		ch := encoding.New()
 

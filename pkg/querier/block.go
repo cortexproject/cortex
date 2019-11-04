@@ -114,7 +114,6 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 	return chunks, nil
 }
 
-// TODO(pracucci) with only 1 series, why is it called twice?
 func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
 	var lbls labels.Labels
 	for _, label := range series.Labels {

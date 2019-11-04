@@ -68,7 +68,7 @@ var (
 		Help: "Total number of chunks dropped from flushing because they have too few samples.",
 	})
 	oldestUnflushedChunkTimestamp = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_oldest_unflushed_chunk_timestamp",
+		Name: "cortex_oldest_unflushed_chunk_timestamp_seconds",
 		Help: "Unix timestamp of the oldest unflushed chunk in the memory",
 	})
 )

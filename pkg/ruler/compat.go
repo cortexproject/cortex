@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"context"
-	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -15,30 +14,14 @@ import (
 type Pusher interface {
 	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
 }
-
-// appendableAppender adapts a distributor.Distributor to both a ruler.Appendable
-// and a storage.Appender.
-//
-// Distributors need a context and storage.Appender doesn't allow for
-// one. See
-// https://github.com/prometheus/prometheus/pull/2000#discussion_r79108319 for
-// reasons why.
-type appendableAppender struct {
-	sync.Mutex
+type appender struct {
 	pusher  Pusher
-	ctx     context.Context
 	labels  []labels.Labels
 	samples []client.Sample
 	userID  string
 }
 
-func (a *appendableAppender) Appender() (storage.Appender, error) {
-	return a, nil
-}
-
-func (a *appendableAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
-	a.Lock()
-	defer a.Unlock()
+func (a *appender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
 	a.samples = append(a.samples, client.Sample{
 		TimestampMs: t,
@@ -47,23 +30,19 @@ func (a *appendableAppender) Add(l labels.Labels, t int64, v float64) (uint64, e
 	return 0, nil
 }
 
-func (a *appendableAppender) AddFast(l labels.Labels, ref uint64, t int64, v float64) error {
+func (a *appender) AddFast(l labels.Labels, ref uint64, t int64, v float64) error {
 	_, err := a.Add(l, t, v)
 	return err
 }
 
-func (a *appendableAppender) Commit() error {
-	a.Lock()
-	defer a.Unlock()
+func (a *appender) Commit() error {
 	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, client.RULE))
 	a.labels = nil
 	a.samples = nil
 	return err
 }
 
-func (a *appendableAppender) Rollback() error {
-	a.Lock()
-	defer a.Unlock()
+func (a *appender) Rollback() error {
 	a.labels = nil
 	a.samples = nil
 	return nil
@@ -72,8 +51,16 @@ func (a *appendableAppender) Rollback() error {
 // TSDB fulfills the storage.Storage interface for prometheus manager
 // it allows for alerts to be restored by the manager
 type tsdb struct {
-	appender  *appendableAppender
+	pusher    Pusher
+	userID    string
 	queryable storage.Queryable
+}
+
+func (a *tsdb) Appender() (storage.Appender, error) {
+	return &appender{
+		pusher: a.pusher,
+		userID: a.userID,
+	}, nil
 }
 
 // Querier returns a new Querier on the storage.
@@ -84,11 +71,6 @@ func (t *tsdb) Querier(ctx context.Context, mint int64, maxt int64) (storage.Que
 // StartTime returns the oldest timestamp stored in the storage.
 func (t *tsdb) StartTime() (int64, error) {
 	return 0, nil
-}
-
-// Appender returns a new appender against the storage.
-func (t *tsdb) Appender() (storage.Appender, error) {
-	return t.appender, nil
 }
 
 // Close closes the storage and all its underlying resources.

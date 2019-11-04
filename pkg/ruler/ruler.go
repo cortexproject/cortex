@@ -417,11 +417,9 @@ func (r *Ruler) loadRules(ctx context.Context) {
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
 func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
-	db := &tsdb{
-		appender: &appendableAppender{
-			pusher: r.pusher,
-			userID: userID,
-		},
+	tsdb := &tsdb{
+		pusher:    r.pusher,
+		userID:    userID,
 		queryable: r.queryable,
 	}
 
@@ -435,8 +433,8 @@ func (r *Ruler) newManager(ctx context.Context, userID string) (*promRules.Manag
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 
 	opts := &promRules.ManagerOptions{
-		Appendable:  db,
-		TSDB:        db,
+		Appendable:  tsdb,
+		TSDB:        tsdb,
 		QueryFunc:   promRules.EngineQueryFunc(r.engine, r.queryable),
 		Context:     user.InjectOrgID(ctx, userID),
 		ExternalURL: r.alertURL,

@@ -1,6 +1,8 @@
 package s3
 
-import "flag"
+import (
+	"flag"
+)
 
 // Config holds the config options for an S3 backend
 type Config struct {

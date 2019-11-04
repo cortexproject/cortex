@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -198,14 +197,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	var store querier.ChunkStore
 
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
-		s3cfg := s3.Config{
-			Bucket:    cfg.TSDB.S3.BucketName,
-			Endpoint:  cfg.TSDB.S3.Endpoint,
-			AccessKey: cfg.TSDB.S3.AccessKeyID,
-			SecretKey: cfg.TSDB.S3.SecretAccessKey,
-			Insecure:  cfg.TSDB.S3.Insecure,
-		}
-		store, err = querier.NewBlockQuerier(s3cfg, cfg.TSDB.SyncDir, prometheus.DefaultRegisterer)
+		store, err = querier.NewBlockQuerier(cfg.TSDB, prometheus.DefaultRegisterer)
 		if err != nil {
 			return err
 		}

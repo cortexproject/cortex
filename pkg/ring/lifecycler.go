@@ -38,11 +38,6 @@ var (
 	}, []string{"op", "status", "name"})
 )
 
-// ReadLifecycler represents the read interface to the lifecycler.
-type ReadLifecycler interface {
-	HealthyInstancesCount() int
-}
-
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring,omitempty"`

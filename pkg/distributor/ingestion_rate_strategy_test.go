@@ -3,10 +3,10 @@ package distributor
 import (
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 )
@@ -14,7 +14,7 @@ import (
 func TestIngestionRateStrategy(t *testing.T) {
 	tests := map[string]struct {
 		limits        validation.Limits
-		ring          ring.ReadLifecycler
+		ring          ReadLifecycler
 		expectedLimit float64
 		expectedBurst int
 	}{
@@ -34,8 +34,8 @@ func TestIngestionRateStrategy(t *testing.T) {
 				IngestionRate:         float64(1000),
 				IngestionBurstSize:    10000,
 			},
-			ring: func() ring.ReadLifecycler {
-				ring := ring.NewReadLifecyclerMock()
+			ring: func() ReadLifecycler {
+				ring := newReadLifecyclerMock()
 				ring.On("HealthyInstancesCount").Return(2)
 				return ring
 			}(),
@@ -80,4 +80,17 @@ func TestIngestionRateStrategy(t *testing.T) {
 			assert.Equal(t, strategy.Burst("test"), testData.expectedBurst)
 		})
 	}
+}
+
+type readLifecyclerMock struct {
+	mock.Mock
+}
+
+func newReadLifecyclerMock() *readLifecyclerMock {
+	return &readLifecyclerMock{}
+}
+
+func (m *readLifecyclerMock) HealthyInstancesCount() int {
+	args := m.Called()
+	return args.Int(0)
 }

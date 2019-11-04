@@ -1,11 +1,15 @@
 package distributor
 
 import (
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"golang.org/x/time/rate"
 )
+
+// ReadLifecycler represents the read interface to the lifecycler.
+type ReadLifecycler interface {
+	HealthyInstancesCount() int
+}
 
 type localStrategy struct {
 	limits *validation.Overrides
@@ -27,10 +31,10 @@ func (s *localStrategy) Burst(tenantID string) int {
 
 type globalStrategy struct {
 	limits *validation.Overrides
-	ring   ring.ReadLifecycler
+	ring   ReadLifecycler
 }
 
-func newGlobalIngestionRateStrategy(limits *validation.Overrides, ring ring.ReadLifecycler) limiter.RateLimiterStrategy {
+func newGlobalIngestionRateStrategy(limits *validation.Overrides, ring ReadLifecycler) limiter.RateLimiterStrategy {
 	return &globalStrategy{
 		limits: limits,
 		ring:   ring,

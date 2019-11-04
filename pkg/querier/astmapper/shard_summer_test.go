@@ -96,7 +96,64 @@ func TestShardSummer(t *testing.T) {
 
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			summer := NewShardSummer(c.shards, nil)
+			// orSquash is a custom squasher which mimics the intuitive but less efficient OR'ing of sharded vectors.
+			// This keeps compatibility with older tests.
+			orSquash := func(nodes ...promql.Node) (promql.Expr, error) {
+				combined := nodes[0]
+				for i := 1; i < len(nodes); i++ {
+					combined = &promql.BinaryExpr{
+						Op:  promql.ItemLOR,
+						LHS: combined.(promql.Expr),
+						RHS: nodes[i].(promql.Expr),
+					}
+				}
+				return combined.(promql.Expr), nil
+			}
+
+			summer, err := NewShardSummer(c.shards, orSquash)
+			require.Nil(t, err)
+			expr, err := promql.ParseExpr(c.input)
+			require.Nil(t, err)
+			res, err := summer.Map(expr)
+			require.Nil(t, err)
+
+			expected, err := promql.ParseExpr(c.expected)
+			require.Nil(t, err)
+
+			require.Equal(t, expected.String(), res.String())
+		})
+	}
+}
+
+func TestShardSummerWithEncoding(t *testing.T) {
+	for i, c := range []struct {
+		shards   int
+		input    string
+		expected string
+	}{
+		{
+			shards: 3,
+			input:  `sum(rate(bar1{baz="blip"}[1m]))`,
+			/*
+			  encoded from:
+			  sum by(__cortex_shard__) (
+			    rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])
+			  ) |
+			    sum by(__cortex_shard__) (
+			  rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])
+			  ) |
+			  sum by(__cortex_shard__) (
+			    rate(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m])
+			  )
+			*/
+			expected: `sum without(__cortex_shard__) (
+			  __embedded_queries__{__cortex_queries__="73756d206279285f5f636f727465785f73686172645f5f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22305f6f665f33222c62617a3d22626c6970227d5b316d5d29297c73756d206279285f5f636f727465785f73686172645f5f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22315f6f665f33222c62617a3d22626c6970227d5b316d5d29297c73756d206279285f5f636f727465785f73686172645f5f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22325f6f665f33222c62617a3d22626c6970227d5b316d5d2929"}
+			)`,
+		},
+	} {
+		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
+			summer, err := NewShardSummer(c.shards, VectorSquasher)
+			require.Nil(t, err)
 			expr, err := promql.ParseExpr(c.input)
 			require.Nil(t, err)
 			res, err := summer.Map(expr)

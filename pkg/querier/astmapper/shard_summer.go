@@ -26,7 +26,7 @@ var (
 	ShardLabelRE = regexp.MustCompile("^[0-9]+_of_[0-9]+$")
 )
 
-type squasher = func(promql.Node) (promql.Expr, error)
+type squasher = func(...promql.Node) (promql.Expr, error)
 
 type shardSummer struct {
 	shards   int
@@ -35,13 +35,16 @@ type shardSummer struct {
 }
 
 // NewShardSummer instantiates an ASTMapper which will fan out sums queries by shard
-func NewShardSummer(shards int, squasher squasher) ASTMapper {
+func NewShardSummer(shards int, squasher squasher) (ASTMapper, error) {
+	if squasher == nil {
+		return nil, errors.Errorf("squasher required and not passed")
+	}
 
 	return NewASTNodeMapper(&shardSummer{
 		shards:   shards,
 		squash:   squasher,
 		curshard: nil,
-	})
+	}), nil
 }
 
 // CopyWithCurshard clones a shardSummer with a new current shard. This facilitates recursive sharding.
@@ -94,14 +97,12 @@ func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 		return nil, err
 	}
 
-	var combinedSums = subSums[0]
-	for i := 1; i < len(subSums); i++ {
-		combinedSums = &promql.BinaryExpr{
-			Op:  promql.ItemLOR,
-			LHS: combinedSums,
-			RHS: subSums[i],
-		}
+	combinedSums, err := summer.squash(subSums...)
+
+	if err != nil {
+		return nil, err
 	}
+
 	parent.Expr = combinedSums
 	return parent, nil
 }
@@ -111,7 +112,7 @@ func (summer *shardSummer) splitSum(
 	expr *promql.AggregateExpr,
 ) (
 	parent *promql.AggregateExpr,
-	children []promql.Expr,
+	children []promql.Node,
 	err error,
 ) {
 	parent = &promql.AggregateExpr{
@@ -195,14 +196,6 @@ func (summer *shardSummer) splitSum(
 			Op:   expr.Op,
 			Expr: sharded.(promql.Expr),
 		})
-
-		if summer.squash != nil {
-			subSum, err = summer.squash(subSum)
-		}
-
-		if err != nil {
-			return parent, children, err
-		}
 
 		children = append(children,
 			subSum,

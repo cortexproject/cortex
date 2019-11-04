@@ -2,6 +2,7 @@ package astmapper
 
 import (
 	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -25,15 +26,29 @@ Ideally the promql.Engine could be an interface instead of a concrete type, allo
 
 const (
 	// QueryLabel is a reserved label containing an embedded query
-	QueryLabel = "__cortex_query__"
+	QueryLabel = "__cortex_queries__"
 	// EmbeddedQueryFlag is a reserved label (metric name) denoting an embedded query
-	EmbeddedQueryFlag = "__embedded_query__"
+	EmbeddedQueryFlag = "__embedded_queries__"
 )
 
+func HexEncode(input string) string {
+	return hex.EncodeToString([]byte(input))
+}
+
 // Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.
-func Squash(node promql.Node, isMatrix bool) (promql.Expr, error) {
-	// promql's label charset is not a subset of promql's syntax charset. Therefor we use hex as an intermediary
-	encoded := hex.EncodeToString([]byte(node.String()))
+func Squash(encoder func(string) string, isMatrix bool, nodes ...promql.Node) (promql.Expr, error) {
+
+	// concat OR legs
+	var strs []string
+	for _, node := range nodes {
+		strs = append(strs, node.String())
+	}
+
+	encoded := strings.Join(strs, "|")
+	// Encode query so it can be embedded as a label
+	if encoder != nil {
+		encoded = encoder(encoded)
+	}
 
 	embeddedQuery, err := labels.NewMatcher(labels.MatchEqual, QueryLabel, encoded)
 
@@ -57,28 +72,28 @@ func Squash(node promql.Node, isMatrix bool) (promql.Expr, error) {
 
 // VectorSquasher always uses a VectorSelector as the substitution node.
 // This is important because logical/set binops can only be applied against vectors and not matrices.
-func VectorSquasher(node promql.Node) (promql.Expr, error) {
-	return Squash(node, false)
+func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
+	return Squash(HexEncode, false, nodes...)
 }
 
 // ShallowEmbedSelectors encodes selector queries if they do not already have the EmbeddedQueryFlag.
 // This is primarily useful for deferring query execution.
 var ShallowEmbedSelectors = NewASTNodeMapper(NodeMapperFunc(shallowEmbedSelectors))
 
-func shallowEmbedSelectors(node promql.Node) (promql.Node, bool, error) {
+func shallowEmbedSelectors(node promql.Node) (mapped promql.Node, finished bool, err error) {
 	switch n := node.(type) {
 	case *promql.VectorSelector:
 		if n.Name == EmbeddedQueryFlag {
 			return n, true, nil
 		}
-		squashed, err := Squash(n, false)
+		squashed, err := Squash(HexEncode, false, n)
 		return squashed, true, err
 
 	case *promql.MatrixSelector:
 		if n.Name == EmbeddedQueryFlag {
 			return n, true, nil
 		}
-		squashed, err := Squash(n, true)
+		squashed, err := Squash(HexEncode, true, n)
 		return squashed, true, err
 
 	default:

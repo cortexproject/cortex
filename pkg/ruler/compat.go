@@ -56,10 +56,11 @@ type tsdb struct {
 	queryable storage.Queryable
 }
 
-func (a *tsdb) Appender() (storage.Appender, error) {
+// Appender returns a storage.Appender
+func (t *tsdb) Appender() (storage.Appender, error) {
 	return &appender{
-		pusher: a.pusher,
-		userID: a.userID,
+		pusher: t.pusher,
+		userID: t.userID,
 	}, nil
 }
 

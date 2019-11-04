@@ -89,9 +89,10 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 
 	ctx = metadata.AppendToOutgoingContext(ctx, "user", userID)
 	seriesClient, err := client.Series(ctx, &storepb.SeriesRequest{
-		MinTime:  int64(from),
-		MaxTime:  int64(through),
-		Matchers: converted,
+		MinTime:                 int64(from),
+		MaxTime:                 int64(through),
+		Matchers:                converted,
+		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 	})
 	if err != nil {
 		return nil, err
@@ -107,7 +108,6 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 			return nil, err
 		}
 
-		// TODO(pracucci) resp.GetWarning() ?
 		chunks = append(chunks, seriesToChunks(userID, resp.GetSeries())...)
 	}
 

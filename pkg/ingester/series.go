@@ -155,10 +155,6 @@ func (s *memorySeries) firstTime() model.Time {
 // no chunks, or all chunks are flushed, returns 0.
 // The caller must have locked the fingerprint of the memorySeries.
 func (s *memorySeries) firstUnflushedChunkTime() model.Time {
-	if len(s.chunkDescs) == 0 {
-		return 0
-	}
-
 	for _, c := range s.chunkDescs {
 		if !c.flushed {
 			return c.FirstTime

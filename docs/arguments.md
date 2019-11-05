@@ -228,9 +228,9 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    How long to wait in PENDING state during the [hand-over process](ingester-handover.md). (default 0s)
 
-- `-ingester.ingester.max-transfer-retries`
+- `-ingester.max-transfer-retries`
 
-   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](ingester-handover.md). Each attempt takes a second or so. (default 10)
+   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](ingester-handover.md). Each attempt takes a second or so. Negative value or zero disables hand-over process completely. (default 10)
 
 - `-ingester.normalise-tokens`
 

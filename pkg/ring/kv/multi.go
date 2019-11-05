@@ -102,31 +102,41 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient) *MultiClient {
 	go c.mirrorChanges(ctx, cfg.MirrorPrefix)
 
 	if cfg.ConfigProvider != nil {
-		go c.watchConfigChannel(cfg.ConfigProvider())
+		go c.watchConfigChannel(ctx, cfg.ConfigProvider())
 	}
 
 	return c
 }
 
-func (m *MultiClient) watchConfigChannel(configChannel <-chan MultiRuntimeConfig) {
-	for cfg := range configChannel {
-		if cfg.Mirroring != "" {
-			enable := cfg.Mirroring == "true" || cfg.Mirroring == "enable" || cfg.Mirroring == "enabled"
+func (m *MultiClient) watchConfigChannel(ctx context.Context, configChannel <-chan MultiRuntimeConfig) {
+	for {
+		select {
+		case cfg, ok := <-configChannel:
+			if !ok {
+				return
+			}
 
-			old := m.mirroringEnabled.Swap(enable)
-			if old != enable {
-				level.Info(util.Logger).Log("msg", "toggled mirroring", "enabled", enable)
-			}
-		}
+			if cfg.Mirroring != "" {
+				enable := cfg.Mirroring == "true" || cfg.Mirroring == "enable" || cfg.Mirroring == "enabled"
 
-		if cfg.PrimaryStore != "" {
-			switched, err := m.setNewPrimaryClient(cfg.PrimaryStore)
-			if switched {
-				level.Info(util.Logger).Log("msg", "switched primary KV store", "primary", cfg.PrimaryStore)
+				old := m.mirroringEnabled.Swap(enable)
+				if old != enable {
+					level.Info(util.Logger).Log("msg", "toggled mirroring", "enabled", enable)
+				}
 			}
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "failed to switch primary KV store", "primary", cfg.PrimaryStore, "err", err)
+
+			if cfg.PrimaryStore != "" {
+				switched, err := m.setNewPrimaryClient(cfg.PrimaryStore)
+				if switched {
+					level.Info(util.Logger).Log("msg", "switched primary KV store", "primary", cfg.PrimaryStore)
+				}
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "failed to switch primary KV store", "primary", cfg.PrimaryStore, "err", err)
+				}
 			}
+
+		case <-ctx.Done():
+			return
 		}
 	}
 }

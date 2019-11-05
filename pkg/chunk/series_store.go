@@ -364,6 +364,8 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 
 	queries = c.schema.FilterReadQueries(queries, shard)
 
+	level.Debug(log).Log("filteredQueries", len(queries))
+
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if e, ok := err.(CardinalityExceededError); ok {
 		e.MetricName = metricName

@@ -16,7 +16,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
-	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -114,12 +113,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 				Bucket: bkt,
 			}
 
-			indexCacheSizeBytes := uint64(250 * units.Mebibyte)
-			maxItemSizeBytes := indexCacheSizeBytes / 2
-			indexCache, err := storecache.NewIndexCache(u.logger, nil, storecache.Opts{
-				MaxSizeBytes:     indexCacheSizeBytes,
-				MaxItemSizeBytes: maxItemSizeBytes,
-			})
+			indexCache, err := tsdb.NewIndexCache(u.logger, &u.cfg)
 			if err != nil {
 				return err
 			}

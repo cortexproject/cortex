@@ -6,8 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alecthomas/units"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
+	"github.com/go-kit/kit/log"
+	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 )
 
 // Constants for the config values
@@ -23,12 +26,14 @@ var (
 
 // Config holds the config information for TSDB storage
 type Config struct {
-	Dir          string        `yaml:"dir"`
-	SyncDir      string        `yaml:"sync_dir"`
-	BlockRanges  DurationList  `yaml:"block_ranges_period"`
-	Retention    time.Duration `yaml:"retention_period"`
-	ShipInterval time.Duration `yaml:"ship_interval"`
-	Backend      string        `yaml:"backend"`
+	Dir                  string        `yaml:"dir"`
+	SyncDir              string        `yaml:"sync_dir"`
+	BlockRanges          DurationList  `yaml:"block_ranges_period"`
+	Retention            time.Duration `yaml:"retention_period"`
+	ShipInterval         time.Duration `yaml:"ship_interval"`
+	Backend              string        `yaml:"backend"`
+	UseMemcachedIndex    bool          `yaml:"use_memcached_index"`
+	IndexMemcachedConfig `yaml:"index_memcached_cache"`
 
 	// Backends
 	S3  s3.Config  `yaml:"s3"`
@@ -69,6 +74,7 @@ func (d DurationList) ToMillisecondRanges() []int64 {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 	cfg.GCS.RegisterFlags(f)
+	cfg.IndexMemcachedConfig.RegisterFlags(f)
 
 	if len(cfg.BlockRanges) == 0 {
 		cfg.BlockRanges = []time.Duration{2 * time.Hour} // Default 2h block
@@ -80,6 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB block retention")
 	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 30*time.Second, "the frequency at which tsdb blocks are scanned for shipping")
 	f.StringVar(&cfg.Backend, "experimental.tsdb.backend", "s3", "TSDB storage backend to use")
+	f.BoolVar(&cfg.UseMemcachedIndex, "experimental.tsdb.use-memcached-index", false, "Use memcached to store the index cache")
 }
 
 // Validate the config
@@ -89,4 +96,18 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// NewIndexCache returns a new index cache specific by config
+func NewIndexCache(logger log.Logger, cfg *Config) (IndexCache, error) {
+	if cfg.UseMemcachedIndex {
+		return NewMemcachedIndex(cfg.IndexMemcachedConfig)
+	}
+
+	indexCacheSizeBytes := uint64(250 * units.Mebibyte)
+	maxItemSizeBytes := indexCacheSizeBytes / 2
+	return storecache.NewIndexCache(logger, nil, storecache.Opts{
+		MaxSizeBytes:     indexCacheSizeBytes,
+		MaxItemSizeBytes: maxItemSizeBytes,
+	})
 }

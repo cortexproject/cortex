@@ -43,10 +43,8 @@ type MultiRuntimeConfig struct {
 	// or to gossip). Doing this allows nice migration between stores. Empty values are ignored.
 	PrimaryStore string `yaml:"primary"`
 
-	// Put "enabled", "enable" or "true" here to enable. Any other value = disabled. Empty = ignore.
-	// We don't use bool here, because it would not be possible to distinguish between false = missing value,
-	// or false = disabled.
-	Mirroring string `yaml:"mirroring"`
+	// Mirroring enabled or not. Nil = no change.
+	Mirroring *bool `yaml:"mirroring"`
 }
 
 type kvclient struct {
@@ -116,9 +114,8 @@ func (m *MultiClient) watchConfigChannel(ctx context.Context, configChannel <-ch
 				return
 			}
 
-			if cfg.Mirroring != "" {
-				enable := cfg.Mirroring == "true" || cfg.Mirroring == "enable" || cfg.Mirroring == "enabled"
-
+			if cfg.Mirroring != nil {
+				enable := *cfg.Mirroring
 				old := m.mirroringEnabled.Swap(enable)
 				if old != enable {
 					level.Info(util.Logger).Log("msg", "toggled mirroring", "enabled", enable)

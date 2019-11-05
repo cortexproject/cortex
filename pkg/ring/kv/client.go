@@ -37,7 +37,7 @@ type Config struct {
 	Prefix      string `yaml:"prefix,omitempty"`
 	StoreConfig `yaml:",inline"`
 
-	Mock Client
+	Mock Client `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.

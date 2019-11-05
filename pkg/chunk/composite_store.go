@@ -101,28 +101,32 @@ func (c compositeStore) Get(ctx context.Context, userID string, from, through mo
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
 func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
 	var result []string
+	uniqueValues := map[string]struct{}{}
 	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
 		labelValues, err := store.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName)
 		if err != nil {
 			return err
 		}
-		result = append(result, labelValues...)
+		result = appendUniqueStrings(result, uniqueValues, labelValues...)
 		return nil
 	})
+	sort.Strings(result)
 	return result, err
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	var result []string
+	uniqueValues := map[string]struct{}{}
 	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
 		labelNames, err := store.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 		if err != nil {
 			return err
 		}
-		result = append(result, labelNames...)
+		result = appendUniqueStrings(result, uniqueValues, labelNames...)
 		return nil
 	})
+	sort.Strings(result)
 	return result, err
 }
 

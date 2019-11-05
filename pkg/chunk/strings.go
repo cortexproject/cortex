@@ -57,3 +57,13 @@ func nWayIntersectStrings(sets [][]string) []string {
 		return intersectStrings(left, right)
 	}
 }
+
+func appendUniqueStrings(result []string, uniqueValues map[string]struct{}, values ...string) []string {
+	for _, l := range values {
+		if _, ok := uniqueValues[l]; !ok {
+			uniqueValues[l] = struct{}{}
+			result = append(result, l)
+		}
+	}
+	return result
+}

@@ -42,10 +42,7 @@ func labelNamesFromChunks(chunks []Chunk) []string {
 	var result []string
 	for _, c := range chunks {
 		for _, l := range c.Metric {
-			if _, ok := keys[string(l.Name)]; !ok {
-				keys[string(l.Name)] = struct{}{}
-				result = append(result, string(l.Name))
-			}
+			result = appendUniqueStrings(result, keys, string(l.Name))
 		}
 	}
 	sort.Strings(result)

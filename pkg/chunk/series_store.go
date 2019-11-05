@@ -414,12 +414,7 @@ func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, throug
 		if err != nil {
 			return nil, err
 		}
-		for _, l := range lbs {
-			if _, ok := uniqueLabelNames[l]; !ok {
-				uniqueLabelNames[l] = struct{}{}
-				result = append(result, l)
-			}
-		}
+		result = appendUniqueStrings(result, uniqueLabelNames, lbs...)
 	}
 	sort.Strings(result)
 	return result, nil

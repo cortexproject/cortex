@@ -67,6 +67,10 @@ var (
 		Name: "cortex_ingester_dropped_chunks_total",
 		Help: "Total number of chunks dropped from flushing because they have too few samples.",
 	})
+	oldestUnflushedChunkTimestamp = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_oldest_unflushed_chunk_timestamp_seconds",
+		Help: "Unix timestamp of the oldest unflushed chunk in the memory",
+	})
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -110,14 +114,23 @@ func (i *Ingester) sweepUsers(immediate bool) {
 		return
 	}
 
+	oldest := model.Time(0)
+
 	for id, state := range i.userStates.cp() {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
 			i.sweepSeries(id, pair.fp, pair.series, immediate)
 			i.removeFlushedChunks(state, pair.fp, pair.series)
+			first := pair.series.firstUnflushedChunkTime()
 			state.fpLocker.Unlock(pair.fp)
+
+			if first > 0 && (oldest == 0 || first < oldest) {
+				oldest = first
+			}
 		}
 	}
+
+	oldestUnflushedChunkTimestamp.Set(float64(oldest.Unix()))
 }
 
 type flushReason int

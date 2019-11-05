@@ -72,7 +72,6 @@ type MultiClient struct {
 	// Primary client used for interaction. Values from this KV are copied to all the others.
 	primaryID *atomic.Int32
 
-	ctx    context.Context
 	cancel context.CancelFunc
 
 	inProgressMu sync.Mutex
@@ -96,10 +95,11 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient) *MultiClient {
 		mirroringEnabled: atomic.NewBool(cfg.MirrorEnabled),
 	}
 
-	c.ctx, c.cancel = context.WithCancel(context.Background())
+	ctx, cancelFn := context.WithCancel(context.Background())
+	c.cancel = cancelFn
 
 	// Start mirroring.
-	go c.watchChanges(cfg.MirrorPrefix)
+	go c.mirrorChanges(ctx, cfg.MirrorPrefix)
 
 	if cfg.ConfigProvider != nil {
 		go c.watchConfigChannel(cfg.ConfigProvider())
@@ -136,6 +136,7 @@ func (m *MultiClient) getPrimaryClient() (int, kvclient) {
 	return int(v), m.clients[v]
 }
 
+// returns true, if primary client has changed
 func (m *MultiClient) setNewPrimaryClient(store string) (bool, error) {
 	newPrimaryIx := -1
 	for ix, c := range m.clients {
@@ -258,16 +259,16 @@ func (m *MultiClient) WatchPrefix(ctx context.Context, prefix string, f func(str
 	})
 }
 
-// watchChanges performs mirroring -- it watches changes in the primary client, and puts them into secondary.
-func (m *MultiClient) watchChanges(prefix string) {
-	for m.ctx.Err() == nil {
-		err := m.runWithPrimaryClient(m.ctx, func(newCtx context.Context, primary kvclient) error {
+// mirrorChanges performs mirroring -- it watches for changes in the primary client, and puts them into secondary.
+func (m *MultiClient) mirrorChanges(ctx context.Context, prefix string) {
+	for ctx.Err() == nil {
+		err := m.runWithPrimaryClient(ctx, func(newCtx context.Context, primary kvclient) error {
 			primary.client.WatchPrefix(newCtx, prefix, func(key string, val interface{}) bool {
 				level.Debug(util.Logger).Log("msg", "value updated", "key", key, "store", primary.name)
 
 				if m.mirroringEnabled.Load() {
 					// don't pass new context to keyUpdated, we don't want to react on primary client changes here.
-					m.keyUpdated(primary, key, val)
+					m.keyUpdated(ctx, primary, key, val)
 				}
 
 				err := m.rateLimiter.Wait(newCtx)
@@ -278,7 +279,7 @@ func (m *MultiClient) watchChanges(prefix string) {
 				return true
 			})
 
-			return m.ctx.Err()
+			return ctx.Err()
 		})
 
 		if err != nil {
@@ -287,7 +288,7 @@ func (m *MultiClient) watchChanges(prefix string) {
 	}
 }
 
-func (m *MultiClient) keyUpdated(primary kvclient, key string, newValue interface{}) {
+func (m *MultiClient) keyUpdated(ctx context.Context, primary kvclient, key string, newValue interface{}) {
 	// let's propagate this to all remaining clients
 	for _, kvc := range m.clients {
 		if kvc == primary {
@@ -295,7 +296,7 @@ func (m *MultiClient) keyUpdated(primary kvclient, key string, newValue interfac
 		}
 
 		stored := true
-		err := kvc.client.CAS(m.ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+		err := kvc.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 			stored = true
 
 			if eq, ok := in.(withEqual); ok && eq.Equal(newValue) {

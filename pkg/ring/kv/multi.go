@@ -44,7 +44,7 @@ type MultiRuntimeConfig struct {
 	PrimaryStore string `yaml:"primary"`
 
 	// Mirroring enabled or not. Nil = no change.
-	Mirroring *bool `yaml:"mirroring"`
+	Mirroring *bool `yaml:"mirror-enabled"`
 }
 
 type kvclient struct {

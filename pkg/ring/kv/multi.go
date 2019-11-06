@@ -7,11 +7,39 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/uber-go/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
+
+var (
+	primaryStoreGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "consul_multikv_primary_store",
+		Help: "Selected primary KV store",
+	}, []string{"store"})
+
+	mirrorEnabled = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "consul_multikv_mirror_enabled",
+		Help: "Is mirroring to secondary store enabled",
+	})
+
+	mirrorWrites = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "consul_multikv_mirror_writes_total",
+		Help: "Number of mirror-writes to secondary store",
+	})
+
+	mirrorFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "consul_multikv_mirror_write_errors_total",
+		Help: "Number of failures to mirror-write to secondary store",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(primaryStoreGauge, mirrorEnabled, mirrorWrites, mirrorFailures)
+}
 
 // MultiConfig is a configuration for MultiClient.
 type MultiConfig struct {
@@ -94,6 +122,8 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient) *MultiClient {
 		go c.watchConfigChannel(ctx, cfg.ConfigProvider())
 	}
 
+	c.updatePrimaryStoreGauge()
+	c.updateMirrorEnabledGauge()
 	return c
 }
 
@@ -111,6 +141,7 @@ func (m *MultiClient) watchConfigChannel(ctx context.Context, configChannel <-ch
 				if old != enable {
 					level.Info(util.Logger).Log("msg", "toggled mirroring", "enabled", enable)
 				}
+				m.updateMirrorEnabledGauge()
 			}
 
 			if cfg.PrimaryStore != "" {
@@ -153,6 +184,8 @@ func (m *MultiClient) setNewPrimaryClient(store string) (bool, error) {
 		return false, nil
 	}
 
+	defer m.updatePrimaryStoreGauge() // do as the last thing, after releasing the lock
+
 	// switching to new primary... cancel clients using previous one
 	m.inProgressMu.Lock()
 	defer m.inProgressMu.Unlock()
@@ -163,6 +196,27 @@ func (m *MultiClient) setNewPrimaryClient(store string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func (m *MultiClient) updatePrimaryStoreGauge() {
+	_, pkv := m.getPrimaryClient()
+
+	for _, kv := range m.clients {
+		value := float64(0)
+		if pkv == kv {
+			value = 1
+		}
+
+		primaryStoreGauge.WithLabelValues(kv.name).Set(value)
+	}
+}
+
+func (m *MultiClient) updateMirrorEnabledGauge() {
+	if m.mirroringEnabled.Load() {
+		mirrorEnabled.Set(1)
+	} else {
+		mirrorEnabled.Set(0)
+	}
 }
 
 func (m *MultiClient) registerCancelFn(clientID int, fn context.CancelFunc) int {
@@ -278,6 +332,7 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 			continue
 		}
 
+		mirrorWrites.Inc()
 		stored := false
 		err := kvc.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 			stored = true
@@ -293,9 +348,10 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 		})
 
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to update value in secondary store", "key", key, "err", err, "primary", primary.name, "secondary", kvc.name)
+			mirrorFailures.Inc()
+			level.Warn(util.Logger).Log("msg", "failed to update value in secondary store", "key", key, "err", err, "primary", primary.name, "secondary", kvc.name)
 		} else if stored {
-			level.Info(util.Logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)
+			level.Debug(util.Logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)
 		}
 	}
 }

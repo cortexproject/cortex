@@ -7,6 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
@@ -16,7 +17,6 @@ import (
 	lbls "github.com/prometheus/prometheus/tsdb/labels"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/user"
@@ -32,16 +32,7 @@ type TSDBState struct {
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
-	var bkt *s3.Bucket
-	s3Cfg := s3.Config{
-		Bucket:    cfg.TSDBConfig.S3.BucketName,
-		Endpoint:  cfg.TSDBConfig.S3.Endpoint,
-		AccessKey: cfg.TSDBConfig.S3.AccessKeyID,
-		SecretKey: cfg.TSDBConfig.S3.SecretAccessKey,
-		Insecure:  cfg.TSDBConfig.S3.Insecure,
-	}
-	var err error
-	bkt, err = s3.NewBucketWithConfig(util.Logger, s3Cfg, "cortex")
+	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +47,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 		TSDBState: TSDBState{
 			dbs:    make(map[string]*tsdb.DB),
-			bucket: bkt,
+			bucket: bucketClient,
 		},
 	}
 

@@ -150,38 +150,57 @@ func TestWatchPrefix(t *testing.T) {
 
 		const max = 100
 		const sleep = time.Millisecond * 10
+		const totalTestTimeout = 3 * max * sleep
 
-		gen := func(p string, ch chan struct{}) {
-			defer close(ch)
-			for i := 0; i < max; i++ {
-				// Start with sleeping, so that watching client see empty KV store at the beginning.
+		observedKeysCh := make(chan string, max)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			// start watching before we even start generating values. values will be buffered
+			client.WatchPrefix(ctx, prefix, func(key string, val interface{}) bool {
+				observedKeysCh <- key
+				return true
+			})
+		}()
+
+		gen := func(p string) {
+			for i := 0; i < max && ctx.Err() == nil; i++ {
+				// Start with sleeping, so that watching client can see empty KV store at the beginning.
 				time.Sleep(sleep)
 
 				key := fmt.Sprintf("%s%d", p, i)
 				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 					return key, true, nil
 				})
+
+				if ctx.Err() != nil {
+					break
+				}
 				require.NoError(t, err)
 			}
 		}
 
-		ch1 := make(chan struct{})
-		ch2 := make(chan struct{})
-		go gen(prefix, ch1)
-		go gen(prefix2, ch2) // we don't want to see these keys reported
+		go gen(prefix)
+		go gen(prefix2) // we don't want to see these keys reported
 
 		observedKeys := map[string]int{}
-		ctx, cfn := context.WithTimeout(context.Background(), 1.5*max*sleep)
-		defer cfn()
 
-		client.WatchPrefix(ctx, prefix, func(key string, val interface{}) bool {
-			observedKeys[key] = observedKeys[key] + 1
-			return true
-		})
+		totalDeadline := time.After(totalTestTimeout)
 
-		// wait until updaters finish (should be done by now)
-		<-ch1
-		<-ch2
+		for watching := true; watching; {
+			select {
+			case <-totalDeadline:
+				watching = false
+			case key := <-observedKeysCh:
+				observedKeys[key]++
+				if len(observedKeys) == max {
+					watching = false
+				}
+			}
+		}
+
+		cancel() // stop all goroutines
 
 		// verify that each key was reported once, and keys outside prefix were not reported
 		for i := 0; i < max; i++ {

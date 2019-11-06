@@ -8,13 +8,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"google.golang.org/grpc/metadata"
@@ -26,9 +26,8 @@ type BlockQuerier struct {
 	us        *UserStore
 }
 
-// NewBlockQuerier returns a client to query a s3 block store
-func NewBlockQuerier(s3cfg s3.Config, baseDir string, r prometheus.Registerer) (*BlockQuerier, error) {
-
+// NewBlockQuerier returns a client to query a block store
+func NewBlockQuerier(cfg tsdb.Config, r prometheus.Registerer) (*BlockQuerier, error) {
 	b := &BlockQuerier{
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_sync_seconds",
@@ -39,7 +38,7 @@ func NewBlockQuerier(s3cfg s3.Config, baseDir string, r prometheus.Registerer) (
 
 	r.MustRegister(b.syncTimes)
 
-	us, err := NewUserStore(util.Logger, s3cfg, baseDir)
+	us, err := NewUserStore(cfg, util.Logger)
 	if err != nil {
 		return nil, err
 	}

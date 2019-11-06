@@ -5,12 +5,19 @@ import (
 	"flag"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 )
 
+// Constants for the config values
 const (
-	// BackendS3 is the const for the s3 backend for tsdb long-term retention
-	BackendS3 = "s3"
+	BackendS3  = "s3"
+	BackendGCS = "gcs"
+)
+
+// Validation errors
+var (
+	errUnsupportedBackend = errors.New("unsupported TSDB storage backend")
 )
 
 // Config holds the config information for TSDB storage
@@ -23,7 +30,8 @@ type Config struct {
 	Backend      string        `yaml:"backend"`
 
 	// Backends
-	S3 s3.Config `yaml:"s3"`
+	S3  s3.Config  `yaml:"s3"`
+	GCS gcs.Config `yaml:"gcs"`
 }
 
 // RegisterFlags registers the TSDB flags
@@ -40,8 +48,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the config
 func (cfg *Config) Validate() error {
-	if cfg.Backend != BackendS3 {
-		return errors.New("unsupported TSDB storage backend")
+	if cfg.Backend != BackendS3 && cfg.Backend != BackendGCS {
+		return errUnsupportedBackend
 	}
 
 	return nil

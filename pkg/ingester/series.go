@@ -151,6 +151,19 @@ func (s *memorySeries) firstTime() model.Time {
 	return s.chunkDescs[0].FirstTime
 }
 
+// Returns time of oldest chunk in the series, that isn't flushed. If there are
+// no chunks, or all chunks are flushed, returns 0.
+// The caller must have locked the fingerprint of the memorySeries.
+func (s *memorySeries) firstUnflushedChunkTime() model.Time {
+	for _, c := range s.chunkDescs {
+		if !c.flushed {
+			return c.FirstTime
+		}
+	}
+
+	return 0
+}
+
 // head returns a pointer to the head chunk descriptor. The caller must have
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.

@@ -308,11 +308,11 @@ outer:
 
 		u.fpLocker.Lock(fp)
 		series, ok := u.fpToSeries.get(fp)
-		sort.Sort(series.metric)
 		if !ok {
 			u.fpLocker.Unlock(fp)
 			continue
 		}
+		sort.Sort(series.metric)
 
 		if shard != nil {
 			if !matchesShard(shard, series) {

@@ -16,7 +16,7 @@ import (
 type runtimeConfigValues struct {
 	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
 
-	Multi kv.MultiRuntimeConfig `yaml:"multi"`
+	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
 
 func loadRuntimeConfig(filename string) (interface{}, error) {

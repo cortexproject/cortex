@@ -333,16 +333,7 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 		}
 
 		mirrorWrites.Inc()
-		stored := false
 		err := kvc.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
-			stored = true
-
-			if eq, ok := in.(withEqual); ok && eq.Equal(newValue) {
-				stored = false
-				level.Debug(util.Logger).Log("msg", "no change", "key", key)
-				return nil, false, nil
-			}
-
 			// try once
 			return newValue, false, nil
 		})
@@ -350,7 +341,7 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 		if err != nil {
 			mirrorFailures.Inc()
 			level.Warn(util.Logger).Log("msg", "failed to update value in secondary store", "key", key, "err", err, "primary", primary.name, "secondary", kvc.name)
-		} else if stored {
+		} else {
 			level.Debug(util.Logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)
 		}
 	}
@@ -363,8 +354,4 @@ func (m *MultiClient) Stop() {
 	for _, kv := range m.clients {
 		kv.client.Stop()
 	}
-}
-
-type withEqual interface {
-	Equal(that interface{}) bool
 }

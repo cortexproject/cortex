@@ -5,10 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/uber-go/atomic"
-	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -18,10 +18,8 @@ type MultiConfig struct {
 	Primary   string `yaml:"primary"`
 	Secondary string `yaml:"secondary"`
 
-	MirrorRateLimit float64 `yaml:"mirror-rate-limit"`
-	MirrorRateBurst int     `yaml:"mirror-rate-burst"`
-	MirrorEnabled   bool    `yaml:"mirror-enabled"`
-	MirrorPrefix    string  `yaml:"mirror-prefix"`
+	MirrorEnabled bool          `yaml:"mirror-enabled"`
+	MirrorTimeout time.Duration `yaml:"mirror-timeout"`
 
 	// ConfigProvider returns channel with MultiRuntimeConfig updates.
 	ConfigProvider func() <-chan MultiRuntimeConfig
@@ -31,10 +29,8 @@ type MultiConfig struct {
 func (cfg *MultiConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Primary, prefix+"multi.primary", "", "Primary backend storage used by multi-client.")
 	f.StringVar(&cfg.Secondary, prefix+"multi.secondary", "", "Secondary backend storage used by multi-client.")
-	f.StringVar(&cfg.MirrorPrefix, prefix+"multi.mirror-prefix", "", "Prefix for keys that should be mirrored")
-	f.BoolVar(&cfg.MirrorEnabled, prefix+"multi.mirror-enabled", false, "Mirror values to secondary store")
-	f.Float64Var(&cfg.MirrorRateLimit, prefix+"multi.mirror-rate-limit", 1, "Rate limit used for mirroring. 0 disables rate limit.")
-	f.IntVar(&cfg.MirrorRateBurst, prefix+"multi.mirror-burst-size", 1, "Burst size used by rate limiter. Values less than 1 are treated as 1.")
+	f.BoolVar(&cfg.MirrorEnabled, prefix+"multi.mirror-enabled", false, "Mirror writes to secondary store.")
+	f.DurationVar(&cfg.MirrorTimeout, prefix+"multi.mirror-timeout", 2*time.Second, "Timeout for storing value to secondary store.")
 }
 
 // MultiRuntimeConfig has values that can change in runtime (via overrides)
@@ -58,16 +54,15 @@ type clientInProgress struct {
 }
 
 // MultiClient implements kv.Client by forwarding all API calls to primary client.
-// At the same time, MultiClient watches for changes in values in the primary store,
-// and forwards them to remaining clients.
+// Writes performed via CAS method are also (optionally) forwarded to secondary clients.
 type MultiClient struct {
 	// Available KV clients
 	clients []kvclient
 
-	rateLimiter      *rate.Limiter
+	mirrorTimeout    time.Duration
 	mirroringEnabled *atomic.Bool
 
-	// Primary client used for interaction. Values from this KV are copied to all the others.
+	// The primary client used for interaction.
 	primaryID *atomic.Int32
 
 	cancel context.CancelFunc
@@ -82,22 +77,18 @@ type MultiClient struct {
 
 // NewMultiClient creates new MultiClient with given KV Clients.
 // First client in the slice is the primary client.
-// Channel is used to get notifications about what store to use as primary.
 func NewMultiClient(cfg MultiConfig, clients []kvclient) *MultiClient {
 	c := &MultiClient{
 		clients:    clients,
 		primaryID:  atomic.NewInt32(0),
 		inProgress: map[int]clientInProgress{},
 
-		rateLimiter:      createRateLimiter(cfg.MirrorRateLimit, cfg.MirrorRateBurst),
+		mirrorTimeout:    cfg.MirrorTimeout,
 		mirroringEnabled: atomic.NewBool(cfg.MirrorEnabled),
 	}
 
 	ctx, cancelFn := context.WithCancel(context.Background())
 	c.cancel = cancelFn
-
-	// Start mirroring.
-	go c.mirrorChanges(ctx, cfg.MirrorPrefix)
 
 	if cfg.ConfigProvider != nil {
 		go c.watchConfigChannel(ctx, cfg.ConfigProvider())
@@ -232,25 +223,33 @@ func (m *MultiClient) runWithPrimaryClient(origCtx context.Context, fn func(newC
 	}
 }
 
-// Get is a part of kv.Client interface
+// Get is a part of kv.Client interface.
 func (m *MultiClient) Get(ctx context.Context, key string) (interface{}, error) {
-	var result interface{}
-	err := m.runWithPrimaryClient(ctx, func(newCtx context.Context, primary kvclient) error {
-		var err2 error
-		result, err2 = primary.client.Get(newCtx, key)
-		return err2
-	})
-	return result, err
+	_, kv := m.getPrimaryClient()
+	val, err := kv.client.Get(ctx, key)
+	level.Info(util.Logger).Log("key", key, "value", val, "store", kv.name, "err", err)
+	return val, err
 }
 
-// CAS is a part of kv.Client interface
+// CAS is a part of kv.Client interface.
 func (m *MultiClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	return m.runWithPrimaryClient(ctx, func(newCtx context.Context, primary kvclient) error {
-		return primary.client.CAS(newCtx, key, f)
+	_, kv := m.getPrimaryClient()
+
+	updatedValue := interface{}(nil)
+	err := kv.client.CAS(ctx, key, func(in interface{}) (interface{}, bool, error) {
+		out, retry, err := f(in)
+		updatedValue = out
+		return out, retry, err
 	})
+
+	if err == nil && updatedValue != nil && m.mirroringEnabled.Load() {
+		m.writeToSecondary(ctx, kv, key, updatedValue)
+	}
+
+	return err
 }
 
-// WatchKey is a part of kv.Client interface
+// WatchKey is a part of kv.Client interface.
 func (m *MultiClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	_ = m.runWithPrimaryClient(ctx, func(newCtx context.Context, primary kvclient) error {
 		primary.client.WatchKey(newCtx, key, f)
@@ -258,7 +257,7 @@ func (m *MultiClient) WatchKey(ctx context.Context, key string, f func(interface
 	})
 }
 
-// WatchPrefix is a part of kv.Client interface
+// WatchPrefix is a part of kv.Client interface.
 func (m *MultiClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
 	_ = m.runWithPrimaryClient(ctx, func(newCtx context.Context, primary kvclient) error {
 		primary.client.WatchPrefix(newCtx, prefix, f)
@@ -266,43 +265,20 @@ func (m *MultiClient) WatchPrefix(ctx context.Context, prefix string, f func(str
 	})
 }
 
-// mirrorChanges performs mirroring -- it watches for changes in the primary client, and puts them into secondary.
-func (m *MultiClient) mirrorChanges(ctx context.Context, prefix string) {
-	for ctx.Err() == nil {
-		err := m.runWithPrimaryClient(ctx, func(newCtx context.Context, primary kvclient) error {
-			primary.client.WatchPrefix(newCtx, prefix, func(key string, val interface{}) bool {
-				level.Debug(util.Logger).Log("msg", "value updated", "key", key, "store", primary.name)
-
-				if m.mirroringEnabled.Load() {
-					// don't pass new context to keyUpdated, we don't want to react on primary client changes here.
-					m.keyUpdated(ctx, primary, key, val)
-				}
-
-				err := m.rateLimiter.Wait(newCtx)
-				if err != nil && err != context.Canceled {
-					level.Error(util.Logger).Log("msg", "error while rate limiting multi-client", "err", err)
-				}
-
-				return true
-			})
-
-			return ctx.Err()
-		})
-
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "watching changes returned error", "err", err)
-		}
+func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, key string, newValue interface{}) {
+	if m.mirrorTimeout > 0 {
+		var cfn context.CancelFunc
+		ctx, cfn = context.WithTimeout(ctx, m.mirrorTimeout)
+		defer cfn()
 	}
-}
 
-func (m *MultiClient) keyUpdated(ctx context.Context, primary kvclient, key string, newValue interface{}) {
-	// let's propagate this to all remaining clients
+	// let's propagate new value to all remaining clients
 	for _, kvc := range m.clients {
 		if kvc == primary {
 			continue
 		}
 
-		stored := true
+		stored := false
 		err := kvc.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 			stored = true
 
@@ -313,7 +289,7 @@ func (m *MultiClient) keyUpdated(ctx context.Context, primary kvclient, key stri
 			}
 
 			// try once
-			return in, false, nil
+			return newValue, false, nil
 		})
 
 		if err != nil {
@@ -324,24 +300,13 @@ func (m *MultiClient) keyUpdated(ctx context.Context, primary kvclient, key stri
 	}
 }
 
-// Stop the multiClient (mirroring part), and all configured clients.
+// Stop the multiClient and all configured clients.
 func (m *MultiClient) Stop() {
 	m.cancel()
 
 	for _, kv := range m.clients {
 		kv.client.Stop()
 	}
-}
-
-func createRateLimiter(rateLimit float64, burst int) *rate.Limiter {
-	if rateLimit <= 0 {
-		// burst is ignored when limit = rate.Inf
-		return rate.NewLimiter(rate.Inf, 0)
-	}
-	if burst < 1 {
-		burst = 1
-	}
-	return rate.NewLimiter(rate.Limit(rateLimit), burst)
 }
 
 type withEqual interface {

@@ -2,13 +2,9 @@ package ring
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path"
 	"sort"
 	"sync"
 	"time"
@@ -42,10 +38,6 @@ var (
 	}, []string{"op", "status", "name"})
 )
 
-const (
-	tokensFileName = "tokens"
-)
-
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring,omitempty"`
@@ -61,7 +53,7 @@ type LifecyclerConfig struct {
 	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
-	TokensFileDir    string        `yaml:"token_file_dir,omitempty"`
+	TokensFileDir    string        `yaml:"tokens_file_dir,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address"`
@@ -93,7 +85,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
-	f.StringVar(&cfg.TokensFileDir, prefix+"token-file-dir", "", "Directory in which the token file is to be stored.")
+	f.StringVar(&cfg.TokensFileDir, prefix+"tokens-file-dir", "", "Directory in which the tokens file is stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -265,41 +257,6 @@ func (i *Lifecycler) getTokens() Tokens {
 	return i.tokens
 }
 
-func (i *Lifecycler) flushTokensToFile() {
-	if i.cfg.TokensFileDir == "" || i.tokens == nil || len(i.tokens) == 0 {
-		return
-	}
-	tokenFilePath := path.Join(i.cfg.TokensFileDir, tokensFileName)
-	f, err := os.OpenFile(tokenFilePath, os.O_WRONLY|os.O_CREATE, 0666)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error in creating token file", "err", err)
-		return
-	}
-
-	b, err := MarshalTokens(i.tokens)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error in marshalling tokens", "err", err)
-		return
-	}
-	if _, err = f.Write(b); err != nil {
-		level.Error(util.Logger).Log("msg", "error in writing token file", "err", err)
-		return
-	}
-}
-
-func (i *Lifecycler) getTokensFromFile() (Tokens, error) {
-	tokenFilePath := path.Join(i.cfg.TokensFileDir, tokensFileName)
-	b, err := ioutil.ReadFile(tokenFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return UnmarshalTokens(b)
-}
-
 func (i *Lifecycler) setTokens(tokens Tokens) {
 	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
@@ -307,7 +264,9 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 	i.tokens = tokens
 	i.stateMtx.Unlock()
 
-	i.flushTokensToFile()
+	if err := i.tokens.StoreToFile(i.cfg.TokensFileDir); err != nil {
+		level.Error(util.Logger).Log("msg", "error storing tokens to disk", "err", err)
+	}
 }
 
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
@@ -506,8 +465,9 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
+			var tokens Tokens
 			// We load the tokens from the file only if it does not exist in the ring yet.
-			tokens, err := i.getTokensFromFile()
+			err := tokens.LoadFromFile(i.cfg.TokensFileDir)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
 			} else if tokens != nil && len(tokens) > 0 {
@@ -751,39 +711,4 @@ func (i *Lifecycler) unregister(ctx context.Context) error {
 		ringDesc.RemoveIngester(i.ID)
 		return ringDesc, true, nil
 	})
-}
-
-// TokenVersion1 is the version is a simple list of tokens.
-const TokenVersion1 = 1
-
-// Tokens is a simple list of tokens.
-type Tokens []uint32
-
-// MarshalTokens encodes given tokens into JSON.
-func MarshalTokens(tokens Tokens) ([]byte, error) {
-	data := tokensJSON{
-		Version: TokenVersion1,
-		Tokens:  tokens,
-	}
-	return json.Marshal(data)
-}
-
-// UnmarshalTokens converts the JSON byte stream into Tokens.
-func UnmarshalTokens(b []byte) (Tokens, error) {
-	tj := tokensJSON{}
-	if err := json.Unmarshal(b, &tj); err != nil {
-		return nil, err
-	}
-	switch tj.Version {
-	case TokenVersion1:
-		tokens := Tokens(tj.Tokens)
-		return tokens, nil
-	default:
-		return nil, errors.New("invalid token type")
-	}
-}
-
-type tokensJSON struct {
-	Version int      `json:"version"`
-	Tokens  []uint32 `json:"tokens"`
 }

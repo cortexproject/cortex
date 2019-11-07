@@ -462,6 +462,9 @@ func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 }
 
 func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "store.parseIndexEntries")
+	defer log.Span.Finish()
+
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)

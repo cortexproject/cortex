@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -42,9 +44,10 @@ var (
 
 // Config for a Frontend.
 type Config struct {
-	MaxOutstandingPerTenant int    `yaml:"max_outstanding_per_tenant"`
-	CompressResponses       bool   `yaml:"compress_responses"`
-	DownstreamURL           string `yaml:"downstream"`
+	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
+	CompressResponses       bool          `yaml:"compress_responses"`
+	DownstreamURL           string        `yaml:"downstream"`
+	LogQueriesLongerThan    time.Duration `yaml:"log_queries_longer_than"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -52,6 +55,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
+	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. 0 to disable.")
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -139,7 +143,20 @@ func (f *Frontend) Handler() http.Handler {
 }
 
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
+	userID, err := user.ExtractOrgID(r.Context())
+	if err != nil {
+		server.WriteError(w, err)
+		return
+	}
+
+	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
+	queryResponseTime := time.Now().Sub(startTime)
+
+	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
+		level.Info(f.log).Log("msg", "slow query", "org_id", userID, "url", fmt.Sprintf("http://%s", r.Host+r.RequestURI), "time_taken", queryResponseTime.String())
+	}
+
 	if err != nil {
 		server.WriteError(w, err)
 		return
@@ -187,7 +204,7 @@ func (c *httpgrpcHeadersCarrier) Set(key, val string) {
 	})
 }
 
-// RoundTripGRPC round trips a proto (instread of a HTTP request).
+// RoundTripGRPC round trips a proto (instead of a HTTP request).
 func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*ProcessResponse, error) {
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)

@@ -12,6 +12,8 @@ import (
 // NewBucketClient creates a new bucket client based on the configured backend
 func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
 	switch cfg.Backend {
+	case BackendMultiS3:
+		return s3.NewMultiBucketClient(cfg.MultiS3, name, logger)
 	case BackendS3:
 		return s3.NewBucketClient(cfg.S3, name, logger)
 	case BackendGCS:

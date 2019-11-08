@@ -53,17 +53,12 @@ func (s SortableBuckets) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 
 // NewMultiBucketClient returns a new MultiBucket client
 func NewMultiBucketClient(cfg *MultiBucketConfig, name string, logger log.Logger) (*MultiBuckets, error) {
-	for i := range cfg.Endpoints {
-	}
-}
 
-// NewPeriodBuckets returns a slice of period buckets
-func NewPeriodBuckets(periodBuckets []string, cfg b3.Config) ([]PeriodBucket, error) {
-	bkts := make([]PeriodBucket, 0, len(periodBuckets))
-	for _, b := range periodBuckets {
+	bkts := make([]PeriodBucket, 0, len(cfg.Endpoints))
+	for _, b := range cfg.Endpoints {
 		s3Cfg := s3.Config{
-			Bucket:    b3.BucketName(b),
-			Endpoint:  b3.Endpoint(b),
+			Bucket:    BucketName(b),
+			Endpoint:  Endpoint(b),
 			AccessKey: cfg.AccessKeyID,
 			SecretKey: cfg.SecretAccessKey,
 			Insecure:  cfg.Insecure,
@@ -74,7 +69,7 @@ func NewPeriodBuckets(periodBuckets []string, cfg b3.Config) ([]PeriodBucket, er
 			return nil, err
 		}
 
-		t, err := time.Parse("2006-01-02", b3.From(b))
+		t, err := time.Parse("2006-01-02", From(b))
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +83,10 @@ func NewPeriodBuckets(periodBuckets []string, cfg b3.Config) ([]PeriodBucket, er
 	// Sort the buckets
 	sort.Sort(SortableBuckets(bkts))
 
-	return bkts, nil
+	return &MultiBuckets{
+		UserID:  name,
+		Buckets: bkts,
+	}, nil
 }
 
 // Close implements io.Closer
@@ -121,6 +119,10 @@ func (b *MultiBuckets) Delete(ctx context.Context, name string) error {
 	}
 
 	return bkt.Delete(ctx, b.fullName(name))
+}
+
+func (b *MultiBuckets) fullName(name string) string {
+	return fmt.Sprintf("%s/%s", b.UserID, name)
 }
 
 // Name returns the bucket name for the provider

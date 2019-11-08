@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
@@ -281,7 +282,7 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 					Value: userID,
 				},
 			}
-			s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
+			s := shipper.New(util.Logger, nil, udir, &backend.UserBucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
 			i.done.Add(1)
 			go func() {
 				defer i.done.Done()

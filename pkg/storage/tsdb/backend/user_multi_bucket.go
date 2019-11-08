@@ -52,6 +52,7 @@ func (s SortableBuckets) Less(i, j int) bool {
 func (s SortableBuckets) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 
 // NewMultiBucketClient returns a new MultiBucket client
+// TODO dont' take configs but take a slice of PeriodBuckets
 func NewMultiBucketClient(cfg *MultiBucketConfig, name string, logger log.Logger) (*MultiBuckets, error) {
 
 	bkts := make([]PeriodBucket, 0, len(cfg.Endpoints))

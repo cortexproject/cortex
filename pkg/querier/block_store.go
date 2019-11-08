@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"github.com/alecthomas/units"
-	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/thanos-io/thanos/pkg/model"
@@ -109,7 +109,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			}
 
 			// Bucket with the user wrapper
-			userBkt := &ingester.Bucket{
+			userBkt := &backend.UserBucket{
 				UserID: user,
 				Bucket: bkt,
 			}

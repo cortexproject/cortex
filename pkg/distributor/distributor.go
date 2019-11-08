@@ -144,6 +144,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
+// Validate config and returns error on failure
+func (cfg *Config) Validate() error {
+	return cfg.HATrackerConfig.Validate()
+}
+
 // New constructs a new Distributor
 func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ring ring.ReadRing) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {

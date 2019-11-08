@@ -134,6 +134,9 @@ func (c *Config) Validate() error {
 	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
+	if err := c.Distributor.Validate(); err != nil {
+		return errors.Wrap(err, "invalid distributor config")
+	}
 	return nil
 }
 

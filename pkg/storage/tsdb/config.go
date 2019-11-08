@@ -11,8 +11,9 @@ import (
 
 // Constants for the config values
 const (
-	BackendS3  = "s3"
-	BackendGCS = "gcs"
+	BackendS3      = "s3"
+	BackendGCS     = "gcs"
+	BackendMultiS3 = "multiS3"
 )
 
 // Validation errors
@@ -30,13 +31,15 @@ type Config struct {
 	Backend      string        `yaml:"backend"`
 
 	// Backends
-	S3  s3.Config  `yaml:"s3"`
-	GCS gcs.Config `yaml:"gcs"`
+	S3      s3.Config            `yaml:"s3"`
+	MultiS3 s3.MultiBucketConfig `yaml:"s3_multi"`
+	GCS     gcs.Config           `yaml:"gcs"`
 }
 
 // RegisterFlags registers the TSDB flags
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
+	cfg.MultiS3.RegisterFlags(f)
 
 	f.StringVar(&cfg.Dir, "experimental.tsdb.dir", "tsdb", "directory to place all TSDB's into")
 	f.StringVar(&cfg.SyncDir, "experimental.tsdb.sync-dir", "tsdb-sync", "directory to place synced tsdb indicies")

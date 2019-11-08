@@ -52,7 +52,9 @@ func (s SortableBuckets) Less(i, j int) bool {
 func (s SortableBuckets) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 
 // NewMultiBucketClient returns a new MultiBucket client
-func NewMultiBucketClient(cfg MultiBucketConfig, name string, logger log.Logger) (*MultiBuckets, error) {
+func NewMultiBucketClient(cfg *MultiBucketConfig, name string, logger log.Logger) (*MultiBuckets, error) {
+	for i := range cfg.Endpoints {
+	}
 }
 
 // NewPeriodBuckets returns a slice of period buckets

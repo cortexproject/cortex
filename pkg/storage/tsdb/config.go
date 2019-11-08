@@ -30,10 +30,12 @@ type Config struct {
 	ShipInterval time.Duration `yaml:"ship_interval"`
 	Backend      string        `yaml:"backend"`
 
+	// Multi Bucket option
+	MultiS3 backend.MultiBucketConfig `yaml:"s3_multi"`
+
 	// Backends
-	S3      s3.Config            `yaml:"s3"`
-	MultiS3 s3.MultiBucketConfig `yaml:"s3_multi"`
-	GCS     gcs.Config           `yaml:"gcs"`
+	S3  s3.Config  `yaml:"s3"`
+	GCS gcs.Config `yaml:"gcs"`
 }
 
 // RegisterFlags registers the TSDB flags

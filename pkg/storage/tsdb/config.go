@@ -5,15 +5,15 @@ import (
 	"flag"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 )
 
 // Constants for the config values
 const (
-	BackendS3      = "s3"
-	BackendGCS     = "gcs"
-	BackendMultiS3 = "multiS3"
+	BackendS3  = "s3"
+	BackendGCS = "gcs"
 )
 
 // Validation errors

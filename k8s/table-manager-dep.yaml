@@ -17,10 +17,13 @@ spec:
           args:
             - -target=table-manager
             - -server.http-listen-port=80
-            - -dynamodb.original-table-name=cortex
-            - -dynamodb.url=dynamodb://user:pass@dynamodb.default.svc.cluster.local:8000
-            - -dynamodb.periodic-table.prefix=cortex_weekly_
-            - -dynamodb.periodic-table.from=2017-01-06
-            - -dynamodb.chunk-table.from=2017-04-17
+            - -config-yaml=/etc/cortex/schema.yaml
           ports:
             - containerPort: 80
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/cortex
+      volumes:
+        - name: config-volume
+          configMap:
+            name: schema

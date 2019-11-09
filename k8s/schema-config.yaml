@@ -1,0 +1,16 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: schema
+data:
+  schema.yaml: |-
+    configs:
+      - from: "2019-11-01" # Update this to the date at which you will start sending data
+        store: cassandra
+        schema: v9
+        index:
+          prefix: cortex_index_
+          period: 168h0m0s
+        chunks:
+          prefix: cortex_chunks_
+          period: 168h0m0s

@@ -11,16 +11,16 @@ spec:
         name: query-frontend
     spec:
       containers:
-      - name: query-frontend
-        image: quay.io/cortexproject/cortex
-        imagePullPolicy: IfNotPresent
-        args:
-        - -target=query-frontend
-        - -log.level=debug
-        - -server.http-listen-port=80
-        - -server.grpc-listen-port=9095
-        ports:
-        - containerPort: 9095
-          name: grpc
-        - containerPort: 80
-          name: http
+        - name: query-frontend
+          image: quay.io/cortexproject/cortex
+          imagePullPolicy: IfNotPresent
+          args:
+            - -target=query-frontend
+            - -log.level=debug
+            - -server.http-listen-port=80
+            - -server.grpc-listen-port=9095
+          ports:
+            - containerPort: 9095
+              name: grpc
+            - containerPort: 80
+              name: http

@@ -5,7 +5,7 @@ metadata:
   name: consul
 spec:
   ports:
-  - name: http
-    port: 8500
+    - name: http
+      port: 8500
   selector:
     name: consul

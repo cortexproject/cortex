@@ -3,16 +3,16 @@ kind: ClusterRole
 metadata:
   name: retrieval
 rules:
-- apiGroups: [""]
-  resources:
-  - nodes
-  - nodes/proxy
-  - services
-  - endpoints
-  - pods
-  verbs: ["get", "list", "watch"]
-- nonResourceURLs: ["/metrics"]
-  verbs: ["get"]
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - services
+      - endpoints
+      - pods
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -29,9 +29,9 @@ roleRef:
   kind: ClusterRole
   name: retrieval
 subjects:
-- kind: ServiceAccount
-  name: retrieval
-  namespace: default
+  - kind: ServiceAccount
+    name: retrieval
+    namespace: default
 ---
 apiVersion: extensions/v1beta1
 kind: Deployment
@@ -46,16 +46,16 @@ spec:
     spec:
       serviceAccountName: retrieval
       containers:
-      - name: retrieval
-        image: prom/prometheus:v2.8.0
-        imagePullPolicy: IfNotPresent
-        args:
-        - --config.file=/etc/prometheus/prometheus.yml
-        ports:
-        - containerPort: 9090
-        volumeMounts:
-        - name: config-volume
-          mountPath: /etc/prometheus
+        - name: retrieval
+          image: prom/prometheus:v2.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/prometheus
       volumes:
         - name: config-volume
           configMap:

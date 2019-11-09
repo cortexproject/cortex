@@ -11,24 +11,24 @@ spec:
         name: consul
     spec:
       containers:
-      - name: consul
-        image: consul:0.7.1
-        imagePullPolicy: IfNotPresent
-        args:
-        - agent
-        - -ui
-        - -server
-        - -client=0.0.0.0
-        - -bootstrap
-        env:
-        - name: CHECKPOINT_DISABLE
-          value: "1"
-        ports:
-        - name: server-noscrape
-          containerPort: 8300
-        - name: serf-noscrape
-          containerPort: 8301
-        - name: client-noscrape
-          containerPort: 8400
-        - name: http-noscrape
-          containerPort: 8500
+        - name: consul
+          image: consul:0.7.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - agent
+            - -ui
+            - -server
+            - -client=0.0.0.0
+            - -bootstrap
+          env:
+            - name: CHECKPOINT_DISABLE
+              value: "1"
+          ports:
+            - name: server-noscrape
+              containerPort: 8300
+            - name: serf-noscrape
+              containerPort: 8301
+            - name: client-noscrape
+              containerPort: 8400
+            - name: http-noscrape
+              containerPort: 8500

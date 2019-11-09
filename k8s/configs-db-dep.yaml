@@ -14,11 +14,11 @@ spec:
         prometheus.io.scrape: "false"
     spec:
       containers:
-      - name: configs-db
-        image: postgres:9.6
-        imagePullPolicy: IfNotPresent
-        env:
-          - name: POSTGRES_DB
-            value: configs
-        ports:
-        - containerPort: 5432
+        - name: configs-db
+          image: postgres:9.6
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_DB
+              value: configs
+          ports:
+            - containerPort: 5432

@@ -13,9 +13,9 @@ spec:
         prometheus.io.scrape: "false"
     spec:
       containers:
-      - name: dynamodb
-        image: amazon/dynamodb-local:1.11.477
-        imagePullPolicy: IfNotPresent
-        args: ['-jar', 'DynamoDBLocal.jar', '-inMemory', '-sharedDb']
-        ports:
-        - containerPort: 8000
+        - name: dynamodb
+          image: amazon/dynamodb-local:1.11.477
+          imagePullPolicy: IfNotPresent
+          args: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+          ports:
+            - containerPort: 8000

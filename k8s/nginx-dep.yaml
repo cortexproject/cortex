@@ -13,15 +13,15 @@ spec:
         prometheus.io.scrape: "false"
     spec:
       containers:
-      - name: nginx
-        image: nginx
-        imagePullPolicy: IfNotPresent
-        ports:
-        - name: http
-          containerPort: 80
-        volumeMounts:
-        - name: config-volume
-          mountPath: /etc/nginx
+        - name: nginx
+          image: nginx
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/nginx
       volumes:
         - name: config-volume
           configMap:

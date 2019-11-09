@@ -6,8 +6,8 @@ metadata:
 spec:
   type: NodePort
   ports:
-  - name: http
-    port: 80
-    nodePort: 30080
+    - name: http
+      port: 80
+      nodePort: 30080
   selector:
     name: nginx

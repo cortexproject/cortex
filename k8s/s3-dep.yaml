@@ -13,8 +13,8 @@ spec:
         prometheus.io.scrape: "false"
     spec:
       containers:
-      - name: s3
-        image: lphoward/fake-s3
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 4569
+        - name: s3
+          image: lphoward/fake-s3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4569

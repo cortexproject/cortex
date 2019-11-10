@@ -63,8 +63,23 @@ type Alertmanager struct {
 	inhibitor  *inhibit.Inhibitor
 	stop       chan struct{}
 	wg         sync.WaitGroup
-	router     *route.Router
+	mux        *http.ServeMux
 	registry   *prometheus.Registry
+}
+
+var webReload = make(chan chan error)
+
+func init() {
+	go func() {
+		for {
+			select {
+			// Since this is not a "normal" Alertmanager which reads its config
+			// from disk, we just ignore web-based reload signals. Config updates are
+			// only applied externally via ApplyConfig().
+			case <-webReload:
+			}
+		}
+	}()
 }
 
 // New creates a new Alertmanager.
@@ -140,24 +155,10 @@ func New(cfg *Config) (*Alertmanager, error) {
 		return nil, fmt.Errorf("failed to create api: %v", err)
 	}
 
-	am.router = route.New()
+	router := route.New().WithPrefix(am.cfg.ExternalURL.Path)
 
-	webReload := make(chan chan error)
-	ui.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), webReload, log.With(am.logger, "component", "ui"))
-	am.api.Register(am.router.WithPrefix(am.cfg.ExternalURL.Path), "")
-
-	go func() {
-		for {
-			select {
-			// Since this is not a "normal" Alertmanager which reads its config
-			// from disk, we just ignore web-based reload signals. Config updates are
-			// only applied externally via ApplyConfig().
-			case <-webReload:
-			case <-am.stop:
-				return
-			}
-		}
-	}()
+	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
+	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
 
 	return am, nil
 }
@@ -234,11 +235,6 @@ func (am *Alertmanager) Stop() {
 	am.alerts.Close()
 	close(am.stop)
 	am.wg.Wait()
-}
-
-// ServeHTTP serves the Alertmanager's web UI and API.
-func (am *Alertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	am.router.ServeHTTP(w, req)
 }
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a

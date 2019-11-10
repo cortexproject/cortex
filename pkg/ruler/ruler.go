@@ -72,6 +72,8 @@ type Config struct {
 	// How long to wait between refreshing the list of alertmanagers based on
 	// DNS service discovery.
 	AlertmanagerRefreshInterval time.Duration
+	// Enables the ruler notifier to use the alertmananger V2 API
+	AlertmanangerEnableV2API bool
 
 	// Capacity of the queue for notifications to be sent to the Alertmanager.
 	NotificationQueueCapacity int
@@ -98,6 +100,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "URL of the Alertmanager to send notifications to.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover alertmanager hosts.")
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing alertmanager hosts.")
+	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", false, "If enabled requests to alertmanager will utilize the V2 API.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
 	f.DurationVar(&cfg.GroupTimeout, "ruler.group-timeout", 10*time.Second, "Timeout for rule group evaluation, including sending result to ingester")
@@ -160,6 +163,8 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		if err != nil {
 			return nil, err
 		}
+
+		ruler.lifecycler.Start()
 
 		ruler.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig, "ruler")
 		if err != nil {

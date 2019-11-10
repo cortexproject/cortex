@@ -152,7 +152,7 @@ func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
 
-	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled == true {
+	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.wait.Add(1)
 		go m.bucketRetentionLoop()
 	}
@@ -217,7 +217,7 @@ func (m *TableManager) bucketRetentionLoop() {
 // not and update those that need it.  It is exposed for testing.
 func (m *TableManager) SyncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
-	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", len(expected))
+	level.Info(util.Logger).Log("msg", "synching tables", "expected_tables", len(expected))
 
 	toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, expected)
 	if err != nil {

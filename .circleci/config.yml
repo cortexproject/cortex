@@ -3,7 +3,7 @@ version: 2.1
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: cortexproject/build-image:master-114312d34
+    - image: cortexproject/build-image:master-94ba16ade
   working_directory: /go/src/github.com/cortexproject/cortex
 
 workflows:
@@ -89,7 +89,7 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:master-114312d34 configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:master-94ba16ade configs-integration-test
     - run:
         name: Load Images
         command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images

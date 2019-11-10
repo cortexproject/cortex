@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/value"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -103,7 +104,7 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		createdChunks.Inc()
 	}
 
-	chunks, err := s.head().add(v)
+	newChunk, err := s.head().add(v)
 	if err != nil {
 		return err
 	}
@@ -111,18 +112,13 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	// If we get a single chunk result, then just replace the head chunk with it
 	// (no need to update first/last time).  Otherwise, we'll need to update first
 	// and last time.
-	if len(chunks) == 1 {
-		s.head().C = chunks[0]
-	} else {
-		s.chunkDescs = s.chunkDescs[:len(s.chunkDescs)-1]
-		for _, c := range chunks {
-			first, last, err := firstAndLastTimes(c)
-			if err != nil {
-				return err
-			}
-			s.chunkDescs = append(s.chunkDescs, newDesc(c, first, last))
-			createdChunks.Inc()
+	if newChunk != nil {
+		first, last, err := firstAndLastTimes(newChunk)
+		if err != nil {
+			return err
 		}
+		s.chunkDescs = append(s.chunkDescs, newDesc(newChunk, first, last))
+		createdChunks.Inc()
 	}
 
 	s.lastTime = v.Timestamp
@@ -159,6 +155,19 @@ func (s *memorySeries) closeHead() {
 // series has no chunk descriptors.
 func (s *memorySeries) firstTime() model.Time {
 	return s.chunkDescs[0].FirstTime
+}
+
+// Returns time of oldest chunk in the series, that isn't flushed. If there are
+// no chunks, or all chunks are flushed, returns 0.
+// The caller must have locked the fingerprint of the memorySeries.
+func (s *memorySeries) firstUnflushedChunkTime() model.Time {
+	for _, c := range s.chunkDescs {
+		if !c.flushed {
+			return c.FirstTime
+		}
+	}
+
+	return 0
 }
 
 // head returns a pointer to the head chunk descriptor. The caller must have
@@ -223,6 +232,10 @@ func (s *memorySeries) setChunks(descs []*desc) error {
 	return nil
 }
 
+func (s *memorySeries) isStale() bool {
+	return s.lastSampleValueSet && value.IsStaleNaN(float64(s.lastSampleValue))
+}
+
 type desc struct {
 	C          encoding.Chunk // nil if chunk is evicted.
 	FirstTime  model.Time     // Timestamp of first sample. Populated at creation. Immutable.
@@ -243,13 +256,13 @@ func newDesc(c encoding.Chunk, firstTime model.Time, lastTime model.Time) *desc 
 // Add adds a sample pair to the underlying chunk. For safe concurrent access,
 // The chunk must be pinned, and the caller must have locked the fingerprint of
 // the series.
-func (d *desc) add(s model.SamplePair) ([]encoding.Chunk, error) {
+func (d *desc) add(s model.SamplePair) (encoding.Chunk, error) {
 	cs, err := d.C.Add(s)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(cs) == 1 {
+	if cs == nil {
 		d.LastTime = s.Timestamp // sample was added to this chunk
 		d.LastUpdate = model.Now()
 	}

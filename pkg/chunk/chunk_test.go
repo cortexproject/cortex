@@ -36,11 +36,13 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.En
 	c, _ := encoding.NewForEncoding(enc)
 	for i := 0; i < samples; i++ {
 		t := time.Duration(i) * 15 * time.Second
-		cs, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0})
+		nc, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0})
 		if err != nil {
 			panic(err)
 		}
-		c = cs[0]
+		if nc != nil {
+			panic("returned chunk was not nil")
+		}
 	}
 	chunk := NewChunk(
 		userID,
@@ -127,13 +129,6 @@ func TestChunkCodec(t *testing.T) {
 }
 
 const fixedTimestamp = model.Time(1557654321000)
-
-func encodeForCompatibilityTest(t *testing.T) {
-	dummy := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.Bigchunk, 1)
-	encoded, err := dummy.Encoded()
-	require.NoError(t, err)
-	fmt.Printf("%q\n%q\n", dummy.ExternalKey(), encoded)
-}
 
 func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
 	// Chunk encoded using code at commit b1777a50ab19

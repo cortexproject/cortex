@@ -51,3 +51,7 @@ func (m metrics) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		return nil
 	})
 }
+
+func (m metrics) Stop() {
+	m.c.Stop()
+}

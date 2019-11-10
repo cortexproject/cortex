@@ -10,7 +10,9 @@ Our goal is to provide a new minor release every 4 weeks. This is a new process 
 |----------------|--------------------------------------------|---------------------------------------------|
 | v0.1.0         | 2019-07-31                                 | Chris Marchbanks (GitHub: @csmarchbanks)    |
 | v0.2.0         | 2019-08-28                                 | Goutham Veeramachaneni (Github: @gouthamve) |
-| v0.3.0         | 2019-10-09                                 | **searching for volunteer**                 |
+| v0.3.0         | 2019-10-09                                 | Bryan Boreham (@bboreham)                   |
+| v0.4.0         | 2019-11-13                                 | Tom Wilkie (@tomwilkie)                     |
+| v0.5.0         | 2019-12-11                                 | **searching for volunteer**                 |
 
 ## Release shepherd responsibilities
 
@@ -38,6 +40,8 @@ If a bug fix got accidentally merged into master after non-bug-fix changes in ma
 Maintaining the release branches for older minor releases happens on a best effort basis.
 
 ### Prepare your release
+
+Put the new version number into the file VERSION.
 
 For a patch release, work in the branch of the minor release you want to patch.
 

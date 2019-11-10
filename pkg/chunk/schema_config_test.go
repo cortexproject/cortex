@@ -1,11 +1,11 @@
 package chunk
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +34,12 @@ func TestHourlyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(0),
 			},
-			[]Bucket{},
+			[]Bucket{{
+				from:      0,
+				through:   0,
+				tableName: "table",
+				hashKey:   "0:0",
+			}},
 		},
 		{
 			"30 minute window",
@@ -60,6 +65,11 @@ func TestHourlyBuckets(t *testing.T) {
 				through:   3600 * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:0",
+			}, {
+				from:      0,
+				through:   0, // ms
+				tableName: "table",
+				hashKey:   "0:1",
 			}},
 		},
 		{
@@ -88,9 +98,8 @@ func TestHourlyBuckets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := cfg.hourlyBuckets(tt.args.from, tt.args.through, userID); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SchemaConfig.dailyBuckets() = %v, want %v", got, tt.want)
-			}
+			got := cfg.hourlyBuckets(tt.args.from, tt.args.through, userID)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -120,7 +129,12 @@ func TestDailyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(0),
 			},
-			[]Bucket{},
+			[]Bucket{{
+				from:      0,
+				through:   0,
+				tableName: "table",
+				hashKey:   "0:d0",
+			}},
 		},
 		{
 			"6 hour window",
@@ -146,6 +160,11 @@ func TestDailyBuckets(t *testing.T) {
 				through:   (24 * 3600) * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:d0",
+			}, {
+				from:      0,
+				through:   0,
+				tableName: "table",
+				hashKey:   "0:d1",
 			}},
 		},
 		{
@@ -174,9 +193,8 @@ func TestDailyBuckets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := cfg.dailyBuckets(tt.args.from, tt.args.through, userID); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SchemaConfig.dailyBuckets() = %v, want %v", got, tt.want)
-			}
+			got := cfg.dailyBuckets(tt.args.from, tt.args.through, userID)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -267,6 +285,119 @@ func TestChunkTableFor(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, tc.chunkTable, table)
+	}
+}
+
+func TestSchemaConfig_Validate(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		config   *SchemaConfig
+		expected error
+	}{
+		"should pass the default config (ie. used cortex runs with a target not requiring the schema config)": {
+			config:   &SchemaConfig{},
+			expected: nil,
+		},
+		"should fail on invalid schema version": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{Schema: "v0"},
+				},
+			},
+			expected: errInvalidSchemaVersion,
+		},
+		"should fail on index table period not multiple of 1h for schema v1": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v1",
+						IndexTables: PeriodicTableConfig{Period: 30 * time.Minute},
+					},
+				},
+			},
+			expected: errInvalidTablePeriod,
+		},
+		"should fail on chunk table period not multiple of 1h for schema v1": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v1",
+						IndexTables: PeriodicTableConfig{Period: 6 * time.Hour},
+						ChunkTables: PeriodicTableConfig{Period: 30 * time.Minute},
+					},
+				},
+			},
+			expected: errInvalidTablePeriod,
+		},
+		"should pass on index and chunk table period multiple of 1h for schema v1": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v1",
+						IndexTables: PeriodicTableConfig{Period: 6 * time.Hour},
+						ChunkTables: PeriodicTableConfig{Period: 6 * time.Hour},
+					},
+				},
+			},
+			expected: nil,
+		},
+		"should fail on index table period not multiple of 24h for schema v10": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v10",
+						IndexTables: PeriodicTableConfig{Period: 6 * time.Hour},
+					},
+				},
+			},
+			expected: errInvalidTablePeriod,
+		},
+		"should fail on chunk table period not multiple of 24h for schema v10": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v10",
+						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
+						ChunkTables: PeriodicTableConfig{Period: 6 * time.Hour},
+					},
+				},
+			},
+			expected: errInvalidTablePeriod,
+		},
+		"should pass on index and chunk table period multiple of 24h for schema v10": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v10",
+						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
+						ChunkTables: PeriodicTableConfig{Period: 24 * time.Hour},
+					},
+				},
+			},
+			expected: nil,
+		},
+		"should pass on index and chunk table period set to zero (no period tables)": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v10",
+						IndexTables: PeriodicTableConfig{Period: 0},
+						ChunkTables: PeriodicTableConfig{Period: 0},
+					},
+				},
+			},
+			expected: nil,
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			actual := testData.config.Validate()
+			assert.Equal(t, testData.expected, actual)
+		})
 	}
 }
 

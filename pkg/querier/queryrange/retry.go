@@ -35,7 +35,7 @@ func NewRetryMiddleware(log log.Logger, maxRetries int) Middleware {
 	})
 }
 
-func (r retry) Do(ctx context.Context, req *Request) (*APIResponse, error) {
+func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 	tries := 0
 	defer func() { retries.Observe(float64(tries)) }()
 

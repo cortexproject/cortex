@@ -2,9 +2,11 @@ package kv
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -84,5 +86,134 @@ func TestNilCAS(t *testing.T) {
 		value, err := client.Get(ctx, key)
 		require.NoError(t, err)
 		require.EqualValues(t, "0", value)
+	})
+}
+
+func TestWatchKey(t *testing.T) {
+	const key = "test"
+	const max = 100
+	const sleep = 10 * time.Millisecond
+
+	withFixtures(t, func(t *testing.T, client Client) {
+		ch := make(chan struct{})
+		go func() {
+			defer close(ch)
+			for i := 0; i < max; i++ {
+				// Start with sleeping, so that watching client see empty KV store at the beginning.
+				time.Sleep(sleep)
+
+				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+					return fmt.Sprintf("%d", i), true, nil
+				})
+				require.NoError(t, err)
+			}
+		}()
+
+		observedValues := map[string]time.Time{}
+		ctx, cancel := context.WithTimeout(context.Background(), 1.5*max*sleep)
+		defer cancel()
+
+		client.WatchKey(ctx, key, func(i interface{}) bool {
+			observedValues[i.(string)] = time.Now()
+			return true
+		})
+
+		// wait until updater finishes (should be done by now)
+		<-ch
+
+		// We should have seen some values, observed at increasing times
+		count := 0
+		lastVal := ""
+		lastTime := time.Time{}
+		for i := 0; i < max; i++ {
+			val := fmt.Sprintf("%d", i)
+			ot, ok := observedValues[val]
+			if ok {
+				count++
+				if lastTime.After(ot) {
+					t.Errorf("value %s observed at %s, before previous value %s observed at %s", val, ot, lastVal, lastTime)
+				}
+			}
+		}
+
+		const expectedFactor = 0.9
+		if count < expectedFactor*max {
+			t.Errorf("expected at least %.0f%% observed values, got %.0f%% (observed count: %d)", 100*expectedFactor, 100*float64(count)/max, count)
+		}
+	})
+}
+
+func TestWatchPrefix(t *testing.T) {
+	withFixtures(t, func(t *testing.T, client Client) {
+		const prefix = "test/"
+		const prefix2 = "ignore/"
+
+		const max = 100
+		const sleep = time.Millisecond * 10
+		const totalTestTimeout = 3 * max * sleep
+
+		observedKeysCh := make(chan string, max)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			// start watching before we even start generating values. values will be buffered
+			client.WatchPrefix(ctx, prefix, func(key string, val interface{}) bool {
+				observedKeysCh <- key
+				return true
+			})
+		}()
+
+		gen := func(p string) {
+			for i := 0; i < max && ctx.Err() == nil; i++ {
+				// Start with sleeping, so that watching client can see empty KV store at the beginning.
+				time.Sleep(sleep)
+
+				key := fmt.Sprintf("%s%d", p, i)
+				err := client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+					return key, true, nil
+				})
+
+				if ctx.Err() != nil {
+					break
+				}
+				require.NoError(t, err)
+			}
+		}
+
+		go gen(prefix)
+		go gen(prefix2) // we don't want to see these keys reported
+
+		observedKeys := map[string]int{}
+
+		totalDeadline := time.After(totalTestTimeout)
+
+		for watching := true; watching; {
+			select {
+			case <-totalDeadline:
+				watching = false
+			case key := <-observedKeysCh:
+				observedKeys[key]++
+				if len(observedKeys) == max {
+					watching = false
+				}
+			}
+		}
+
+		cancel() // stop all goroutines
+
+		// verify that each key was reported once, and keys outside prefix were not reported
+		for i := 0; i < max; i++ {
+			key := fmt.Sprintf("%s%d", prefix, i)
+
+			if observedKeys[key] != 1 {
+				t.Errorf("key %s has incorrect value %d", key, observedKeys[key])
+			}
+			delete(observedKeys, key)
+		}
+
+		if len(observedKeys) > 0 {
+			t.Errorf("unexpected keys reported: %v", observedKeys)
+		}
 	})
 }

@@ -83,6 +83,10 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    Use these flags to specify the location and timeout of the memcached cluster used to cache query results.
 
+- `-redis.{endpoint, timeout}`
+
+   Use these flags to specify the location and timeout of the Redis service used to cache query results.
+
 ## Distributor
 
 - `-distributor.shard-by-all-labels`
@@ -138,6 +142,39 @@ prefix these flags with `distributor.ha-tracker.`
 - `etcd.max-retries`
    The maximum number of retries to do for failed ops.
 
+#### memberlist (EXPERIMENTAL)
+
+Flags for configuring KV store based on memberlist library. This feature is experimental, please don't use it yet.
+
+- `memberlist.nodename`
+   Name of the node in memberlist cluster. Defaults to hostname.
+- `memberlist.retransmit-factor`
+   Multiplication factor used when sending out messages (factor * log(N+1)). If not set, default value is used.
+- `memberlist.join`
+   Other cluster members to join. Can be specified multiple times.
+- `memberlist.abort-if-join-fails`
+   If this node fails to join memberlist cluster, abort.
+- `memberlist.left-ingesters-timeout`
+   How long to keep LEFT ingesters in the ring. Note: this is only used for gossiping, LEFT ingesters are otherwise invisible.
+- `memberlist.leave-timeout`
+   Timeout for leaving memberlist cluster.
+- `memberlist.gossip-interval`
+   How often to gossip with other cluster members. Uses memberlist LAN defaults if 0.
+- `memberlist.gossip-nodes`
+   How many nodes to gossip with in each gossip interval. Uses memberlist LAN defaults if 0.
+- `memberlist.pullpush-interval`
+   How often to use pull/push sync. Uses memberlist LAN defaults if 0.
+- `memberlist.bind-addr`
+   IP address to listen on for gossip messages. Multiple addresses may be specified. Defaults to 0.0.0.0.
+- `memberlist.bind-port`
+   Port to listen on for gossip messages. Defaults to 7946.
+- `memberlist.packet-dial-timeout`
+   Timeout used when connecting to other nodes to send packet.
+- `memberlist.packet-write-timeout`
+   Timeout for writing 'packet' data.
+- `memberlist.transport-debug`
+   Log debug transport messages. Note: global log.level must be at debug level as well.
+
 ### HA Tracker
 
 HA tracking has two of it's own flags:
@@ -171,6 +208,14 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
   The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created. (default 12h)
 
+- `-ingester.max-chunk-idle`
+  
+  If a series doesn't receive a sample for this duration, it is flushed and removed from memory.
+
+- `-ingester.max-stale-chunk-idle`
+  
+  If a series receives a [staleness marker](https://www.robustperception.io/staleness-and-promql), then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don't want a single failed scrape to cause a chunk flush. 
+
 - `-ingester.chunk-age-jitter`
 
   To reduce load on the database exactly 12 hours after starting, the age limit is reduced by a varying amount up to this. (default 20m)
@@ -183,9 +228,9 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    How long to wait in PENDING state during the [hand-over process](ingester-handover.md). (default 0s)
 
-- `-ingester.ingester.max-transfer-retries`
+- `-ingester.max-transfer-retries`
 
-   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](ingester-handover.md). Each attempt takes a second or so. (default 10)
+   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](ingester-handover.md). Each attempt takes a second or so. Negative value or zero disables hand-over process completely. (default 10)
 
 - `-ingester.normalise-tokens`
 
@@ -268,6 +313,13 @@ Valid fields are (with their corresponding flags for default values):
   Enforced by the ingesters; limits the number of active series a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of series a metric can have 'globally', as all series for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
 
   An active series is a series to which a sample has been written in the last `-ingester.max-chunk-idle` duration, which defaults to 5 minutes.
+
+- `max_global_series_per_user` / `-ingester.max-global-series-per-user`
+- `max_global_series_per_metric` / `-ingester.max-global-series-per-metric`
+
+   Like `max_series_per_user` and `max_series_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
+
+   Requires `-distributor.replication-factor` and `-distributor.shard-by-all-labels` set for the ingesters too.
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
 - `max_samples_per_query` / `-ingester.max-samples-per-query`

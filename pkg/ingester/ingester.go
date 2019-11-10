@@ -22,6 +22,7 @@ import (
 	cortex_chunk "github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -30,10 +31,6 @@ import (
 )
 
 const (
-	// Reasons to discard samples.
-	outOfOrderTimestamp = "timestamp_out_of_order"
-	duplicateSample     = "multiple_values_for_timestamp"
-
 	// Number of timeseries to return in each batch of a QueryStream.
 	queryStreamBatchSize = 128
 )
@@ -106,13 +103,14 @@ type Config struct {
 	WALConfig        WALConfig
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
-	// Config for transferring chunks.
+	// Config for transferring chunks. Zero or negative = no retries.
 	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
 
 	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration
 	RetainPeriod      time.Duration
 	MaxChunkIdle      time.Duration
+	MaxStaleChunkIdle time.Duration
 	FlushOpTimeout    time.Duration
 	MaxChunkAge       time.Duration
 	ChunkAgeJitter    time.Duration
@@ -120,6 +118,14 @@ type Config struct {
 	SpreadFlushes     bool
 
 	RateUpdatePeriod time.Duration
+
+	// Use tsdb block storage
+	TSDBEnabled bool        `yaml:"-"`
+	TSDBConfig  tsdb.Config `yaml:"-"`
+
+	// Injected at runtime and read from the distributor config, required
+	// to accurately apply global limits.
+	ShardByAllLabels bool `yaml:"-"`
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
@@ -130,11 +136,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 	cfg.WALConfig.RegisterFlags(f)
 
-	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing.")
+	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. Negative value or zero disables hand-over.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.retain-period", 5*time.Minute, "Period chunks will remain in memory after flushing.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 5*time.Minute, "Maximum chunk idle time before flushing.")
+	f.DurationVar(&cfg.MaxStaleChunkIdle, "ingester.max-stale-chunk-idle", 0, "Maximum chunk idle time for chunks terminating in stale markers before flushing. 0 disables it and a stale series is not flushed until the max-chunk-idle timeout is reached.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
 	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 20*time.Minute, "Range of time to subtract from MaxChunkAge to spread out flushes")
 	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", false, "If true, spread series flushes across the whole period of MaxChunkAge")
@@ -153,6 +160,7 @@ type Ingester struct {
 	chunkStore ChunkStore
 	lifecycler *ring.Lifecycler
 	limits     *validation.Overrides
+	limiter    *SeriesLimiter
 
 	quit chan struct{}
 	done sync.WaitGroup
@@ -170,6 +178,9 @@ type Ingester struct {
 
 	// Hook for injecting behaviour from tests.
 	preFlushUserSeries func()
+
+	// Prometheus block storage
+	TSDBState TSDBState
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -183,18 +194,18 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
+	if cfg.TSDBEnabled {
+		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
+	}
+
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-
-		metrics: newIngesterMetrics(registerer),
-
-		limits:     limits,
-		chunkStore: chunkStore,
-		userStates: newUserStates(limits, cfg),
-
-		quit:        make(chan struct{}),
-		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
+		metrics:      newIngesterMetrics(registerer),
+		limits:       limits,
+		chunkStore:   chunkStore,
+		quit:         make(chan struct{}),
+		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 	}
 
 	var err error
@@ -209,6 +220,13 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	if err != nil {
 		return nil, err
 	}
+
+	// Init the limter and instantiate the user states which depend on it
+	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
+	i.userStates = newUserStates(i.limiter, cfg)
+
+	// Now that user states have been created, we can start the lifecycler
+	i.lifecycler.Start()
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
 	for j := 0; j < cfg.ConcurrentFlushes; j++ {
@@ -266,6 +284,10 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2Push(ctx, req)
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
@@ -382,6 +404,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2Query(ctx, req)
+	}
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -441,6 +467,10 @@ func (i *Ingester) Query(ctx old_ctx.Context, req *client.QueryRequest) (*client
 
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
+	if i.cfg.TSDBEnabled {
+		return fmt.Errorf("Unimplemented for V2")
+	}
+
 	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
 
 	from, through, matchers, err := client.FromQueryRequest(req)
@@ -513,6 +543,10 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2LabelValues(ctx, req)
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, ok, err := i.userStates.getViaContext(ctx)
@@ -523,15 +557,17 @@ func (i *Ingester) LabelValues(ctx old_ctx.Context, req *client.LabelValuesReque
 	}
 
 	resp := &client.LabelValuesResponse{}
-	for _, v := range state.index.LabelValues(req.LabelName) {
-		resp.LabelValues = append(resp.LabelValues, v)
-	}
+	resp.LabelValues = append(resp.LabelValues, state.index.LabelValues(req.LabelName)...)
 
 	return resp, nil
 }
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2LabelNames(ctx, req)
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, ok, err := i.userStates.getViaContext(ctx)
@@ -542,9 +578,7 @@ func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest
 	}
 
 	resp := &client.LabelNamesResponse{}
-	for _, v := range state.index.LabelNames() {
-		resp.LabelNames = append(resp.LabelNames, v)
-	}
+	resp.LabelNames = append(resp.LabelNames, state.index.LabelNames()...)
 
 	return resp, nil
 }

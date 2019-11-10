@@ -2,13 +2,13 @@ package test
 
 import (
 	"reflect"
-	"runtime"
 	"testing"
 	"time"
 )
 
 // Poll repeatedly evaluates condition until we either timeout, or it succeeds.
 func Poll(t *testing.T, d time.Duration, want interface{}, have func() interface{}) {
+	t.Helper()
 	deadline := time.Now().Add(d)
 	for {
 		if time.Now().After(deadline) {
@@ -21,7 +21,6 @@ func Poll(t *testing.T, d time.Duration, want interface{}, have func() interface
 	}
 	h := have()
 	if !reflect.DeepEqual(want, h) {
-		_, file, line, _ := runtime.Caller(1)
-		t.Fatalf("%s:%d: %v != %v", file, line, want, h)
+		t.Fatalf("%v != %v", want, h)
 	}
 }

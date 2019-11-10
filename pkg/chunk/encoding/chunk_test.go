@@ -29,7 +29,7 @@ import (
 
 func TestLen(t *testing.T) {
 	chunks := []Chunk{}
-	for _, encoding := range []Encoding{Delta, DoubleDelta, Varbit} {
+	for _, encoding := range []Encoding{DoubleDelta, Varbit, Bigchunk} {
 		c, err := NewForEncoding(encoding)
 		if err != nil {
 			t.Fatal(err)
@@ -43,11 +43,12 @@ func TestLen(t *testing.T) {
 				t.Errorf("chunk type %s should have %d samples, had %d", c.Encoding(), i, c.Len())
 			}
 
-			cs, _ := c.Add(model.SamplePair{
+			cs, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(i),
 				Value:     model.SampleValue(i),
 			})
-			c = cs[0]
+			require.NoError(t, err)
+			require.Nil(t, cs)
 		}
 	}
 }
@@ -95,13 +96,12 @@ func mkChunk(t *testing.T, encoding Encoding, samples int) Chunk {
 	require.NoError(t, err)
 
 	for i := 0; i < samples; i++ {
-		chunks, err := chunk.Add(model.SamplePair{
+		newChunk, err := chunk.Add(model.SamplePair{
 			Timestamp: model.Time(i * step),
 			Value:     model.SampleValue(i),
 		})
 		require.NoError(t, err)
-		require.Len(t, chunks, 1)
-		chunk = chunks[0]
+		require.Nil(t, newChunk)
 	}
 
 	return chunk
@@ -131,6 +131,12 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 	require.False(t, iter.Scan())
 	require.NoError(t, iter.Err())
 
+	// Check seek works after unmarshal
+	iter = chunk.NewIterator(iter)
+	for i := 0; i < samples; i += samples / 10 {
+		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
+	}
+
 	// Check the byte representation after another Marshall is the same.
 	buf = bytes.Buffer{}
 	err = chunk.Marshal(&buf)
@@ -147,6 +153,14 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 
 	iter := chunk.NewIterator(nil)
 	for i := 0; i < samples; i += samples / 10 {
+		if i > 0 {
+			// Seek one millisecond before the actual time
+			require.True(t, iter.FindAtOrAfter(model.Time(i*step-1)), "1ms before step %d not found", i)
+			sample := iter.Value()
+			require.EqualValues(t, model.Time(i*step), sample.Timestamp)
+			require.EqualValues(t, model.SampleValue(i), sample.Value)
+		}
+		// Now seek to exactly the right time
 		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
 		sample := iter.Value()
 		require.EqualValues(t, model.Time(i*step), sample.Timestamp)
@@ -162,6 +176,8 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 		require.False(t, iter.Scan())
 		require.NoError(t, iter.Err())
 	}
+	// Check seek past the end of the chunk returns failure
+	require.False(t, iter.FindAtOrAfter(model.Time(samples*step+1)))
 }
 
 func testChunkSeekForward(t *testing.T, encoding Encoding, samples int) {

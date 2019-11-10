@@ -37,6 +37,7 @@ var schemas = []struct {
 	{"v6", true},
 	{"v9", true},
 	{"v10", true},
+	{"v11", true},
 }
 
 var stores = []struct {
@@ -416,11 +417,11 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 	}{
 		{
 			`foo`,
-			[]string{"bar", "flip", "toms"},
+			[]string{labels.MetricName, "bar", "flip", "toms"},
 		},
 		{
 			`bar`,
-			[]string{"bar", "toms"},
+			[]string{labels.MetricName, "bar", "toms"},
 		},
 	} {
 		for _, schema := range schemas {
@@ -579,10 +580,13 @@ func TestChunkStoreRandom(t *testing.T) {
 			const chunkLen = 2 * 3600 // in seconds
 			for i := 0; i < 100; i++ {
 				ts := model.TimeFromUnix(int64(i * chunkLen))
-				chunks, _ := encoding.New().Add(model.SamplePair{
+				ch := encoding.New()
+				nc, err := ch.Add(model.SamplePair{
 					Timestamp: ts,
 					Value:     model.SampleValue(float64(i)),
 				})
+				require.NoError(t, err)
+				require.Nil(t, nc)
 				chunk := NewChunk(
 					userID,
 					model.Fingerprint(1),
@@ -590,11 +594,11 @@ func TestChunkStoreRandom(t *testing.T) {
 						{Name: labels.MetricName, Value: "foo"},
 						{Name: "bar", Value: "baz"},
 					},
-					chunks[0],
+					ch,
 					ts,
-					ts.Add(chunkLen*time.Second),
+					ts.Add(chunkLen*time.Second).Add(-1*time.Second),
 				)
-				err := chunk.Encode()
+				err = chunk.Encode()
 				require.NoError(t, err)
 				err = store.Put(ctx, []Chunk{chunk})
 				require.NoError(t, err)
@@ -602,8 +606,8 @@ func TestChunkStoreRandom(t *testing.T) {
 
 			// pick two random numbers and do a query
 			for i := 0; i < 100; i++ {
-				start := rand.Int63n(100 * chunkLen)
-				end := start + rand.Int63n((100*chunkLen)-start)
+				start := rand.Int63n(99 * chunkLen)
+				end := start + 1 + rand.Int63n((99*chunkLen)-start)
 				assert.True(t, start < end)
 
 				startTime := model.TimeFromUnix(start)
@@ -644,10 +648,13 @@ func TestChunkStoreLeastRead(t *testing.T) {
 	const chunkLen = 60 // in seconds
 	for i := 0; i < 24; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		chunks, _ := encoding.New().Add(model.SamplePair{
+		ch := encoding.New()
+		nc, err := ch.Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(float64(i)),
 		})
+		require.NoError(t, err)
+		require.Nil(t, nc)
 		chunk := NewChunk(
 			userID,
 			model.Fingerprint(1),
@@ -655,12 +662,12 @@ func TestChunkStoreLeastRead(t *testing.T) {
 				{Name: labels.MetricName, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 			},
-			chunks[0],
+			ch,
 			ts,
 			ts.Add(chunkLen*time.Second),
 		)
 		t.Logf("Loop %d", i)
-		err := chunk.Encode()
+		err = chunk.Encode()
 		require.NoError(t, err)
 		err = store.Put(ctx, []Chunk{chunk})
 		require.NoError(t, err)

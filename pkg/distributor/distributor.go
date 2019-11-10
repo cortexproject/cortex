@@ -59,12 +59,6 @@ var (
 		Name:      "distributor_deduped_samples_total",
 		Help:      "The total number of deduplicated samples.",
 	}, []string{"user", "cluster"})
-	sendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "distributor_send_duration_seconds",
-		Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
-		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
-	}, []string{"method", "status_code"})
 	labelsHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "labels_per_sample",
@@ -125,6 +119,7 @@ type Config struct {
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
+	MaxRecvMsgSize      int           `yaml:"max_recv_msg_size"`
 	RemoteTimeout       time.Duration `yaml:"remote_timeout,omitempty"`
 	ExtraQueryDelay     time.Duration `yaml:"extra_queue_delay,omitempty"`
 	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period,omitempty"`
@@ -142,10 +137,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.HATrackerConfig.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
+	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
+}
+
+// Validate config and returns error on failure
+func (cfg *Config) Validate() error {
+	return cfg.HATrackerConfig.Validate()
 }
 
 // New constructs a new Distributor

@@ -1,10 +1,12 @@
 package chunk
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
 )
@@ -26,7 +28,7 @@ func TestCachingSchema(t *testing.T) {
 
 	mtime.NowForce(baseTime)
 
-	for _, tc := range []struct {
+	for i, tc := range []struct {
 		from, through time.Time
 
 		cacheableIdx int
@@ -53,23 +55,19 @@ func TestCachingSchema(t *testing.T) {
 			// Mix of both.
 			baseTime.Add(-50 * time.Hour),
 			baseTime.Add(-2 * time.Hour),
-			0,
+			-1,
 		},
 	} {
-		have, err := schema.GetReadQueriesForMetric(
-			model.TimeFromUnix(tc.from.Unix()), model.TimeFromUnix(tc.through.Unix()),
-			userID, "foo",
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			have, err := schema.GetReadQueriesForMetric(
+				model.TimeFromUnix(tc.from.Unix()), model.TimeFromUnix(tc.through.Unix()),
+				userID, "foo",
+			)
+			require.NoError(t, err)
 
-		for i := range have {
-			if i <= tc.cacheableIdx {
-				require.True(t, have[i].Immutable)
-			} else {
-				require.False(t, have[i].Immutable)
+			for i := range have {
+				assert.Equal(t, have[i].Immutable, i <= tc.cacheableIdx, i)
 			}
-		}
+		})
 	}
 }

@@ -17,35 +17,45 @@ package queryrange
 
 import (
 	"context"
+	"flag"
 	"net/http"
 	"strings"
-	"time"
 
-	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/weaveworks/common/httpgrpc"
+	"github.com/go-kit/kit/log"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
 )
 
-// Limits allows us to specify per-tenant runtime limits on the behaviour of
-// the query handling code.
-type Limits interface {
-	MaxQueryLength(string) time.Duration
-	MaxQueryParallelism(string) int
+// Config for query_range middleware chain.
+type Config struct {
+	SplitQueriesByDay    bool `yaml:"split_queries_by_day"`
+	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
+	ResultsCacheConfig   `yaml:"results_cache"`
+	CacheResults         bool `yaml:"cache_results"`
+	MaxRetries           int  `yaml:"max_retries"`
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
+	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
+	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
+	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
+	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
-type HandlerFunc func(context.Context, *Request) (*APIResponse, error)
+type HandlerFunc func(context.Context, Request) (Response, error)
 
 // Do implements Handler.
-func (q HandlerFunc) Do(ctx context.Context, req *Request) (*APIResponse, error) {
+func (q HandlerFunc) Do(ctx context.Context, req Request) (Response, error) {
 	return q(ctx, req)
 }
 
 // Handler is like http.Handle, but specifically for Prometheus query_range calls.
 type Handler interface {
-	Do(context.Context, *Request) (*APIResponse, error)
+	Do(context.Context, Request) (Response, error)
 }
 
 // MiddlewareFunc is like http.HandlerFunc, but for Middleware.
@@ -72,20 +82,50 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 	})
 }
 
+// NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
+func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, error) {
+	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
+	if cfg.AlignQueriesWithStep {
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
+	}
+	if cfg.SplitQueriesByDay {
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_day"), SplitByDayMiddleware(limits, codec))
+	}
+	if cfg.CacheResults {
+		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
+		if err != nil {
+			return nil, err
+		}
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache"), queryCacheMiddleware)
+	}
+	if cfg.MaxRetries > 0 {
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry"), NewRetryMiddleware(log, cfg.MaxRetries))
+	}
+
+	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
+		// Finally, if the user selected any query range middleware, stitch it in.
+		if len(queryRangeMiddleware) > 0 {
+			return NewRoundTripper(next, codec, queryRangeMiddleware...)
+		}
+		return next
+	}), nil
+}
+
 type roundTripper struct {
 	next    http.RoundTripper
 	handler Handler
-	limits  Limits
+	codec   Codec
 }
 
-// NewRoundTripper wraps a QueryRange Handler and allows it to send requests
-// to a http.Roundtripper.
-func NewRoundTripper(next http.RoundTripper, handler Handler, limits Limits) http.RoundTripper {
-	return roundTripper{
-		next:    next,
-		handler: handler,
-		limits:  limits,
+// NewRoundTripper merges a set of middlewares into an handler, then inject it into the `next` roundtripper
+// using the codec to translate requests and responses.
+func NewRoundTripper(next http.RoundTripper, codec Codec, middlewares ...Middleware) http.RoundTripper {
+	transport := roundTripper{
+		next:  next,
+		codec: codec,
 	}
+	transport.handler = MergeMiddlewares(middlewares...).Wrap(&transport)
+	return transport
 }
 
 func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -93,38 +133,24 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return q.next.RoundTrip(r)
 	}
 
-	request, err := parseRequest(r)
+	request, err := q.codec.DecodeRequest(r.Context(), r)
 	if err != nil {
 		return nil, err
 	}
 
-	userid, err := user.ExtractOrgID(r.Context())
-	if err != nil {
-		return nil, err
-	}
-
-	maxQueryLen := q.limits.MaxQueryLength(userid)
-	queryLen := timestamp.Time(request.End).Sub(timestamp.Time(request.Start))
-	if maxQueryLen != 0 && queryLen > maxQueryLen {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLen)
-	}
+	LogToSpan(r.Context(), request)
 
 	response, err := q.handler.Do(r.Context(), request)
 	if err != nil {
 		return nil, err
 	}
 
-	return response.toHTTPResponse(r.Context())
-}
-
-// ToRoundTripperMiddleware not quite sure what this does.
-type ToRoundTripperMiddleware struct {
-	Next http.RoundTripper
+	return q.codec.EncodeResponse(r.Context(), response)
 }
 
 // Do implements Handler.
-func (q ToRoundTripperMiddleware) Do(ctx context.Context, r *Request) (*APIResponse, error) {
-	request, err := r.toHTTPRequest(ctx)
+func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
+	request, err := q.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -133,11 +159,11 @@ func (q ToRoundTripperMiddleware) Do(ctx context.Context, r *Request) (*APIRespo
 		return nil, err
 	}
 
-	response, err := q.Next.RoundTrip(request)
+	response, err := q.next.RoundTrip(request)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	return parseResponse(ctx, response)
+	return q.codec.DecodeResponse(ctx, response)
 }

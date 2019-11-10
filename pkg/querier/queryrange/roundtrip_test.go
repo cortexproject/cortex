@@ -35,13 +35,8 @@ func TestRoundTrip(t *testing.T) {
 		host: u.Host,
 		next: http.DefaultTransport,
 	}
-	roundtripper := roundTripper{
-		next: downstream,
-		handler: ToRoundTripperMiddleware{
-			Next: downstream,
-		},
-		limits: fakeLimits{},
-	}
+
+	roundtripper := NewRoundTripper(downstream, PrometheusCodec, LimitsMiddleware(fakeLimits{}))
 
 	for i, tc := range []struct {
 		path, expectedBody string

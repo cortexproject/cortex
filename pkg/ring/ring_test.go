@@ -68,3 +68,23 @@ func generateKeys(r *rand.Rand, numTokens int, dest []uint32) {
 		dest[i] = r.Uint32()
 	}
 }
+
+func TestDoBatchZeroIngesters(t *testing.T) {
+	ctx := context.Background()
+	numKeys := 10
+	keys := make([]uint32, numKeys)
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+	generateKeys(rnd, numKeys, keys)
+	callback := func(IngesterDesc, []int) error {
+		return nil
+	}
+	cleanup := func() {
+	}
+	desc := NewDesc()
+	r := Ring{
+		name:     "ingester",
+		cfg:      Config{},
+		ringDesc: desc,
+	}
+	require.Error(t, DoBatch(ctx, &r, keys, callback, cleanup))
+}

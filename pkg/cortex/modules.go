@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -195,7 +196,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 		return
 	}
 
-	var store querier.ChunkStore
+	var store chunkstore.ChunkStore
 
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		store, err = querier.NewBlockQuerier(cfg.TSDB, prometheus.DefaultRegisterer)

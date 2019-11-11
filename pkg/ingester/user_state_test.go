@@ -64,18 +64,10 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 					func(_ context.Context, _ model.Fingerprint, s *memorySeries) error {
 						shard, _, err := astmapper.ShardFromMatchers(tc.matchers)
 						require.Nil(t, err)
-						// if expected to match a shard, make sure the correct label has been injected
+						// if expected to match a shard, make sure that it actually hashes to the correct shard
 						if shard != nil {
-							var found bool
-							for _, l := range s.metric {
-								if l.Name == astmapper.ShardLabel {
-									extracted, err := astmapper.ParseShard(l.Value)
-									require.Nil(t, err)
-									require.Equal(t, *shard, extracted)
-									found = true
-								}
-							}
-							require.True(t, found)
+							matches := matchesShard(shard, s)
+							require.True(t, matches)
 						}
 						batch++
 						return nil

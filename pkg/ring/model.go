@@ -36,7 +36,7 @@ func NewDesc() *Desc {
 }
 
 // AddIngester adds the given ingester to the ring.
-func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState, normaliseTokens bool) {
+func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
@@ -45,18 +45,17 @@ func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState
 		Addr:      addr,
 		Timestamp: time.Now().Unix(),
 		State:     state,
+		Tokens:    tokens,
 	}
 
-	if normaliseTokens {
-		ingester.Tokens = tokens
-	} else {
-		for _, token := range tokens {
-			d.Tokens = append(d.Tokens, TokenDesc{
-				Token:    token,
-				Ingester: id,
-			})
+	// delete any reference from d.Tokens (can happen if denormalized tokens for this ingester
+	// were found in the ring when joining)
+	for ix := 0; ix < len(d.Tokens); {
+		if d.Tokens[ix].Ingester == id {
+			d.Tokens = append(d.Tokens[:ix], d.Tokens[ix+1:]...)
+		} else {
+			ix++
 		}
-		sort.Sort(ByToken(d.Tokens))
 	}
 
 	d.Ingesters[id] = ingester
@@ -79,57 +78,32 @@ func (d *Desc) RemoveIngester(id string) {
 // This method assumes that Ring is in the correct state, 'from' ingester has no tokens anywhere,
 // and 'to' ingester uses either normalised or non-normalised tokens, but not both. Tokens list must
 // be sorted properly. If all of this is true, everything will be fine.
-func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
+func (d *Desc) ClaimTokens(from, to string) Tokens {
 	var result Tokens
 
-	if normaliseTokens {
-
-		// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
-		if fromDesc, found := d.Ingesters[from]; found {
-			result = fromDesc.Tokens
-			fromDesc.Tokens = nil
-			d.Ingesters[from] = fromDesc
-		}
-
-		// If we are storing the tokens in a normalise form, we need to deal with
-		// the migration from denormalised by removing the tokens from the tokens
-		// list.
-		// When all ingesters are in normalised mode, d.Tokens is empty here
-		for i := 0; i < len(d.Tokens); {
-			if d.Tokens[i].Ingester == from {
-				result = append(result, d.Tokens[i].Token)
-				d.Tokens = append(d.Tokens[:i], d.Tokens[i+1:]...)
-				continue
-			}
-			i++
-		}
-
-		ing := d.Ingesters[to]
-		ing.Tokens = result
-		d.Ingesters[to] = ing
-
-	} else {
-		// If source ingester is normalising, copy its tokens to d.Tokens, and set new owner
-		if fromDesc, found := d.Ingesters[from]; found {
-			result = fromDesc.Tokens
-			fromDesc.Tokens = nil
-			d.Ingesters[from] = fromDesc
-
-			for _, t := range result {
-				d.Tokens = append(d.Tokens, TokenDesc{Ingester: to, Token: t})
-			}
-
-			sort.Sort(ByToken(d.Tokens))
-		}
-
-		// if source was normalising, this should not find new tokens
-		for i := 0; i < len(d.Tokens); i++ {
-			if d.Tokens[i].Ingester == from {
-				d.Tokens[i].Ingester = to
-				result = append(result, d.Tokens[i].Token)
-			}
-		}
+	// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
+	if fromDesc, found := d.Ingesters[from]; found {
+		result = fromDesc.Tokens
+		fromDesc.Tokens = nil
+		d.Ingesters[from] = fromDesc
 	}
+
+	// If we are storing the tokens in a normalise form, we need to deal with
+	// the migration from denormalised by removing the tokens from the tokens
+	// list.
+	// When all ingesters are in normalised mode, d.Tokens is empty here
+	for i := 0; i < len(d.Tokens); {
+		if d.Tokens[i].Ingester == from {
+			result = append(result, d.Tokens[i].Token)
+			d.Tokens = append(d.Tokens[:i], d.Tokens[i+1:]...)
+			continue
+		}
+		i++
+	}
+
+	ing := d.Ingesters[to]
+	ing.Tokens = result
+	d.Ingesters[to] = ing
 
 	// not necessary, but makes testing simpler
 	if len(d.Tokens) == 0 {

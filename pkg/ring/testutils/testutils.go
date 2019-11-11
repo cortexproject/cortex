@@ -18,10 +18,11 @@ func NumTokens(c kv.Client, name, ringKey string) int {
 		return 0
 	}
 	count := 0
-	for _, token := range ringDesc.(*ring.Desc).Tokens {
+	rd := ringDesc.(*ring.Desc)
+	for _, token := range rd.Tokens {
 		if token.Ingester == name {
 			count++
 		}
 	}
-	return count
+	return count + len(rd.Ingesters[name].Tokens)
 }

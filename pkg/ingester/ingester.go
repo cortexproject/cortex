@@ -269,7 +269,9 @@ func (i *Ingester) Shutdown() {
 	close(i.quit)
 	i.done.Wait()
 
-	i.wal.Stop()
+	if i.wal != nil {
+		i.wal.Stop()
+	}
 
 	// Next initiate our graceful exit from the ring.
 	i.lifecycler.Shutdown()

@@ -209,7 +209,6 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 
 	if !recovery {
 		if err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.length()); err != nil {
-			u.fpLocker.Unlock(fp)
 			u.discardedSamples.WithLabelValues(perUserSeriesLimit).Inc()
 			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 		}
@@ -223,7 +222,6 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	if !recovery {
 		// Check if the per-metric limit has been exceeded
 		if err = u.canAddSeriesFor(string(metricName)); err != nil {
-			u.fpLocker.Unlock(fp)
 			u.discardedSamples.WithLabelValues(perMetricSeriesLimit).Inc()
 			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s for: %s", err.Error(), metric)
 		}

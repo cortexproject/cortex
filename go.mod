@@ -59,6 +59,7 @@ require (
 	github.com/prometheus/client_golang v1.1.0
 	github.com/prometheus/common v0.7.0
 	github.com/prometheus/prometheus v1.8.2-0.20190918104050-8744afdd1ea0
+	github.com/prometheus/tsdb v0.10.0
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e

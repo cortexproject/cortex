@@ -834,7 +834,7 @@ type v11Entries struct {
 }
 
 func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	seriesID := labelsSeriesID(labels)
+	seriesID := LabelsSeriesID(labels)
 
 	// read first 32 bits of the hash and use this to calculate the shard
 	shard := binary.BigEndian.Uint32(seriesID) % s.rowShards

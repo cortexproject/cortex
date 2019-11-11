@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -94,7 +95,8 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
 	}
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
-	if cfg.SplitQueriesByDay == true {
+	if cfg.SplitQueriesByDay {
+		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
 		cfg.SplitQueriesByInterval = day
 	}
 	if cfg.SplitQueriesByInterval != 0 {

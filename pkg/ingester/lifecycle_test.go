@@ -197,6 +197,9 @@ func TestIngesterBadTransfer(t *testing.T) {
 
 	tokenDir, err := ioutil.TempDir(os.TempDir(), "ingester_bad_transfer")
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, os.RemoveAll(tokenDir))
+	}()
 
 	// Start ingester in PENDING.
 	cfg := defaultIngesterTestConfig()

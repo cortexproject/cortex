@@ -31,6 +31,9 @@ func (f *flushTransferer) TransferOut(ctx context.Context) error {
 func testLifecyclerConfig(t *testing.T, ringConfig Config, id string) LifecyclerConfig {
 	tokenDir, err := ioutil.TempDir(os.TempDir(), "ingester_bad_transfer")
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, os.RemoveAll(tokenDir))
+	}()
 
 	var lifecyclerConfig LifecyclerConfig
 	flagext.DefaultValues(&lifecyclerConfig)

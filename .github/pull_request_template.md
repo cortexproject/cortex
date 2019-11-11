@@ -12,4 +12,4 @@ Fixes #<issue number>
 **Checklist**
 - [ ] Tests updated
 - [ ] Documentation added
-- [ ] `CHANGELOG.md` updated
+- [ ] `CHANGELOG.md` updated - the order of entries should be `[CHANGE]`, `[FEATURE]`, `[ENHANCEMENT]`, `[BUGFIX]`

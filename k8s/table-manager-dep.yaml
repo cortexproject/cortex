@@ -18,6 +18,8 @@ spec:
             - -target=table-manager
             - -server.http-listen-port=80
             - -config-yaml=/etc/cortex/schema.yaml
+            - -cassandra.addresses=cassandra
+            - -cassandra.keyspace="cortex"
           ports:
             - containerPort: 80
           volumeMounts:

@@ -18,6 +18,8 @@ spec:
             - -target=querier
             - -server.http-listen-port=80
             - -consul.hostname=consul.default.svc.cluster.local:8500
+            - -cassandra.addresses=cassandra
+            - -cassandra.keyspace="cortex"
             - -querier.frontend-address=query-frontend.default.svc.cluster.local:9095
             - -config-yaml=/etc/cortex/schema.yaml
             - -memcached.hostname=memcached.default.svc.cluster.local

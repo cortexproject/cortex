@@ -42,6 +42,8 @@ spec:
             - -ingester.claim-on-rollout=true
             - -consul.hostname=consul.default.svc.cluster.local:8500
             - -config-yaml=/etc/cortex/schema.yaml
+            - -cassandra.addresses=cassandra
+            - -cassandra.keyspace="cortex"
             - -memcached.hostname=memcached.default.svc.cluster.local
             - -memcached.timeout=100ms
             - -memcached.service=memcached

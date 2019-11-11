@@ -18,6 +18,8 @@ spec:
             - -target=ruler
             - -log.level=debug
             - -server.http-listen-port=80
+            - -cassandra.addresses=cassandra
+            - -cassandra.keyspace="cortex"
             - -ruler.configs.url=http://configs.default.svc.cluster.local:80
             - -ruler.alertmanager-url=http://alertmanager.default.svc.cluster.local/api/prom/alertmanager/
             - -consul.hostname=consul.default.svc.cluster.local:8500

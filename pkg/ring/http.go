@@ -21,6 +21,12 @@ const tpl = `
 	<head>
 		<meta charset="UTF-8">
 		<title>Cortex Ring Status</title>
+		<script>
+		function showIngesterTokens() {
+            document.getElementById('ingesterTokens').style.display = "block";
+            document.getElementById('showTokensButton').style.display = "none";
+        }
+		</script>
 	</head>
 	<body>
 		<h1>Cortex Ring Status</h1>
@@ -57,7 +63,11 @@ const tpl = `
 					{{ end }}
 				</tbody>
 			</table>
+			<br>
+			<input id="showTokensButton" type="button" name="showTokens" style="display:block" value="Show Ingester Tokens" onclick="showIngesterTokens()" />
+            <div id="ingesterTokens" style="display:none;">
 			<pre>{{ .Ring }}</pre>
+            </div>
 		</form>
 	</body>
 </html>`

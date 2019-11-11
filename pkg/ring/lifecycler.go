@@ -470,7 +470,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			err := tokens.LoadFromFile(i.cfg.TokensFilePath)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
-			} else if tokens != nil && len(tokens) > 0 {
+			} else if len(tokens) > 0 {
 				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokens))
 				if len(tokens) == i.cfg.NumTokens {
 					i.setState(ACTIVE)

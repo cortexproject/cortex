@@ -8,7 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/tsdb/fileutil"
+	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
 
 const (

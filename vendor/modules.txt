@@ -456,8 +456,6 @@ github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/util/treecache
 github.com/prometheus/prometheus/web/api/v1
-# github.com/prometheus/tsdb v0.10.0
-github.com/prometheus/tsdb/fileutil
 # github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 github.com/rafaeljusto/redigomock
 # github.com/rs/cors v1.6.0

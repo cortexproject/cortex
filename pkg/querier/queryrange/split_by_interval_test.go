@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
@@ -17,30 +18,40 @@ import (
 
 const seconds = 1e3 // 1e3 milliseconds per second.
 
-func TestNextDayBoundary(t *testing.T) {
+func TestNextIntervalBoundary(t *testing.T) {
 	for i, tc := range []struct {
 		in, step, out int64
+		interval      time.Duration
 	}{
 		// Smallest possible period is 1 millisecond
-		{0, 1, millisecondPerDay - 1},
+		{0, 1, toMs(day) - 1, day},
+		{0, 1, toMs(time.Hour) - 1, time.Hour},
 		// A more standard example
-		{0, 15 * seconds, millisecondPerDay - 15*seconds},
+		{0, 15 * seconds, toMs(day) - 15*seconds, day},
+		{0, 15 * seconds, toMs(time.Hour) - 15*seconds, time.Hour},
 		// Move start time forward 1 second; end time moves the same
-		{1 * seconds, 15 * seconds, millisecondPerDay - (15-1)*seconds},
+		{1 * seconds, 15 * seconds, toMs(day) - (15-1)*seconds, day},
+		{1 * seconds, 15 * seconds, toMs(time.Hour) - (15-1)*seconds, time.Hour},
 		// Move start time forward 14 seconds; end time moves the same
-		{14 * seconds, 15 * seconds, millisecondPerDay - (15-14)*seconds},
+		{14 * seconds, 15 * seconds, toMs(day) - (15-14)*seconds, day},
+		{14 * seconds, 15 * seconds, toMs(time.Hour) - (15-14)*seconds, time.Hour},
 		// Now some examples where the period does not divide evenly into a day:
 		// 1 day modulus 35 seconds = 20 seconds
-		{0, 35 * seconds, millisecondPerDay - 20*seconds},
+		{0, 35 * seconds, toMs(day) - 20*seconds, day},
+		// 1 hour modulus 35 sec = 30  (3600 mod 35 = 30)
+		{0, 35 * seconds, toMs(time.Hour) - 30*seconds, time.Hour},
 		// Move start time forward 1 second; end time moves the same
-		{1 * seconds, 35 * seconds, millisecondPerDay - (20-1)*seconds},
+		{1 * seconds, 35 * seconds, toMs(day) - (20-1)*seconds, day},
+		{1 * seconds, 35 * seconds, toMs(time.Hour) - (30-1)*seconds, time.Hour},
 		// If the end time lands exactly on midnight we stop one period before that
-		{20 * seconds, 35 * seconds, millisecondPerDay - 35*seconds},
+		{20 * seconds, 35 * seconds, toMs(day) - 35*seconds, day},
+		{30 * seconds, 35 * seconds, toMs(time.Hour) - 35*seconds, time.Hour},
 		// This example starts 35 seconds after the 5th one ends
-		{millisecondPerDay + 15*seconds, 35 * seconds, 2*millisecondPerDay - 5*seconds},
+		{toMs(day) + 15*seconds, 35 * seconds, 2*toMs(day) - 5*seconds, day},
+		{toMs(time.Hour) + 15*seconds, 35 * seconds, 2*toMs(time.Hour) - 15*seconds, time.Hour},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			require.Equal(t, tc.out, nextDayBoundary(tc.in, tc.step))
+			require.Equal(t, tc.out, nextIntervalBoundary(tc.in, tc.step, tc.interval))
 		})
 	}
 }
@@ -49,6 +60,7 @@ func TestSplitQuery(t *testing.T) {
 	for i, tc := range []struct {
 		input    Request
 		expected []Request
+		interval time.Duration
 	}{
 		{
 			input: &PrometheusRequest{
@@ -65,6 +77,24 @@ func TestSplitQuery(t *testing.T) {
 					Query: "foo",
 				},
 			},
+			interval: day,
+		},
+		{
+			input: &PrometheusRequest{
+				Start: 0,
+				End:   60 * 60 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
+			},
+			expected: []Request{
+				&PrometheusRequest{
+					Start: 0,
+					End:   60 * 60 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
+				},
+			},
+			interval: 3 * time.Hour,
 		},
 		{
 			input: &PrometheusRequest{
@@ -81,6 +111,24 @@ func TestSplitQuery(t *testing.T) {
 					Query: "foo",
 				},
 			},
+			interval: day,
+		},
+		{
+			input: &PrometheusRequest{
+				Start: 0,
+				End:   3 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
+			},
+			expected: []Request{
+				&PrometheusRequest{
+					Start: 0,
+					End:   3 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
+				},
+			},
+			interval: 3 * time.Hour,
 		},
 		{
 			input: &PrometheusRequest{
@@ -103,6 +151,30 @@ func TestSplitQuery(t *testing.T) {
 					Query: "foo",
 				},
 			},
+			interval: day,
+		},
+		{
+			input: &PrometheusRequest{
+				Start: 0,
+				End:   2 * 3 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
+			},
+			expected: []Request{
+				&PrometheusRequest{
+					Start: 0,
+					End:   (3 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
+				},
+				&PrometheusRequest{
+					Start: 3 * 3600 * seconds,
+					End:   2 * 3 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
+				},
+			},
+			interval: 3 * time.Hour,
 		},
 		{
 			input: &PrometheusRequest{
@@ -131,10 +203,40 @@ func TestSplitQuery(t *testing.T) {
 					Query: "foo",
 				},
 			},
+			interval: day,
+		},
+		{
+			input: &PrometheusRequest{
+				Start: 2 * 3600 * seconds,
+				End:   3 * 3 * 3600 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
+			},
+			expected: []Request{
+				&PrometheusRequest{
+					Start: 2 * 3600 * seconds,
+					End:   (3 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
+				},
+				&PrometheusRequest{
+					Start: 3 * 3600 * seconds,
+					End:   (2 * 3 * 3600 * seconds) - (15 * seconds),
+					Step:  15 * seconds,
+					Query: "foo",
+				},
+				&PrometheusRequest{
+					Start: 2 * 3 * 3600 * seconds,
+					End:   3 * 3 * 3600 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
+				},
+			},
+			interval: 3 * time.Hour,
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			days := splitQuery(tc.input)
+			days := splitQuery(tc.input, tc.interval)
 			require.Equal(t, tc.expected, days)
 		})
 	}
@@ -176,7 +278,7 @@ func TestSplitByDay(t *testing.T) {
 			roundtripper := NewRoundTripper(singleHostRoundTripper{
 				host: u.Host,
 				next: http.DefaultTransport,
-			}, PrometheusCodec, LimitsMiddleware(fakeLimits{}), SplitByDayMiddleware(fakeLimits{}, PrometheusCodec))
+			}, PrometheusCodec, LimitsMiddleware(fakeLimits{}), SplitByIntervalMiddleware(24*time.Hour, fakeLimits{}, PrometheusCodec))
 
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)

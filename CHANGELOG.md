@@ -6,7 +6,7 @@
 * [CHANGE] Remove direct DB/API access from the ruler
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
 * [CHANGE] Setting `-ingester.max-transfer-retries` to 0 now disables hand-over when ingester is shutting down. Previously, zero meant infinite number of attempts. #1771
-* [CHANGE] `dynamo` has been removed as a valid storage name to make it consistent for all components. `aws` and `aws-dynamo` remain as valid storage names. 
+* [CHANGE] `dynamo` has been removed as a valid storage name to make it consistent for all components. `aws` and `aws-dynamo` remain as valid storage names.
 * [FEATURE] Global limit on the max series per user and metric #1760
   * `-ingester.max-global-series-per-user`
   * `-ingester.max-global-series-per-metric`
@@ -14,10 +14,16 @@
 * [FEATURE] Flush chunks with stale markers early with `ingester.max-stale-chunk-idle`. #1759
 * [FEATURE] EXPERIMENTAL: Added new KV Store backend based on memberlist library. Components can gossip about tokens and ingester states, instead of using Consul or Etcd. #1721
 * [FEATURE] Allow Query Frontend to log slow queries with `frontend.log-queries-longer-than`. #1744
+* [FEATURE] The frontend split and cache intervals can now be configured using the respective flag `--querier.split-queries-by-interval` and `--frontend.cache-split-interval`.
+  * If `--querier.split-queries-by-interval` is not provided request splitting is disabled by default.
+  * __`--querier.split-queries-by-day` is still accepted for backward compatibility but has been deprecated. You should now use `--querier.split-queries-by-interval`. We recommend a to use a multiple of 24 hours.__
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
 * [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
 * [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
 * [ENHANCEMENT] Added jitter to HA deduping heartbeats, configure using `distributor.ha-tracker.update-timeout-jitter-max` #1534
+* [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
+* [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
+* [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
 
 ## 0.3.0 / 2019-10-11
 

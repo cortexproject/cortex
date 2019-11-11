@@ -53,7 +53,7 @@ type LifecyclerConfig struct {
 	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
-	TokensFileDir    string        `yaml:"tokens_file_dir,omitempty"`
+	TokensFilePath   string        `yaml:"tokens_file_path,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address"`
@@ -85,7 +85,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
-	f.StringVar(&cfg.TokensFileDir, prefix+"tokens-file-dir", "", "Directory in which the tokens file is stored. If empty, tokens are not stored at shutdown and restored at startup.")
+	f.StringVar(&cfg.TokensFilePath, prefix+"tokens-file-path", "", "File path in which the tokens is stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -264,7 +264,7 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 	i.tokens = tokens
 	i.stateMtx.Unlock()
 
-	if err := i.tokens.StoreToFile(i.cfg.TokensFileDir); err != nil {
+	if err := i.tokens.StoreToFile(i.cfg.TokensFilePath); err != nil {
 		level.Error(util.Logger).Log("msg", "error storing tokens to disk", "err", err)
 	}
 }
@@ -467,7 +467,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		if !ok {
 			var tokens Tokens
 			// We load the tokens from the file only if it does not exist in the ring yet.
-			err := tokens.LoadFromFile(i.cfg.TokensFileDir)
+			err := tokens.LoadFromFile(i.cfg.TokensFilePath)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
 			} else if tokens != nil && len(tokens) > 0 {

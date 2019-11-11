@@ -80,13 +80,13 @@ func (d *Desc) RemoveIngester(id string) {
 // and 'to' ingester uses either normalised or non-normalised tokens, but not both. Tokens list must
 // be sorted properly. If all of this is true, everything will be fine.
 func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
-	result := Tokens{}
+	var result Tokens
 
 	if normaliseTokens {
 
 		// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
 		if fromDesc, found := d.Ingesters[from]; found {
-			result = append(result, fromDesc.Tokens...)
+			result = fromDesc.Tokens
 			fromDesc.Tokens = nil
 			d.Ingesters[from] = fromDesc
 		}
@@ -111,7 +111,7 @@ func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
 	} else {
 		// If source ingester is normalising, copy its tokens to d.Tokens, and set new owner
 		if fromDesc, found := d.Ingesters[from]; found {
-			result = append(result, fromDesc.Tokens...)
+			result = fromDesc.Tokens
 			fromDesc.Tokens = nil
 			d.Ingesters[from] = fromDesc
 

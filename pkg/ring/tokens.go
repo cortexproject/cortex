@@ -5,30 +5,37 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
-	"path"
+
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/tsdb/fileutil"
 )
 
 const (
 	// TokenVersion1 is the version is a simple list of tokens.
 	TokenVersion1 = 1
-
-	// Name of the file in which tokens is stored.
-	tokensFileName = "tokens"
 )
 
 // Tokens is a simple list of tokens.
 type Tokens []uint32
 
 // StoreToFile stores the tokens in the given directory.
-func (t Tokens) StoreToFile(dir string) error {
-	if dir == "" {
-		return errors.New("directory is empty")
+func (t Tokens) StoreToFile(tokenFilePath string) error {
+	if tokenFilePath == "" {
+		return errors.New("path is empty")
 	}
-	tokenFilePath := path.Join(dir, tokensFileName)
-	f, err := os.OpenFile(tokenFilePath, os.O_WRONLY|os.O_CREATE, 0666)
+	tmp := tokenFilePath + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
+
+	defer func() {
+		// RemoveAll returns no error when tmp doesn't exist so it is safe to always run it.
+		if err := os.RemoveAll(tmp); err != nil {
+			level.Error(util.Logger).Log("msg", "error deleting temporary file", "err", err)
+		}
+	}()
 
 	b, err := t.Marshal()
 	if err != nil {
@@ -37,12 +44,17 @@ func (t Tokens) StoreToFile(dir string) error {
 	if _, err = f.Write(b); err != nil {
 		return err
 	}
-	return nil
+
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	// Block successfully written, make visible and remove old ones.
+	return fileutil.Replace(tmp, tokenFilePath)
 }
 
 // LoadFromFile loads tokens from given directory.
-func (t *Tokens) LoadFromFile(dir string) error {
-	tokenFilePath := path.Join(dir, tokensFileName)
+func (t *Tokens) LoadFromFile(tokenFilePath string) error {
 	b, err := ioutil.ReadFile(tokenFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {

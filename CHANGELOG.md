@@ -31,6 +31,7 @@ This release adds support for Redis as an alternative to Memcached, and also inc
 * [CHANGE] In table-manager, default DynamoDB capacity was reduced from 3,000 units to 1,000 units. We recommend you do not run with the defaults: find out what figures are needed for your environment and set that via `-dynamodb.periodic-table.write-throughput` and `-dynamodb.chunk-table.write-throughput`.
 * [FEATURE] Add Redis support for caching #1612
 * [FEATURE] Allow spreading chunk writes across multiple S3 buckets	#1625
+* [FEATURE] Added `/shutdown` endpoint for ingester to shutdown all operations of the ingester. #1746
 * [ENHANCEMENT] Upgraded Prometheus to 2.12.0 and Alertmanager to 0.19.0. #1597
 * [ENHANCEMENT] Cortex is now built with Go 1.13 #1675, #1676, #1679
 * [ENHANCEMENT] Many optimisations, mostly impacting ingester and querier: #1574, #1624, #1638, #1644, #1649, #1654, #1702

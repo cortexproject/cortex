@@ -244,7 +244,9 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
    Deprecated. New ingesters always write "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.
 
-   Cortex 0.4.0 is the last version that can use denormalised tokens. It's perfectly OK to have mix of ingesters running denormalised (<= 0.4.0) and normalised tokens (either by using `-ingester.normalise-tokens` in Cortex <= 0.4.0, or Cortex 0.5.0+). 
+   Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and later will always *write* normalised tokens, although it can still *read* denormalised tokens written by older ingesters.
+   
+   It's perfectly OK to have a mix of ingesters running denormalised (<= 0.4.0) and normalised tokens (either by using `-ingester.normalise-tokens` in Cortex <= 0.4.0, or Cortex 0.5.0+) during upgrades. 
 
 - `-ingester.chunk-encoding`
 

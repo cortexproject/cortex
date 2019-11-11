@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -72,8 +71,7 @@ var (
 		Name:      "alertmanager_configs",
 		Help:      "How many configs the multitenant alertmanager knows about.",
 	})
-	statusTemplate      *template.Template
-	allConnectionStates = []string{"established", "pending", "retrying", "failed", "connecting"}
+	statusTemplate *template.Template
 )
 
 func init() {
@@ -86,17 +84,6 @@ func init() {
 			return "disabled"
 		},
 	}).Parse(statusPage))
-}
-
-// Print counts in a specified order
-func counts(counts map[string]int, keys []string) string {
-	var stringCounts []string
-	for _, key := range keys {
-		if count, ok := counts[key]; ok {
-			stringCounts = append(stringCounts, fmt.Sprintf("%d %s", count, key))
-		}
-	}
-	return strings.Join(stringCounts, ", ")
 }
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.

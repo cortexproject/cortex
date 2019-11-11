@@ -5,8 +5,6 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
-const bufferBatches = 4
-
 type nonOverlappingIterator struct {
 	curr   int
 	chunks []chunk.Chunk

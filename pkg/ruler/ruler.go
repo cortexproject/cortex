@@ -164,6 +164,8 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 			return nil, err
 		}
 
+		ruler.lifecycler.Start()
+
 		ruler.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig, "ruler")
 		if err != nil {
 			return nil, err

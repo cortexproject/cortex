@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/value"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -150,6 +151,19 @@ func (s *memorySeries) firstTime() model.Time {
 	return s.chunkDescs[0].FirstTime
 }
 
+// Returns time of oldest chunk in the series, that isn't flushed. If there are
+// no chunks, or all chunks are flushed, returns 0.
+// The caller must have locked the fingerprint of the memorySeries.
+func (s *memorySeries) firstUnflushedChunkTime() model.Time {
+	for _, c := range s.chunkDescs {
+		if !c.flushed {
+			return c.FirstTime
+		}
+	}
+
+	return 0
+}
+
 // head returns a pointer to the head chunk descriptor. The caller must have
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
@@ -208,6 +222,10 @@ func (s *memorySeries) setChunks(descs []*desc) error {
 		s.lastTime = descs[len(descs)-1].LastTime
 	}
 	return nil
+}
+
+func (s *memorySeries) isStale() bool {
+	return s.lastSampleValueSet && value.IsStaleNaN(float64(s.lastSampleValue))
 }
 
 type desc struct {

@@ -96,8 +96,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		_, err = ioutil.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		// Query should do two calls.
-		assert.Equal(t, traceID, <-observedTraceID)
+		// Query should do one calls.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
 	testFrontend(t, handler, test)
@@ -150,7 +149,6 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 		workerConfig WorkerConfig
 	)
 	flagext.DefaultValues(&config, &workerConfig)
-	config.SplitQueriesByDay = true
 	workerConfig.Parallelism = 1
 
 	// localhost:0 prevents firewall warnings on Mac OS X.
@@ -161,7 +159,7 @@ func testFrontend(t *testing.T, handler http.Handler, test func(addr string)) {
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	frontend, err := New(config, logger, defaultOverrides(t))
+	frontend, err := New(config, logger)
 	require.NoError(t, err)
 	defer frontend.Close()
 

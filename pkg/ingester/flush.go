@@ -67,6 +67,10 @@ var (
 		Name: "cortex_ingester_dropped_chunks_total",
 		Help: "Total number of chunks dropped from flushing because they have too few samples.",
 	})
+	oldestUnflushedChunkTimestamp = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_oldest_unflushed_chunk_timestamp_seconds",
+		Help: "Unix timestamp of the oldest unflushed chunk in the memory",
+	})
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -110,14 +114,23 @@ func (i *Ingester) sweepUsers(immediate bool) {
 		return
 	}
 
+	oldest := model.Time(0)
+
 	for id, state := range i.userStates.cp() {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
 			i.sweepSeries(id, pair.fp, pair.series, immediate)
 			i.removeFlushedChunks(state, pair.fp, pair.series)
+			first := pair.series.firstUnflushedChunkTime()
 			state.fpLocker.Unlock(pair.fp)
+
+			if first > 0 && (oldest == 0 || first < oldest) {
+				oldest = first
+			}
 		}
 	}
+
+	oldestUnflushedChunkTimestamp.Set(float64(oldest.Unix()))
 }
 
 type flushReason int
@@ -128,6 +141,7 @@ const (
 	reasonMultipleChunksInSeries
 	reasonAged
 	reasonIdle
+	reasonStale
 )
 
 func (f flushReason) String() string {
@@ -142,6 +156,8 @@ func (f flushReason) String() string {
 		return "Aged"
 	case reasonIdle:
 		return "Idle"
+	case reasonStale:
+		return "Stale"
 	default:
 		panic("unrecognised flushReason")
 	}
@@ -179,13 +195,13 @@ func (i *Ingester) shouldFlushSeries(series *memorySeries, fp model.Fingerprint,
 		return reasonMultipleChunksInSeries
 	} else if len(series.chunkDescs) > 0 {
 		// Otherwise look in more detail at the first chunk
-		return i.shouldFlushChunk(series.chunkDescs[0], fp)
+		return i.shouldFlushChunk(series.chunkDescs[0], fp, series.isStale())
 	}
 
 	return noFlush
 }
 
-func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint) flushReason {
+func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint, lastValueIsStale bool) flushReason {
 	if c.flushed { // don't flush chunks we've already flushed
 		return noFlush
 	}
@@ -200,9 +216,16 @@ func (i *Ingester) shouldFlushChunk(c *desc, fp model.Fingerprint) flushReason {
 		return reasonAged
 	}
 
-	// Chunk should be flushed if their last update is older then MaxChunkIdle
+	// Chunk should be flushed if their last update is older then MaxChunkIdle.
 	if model.Now().Sub(c.LastUpdate) > i.cfg.MaxChunkIdle {
 		return reasonIdle
+	}
+
+	// A chunk that has a stale marker can be flushed if possible.
+	if i.cfg.MaxStaleChunkIdle > 0 &&
+		lastValueIsStale &&
+		model.Now().Sub(c.LastUpdate) > i.cfg.MaxStaleChunkIdle {
+		return reasonStale
 	}
 
 	return noFlush
@@ -259,13 +282,13 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 
 	// Assume we're going to flush everything, and maybe don't flush the head chunk if it doesn't need it.
 	chunks := series.chunkDescs
-	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head(), fp) != noFlush) {
+	if immediate || (len(chunks) > 0 && i.shouldFlushChunk(series.head(), fp, series.isStale()) != noFlush) {
 		series.closeHead()
 	} else {
 		chunks = chunks[:len(chunks)-1]
 	}
 
-	if reason == reasonIdle && series.headChunkClosed {
+	if (reason == reasonIdle || reason == reasonStale) && series.headChunkClosed {
 		if minChunkLength := i.limits.MinChunkLength(userID); minChunkLength > 0 {
 			chunkLength := 0
 			for _, c := range chunks {

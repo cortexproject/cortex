@@ -1,8 +1,23 @@
+# Changelog
+
 ## master / unreleased
 
+* [CHANGE] The frontend component has been refactored to be easier to re-use. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734
+* [CHANGE] Remove direct DB/API access from the ruler
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
-* [FEATURE] Added `/shutdown` endpoint for ingester to shutdown all operations of the ingester. #1746
+* [CHANGE] Setting `-ingester.max-transfer-retries` to 0 now disables hand-over when ingester is shutting down. Previously, zero meant infinite number of attempts. #1771
+* [CHANGE] `dynamo` has been removed as a valid storage name to make it consistent for all components. `aws` and `aws-dynamo` remain as valid storage names. 
+* [FEATURE] Global limit on the max series per user and metric #1760
+  * `-ingester.max-global-series-per-user`
+  * `-ingester.max-global-series-per-metric`
+  * Requires `-distributor.replication-factor` and `-distributor.shard-by-all-labels` set for the ingesters too
+* [FEATURE] Flush chunks with stale markers early with `ingester.max-stale-chunk-idle`. #1759
+* [FEATURE] EXPERIMENTAL: Added new KV Store backend based on memberlist library. Components can gossip about tokens and ingester states, instead of using Consul or Etcd. #1721
+* [FEATURE] Allow Query Frontend to log slow queries with `frontend.log-queries-longer-than`. #1744
 * [ENHANCEMENT] Allocation improvements in adding samples to Chunk. #1706
+* [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
+* [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
+* [ENHANCEMENT] Added jitter to HA deduping heartbeats, configure using `distributor.ha-tracker.update-timeout-jitter-max` #1534
 
 ## 0.3.0 / 2019-10-11
 
@@ -16,6 +31,7 @@ This release adds support for Redis as an alternative to Memcached, and also inc
 * [CHANGE] In table-manager, default DynamoDB capacity was reduced from 3,000 units to 1,000 units. We recommend you do not run with the defaults: find out what figures are needed for your environment and set that via `-dynamodb.periodic-table.write-throughput` and `-dynamodb.chunk-table.write-throughput`.
 * [FEATURE] Add Redis support for caching #1612
 * [FEATURE] Allow spreading chunk writes across multiple S3 buckets	#1625
+* [FEATURE] Added `/shutdown` endpoint for ingester to shutdown all operations of the ingester. #1746
 * [ENHANCEMENT] Upgraded Prometheus to 2.12.0 and Alertmanager to 0.19.0. #1597
 * [ENHANCEMENT] Cortex is now built with Go 1.13 #1675, #1676, #1679
 * [ENHANCEMENT] Many optimisations, mostly impacting ingester and querier: #1574, #1624, #1638, #1644, #1649, #1654, #1702

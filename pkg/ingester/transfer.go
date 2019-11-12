@@ -38,6 +38,10 @@ var (
 		Name: "cortex_ingester_sent_files",
 		Help: "The total number of files sent by this ingester whilst leaving.",
 	})
+	receivedFiles = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_received_files",
+		Help: "The total number of files received by this ingester whilst joining",
+	})
 	receivedBytes = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_received_bytes",
 		Help: "The total number of bytes received by this ingester whilst joining",
@@ -52,6 +56,7 @@ func init() {
 	prometheus.MustRegister(receivedChunks)
 	prometheus.MustRegister(sentFiles)
 	prometheus.MustRegister(receivedBytes)
+	prometheus.MustRegister(receivedFiles)
 }
 
 // TransferChunks receives all the chunks from another ingester.
@@ -221,7 +226,8 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 		}
 		defer os.RemoveAll(tmpDir)
 
-		totalXfer := 0
+		bytesXfer := 0
+		filesXfer := 0
 
 		files := make(map[string]*os.File)
 		defer func() {
@@ -249,7 +255,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 					return err
 				}
 			}
-			totalXfer += len(f.Data)
+			bytesXfer += len(f.Data)
 
 			createfile := func(f *client.TimeSeriesFile) (*os.File, error) {
 				dir := filepath.Join(tmpDir, filepath.Dir(f.Filename))
@@ -272,7 +278,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 				if err != nil {
 					return err
 				}
-
+				filesXfer++
 				files[f.Filename] = file
 			} else {
 
@@ -287,8 +293,9 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			return errors.Wrap(err, "TransferTSDB: ClaimTokensFor")
 		}
 
-		receivedBytes.Add(float64(totalXfer))
-		level.Info(util.Logger).Log("msg", "Total bytes xfer", "from_ingester", fromIngesterID, "bytes", totalXfer)
+		receivedBytes.Add(float64(bytesXfer))
+		receivedFiles.Add(float64(filesXfer))
+		level.Info(util.Logger).Log("msg", "Total xfer", "from_ingester", fromIngesterID, "files", filesXfer, "bytes", bytesXfer)
 
 		// Move the tmpdir to the final location
 		return os.Rename(tmpDir, i.cfg.TSDBConfig.Dir)

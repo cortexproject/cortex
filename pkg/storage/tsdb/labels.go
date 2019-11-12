@@ -1,8 +1,6 @@
 package tsdb
 
 import (
-	"unsafe"
-
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/prometheus/tsdb/labels"
 )
@@ -12,8 +10,16 @@ const (
 	TenantIDExternalLabel = "__org_id__"
 )
 
-// FromLabelAdaptersToLabels casts []LabelAdapter to TSDB labels.Labels.
-// It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
+// FromLabelAdaptersToLabels converts []LabelAdapter to TSDB labels.Labels.
 func FromLabelAdaptersToLabels(input []client.LabelAdapter) labels.Labels {
-	return *(*labels.Labels)(unsafe.Pointer(&input))
+	result := make(labels.Labels, len(input))
+
+	for i, l := range input {
+		result[i] = labels.Label{
+			Name:  l.Name,
+			Value: l.Value,
+		}
+	}
+
+	return result
 }

@@ -24,10 +24,10 @@ import (
 )
 
 var (
-	memSeries = promauto.NewGauge(prometheus.GaugeOpts{
+	memSeries = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_ingester_memory_series",
 		Help: "The current number of series in memory.",
-	})
+	}, []string{"user"})
 	memUsers = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_ingester_memory_users",
 		Help: "The current number of users in memory.",
@@ -62,6 +62,7 @@ type userState struct {
 
 	seriesInMetric []metricCounterShard
 
+	memSeries             prometheus.Gauge
 	memSeriesCreatedTotal prometheus.Counter
 	memSeriesRemovedTotal prometheus.Counter
 	discardedSamples      *prometheus.CounterVec
@@ -157,6 +158,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labe
 			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			seriesInMetric:      seriesInMetric,
 
+			memSeries:             memSeries.WithLabelValues(userID),
 			memSeriesCreatedTotal: memSeriesCreatedTotal.WithLabelValues(userID),
 			memSeriesRemovedTotal: memSeriesRemovedTotal.WithLabelValues(userID),
 			discardedSamples:      validation.DiscardedSamples.MustCurryWith(prometheus.Labels{"user": userID}),
@@ -214,7 +216,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	}
 
 	u.memSeriesCreatedTotal.Inc()
-	memSeries.Inc()
+	u.memSeries.Inc()
 
 	labels := u.index.Add(metric, fp)
 	series = newMemorySeries(labels)
@@ -258,7 +260,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 	}
 
 	u.memSeriesRemovedTotal.Inc()
-	memSeries.Dec()
+	u.memSeries.Dec()
 }
 
 // forSeriesMatching passes all series matching the given matchers to the

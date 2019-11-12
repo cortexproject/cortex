@@ -51,3 +51,8 @@ func (r *ewmaRate) tick() {
 func (r *ewmaRate) inc() {
 	atomic.AddInt64(&r.newEvents, 1)
 }
+
+// inc counts n events.
+func (r *ewmaRate) add(n int) {
+	atomic.AddInt64(&r.newEvents, int64(n))
+}

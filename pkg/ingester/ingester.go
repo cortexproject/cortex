@@ -287,11 +287,22 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		i.userStatesMtx.RUnlock()
 		return &client.WriteResponse{}, nil
 	}
+	var discarded, totalAppends int
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
 			err := i.append(state, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
 			if err == nil {
 				continue
+			}
+
+			if mse, ok := err.(*memorySeriesError); ok {
+				state.discardedSamples.WithLabelValues(mse.errorType).Inc()
+				discarded++
+				if mse.noReport {
+					continue
+				}
+				// Use a dumb string template to avoid the message being parsed as a template
+				err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
 			}
 
 			i.metrics.ingestedSamplesFail.Inc()
@@ -305,9 +316,20 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 
 			return nil, err
 		}
+		totalAppends += len(ts.Samples)
 	}
 	i.userStatesMtx.RUnlock()
 	client.ReuseSlice(req.Timeseries)
+
+	i.metrics.ingestedSamples.Add(float64(totalAppends - discarded))
+	switch req.Source {
+	case client.RULE:
+		state.ingestedRuleSamples.add(totalAppends - discarded)
+	case client.API:
+		fallthrough
+	default:
+		state.ingestedAPISamples.add(totalAppends - discarded)
+	}
 
 	return &client.WriteResponse{}, lastPartialErr
 }
@@ -319,7 +341,9 @@ func (i *Ingester) append(state *userState, labels labelPairs, timestamp model.T
 		fp model.Fingerprint
 	)
 	defer func() {
-		state.fpLocker.Unlock(fp)
+		if state != nil {
+			state.fpLocker.Unlock(fp)
+		}
 	}()
 	if i.stopped {
 		return fmt.Errorf("ingester stopping")
@@ -346,27 +370,10 @@ func (i *Ingester) append(state *userState, labels labelPairs, timestamp model.T
 		Value:     value,
 		Timestamp: timestamp,
 	}); err != nil {
-		if mse, ok := err.(*memorySeriesError); ok {
-			state.discardedSamples.WithLabelValues(mse.errorType).Inc()
-			if mse.noReport {
-				return nil
-			}
-			// Use a dumb string template to avoid the message being parsed as a template
-			err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
-		}
 		return err
 	}
 
 	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-	i.metrics.ingestedSamples.Inc()
-	switch source {
-	case client.RULE:
-		state.ingestedRuleSamples.inc()
-	case client.API:
-		fallthrough
-	default:
-		state.ingestedAPISamples.inc()
-	}
 
 	return err
 }

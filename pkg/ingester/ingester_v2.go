@@ -263,16 +263,11 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 
 			udir := i.userDir(userID)
 
-			var ranges []int64
-			for _, t := range i.cfg.TSDBConfig.BlockRanges {
-				ranges = append(ranges, int64(t/time.Millisecond))
-			}
-
 			// Create a new user database
 			var err error
 			db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
 				RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-				BlockRanges:       ranges,
+				BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
 				NoLockfile:        true,
 			})
 			if err != nil {

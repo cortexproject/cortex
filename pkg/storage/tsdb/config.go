@@ -25,7 +25,7 @@ var (
 type Config struct {
 	Dir          string        `yaml:"dir"`
 	SyncDir      string        `yaml:"sync_dir"`
-	BlockRanges  RangeList     `yaml:"block_ranges_period"`
+	BlockRanges  DurationList  `yaml:"block_ranges_period"`
 	Retention    time.Duration `yaml:"retention_period"`
 	ShipInterval time.Duration `yaml:"ship_interval"`
 	Backend      string        `yaml:"backend"`
@@ -35,30 +35,44 @@ type Config struct {
 	GCS gcs.Config `yaml:"gcs"`
 }
 
-// RangeList is the block ranges for a tsdb
-type RangeList []time.Duration
+// DurationList is the block ranges for a tsdb
+type DurationList []time.Duration
 
 // String implements the flag.Var interface
-func (b RangeList) String() string { return "RangeList is the block ranges for a tsdb" }
+func (d DurationList) String() string { return "RangeList is the block ranges for a tsdb" }
 
 // Set implements the flag.Var interface
-func (b RangeList) Set(s string) error {
+func (d DurationList) Set(s string) error {
 	blocks := strings.Split(s, ",")
+	d = make([]time.Duration, 0, len(blocks)) // flag.Parse may be called twice, so overwrite instead of append
 	for _, blk := range blocks {
 		t, err := time.ParseDuration(blk)
 		if err != nil {
 			return err
 		}
-		b = append(b, t)
+		d = append(d, t)
 	}
 	return nil
+}
+
+// ToMillisecondRanges returns the duration list in milliseconds
+func (d DurationList) ToMillisecondRanges() []int64 {
+	ranges := make([]int64, 0, len(d))
+	for _, t := range d {
+		ranges = append(ranges, int64(t/time.Millisecond))
+	}
+
+	return ranges
 }
 
 // RegisterFlags registers the TSDB flags
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 	cfg.GCS.RegisterFlags(f)
-	cfg.BlockRanges = []time.Duration{2 * time.Hour} // Default 2h block
+
+	if len(cfg.BlockRanges) == 0 {
+		cfg.BlockRanges = []time.Duration{2 * time.Hour} // Default 2h block
+	}
 
 	f.StringVar(&cfg.Dir, "experimental.tsdb.dir", "tsdb", "directory to place all TSDB's into")
 	f.StringVar(&cfg.SyncDir, "experimental.tsdb.sync-dir", "tsdb-sync", "directory to place synced tsdb indicies")

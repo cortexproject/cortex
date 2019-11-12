@@ -289,8 +289,15 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	}
 	var discarded, totalAppends int
 	for _, ts := range req.Timeseries {
+		lp := labelPairs(ts.Labels)
+		lp.removeBlanks()
+		fp, series, err := state.getSeries(lp)
+		if err != nil {
+			return nil, err
+		}
+		prevNumChunks := len(series.chunkDescs)
 		for _, s := range ts.Samples {
-			err := i.append(state, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
+			err := i.append(state, fp, series, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
 			if err == nil {
 				continue
 			}
@@ -298,24 +305,18 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 			if mse, ok := err.(*memorySeriesError); ok {
 				state.discardedSamples.WithLabelValues(mse.errorType).Inc()
 				discarded++
-				if mse.noReport {
-					continue
+				if !mse.noReport {
+					i.metrics.ingestedSamplesFail.Inc()
+					lastPartialErr = err
 				}
-				// Use a dumb string template to avoid the message being parsed as a template
-				err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
+				continue
 			}
 
 			i.metrics.ingestedSamplesFail.Inc()
-			if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-				switch httpResp.Code {
-				case http.StatusBadRequest, http.StatusTooManyRequests:
-					lastPartialErr = err
-					continue
-				}
-			}
 
 			return nil, err
 		}
+		memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
 		totalAppends += len(ts.Samples)
 	}
 	i.userStatesMtx.RUnlock()
@@ -334,25 +335,12 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	return &client.WriteResponse{}, lastPartialErr
 }
 
-func (i *Ingester) append(state *userState, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
-	labels.removeBlanks()
-
-	var (
-		fp model.Fingerprint
-	)
+func (i *Ingester) append(state *userState, fp model.Fingerprint, series *memorySeries, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
 	defer func() {
-		if state != nil {
-			state.fpLocker.Unlock(fp)
-		}
+		state.fpLocker.Unlock(fp)
 	}()
 	if i.stopped {
 		return fmt.Errorf("ingester stopping")
-	}
-
-	fp, series, err := state.getSeries(labels)
-	if err != nil {
-		state = nil // don't want to unlock the fp if there is an error
-		return err
 	}
 
 	prevNumChunks := len(series.chunkDescs)
@@ -373,9 +361,7 @@ func (i *Ingester) append(state *userState, labels labelPairs, timestamp model.T
 		return err
 	}
 
-	memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
-
-	return err
+	return nil
 }
 
 // Query implements service.IngesterServer

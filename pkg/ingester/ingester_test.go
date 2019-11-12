@@ -305,22 +305,24 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 	}
 	state := ing.userStates.getOrCreate(userID)
 	require.NotNil(t, state)
-	err := ing.append(state, m, 1, 0, client.API)
+	fp, series, err := state.getSeries(m)
+	require.NoError(t, err)
+	err = ing.append(state, fp, series, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(state, m, 1, 0, client.API)
+	err = ing.append(state, fp, series, 1, 0, client.API)
 	require.Error(t, err)
 	mse, ok := err.(*memorySeriesError)
 	require.True(t, ok)
 	require.True(t, mse.noReport)
 
 	// Earlier sample than previous one.
-	err = ing.append(state, m, 0, 0, client.API)
+	err = ing.append(state, fp, series, 0, 0, client.API)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(state, m, 1, 1, client.API)
+	err = ing.append(state, fp, series, 1, 1, client.API)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 }
 
@@ -337,7 +339,9 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	state := ing.userStates.getOrCreate(userID)
 	require.NotNil(t, state)
-	err := ing.append(state, lp, 1, 0, client.API)
+	fp, series, err := state.getSeries(lp)
+	require.NoError(t, err)
+	err = ing.append(state, fp, series, 1, 0, client.API)
 	require.NoError(t, err)
 
 	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, labels.MetricName, "testmetric")

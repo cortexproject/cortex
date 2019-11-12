@@ -1,0 +1,8 @@
+goos: linux
+goarch: amd64
+pkg: github.com/cortexproject/cortex/pkg/ingester
+BenchmarkIngesterPush/encoding=DoubleDelta-8         	      72	  15219779 ns/op	 2782735 B/op	   12143 allocs/op
+BenchmarkIngesterPush/encoding=Varbit-8              	      69	  14814287 ns/op	 2778139 B/op	   12140 allocs/op
+BenchmarkIngesterPush/encoding=Bigchunk-8            	      79	  14791709 ns/op	 2764114 B/op	   12139 allocs/op
+PASS
+ok  	github.com/cortexproject/cortex/pkg/ingester	3.349s

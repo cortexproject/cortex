@@ -281,9 +281,15 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	}
 	var lastPartialErr error
 
+	i.userStatesMtx.RLock()
+	state := i.userStates.getOrCreate(userID)
+	if state == nil {
+		i.userStatesMtx.RUnlock()
+		return &client.WriteResponse{}, nil
+	}
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
-			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
+			err := i.append(state, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source)
 			if err == nil {
 				continue
 			}
@@ -300,29 +306,26 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 			return nil, err
 		}
 	}
+	i.userStatesMtx.RUnlock()
 	client.ReuseSlice(req.Timeseries)
 
 	return &client.WriteResponse{}, lastPartialErr
 }
 
-func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
+func (i *Ingester) append(state *userState, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
 	labels.removeBlanks()
 
 	var (
-		state *userState
-		fp    model.Fingerprint
+		fp model.Fingerprint
 	)
-	i.userStatesMtx.RLock()
 	defer func() {
-		i.userStatesMtx.RUnlock()
-		if state != nil {
-			state.fpLocker.Unlock(fp)
-		}
+		state.fpLocker.Unlock(fp)
 	}()
 	if i.stopped {
 		return fmt.Errorf("ingester stopping")
 	}
-	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels)
+
+	fp, series, err := state.getSeries(labels)
 	if err != nil {
 		state = nil // don't want to unlock the fp if there is an error
 		return err

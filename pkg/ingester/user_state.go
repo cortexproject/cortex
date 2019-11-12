@@ -123,17 +123,7 @@ func (us *userStates) get(userID string) (*userState, bool) {
 	return state.(*userState), ok
 }
 
-func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, false, fmt.Errorf("no user id")
-	}
-	state, ok := us.get(userID)
-	return state, ok, nil
-}
-
-func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter) (*userState, model.Fingerprint, *memorySeries, error) {
-
+func (us *userStates) getOrCreate(userID string) *userState {
 	state, ok := us.get(userID)
 	if !ok {
 
@@ -169,6 +159,20 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labe
 		state = stored.(*userState)
 	}
 
+	return state
+}
+
+func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("no user id")
+	}
+	state, ok := us.get(userID)
+	return state, ok, nil
+}
+
+func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter) (*userState, model.Fingerprint, *memorySeries, error) {
+	state := us.getOrCreate(userID)
 	fp, series, err := state.getSeries(labels)
 	return state, fp, series, err
 }

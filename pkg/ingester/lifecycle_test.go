@@ -1,9 +1,12 @@
 package ingester
 
 import (
+	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
+	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -419,10 +422,8 @@ func TestV2IngesterTransfer(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
 	require.NoError(t, err)
 
-	dir1, err := ioutil.TempDir("", "tsdb")
-	require.NoError(t, err)
-	dir2, err := ioutil.TempDir("", "tsdb")
-	require.NoError(t, err)
+	dir1 := filepath.Join(os.TempDir(), fmt.Sprintf("TestV2IngesterTransfer-%v", rand.Int63()))
+	dir2 := filepath.Join(os.TempDir(), fmt.Sprintf("TestV2IngesterTransfer-%v", rand.Int63()))
 
 	// Start the first ingester, and get it into ACTIVE state.
 	cfg1 := defaultIngesterTestConfig()

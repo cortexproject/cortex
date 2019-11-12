@@ -38,9 +38,9 @@ var (
 		Name: "cortex_ingester_sent_files",
 		Help: "The total number of files sent by this ingester whilst leaving.",
 	})
-	receivedFiles = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_received_files",
-		Help: "The total number of files received by this ingester whilst joining",
+	receivedBytes = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_received_bytes",
+		Help: "The total number of bytes received by this ingester whilst joining",
 	})
 
 	once *sync.Once
@@ -51,7 +51,7 @@ func init() {
 	prometheus.MustRegister(sentChunks)
 	prometheus.MustRegister(receivedChunks)
 	prometheus.MustRegister(sentFiles)
-	prometheus.MustRegister(receivedFiles)
+	prometheus.MustRegister(receivedBytes)
 }
 
 // TransferChunks receives all the chunks from another ingester.
@@ -215,13 +215,13 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 
 	xfer := func() error {
 
-		dir, err := ioutil.TempDir("", "tsdb_xfer")
+		tmpDir, err := ioutil.TempDir("", "tsdb_xfer")
 		if err != nil {
 			return err
 		}
-		defer os.Remove(dir)
+		defer os.RemoveAll(tmpDir)
 
-		filesXfer := 0
+		totalXfer := 0
 
 		files := make(map[string]*os.File)
 		defer func() {
@@ -249,14 +249,14 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 					return err
 				}
 			}
-			filesXfer++
+			totalXfer += len(f.Data)
 
 			createfile := func(f *client.TimeSeriesFile) (*os.File, error) {
-				dir := filepath.Join(dir, filepath.Dir(f.Filename))
+				dir := filepath.Join(tmpDir, filepath.Dir(f.Filename))
 				if err := os.MkdirAll(dir, 0777); err != nil {
 					return nil, errors.Wrap(err, "TransferTSDB: MkdirAll")
 				}
-				file, err := os.Create(filepath.Join(i.cfg.TSDBConfig.Dir, f.Filename))
+				file, err := os.Create(filepath.Join(tmpDir, f.Filename))
 				if err != nil {
 					return nil, errors.Wrap(err, "TransferTSDB: Create")
 				}
@@ -287,11 +287,11 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			return errors.Wrap(err, "TransferTSDB: ClaimTokensFor")
 		}
 
-		receivedFiles.Add(float64(filesXfer))
-		level.Error(util.Logger).Log("msg", "Total files xfer", "from_ingester", fromIngesterID, "num", filesXfer)
+		receivedBytes.Add(float64(totalXfer))
+		level.Info(util.Logger).Log("msg", "Total bytes xfer", "from_ingester", fromIngesterID, "bytes", totalXfer)
 
 		// Move the tmpdir to the final location
-		return os.Rename(dir, i.cfg.TSDBConfig.Dir)
+		return os.Rename(tmpDir, i.cfg.TSDBConfig.Dir)
 	}
 
 	if err := i.transfer(stream.Context(), xfer); err != nil {

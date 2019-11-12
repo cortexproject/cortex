@@ -7,7 +7,7 @@
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
 * [CHANGE] Setting `-ingester.max-transfer-retries` to 0 now disables hand-over when ingester is shutting down. Previously, zero meant infinite number of attempts. #1771
 * [CHANGE] `dynamo` has been removed as a valid storage name to make it consistent for all components. `aws` and `aws-dynamo` remain as valid storage names.
-* [CHANGE] Added `user` label to `cortex_ingester_memory_series` metric.
+* [CHANGE] Added `user` label to `cortex_ingester_memory_series` metric. #1811
 * [FEATURE] Global limit on the max series per user and metric #1760
   * `-ingester.max-global-series-per-user`
   * `-ingester.max-global-series-per-metric`

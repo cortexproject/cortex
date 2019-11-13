@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/ioutil"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -28,13 +29,7 @@ func (f *flushTransferer) TransferOut(ctx context.Context) error {
 	return f.lifecycler.ChangeState(ctx, ACTIVE)
 }
 
-func testLifecyclerConfig(t *testing.T, ringConfig Config, id string) LifecyclerConfig {
-	tokenDir, err := ioutil.TempDir(os.TempDir(), "ingester_bad_transfer")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(tokenDir))
-	}()
-
+func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	var lifecyclerConfig LifecyclerConfig
 	flagext.DefaultValues(&lifecyclerConfig)
 	lifecyclerConfig.Addr = "0.0.0.0"
@@ -43,8 +38,6 @@ func testLifecyclerConfig(t *testing.T, ringConfig Config, id string) Lifecycler
 	lifecyclerConfig.NumTokens = 1
 	lifecyclerConfig.ID = id
 	lifecyclerConfig.FinalSleep = 0
-	lifecyclerConfig.TokensFilePath = tokenDir
-
 	return lifecyclerConfig
 }
 
@@ -76,7 +69,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	defer r.Stop()
 
 	// Add an 'ingester' with denormalised tokens.
-	lifecyclerConfig1 := testLifecyclerConfig(t, ringConfig, "ing1")
+	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
 
 	ft := &flushTransferer{}
 	l1, err := NewLifecycler(lifecyclerConfig1, ft, "ingester")
@@ -93,7 +86,7 @@ func TestRingNormaliseMigration(t *testing.T) {
 	token := l1.tokens[0]
 
 	// Add a second ingester with normalised tokens.
-	var lifecyclerConfig2 = testLifecyclerConfig(t, ringConfig, "ing2")
+	var lifecyclerConfig2 = testLifecyclerConfig(ringConfig, "ing2")
 	lifecyclerConfig2.JoinAfter = 100 * time.Second
 	lifecyclerConfig2.NormaliseTokens = true
 
@@ -124,7 +117,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	defer r.Stop()
 
 	// Add the first ingester to the ring
-	lifecyclerConfig1 := testLifecyclerConfig(t, ringConfig, "ing1")
+	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
 	lifecyclerConfig1.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig1.JoinAfter = 100 * time.Millisecond
 
@@ -140,7 +133,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	})
 
 	// Add the second ingester to the ring
-	lifecyclerConfig2 := testLifecyclerConfig(t, ringConfig, "ing2")
+	lifecyclerConfig2 := testLifecyclerConfig(ringConfig, "ing2")
 	lifecyclerConfig2.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig2.JoinAfter = 100 * time.Millisecond
 
@@ -180,7 +173,7 @@ func TestRingRestart(t *testing.T) {
 	defer r.Stop()
 
 	// Add an 'ingester' with normalised tokens.
-	lifecyclerConfig1 := testLifecyclerConfig(t, ringConfig, "ing1")
+	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
 	lifecyclerConfig1.NormaliseTokens = true
 	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester")
 	require.NoError(t, err)
@@ -256,14 +249,13 @@ func TestCheckReady(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = &MockClient{}
 
-	tokens := Tokens([]uint32{1})
 	r, err := New(ringConfig, "ingester")
 	require.NoError(t, err)
 	defer r.Stop()
-	cfg := testLifecyclerConfig(t, ringConfig, "ring1")
+	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester")
-	l1.setTokens(tokens)
+	l1.setTokens(Tokens([]uint32{1}))
 	l1.Start()
 	require.NoError(t, err)
 
@@ -289,28 +281,35 @@ func TestTokensOnDisk(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Stop()
 
-	lifecyclerConfig := testLifecyclerConfig(t, ringConfig, "ing1")
+	tokenDir, err := ioutil.TempDir(os.TempDir(), "tokens_on_disk")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, os.RemoveAll(tokenDir))
+	}()
+
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
 	lifecyclerConfig.NumTokens = 512
+	lifecyclerConfig.TokensFilePath = tokenDir
+	lifecyclerConfig.NormaliseTokens = true
 
 	// Start first ingester.
-	ft := &noopFlushTransferer{}
-	l1, err := NewLifecycler(lifecyclerConfig, ft, "ingester")
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester")
 	require.NoError(t, err)
 	l1.Start()
 	// Check this ingester joined, is active, and has 512 token.
-	var expTokens []TokenDesc
+	var expTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), ConsulKey)
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		if ok {
-			expTokens = desc.Tokens
+			expTokens = desc.Ingesters["ing1"].Tokens
 		}
 		return ok &&
 			len(desc.Ingesters) == 1 &&
 			desc.Ingesters["ing1"].State == ACTIVE &&
-			len(desc.Ingesters["ing1"].Tokens) == 0 &&
-			len(desc.Tokens) == 512
+			len(desc.Ingesters["ing1"].Tokens) == 512 &&
+			len(desc.Tokens) == 0
 	})
 
 	l1.Shutdown()
@@ -323,23 +322,25 @@ func TestTokensOnDisk(t *testing.T) {
 	defer l2.Shutdown()
 
 	// Check this ingester joined, is active, and has 512 token.
-	var actTokens []TokenDesc
+	var actTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), ConsulKey)
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		if ok {
-			actTokens = desc.Tokens
+			actTokens = desc.Ingesters["ing2"].Tokens
 		}
 		return ok &&
 			len(desc.Ingesters) == 1 &&
 			desc.Ingesters["ing2"].State == ACTIVE &&
-			len(desc.Ingesters["ing2"].Tokens) == 0 &&
-			len(desc.Tokens) == 512
+			len(desc.Ingesters["ing2"].Tokens) == 512 &&
+			len(desc.Tokens) == 0
 	})
 
 	// Check for same tokens.
+	sort.Slice(expTokens, func(i, j int) bool { return expTokens[i] < expTokens[j] })
+	sort.Slice(actTokens, func(i, j int) bool { return actTokens[i] < actTokens[j] })
 	for i := 0; i < 512; i++ {
-		require.Equal(t, expTokens[i].Token, actTokens[i].Token)
+		require.Equal(t, expTokens, actTokens)
 	}
 }

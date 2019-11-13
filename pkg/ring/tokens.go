@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// TokenVersion1 is the version is a simple list of tokens.
-	TokenVersion1 = 1
+	// TokensVersion1 is the version is a simple list of tokens.
+	TokensVersion1 = 1
 )
 
 // Tokens is a simple list of tokens.
@@ -24,16 +24,20 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 	if tokenFilePath == "" {
 		return errors.New("path is empty")
 	}
-	tmp := tokenFilePath + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE, 0666)
+
+	f, err := ioutil.TempFile(os.TempDir(), "tokens")
 	if err != nil {
 		return err
 	}
 
 	defer func() {
+		// If the file was not closed, then there must already be an error, hence ignore
+		// the error (if any) from f.Close(). If the file was already closed, then
+		// we would ignore the error in that case too.
+		f.Close()
 		// RemoveAll returns no error when tmp doesn't exist so it is safe to always run it.
-		if err := os.RemoveAll(tmp); err != nil {
-			level.Error(util.Logger).Log("msg", "error deleting temporary file", "err", err)
+		if err := os.RemoveAll(f.Name()); err != nil {
+			level.Warn(util.Logger).Log("msg", "error deleting temporary file", "err", err)
 		}
 	}()
 
@@ -50,7 +54,7 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 	}
 
 	// Block successfully written, make visible and remove old ones.
-	return fileutil.Replace(tmp, tokenFilePath)
+	return fileutil.Replace(f.Name(), tokenFilePath)
 }
 
 // LoadFromFile loads tokens from given directory.
@@ -68,7 +72,7 @@ func (t *Tokens) LoadFromFile(tokenFilePath string) error {
 // Marshal encodes the tokens into JSON.
 func (t Tokens) Marshal() ([]byte, error) {
 	data := tokensJSON{
-		Version: TokenVersion1,
+		Version: TokensVersion1,
 		Tokens:  t,
 	}
 	return json.Marshal(data)
@@ -81,11 +85,11 @@ func (t *Tokens) Unmarshal(b []byte) error {
 		return err
 	}
 	switch tj.Version {
-	case TokenVersion1:
+	case TokensVersion1:
 		*t = Tokens(tj.Tokens)
 		return nil
 	default:
-		return errors.New("invalid token type")
+		return errors.New("invalid token version")
 	}
 }
 

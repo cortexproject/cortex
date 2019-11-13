@@ -85,7 +85,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
-	f.StringVar(&cfg.TokensFilePath, prefix+"tokens-file-path", "", "File path in which the tokens is stored. If empty, tokens are not stored at shutdown and restored at startup.")
+	f.StringVar(&cfg.TokensFilePath, prefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -251,9 +251,6 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error
 func (i *Lifecycler) getTokens() Tokens {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
-	if i.tokens == nil {
-		return nil
-	}
 	return i.tokens
 }
 
@@ -261,11 +258,11 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
 	i.stateMtx.Lock()
-	i.tokens = tokens
-	i.stateMtx.Unlock()
+	defer i.stateMtx.Unlock()
 
+	i.tokens = tokens
 	if err := i.tokens.StoreToFile(i.cfg.TokensFilePath); err != nil {
-		level.Error(util.Logger).Log("msg", "error storing tokens to disk", "err", err)
+		level.Error(util.Logger).Log("msg", "error storing tokens to disk", "path", i.cfg.TokensFilePath, "err", err)
 	}
 }
 

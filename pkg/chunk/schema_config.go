@@ -256,7 +256,7 @@ func (cfg PeriodConfig) CreateSchema() Schema {
 		e = v9Entries{}
 	case "v10":
 		e = v10Entries{
-			rowShards: cfg.RowShards,
+			rowShards: rowShards,
 		}
 	case "v11":
 		e = v11Entries{

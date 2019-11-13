@@ -233,7 +233,7 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 
 // CreateSchema returns the schema defined by the PeriodConfig
 func (cfg PeriodConfig) CreateSchema() Schema {
-	rowShards := uint32(16)
+	rowShards := defaultRowShards(cfg.Schema)
 	if cfg.RowShards > 0 {
 		rowShards = cfg.RowShards
 	}

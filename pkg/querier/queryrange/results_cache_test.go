@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -214,6 +215,7 @@ func TestResultsCache(t *testing.T) {
 			CacheConfig: cache.Config{
 				Cache: cache.NewMockCache(),
 			},
+			SplitInterval: 24 * time.Hour,
 		},
 		fakeLimits{},
 		PrometheusCodec,
@@ -281,6 +283,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 			CacheConfig: cache.Config{
 				Cache: cache.NewMockCache(),
 			},
+			SplitInterval: 24 * time.Hour,
 		},
 		fakeLimits{},
 		PrometheusCodec,
@@ -314,4 +317,35 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	extents, hit = rc.get(ctx, "mixed")
 	require.Equal(t, len(extents), 0)
 	require.False(t, hit)
+}
+
+func Test_generateKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		r        Request
+		interval time.Duration
+		want     string
+	}{
+		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
+		{"<30m", &PrometheusRequest{Start: toMs(10 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
+		{"30m", &PrometheusRequest{Start: toMs(30 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:1"},
+		{"91m", &PrometheusRequest{Start: toMs(91 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:3"},
+		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
+		{"<1d", &PrometheusRequest{Start: toMs(22 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
+		{"4d", &PrometheusRequest{Start: toMs(4 * 24 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:4"},
+		{"3d5h", &PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
+			if got := generateKey("fake", tt.r, tt.interval); got != tt.want {
+				t.Errorf("generateKey() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func toMs(t time.Duration) int64 {
+	return int64(t / time.Millisecond)
 }

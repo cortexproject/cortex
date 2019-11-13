@@ -510,7 +510,7 @@ github.com/thanos-io/thanos/pkg/tracing
 github.com/tinylib/msgp/msgp
 # github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5
 github.com/tmc/grpc-websocket-proxy/wsproxy
-# github.com/uber/jaeger-client-go v2.16.0+incompatible
+# github.com/uber/jaeger-client-go v2.20.0+incompatible
 github.com/uber/jaeger-client-go
 github.com/uber/jaeger-client-go/config
 github.com/uber/jaeger-client-go/internal/baggage

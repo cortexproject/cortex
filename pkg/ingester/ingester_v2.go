@@ -325,7 +325,7 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 	// Create a new shipper for this database
 	l := lbls.Labels{
 		{
-			Name:  "user",
+			Name:  cortex_tsdb.TenantIDExternalLabel,
 			Value: userID,
 		},
 	}

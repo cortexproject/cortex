@@ -80,7 +80,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		return nil, fmt.Errorf("no user id")
 	}
 
-	db, err := i.getOrCreateTSDB(userID)
+	db, err := i.getOrCreateTSDB(userID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +282,7 @@ func (i *Ingester) getTSDB(userID string) *tsdb.DB {
 	return db
 }
 
-func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
+func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) {
 	db := i.getTSDB(userID)
 	if db != nil {
 		return db, nil
@@ -304,9 +304,11 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 	// to a non-ACTIVE ingester, however we want to protect from any bug, cause we
 	// may have data loss or TSDB WAL corruption if the TSDB is created before/during
 	// a transfer in occurs.
-	ingesterState := i.lifecycler.GetState()
-	if ingesterState != ring.ACTIVE {
-		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
+	if !force {
+		ingesterState := i.lifecycler.GetState()
+		if ingesterState != ring.ACTIVE {
+			return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
+		}
 	}
 
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)

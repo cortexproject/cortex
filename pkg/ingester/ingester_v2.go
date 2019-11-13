@@ -322,13 +322,17 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 		return nil, err
 	}
 
-	// Create a new shipper for this database
+	// Thanos shipper requires at least 1 external label to be set. For this reason,
+	// we set the tenant ID as external label and we'll filter it out when reading
+	// the series from the storage.
 	l := lbls.Labels{
 		{
 			Name:  cortex_tsdb.TenantIDExternalLabel,
 			Value: userID,
 		},
 	}
+
+	// Create a new shipper for this database
 	s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
 	i.done.Add(1)
 	go func() {

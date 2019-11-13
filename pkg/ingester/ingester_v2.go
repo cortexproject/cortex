@@ -33,7 +33,7 @@ type TSDBState struct {
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
-func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		clientConfig: clientConfig,
 		metrics:      newIngesterMetrics(registerer),
 		limits:       limits,
-		chunkStore:   chunkStore,
+		chunkStore:   nil,
 		quit:         make(chan struct{}),
 
 		TSDBState: TSDBState{
@@ -151,9 +151,9 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 
 	i.metrics.queries.Inc()
 
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db: %v", err)
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.QueryResponse{}, nil
 	}
 
 	q, err := db.Querier(int64(from), int64(through))
@@ -220,9 +220,9 @@ func (i *Ingester) v2LabelValues(ctx old_ctx.Context, req *client.LabelValuesReq
 		return nil, err
 	}
 
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db: %v", err)
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.LabelValuesResponse{}, nil
 	}
 
 	through := time.Now()
@@ -249,9 +249,9 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 		return nil, err
 	}
 
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db: %v", err)
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.LabelNamesResponse{}, nil
 	}
 
 	through := time.Now()

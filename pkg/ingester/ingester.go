@@ -191,7 +191,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	if cfg.TSDBEnabled {
-		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
+		return NewV2(cfg, clientConfig, limits, registerer)
 	}
 
 	i := &Ingester{

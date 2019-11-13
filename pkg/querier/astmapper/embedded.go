@@ -30,6 +30,7 @@ const (
 	QueryLabel = "__cortex_queries__"
 	// EmbeddedQueryFlag is a reserved label (metric name) denoting an embedded query
 	EmbeddedQueryFlag = "__embedded_queries__"
+	embeddedSeparator = "<|>"
 )
 
 // A Codec is responsible for encoding/decoding queries
@@ -44,7 +45,7 @@ var HexCodec Codec = hexCodec{}
 type hexCodec struct{}
 
 func (c hexCodec) Encode(queries []string) string {
-	return hex.EncodeToString([]byte(strings.Join(queries, "|")))
+	return hex.EncodeToString([]byte(strings.Join(queries, embeddedSeparator)))
 }
 
 func (c hexCodec) Decode(encoded string) (queries []string, err error) {
@@ -53,7 +54,7 @@ func (c hexCodec) Decode(encoded string) (queries []string, err error) {
 		return nil, err
 	}
 
-	return strings.Split(string(decoded), "|"), nil
+	return strings.Split(string(decoded), embeddedSeparator), nil
 }
 
 // Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.

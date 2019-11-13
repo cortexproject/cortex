@@ -209,6 +209,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	var err error
+	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 
 	i.wal, err = newWAL(cfg.WALConfig, i)
 	if err != nil {
@@ -216,14 +217,14 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", !cfg.WALConfig.walEnabled)
-
 	if err != nil {
 		return nil, err
 	}
 
 	// Init the limter and instantiate the user states which depend on it
-	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.userStates = newUserStates(i.limiter, cfg)
+	if i.userStates == nil {
+		i.userStates = newUserStates(i.limiter, cfg)
+	}
 
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()

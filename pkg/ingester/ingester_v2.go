@@ -3,7 +3,6 @@ package ingester
 import (
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -24,6 +23,10 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	old_ctx "golang.org/x/net/context"
+)
+
+const (
+	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
 )
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -281,56 +284,64 @@ func (i *Ingester) getTSDB(userID string) *tsdb.DB {
 
 func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 	db := i.getTSDB(userID)
-	if db == nil {
-		i.userStatesMtx.Lock()
-		defer i.userStatesMtx.Unlock()
-
-		// Check again for DB in the event it was created in-between locks
-		var ok bool
-		db, ok = i.TSDBState.dbs[userID]
-		if !ok {
-
-			udir := i.userDir(userID)
-
-			// Create a new user database
-			var err error
-			db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
-				RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-				BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
-				NoLockfile:        true,
-			})
-			if err != nil {
-				return nil, err
-			}
-
-			// Thanos shipper requires at least 1 external label to be set. For this reason,
-			// we set the tenant ID as external label and we'll filter it out when reading
-			// the series from the storage.
-			l := lbls.Labels{
-				{
-					Name:  cortex_tsdb.TenantIDExternalLabel,
-					Value: userID,
-				},
-			}
-
-			// Create a new shipper for this database
-			s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
-			i.done.Add(1)
-			go func() {
-				defer i.done.Done()
-				runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
-					if uploaded, err := s.Sync(context.Background()); err != nil {
-						level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
-					}
-					return nil
-				})
-			}()
-
-			i.TSDBState.dbs[userID] = db
-		}
+	if db != nil {
+		return db, nil
 	}
+
+	i.userStatesMtx.Lock()
+	defer i.userStatesMtx.Unlock()
+
+	// Check again for DB in the event it was created in-between locks
+	var ok bool
+	db, ok = i.TSDBState.dbs[userID]
+	if ok {
+		return db, nil
+	}
+
+	// We're ready to create the TSDB, however we must be sure that the ingester
+	// is in the ACTIVE state, otherwise it may conflict with the transfer in/out.
+	// The TSDB is created when the first series is pushed and this shouldn't happen
+	// to a non-ACTIVE ingester, however we want to protect from any bug, cause we
+	// may have data loss or TSDB WAL corruption if the TSDB is created before/during
+	// a transfer in occurs.
+	ingesterState := i.lifecycler.GetState()
+	if ingesterState != ring.ACTIVE {
+		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
+	}
+
+	udir := i.cfg.TSDBConfig.BlocksDir(userID)
+
+	// Create a new user database
+	var err error
+	db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
+		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
+		NoLockfile:        true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new shipper for this database
+	l := lbls.Labels{
+		{
+			Name:  "user",
+			Value: userID,
+		},
+	}
+	s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
+	i.done.Add(1)
+	go func() {
+		defer i.done.Done()
+		runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
+			if uploaded, err := s.Sync(context.Background()); err != nil {
+				level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
+			}
+			return nil
+		})
+	}()
+
+	i.TSDBState.dbs[userID] = db
 
 	return db, nil
 }
-
-func (i *Ingester) userDir(userID string) string { return filepath.Join(i.cfg.TSDBConfig.Dir, userID) }

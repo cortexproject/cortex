@@ -125,7 +125,7 @@ type Lifecycler struct {
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
-	stateMtx sync.Mutex
+	stateMtx sync.RWMutex
 	state    IngesterState
 	tokens   Tokens
 
@@ -228,8 +228,8 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 
 // GetState returns the state of this ingester.
 func (i *Lifecycler) GetState() IngesterState {
-	i.stateMtx.Lock()
-	defer i.stateMtx.Unlock()
+	i.stateMtx.RLock()
+	defer i.stateMtx.RUnlock()
 	return i.state
 }
 
@@ -249,8 +249,8 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error
 }
 
 func (i *Lifecycler) getTokens() Tokens {
-	i.stateMtx.Lock()
-	defer i.stateMtx.Unlock()
+	i.stateMtx.RLock()
+	defer i.stateMtx.RUnlock()
 	return i.tokens
 }
 

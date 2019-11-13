@@ -810,10 +810,6 @@ func (v10Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, erro
 
 // FilterReadQueries will return only queries that match a certain shard
 func (v10Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) (matches []IndexQuery) {
-	return defaultFilterReadQueries(queries, shard)
-}
-
-func defaultFilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) (matches []IndexQuery) {
 	if shard == nil {
 		return queries
 	}

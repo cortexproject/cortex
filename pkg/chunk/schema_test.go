@@ -403,7 +403,7 @@ func TestEnsureEntriesInhabitInterface(t *testing.T) {
 	}
 }
 
-func TestDefaultFilterIndexQueries(t *testing.T) {
+func TestV10IndexQueries(t *testing.T) {
 	fromShards := func(n int) (res []IndexQuery) {
 		for i := 0; i < n; i++ {
 			res = append(res, IndexQuery{
@@ -448,7 +448,8 @@ func TestDefaultFilterIndexQueries(t *testing.T) {
 
 	for _, c := range testExprs {
 		t.Run(c.name, func(t *testing.T) {
-			filtered := defaultFilterReadQueries(c.queries, c.shard)
+			s := v10Entries{}
+			filtered := s.FilterReadQueries(c.queries, c.shard)
 			require.Equal(t, c.expected, filtered)
 		})
 	}

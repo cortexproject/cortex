@@ -13,16 +13,12 @@ import (
 /*
 Design:
 
-Unfortunately. the prometheus api package enforces a (*promql.Engine argument), making it infeasible to do lazy AST
+The prometheus api package enforces a (*promql.Engine argument), making it infeasible to do lazy AST
 evaluation and substitution from within this package.
 This leaves the (storage.Queryable) interface as the remaining target for conducting application level sharding.
 
 The main idea is to analyze the AST and determine which subtrees can be parallelized. With those in hand, the queries may
-be remapped into vector or matrix selectors utilizing a reserved label containing the original query.
-
-These may then be parallelized in the storage impl.
-
-Ideally the promql.Engine could be an interface instead of a concrete type, allowing us to conduct all parallelism from within the AST via the Engine and pass retrieval requests to the storage.Queryable ifc.
+be remapped into vector or matrix selectors utilizing a reserved label containing the original query. These may then be parallelized in the storage implementation.
 */
 
 const (
@@ -30,7 +26,7 @@ const (
 	QueryLabel = "__cortex_queries__"
 	// EmbeddedQueryFlag is a reserved label (metric name) denoting an embedded query
 	EmbeddedQueryFlag = "__embedded_queries__"
-	embeddedSeparator = "<|>"
+	embeddedSeparator = "<|>" // TODO(owen-d): The separator should be able to exist within a query to prevent bad parsing
 )
 
 // A Codec is responsible for encoding/decoding queries

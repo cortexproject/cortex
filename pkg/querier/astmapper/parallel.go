@@ -14,8 +14,8 @@ var summableAggregates = map[promql.ItemType]struct{}{
 	promql.ItemCount:   {},
 }
 
-// CanParallel annotates subtrees as parallelizable.
-// A subtree is parallelizable if all of it's components are parallelizable.
+// CanParallel tests is a subtree is parallelizable..
+// A subtree is parallelizable if all of its components are parallelizable.
 func CanParallel(node promql.Node) bool {
 	switch n := node.(type) {
 	case nil:

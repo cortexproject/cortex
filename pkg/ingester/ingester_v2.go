@@ -304,11 +304,8 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	// to a non-ACTIVE ingester, however we want to protect from any bug, cause we
 	// may have data loss or TSDB WAL corruption if the TSDB is created before/during
 	// a transfer in occurs.
-	if !force {
-		ingesterState := i.lifecycler.GetState()
-		if ingesterState != ring.ACTIVE {
-			return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
-		}
+	if ingesterState := i.lifecycler.GetState(); !force && ingesterState != ring.ACTIVE {
+		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
 	}
 
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)

@@ -273,6 +273,13 @@ func (shard ShardAnnotation) String() string {
 	return fmt.Sprintf(ShardLabelFmt, shard.Shard, shard.Of)
 }
 
+func (shard ShardAnnotation) Label() labels.Label {
+	return labels.Label{
+		Name:  ShardLabel,
+		Value: shard.String(),
+	}
+}
+
 // ShardFromMatchers extracts a ShardAnnotation and the index it was pulled from in the matcher list
 func ShardFromMatchers(matchers []*labels.Matcher) (shard *ShardAnnotation, idx int, err error) {
 	for i, matcher := range matchers {

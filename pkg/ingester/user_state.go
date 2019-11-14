@@ -312,13 +312,19 @@ outer:
 			u.fpLocker.Unlock(fp)
 			continue
 		}
-		sort.Sort(series.metric)
 
 		if shard != nil {
+			// labels must be sorted for deterministic hash values
+			sort.Sort(series.metric)
+
 			if !matchesShard(shard, series) {
 				u.fpLocker.Unlock(fp)
 				continue
 			}
+
+			// inject the shard label in the return result but don't alter the resident memorySeries
+			metric := append(series.metric.Copy(), shard.Label())
+			series = series.WithMetric(metric)
 		}
 
 		for _, filter := range filters {

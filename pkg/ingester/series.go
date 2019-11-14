@@ -41,6 +41,13 @@ type memorySeries struct {
 	lastSampleValue    model.SampleValue
 }
 
+// WithMetric returns a shallow clone of a memory series with a different label set
+func (s *memorySeries) WithMetric(metric labels.Labels) *memorySeries {
+	c := *s
+	c.metric = metric
+	return &c
+}
+
 type memorySeriesError struct {
 	message   string
 	errorType string

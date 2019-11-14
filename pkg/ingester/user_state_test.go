@@ -66,6 +66,19 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 						require.Nil(t, err)
 						// if expected to match a shard, make sure that it actually hashes to the correct shard
 						if shard != nil {
+							// ensure that the correct shard label is returned
+							var found bool
+							var idx int
+							for i, l := range s.metric {
+								if l == shard.Label() {
+									found = true
+									idx = i
+								}
+							}
+							require.True(t, found)
+							// splice out shard label to check shard hash
+							s.metric = append(s.metric[:idx], s.metric[idx+1:]...)
+
 							matches := matchesShard(shard, s)
 							require.True(t, matches)
 						}

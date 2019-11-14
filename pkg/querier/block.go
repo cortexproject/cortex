@@ -89,9 +89,10 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 
 	ctx = metadata.AppendToOutgoingContext(ctx, "user", userID)
 	seriesClient, err := client.Series(ctx, &storepb.SeriesRequest{
-		MinTime:  int64(from),
-		MaxTime:  int64(through),
-		Matchers: converted,
+		MinTime:                 int64(from),
+		MaxTime:                 int64(through),
+		Matchers:                converted,
+		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 	})
 	if err != nil {
 		return nil, err
@@ -114,16 +115,21 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 }
 
 func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
-
 	var lbls labels.Labels
-	for i := range series.Labels {
+	for _, label := range series.Labels {
+		// We have to remove the external label set by the shipper
+		if label.Name == tsdb.TenantIDExternalLabel {
+			continue
+		}
+
 		lbls = append(lbls, labels.Label{
-			Name:  series.Labels[i].Name,
-			Value: series.Labels[i].Value,
+			Name:  label.Name,
+			Value: label.Value,
 		})
 	}
 
-	var chunks []chunk.Chunk
+	chunks := make([]chunk.Chunk, 0, len(series.Chunks))
+
 	for _, c := range series.Chunks {
 		ch := encoding.New()
 

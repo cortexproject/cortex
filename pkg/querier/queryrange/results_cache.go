@@ -26,12 +26,14 @@ import (
 type ResultsCacheConfig struct {
 	CacheConfig       cache.Config  `yaml:"cache"`
 	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
+	SplitInterval     time.Duration `yaml:"cache_split_interval"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
+	f.DurationVar(&cfg.SplitInterval, "frontend.cache-split-interval", 24*time.Hour, "The maximum interval expected for each request, results will be cached per single interval.")
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
@@ -72,6 +74,11 @@ type resultsCache struct {
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
+// The middleware cache result using a unique cache key for a given request (step,query,user) and interval.
+// The cache assumes that each request length (end-start) is below or equal the interval.
+// Each request starting from within the same interval will hit the same cache entry.
+// If the cache doesn't have the entire duration of the request cached, it will query the uncached parts and append them to the cache entries.
+// see `generateKey`.
 func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, merger Merger, extractor Extractor) (Middleware, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
@@ -98,8 +105,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	var (
-		day      = r.GetStart() / millisecondPerDay
-		key      = fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), day)
+		key      = generateKey(userID, r, s.cfg.SplitInterval)
 		extents  []Extent
 		response Response
 	)
@@ -316,6 +322,12 @@ func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Exte
 		}
 	}
 	return extents, nil
+}
+
+// generateKey generates a cache key based on the userID, Request and interval.
+func generateKey(userID string, r Request, interval time.Duration) string {
+	currentInterval := r.GetStart() / int64(interval/time.Millisecond)
+	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
 func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {

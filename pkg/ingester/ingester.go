@@ -269,16 +269,30 @@ func (i *Ingester) loop() {
 
 // Shutdown beings the process to stop this ingester.
 func (i *Ingester) Shutdown() {
-	// First wait for our flush loop to stop.
-	close(i.quit)
-	i.done.Wait()
+	select {
+	case <-i.quit:
+		// Ingester was already shutdown.
+		return
+	default:
+		// First wait for our flush loop to stop.
+		close(i.quit)
+		i.done.Wait()
 
-	if i.wal != nil {
-		i.wal.Stop()
+		if i.wal != nil {
+			i.wal.Stop()
+		}
+
+		// Next initiate our graceful exit from the ring.
+		i.lifecycler.Shutdown()
 	}
+}
 
-	// Next initiate our graceful exit from the ring.
-	i.lifecycler.Shutdown()
+// ShutdownHandler triggers the following set of operations in order:
+//     * Change the state of ring to stop accepting writes.
+//     * Flush all the chunks.
+func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	i.Shutdown()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // StopIncomingRequests is called during the shutdown process.

@@ -81,17 +81,14 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	// Walk the samples, appending them to the users database
 	app := db.Appender()
 	for _, ts := range req.Timeseries {
+		// Convert labels to the type expected by TSDB
+		lset := cortex_tsdb.FromLabelAdaptersToLabels(ts.Labels)
+
 		for _, s := range ts.Samples {
 			if i.stopped {
 				return nil, fmt.Errorf("ingester stopping")
 			}
-			lset := make(lbls.Labels, len(ts.Labels))
-			for i := range ts.Labels {
-				lset[i] = lbls.Label{
-					Name:  ts.Labels[i].Name,
-					Value: ts.Labels[i].Value,
-				}
-			}
+
 			if _, err := app.Add(lset, s.TimestampMs, s.Value); err != nil {
 				if err := app.Rollback(); err != nil {
 					level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID, "err", err)
@@ -267,20 +264,24 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 			var err error
 			db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
 				RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-				BlockRanges:       []int64{int64(i.cfg.TSDBConfig.BlockRanges / time.Millisecond)},
+				BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
 				NoLockfile:        true,
 			})
 			if err != nil {
 				return nil, err
 			}
 
-			// Create a new shipper for this database
+			// Thanos shipper requires at least 1 external label to be set. For this reason,
+			// we set the tenant ID as external label and we'll filter it out when reading
+			// the series from the storage.
 			l := lbls.Labels{
 				{
-					Name:  "user",
+					Name:  cortex_tsdb.TenantIDExternalLabel,
 					Value: userID,
 				},
 			}
+
+			// Create a new shipper for this database
 			s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
 			i.done.Add(1)
 			go func() {

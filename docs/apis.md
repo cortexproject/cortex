@@ -127,3 +127,10 @@ Error Response: BadRequest(400)
 These API endpoints will disable/enable the current Rule and Alertmanager configuration for a tenant.
 
 Note that setting a new config will effectively "re-enable" the Rules and Alertmanager configuration for a tenant.
+
+#### Ingester Shutdown
+
+`POST /shutdown` - Shutdown all operations of an ingester. Shutdown operations performed are similar to when an ingester is gracefully shutting down, including flushing of chunks if no other ingester is in `PENDING` state. Ingester does not terminate after calling this endpoint.
+
+- Normal Response Codes: NoContent(204)
+- Error Response Codes: Unauthorized(401)

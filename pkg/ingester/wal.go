@@ -76,6 +76,9 @@ type walWrapper struct {
 	checkpointCreationTotal prometheus.Counter
 }
 
+// newWAL creates a WAL object.
+// * If the WAL is disabled, then the returned WAL is a no-op WAL.
+// * If WAL recovery is enabled, then the userStates is always set for ingester.
 func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 	if cfg.recover {
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
@@ -344,6 +347,14 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	// Use a local userStates, so we don't need to worry about locking.
 	userStates := newUserStates(ingester.limiter, ingester.cfg)
 
+	defer func() {
+		if err == nil {
+			ingester.userStatesMtx.Lock()
+			ingester.userStates = userStates
+			ingester.userStatesMtx.Unlock()
+		}
+	}()
+
 	lastCheckpointDir, idx, err := lastCheckpoint(walDir)
 	if err != nil {
 		return err
@@ -382,10 +393,6 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 	}
 	elapsed := time.Since(start)
 	level.Info(util.Logger).Log("msg", "recovered from segments", "time", elapsed.String())
-
-	ingester.userStatesMtx.Lock()
-	ingester.userStates = userStates
-	ingester.userStatesMtx.Unlock()
 
 	return nil
 }

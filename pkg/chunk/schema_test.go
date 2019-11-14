@@ -438,7 +438,7 @@ func TestV10IndexQueries(t *testing.T) {
 		},
 		{
 			name:    "return correct shard",
-			queries: fromShards(2),
+			queries: fromShards(3),
 			shard: &astmapper.ShardAnnotation{
 				Shard: 1,
 			},

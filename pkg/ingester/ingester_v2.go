@@ -268,7 +268,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	}
 
 	// Create a new instance of the TSDB querier
-	q, err := db.Querier(from.Unix()*1000, to.Unix()*1000)
+	q, err := db.Querier(int64(from), int64(to))
 	if err != nil {
 		return nil, err
 	}

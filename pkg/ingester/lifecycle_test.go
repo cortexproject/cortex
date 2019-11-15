@@ -109,32 +109,9 @@ func TestIngesterTransfer(t *testing.T) {
 	})
 
 	// Now write a sample to this ingester
-	const ts = 123000
-	const val = 456
-	var (
-		l          = labels.Labels{{Name: labels.MetricName, Value: "foo"}}
-		sampleData = []client.Sample{
-			{
-				TimestampMs: ts,
-				Value:       val,
-			},
-		}
-		expectedResponse = &client.QueryResponse{
-			Timeseries: []client.TimeSeries{
-				{
-					Labels: client.FromLabelsToLabelAdapters(l),
-					Samples: []client.Sample{
-						{
-							Value:       val,
-							TimestampMs: ts,
-						},
-					},
-				},
-			},
-		}
-	)
+	req, expectedResponse := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing1.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
+	_, err = ing1.Push(ctx, req)
 	require.NoError(t, err)
 
 	// Start a second ingester, but let it go into PENDING
@@ -171,7 +148,8 @@ func TestIngesterTransfer(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 
 	// Check we can send the same sample again to the new ingester and get the same result
-	_, err = ing2.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
+	req, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+	_, err = ing2.Push(ctx, req)
 	require.NoError(t, err)
 	response, err = ing2.Query(ctx, request)
 	require.NoError(t, err)
@@ -448,32 +426,9 @@ func TestV2IngesterTransfer(t *testing.T) {
 	})
 
 	// Now write a sample to this ingester
-	const ts = 123000
-	const val = 456
-	var (
-		l          = labels.Labels{{Name: labels.MetricName, Value: "foo"}}
-		sampleData = []client.Sample{
-			{
-				TimestampMs: ts,
-				Value:       val,
-			},
-		}
-		expectedResponse = &client.QueryResponse{
-			Timeseries: []client.TimeSeries{
-				{
-					Labels: client.FromLabelsToLabelAdapters(l),
-					Samples: []client.Sample{
-						{
-							Value:       val,
-							TimestampMs: ts,
-						},
-					},
-				},
-			},
-		}
-	)
+	req, expectedResponse := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing1.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
+	_, err = ing1.Push(ctx, req)
 	require.NoError(t, err)
 
 	// Start a second ingester, but let it go into PENDING
@@ -518,7 +473,8 @@ func TestV2IngesterTransfer(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 
 	// Check we can send the same sample again to the new ingester and get the same result
-	_, err = ing2.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
+	req, _ = mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
+	_, err = ing2.Push(ctx, req)
 	require.NoError(t, err)
 	response, err = ing2.Query(ctx, request)
 	require.NoError(t, err)

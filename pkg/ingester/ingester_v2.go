@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb"
 	lbls "github.com/prometheus/prometheus/tsdb/labels"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -250,7 +251,6 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 }
 
 func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
-	fmt.Println("v2MetricsForLabelMatchers() req.StartTimestampMs:", req.StartTimestampMs, "req.EndTimestampMs:", req.EndTimestampMs)
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -262,19 +262,20 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	}
 
 	// Parse the request
-	from, through, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	from, to, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a new instance of the TSDB querier
-	q, err := db.Querier(from.Unix()*1000, through.Unix()*1000)
+	q, err := db.Querier(from.Unix()*1000, to.Unix()*1000)
 	if err != nil {
 		return nil, err
 	}
 	defer q.Close()
 
 	// Run a query for each matchers set and collect all the results
+	added := model.FingerprintSet{}
 	result := &client.MetricsForLabelMatchersResponse{
 		Metric: make([]*client.Metric, 0),
 	}
@@ -291,14 +292,24 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 		}
 
 		for seriesSet.Next() {
-			// TODO(pracucci): test the error case
 			if seriesSet.Err() != nil {
 				break
 			}
 
+			// Given the same series can be matched by multiple matchers and we want to
+			// return the unique set of matching series, we do check if the series has
+			// already been added to the result
+			ls := seriesSet.At().Labels()
+			fp := client.Fingerprint(cortex_tsdb.FromLabelsToLegacyLabels(ls))
+			if _, ok := added[fp]; ok {
+				continue
+			}
+
 			result.Metric = append(result.Metric, &client.Metric{
-				Labels: cortex_tsdb.FromLabelsToLabelAdapters(seriesSet.At().Labels()),
+				Labels: cortex_tsdb.FromLabelsToLabelAdapters(ls),
 			})
+
+			added[fp] = struct{}{}
 		}
 
 		// In case of any error while iterating the series, we break

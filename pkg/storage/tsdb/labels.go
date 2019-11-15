@@ -1,6 +1,8 @@
 package tsdb
 
 import (
+	"unsafe"
+
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	legacy_labels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/labels"
@@ -34,6 +36,12 @@ func FromLabelsToLabelAdapters(labels labels.Labels) []client.LabelAdapter {
 	}
 
 	return adapters
+}
+
+// FromLabelsToLegacyLabels casts TSDB labels.Labels to legacy labels.Labels.
+// It uses unsafe, but as both struct are identical this should be safe.
+func FromLabelsToLegacyLabels(input labels.Labels) legacy_labels.Labels {
+	return *(*legacy_labels.Labels)(unsafe.Pointer(&input))
 }
 
 // FromLegacyLabelMatchersToMatchers converts legacy matchers to TSDB label matchers.

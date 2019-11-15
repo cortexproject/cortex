@@ -64,7 +64,7 @@ func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
 	return mapper.Map(expr)
 }
 
-// QueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
+// NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func NewQueryShardMiddleware(logger log.Logger, engine *promql.Engine, confs ShardingConfigs) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		if !confs.hasShards() {

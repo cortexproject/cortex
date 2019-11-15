@@ -25,7 +25,7 @@ func FromLabelAdaptersToLabels(input []client.LabelAdapter) labels.Labels {
 	return result
 }
 
-// TODO(pracucci) doc
+// FromLabelsToLabelAdapters converts TSDB labels.labels to []LabelAdapter.
 func FromLabelsToLabelAdapters(labels labels.Labels) []client.LabelAdapter {
 	adapters := make([]client.LabelAdapter, 0, len(labels))
 
@@ -36,9 +36,9 @@ func FromLabelsToLabelAdapters(labels labels.Labels) []client.LabelAdapter {
 	return adapters
 }
 
-// TODO(pracucci) doc
+// FromLegacyLabelMatchersToMatchers converts legacy matchers to TSDB label matchers.
 func FromLegacyLabelMatchersToMatchers(matchers []*legacy_labels.Matcher) ([]labels.Matcher, error) {
-	var converted []labels.Matcher
+	converted := make([]labels.Matcher, 0, len(matchers))
 
 	for _, m := range matchers {
 		switch m.Type {

@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -523,27 +523,15 @@ func (m *testMatrix) At() storage.Series {
 func (m *testMatrix) Err() error { return nil }
 
 func (m *testMatrix) Select(selectParams *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	shardIndex := -1
-	shardTotal := 0
-	var err error
-	for _, matcher := range matchers {
-		if matcher.Name != "__cortex_shard__" {
-			continue
-		}
-		shardData := strings.Split(matcher.Value, "_")
-		shardIndex, err = strconv.Atoi(shardData[0])
-		if err != nil {
-			panic(err)
-		}
-		shardTotal, err = strconv.Atoi(shardData[2])
-		if err != nil {
-			panic(err)
-		}
+	s, _, err := astmapper.ShardFromMatchers(matchers)
+	if err != nil {
+		return nil, nil, err
 	}
-	if shardIndex >= 0 {
-		shard := splitByShard(shardIndex, shardTotal, m)
-		return shard, nil, nil
+
+	if s != nil {
+		return splitByShard(s.Shard, s.Of, m), nil, nil
 	}
+
 	return m, nil, nil
 }
 

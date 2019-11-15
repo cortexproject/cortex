@@ -205,9 +205,12 @@ func TestShardFromMatchers(t *testing.T) {
 			input: []*labels.Matcher{
 				{},
 				{
-					Name:  ShardLabel,
-					Type:  labels.MatchEqual,
-					Value: fmt.Sprintf(ShardLabelFmt, 10, 16),
+					Name: ShardLabel,
+					Type: labels.MatchEqual,
+					Value: ShardAnnotation{
+						Shard: 10,
+						Of:    16,
+					}.String(),
 				},
 				{},
 			},

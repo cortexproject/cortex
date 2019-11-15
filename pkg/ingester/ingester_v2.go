@@ -13,7 +13,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	lbls "github.com/prometheus/prometheus/tsdb/labels"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -162,29 +161,12 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 	}
 	defer q.Close()
 
-	// two different versions of the labels package are being used, converting matchers must be done
-	var converted []lbls.Matcher
-	for _, m := range matchers {
-		switch m.Type {
-		case labels.MatchEqual:
-			converted = append(converted, lbls.NewEqualMatcher(m.Name, m.Value))
-		case labels.MatchNotEqual:
-			converted = append(converted, lbls.Not(lbls.NewEqualMatcher(m.Name, m.Value)))
-		case labels.MatchRegexp:
-			rm, err := lbls.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
-			if err != nil {
-				return nil, err
-			}
-			converted = append(converted, rm)
-		case labels.MatchNotRegexp:
-			rm, err := lbls.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
-			if err != nil {
-				return nil, err
-			}
-			converted = append(converted, lbls.Not(rm))
-		}
+	convertedMatchers, err := cortex_tsdb.FromLegacyLabelMatchersToMatchers(matchers)
+	if err != nil {
+		return nil, err
 	}
-	ss, err := q.Select(converted...)
+
+	ss, err := q.Select(convertedMatchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -193,13 +175,8 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 	for ss.Next() {
 		series := ss.At()
 
-		// convert labels to LabelAdapter
-		var adapters []client.LabelAdapter
-		for _, l := range series.Labels() {
-			adapters = append(adapters, client.LabelAdapter(l))
-		}
 		ts := client.TimeSeries{
-			Labels: adapters,
+			Labels: cortex_tsdb.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
 		it := series.Iterator()
@@ -270,6 +247,68 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 	return &client.LabelNamesResponse{
 		LabelNames: names,
 	}, nil
+}
+
+func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	fmt.Println("v2MetricsForLabelMatchers() req.StartTimestampMs:", req.StartTimestampMs, "req.EndTimestampMs:", req.EndTimestampMs)
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.MetricsForLabelMatchersResponse{}, nil
+	}
+
+	// Parse the request
+	from, through, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new instance of the TSDB querier
+	q, err := db.Querier(from.Unix()*1000, through.Unix()*1000)
+	if err != nil {
+		return nil, err
+	}
+	defer q.Close()
+
+	// Run a query for each matchers set and collect all the results
+	result := &client.MetricsForLabelMatchersResponse{
+		Metric: make([]*client.Metric, 0),
+	}
+
+	for _, matchers := range matchersSet {
+		convertedMatchers, err := cortex_tsdb.FromLegacyLabelMatchersToMatchers(matchers)
+		if err != nil {
+			return nil, err
+		}
+
+		seriesSet, err := q.Select(convertedMatchers...)
+		if err != nil {
+			return nil, err
+		}
+
+		for seriesSet.Next() {
+			// TODO(pracucci): test the error case
+			if seriesSet.Err() != nil {
+				break
+			}
+
+			result.Metric = append(result.Metric, &client.Metric{
+				Labels: cortex_tsdb.FromLabelsToLabelAdapters(seriesSet.At().Labels()),
+			})
+		}
+
+		// In case of any error while iterating the series, we break
+		// the execution and return it
+		if err := seriesSet.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
 }
 
 func (i *Ingester) getTSDB(userID string) *tsdb.DB {

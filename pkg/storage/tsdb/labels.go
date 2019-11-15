@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	legacy_labels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/labels"
 )
 
@@ -22,4 +23,43 @@ func FromLabelAdaptersToLabels(input []client.LabelAdapter) labels.Labels {
 	}
 
 	return result
+}
+
+// TODO(pracucci) doc
+func FromLabelsToLabelAdapters(labels labels.Labels) []client.LabelAdapter {
+	adapters := make([]client.LabelAdapter, 0, len(labels))
+
+	for _, label := range labels {
+		adapters = append(adapters, client.LabelAdapter(label))
+	}
+
+	return adapters
+}
+
+// TODO(pracucci) doc
+func FromLegacyLabelMatchersToMatchers(matchers []*legacy_labels.Matcher) ([]labels.Matcher, error) {
+	var converted []labels.Matcher
+
+	for _, m := range matchers {
+		switch m.Type {
+		case legacy_labels.MatchEqual:
+			converted = append(converted, labels.NewEqualMatcher(m.Name, m.Value))
+		case legacy_labels.MatchNotEqual:
+			converted = append(converted, labels.Not(labels.NewEqualMatcher(m.Name, m.Value)))
+		case legacy_labels.MatchRegexp:
+			rm, err := labels.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
+			if err != nil {
+				return nil, err
+			}
+			converted = append(converted, rm)
+		case legacy_labels.MatchNotRegexp:
+			rm, err := labels.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
+			if err != nil {
+				return nil, err
+			}
+			converted = append(converted, labels.Not(rm))
+		}
+	}
+
+	return converted, nil
 }

@@ -55,7 +55,7 @@ func TestSelect(t *testing.T) {
 				_, _, err := q.Select(
 					nil,
 					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
-					exactMatch(astmapper.QueryLabel, astmapper.HexCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
+					exactMatch(astmapper.QueryLabel, astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
 				)
 				require.Nil(t, err)
 			},
@@ -72,7 +72,7 @@ func TestSelect(t *testing.T) {
 				set, _, err := q.Select(
 					nil,
 					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
-					exactMatch(astmapper.QueryLabel, astmapper.HexCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
+					exactMatch(astmapper.QueryLabel, astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
 				)
 				require.Nil(t, set)
 				require.EqualError(t, err, "SomeErr")
@@ -126,7 +126,7 @@ func TestSelect(t *testing.T) {
 				set, _, err := q.Select(
 					nil,
 					exactMatch("__name__", astmapper.EmbeddedQueryFlag),
-					exactMatch(astmapper.QueryLabel, astmapper.HexCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
+					exactMatch(astmapper.QueryLabel, astmapper.JSONCodec.Encode([]string{`http_requests_total{cluster="prod"}`})),
 				)
 				require.Nil(t, err)
 				require.Equal(
@@ -228,7 +228,7 @@ func TestSelectConcurrent(t *testing.T) {
 			set, _, err := querier.Select(
 				nil,
 				exactMatch("__name__", astmapper.EmbeddedQueryFlag),
-				exactMatch(astmapper.QueryLabel, astmapper.HexCodec.Encode(c.queries)),
+				exactMatch(astmapper.QueryLabel, astmapper.JSONCodec.Encode(c.queries)),
 			)
 
 			if c.err != nil {

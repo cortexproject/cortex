@@ -47,8 +47,8 @@ func NewShardSummer(shards int, squasher squasher) (ASTMapper, error) {
 	}), nil
 }
 
-// CopyWithCurshard clones a shardSummer with a new current shard. This facilitates recursive sharding.
-func (summer *shardSummer) CopyWithCurshard(curshard int) *shardSummer {
+// CopyWithCurShard clones a shardSummer with a new current shard.
+func (summer *shardSummer) CopyWithCurShard(curshard int) *shardSummer {
 	s := *summer
 	s.curshard = &curshard
 	return &s
@@ -85,7 +85,7 @@ func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) 
 	}
 }
 
-// shardSum contains the logic for how we split/stitch legs of a parallelized query
+// shardSum contains the logic for how we split/stitch legs of a parallelized sum query
 func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, error) {
 
 	if summer.shards < 2 {
@@ -107,7 +107,7 @@ func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, er
 	return parent, nil
 }
 
-// splitSum takes a shardFactor and a sum expr and will form the new parent and child legs of a parallel variant
+// splitSum forms the parent and child legs of a parallel query
 func (summer *shardSummer) splitSum(
 	expr *promql.AggregateExpr,
 ) (
@@ -186,7 +186,7 @@ func (summer *shardSummer) splitSum(
 			return parent, children, err
 		}
 
-		subSummer := NewASTNodeMapper(summer.CopyWithCurshard(i))
+		subSummer := NewASTNodeMapper(summer.CopyWithCurShard(i))
 		sharded, err := subSummer.Map(cloned)
 		if err != nil {
 			return parent, children, err
@@ -269,10 +269,12 @@ type ShardAnnotation struct {
 	Of    int
 }
 
+// String encodes a shardAnnotation into a label value
 func (shard ShardAnnotation) String() string {
 	return fmt.Sprintf(ShardLabelFmt, shard.Shard, shard.Of)
 }
 
+// Label generates the ShardAnnotation as a label
 func (shard ShardAnnotation) Label() labels.Label {
 	return labels.Label{
 		Name:  ShardLabel,
@@ -283,7 +285,7 @@ func (shard ShardAnnotation) Label() labels.Label {
 // ShardFromMatchers extracts a ShardAnnotation and the index it was pulled from in the matcher list
 func ShardFromMatchers(matchers []*labels.Matcher) (shard *ShardAnnotation, idx int, err error) {
 	for i, matcher := range matchers {
-		if matcher.Type == labels.MatchEqual && matcher.Name == ShardLabel {
+		if matcher.Name == ShardLabel && matcher.Type == labels.MatchEqual {
 			shard, err := ParseShard(matcher.Value)
 			if err != nil {
 				return nil, i, err

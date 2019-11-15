@@ -15,9 +15,6 @@ func TestShardSummer(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// Series are grouped on a single shard,
-		// so if we’re not reducing label cardinality,
-		// remove the reference to __cortex_shard__ (it shouldn’t be in the return value).
 		{
 			shards: 3,
 			input:  `sum(rate(bar1{baz="blip"}[1m]))`,
@@ -55,7 +52,7 @@ func TestShardSummer(t *testing.T) {
 			  )
 			)`,
 		},
-		// This is currently redundant but still equivalent: sums split into sharded versions, including summed sums.
+		// This nested sum example is nonsensical, but equivalent.
 		{
 			shards: 2,
 			input:  `sum(sum by(foo) (rate(bar1{baz="blip"}[1m])))`,
@@ -132,21 +129,9 @@ func TestShardSummerWithEncoding(t *testing.T) {
 		expected string
 	}{
 		{
-			shards: 3,
-			input:  `sum(rate(bar1{baz="blip"}[1m]))`,
-			/*
-			  encoded from:
-			  sum by(__cortex_shard__) (
-			    rate(bar1{__cortex_shard__="0_of_3",baz="blip"}[1m])
-			  ) |
-			    sum by(__cortex_shard__) (
-			  rate(bar1{__cortex_shard__="1_of_3",baz="blip"}[1m])
-			  ) |
-			  sum by(__cortex_shard__) (
-			    rate(bar1{__cortex_shard__="2_of_3",baz="blip"}[1m])
-			  )
-			*/
-			expected: `sum without(__cortex_shard__) (__embedded_queries__{__cortex_queries__="73756d206279285f5f636f727465785f73686172645f5f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22305f6f665f33222c62617a3d22626c6970227d5b316d5d29293c7c3e73756d206279285f5f636f727465785f73686172645f5f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22315f6f665f33222c62617a3d22626c6970227d5b316d5d29293c7c3e73756d206279285f5f636f727465785f73686172645f5f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22325f6f665f33222c62617a3d22626c6970227d5b316d5d2929"})`,
+			shards:   3,
+			input:    `sum(rate(bar1{baz="blip"}[1m]))`,
+			expected: `sum without(__cortex_shard__) (__embedded_queries__{__cortex_queries__="{\"Concat\":[\"sum by(__cortex_shard__) (rate(bar1{__cortex_shard__=\\\"0_of_3\\\",baz=\\\"blip\\\"}[1m]))\",\"sum by(__cortex_shard__) (rate(bar1{__cortex_shard__=\\\"1_of_3\\\",baz=\\\"blip\\\"}[1m]))\",\"sum by(__cortex_shard__) (rate(bar1{__cortex_shard__=\\\"2_of_3\\\",baz=\\\"blip\\\"}[1m]))\"]}"})`,
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {

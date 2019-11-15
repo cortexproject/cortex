@@ -1,8 +1,7 @@
 package astmapper
 
 import (
-	"encoding/hex"
-	"strings"
+	"encoding/json"
 	"time"
 
 	"github.com/pkg/errors"
@@ -26,31 +25,45 @@ const (
 	QueryLabel = "__cortex_queries__"
 	// EmbeddedQueryFlag is a reserved label (metric name) denoting an embedded query
 	EmbeddedQueryFlag = "__embedded_queries__"
-	embeddedSeparator = "<|>" // TODO(owen-d): The separator should be able to exist within a query to prevent bad parsing
 )
+
+// EmbeddedQueries is a wrapper type for encoding queries
+type EmbeddedQueries struct {
+	Concat []string `json:"Concat"`
+}
+
+// JSONCodec is a Codec impl that uses JSON representations of EmbeddedQueries structs
+var JSONCodec Codec = jsonCodec{}
+
+type jsonCodec struct{}
+
+func (c jsonCodec) Encode(queries []string) string {
+	embedded := EmbeddedQueries{
+		Concat: queries,
+	}
+	b, err := json.Marshal(embedded)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return string(b)
+}
+
+func (c jsonCodec) Decode(encoded string) (queries []string, err error) {
+	var embedded EmbeddedQueries
+	err = json.Unmarshal([]byte(encoded), &embedded)
+	if err != nil {
+		return nil, err
+	}
+
+	return embedded.Concat, nil
+}
 
 // A Codec is responsible for encoding/decoding queries
 type Codec interface {
 	Encode([]string) string
 	Decode(string) ([]string, error)
-}
-
-// HexCodec is a hexadecimal implementation of a Codec
-var HexCodec Codec = hexCodec{}
-
-type hexCodec struct{}
-
-func (c hexCodec) Encode(queries []string) string {
-	return hex.EncodeToString([]byte(strings.Join(queries, embeddedSeparator)))
-}
-
-func (c hexCodec) Decode(encoded string) (queries []string, err error) {
-	decoded, err := hex.DecodeString(encoded)
-	if err != nil {
-		return nil, err
-	}
-
-	return strings.Split(string(decoded), embeddedSeparator), nil
 }
 
 // Squash reduces an AST into a single vector or matrix query which can be hijacked by a Queryable impl.
@@ -90,7 +103,7 @@ func Squash(codec Codec, isMatrix bool, nodes ...promql.Node) (promql.Expr, erro
 // VectorSquasher always uses a VectorSelector as the substitution node.
 // This is important because logical/set binops can only be applied against vectors and not matrices.
 func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
-	return Squash(HexCodec, false, nodes...)
+	return Squash(JSONCodec, false, nodes...)
 }
 
 // ShallowEmbedSelectors encodes selector queries if they do not already have the EmbeddedQueryFlag.
@@ -103,14 +116,14 @@ func shallowEmbedSelectors(node promql.Node) (mapped promql.Node, finished bool,
 		if n.Name == EmbeddedQueryFlag {
 			return n, true, nil
 		}
-		squashed, err := Squash(HexCodec, false, n)
+		squashed, err := Squash(JSONCodec, false, n)
 		return squashed, true, err
 
 	case *promql.MatrixSelector:
 		if n.Name == EmbeddedQueryFlag {
 			return n, true, nil
 		}
-		squashed, err := Squash(HexCodec, true, n)
+		squashed, err := Squash(JSONCodec, true, n)
 		return squashed, true, err
 
 	default:

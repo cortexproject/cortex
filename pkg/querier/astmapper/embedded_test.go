@@ -15,16 +15,16 @@ func TestShallowEmbedSelectors(t *testing.T) {
 	}{
 		// already holds embedded queries, so noop (don't double encode)
 		{
-			`sum by(foo) (__embedded_queries__{__cortex_queries__="73756d20627928666f6f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22305f6f665f33222c62617a3d22626c6970227d5b316d5d2929"} or __embedded_queries__{__cortex_queries__="73756d20627928666f6f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22315f6f665f33222c62617a3d22626c6970227d5b316d5d2929"} or __embedded_queries__{__cortex_queries__="73756d20627928666f6f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22325f6f665f33222c62617a3d22626c6970227d5b316d5d2929"})`,
-			`sum by(foo) (__embedded_queries__{__cortex_queries__="73756d20627928666f6f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22305f6f665f33222c62617a3d22626c6970227d5b316d5d2929"} or __embedded_queries__{__cortex_queries__="73756d20627928666f6f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22315f6f665f33222c62617a3d22626c6970227d5b316d5d2929"} or __embedded_queries__{__cortex_queries__="73756d20627928666f6f2920287261746528626172317b5f5f636f727465785f73686172645f5f3d22325f6f665f33222c62617a3d22626c6970227d5b316d5d2929"})`,
+			`sum by(foo) (__embedded_queries__{__cortex_queries__="{\"Concat\":[\"http_requests_total{cluster=\\\"prod\\\"}\"]}"})`,
+			`sum by(foo) (__embedded_queries__{__cortex_queries__="{\"Concat\":[\"http_requests_total{cluster=\\\"prod\\\"}\"]}"})`,
 		},
 		{
 			`http_requests_total{cluster="prod"}`,
-			`__embedded_queries__{__cortex_queries__="687474705f72657175657374735f746f74616c7b636c75737465723d2270726f64227d"}`,
+			`__embedded_queries__{__cortex_queries__="{\"Concat\":[\"http_requests_total{cluster=\\\"prod\\\"}\"]}"}`,
 		},
 		{
 			`rate(http_requests_total{cluster="eu-west2"}[5m]) or rate(http_requests_total{cluster="us-central1"}[5m])`,
-			`rate(__embedded_queries__{__cortex_queries__="687474705f72657175657374735f746f74616c7b636c75737465723d2265752d7765737432227d5b356d5d"}[1m]) or rate(__embedded_queries__{__cortex_queries__="687474705f72657175657374735f746f74616c7b636c75737465723d2275732d63656e7472616c31227d5b356d5d"}[1m])`,
+			`rate(__embedded_queries__{__cortex_queries__="{\"Concat\":[\"http_requests_total{cluster=\\\"eu-west2\\\"}[5m]\"]}"}[1m]) or rate(__embedded_queries__{__cortex_queries__="{\"Concat\":[\"http_requests_total{cluster=\\\"us-central1\\\"}[5m]\"]}"}[1m])`,
 		},
 	}
 

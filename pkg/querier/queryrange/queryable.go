@@ -62,7 +62,7 @@ func (q *DownstreamQuerier) Select(
 
 // handleEmbeddedQuery defers execution of an encoded query to a downstream Handler
 func (q *DownstreamQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet, storage.Warnings, error) {
-	queries, err := astmapper.HexCodec.Decode(encoded)
+	queries, err := astmapper.JSONCodec.Decode(encoded)
 	if err != nil {
 		return nil, nil, err
 	}

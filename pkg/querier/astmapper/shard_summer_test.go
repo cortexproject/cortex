@@ -93,21 +93,8 @@ func TestShardSummer(t *testing.T) {
 
 	for i, c := range testExpr {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			// orSquash is a custom squasher which mimics the intuitive but less efficient OR'ing of sharded vectors.
-			// This keeps compatibility with older tests.
-			orSquash := func(nodes ...promql.Node) (promql.Expr, error) {
-				combined := nodes[0]
-				for i := 1; i < len(nodes); i++ {
-					combined = &promql.BinaryExpr{
-						Op:  promql.ItemLOR,
-						LHS: combined.(promql.Expr),
-						RHS: nodes[i].(promql.Expr),
-					}
-				}
-				return combined.(promql.Expr), nil
-			}
 
-			summer, err := NewShardSummer(c.shards, orSquash)
+			summer, err := NewShardSummer(c.shards, OrSquasher)
 			require.Nil(t, err)
 			expr, err := promql.ParseExpr(c.input)
 			require.Nil(t, err)

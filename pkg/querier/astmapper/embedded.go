@@ -130,3 +130,16 @@ func shallowEmbedSelectors(node promql.Node) (mapped promql.Node, finished bool,
 		return n, false, nil
 	}
 }
+
+// OrSquash is a custom squasher which mimics the intuitive but less efficient OR'ing of sharded vectors.
+func OrSquasher(nodes ...promql.Node) (promql.Expr, error) {
+	combined := nodes[0]
+	for i := 1; i < len(nodes); i++ {
+		combined = &promql.BinaryExpr{
+			Op:  promql.ItemLOR,
+			LHS: combined.(promql.Expr),
+			RHS: nodes[i].(promql.Expr),
+		}
+	}
+	return combined.(promql.Expr), nil
+}

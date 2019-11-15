@@ -14,6 +14,15 @@
 * [CHANGE/FEATURE] The frontend split and cache intervals can now be configured using the respective flag `--querier.split-queries-by-interval` and `--frontend.cache-split-interval`.
   * If `--querier.split-queries-by-interval` is not provided request splitting is disabled by default.
   * __`--querier.split-queries-by-day` is still accepted for backward compatibility but has been deprecated. You should now use `--querier.split-queries-by-interval`. We recommend a to use a multiple of 24 hours.__
+* [FEATURE] Fan out parallelizable queries to backend queriers concurrently.
+  * `-querier.sum-shards` (bool)
+  * Requires a shard-compatible schema (v10+)
+  * This causes the number of traces to increase accordingly.
+  * The query-frontend now requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `config-yaml` CLI flag). This is the same schema config the queriers consume.
+  * It's also advised to increase downstream concurrency controls as well:
+    * `querier.max-outstanding-requests-per-tenant`
+    * `querier.max-query-parallelism`
+    * `querier.max-concurrent`
 * [FEATURE] Global limit on the max series per user and metric #1760
   * `-ingester.max-global-series-per-user`
   * `-ingester.max-global-series-per-metric`

@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -16,6 +18,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
+	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func BenchmarkQueryStream(b *testing.B) {
@@ -106,4 +112,105 @@ func BenchmarkQueryStream(b *testing.B) {
 			require.Equal(b, count, int(numSeries))
 		})
 	}
+}
+
+func TestTSDBQueryStream(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	dir1, err := ioutil.TempDir("", "tsdb")
+	require.NoError(t, err)
+
+	// Start the first ingester, and get it into ACTIVE state.
+	cfg1 := defaultIngesterTestConfig()
+	cfg1.TSDBEnabled = true
+	cfg1.TSDBConfig.Dir = dir1
+	cfg1.TSDBConfig.S3 = s3.Config{
+		Endpoint:        "dummy",
+		BucketName:      "dummy",
+		SecretAccessKey: "dummy",
+		AccessKeyID:     "dummy",
+	}
+	cfg1.LifecyclerConfig.ID = "ingester1"
+	cfg1.LifecyclerConfig.Addr = "ingester1"
+	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
+	cfg1.MaxTransferRetries = 10
+	ing, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
+	require.NoError(t, err)
+
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return ing.lifecycler.GetState()
+	})
+
+	// Now write a sample to this ingester
+	const ts = 123000
+	const val = 456
+	var (
+		l          = labels.Labels{{Name: labels.MetricName, Value: "foo"}}
+		sampleData = []client.Sample{
+			{
+				TimestampMs: ts,
+				Value:       val,
+			},
+		}
+		expectedResponse = &client.QueryStreamResponse{
+			Timeseries: []client.TimeSeries{
+				{
+					Labels: client.FromLabelsToLabelAdapters(l),
+					Samples: []client.Sample{
+						{
+							Value:       val,
+							TimestampMs: ts,
+						},
+					},
+				},
+			},
+		}
+	)
+
+	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+	defer serv.GracefulStop()
+	client.RegisterIngesterServer(serv, ing)
+
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+	go func() {
+		err := serv.Serve(listener)
+		require.NoError(t, err)
+	}()
+
+	// Write the metric
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{l}, sampleData, client.API))
+	require.NoError(t, err)
+
+	// Stream the query
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	require.NoError(t, err)
+	defer c.Close()
+
+	s, err := c.QueryStream(ctx, &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   200000,
+		Matchers: []*client.LabelMatcher{{
+			Type:  client.EQUAL,
+			Name:  model.MetricNameLabel,
+			Value: "foo",
+		}},
+	})
+	require.NoError(t, err)
+
+	count := 0
+	var lastResp *client.QueryStreamResponse
+	for {
+		resp, err := s.Recv()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		count += len(resp.Timeseries)
+		lastResp = resp
+	}
+	require.Equal(t, 1, count)
+	require.Equal(t, expectedResponse, lastResp)
 }

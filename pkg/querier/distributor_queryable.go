@@ -20,7 +20,7 @@ import (
 // to reduce package coupling.
 type Distributor interface {
 	Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
-	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]client.TimeSeriesChunk, error)
+	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
 	LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error)
 	LabelNames(context.Context) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)

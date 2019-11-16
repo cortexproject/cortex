@@ -180,3 +180,17 @@ prime-minikube: save-images
 			docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest ; \
 		fi \
 	done
+
+.PHONY: web-pre
+web-pre:
+	rm -rf website/content/docs
+	mkdir -p website/content
+	cp -a docs/ website/content/docs
+
+.PHONY: web-build
+web-build: web-pre
+	cd website && HUGO_ENV=production hugo --config hugo.yaml  --minify -v
+
+.PHONY: web-serve
+web-serve: web-pre
+	cd website && hugo --config hugo.yaml -v server

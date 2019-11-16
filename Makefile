@@ -78,7 +78,7 @@ GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-build web-pre web-deploy: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -146,6 +146,16 @@ mod-check:
 check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
 
+web-pre:
+	cd website && git submodule update --init --recursive
+	./tools/website/web-pre.sh
+
+web-build: web-pre
+	cd website && HUGO_ENV=production hugo --config config.toml  --minify -v
+
+web-deploy:
+	./tools/website/web-deploy.sh
+
 endif
 
 clean:
@@ -157,17 +167,17 @@ clean-protos:
 	rm -rf $(PROTO_GOS)
 
 save-images:
-	@mkdir -p images
+	@mkdir -p docker-images
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
-			docker save $$image_name:$(IMAGE_TAG) -o images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+			docker save $$image_name:$(IMAGE_TAG) -o docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
 		fi \
 	done
 
 load-images:
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
-			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+			docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
 		fi \
 	done
 
@@ -177,7 +187,10 @@ prime-minikube: save-images
 	eval $$(minikube docker-env) ; \
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
-			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+			docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
 			docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest ; \
 		fi \
 	done
+
+web-serve:
+	cd website && hugo --config config.toml -v server

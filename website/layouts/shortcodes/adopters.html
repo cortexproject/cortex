@@ -1,0 +1,24 @@
+{{ $_hugo_config := `{ "version": 1 }` }}
+{{ $col_id := .Get "color" | default .Ordinal }}
+{{ $height := .Get "height" | default "auto"  }}
+{{/* Height can be one of: auto, min, med, max, full. */}}
+<a id="td-block-{{ .Ordinal }}" class="td-offset-anchor"></a>
+<section class="row td-box td-box--{{ $col_id }} position-relative td-box--gradient td-box--height-{{ $height }}">
+	<div class="container text-center td-arrow-down">
+        <div class="row pb-5">
+            <div class="col" >
+                <h2 class="text-center">Companies using Cortex</h2>
+            </div>
+        </div>
+        <div class="row">
+            {{ range $adopter := sort $.Site.Data.adopters.adopters "name" }}
+            {{ if $adopter.logo }}
+                <a class="col-lg-2 col-md-4 col-sm-6 adopter-img my-3"
+                 style="background-image: url({{ (printf "/logos/%s" $adopter.logo) | relURL }});" 
+                 href="{{ $adopter.url }}" rel="nofollow" target="_blank" style="display: block;">
+                </a>
+            {{ end }}
+            {{ end }}
+        </div>
+	</div>
+</section>

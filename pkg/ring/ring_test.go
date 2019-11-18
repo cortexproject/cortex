@@ -88,3 +88,34 @@ func TestDoBatchZeroIngesters(t *testing.T) {
 	}
 	require.Error(t, DoBatch(ctx, &r, keys, callback, cleanup))
 }
+
+func TestAddIngester(t *testing.T) {
+	r := NewDesc()
+
+	ing1 := GenerateTokens(128, nil)
+	ing2 := GenerateTokens(128, ing1)
+
+	for _, t := range ing1 {
+		r.Tokens = append(r.Tokens, TokenDesc{
+			Token:    t,
+			Ingester: "test",
+		})
+	}
+
+	for _, t := range ing2 {
+		r.Tokens = append(r.Tokens, TokenDesc{
+			Token:    t,
+			Ingester: "Ingester2",
+		})
+	}
+
+	r.AddIngester("test", "addr", ing1, ACTIVE)
+
+	require.Equal(t, "addr", r.Ingesters["test"].Addr)
+	require.Equal(t, ing1, r.Ingesters["test"].Tokens)
+
+	require.Equal(t, len(ing2), len(r.Tokens))
+	for _, tok := range r.Tokens {
+		require.NotEqual(t, "test", tok.Ingester)
+	}
+}

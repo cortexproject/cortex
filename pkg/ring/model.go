@@ -48,8 +48,9 @@ func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState
 		Tokens:    tokens,
 	}
 
-	// delete any reference from d.Tokens (can happen if denormalized tokens for this ingester
-	// were found in the ring when joining)
+	// Since this ingester is only using normalised tokens, let's delete any denormalised
+	// tokens for this ingester. There may be such tokens eg. if previous instance
+	// of the same ingester was running with denormalized tokens.
 	for ix := 0; ix < len(d.Tokens); {
 		if d.Tokens[ix].Ingester == id {
 			d.Tokens = append(d.Tokens[:ix], d.Tokens[ix+1:]...)

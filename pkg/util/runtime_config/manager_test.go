@@ -1,4 +1,4 @@
-package util
+package runtime_config
 
 import (
 	"io/ioutil"
@@ -66,21 +66,21 @@ func TestNewOverridesManager(t *testing.T) {
 
 	defaultTestLimits = &TestLimits{Limit1: 100}
 
-	// testing NewOverridesManager with overrides reload config set
-	overridesManagerConfig := OverridesManagerConfig{
-		OverridesReloadPeriod: time.Second,
-		OverridesLoadPath:     tempFile.Name(),
-		OverridesLoader:       testLoadOverrides,
+	// testing NewRuntimeConfigManager with overrides reload config set
+	overridesManagerConfig := ManagerConfig{
+		ReloadPeriod: time.Second,
+		LoadPath:     tempFile.Name(),
+		Loader:       testLoadOverrides,
 	}
 
-	overridesManager, err := NewOverridesManager(overridesManagerConfig)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
 	require.NoError(t, err)
 
 	// Cleaning up
 	overridesManager.Stop()
 
 	// Make sure test limits were loaded.
-	require.NotNil(t, overridesManager.GetOverrides())
+	require.NotNil(t, overridesManager.GetConfig())
 }
 
 func TestOverridesManager_Listener(t *testing.T) {
@@ -100,14 +100,14 @@ func TestOverridesManager_Listener(t *testing.T) {
 
 	defaultTestLimits = &TestLimits{Limit1: 100}
 
-	// testing NewOverridesManager with overrides reload config set
-	overridesManagerConfig := OverridesManagerConfig{
-		OverridesReloadPeriod: time.Second,
-		OverridesLoadPath:     tempFile.Name(),
-		OverridesLoader:       testLoadOverrides,
+	// testing NewRuntimeConfigManager with overrides reload config set
+	overridesManagerConfig := ManagerConfig{
+		ReloadPeriod: time.Second,
+		LoadPath:     tempFile.Name(),
+		Loader:       testLoadOverrides,
 	}
 
-	overridesManager, err := NewOverridesManager(overridesManagerConfig)
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
 	require.NoError(t, err)
 
 	// listeners are called asynchronously
@@ -123,7 +123,7 @@ func TestOverridesManager_Listener(t *testing.T) {
 	require.NoError(t, err)
 
 	// reload
-	err = overridesManager.loadOverrides()
+	err = overridesManager.loadConfig()
 	require.NoError(t, err)
 
 	var newValue interface{}
@@ -142,5 +142,5 @@ func TestOverridesManager_Listener(t *testing.T) {
 	overridesManager.Stop()
 
 	// Make sure test limits were loaded.
-	require.NotNil(t, overridesManager.GetOverrides())
+	require.NotNil(t, overridesManager.GetConfig())
 }

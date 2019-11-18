@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtime_config"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -166,19 +167,13 @@ func (t *Cortex) initRing(cfg *Config) (err error) {
 }
 
 func (t *Cortex) initRuntimeConfig(cfg *Config) (err error) {
-	configFile := cfg.RuntimeConfigFile
-	reloadPeriod := cfg.RuntimeConfigLoadPeriod
-	if configFile == "" {
-		configFile = cfg.LimitsConfig.PerTenantOverrideConfig
-		reloadPeriod = cfg.LimitsConfig.PerTenantOverridePeriod
+	if cfg.RuntimeConfig.LoadPath == "" {
+		cfg.RuntimeConfig.LoadPath = cfg.LimitsConfig.PerTenantOverrideConfig
+		cfg.RuntimeConfig.ReloadPeriod = cfg.LimitsConfig.PerTenantOverridePeriod
 	}
+	cfg.RuntimeConfig.Loader = loadRuntimeConfig
 
-	c := util.OverridesManagerConfig{
-		OverridesReloadPeriod: reloadPeriod,
-		OverridesLoadPath:     configFile,
-		OverridesLoader:       loadRuntimeConfig,
-	}
-	t.runtimeConfig, err = util.NewOverridesManager(c)
+	t.runtimeConfig, err = runtime_config.NewRuntimeConfigManager(cfg.RuntimeConfig)
 	return err
 }
 

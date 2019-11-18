@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -32,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtime_config"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -76,13 +76,11 @@ type Config struct {
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB           tsdb.Config              `yaml:"tsdb"`
 
-	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
-	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
-	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
-	Alertmanager alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
-
-	RuntimeConfigFile       string        `yaml:"runtime_config_file"`
-	RuntimeConfigLoadPeriod time.Duration `yaml:"runtime_config_load_period"`
+	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
+	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
+	ConfigStore   config_client.Config                       `yaml:"config_store,omitempty"`
+	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
+	RuntimeConfig runtime_config.ManagerConfig               `yaml:"runtime_config"`
 }
 
 // RegisterFlags registers flag.
@@ -94,8 +92,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
-	f.StringVar(&c.RuntimeConfigFile, "runtime-config.file", "", "File with configuration that can be updated in runtime.")
-	f.DurationVar(&c.RuntimeConfigLoadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
 
 	c.Server.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
@@ -118,6 +114,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ConfigDB.RegisterFlags(f)
 	c.ConfigStore.RegisterFlagsWithPrefix("alertmanager.", f)
 	c.Alertmanager.RegisterFlags(f)
+	c.RuntimeConfig.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	flag.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
@@ -162,7 +159,7 @@ type Cortex struct {
 	frontend      *frontend.Frontend
 	tableManager  *chunk.TableManager
 	cache         cache.Cache
-	runtimeConfig *util.OverridesManager
+	runtimeConfig *runtime_config.Manager
 
 	ruler        *ruler.Ruler
 	configAPI    *api.API

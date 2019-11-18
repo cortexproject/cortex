@@ -6,12 +6,12 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtime_config"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // runtimeConfigValues are values that can be reloaded from configuration file while Cortex is running.
-// Reloading is done by OverridesManager, which also keeps currently loaded config.
+// Reloading is done by runtime_config.Manager, which also keeps the currently loaded config.
 // These values are then pushed to the components that are interested in them.
 type runtimeConfigValues struct {
 	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
@@ -36,9 +36,9 @@ func loadRuntimeConfig(filename string) (interface{}, error) {
 	return overrides, nil
 }
 
-func tenantLimitsFromRuntimeConfig(c *util.OverridesManager) validation.TenantLimits {
+func tenantLimitsFromRuntimeConfig(c *runtime_config.Manager) validation.TenantLimits {
 	return func(userID string) *validation.Limits {
-		cfg, ok := c.GetOverrides().(*runtimeConfigValues)
+		cfg, ok := c.GetConfig().(*runtimeConfigValues)
 		if !ok || cfg == nil {
 			return nil
 		}
@@ -47,7 +47,7 @@ func tenantLimitsFromRuntimeConfig(c *util.OverridesManager) validation.TenantLi
 	}
 }
 
-func multiClientRuntimeConfigChannel(manager *util.OverridesManager) func() <-chan kv.MultiRuntimeConfig {
+func multiClientRuntimeConfigChannel(manager *runtime_config.Manager) func() <-chan kv.MultiRuntimeConfig {
 	// returns function that can be used in MultiConfig.ConfigProvider
 	return func() <-chan kv.MultiRuntimeConfig {
 		ch := make(chan kv.MultiRuntimeConfig, 1)
@@ -62,7 +62,7 @@ func multiClientRuntimeConfigChannel(manager *util.OverridesManager) func() <-ch
 		}
 
 		// push initial config to the channel
-		listener(manager.GetOverrides())
+		listener(manager.GetConfig())
 		manager.AddListener(listener)
 		return ch
 	}

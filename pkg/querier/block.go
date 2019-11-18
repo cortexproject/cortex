@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -108,13 +109,19 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 			return nil, err
 		}
 
-		chunks = append(chunks, seriesToChunks(userID, resp.GetSeries())...)
+		// Convert Thanos store series into Cortex chunks
+		convertedChunks, err := seriesToChunks(userID, resp.GetSeries())
+		if err != nil {
+			return nil, err
+		}
+
+		chunks = append(chunks, convertedChunks...)
 	}
 
 	return chunks, nil
 }
 
-func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
+func seriesToChunks(userID string, series *storepb.Series) ([]chunk.Chunk, error) {
 	var lbls labels.Labels
 	for _, label := range series.Labels {
 		// We have to remove the external label set by the shipper
@@ -135,8 +142,7 @@ func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
 
 		enc, err := chunkenc.FromData(chunkenc.EncXOR, c.Raw.Data)
 		if err != nil {
-			level.Warn(util.Logger).Log("msg", "failed to convert raw encoding to chunk", "err", err)
-			continue
+			return nil, errors.Wrap(err, "failed to initialize chunk from XOR encoded raw data")
 		}
 
 		it := enc.Iterator(nil)
@@ -147,8 +153,7 @@ func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
 				Value:     model.SampleValue(v),
 			})
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "failed adding sample to chunk", "err", err)
-				continue
+				return nil, errors.Wrap(err, "failed adding sample to chunk")
 			}
 
 			if overflow != nil {
@@ -157,9 +162,15 @@ func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
 			}
 		}
 
+		// Ensure the iteration has not been interrupted because of an error
+		if it.Err() != nil {
+			return nil, errors.Wrap(it.Err(), "failed reading sample from encoded chunk")
+		}
+
 		if ch.Len() > 0 {
 			chunks = append(chunks, chunk.NewChunk(userID, client.Fingerprint(lbls), lbls, ch, model.Time(c.MinTime), model.Time(c.MaxTime)))
 		}
 	}
-	return chunks
+
+	return chunks, nil
 }

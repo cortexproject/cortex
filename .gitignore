@@ -4,6 +4,5 @@ cmd/cortex/cortex
 .pkg
 .cache
 images/
-website/content
 website/public
 website/resources

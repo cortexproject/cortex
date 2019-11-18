@@ -158,6 +158,10 @@ func (w *walWrapper) Log(record *Record) error {
 func (w *walWrapper) run() {
 	defer w.wait.Done()
 
+	if !w.cfg.checkpointEnabled {
+		return
+	}
+
 	ticker := time.NewTicker(w.cfg.checkpointDuration)
 	defer ticker.Stop()
 

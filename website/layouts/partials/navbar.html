@@ -1,5 +1,5 @@
 {{ $cover := .HasShortcode "blocks/cover" }}
-<nav class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column flex-md-row td-navbar">
+<nav class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column flex-md-row td-navbar {{ if $cover }}{{else}}navbar-nocover{{end}}">
 	<a id="cortex-logo" class="navbar-brand {{ if $cover }}d-none{{end}}" href="{{ .Site.Home.RelPermalink }}">
 		<span class="navbar-logo">{{ with resources.Get "icons/logo-white.svg" }}{{ ( . | minify).Content | safeHTML }}{{ end }}</span>
 	</a>

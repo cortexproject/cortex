@@ -20,6 +20,9 @@ $light: #e9ecef;
     border-radius: 0.5rem!important;
 }
 
+.td-search-input {
+    background-color: aliceblue!important;
+}
 
 .navbar-dark .navbar-nav .nav-link {
     color: $primary !important;
@@ -38,6 +41,16 @@ $light: #e9ecef;
     }
     ::placeholder {
         color: white !important;
+    }
+}
+
+.navbar-nocover {
+    background-color: $primary !important;
+    .td-navbar-nav-scroll .nav-link {
+        color: white !important;
+    }
+    .td-search-input {
+        background-color: aliceblue !important;
     }
 }
 

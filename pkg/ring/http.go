@@ -21,12 +21,6 @@ const tpl = `
 	<head>
 		<meta charset="UTF-8">
 		<title>Cortex Ring Status</title>
-		<script>
-		function showIngesterTokens() {
-            document.getElementById('ingesterTokens').style.display = "block";
-            document.getElementById('showTokensButton').style.display = "none";
-        }
-		</script>
 	</head>
 	<body>
 		<h1>Cortex Ring Status</h1>
@@ -64,10 +58,12 @@ const tpl = `
 				</tbody>
 			</table>
 			<br>
-			<input id="showTokensButton" type="button" name="showTokens" style="display:block" value="Show Ingester Tokens" onclick="showIngesterTokens()" />
-            <div id="ingesterTokens" style="display:none;">
+			{{ if .ShowTokens }}
+			<input type="button" value="Hide Ingester Tokens" onclick="window.location.href = '/ring'" />
+			{{ else }}
+			<input type="button" value="Show Ingester Tokens" onclick="window.location.href = '/ring?tokens=true'" />
+			{{ end }}
 			<pre>{{ .Ring }}</pre>
-            </div>
 		</form>
 	</body>
 </html>`
@@ -139,14 +135,23 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 
+	tokensParam := req.URL.Query().Get("tokens")
+	var ringDescString string
+	showTokens := false
+	if tokensParam == "true" {
+		ringDescString = proto.MarshalTextString(r.ringDesc)
+		showTokens = true
+	}
 	if err := tmpl.Execute(w, struct {
-		Ingesters []interface{}
-		Now       time.Time
-		Ring      string
+		Ingesters  []interface{}
+		Now        time.Time
+		Ring       string
+		ShowTokens bool
 	}{
-		Ingesters: ingesters,
-		Now:       time.Now(),
-		Ring:      proto.MarshalTextString(r.ringDesc),
+		Ingesters:  ingesters,
+		Now:        time.Now(),
+		Ring:       ringDescString,
+		ShowTokens: showTokens,
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

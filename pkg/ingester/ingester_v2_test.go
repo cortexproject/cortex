@@ -373,7 +373,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Get label values
+	// Run tests
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			req := &client.QueryRequest{

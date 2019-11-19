@@ -1,0 +1,10 @@
+configs:
+- from: "2019-03-20"
+  store: aws-dynamo
+  schema: v9
+  index:
+    prefix: cortex_
+    period: 168h0m0s
+  chunks:
+    prefix: cortex_chunks_
+    period: 168h0m0s

@@ -30,6 +30,7 @@ var _ = time.Kitchen
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
+// RuleGroupDesc is a proto representation of a cortex rule group
 type RuleGroupDesc struct {
 	Name      string         `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Namespace string         `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
@@ -113,6 +114,7 @@ func (m *RuleGroupDesc) GetUser() string {
 	return ""
 }
 
+// RuleDesc is a proto representation of a Prometheus Rule
 type RuleDesc struct {
 	Expr        string                                                             `protobuf:"bytes,1,opt,name=expr,proto3" json:"expr,omitempty"`
 	Record      string                                                             `protobuf:"bytes,2,opt,name=record,proto3" json:"record,omitempty"`

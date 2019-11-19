@@ -47,7 +47,7 @@ anchor = "smart"
 [services]
 [services.googleAnalytics]
 # Comment out the next line to disable GA tracking. Also disables the feature described in [params.ui.feedback].
-id = "UA-00000000-0"
+# id = "UA-00000000-0"
 
 # Language configuration
 
@@ -99,14 +99,14 @@ sidebar_search_disable = false
 #  Set to false if you don't want to display a logo (/assets/icons/logo.svg) in the top nav bar
 navbar_logo = true
 # Set to true to disable the About link in the site footer
-footer_about_disable = false
+footer_about_disable = true
 
 # Adds a H2 section titled "Feedback" to the bottom of each doc. The responses are sent to Google Analytics as events.
 # This feature depends on [services.googleAnalytics] and will be disabled if "services.googleAnalytics.id" is not set.
 # If you want this feature, but occasionally need to remove the "Feedback" section from a single page,
 # add "hide_feedback: true" to the page's front matter.
 [params.ui.feedback]
-enable = true
+enable = false
 # The responses that the user sees after clicking "yes" (the page was helpful) or "no" (the page was not helpful).
 yes = 'Glad to hear it! Please <a href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we can improve</a>.'
 no = 'Sorry to hear that. Please <a href="https://github.com/USERNAME/REPOSITORY/issues/new">tell us how we can improve</a>.'

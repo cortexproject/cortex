@@ -6,13 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,7 +92,7 @@ func BenchmarkASTMapping(b *testing.B) {
 			desc:   "with Concatenation",
 		},
 	} {
-		q := newMockShardedQueryable(tc.series)
+		q := NewMockShardedQueryable(1, []string{"a"}, tc.series)
 		summer, err := NewShardSummer(tc.shards, tc.squash)
 		if err != nil {
 			b.Fatal(err)
@@ -127,70 +122,4 @@ func BenchmarkASTMapping(b *testing.B) {
 			},
 		)
 	}
-}
-
-func newMockShardedQueryable(n int) *mockShardedQueryable {
-	s := make([]storage.Series, 0, n)
-	sample := model.SamplePair{}
-	for i := 0; i < n; i++ {
-		s = append(
-			s,
-			series.NewConcreteSeries(
-				labels.Labels{
-					labels.Label{
-						Name:  "some-label",
-						Value: fmt.Sprintf("%d", i),
-					},
-				},
-				[]model.SamplePair{sample},
-			),
-		)
-	}
-	return &mockShardedQueryable{s}
-}
-
-type mockShardedQueryable struct {
-	series []storage.Series
-}
-
-func (q *mockShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return q, nil
-}
-
-func (q *mockShardedQueryable) Select(
-	_ *storage.SelectParams,
-	matchers ...*labels.Matcher,
-) (storage.SeriesSet, storage.Warnings, error) {
-	shard, _, err := ShardFromMatchers(matchers)
-	if err != nil {
-		return nil, nil, err
-	}
-	if shard == nil {
-		return nil, nil, errors.Errorf("did not find shard label")
-	}
-
-	// return the series range associated with this shard
-	seriesPerShard := len(q.series) / shard.Of
-	start := shard.Shard * seriesPerShard
-	end := start + seriesPerShard
-	if end > len(q.series) {
-		end = len(q.series)
-	}
-
-	return series.NewConcreteSeriesSet(q.series[start:end]), nil, nil
-
-}
-
-func (q *mockShardedQueryable) LabelValues(name string) ([]string, storage.Warnings, error) {
-	return nil, nil, errors.Errorf("unimplemented")
-}
-
-// LabelNames returns all the unique label names present in the block in sorted order.
-func (q *mockShardedQueryable) LabelNames() ([]string, storage.Warnings, error) {
-	return nil, nil, errors.Errorf("unimplemented")
-}
-
-// Close releases the resources of the Querier.
-func (q *mockShardedQueryable) Close() error {
-	return nil
 }

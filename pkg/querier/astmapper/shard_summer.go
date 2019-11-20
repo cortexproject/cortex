@@ -88,10 +88,6 @@ func (summer *shardSummer) MapNode(node promql.Node) (promql.Node, bool, error) 
 // shardSum contains the logic for how we split/stitch legs of a parallelized sum query
 func (summer *shardSummer) shardSum(expr *promql.AggregateExpr) (promql.Node, error) {
 
-	if summer.shards < 2 {
-		return expr, nil
-	}
-
 	parent, subSums, err := summer.splitSum(expr)
 	if err != nil {
 		return nil, err

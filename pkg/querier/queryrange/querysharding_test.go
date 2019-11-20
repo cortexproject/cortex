@@ -2,16 +2,21 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,7 +59,12 @@ func TestMiddleware(t *testing.T) {
 			name: "successful trip",
 			next: mockHandler(sampleMatrixResponse(), nil),
 			override: func(t *testing.T, handler Handler) {
-				out, err := handler.Do(context.Background(), defaultReq())
+
+				// pre-encode the query so it doesn't try to re-split. We're just testing if it passes through correctly
+				qry := defaultReq().WithQuery(
+					`__embedded_queries__{__cortex_queries__="{\"Concat\":[\"http_requests_total{cluster=\\\"prod\\\"}\"]}"}`,
+				)
+				out, err := handler.Do(context.Background(), qry)
 				require.Nil(t, err)
 				require.Equal(t, promql.ValueTypeMatrix, out.(*PrometheusResponse).Data.ResultType)
 				require.Equal(t, sampleMatrixResponse(), out)
@@ -161,8 +171,7 @@ func defaultReq() *PrometheusRequest {
 		End:     10,
 		Step:    5,
 		Timeout: time.Minute,
-		// encoding of: `http_requests_total{cluster="prod"}`
-		Query: `__embedded_query__{__cortex_query__="687474705f72657175657374735f746f74616c7b636c75737465723d2270726f64227d"}`,
+		Query:   `sum(rate(http_requests_total{}[5m]))`,
 	}
 }
 
@@ -281,4 +290,153 @@ func parseDate(in string) model.Time {
 		panic(err)
 	}
 	return model.Time(t.UnixNano())
+}
+
+func BenchmarkQuerySharding(b *testing.B) {
+
+	var shards []uint32
+
+	for shard := 1; shard <= runtime.NumCPU(); shard = shard * 2 {
+		shards = append(shards, uint32(shard))
+	}
+
+	for _, tc := range []struct {
+		labelBuckets     int
+		labels           []string
+		samplesPerSeries int
+		query            string
+		desc             string
+	}{
+		// Ensure you have enough cores to run these tests without blocking.
+		// We want to simulate parallel computations and waiting in queue doesn't help
+
+		// no-group
+		{
+			labelBuckets:     10,
+			labels:           []string{"a", "b", "c"},
+			samplesPerSeries: 100,
+			query:            `sum(rate(http_requests_total[5m]))`,
+			desc:             "sum nogroup",
+		},
+		// sum by
+		{
+			labelBuckets:     10,
+			labels:           []string{"a", "b", "c"},
+			samplesPerSeries: 100,
+			query:            `sum by(a) (rate(http_requests_total[5m]))`,
+			desc:             "sum by",
+		},
+		// sum without
+		{
+			labelBuckets:     10,
+			labels:           []string{"a", "b", "c"},
+			samplesPerSeries: 100,
+			query:            `sum without (a) (rate(http_requests_total[5m]))`,
+			desc:             "sum without",
+		},
+	} {
+		engine := promql.NewEngine(promql.EngineOpts{
+			Logger: util.Logger,
+			Reg:    nil,
+			// set high concurrency so we're not bottlenecked here
+			MaxConcurrent: 100000,
+			MaxSamples:    100000000,
+			Timeout:       time.Minute,
+		})
+
+		queryable := astmapper.NewMockShardedQueryable(
+			tc.samplesPerSeries,
+			tc.labels,
+			tc.labelBuckets,
+		)
+		downstream := &downstreamHandler{
+			engine:    engine,
+			queryable: queryable,
+		}
+
+		var (
+			start int64 = 0
+			end         = int64(1000 * tc.samplesPerSeries)
+			step        = (end - start) / 1000
+		)
+
+		req := &PrometheusRequest{
+			Path:    "/query_range",
+			Start:   start,
+			End:     end,
+			Step:    step,
+			Timeout: time.Minute,
+			Query:   tc.query,
+		}
+
+		for _, shardFactor := range shards {
+			mware := NewQueryShardMiddleware(
+				log.NewNopLogger(),
+				engine,
+				// ensure that all requests are shard compatbile
+				ShardingConfigs{
+					chunk.PeriodConfig{
+						Schema:    "v10",
+						RowShards: shardFactor,
+					},
+				},
+			).Wrap(downstream)
+
+			b.Run(
+				fmt.Sprintf(
+					"desc:[%s]:shards:[%d]/series:[%.0f]/samplesPerSeries:[%d]",
+					tc.desc,
+					shardFactor,
+					math.Pow(float64(tc.labelBuckets), float64(len(tc.labels))),
+					tc.samplesPerSeries,
+				),
+				func(b *testing.B) {
+					for n := 0; n < b.N; n++ {
+						_, err := mware.Do(
+							context.Background(),
+							req,
+						)
+						if err != nil {
+							b.Fatal(err.Error())
+						}
+					}
+				},
+			)
+		}
+
+	}
+}
+
+type downstreamHandler struct {
+	engine    *promql.Engine
+	queryable storage.Queryable
+}
+
+func (h *downstreamHandler) Do(ctx context.Context, r Request) (Response, error) {
+	qry, err := h.engine.NewRangeQuery(
+		h.queryable,
+		r.GetQuery(),
+		TimeFromMillis(r.GetStart()),
+		TimeFromMillis(r.GetEnd()),
+		time.Duration(r.GetStep())*time.Millisecond,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	res := qry.Exec(ctx)
+	extracted, err := FromResult(res)
+	if err != nil {
+		return nil, err
+
+	}
+
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: string(res.Value.Type()),
+			Result:     extracted,
+		},
+	}, nil
 }

@@ -1,0 +1,354 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Guides</title><link>/docs/guides/</link><description>Recent content in Guides on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/guides/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Running Cortex in Production</title><link>/docs/guides/running.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running.md/</guid><description>
+&lt;p&gt;This document assumes you have read the
+&lt;a href=&#34;/docs/architecture.md/&#34; target=&#34;_blank&#34;&gt;architecture&lt;/a&gt; document.&lt;/p&gt;
+&lt;p&gt;In addition to the general advice in this document, please see these
+platform-specific notes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;/docs/guides/aws-specific.md/&#34; target=&#34;_blank&#34;&gt;AWS&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;planning&#34;&gt;Planning&lt;/h2&gt;
+&lt;h3 id=&#34;tenants&#34;&gt;Tenants&lt;/h3&gt;
+&lt;p&gt;If you will run Cortex as a multi-tenant system, you need to give each
+tenant a unique ID - this can be any string. Managing tenants and
+allocating IDs must be done outside of Cortex. You must also configure
+&lt;a href=&#34;/docs/guides/auth.md/&#34; target=&#34;_blank&#34;&gt;Authentication and Authorisation&lt;/a&gt;.&lt;/p&gt;
+&lt;h3 id=&#34;storage&#34;&gt;Storage&lt;/h3&gt;
+&lt;p&gt;Cortex requires a scalable storage back-end. Commercial cloud options
+are DynamoDB and Bigtable: the advantage is you don&amp;rsquo;t have to know how
+to manage them, but the downside is they have specific costs.
+Alternatively you can choose Cassandra, which you will have to install
+and manage.&lt;/p&gt;
+&lt;h3 id=&#34;components&#34;&gt;Components&lt;/h3&gt;
+&lt;p&gt;Every Cortex installation will need Distributor, Ingester and Querier.
+Alertmanager, Ruler and Query-frontend are optional.&lt;/p&gt;
+&lt;h3 id=&#34;other-dependencies&#34;&gt;Other dependencies&lt;/h3&gt;
+&lt;p&gt;Cortex needs a KV store to track sharding of data between
+processes. This can be either Etcd or Consul.&lt;/p&gt;
+&lt;p&gt;If you want to configure recording and alerting rules (i.e. if you
+will run the Ruler and Alertmanager components) then a Postgres
+database is required to store configs.&lt;/p&gt;
+&lt;p&gt;Memcached is not essential but highly recommended.&lt;/p&gt;
+&lt;h3 id=&#34;ingester-replication-factor&#34;&gt;Ingester replication factor&lt;/h3&gt;
+&lt;p&gt;The standard replication factor is three, so that we can drop one
+replica and be unconcerned, as we still have two copies of the data
+left for redundancy. This is configurable: you can run with more
+redundancy or less, depending on your risk appetite.&lt;/p&gt;
+&lt;h3 id=&#34;schema&#34;&gt;Schema&lt;/h3&gt;
+&lt;h4 id=&#34;schema-periodic-table&#34;&gt;Schema periodic table&lt;/h4&gt;
+&lt;p&gt;The periodic table from argument (&lt;code&gt;-dynamodb.periodic-table.from=&amp;lt;date&amp;gt;&lt;/code&gt; if
+using command line flags, the &lt;code&gt;from&lt;/code&gt; field for the first schema entry if using
+YAML) should be set to the date the oldest metrics you will be sending to
+Cortex. Generally that means set it to the date you are first deploying this
+instance. If you use an example date from years ago table-manager will create
+hundreds of tables. You can also avoid creating too many tables by setting a
+reasonable retention in the table-manager
+(&lt;code&gt;-table-manager.retention-period=&amp;lt;duration&amp;gt;&lt;/code&gt;).&lt;/p&gt;
+&lt;h4 id=&#34;schema-version&#34;&gt;Schema version&lt;/h4&gt;
+&lt;p&gt;Choose schema version 9 in most cases; version 10 if you expect
+hundreds of thousands of timeseries under a single name. Anything
+older than v9 is much less efficient.&lt;/p&gt;
+&lt;h3 id=&#34;chunk-encoding&#34;&gt;Chunk encoding&lt;/h3&gt;
+&lt;p&gt;Standard choice would be Bigchunk, which is the most flexible chunk
+encoding. You may get better compression from Varbit, if many of your
+timeseries do not change value from one day to the next.&lt;/p&gt;
+&lt;h3 id=&#34;sizing&#34;&gt;Sizing&lt;/h3&gt;
+&lt;p&gt;You will want to estimate how many nodes are required, how many of
+each component to run, and how much storage space will be required.
+In practice, these will vary greatly depending on the metrics being
+sent to Cortex.&lt;/p&gt;
+&lt;p&gt;Some key parameters are:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;The number of active series. If you have Prometheus already you
+can query &lt;code&gt;prometheus_tsdb_head_series&lt;/code&gt; to see this number.&lt;/li&gt;
+&lt;li&gt;Sampling rate, e.g. a new sample for each series every 15
+seconds. Multiply this by the number of active series to get the
+total rate at which samples will arrive at Cortex.&lt;/li&gt;
+&lt;li&gt;The rate at which series are added and removed. This can be very
+high if you monitor objects that come and go - for example if you run
+thousands of batch jobs lasting a minute or so and capture metrics
+with a unique ID for each one. &lt;a href=&#34;https://www.robustperception.io/using-tsdb-analyze-to-investigate-churn-and-cardinality&#34; target=&#34;_blank&#34;&gt;Read how to analyse this on
+Prometheus&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;How compressible the time-series data are. If a metric stays at
+the same value constantly, then Cortex can compress it very well, so
+12 hours of data sampled every 15 seconds would be around 2KB. On
+the other hand if the value jumps around a lot it might take 10KB.
+There are not currently any tools available to analyse this.&lt;/li&gt;
+&lt;li&gt;How long you want to retain data for, e.g. 1 month or 2 years.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Other parameters which can become important if you have particularly
+high values:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Number of different series under one metric name.&lt;/li&gt;
+&lt;li&gt;Number of labels per series.&lt;/li&gt;
+&lt;li&gt;Rate and complexity of queries.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Now, some rules of thumb:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Each million series in an ingester takes 15GB of RAM. Total number
+of series in ingesters is number of active series times the
+replication factor. This is with the default of 12-hour chunks - RAM
+required will reduce if you set &lt;code&gt;-ingester.max-chunk-age&lt;/code&gt; lower
+(trading off more back-end database IO)&lt;/li&gt;
+&lt;li&gt;Each million series (including churn) consumes 15GB of chunk
+storage and 4GB of index, per day (so multiply by the retention
+period).&lt;/li&gt;
+&lt;li&gt;Each 100,000 samples/sec arriving takes 1 CPU in distributors.
+Distributors don&amp;rsquo;t need much RAM.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;If you turn on compression between distributors and ingesters (for
+example to save on inter-zone bandwidth charges at AWS) they will use
+significantly more CPU (approx 100% more for distributor and 50% more
+for ingester).&lt;/p&gt;
+&lt;h3 id=&#34;caching&#34;&gt;Caching&lt;/h3&gt;
+&lt;p&gt;Cortex can retain data in-process or in Memcached to speed up various
+queries by caching:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;individual chunks&lt;/li&gt;
+&lt;li&gt;index lookups for one label on one day&lt;/li&gt;
+&lt;li&gt;the results of a whole query&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;You should always include Memcached in your Cortex install so results
+from one process can be re-used by another. In-process caching can cut
+fetch times slightly and reduce the load on Memcached.&lt;/p&gt;
+&lt;p&gt;Ingesters can also be configured to use Memcached to avoid re-writing
+index and chunk data which has already been stored in the back-end
+database. Again, highly recommended.&lt;/p&gt;
+&lt;h3 id=&#34;orchestration&#34;&gt;Orchestration&lt;/h3&gt;
+&lt;p&gt;Because Cortex is designed to run multiple instances of each component
+(ingester, querier, etc.), you probably want to automate the placement
+and shepherding of these instances. Most users choose Kubernetes to do
+this, but this is not mandatory.&lt;/p&gt;
+&lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
+&lt;h3 id=&#34;resource-requests&#34;&gt;Resource requests&lt;/h3&gt;
+&lt;p&gt;If using Kubernetes, each container should specify resource requests
+so that the scheduler can place them on a node with sufficient capacity.&lt;/p&gt;
+&lt;p&gt;For example an ingester might request:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; resources:
+requests:
+cpu: 4
+memory: 10Gi
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;The specific values here should be adjusted based on your own
+experiences running Cortex - they are very dependent on rate of data
+arriving and other factors such as series churn.&lt;/p&gt;
+&lt;h3 id=&#34;take-extra-care-with-ingesters&#34;&gt;Take extra care with ingesters&lt;/h3&gt;
+&lt;p&gt;Ingesters hold hours of timeseries data in memory; you can configure
+Cortex to replicate the data but you should take steps to avoid losing
+all replicas at once:
+- Don&amp;rsquo;t run multiple ingesters on the same node.
+- Don&amp;rsquo;t run ingesters on preemptible/spot nodes.
+- Spread out ingesters across racks / availability zones / whatever
+applies in your datacenters.&lt;/p&gt;
+&lt;p&gt;You can ask Kubernetes to avoid running on the same node like this:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; affinity:
+podAntiAffinity:
+preferredDuringSchedulingIgnoredDuringExecution:
+- weight: 100
+podAffinityTerm:
+labelSelector:
+matchExpressions:
+- key: name
+operator: In
+values:
+- ingester
+topologyKey: &amp;quot;kubernetes.io/hostname&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Give plenty of time for an ingester to hand over or flush data to
+store when shutting down; for Kubernetes this looks like:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; terminationGracePeriodSeconds: 2400
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Ask Kubernetes to limit rolling updates to one ingester at a time, and
+signal the old one to stop before the new one is ready:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; strategy:
+rollingUpdate:
+maxSurge: 0
+maxUnavailable: 1
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Ingesters provide an http hook to signal readiness when all is well;
+this is valuable because it stops a rolling update at the first
+problem:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; readinessProbe:
+httpGet:
+path: /ready
+port: 80
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;We do not recommend configuring a liveness probe on ingesters -
+killing them is a last resort and should not be left to a machine.&lt;/p&gt;
+&lt;h2 id=&#34;optimising&#34;&gt;Optimising&lt;/h2&gt;
+&lt;h3 id=&#34;optimising-storage&#34;&gt;Optimising Storage&lt;/h3&gt;
+&lt;p&gt;These ingester options reduce the chance of storing multiple copies of
+the same data:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; -ingester.spread-flushes=true
+-ingester.chunk-age-jitter=0
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Add a chunk cache via &lt;code&gt;-memcached.hostname&lt;/code&gt; to allow writes to be de-duplicated.&lt;/p&gt;
+&lt;p&gt;As recommended under &lt;a href=&#34;#chunk-encoding&#34;&gt;Chunk encoding&lt;/a&gt;, use Bigchunk:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; -ingester.chunk-encoding=3 # bigchunk
+&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth.md/</guid><description>
+&lt;p&gt;All Cortex components take the tenant ID from a header &lt;code&gt;X-Scope-OrgID&lt;/code&gt;
+on each request. They trust this value completely: if you need to
+protect your Cortex installation from accidental or malicious calls
+then you must add an additional layer of protection.&lt;/p&gt;
+&lt;p&gt;Typically this means you run Cortex behind a reverse proxy, and ensure
+that all callers, both machines sending data over the remote_write
+interface and humans sending queries from GUIs, supply credentials
+which identify them and confirm they are authorised.&lt;/p&gt;
+&lt;p&gt;When configuring the remote_write API in Prometheus there is no way to
+add extra headers. The user and password fields of http Basic auth, or
+Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p&gt;</description></item><item><title>Docs: Running Cortex at AWS</title><link>/docs/guides/aws-specific.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/aws-specific.md/</guid><description>
+&lt;p&gt;[this is a work in progress]&lt;/p&gt;
+&lt;p&gt;See also the &lt;a href=&#34;/docs/guides/running.md/&#34; target=&#34;_blank&#34;&gt;Running in Production&lt;/a&gt; document.&lt;/p&gt;
+&lt;h2 id=&#34;credentials&#34;&gt;Credentials&lt;/h2&gt;
+&lt;p&gt;You can supply credentials to Cortex by setting environment variables
+&lt;code&gt;AWS_ACCESS_KEY_ID&lt;/code&gt;, &lt;code&gt;AWS_SECRET_ACCESS_KEY&lt;/code&gt; (and &lt;code&gt;AWS_SESSION_TOKEN&lt;/code&gt;
+if you use MFA), or use a short-term token solution such as
+&lt;a href=&#34;https://github.com/uswitch/kiam&#34; target=&#34;_blank&#34;&gt;kiam&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 id=&#34;should-i-use-s3-or-dynamodb&#34;&gt;Should I use S3 or DynamoDB ?&lt;/h2&gt;
+&lt;p&gt;Note that the choices are: &amp;ldquo;chunks&amp;rdquo; of timeseries data in S3 and index
+in DynamoDB, or everything in DynamoDB. Using just S3 is not an option.&lt;/p&gt;
+&lt;p&gt;Broadly S3 is much more expensive to read and write, while DynamoDB is
+much more expensive to store over months. S3 charges differently, so
+the cross-over will depend on the size of your chunks, and how long
+you keep them. Very roughly: for 3KB chunks if you keep them longer
+than 8 months then S3 is cheaper.&lt;/p&gt;
+&lt;h2 id=&#34;dynamodb-capacity-provisioning&#34;&gt;DynamoDB capacity provisioning&lt;/h2&gt;
+&lt;p&gt;By default, the Cortex Tablemanager will provision tables with 1,000
+units of write capacity and 300 read - these numbers are chosen to be
+high enough that most trial installations won&amp;rsquo;t see a bottleneck on
+storage, but do note that that AWS will charge you approximately $60
+per day for this capacity.&lt;/p&gt;
+&lt;p&gt;To match your costs to requirements, observe the actual capacity
+utilisation via CloudWatch or Prometheus metrics, then adjust the
+Tablemanager provision via command-line options
+&lt;code&gt;-dynamodb.chunk-table.write-throughput&lt;/code&gt;, &lt;code&gt;read-throughput&lt;/code&gt; and
+similar with &lt;code&gt;.periodic-table&lt;/code&gt; which controls the index table.&lt;/p&gt;
+&lt;p&gt;Tablemanager can even adjust the capacity dynamically, by watching
+metrics for DynamoDB throttling and ingester queue length. Here is an
+example set of command-line parameters from a fairly modest install:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt; -target=table-manager
+-metrics.url=http://prometheus.monitoring.svc.cluster.local./api/prom/
+-metrics.target-queue-length=100000
+-dynamodb.url=dynamodb://us-east-1/
+-dynamodb.use-periodic-tables=true
+-dynamodb.periodic-table.prefix=cortex_index_
+-dynamodb.periodic-table.from=2019-05-02
+-dynamodb.periodic-table.write-throughput=1000
+-dynamodb.periodic-table.write-throughput.scale.enabled=true
+-dynamodb.periodic-table.write-throughput.scale.min-capacity=200
+-dynamodb.periodic-table.write-throughput.scale.max-capacity=2000
+-dynamodb.periodic-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
+-dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode=true
+-dynamodb.periodic-table.read-throughput=300
+-dynamodb.periodic-table.tag=product_area=cortex
+-dynamodb.chunk-table.from=2019-05-02
+-dynamodb.chunk-table.prefix=cortex_data_
+-dynamodb.chunk-table.write-throughput=800
+-dynamodb.chunk-table.write-throughput.scale.enabled=true
+-dynamodb.chunk-table.write-throughput.scale.min-capacity=200
+-dynamodb.chunk-table.write-throughput.scale.max-capacity=1000
+-dynamodb.chunk-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
+-dynamodb.chunk-table.inactive-enable-ondemand-throughput-mode=true
+-dynamodb.chunk-table.read-throughput=300
+-dynamodb.chunk-table.tag=product_area=cortex
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Several things to note here:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;-metrics.url&lt;/code&gt; points at a Prometheus server running within the
+cluster, scraping Cortex. Currently it is not possible to use
+Cortex itself as the target here.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-metrics.target-queue-length&lt;/code&gt;: when the ingester queue is below
+this level, Tablemanager will not scale up. When the queue is
+growing above this level, Tablemanager will scale up whatever
+table is being throttled.&lt;/li&gt;
+&lt;li&gt;The plain &lt;code&gt;throughput&lt;/code&gt; values are used when the tables are first
+created. Scale-up to any level up to this value will be very quick,
+but if you go higher than this initial value, AWS may take tens of
+minutes to finish scaling. In the config above they are set.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ondemand-throughput-mode&lt;/code&gt; tells AWS to charge for what you use, as
+opposed to continuous provisioning. This mode is cost-effective for
+older data, which is never written and only read sporadically.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling.md/</guid><description>
+&lt;h2 id=&#34;context&#34;&gt;Context&lt;/h2&gt;
+&lt;p&gt;You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p&gt;
+&lt;p&gt;Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheis T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheis, T1.a, T1.b and T2.a and T2.b.&lt;/p&gt;
+&lt;p&gt;In Cortex we make sure we only ingest from one of T1.a and T1.b, and only from one of T2.a and T2.b. We do this by electing a leader replica for each cluster of Prometheus. For example, in the case of T1, let it be T1.a. As long as T1.a is the leader, we drop the samples sent by T1.b. And if Cortex sees no new samples from T1.a for a short period (30s by default), it&amp;rsquo;ll switch the leader to be T1.b.&lt;/p&gt;
+&lt;p&gt;This means if T1.a goes down for a few minutes Cortex&amp;rsquo;s HA sample handling will have switched and elected T1.b as the leader. This failover timeout is what enables us to only accept samples from a single replica at a time, but ensure we don&amp;rsquo;t drop too much data in case of issues. Note that with the default scrape period of 15s, and the default timeouts in Cortex, in most cases you&amp;rsquo;ll only lose a single scrape of data in the case of a leader election failover. For any rate queries the rate window should be at least 4x the scrape period to account for any of these failover scenarios, for example with the default scrape period of 15s then you should calculate rates over at least 1m periods.&lt;/p&gt;
+&lt;p&gt;Now we do the same leader election process T2.&lt;/p&gt;
+&lt;h2 id=&#34;config&#34;&gt;Config&lt;/h2&gt;
+&lt;h3 id=&#34;client-side&#34;&gt;Client Side&lt;/h3&gt;
+&lt;p&gt;So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, ideally &lt;code&gt;cluster&lt;/code&gt; and &lt;code&gt;replica&lt;/code&gt; (note the default is &lt;code&gt;__replica__&lt;/code&gt;). For example:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;cluster: prom-team1
+replica: replica1 (or pod-name)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;and&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;cluster: prom-team1
+replica: replica2
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Note: These are external labels and have nothing to do with remote_write config.&lt;/p&gt;
+&lt;p&gt;These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be &lt;code&gt;team&lt;/code&gt;, &lt;code&gt;cluster&lt;/code&gt;, &lt;code&gt;prometheus&lt;/code&gt;, etc.&lt;/p&gt;
+&lt;p&gt;The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data, but preserves the cluster label. This way, your timeseries won&amp;rsquo;t change when replicas change.&lt;/p&gt;
+&lt;h3 id=&#34;server-side&#34;&gt;Server Side&lt;/h3&gt;
+&lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments.md/#ha-tracker&#34; target=&#34;_blank&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover.md/</guid><description>
+&lt;p&gt;The &lt;a href=&#34;/docs/architecture.md/#ingester&#34; target=&#34;_blank&#34;&gt;ingester&lt;/a&gt; holds several hours of sample
+data in memory. When we want to shut down an ingester, either for
+software version update or to drain a node for maintenance, this data
+must not be discarded.&lt;/p&gt;
+&lt;p&gt;Each ingester goes through different states in its lifecycle. When
+working normally, the state is &lt;code&gt;ACTIVE&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;On start-up, an ingester first goes into state &lt;code&gt;PENDING&lt;/code&gt;. After a
+&lt;a href=&#34;/docs/configuration/arguments.md/#ingester&#34; target=&#34;_blank&#34;&gt;short time&lt;/a&gt;, if nothing happens, it adds
+itself to the ring and goes into state ACTIVE.&lt;/p&gt;
+&lt;p&gt;A running ingester is notified to shut down by Unix signal
+&lt;code&gt;SIGINT&lt;/code&gt;. On receipt of this signal it goes into state &lt;code&gt;LEAVING&lt;/code&gt; and
+looks for an ingester in state &lt;code&gt;PENDING&lt;/code&gt;. If it finds one, that
+ingester goes into state &lt;code&gt;JOINING&lt;/code&gt; and the leaver transfers all its
+in-memory data over to the joiner. On successful transfer the leaver
+removes itself from the ring and exits and the joiner changes to
+&lt;code&gt;ACTIVE&lt;/code&gt;, taking over ownership of the leaver&amp;rsquo;s
+&lt;a href=&#34;/docs/architecture.md/#hashing&#34; target=&#34;_blank&#34;&gt;ring tokens&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;If a leaving ingester does not find a pending ingester after &lt;a href=&#34;/docs/configuration/arguments.md/#ingester&#34; target=&#34;_blank&#34;&gt;several attempts&lt;/a&gt;, it will flush all of its chunks to
+the backing database, then remove itself from the ring and exit. This
+may take tens of minutes to complete.&lt;/p&gt;
+&lt;p&gt;During hand-over, neither the leaving nor joining ingesters will
+accept new samples. Distributors are aware of this, and &amp;ldquo;spill&amp;rdquo; the
+samples to the next ingester in the ring. This creates a set of extra
+&amp;ldquo;spilled&amp;rdquo; chunks which will idle out and flush after hand-over is
+complete. The sudden increase in flush queue can be alarming!&lt;/p&gt;
+&lt;p&gt;The following metrics can be used to observe this process:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;cortex_member_ring_tokens_owned&lt;/code&gt; - how many tokens each ingester thinks it owns&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ring_tokens_owned&lt;/code&gt; - how many tokens each ingester is seen to own by other components&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ring_member_ownership_percent&lt;/code&gt; same as &lt;code&gt;cortex_ring_tokens_owned&lt;/code&gt; but expressed as a percentage&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ring_members&lt;/code&gt; - how many ingesters can be seen in each state, by other components&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_sent_chunks&lt;/code&gt; - number of chunks sent by leaving ingester&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cortex_ingester_received_chunks&lt;/code&gt; - number of chunks received by joining ingester&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;You can see the current state of the ring via http browser request to
+&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing.md/</guid><description>
+&lt;p&gt;Cortex uses &lt;a href=&#34;https://www.jaegertracing.io/&#34; target=&#34;_blank&#34;&gt;Jaeger&lt;/a&gt; to implement distributed
+tracing. We have found Jaeger invaluable for troubleshooting the behavior of
+Cortex in production.&lt;/p&gt;
+&lt;h2 id=&#34;dependencies&#34;&gt;Dependencies&lt;/h2&gt;
+&lt;p&gt;In order to send traces you will need to set up a Jaeger deployment. A
+deployment includes either the jaeger all-in-one binary, or else a distributed
+system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href=&#34;https://github.com/jaegertracing/jaeger-kubernetes&#34; target=&#34;_blank&#34;&gt;Jaeger
+Kubernetes&lt;/a&gt; is an excellent
+resource.&lt;/p&gt;
+&lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
+&lt;p&gt;In order to configure Cortex to send traces you must do two things:
+1. Set the &lt;code&gt;JAEGER_AGENT_HOST&lt;/code&gt; environment variable in all components to point
+to your Jaeger agent. This defaults to &lt;code&gt;localhost&lt;/code&gt;.
+1. Enable sampling in the appropriate components:
+* The Ingester and Ruler self-initiate traces and should have sampling
+explicitly enabled.
+* Sampling for the Distributor and Query Frontend can be enabled in Cortex
+or in an upstream service such as your frontdoor.&lt;/p&gt;
+&lt;p&gt;To enable sampling in Cortex components you can specify either
+&lt;code&gt;JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code&gt; for remote sampling, or
+&lt;code&gt;JAEGER_SAMPLER_TYPE&lt;/code&gt; and &lt;code&gt;JAEGER_SAMPLER_PARAM&lt;/code&gt; to manually set sampling
+configuration. See the &lt;a href=&#34;https://github.com/jaegertracing/jaeger-client-go#environment-variables&#34; target=&#34;_blank&#34;&gt;Jaeger Client Go
+documentation&lt;/a&gt;
+for the full list of environment variables you can configure.&lt;/p&gt;
+&lt;p&gt;Note that you must specify one of &lt;code&gt;JAEGER_AGENT_HOST&lt;/code&gt; or
+&lt;code&gt;JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code&gt; in each component for Jaeger to be enabled,
+even if you plan to use the default values.&lt;/p&gt;</description></item></channel></rss>

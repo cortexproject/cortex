@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  
+  <url>
+    <loc>/no/docs/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+    <xhtml:link
+                rel="alternate"
+                hreflang="en"
+                href="/docs/"
+                />
+    <xhtml:link
+                rel="alternate"
+                hreflang="no"
+                href="/no/docs/"
+                />
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/tutorials/the-math-of-microservices-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/examples/in-depth-java-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/the-inside-of-monoliths-the-core-concepts/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/tutorials/the-math-of-monoliths-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/the-inside-of-cryptography-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/tutorials/the-inside-of-recursion-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/the-inside-of-recursion-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/tutorials/the-math-of-java-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/examples/the-math-of-recursion-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/tutorials/in-depth-microservices-the-core-concepts/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/tutorials/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/examples/the-inside-of-java-the-core-concepts/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/the-inside-of-monographs-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/examples/the-inside-of-monoliths-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/tutorials/the-math-of-cryptography-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/examples/the-math-of-monographs-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/tutorials/the-math-of-monographs-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/the-math-of-monoliths-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/in-depth-go-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/examples/in-depth-cryptography-the-core-concepts/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/in-depth-cryptography-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/examples/in-depth-monoliths-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/examples/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/tutorials/the-inside-of-cryptography-the-core-concepts/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/tutorials/the-inside-of-microservices-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/tutorials/the-inside-of-microservices-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cross-platform/examples/the-math-of-go-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/the-math-of-microservices-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/examples/in-depth-go-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/in-depth-monoliths-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/examples/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/tutorials/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/tutorials/the-inside-of-go-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/examples/the-inside-of-cryptography-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/tutorials/the-inside-of-cryptography-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/tutorials/the-inside-of-microservices-the-core-concepts/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/content-management/the-inside-of-monographs-the-core-concepts/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/tutorials/in-depth-monographs-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/examples/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/tutorials/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/the-inside-of-java-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/examples/the-math-of-java-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/tutorials/the-math-of-cryptography-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/the-math-of-monoliths-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/cloud-computing/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/examples/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/the-inside-of-java-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/tutorials/the-inside-of-java-detailed-spec/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/api-reference/examples/the-inside-of-microservices-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/examples/the-math-of-monographs-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/tutorials/in-depth-go-the-inner-workings/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/tutorials/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/docs/big-data/the-math-of-monographs-how-does-it-work/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>/no/search/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+    <xhtml:link
+                rel="alternate"
+                hreflang="en"
+                href="/search/"
+                />
+    <xhtml:link
+                rel="alternate"
+                hreflang="no"
+                href="/no/search/"
+                />
+  </url>
+  
+  <url>
+    <loc>/no/</loc>
+    <lastmod>2019-11-15T16:01:27+00:00</lastmod>
+    <xhtml:link
+                rel="alternate"
+                hreflang="en"
+                href="/"
+                />
+    <xhtml:link
+                rel="alternate"
+                hreflang="no"
+                href="/no/"
+                />
+  </url>
+  
+</urlset>

@@ -352,9 +352,12 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 	if i.cfg.MaxTransferRetries <= 0 {
 		return fmt.Errorf("transfers disabled")
 	}
+	if i.cfg.MaxTransferRetriesBackOff < i.cfg.MinTransferRetriesBackOff {
+		return fmt.Errorf("min transfer retries duration should be higher than max transfer retries duration")
+	}
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
-		MinBackoff: 100 * time.Millisecond,
-		MaxBackoff: 5 * time.Second,
+		MinBackoff: time.Duration(i.cfg.MinTransferRetriesBackOff) * time.Millisecond,
+		MaxBackoff: time.Duration(i.cfg.MaxTransferRetriesBackOff) * time.Millisecond,
 		MaxRetries: i.cfg.MaxTransferRetries,
 	})
 

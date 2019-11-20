@@ -103,7 +103,9 @@ type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
 	// Config for transferring chunks. Zero or negative = no retries.
-	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
+	MaxTransferRetries        int `yaml:"max_transfer_retries,omitempty"`
+	MinTransferRetriesBackOff int `yaml:"min_tranfer_retries_backoff,omitempty"`
+	MaxTransferRetriesBackOff int `yaml:"max_tranfer_retries_backoff,omitempty"`
 
 	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration
@@ -135,6 +137,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. Negative value or zero disables hand-over.")
+	f.IntVar(&cfg.MinTransferRetriesBackOff, "ingester.min-transfer-retries-backoff", 100, "Minimum backoff period for transfers in milliseconds")
+	f.IntVar(&cfg.MaxTransferRetriesBackOff, "ingester.max-transfer-retries-backoff", 5000, "Maximum backoff period for transfers in milliseconds")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.retain-period", 5*time.Minute, "Period chunks will remain in memory after flushing.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")

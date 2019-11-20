@@ -7,7 +7,8 @@ RUN npm install -g postcss-cli autoprefixer
 RUN go clean -i net && \
 	go install -tags netgo std && \
 	go install -race -tags netgo std
-RUN git clone https://github.com/gohugoio/hugo.git && cd hugo && go install --tags extended
+ENV HUGO_VERSION=v0.59.1
+RUN git clone https://github.com/gohugoio/hugo.git && cd hugo && git checkout ${HUGO_VERSION} && go install --tags extended
 RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v1.3.0/shfmt_v1.3.0_linux_amd64 && \
 	echo "b1925c2c405458811f0c227266402cf1868b4de529f114722c2e3a5af4ac7bb2  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \
@@ -24,7 +25,7 @@ RUN GO111MODULE=on go get -tags netgo \
 RUN curl -Ls https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64 -o $GOPATH/bin/dep && \
   chmod +x $GOPATH/bin/dep
 
-RUN export NODE_PATH=$NODE_PATH:`npm root -g`
+ENV NODE_PATH=/usr/lib/node_modules
 COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]

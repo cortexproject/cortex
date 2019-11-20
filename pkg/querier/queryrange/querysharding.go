@@ -91,7 +91,7 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 
 	conf, err := qs.confs.ValidRange(r.GetStart(), r.GetEnd())
 	// query exists across multiple sharding configs or doesn't have sharding, so don't try to do AST mapping.
-	if err != nil || conf.RowShards == 0 {
+	if err != nil || conf.RowShards < 2 {
 		return qs.next.Do(ctx, r)
 	}
 

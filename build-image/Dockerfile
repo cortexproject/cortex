@@ -23,6 +23,8 @@ RUN GO111MODULE=on go get -tags netgo \
 	rm -rf /go/pkg /go/src
 RUN curl -Ls https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64 -o $GOPATH/bin/dep && \
   chmod +x $GOPATH/bin/dep
+
+RUN export NODE_PATH=$NODE_PATH:`npm root -g`
 COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]

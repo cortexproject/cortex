@@ -77,7 +77,7 @@ GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos check-web web-build web-pre: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -145,6 +145,15 @@ mod-check:
 check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
 
+web-pre:
+	./tools/web-pre.sh
+
+web-build: web-pre
+	cd website && HUGO_ENV=production hugo --config config.toml  --minify -v
+
+check-web: web-build
+	@git diff --exit-code --
+
 endif
 
 clean:
@@ -181,16 +190,5 @@ prime-minikube: save-images
 		fi \
 	done
 
-.PHONY: web-pre
-web-pre:
-	rm -rf website/content/docs
-	mkdir -p website/content
-	cp -a docs/ website/content/docs
-
-.PHONY: web-build
-web-build: web-pre
-	cd website && HUGO_ENV=production hugo --config hugo.yaml  --minify -v
-
-.PHONY: web-serve
 web-serve: web-pre
-	cd website && hugo --config hugo.yaml -v server
+	cd website && hugo --config config.toml -v server

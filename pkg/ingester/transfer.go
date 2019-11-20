@@ -43,8 +43,12 @@ var (
 		Help: "The total number of files received by this ingester whilst joining",
 	})
 	receivedBytes = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_received_bytes",
+		Name: "cortex_ingester_received_bytes_total",
 		Help: "The total number of bytes received by this ingester whilst joining",
+	})
+	sentBytes = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_sent_bytes_total",
+		Help: "The total number of bytes sent by this ingester whilst leaving",
 	})
 
 	once *sync.Once
@@ -57,6 +61,7 @@ func init() {
 	prometheus.MustRegister(sentFiles)
 	prometheus.MustRegister(receivedBytes)
 	prometheus.MustRegister(receivedFiles)
+	prometheus.MustRegister(sentBytes)
 }
 
 // TransferChunks receives all the chunks from another ingester.
@@ -219,6 +224,12 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 	fromIngesterID := ""
 
 	xfer := func() error {
+
+		// Validate the final directory is empty, if it exists and is empty delete it so a move can succeed
+		err := removeEmptyDir(i.cfg.TSDBConfig.Dir)
+		if err != nil {
+			return errors.Wrap(err, "remove existing TSDB directory")
+		}
 
 		tmpDir, err := ioutil.TempDir("", "tsdb_xfer")
 		if err != nil {
@@ -664,6 +675,7 @@ func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, t
 		if err != nil {
 			return err
 		}
+		sentBytes.Add(float64(len(tsfile.Data)))
 	}
 
 	// Send final data
@@ -673,7 +685,19 @@ func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, t
 		if err != nil {
 			return err
 		}
+		sentBytes.Add(float64(len(tsfile.Data)))
 	}
 
 	return nil
+}
+
+func removeEmptyDir(dir string) error {
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	return os.Remove(dir)
 }

@@ -455,7 +455,7 @@ outer:
 			}
 		}
 
-		change, newver, err, retry := m.trySingleCas(key, f)
+		change, newver, retry, err := m.trySingleCas(key, f)
 		if err != nil {
 			level.Debug(util.Logger).Log("msg", "CAS attempt failed", "err", err, "retry", retry)
 
@@ -486,45 +486,45 @@ outer:
 
 // returns change, error (or nil, if CAS succeeded), and whether to retry or not.
 // returns errNoChangeDetected if merge failed to detect change in f's output.
-func (m *Client) trySingleCas(key string, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, error, bool) {
+func (m *Client) trySingleCas(key string, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, error) {
 	val, ver, err := m.get(key)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get value: %v", err), false
+		return nil, 0, false, fmt.Errorf("failed to get value: %v", err)
 	}
 
 	out, retry, err := f(val)
 	if err != nil {
-		return nil, 0, fmt.Errorf("fn returned error: %v", err), retry
+		return nil, 0, retry, fmt.Errorf("fn returned error: %v", err)
 	}
 
 	if out == nil {
 		// no change to be done
-		return nil, 0, nil, false
+		return nil, 0, false, nil
 	}
 
 	// Don't even try
 	r, ok := out.(Mergeable)
 	if !ok || r == nil {
-		return nil, 0, fmt.Errorf("invalid type: %T, expected Mergeable", out), retry
+		return nil, 0, retry, fmt.Errorf("invalid type: %T, expected Mergeable", out)
 	}
 
 	// To support detection of removed items from value, we will only allow CAS operation to
 	// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
 	change, newver, err := m.mergeValueForKey(key, r, ver)
 	if err == errVersionMismatch {
-		return nil, 0, err, retry
+		return nil, 0, retry, err
 	}
 
 	if err != nil {
-		return nil, 0, fmt.Errorf("merge failed: %v", err), retry
+		return nil, 0, retry, fmt.Errorf("merge failed: %v", err)
 	}
 
 	if newver == 0 {
 		// CAS method reacts on this error
-		return nil, 0, errNoChangeDetected, retry
+		return nil, 0, retry, errNoChangeDetected
 	}
 
-	return change, newver, nil, retry
+	return change, newver, retry, nil
 }
 
 func (m *Client) broadcastNewValue(key string, change Mergeable, version uint) {

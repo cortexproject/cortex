@@ -287,9 +287,9 @@ func TestCASErrorNoRetry(t *testing.T) {
 		calls := 0
 		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
 			calls++
-			return nil, false, errors.New("don't worry, be happy!")
+			return nil, false, errors.New("don't worry, be happy")
 		})
-		require.EqualError(t, err, "failed to CAS-update key test: fn returned error: don't worry, be happy!")
+		require.EqualError(t, err, "failed to CAS-update key test: fn returned error: don't worry, be happy")
 		require.Equal(t, 1, calls)
 	})
 }
@@ -299,9 +299,9 @@ func TestCASErrorWithRetries(t *testing.T) {
 		calls := 0
 		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
 			calls++
-			return nil, true, errors.New("don't worry, be happy!")
+			return nil, true, errors.New("don't worry, be happy")
 		})
-		require.EqualError(t, err, "failed to CAS-update key test: fn returned error: don't worry, be happy!")
+		require.EqualError(t, err, "failed to CAS-update key test: fn returned error: don't worry, be happy")
 		require.Equal(t, 10, calls) // hard-coded in CAS function.
 	})
 }

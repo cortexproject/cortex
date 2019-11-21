@@ -122,7 +122,9 @@ type valueDesc struct {
 
 var (
 	// if merge fails because of CAS version mismatch, this error is returned. CAS operation reacts on it
-	errVersionMismatch = errors.New("version mismatch")
+	errVersionMismatch  = errors.New("version mismatch")
+	errNoChangeDetected = errors.New("no change detected")
+	errTooManyRetries   = errors.New("too many retries")
 )
 
 // NewMemberlistClient creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
@@ -432,12 +434,13 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		return fmt.Errorf("key too long: %d", len(key))
 	}
 
-	sleep := false
-	failReason := "too many retries"
+	var lastError error = nil
+
+outer:
 	for retries := 10; retries > 0; retries-- {
 		m.casAttempts.Inc()
 
-		if sleep {
+		if lastError == errNoChangeDetected {
 			// We only get here, if 'f' reports some change, but Merge function reports no change. This can happen
 			// with Ring's merge function, which depends on timestamps (and not the tokens) with 1-second resolution.
 			// By waiting for one second, we hope that Merge will be able to detect change from 'f' function.
@@ -446,59 +449,81 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			case <-time.After(1 * time.Second):
 				// ok
 			case <-ctx.Done():
-				failReason = "context done"
-				break
+				lastError = ctx.Err()
+				break outer
 			}
 		}
 
-		val, ver, err := m.get(key)
+		change, newver, err, retry := m.trySingleCas(key, f)
 		if err != nil {
-			return err
-		}
+			level.Debug(util.Logger).Log("msg", "CAS attempt failed", "err", err, "retry", retry)
 
-		out, retry, err := f(val)
-		if err != nil {
-			return err
-		}
-
-		if out == nil {
-			// no change to be done
-			return nil
-		}
-
-		// Don't even try
-		r, ok := out.(Mergeable)
-		if !ok {
-			return fmt.Errorf("invalid type: %T, expected Mergeable", out)
-		}
-
-		// To support detection of removed items from value, we will only allow CAS operation to
-		// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
-		change, newver, err := m.mergeValueForKey(key, r, ver)
-		if err != nil && err != errVersionMismatch {
-			return err
-		}
-
-		if newver == 0 {
-			// 'f' didn't do any update that we can merge. Let's give it a new chance?
+			lastError = err
 			if !retry {
-				failReason = "no retry"
 				break
 			}
-
-			// If merge failed because of version mismatch, don't sleep.
-			sleep = (err != errVersionMismatch)
 			continue
 		}
 
-		m.casSuccesses.Inc()
-		m.notifyWatchers(key)
-		m.broadcastNewValue(key, change, newver)
+		if change != nil {
+			m.casSuccesses.Inc()
+			m.notifyWatchers(key)
+			m.broadcastNewValue(key, change, newver)
+		}
+
 		return nil
 	}
 
+	if lastError == errVersionMismatch {
+		// this is more likely error than version mismatch.
+		lastError = errTooManyRetries
+	}
+
 	m.casFailures.Inc()
-	return fmt.Errorf("failed to CAS-update key %s: %s", key, failReason)
+	return fmt.Errorf("failed to CAS-update key %s: %v", key, lastError)
+}
+
+// returns change, error (or nil, if CAS succeeded), and whether to retry or not.
+// returns errNoChangeDetected if merge failed to detect change in f's output.
+func (m *Client) trySingleCas(key string, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, error, bool) {
+	val, ver, err := m.get(key)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get value: %v", err), false
+	}
+
+	out, retry, err := f(val)
+	if err != nil {
+		return nil, 0, fmt.Errorf("fn returned error: %v", err), retry
+	}
+
+	if out == nil {
+		// no change to be done
+		return nil, 0, nil, false
+	}
+
+	// Don't even try
+	r, ok := out.(Mergeable)
+	if !ok || r == nil {
+		return nil, 0, fmt.Errorf("invalid type: %T, expected Mergeable", out), retry
+	}
+
+	// To support detection of removed items from value, we will only allow CAS operation to
+	// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
+	change, newver, err := m.mergeValueForKey(key, r, ver)
+	if err == errVersionMismatch {
+		return nil, 0, err, retry
+	}
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("merge failed: %v", err), retry
+	}
+
+	if newver == 0 {
+		// CAS method reacts on this error
+		return nil, 0, errNoChangeDetected, retry
+	}
+
+	return change, newver, nil, retry
 }
 
 func (m *Client) broadcastNewValue(key string, change Mergeable, version uint) {
@@ -730,6 +755,7 @@ func (m *Client) mergeValueForKey(key string, incomingValue Mergeable, casVersio
 	defer m.storeMu.Unlock()
 
 	curr := m.store[key]
+	// if casVersion is 0, then there was no previous value, so we will just do normal merge, without localCAS flag set.
 	if casVersion > 0 && curr.version != casVersion {
 		return nil, 0, errVersionMismatch
 	}

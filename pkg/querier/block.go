@@ -113,6 +113,7 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 		// Convert Thanos store series into Cortex chunks
 		convertedChunks, err := seriesToChunks(userID, resp.GetSeries())
 		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed converting TSDB series to Cortex chunks", "err", err)
 			return nil, err
 		}
 

@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	// We encode key length as one byte
-	maxKeyLength = 255
+	maxKeyLength               = 255         // We encode key length as one byte
+	maxCasRetries              = 10          // max retries in CAS operation
+	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
 )
 
 // Config for memberlist-based Client
@@ -437,7 +438,7 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 	var lastError error = nil
 
 outer:
-	for retries := 10; retries > 0; retries-- {
+	for retries := maxCasRetries; retries > 0; retries-- {
 		m.casAttempts.Inc()
 
 		if lastError == errNoChangeDetected {
@@ -446,7 +447,7 @@ outer:
 			// By waiting for one second, we hope that Merge will be able to detect change from 'f' function.
 
 			select {
-			case <-time.After(1 * time.Second):
+			case <-time.After(noChangeDetectedRetrySleep):
 				// ok
 			case <-ctx.Done():
 				lastError = ctx.Err()

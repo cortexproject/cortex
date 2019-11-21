@@ -329,9 +329,9 @@ func TestCASNoChange(t *testing.T) {
 			return d, true, nil
 		})
 		require.EqualError(t, err, "failed to CAS-update key test: no change detected")
-		require.Equal(t, 10, calls) // hard-coded in CAS function.
-		// CAS waits one second before every retry if there is no change = 9 seconds in total
-		require.True(t, time.Since(startTime).Seconds() >= 9)
+		require.Equal(t, maxCasRetries, calls)
+		// if there was no change, CAS sleeps before every retry
+		require.True(t, time.Since(startTime) >= (maxCasRetries-1)*noChangeDetectedRetrySleep)
 	})
 }
 
@@ -392,7 +392,7 @@ func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
 		})
 
 		require.EqualError(t, err, "failed to CAS-update key test: too many retries")
-		require.Equal(t, 10, calls) // hard-coded in CAS function.
+		require.Equal(t, maxCasRetries, calls)
 	})
 }
 

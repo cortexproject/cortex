@@ -261,8 +261,10 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 	defer i.stateMtx.Unlock()
 
 	i.tokens = tokens
-	if err := i.tokens.StoreToFile(i.cfg.TokensFilePath); err != nil {
-		level.Error(util.Logger).Log("msg", "error storing tokens to disk", "path", i.cfg.TokensFilePath, "err", err)
+	if i.cfg.TokensFilePath != "" {
+		if err := i.tokens.StoreToFile(i.cfg.TokensFilePath); err != nil {
+			level.Error(util.Logger).Log("msg", "error storing tokens to disk", "path", i.cfg.TokensFilePath, "err", err)
+		}
 	}
 }
 
@@ -451,9 +453,22 @@ heartbeatLoop:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
 func (i *Lifecycler) initRing(ctx context.Context) error {
-	var ringDesc *Desc
+	var (
+		ringDesc       *Desc
+		tokensFromFile Tokens
+		err            error
+	)
 
-	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	if i.cfg.TokensFilePath != "" {
+		tokensFromFile, err = LoadTokensFromFile(i.cfg.TokensFilePath)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
+		}
+	} else {
+		level.Warn(util.Logger).Log("msg", "not loading tokens from file, tokens file path is empty")
+	}
+
+	err = i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -462,18 +477,14 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
-			var tokens Tokens
-			// We load the tokens from the file only if it does not exist in the ring yet.
-			err := tokens.LoadFromFile(i.cfg.TokensFilePath)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
-			} else if len(tokens) > 0 {
-				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokens))
-				if len(tokens) == i.cfg.NumTokens {
+			// We use the tokens from the file only if it does not exist in the ring yet.
+			if len(tokensFromFile) > 0 {
+				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
+				if len(tokensFromFile) == i.cfg.NumTokens {
 					i.setState(ACTIVE)
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, tokens, i.GetState(), i.cfg.NormaliseTokens)
-				i.setTokens(tokens)
+				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState(), i.cfg.NormaliseTokens)
+				i.setTokens(tokensFromFile)
 				return ringDesc, true, nil
 			}
 

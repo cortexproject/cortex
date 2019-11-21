@@ -289,7 +289,7 @@ func TestTokensOnDisk(t *testing.T) {
 
 	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
 	lifecyclerConfig.NumTokens = 512
-	lifecyclerConfig.TokensFilePath = tokenDir
+	lifecyclerConfig.TokensFilePath = tokenDir + "/tokens"
 	lifecyclerConfig.NormaliseTokens = true
 
 	// Start first ingester.

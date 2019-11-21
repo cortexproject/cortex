@@ -5,15 +5,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
-
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/prometheus/tsdb/fileutil"
-)
-
-const (
-	// TokensVersion1 is the version is a simple list of tokens.
-	TokensVersion1 = 1
 )
 
 // Tokens is a simple list of tokens.
@@ -25,6 +16,8 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 		return errors.New("path is empty")
 	}
 
+	// If any operations failed further in the function, we keep the temporary
+	// file hanging around for debugging.
 	f, err := ioutil.TempFile(os.TempDir(), "tokens")
 	if err != nil {
 		return err
@@ -35,10 +28,6 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 		// the error (if any) from f.Close(). If the file was already closed, then
 		// we would ignore the error in that case too.
 		f.Close()
-		// RemoveAll returns no error when tmp doesn't exist so it is safe to always run it.
-		if err := os.RemoveAll(f.Name()); err != nil {
-			level.Warn(util.Logger).Log("msg", "error deleting temporary file", "err", err)
-		}
 	}()
 
 	b, err := t.Marshal()
@@ -53,29 +42,27 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 		return err
 	}
 
-	// Block successfully written, make visible and remove old ones.
-	return fileutil.Replace(f.Name(), tokenFilePath)
+	// Tokens successfully written, replace the temporary file with the actual file path.
+	return os.Rename(f.Name(), tokenFilePath)
 }
 
-// LoadFromFile loads tokens from given directory.
-func (t *Tokens) LoadFromFile(tokenFilePath string) error {
+// LoadTokensFromFile loads tokens from given file path.
+func LoadTokensFromFile(tokenFilePath string) (Tokens, error) {
 	b, err := ioutil.ReadFile(tokenFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
-	return t.Unmarshal(b)
+	var t Tokens
+	err = t.Unmarshal(b)
+	return t, err
 }
 
 // Marshal encodes the tokens into JSON.
 func (t Tokens) Marshal() ([]byte, error) {
-	data := tokensJSON{
-		Version: TokensVersion1,
-		Tokens:  t,
-	}
-	return json.Marshal(data)
+	return json.Marshal(tokensJSON{Tokens: t})
 }
 
 // Unmarshal reads the tokens from JSON byte stream.
@@ -84,16 +71,10 @@ func (t *Tokens) Unmarshal(b []byte) error {
 	if err := json.Unmarshal(b, &tj); err != nil {
 		return err
 	}
-	switch tj.Version {
-	case TokensVersion1:
-		*t = Tokens(tj.Tokens)
-		return nil
-	default:
-		return errors.New("invalid token version")
-	}
+	*t = Tokens(tj.Tokens)
+	return nil
 }
 
 type tokensJSON struct {
-	Version int      `json:"version"`
-	Tokens  []uint32 `json:"tokens"`
+	Tokens []uint32 `json:"tokens"`
 }

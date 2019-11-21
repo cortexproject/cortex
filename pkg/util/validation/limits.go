@@ -6,25 +6,27 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate          float64       `yaml:"ingestion_rate"`
-	IngestionBurstSize     int           `yaml:"ingestion_burst_size"`
-	AcceptHASamples        bool          `yaml:"accept_ha_samples"`
-	HAClusterLabel         string        `yaml:"ha_cluster_label"`
-	HAReplicaLabel         string        `yaml:"ha_replica_label"`
-	HADropClusterLabel     bool          `yaml:"drop_cluster_label"`
-	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
-	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
-	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
-	RejectOldSamples       bool          `yaml:"reject_old_samples"`
-	RejectOldSamplesMaxAge time.Duration `yaml:"reject_old_samples_max_age"`
-	CreationGracePeriod    time.Duration `yaml:"creation_grace_period"`
-	EnforceMetricName      bool          `yaml:"enforce_metric_name"`
+	IngestionRate          float64             `yaml:"ingestion_rate"`
+	IngestionBurstSize     int                 `yaml:"ingestion_burst_size"`
+	AcceptHASamples        bool                `yaml:"accept_ha_samples"`
+	HAClusterLabel         string              `yaml:"ha_cluster_label"`
+	HAReplicaLabel         string              `yaml:"ha_replica_label"`
+	DropLabels             flagext.StringSlice `yaml:"drop_labels"`
+	MaxLabelNameLength     int                 `yaml:"max_label_name_length"`
+	MaxLabelValueLength    int                 `yaml:"max_label_value_length"`
+	MaxLabelNamesPerSeries int                 `yaml:"max_label_names_per_series"`
+	RejectOldSamples       bool                `yaml:"reject_old_samples"`
+	RejectOldSamplesMaxAge time.Duration       `yaml:"reject_old_samples_max_age"`
+	CreationGracePeriod    time.Duration       `yaml:"creation_grace_period"`
+	EnforceMetricName      bool                `yaml:"enforce_metric_name"`
 
 	// Ingester enforced limits.
 	MaxSeriesPerQuery  int `yaml:"max_series_per_query"`
@@ -51,7 +53,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
 	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
-	f.BoolVar(&l.HADropClusterLabel, "distributor.ha-tracker.drop-cluster-label", false, "Enable this flag to drop the cluster label when ingesting HA samples for a user, in addition to dropping the replica label. Note that this flag should only be used when users already have their own combination of more than two labels to uniquely identify Prometheus replicas.")
+	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -154,9 +156,9 @@ func (o *Overrides) HAReplicaLabel(userID string) string {
 	return o.overridesManager.GetLimits(userID).(*Limits).HAReplicaLabel
 }
 
-// HADropClusterLabel returns whether the cluster label should be dropped when ingesting HA samples for the user.
-func (o *Overrides) HADropClusterLabel(userID string) bool {
-	return o.overridesManager.GetLimits(userID).(*Limits).HADropClusterLabel
+// DropLabels returns whether the cluster label should be dropped when ingesting HA samples for the user.
+func (o *Overrides) DropLabels(userID string) flagext.StringSlice {
+	return o.overridesManager.GetLimits(userID).(*Limits).DropLabels
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.

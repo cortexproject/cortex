@@ -108,6 +108,9 @@ The ingester query API was improved over time, but defaults to the old behaviour
 - `distributor.ha-tracker.enable` 
    Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `enable-for-all-users` is still needed to enable ingestion of HA samples for all users.
 
+- `distributor.drop-label`
+   This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.
+
 ### Ring/HA Tracker Store
 
 The KVStore client is used by both the Ring and HA Tracker.
@@ -144,13 +147,11 @@ prefix these flags with `distributor.ha-tracker.`
 
 ### HA Tracker
 
-HA tracking has three of its own flags:
+HA tracking has two of its own flags:
 - `distributor.ha-tracker.cluster`
    Prometheus label to look for in samples to identify a Prometheus HA cluster. (default "cluster")
 - `distributor.ha-tracker.replica`
    Prometheus label to look for in samples to identify a Prometheus HA replica. (default "`__replica__`")
-- `distributor.ha-tracker.drop-cluster-label`
-   Drops the cluster label before ingesting samples. The replica label is always dropped. This flag should only be used for users who already have some combination of more than two labels to uniquely identify a Prometheus replica, but for whom it is not feasible to switch over to a new set of just two labels.
 
 It's reasonable to assume people probably already have a `cluster` label, or something similar. If not, they should add one along with `__replica__` via external labels in their Prometheus config. If you stick to these default values your Prometheus config could look like this (`POD_NAME` is an environment variable which must be set by you):
 

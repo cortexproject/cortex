@@ -307,7 +307,7 @@ func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
 		series        client.PreallocTimeseries
 		outputSeries  client.PreallocTimeseries
 		removeReplica bool
-		removeCluster bool
+		removeLabels  []string
 	}
 
 	cases := []testcase{
@@ -329,15 +329,17 @@ func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
 				},
 			},
 			removeReplica: true,
-			removeCluster: true,
+			removeLabels:  []string{"cluster"},
 		},
-		{ // Remove replica label.
+		{ // Remove multiple labels and replica.
 			series: client.PreallocTimeseries{
 				TimeSeries: &client.TimeSeries{
 					Labels: []client.LabelAdapter{
 						{Name: "__name__", Value: "some_metric"},
 						{Name: "cluster", Value: "one"},
-						{Name: "__replica__", Value: "two"}},
+						{Name: "__replica__", Value: "two"},
+						{Name: "foo", Value: "bar"},
+						{Name: "some", Value: "thing"}},
 				},
 			},
 			outputSeries: client.PreallocTimeseries{
@@ -350,9 +352,9 @@ func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
 				},
 			},
 			removeReplica: true,
-			removeCluster: false,
+			removeLabels:  []string{"foo", "some"},
 		},
-		{ // Don't remove either HA.
+		{ // Don't remove any labels.
 			series: client.PreallocTimeseries{
 				TimeSeries: &client.TimeSeries{
 					Labels: []client.LabelAdapter{
@@ -372,7 +374,6 @@ func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
 				},
 			},
 			removeReplica: false,
-			removeCluster: false,
 		},
 	}
 
@@ -380,7 +381,7 @@ func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
 		var err error
 		var limits validation.Limits
 		flagext.DefaultValues(&limits)
-		limits.HADropClusterLabel = tc.removeCluster
+		limits.DropLabels = tc.removeLabels
 		d := prepare(t, 1, 1, 0, true, &limits)
 
 		userID, err := user.ExtractOrgID(ctx)

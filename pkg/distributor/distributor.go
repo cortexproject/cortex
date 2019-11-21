@@ -291,9 +291,13 @@ func (d *Distributor) validateSeries(key uint32, ts ingester_client.PreallocTime
 	// series we're trying to dedupe when HA tracking moves over to a different replica.
 	if removeReplica {
 		removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
-		if d.limits.HADropClusterLabel(userID) {
-			removeLabel(d.limits.HAClusterLabel(userID), &ts.Labels)
-		}
+	}
+	for _, s := range d.limits.DropLabels(userID) {
+		removeLabel(s, &ts.Labels)
+	}
+	key, err := d.tokenForLabels(userID, ts.Labels)
+	if err != nil {
+		return emptyPreallocSeries, err
 	}
 
 	labelsHistogram.Observe(float64(len(ts.Labels)))

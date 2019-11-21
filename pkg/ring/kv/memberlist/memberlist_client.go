@@ -433,6 +433,7 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 	}
 
 	sleep := false
+	failReason := "too many retries"
 	for retries := 10; retries > 0; retries-- {
 		m.casAttempts.Inc()
 
@@ -445,6 +446,7 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			case <-time.After(1 * time.Second):
 				// ok
 			case <-ctx.Done():
+				failReason = "context done"
 				break
 			}
 		}
@@ -480,6 +482,7 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		if newver == 0 {
 			// 'f' didn't do any update that we can merge. Let's give it a new chance?
 			if !retry {
+				failReason = "no retry"
 				break
 			}
 
@@ -495,7 +498,7 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 	}
 
 	m.casFailures.Inc()
-	return fmt.Errorf("failed to CAS-update key %s", key)
+	return fmt.Errorf("failed to CAS-update key %s: %s", key, failReason)
 }
 
 func (m *Client) broadcastNewValue(key string, change Mergeable, version uint) {

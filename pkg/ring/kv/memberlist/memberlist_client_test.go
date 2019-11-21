@@ -172,12 +172,12 @@ func getData(t *testing.T, kv *Client, key string) *data {
 func cas(t *testing.T, kv *Client, key string, updateFn func(*data) (*data, bool, error)) {
 	t.Helper()
 
-	if err := casWithErr(t, context.Background(), kv, key, updateFn); err != nil {
+	if err := casWithErr(context.Background(), t, kv, key, updateFn); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func casWithErr(t *testing.T, ctx context.Context, kv *Client, key string, updateFn func(*data) (*data, bool, error)) error {
+func casWithErr(ctx context.Context, t *testing.T, kv *Client, key string, updateFn func(*data) (*data, bool, error)) error {
 	t.Helper()
 	fn := func(in interface{}) (out interface{}, retry bool, err error) {
 		var r *data = nil
@@ -285,7 +285,7 @@ func TestCASNoOutput(t *testing.T) {
 func TestCASErrorNoRetry(t *testing.T) {
 	withFixtures(t, func(t *testing.T, kv *Client) {
 		calls := 0
-		err := casWithErr(t, context.Background(), kv, key, func(d *data) (*data, bool, error) {
+		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
 			calls++
 			return nil, false, errors.New("don't worry, be happy!")
 		})
@@ -297,7 +297,7 @@ func TestCASErrorNoRetry(t *testing.T) {
 func TestCASErrorWithRetries(t *testing.T) {
 	withFixtures(t, func(t *testing.T, kv *Client) {
 		calls := 0
-		err := casWithErr(t, context.Background(), kv, key, func(d *data) (*data, bool, error) {
+		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
 			calls++
 			return nil, true, errors.New("don't worry, be happy!")
 		})
@@ -324,7 +324,7 @@ func TestCASNoChange(t *testing.T) {
 
 		startTime := time.Now()
 		calls := 0
-		err := casWithErr(t, context.Background(), kv, key, func(d *data) (*data, bool, error) {
+		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
 			calls++
 			return d, true, nil
 		})
@@ -355,7 +355,7 @@ func TestCASNoChangeShortTimeout(t *testing.T) {
 		defer cancel()
 
 		calls := 0
-		err := casWithErr(t, ctx, kv, key, func(d *data) (*data, bool, error) {
+		err := casWithErr(ctx, t, kv, key, func(d *data) (*data, bool, error) {
 			calls++
 			return d, true, nil
 		})
@@ -372,7 +372,7 @@ func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
 
 		calls := 0
 		// outer cas
-		err := casWithErr(t, context.Background(), kv, key, func(d *data) (*data, bool, error) {
+		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
 			// outer CAS logic
 			calls++
 

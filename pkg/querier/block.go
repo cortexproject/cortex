@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -142,7 +143,7 @@ func seriesToChunks(userID string, series *storepb.Series) ([]chunk.Chunk, error
 
 		enc, err := chunkenc.FromData(chunkenc.EncXOR, c.Raw.Data)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to initialize chunk from XOR encoded raw data")
+			return nil, errors.Wrap(err, fmt.Sprintf("failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", lbls, c.MinTime, c.MaxTime))
 		}
 
 		it := enc.Iterator(nil)
@@ -153,7 +154,7 @@ func seriesToChunks(userID string, series *storepb.Series) ([]chunk.Chunk, error
 				Value:     model.SampleValue(v),
 			})
 			if err != nil {
-				return nil, errors.Wrap(err, "failed adding sample to chunk")
+				return nil, errors.Wrap(err, fmt.Sprintf("failed adding sample to chunk (series: %v timestamp: %d value: %f)", lbls, ts, v))
 			}
 
 			if overflow != nil {
@@ -164,7 +165,7 @@ func seriesToChunks(userID string, series *storepb.Series) ([]chunk.Chunk, error
 
 		// Ensure the iteration has not been interrupted because of an error
 		if it.Err() != nil {
-			return nil, errors.Wrap(it.Err(), "failed reading sample from encoded chunk")
+			return nil, errors.Wrap(it.Err(), fmt.Sprintf("failed reading sample from encoded chunk (series: %v min time: %d max time: %d)", lbls, c.MinTime, c.MaxTime))
 		}
 
 		if ch.Len() > 0 {

@@ -63,21 +63,21 @@ func Test_seriesToChunks(t *testing.T) {
 		},
 		"should return error on out of order samples": {
 			series: &storepb.Series{
-				Labels: []storepb.Label{},
+				Labels: []storepb.Label{{Name: "foo", Value: "bar"}},
 				Chunks: []storepb.AggrChunk{
 					{MinTime: minTimestamp.Unix() * 1000, MaxTime: maxTimestamp.Unix() * 1000, Raw: &storepb.Chunk{Type: storepb.Chunk_XOR, Data: mockTSDBChunkDataWithInvalidTimestampOrder()}},
 				},
 			},
-			expectedErr: "failed adding sample to chunk: base time delta is less than zero: -1",
+			expectedErr: `failed adding sample to chunk (series: {foo="bar"} timestamp: 0 value: 2.000000): base time delta is less than zero: -1`,
 		},
 		"should return error on failure while reading encoded chunk data": {
 			series: &storepb.Series{
-				Labels: []storepb.Label{},
+				Labels: []storepb.Label{{Name: "foo", Value: "bar"}},
 				Chunks: []storepb.AggrChunk{
 					{MinTime: minTimestamp.Unix() * 1000, MaxTime: maxTimestamp.Unix() * 1000, Raw: &storepb.Chunk{Type: storepb.Chunk_XOR, Data: []byte{0, 1}}},
 				},
 			},
-			expectedErr: "failed reading sample from encoded chunk: EOF",
+			expectedErr: `failed reading sample from encoded chunk (series: {foo="bar"} min time: 1000 max time: 10000): EOF`,
 		},
 	}
 

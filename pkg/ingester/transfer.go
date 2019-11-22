@@ -80,7 +80,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 				// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
 				err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
 				if err != nil {
-					return err
+					return errors.Wrap(err, "TransferChunks: checkFromIngesterIsInLeavingState")
 				}
 			}
 			descs, err := fromWireChunks(wireSeries.Chunks)
@@ -149,24 +149,18 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
 	v, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
 	if err != nil {
-		return errors.Wrap(err, "TransferChunks: get ring")
+		return errors.Wrap(err, "get ring")
 	}
 	if v == nil {
-		return fmt.Errorf("TransferChunks: ring not found when checking state of source ingester")
+		return fmt.Errorf("ring not found when checking state of source ingester")
 	}
 	r, ok := v.(*ring.Desc)
 	if !ok || r == nil {
-		return fmt.Errorf("TransferChunks: ring not found, got %T", v)
+		return fmt.Errorf("ring not found, got %T", v)
 	}
 
 	if r.Ingesters == nil || r.Ingesters[fromIngesterID].State != ring.LEAVING {
-		return fmt.Errorf("TransferChunks: source ingester is not in a LEAVING state, found state=%v", r.Ingesters[fromIngesterID].State)
-	}
-
-	if r.Ingesters == nil || r.Ingesters[fromIngesterID].State != ring.LEAVING {
-		err = fmt.Errorf("source ingester is not in a LEAVING state, found state=%v", r.Ingesters[fromIngesterID].State)
-		util.Logger.Log("msg", "TransferChunks error", "err", err)
-		return err
+		return fmt.Errorf("source ingester is not in a LEAVING state, found state=%v", r.Ingesters[fromIngesterID].State)
 	}
 
 	// all fine
@@ -239,7 +233,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 				// Before transfer, make sure 'from' ingester is in correct state to call ClaimTokensFor later
 				err := i.checkFromIngesterIsInLeavingState(stream.Context(), fromIngesterID)
 				if err != nil {
-					return err
+					return errors.Wrap(err, "TransferTSDB: checkFromIngesterIsInLeavingState")
 				}
 			}
 			filesXfer++

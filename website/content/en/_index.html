@@ -20,31 +20,30 @@ linkTitle = "Cortex"
 
 {{< adopters color="light">}}
 
-{{< blocks/section color="dark" >}}
-{{% blocks/feature icon="fa-archive" title="Long term storage" %}}
-Durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
-{{% /blocks/feature %}}
+<a id="td-block-2" class="td-offset-anchor"></a>
+<section class="row td-box td-box--dark td-box--gradient td-box--height-auto">
+		{{% blocks/feature icon="fa-archive" title="Long term storage" %}}
+		Durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
+		{{% /blocks/feature %}}
+		
+		
+		{{% blocks/feature icon="fa-bolt" title="Blazin' fast PromQL" %}}
+		Cortex makes your PromQL queries blazin' fast through aggresive parallelization and caching.
+		{{% /blocks/feature %}}
+		
+		{{% blocks/feature icon="fa-search" title="A global view of data" %}}
+		Cortex gives you a global view of Prometheus time series data that includes data in long-term storage, greatly expanding the usefulness of PromQL for analytical purposes.
+		{{% /blocks/feature %}}
+		
+		{{% blocks/feature icon="fa-expand" title="Horizontally scalable" %}}
+		Cortex runs across multiple machines in a cluster, exceeding the throughput and storage of a single machine. This enables you to send the metrics from multiple Prometheus servers to a single Cortex cluster.
+		{{% /blocks/feature %}}
+</section>
 
-
-{{% blocks/feature icon="fa-bolt" title="Blazin' fast PromQL" %}}
-Cortex makes your PromQL queries blazin' fast through aggresive parallelization and caching.
-{{% /blocks/feature %}}
-
-{{% blocks/feature icon="fa-search" title="A global view of data" %}}
-Cortex gives you a global view of Prometheus time series data that includes data in long-term storage, greatly expanding the usefulness of PromQL for analytical purposes.
-{{% /blocks/feature %}}
-
-{{% blocks/feature icon="fa-expand" title="Horizontally scalable" %}}
-Cortex runs across multiple machines in a cluster, exceeding the throughput and storage of a single machine. This enables you to send the metrics from multiple Prometheus servers to a single Cortex cluster.
-{{% /blocks/feature %}}
-
-{{< /blocks/section >}}
-
-{{< blocks/section color="white" >}}
-
-<div class="row">
+<a id="td-block-3" class="td-offset-anchor"></a>
+<section class="row td-box td-box--white td-box--gradient td-box--height-auto">
 	<div class="col-lg-6 col-sm-12 text-center">
-		<img width="200px" src="/images/cncf_color.png">
+		<img width="150" src="/images/cncf_color.png">
 		<p>We are a <a href="https://www.cncf.io/">Cloud Native Computing Foundation</a> Sandbox project.</p>
 	</div>
 	<div class="col-lg-6 col-sm-12 text-center">
@@ -60,6 +59,5 @@ Cortex runs across multiple machines in a cluster, exceeding the throughput and 
 			<i class="fab fa-twitter"></i> Twitter
 		</a>
 	</div>
-</div>
-
-{{< /blocks/section >}}
+</section>
+<div>

@@ -4,13 +4,11 @@
 {{/* Height can be one of: auto, min, med, max, full. */}}
 <a id="td-block-{{ .Ordinal }}" class="td-offset-anchor"></a>
 <section class="row td-box td-box--{{ $col_id }} position-relative td-box--gradient td-box--height-{{ $height }}">
-	<div class="container text-center td-arrow-down">
-        <div class="row pb-5">
-            <div class="col" >
-                <h2 class="text-center">Companies using Cortex</h2>
+	<div class="container td-arrow-down">
+            <div class="col pb-5">
+                <p class="h2 companies text-center">Companies using Cortex</p>
             </div>
-        </div>
-        <div class="row">
+        <div class="row logos">
             {{ range $adopter := sort $.Site.Data.adopters.adopters "name" }}
             {{ if $adopter.logo }}
                 <a class="col-lg-2 col-md-4 col-sm-6 adopter-img my-3"

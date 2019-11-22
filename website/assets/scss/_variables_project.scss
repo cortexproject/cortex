@@ -3,7 +3,6 @@
 Add styles or override variables from the theme here.
 
 */
-
 $primary: #3b697e;
 $secondary: #b73b02;
 $light: #e9ecef;
@@ -61,4 +60,38 @@ $light: #e9ecef;
 
 footer {
    min-height: unset!important;
+}
+
+.logos {
+    padding: 0!important;
+}
+
+.display-1 {
+    font-size: 1.5rem!important;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.companies {
+    font-size: 1.5rem!important;
+}
+
+@media (min-width: 576px) {
+    .display-1 { font-size: 1.75rem!important; }
+    .companies { font-size: 2rem!important; }
+
+}
+@media (min-width: 768px) {
+    .display-1 { font-size: 2rem!important; }
+    .companies { font-size: 2rem!important; }
+
+}
+@media (min-width: 992px) {
+    .display-1 { font-size: 2.5em!important; }
+    .companies { font-size: 2rem!important; }
+
+}
+@media (min-width: 1200px) {
+    .display-1 { font-size: 3rem!important; }
+    .companies { font-size: 1.75rem!important; }
 }

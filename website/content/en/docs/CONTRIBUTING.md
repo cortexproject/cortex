@@ -3,7 +3,7 @@ title: Contributing
 type: docs
 menu: 
   contributing:
-    weight: 2
+    weight: 3
 ---
 
 Welcome! We're excited that you're interested in contributing. Below are some basic guidelines.

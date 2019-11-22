@@ -4,7 +4,7 @@ linkTitle: "Documentation"
 weight: 1
 menu:
   main:
-    weight: 20
+    weight: 1
 ---
 <p align="center"><img width="200px" src="https://cncf-branding.netlify.com/img/projects/cortex/stacked/color/cortex-stacked-color.png" alt="Cortex Logo"></p>
 

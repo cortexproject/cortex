@@ -10,8 +10,8 @@ import (
 )
 
 // This small tool is executed for each documentation page in the website/content/.
-// It will convert all local markdown link into the hugo shortcode relref.
-// This way github mardown links and generated website documentation links are still working.
+// It will convert all local markdown link into the hugo shortcode relref and convert PR number (e.g #1234)
+// to github link.
 func main() {
 
 	log.Println(os.Args)
@@ -23,21 +23,39 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	ref := regexp.MustCompile(`\[(.*)\](\(.*?\))`)
-	link := regexp.MustCompile(`(\(.*?\))`)
+	content := string(buff)
+	// fix markdown link by replacing them with relref shortcodes.
+	content = convertLinks(content)
 
-	fixed := ref.ReplaceAllStringFunc(string(buff), func(ref string) string {
+	// adds PR links to changelog page
+	if strings.Contains(filepath, "CHANGELOG") {
+		content = addPRLinks(content)
+	}
+
+	if err := ioutil.WriteFile(filepath, []byte(content), 0); err != nil {
+		panic(err)
+	}
+}
+
+var (
+	ref   = regexp.MustCompile(`\[(.*)\](\(.*?\))`)
+	link  = regexp.MustCompile(`(\(.*?\))`)
+	prRef = regexp.MustCompile(`#(\d+)`)
+)
+
+func convertLinks(md string) string {
+	return ref.ReplaceAllStringFunc(md, func(ref string) string {
 		ref = link.ReplaceAllStringFunc(ref, func(link string) string {
 			// we leave out url
-			if strings.HasPrefix(link, "http") {
+			if strings.HasPrefix(link, "(http") {
 				return link
 			}
 			// we leave current page hash tag
-			if strings.HasPrefix(link, "#") {
+			if strings.HasPrefix(link, "(#") {
 				return link
 			}
 			// we leave link already processed
-			if strings.HasPrefix(link, "{{<") {
+			if strings.HasPrefix(link, "({{<") {
 				return link
 			}
 			// we leave current any that is not a page ref
@@ -54,7 +72,14 @@ func main() {
 		})
 		return ref
 	})
-	if err := ioutil.WriteFile(filepath, []byte(fixed), 0); err != nil {
-		panic(err)
-	}
+}
+
+func addPRLinks(content string) string {
+	return prRef.ReplaceAllStringFunc(content, func(ref string) string {
+		if len(ref) <= 1 {
+			return ref
+		}
+		ref = ref[1:]
+		return fmt.Sprintf("[#%s](https://github.com/cortexproject/cortex/pulls/%s)", ref, ref)
+	})
 }

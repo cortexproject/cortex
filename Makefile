@@ -152,7 +152,7 @@ web-build: web-pre
 	cd website && HUGO_ENV=production hugo --config config.toml  --minify -v
 
 check-web: web-pre
-	@git diff --exit-code --
+	@git diff --exit-code -- website/
 
 endif
 

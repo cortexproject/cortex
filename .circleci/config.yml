@@ -67,6 +67,9 @@ jobs:
     - run:
         name: Check protos are consistent.
         command: make BUILD_IN_CONTAINER=false check-protos
+    - run:
+        name: Check if the website content is consistent.
+        command: make BUILD_IN_CONTAINER=false check-web
 
   test:
     <<: *defaults

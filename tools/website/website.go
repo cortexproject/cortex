@@ -9,7 +9,9 @@ import (
 	"strings"
 )
 
-// run through a folder
+// This small tool is executed for each documentation page in the website/content/.
+// It will convert all local markdown link into the hugo shortcode relref.
+// This way github mardown links and generated website documentation links are still working.
 func main() {
 
 	log.Println(os.Args)

@@ -7,7 +7,7 @@ publish = "website/public"
 
 # Our Makefile build hugo, but it's faster if netlify grab the correct version on their own
 # via simple curl.
-environment = { HUGO_VERSION="0.55.3" }
+environment = { HUGO_VERSION="0.59.1" }
 
 # NOTE: Sleep at then is to make sure logs are not truncated on error.
 command = "(env && make web-build || (sleep 30; false)"

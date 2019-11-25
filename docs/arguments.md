@@ -69,7 +69,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 - `-querier.split-queries-by-day`
 
-   If set to true, will case the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.
+   If set to true, will cause the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.
 
 - `-querier.cache-results`
 

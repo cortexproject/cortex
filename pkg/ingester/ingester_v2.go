@@ -94,16 +94,16 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 	// Ensure the ingester shutdown procedure hasn't started
 	i.userStatesMtx.RLock()
-	stopped := i.stopped
-	i.userStatesMtx.RUnlock()
 
-	if stopped {
+	if i.stopped {
+		i.userStatesMtx.RUnlock()
 		return nil, fmt.Errorf("ingester stopping")
 	}
 
 	// Keep track of in-flight requests, in order to safely start blocks transfer
 	// (at shutdown) only once all in-flight write requests have completed
 	i.TSDBState.inflightWriteReqs.Add(1)
+	i.userStatesMtx.RUnlock()
 	defer i.TSDBState.inflightWriteReqs.Done()
 
 	// Keep track of some stats which are tracked only if the samples will be

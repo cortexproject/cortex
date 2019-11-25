@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"sync"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -32,6 +33,13 @@ const (
 type TSDBState struct {
 	dbs    map[string]*tsdb.DB // tsdb sharded by userID
 	bucket objstore.Bucket
+
+	// Keeps count of in-flight requests
+	inflightWriteReqs sync.WaitGroup
+
+	// Used to run only once operations at shutdown, during the blocks/wal
+	// transferring to a joining ingester
+	transferOnce sync.Once
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -84,6 +92,20 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		return nil, err
 	}
 
+	// Ensure the ingester shutdown procedure hasn't started
+	i.userStatesMtx.RLock()
+	stopped := i.stopped
+	i.userStatesMtx.RUnlock()
+
+	if stopped {
+		return nil, fmt.Errorf("ingester stopping")
+	}
+
+	// Keep track of in-flight requests, in order to safely start blocks transfer
+	// (at shutdown) only once all in-flight write requests have completed
+	i.TSDBState.inflightWriteReqs.Add(1)
+	defer i.TSDBState.inflightWriteReqs.Done()
+
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	succeededSamplesCount := 0
@@ -96,10 +118,6 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		lset := cortex_tsdb.FromLabelAdaptersToLabels(ts.Labels)
 
 		for _, s := range ts.Samples {
-			if i.stopped {
-				return nil, fmt.Errorf("ingester stopping")
-			}
-
 			_, err := app.Add(lset, s.TimestampMs, s.Value)
 			if err == nil {
 				succeededSamplesCount++
@@ -119,7 +137,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 			// The error looks an issue on our side, so we should rollback
 			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID, "err", rollbackErr)
+				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "userID", userID, "err", rollbackErr)
 			}
 
 			return nil, err

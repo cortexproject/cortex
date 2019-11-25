@@ -3,8 +3,8 @@ package ingester
 import (
 	"fmt"
 	"net/http"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -414,4 +414,35 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	i.TSDBState.dbs[userID] = db
 
 	return db, nil
+}
+
+func (i *Ingester) closeAllTSDB() {
+	i.userStatesMtx.Lock()
+
+	wg := &sync.WaitGroup{}
+	wg.Add(len(i.TSDBState.dbs))
+
+	// Concurrently close all users TSDB
+	for userID, db := range i.TSDBState.dbs {
+		userID := userID
+
+		go func(db *tsdb.DB) {
+			defer wg.Done()
+
+			if err := db.Close(); err != nil {
+				level.Warn(util.Logger).Log("msg", "unable to close TSDB", "err", err, "user", userID)
+				return
+			}
+
+			// Now that the TSDB has been closed, we should remove it from the
+			// set of open ones.
+			i.userStatesMtx.Lock()
+			delete(i.TSDBState.dbs, userID)
+			i.userStatesMtx.Unlock()
+		}(db)
+	}
+
+	// Wait until all Close() completed
+	i.userStatesMtx.Unlock()
+	wg.Wait()
 }

@@ -499,34 +499,20 @@ func TestV2IngesterTransfer(t *testing.T) {
 				}, nil
 			}
 
-			// Now stop the first ingester (Shutdown() blocks until done)
+			// Now stop the first ingester, and wait for the second ingester to become ACTIVE.
 			ing1.Shutdown()
+			test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
+				return ing2.lifecycler.GetState()
+			})
 
-			// Ensure we can still query the first ingester, because the ingester should never stop to
-			// answer queries while leaving the ring
+			// And check the second ingester has the sample
 			matcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
 			require.NoError(t, err)
 
 			request, err := client.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*labels.Matcher{matcher})
 			require.NoError(t, err)
 
-			response, err := ing1.Query(ctx, request)
-			require.NoError(t, err)
-			assert.Equal(t, expectedResponse, response)
-
-			// Wait for the second ingester to become ACTIVE
-			test.Poll(t, 10*time.Second, ring.ACTIVE, func() interface{} {
-				return ing2.lifecycler.GetState()
-			})
-
-			// And check the second ingester has the sample
-			matcher, err = labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "foo")
-			require.NoError(t, err)
-
-			request, err = client.ToQueryRequest(model.TimeFromUnix(0), model.TimeFromUnix(200), []*labels.Matcher{matcher})
-			require.NoError(t, err)
-
-			response, err = ing2.Query(ctx, request)
+			response, err := ing2.Query(ctx, request)
 			require.NoError(t, err)
 			assert.Equal(t, expectedResponse, response)
 

@@ -581,6 +581,11 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 		return errors.Wrap(err, "CloseAndRecv")
 	}
 
+	// The transfer out has been successfully completed. Now we should close
+	// all open TSDBs: the Close() will wait until all on-going read operations
+	// will be completed.
+	i.closeAllTSDB()
+
 	return nil
 }
 

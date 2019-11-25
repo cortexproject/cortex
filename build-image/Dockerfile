@@ -4,9 +4,6 @@ RUN apt-get update && apt-get install -y curl python-requests python-yaml file j
 RUN curl -sL https://deb.nodesource.com/setup_6.x | sh -
 RUN apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN npm install -g postcss-cli autoprefixer
-RUN go clean -i net && \
-	go install -tags netgo std && \
-	go install -race -tags netgo std
 ENV HUGO_VERSION=v0.59.1
 RUN git clone https://github.com/gohugoio/hugo.git --branch ${HUGO_VERSION} --depth 1 && \
 	cd hugo  && go install --tags extended && cd ../ && \
@@ -22,8 +19,6 @@ RUN GO111MODULE=on go get -tags netgo \
 		github.com/gogo/protobuf/protoc-gen-gogoslick@v1.2.1 \
 		github.com/gogo/protobuf/gogoproto@v1.2.1 && \
 	rm -rf /go/pkg /go/src
-RUN curl -Ls https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64 -o $GOPATH/bin/dep && \
-  chmod +x $GOPATH/bin/dep
 
 ENV NODE_PATH=/usr/lib/node_modules
 COPY build.sh /

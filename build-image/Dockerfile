@@ -15,10 +15,8 @@ RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v1.3.0/shfmt
 	echo "b1925c2c405458811f0c227266402cf1868b4de529f114722c2e3a5af4ac7bb2  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \
 	mv shfmt /usr/bin
+RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b /usr/bin v1.21.0
 RUN GO111MODULE=on go get -tags netgo \
-		github.com/fzipp/gocyclo \
-		golang.org/x/lint/golint \
-		github.com/kisielk/errcheck@v1.2.0 \
 		github.com/client9/misspell/cmd/misspell@v0.3.4 \
 		github.com/golang/protobuf/protoc-gen-go@v1.3.1 \
 		github.com/gogo/protobuf/protoc-gen-gogoslick@v1.2.1 \

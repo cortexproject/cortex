@@ -7,7 +7,7 @@ slug: aws-specific.md
 
 [this is a work in progress]
 
-See also the [Running in Production](running.md) document.
+See also the [Running in Production]({{< relref "running.md" >}}) document.
 
 ## Credentials
 

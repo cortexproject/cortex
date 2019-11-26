@@ -6,12 +6,12 @@ slug: running.md
 ---
 
 This document assumes you have read the
-[architecture](architecture.md) document.
+[architecture]({{< relref "architecture.md" >}}) document.
 
 In addition to the general advice in this document, please see these
 platform-specific notes:
 
-- [AWS](aws-specific.md)
+- [AWS]({{< relref "aws-specific.md" >}})
 
 ## Planning
 
@@ -20,7 +20,7 @@ platform-specific notes:
 If you will run Cortex as a multi-tenant system, you need to give each
 tenant a unique ID - this can be any string. Managing tenants and
 allocating IDs must be done outside of Cortex. You must also configure
-[Authentication and Authorisation](auth.md).
+[Authentication and Authorisation]({{< relref "auth.md" >}}).
 
 ### Storage
 

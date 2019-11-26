@@ -30,6 +30,7 @@ type ManagerConfig struct {
 	Loader       Loader
 }
 
+// RegisterFlags registers flags.
 func (omc *ManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&omc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
 	f.DurationVar(&omc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")

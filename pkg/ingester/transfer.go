@@ -521,7 +521,10 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 		// requests will be accepted because the "stopped" flag has already been set.
 		level.Info(util.Logger).Log("msg", "waiting for in-flight write requests to complete")
 
-		if !util.WaitGroupWithTimeout(&i.TSDBState.inflightWriteReqs, 10*time.Second) {
+		waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Second)
+		defer waitCancel()
+
+		if !util.WaitGroup(waitCtx, &i.TSDBState.inflightWriteReqs) {
 			level.Warn(util.Logger).Log("msg", "timeout expired while waiting in-flight write requests to complete, transfer will continue anyway")
 		}
 

@@ -13,7 +13,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb"
 	lbls "github.com/prometheus/prometheus/tsdb/labels"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -275,7 +274,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	defer q.Close()
 
 	// Run a query for each matchers set and collect all the results
-	added := model.FingerprintSet{}
+	added := map[string]struct{}{}
 	result := &client.MetricsForLabelMatchersResponse{
 		Metric: make([]*client.Metric, 0),
 	}
@@ -300,8 +299,8 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 			// return the unique set of matching series, we do check if the series has
 			// already been added to the result
 			ls := seriesSet.At().Labels()
-			fp := client.Fingerprint(cortex_tsdb.FromLabelsToLegacyLabels(ls))
-			if _, ok := added[fp]; ok {
+			key := ls.String()
+			if _, ok := added[key]; ok {
 				continue
 			}
 
@@ -309,7 +308,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 				Labels: cortex_tsdb.FromLabelsToLabelAdapters(ls),
 			})
 
-			added[fp] = struct{}{}
+			added[key] = struct{}{}
 		}
 
 		// In case of any error while iterating the series, we break

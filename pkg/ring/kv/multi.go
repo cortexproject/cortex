@@ -17,28 +17,28 @@ import (
 
 var (
 	primaryStoreGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "consul_multikv_primary_store",
+		Name: "cortex_multikv_primary_store",
 		Help: "Selected primary KV store",
 	}, []string{"store"})
 
-	mirrorEnabled = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "consul_multikv_mirror_enabled",
+	mirrorEnabledGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_multikv_mirror_enabled",
 		Help: "Is mirroring to secondary store enabled",
 	})
 
-	mirrorWrites = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "consul_multikv_mirror_writes_total",
+	mirrorWritesCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_multikv_mirror_writes_total",
 		Help: "Number of mirror-writes to secondary store",
 	})
 
-	mirrorFailures = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "consul_multikv_mirror_write_errors_total",
+	mirrorFailuresCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_multikv_mirror_write_errors_total",
 		Help: "Number of failures to mirror-write to secondary store",
 	})
 )
 
 func init() {
-	prometheus.MustRegister(primaryStoreGauge, mirrorEnabled, mirrorWrites, mirrorFailures)
+	prometheus.MustRegister(primaryStoreGauge, mirrorEnabledGauge, mirrorWritesCounter, mirrorFailuresCounter)
 }
 
 // MultiConfig is a configuration for MultiClient.
@@ -46,8 +46,8 @@ type MultiConfig struct {
 	Primary   string `yaml:"primary"`
 	Secondary string `yaml:"secondary"`
 
-	MirrorEnabled bool          `yaml:"mirror-enabled"`
-	MirrorTimeout time.Duration `yaml:"mirror-timeout"`
+	MirrorEnabled bool          `yaml:"mirror_enabled"`
+	MirrorTimeout time.Duration `yaml:"mirror_timeout"`
 
 	// ConfigProvider returns channel with MultiRuntimeConfig updates.
 	ConfigProvider func() <-chan MultiRuntimeConfig
@@ -136,10 +136,10 @@ func (m *MultiClient) watchConfigChannel(ctx context.Context, configChannel <-ch
 			}
 
 			if cfg.Mirroring != nil {
-				enable := *cfg.Mirroring
-				old := m.mirroringEnabled.Swap(enable)
-				if old != enable {
-					level.Info(util.Logger).Log("msg", "toggled mirroring", "enabled", enable)
+				enabled := *cfg.Mirroring
+				old := m.mirroringEnabled.Swap(enabled)
+				if old != enabled {
+					level.Info(util.Logger).Log("msg", "toggled mirroring", "enabled", enabled)
 				}
 				m.updateMirrorEnabledGauge()
 			}
@@ -213,9 +213,9 @@ func (m *MultiClient) updatePrimaryStoreGauge() {
 
 func (m *MultiClient) updateMirrorEnabledGauge() {
 	if m.mirroringEnabled.Load() {
-		mirrorEnabled.Set(1)
+		mirrorEnabledGauge.Set(1)
 	} else {
-		mirrorEnabled.Set(0)
+		mirrorEnabledGauge.Set(0)
 	}
 }
 
@@ -281,7 +281,6 @@ func (m *MultiClient) runWithPrimaryClient(origCtx context.Context, fn func(newC
 func (m *MultiClient) Get(ctx context.Context, key string) (interface{}, error) {
 	_, kv := m.getPrimaryClient()
 	val, err := kv.client.Get(ctx, key)
-	level.Info(util.Logger).Log("key", key, "value", val, "store", kv.name, "err", err)
 	return val, err
 }
 
@@ -332,14 +331,14 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 			continue
 		}
 
-		mirrorWrites.Inc()
+		mirrorWritesCounter.Inc()
 		err := kvc.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 			// try once
 			return newValue, false, nil
 		})
 
 		if err != nil {
-			mirrorFailures.Inc()
+			mirrorFailuresCounter.Inc()
 			level.Warn(util.Logger).Log("msg", "failed to update value in secondary store", "key", key, "err", err, "primary", primary.name, "secondary", kvc.name)
 		} else {
 			level.Debug(util.Logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)

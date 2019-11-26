@@ -8,7 +8,7 @@ Cortex can be runs as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
 This document will focus on single-process Cortex.
-See [the architecture doc]({{< relref "architecture.md" >}}) For more information about the microservices.
+See [the architecture doc](architecture.md) For more information about the microservices.
 
 Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (DynamoDB, Bigtable, Cassandra, S3, GCS etc).
 This document will focus on using local storage.
@@ -67,7 +67,7 @@ $ docker network create cortex
 $ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 consul
 ```
 
-Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note with Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation]({{< relref "arguments.md" >}}) for more information about Cortex configuration options.
+Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note with Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation](arguments.md) for more information about Cortex configuration options.
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \

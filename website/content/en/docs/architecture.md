@@ -66,7 +66,7 @@ Samples from each timeseries are built up in "chunks" in memory inside each inge
 
 If an ingester process crashes or exits abruptly, all the data that has not yet been flushed will be lost. Cortex is usually configured to hold multiple (typically 3) replicas of each timeseries to mitigate this risk.
 
-A [hand-over process]({{< relref "ingester-handover.md" >}}) manages the state when ingesters are added, removed or replaced.
+A [hand-over process](ingester-handover.md) manages the state when ingesters are added, removed or replaced.
 
 #### Write de-amplification
 

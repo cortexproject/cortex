@@ -146,6 +146,7 @@ check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
 
 web-pre:
+	cd website && git submodule update --init --recursive
 	./tools/web-pre.sh
 
 web-build: web-pre
@@ -190,5 +191,5 @@ prime-minikube: save-images
 		fi \
 	done
 
-web-serve: web-pre
+web-serve:
 	cd website && hugo --config config.toml -v server

@@ -43,4 +43,4 @@ The replica label should be set so that the value for each prometheus is unique 
 
 ### Server Side
 
-To enable handling of samples, see the [distributor flags]({{< relref "../configuration/arguments.md#ha-tracker" >}}) having `ha-tracker` in them.
+To enable handling of samples, see the [distributor flags](../configuration/arguments.md#ha-tracker) having `ha-tracker` in them.

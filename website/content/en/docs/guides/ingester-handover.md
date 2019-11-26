@@ -5,7 +5,7 @@ weight: 5
 slug: ingester-handover.md
 ---
 
-The [ingester]({{< relref "architecture.md#ingester" >}}) holds several hours of sample
+The [ingester](architecture.md#ingester) holds several hours of sample
 data in memory. When we want to shut down an ingester, either for
 software version update or to drain a node for maintenance, this data
 must not be discarded.
@@ -14,7 +14,7 @@ Each ingester goes through different states in its lifecycle. When
 working normally, the state is `ACTIVE`.
 
 On start-up, an ingester first goes into state `PENDING`. After a
-[short time]({{< relref "../configuration/arguments.md#ingester" >}}), if nothing happens, it adds
+[short time](../configuration/arguments.md#ingester), if nothing happens, it adds
 itself to the ring and goes into state ACTIVE.
 
 A running ingester is notified to shut down by Unix signal
@@ -24,9 +24,9 @@ ingester goes into state `JOINING` and the leaver transfers all its
 in-memory data over to the joiner. On successful transfer the leaver
 removes itself from the ring and exits and the joiner changes to
 `ACTIVE`, taking over ownership of the leaver's
-[ring tokens]({{< relref "../architecture.md#hashing" >}}).
+[ring tokens](../architecture.md#hashing).
 
-If a leaving ingester does not find a pending ingester after [several attempts]({{< relref "../configuration/arguments.md#ingester" >}}), it will flush all of its chunks to
+If a leaving ingester does not find a pending ingester after [several attempts](../configuration/arguments.md#ingester), it will flush all of its chunks to
 the backing database, then remove itself from the ring and exit. This
 may take tens of minutes to complete.
 

@@ -17,8 +17,8 @@ func TestMultiRuntimeConfigWithVariousEnabledValues(t *testing.T) {
 		expected *bool
 	}{
 		"nil":   {"primary: test", nil},
-		"true":  {"primary: test\nmirror-enabled: true", boolPtr(true)},
-		"false": {"mirror-enabled: false", boolPtr(false)},
+		"true":  {"primary: test\nmirror_enabled: true", boolPtr(true)},
+		"false": {"mirror_enabled: false", boolPtr(false)},
 	}
 
 	for name, tc := range testcases {

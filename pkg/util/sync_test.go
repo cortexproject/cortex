@@ -10,33 +10,51 @@ import (
 )
 
 func TestWaitGroup(t *testing.T) {
-	// WaitGroup is done
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+	t.Parallel()
 
-	wg := sync.WaitGroup{}
-	success := WaitGroup(ctx, &wg)
-	assert.True(t, success)
+	tests := map[string]struct {
+		setup    func(wg *sync.WaitGroup) (context.Context, context.CancelFunc)
+		expected bool
+	}{
+		"WaitGroup is done": {
+			setup: func(wg *sync.WaitGroup) (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.Background(), 100*time.Millisecond)
+			},
+			expected: true,
+		},
+		"WaitGroup is not done and timeout expires": {
+			setup: func(wg *sync.WaitGroup) (context.Context, context.CancelFunc) {
+				wg.Add(1)
 
-	// WaitGroup is not done and timeout has expired
-	ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+				return context.WithTimeout(context.Background(), 100*time.Millisecond)
+			},
+			expected: false,
+		},
+		"WaitGroup is not done and context is cancelled before timeout expires": {
+			setup: func(wg *sync.WaitGroup) (context.Context, context.CancelFunc) {
+				wg.Add(1)
 
-	wg = sync.WaitGroup{}
-	wg.Add(1)
-	success = WaitGroup(ctx, &wg)
-	assert.False(t, success)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 
-	// WaitGroup is not done and context is cancelled before timeout expires
-	ctx, cancel = context.WithTimeout(context.Background(), time.Minute)
+				go func() {
+					time.Sleep(100 * time.Millisecond)
+					cancel()
+				}()
 
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		cancel()
-	}()
+				return ctx, cancel
+			},
+			expected: false,
+		},
+	}
 
-	wg = sync.WaitGroup{}
-	wg.Add(1)
-	success = WaitGroup(ctx, &wg)
-	assert.False(t, success)
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			wg := sync.WaitGroup{}
+			ctx, cancel := testData.setup(&wg)
+			defer cancel()
+
+			success := WaitGroup(ctx, &wg)
+			assert.Equal(t, testData.expected, success)
+		})
+	}
 }

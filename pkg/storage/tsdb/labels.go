@@ -14,6 +14,8 @@ const (
 )
 
 // FromLabelAdaptersToLabels converts []LabelAdapter to TSDB labels.Labels.
+// Do NOT use unsafe to convert between data types because this function may
+// get in input labels whose data structure is reused.
 func FromLabelAdaptersToLabels(input []client.LabelAdapter) labels.Labels {
 	result := make(labels.Labels, len(input))
 
@@ -28,14 +30,9 @@ func FromLabelAdaptersToLabels(input []client.LabelAdapter) labels.Labels {
 }
 
 // FromLabelsToLabelAdapters converts TSDB labels.labels to []LabelAdapter.
-func FromLabelsToLabelAdapters(labels labels.Labels) []client.LabelAdapter {
-	adapters := make([]client.LabelAdapter, 0, len(labels))
-
-	for _, label := range labels {
-		adapters = append(adapters, client.LabelAdapter(label))
-	}
-
-	return adapters
+// It uses unsafe, but as both struct are identical this should be safe.
+func FromLabelsToLabelAdapters(input labels.Labels) []client.LabelAdapter {
+	return *(*([]client.LabelAdapter))(unsafe.Pointer(&input))
 }
 
 // FromLabelsToLegacyLabels casts TSDB labels.Labels to legacy labels.Labels.

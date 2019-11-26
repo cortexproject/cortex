@@ -48,6 +48,7 @@ func NewMockShardedQueryable(
 	nSamples int,
 	labelSet []string,
 	labelBuckets int,
+	delayPerSeries time.Duration,
 ) *MockShardedQueryable {
 	samples := make([]model.SamplePair, 0, nSamples)
 	for i := 0; i < nSamples; i++ {
@@ -62,12 +63,16 @@ func NewMockShardedQueryable(
 		xs = append(xs, series.NewConcreteSeries(ls, samples))
 	}
 
-	return &MockShardedQueryable{xs}
+	return &MockShardedQueryable{
+		series:         xs,
+		delayPerSeries: delayPerSeries,
+	}
 }
 
 // MockShardedQueryable is exported to be reused in the querysharding benchmarking
 type MockShardedQueryable struct {
-	series []storage.Series
+	series         []storage.Series
+	delayPerSeries time.Duration
 }
 
 // Querier impls storage.Queryable
@@ -125,7 +130,7 @@ func (q *MockShardedQueryable) Select(
 
 	// loosely enforce the assumption that an operation on 1/nth of the data
 	// takes 1/nth of the time.
-	duration := time.Millisecond * time.Duration(len(q.series))
+	duration := q.delayPerSeries * time.Duration(len(q.series))
 	if shard != nil {
 		duration = duration / time.Duration(shard.Of)
 	}

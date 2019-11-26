@@ -296,7 +296,8 @@ func BenchmarkQuerySharding(b *testing.B) {
 
 	var shards []uint32
 
-	for shard := 1; shard <= runtime.NumCPU(); shard = shard * 2 {
+	// max out at half available cpu cores in order to minimize noisy neighbor issues while benchmarking
+	for shard := 1; shard <= runtime.NumCPU()/2; shard = shard * 2 {
 		shards = append(shards, uint32(shard))
 	}
 
@@ -312,7 +313,7 @@ func BenchmarkQuerySharding(b *testing.B) {
 
 		// no-group
 		{
-			labelBuckets:     10,
+			labelBuckets:     16,
 			labels:           []string{"a", "b", "c"},
 			samplesPerSeries: 100,
 			query:            `sum(rate(http_requests_total[5m]))`,
@@ -320,7 +321,7 @@ func BenchmarkQuerySharding(b *testing.B) {
 		},
 		// sum by
 		{
-			labelBuckets:     10,
+			labelBuckets:     16,
 			labels:           []string{"a", "b", "c"},
 			samplesPerSeries: 100,
 			query:            `sum by(a) (rate(http_requests_total[5m]))`,
@@ -328,82 +329,91 @@ func BenchmarkQuerySharding(b *testing.B) {
 		},
 		// sum without
 		{
-			labelBuckets:     10,
+			labelBuckets:     16,
 			labels:           []string{"a", "b", "c"},
 			samplesPerSeries: 100,
 			query:            `sum without (a) (rate(http_requests_total[5m]))`,
 			desc:             "sum without",
 		},
 	} {
-		engine := promql.NewEngine(promql.EngineOpts{
-			Logger: util.Logger,
-			Reg:    nil,
-			// set high concurrency so we're not bottlenecked here
-			MaxConcurrent: 100000,
-			MaxSamples:    100000000,
-			Timeout:       time.Minute,
-		})
+		for _, delayPerSeries := range []time.Duration{
+			0,
+			time.Millisecond / 10,
+		} {
+			engine := promql.NewEngine(promql.EngineOpts{
+				Logger: util.Logger,
+				Reg:    nil,
+				// set high concurrency so we're not bottlenecked here
+				MaxConcurrent: 100000,
+				MaxSamples:    100000000,
+				Timeout:       time.Minute,
+			})
 
-		queryable := astmapper.NewMockShardedQueryable(
-			tc.samplesPerSeries,
-			tc.labels,
-			tc.labelBuckets,
-		)
-		downstream := &downstreamHandler{
-			engine:    engine,
-			queryable: queryable,
-		}
-
-		var (
-			start int64 = 0
-			end         = int64(1000 * tc.samplesPerSeries)
-			step        = (end - start) / 1000
-		)
-
-		req := &PrometheusRequest{
-			Path:    "/query_range",
-			Start:   start,
-			End:     end,
-			Step:    step,
-			Timeout: time.Minute,
-			Query:   tc.query,
-		}
-
-		for _, shardFactor := range shards {
-			mware := NewQueryShardMiddleware(
-				log.NewNopLogger(),
-				engine,
-				// ensure that all requests are shard compatbile
-				ShardingConfigs{
-					chunk.PeriodConfig{
-						Schema:    "v10",
-						RowShards: shardFactor,
-					},
-				},
-			).Wrap(downstream)
-
-			b.Run(
-				fmt.Sprintf(
-					"desc:[%s]:shards:[%d]/series:[%.0f]/samplesPerSeries:[%d]",
-					tc.desc,
-					shardFactor,
-					math.Pow(float64(tc.labelBuckets), float64(len(tc.labels))),
-					tc.samplesPerSeries,
-				),
-				func(b *testing.B) {
-					for n := 0; n < b.N; n++ {
-						_, err := mware.Do(
-							context.Background(),
-							req,
-						)
-						if err != nil {
-							b.Fatal(err.Error())
-						}
-					}
-				},
+			queryable := astmapper.NewMockShardedQueryable(
+				tc.samplesPerSeries,
+				tc.labels,
+				tc.labelBuckets,
+				delayPerSeries,
 			)
+			downstream := &downstreamHandler{
+				engine:    engine,
+				queryable: queryable,
+			}
+
+			var (
+				start int64 = 0
+				end         = int64(1000 * tc.samplesPerSeries)
+				step        = (end - start) / 1000
+			)
+
+			req := &PrometheusRequest{
+				Path:    "/query_range",
+				Start:   start,
+				End:     end,
+				Step:    step,
+				Timeout: time.Minute,
+				Query:   tc.query,
+			}
+
+			for _, shardFactor := range shards {
+				mware := NewQueryShardMiddleware(
+					log.NewNopLogger(),
+					engine,
+					// ensure that all requests are shard compatbile
+					ShardingConfigs{
+						chunk.PeriodConfig{
+							Schema:    "v10",
+							RowShards: shardFactor,
+						},
+					},
+				).Wrap(downstream)
+
+				b.Run(
+					fmt.Sprintf(
+						"desc:[%s]---shards:[%d]---series:[%.0f]---delayPerSeries:[%s]---samplesPerSeries:[%d]",
+						tc.desc,
+						shardFactor,
+						math.Pow(float64(tc.labelBuckets), float64(len(tc.labels))),
+						delayPerSeries,
+						tc.samplesPerSeries,
+					),
+					func(b *testing.B) {
+						for n := 0; n < b.N; n++ {
+							_, err := mware.Do(
+								context.Background(),
+								req,
+							)
+							if err != nil {
+								b.Fatal(err.Error())
+							}
+						}
+					},
+				)
+			}
+			fmt.Println()
 		}
 
+		fmt.Print("--------------------------------\n\n")
 	}
 }
 

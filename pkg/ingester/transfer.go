@@ -521,7 +521,10 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 		// requests will be accepted because the "stopped" flag has already been set.
 		level.Info(util.Logger).Log("msg", "waiting for in-flight write requests to complete")
 
-		waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Second)
+		// Do not use the parent context cause we don't want to interrupt while waiting
+		// for in-flight requests to complete if the parent context is cancelled, given
+		// this logic run only once.
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer waitCancel()
 
 		if err := util.WaitGroup(waitCtx, &i.TSDBState.inflightWriteReqs); err != nil {

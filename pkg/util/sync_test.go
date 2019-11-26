@@ -14,13 +14,13 @@ func TestWaitGroup(t *testing.T) {
 
 	tests := map[string]struct {
 		setup    func(wg *sync.WaitGroup) (context.Context, context.CancelFunc)
-		expected bool
+		expected error
 	}{
 		"WaitGroup is done": {
 			setup: func(wg *sync.WaitGroup) (context.Context, context.CancelFunc) {
 				return context.WithTimeout(context.Background(), 100*time.Millisecond)
 			},
-			expected: true,
+			expected: nil,
 		},
 		"WaitGroup is not done and timeout expires": {
 			setup: func(wg *sync.WaitGroup) (context.Context, context.CancelFunc) {
@@ -28,7 +28,7 @@ func TestWaitGroup(t *testing.T) {
 
 				return context.WithTimeout(context.Background(), 100*time.Millisecond)
 			},
-			expected: false,
+			expected: context.DeadlineExceeded,
 		},
 		"WaitGroup is not done and context is cancelled before timeout expires": {
 			setup: func(wg *sync.WaitGroup) (context.Context, context.CancelFunc) {
@@ -43,7 +43,7 @@ func TestWaitGroup(t *testing.T) {
 
 				return ctx, cancel
 			},
-			expected: false,
+			expected: context.Canceled,
 		},
 	}
 

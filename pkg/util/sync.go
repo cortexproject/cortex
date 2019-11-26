@@ -6,9 +6,10 @@ import (
 )
 
 // WaitGroup calls Wait() on a sync.WaitGroup and return once the Wait() completed
-// or the context is cancelled or times out, whatever occurs first. Returns true if
-// the Wait() completed before the timeout expired, false otherwise.
-func WaitGroup(ctx context.Context, wg *sync.WaitGroup) bool {
+// or the context is cancelled or times out, whatever occurs first. Returns the
+// specific context error if the context is cancelled or times out before Wait()
+// completes.
+func WaitGroup(ctx context.Context, wg *sync.WaitGroup) error {
 	c := make(chan struct{})
 
 	go func() {
@@ -18,8 +19,8 @@ func WaitGroup(ctx context.Context, wg *sync.WaitGroup) bool {
 
 	select {
 	case <-c:
-		return true
+		return nil
 	case <-ctx.Done():
-		return false
+		return ctx.Err()
 	}
 }

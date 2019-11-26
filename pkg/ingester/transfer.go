@@ -524,8 +524,8 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 		waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer waitCancel()
 
-		if !util.WaitGroup(waitCtx, &i.TSDBState.inflightWriteReqs) {
-			level.Warn(util.Logger).Log("msg", "timeout expired while waiting in-flight write requests to complete, transfer will continue anyway")
+		if err := util.WaitGroup(waitCtx, &i.TSDBState.inflightWriteReqs); err != nil {
+			level.Warn(util.Logger).Log("msg", "timeout expired while waiting in-flight write requests to complete, transfer will continue anyway", "err", err)
 		}
 
 		// Before beginning transfer, we need to make sure no WAL compaction will occur.

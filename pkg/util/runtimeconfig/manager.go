@@ -1,4 +1,4 @@
-package runtime_config
+package runtimeconfig
 
 import (
 	"flag"
@@ -16,18 +16,18 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Whether the last config reload attempt was successful.",
 })
 
-// RuntimeConfigLoader loads the configuration from file.
-type RuntimeConfigLoader func(filename string) (interface{}, error)
+// Loader loads the configuration from file.
+type Loader func(filename string) (interface{}, error)
 
-// RuntimeConfigListener gets notified when new config is loaded
-type RuntimeConfigListener func(newConfig interface{})
+// Listener gets notified when new config is loaded
+type Listener func(newConfig interface{})
 
 // ManagerConfig holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
 type ManagerConfig struct {
 	ReloadPeriod time.Duration `yaml:"period"`
 	LoadPath     string        `yaml:"file"`
-	Loader       RuntimeConfigLoader
+	Loader       Loader
 }
 
 func (omc *ManagerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -42,7 +42,7 @@ type Manager struct {
 	quit chan struct{}
 
 	listenersMtx sync.Mutex
-	listeners    []RuntimeConfigListener
+	listeners    []Listener
 
 	configMtx sync.RWMutex
 	config    interface{}
@@ -70,7 +70,7 @@ func NewRuntimeConfigManager(cfg ManagerConfig) (*Manager, error) {
 
 // AddListener registers new listener function, that will receive updates configuration.
 // Listener is called asynchronously to avoid blocking main reloading loop.
-func (om *Manager) AddListener(l RuntimeConfigListener) {
+func (om *Manager) AddListener(l Listener) {
 	if l == nil {
 		panic("nil listener")
 	}

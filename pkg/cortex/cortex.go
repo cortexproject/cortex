@@ -31,7 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/runtime_config"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -80,7 +80,7 @@ type Config struct {
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
 	ConfigStore   config_client.Config                       `yaml:"config_store,omitempty"`
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
-	RuntimeConfig runtime_config.ManagerConfig               `yaml:"runtime_config"`
+	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
 }
 
 // RegisterFlags registers flag.
@@ -159,7 +159,7 @@ type Cortex struct {
 	frontend      *frontend.Frontend
 	tableManager  *chunk.TableManager
 	cache         cache.Cache
-	runtimeConfig *runtime_config.Manager
+	runtimeConfig *runtimeconfig.Manager
 
 	ruler        *ruler.Ruler
 	configAPI    *api.API

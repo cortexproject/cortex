@@ -1,4 +1,4 @@
-package runtime_config
+package runtimeconfig
 
 import (
 	"io/ioutil"

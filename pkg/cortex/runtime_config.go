@@ -6,7 +6,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util/runtime_config"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -36,7 +36,7 @@ func loadRuntimeConfig(filename string) (interface{}, error) {
 	return overrides, nil
 }
 
-func tenantLimitsFromRuntimeConfig(c *runtime_config.Manager) validation.TenantLimits {
+func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
 	return func(userID string) *validation.Limits {
 		cfg, ok := c.GetConfig().(*runtimeConfigValues)
 		if !ok || cfg == nil {
@@ -47,7 +47,7 @@ func tenantLimitsFromRuntimeConfig(c *runtime_config.Manager) validation.TenantL
 	}
 }
 
-func multiClientRuntimeConfigChannel(manager *runtime_config.Manager) func() <-chan kv.MultiRuntimeConfig {
+func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {
 	// returns function that can be used in MultiConfig.ConfigProvider
 	return func() <-chan kv.MultiRuntimeConfig {
 		ch := make(chan kv.MultiRuntimeConfig, 1)

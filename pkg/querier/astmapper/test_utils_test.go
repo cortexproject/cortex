@@ -100,7 +100,7 @@ func TestNewMockShardedqueryable(t *testing.T) {
 			labelSet:     []string{"a", "b", "c"},
 		},
 	} {
-		q := NewMockShardedQueryable(tc.nSamples, tc.labelSet, tc.labelBuckets)
+		q := NewMockShardedQueryable(tc.nSamples, tc.labelSet, tc.labelBuckets, 0)
 		expectedSeries := int(math.Pow(float64(tc.labelBuckets), float64(len(tc.labelSet))))
 
 		seriesCt := 0

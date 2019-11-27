@@ -351,6 +351,7 @@ func (t *TCPTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 		advertisePort = t.GetAutoBindPort()
 	}
 
+	level.Debug(util.Logger).Log("msg", "FinalAdvertiseAddr", "advertiseAddr", advertiseAddr.String(), "advertisePort", advertisePort)
 	return advertiseAddr, advertisePort, nil
 }
 

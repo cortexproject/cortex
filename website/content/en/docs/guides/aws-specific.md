@@ -2,7 +2,7 @@
 title: "Running Cortex at AWS"
 linkTitle: "Running Cortex at AWS"
 weight: 3
-slug: aws-specific.md
+slug: aws
 ---
 
 [this is a work in progress]

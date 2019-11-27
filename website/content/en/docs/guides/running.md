@@ -2,7 +2,7 @@
 title: "Running Cortex in Production"
 linkTitle: "Running Cortex in Production"
 weight: 1
-slug: running.md
+slug: running-in-production
 ---
 
 This document assumes you have read the

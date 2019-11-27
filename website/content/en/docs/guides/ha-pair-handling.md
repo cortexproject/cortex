@@ -2,7 +2,7 @@
 title: "Config for sending HA Pairs data to Cortex"
 linkTitle: "Config for sending HA Pairs data to Cortex"
 weight: 4
-slug: ha-pair-handling.md
+slug: ha-pair-handling
 ---
 
 ## Context

@@ -2,7 +2,7 @@
 title: "Single-process"
 linkTitle: "Single-process"
 weight: 3
-slug: single-process-config.md
+slug: single-process-config
 ---
 
 Configuration for running Cortex in single-process mode.

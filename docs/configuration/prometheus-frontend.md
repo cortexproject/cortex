@@ -2,7 +2,7 @@
 title: "Prometheus Frontend"
 linkTitle: "Prometheus Frontend"
 weight: 2
-slug: prometheus-frontend.md
+slug: prometheus-frontend
 ---
 
 
@@ -24,12 +24,10 @@ http_prefix:
 server:
   http_listen_port: 9091
 
-frontend:
-  log_queries_longer_than: 1s
+query_range:
   split_queries_by_day: true
   align_queries_with_step: true
   cache_results: true
-  compress_responses: true
 
   results_cache:
     max_freshness: 1m
@@ -51,4 +49,9 @@ frontend:
       #     host: memcached.default.svc.cluster.local
       #     service: memcached
       #     consistent_hash: true
+
+
+frontend:
+  log_queries_longer_than: 1s
+  compress_responses: true
 ```

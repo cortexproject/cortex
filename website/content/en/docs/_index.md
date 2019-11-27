@@ -24,7 +24,7 @@ Prometheus sources in a single cluster, allowing untrusted parties to share the 
 - **Long term storage:** Cortex supports Amazon DynamoDB, Google Bigtable, Cassandra, S3 and GCS for long term storage of metric data.  This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
 
 Cortex is a [CNCF](https://cncf.io) sandbox project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
-Cortex is a primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, with a Prometheus-compatible query API.
+Cortex is primarily used used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, exposing a Prometheus-compatible query API.
 
 ## Documentation
 

@@ -14,17 +14,17 @@
 <link rel="preload" as="image" href="{{ $promo_image_big.RelPermalink }}" media="(min-width: 1200px)">
 <style>
 #{{ $blockID }} {
-    background-image: url({{ $promo_image_small.RelPermalink }}); 
+    background-image: url({{ $promo_image_small.RelPermalink }});
 }
 @media only screen and (min-width: 1200px) {
     #{{ $blockID }} {
-        background-image: url({{ $promo_image_big.RelPermalink }}); 
+        background-image: url({{ $promo_image_big.RelPermalink }});
     }
 }
 </style>
 {{ end }}
 <section id="{{ $blockID }}" class="row td-cover-block td-cover-block--height-{{ $height }} js-td-cover td-overlay -bg-{{ $col_id }}">
-  <div class="container td-overlay__inner">
+  <div class="container td-overlay__inner my-auto">
     <div class="row">
       <div class="mx-auto">
           <img src="/images/cortex-horizontal.svg" width="300" class="img-fluid">

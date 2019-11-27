@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -38,12 +39,19 @@ func main() {
 }
 
 var (
-	ref   = regexp.MustCompile(`\[(.*)\](\(.*?\))`)
-	link  = regexp.MustCompile(`(\(.*?\))`)
-	prRef = regexp.MustCompile(`#(\d+)`)
+	ref    = regexp.MustCompile(`\[(.*)\](\(.*?\))`)
+	link   = regexp.MustCompile(`(\(.*?\))`)
+	prRef  = regexp.MustCompile(`#(\d+)`)
+	images = regexp.MustCompile(`\..*images/(.*)\.(png|gif|jpeg|jpg|pdf)`)
 )
 
 func convertLinks(md string) string {
+	// grabs relative image path and make then relative to the root of the website where the static images are served.
+	// images in the root folder `images/` of this repository are copied over the website/static/images/
+	md = images.ReplaceAllStringFunc(md, func(imagePath string) string {
+		return fmt.Sprintf("/images/%s", filepath.Base(imagePath))
+	})
+	// parse markdown link
 	return ref.ReplaceAllStringFunc(md, func(ref string) string {
 		ref = link.ReplaceAllStringFunc(ref, func(link string) string {
 			// we leave out url

@@ -2,7 +2,7 @@
 title: "Tracing"
 linkTitle: "Tracing"
 weight: 6
-slug: tracing.md
+slug: tracing
 ---
 
 Cortex uses [Jaeger](https://www.jaegertracing.io/) to implement distributed

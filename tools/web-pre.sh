@@ -15,13 +15,14 @@ mkdir -p ${OUTPUT_CONTENT_DIR}
 # Copy original content.
 cp -r ${ORIGINAL_CONTENT_DIR}/* ${OUTPUT_CONTENT_DIR}
 cp -r CONTRIBUTING.md code-of-conduct.md CHANGELOG.md ${OUTPUT_CONTENT_DIR}
+cp images/* ${WEBSITE_DIR}/static/images
 
 # Add headers to special CODE_OF_CONDUCT.md, CONTRIBUTING.md and CHANGELOG.md files.
 echo "$(cat <<EOT
 ---
 title: Code of Conduct
 type: docs
-menu: 
+menu:
   contributing:
     weight: 1
 ---
@@ -33,7 +34,7 @@ echo "$(cat <<EOT
 ---
 title: Changelog
 type: docs
-menu: 
+menu:
   main:
     weight: 2
 ---
@@ -45,7 +46,7 @@ echo "$(cat <<EOT
 ---
 title: Contributing
 type: docs
-menu: 
+menu:
   contributing:
     weight: 3
 ---

@@ -1,21 +1,21 @@
 {
-  "name": "tech-doc-hugo",
+  "name": "cortex-doc-hugo",
   "version": "0.0.1",
-  "description": "Hugo theme for technical documentation.",
+  "description": "Cortex technical documentation.",
   "main": "none.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bep/tech-doc-hugo.git"
+    "url": "git+https://github.com/cortexproject/cortex.git"
   },
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/bep/tech-doc-hugo/issues"
+    "url": "https://github.com/cortexproject/cortex/issues"
   },
-  "homepage": "https://github.com/bep/tech-doc-hugo#readme",
+  "homepage": "https://github.com/cortexproject/cortex/",
   "dependencies": {},
   "devDependencies": {
     "autoprefixer": "^9.4.6",

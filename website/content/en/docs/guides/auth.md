@@ -2,7 +2,7 @@
 title: "Authentication and Authorisation"
 linkTitle: "Authentication and Authorisation"
 weight: 2
-slug: auth.md
+slug: auth
 ---
 
 All Cortex components take the tenant ID from a header `X-Scope-OrgID`

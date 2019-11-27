@@ -1,7 +1,7 @@
 ---
 title: Code of Conduct
 type: docs
-menu: 
+menu:
   contributing:
     weight: 1
 ---

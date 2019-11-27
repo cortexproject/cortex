@@ -2,7 +2,7 @@
 title: "Cortex Arguments"
 linkTitle: "Cortex Arguments Explained"
 weight: 1
-slug: arguments.md
+slug: arguments
 ---
 
 ## General Notes
@@ -110,7 +110,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 - `distributor.ha-tracker.enable-for-all-users`
    Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup. This defaults to false, and is technically defined in the Distributor limits.
 
-- `distributor.ha-tracker.enable` 
+- `distributor.ha-tracker.enable`
    Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `enable-for-all-users` is still needed to enable ingestion of HA samples for all users.
 
 ### Ring/HA Tracker Store
@@ -214,12 +214,12 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
   The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created. (default 12h)
 
 - `-ingester.max-chunk-idle`
-  
+
   If a series doesn't receive a sample for this duration, it is flushed and removed from memory.
 
 - `-ingester.max-stale-chunk-idle`
-  
-  If a series receives a [staleness marker](https://www.robustperception.io/staleness-and-promql), then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don't want a single failed scrape to cause a chunk flush. 
+
+  If a series receives a [staleness marker](https://www.robustperception.io/staleness-and-promql), then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don't want a single failed scrape to cause a chunk flush.
 
 - `-ingester.chunk-age-jitter`
 

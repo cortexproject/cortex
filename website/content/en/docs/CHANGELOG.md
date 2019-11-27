@@ -1,7 +1,7 @@
 ---
 title: Changelog
 type: docs
-menu: 
+menu:
   main:
     weight: 2
 ---

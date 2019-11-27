@@ -2,7 +2,7 @@
 title: "Ingester Hand-over"
 linkTitle: "Ingester Hand-over"
 weight: 5
-slug: ingester-handover.md
+slug: ingester-handover
 ---
 
 The [ingester](architecture.md#ingester) holds several hours of sample
@@ -44,6 +44,6 @@ The following metrics can be used to observe this process:
  - `cortex_ring_members` - how many ingesters can be seen in each state, by other components
  - `cortex_ingester_sent_chunks` - number of chunks sent by leaving ingester
  - `cortex_ingester_received_chunks` - number of chunks received by joining ingester
- 
+
 You can see the current state of the ring via http browser request to
 `/ring` on a distributor.

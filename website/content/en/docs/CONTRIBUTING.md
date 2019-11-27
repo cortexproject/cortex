@@ -1,7 +1,7 @@
 ---
 title: Contributing
 type: docs
-menu: 
+menu:
   contributing:
     weight: 3
 ---

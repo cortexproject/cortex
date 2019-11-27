@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/alecthomas/units"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
@@ -114,7 +113,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 				Bucket: bkt,
 			}
 
-			indexCacheSizeBytes := uint64(250 * units.Mebibyte)
+			indexCacheSizeBytes := u.cfg.BucketStoreCfg.IndexCacheSizeBytes
 			maxItemSizeBytes := indexCacheSizeBytes / 2
 			indexCache, err := storecache.NewIndexCache(u.logger, nil, storecache.Opts{
 				MaxSizeBytes:     indexCacheSizeBytes,
@@ -126,13 +125,13 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			bs, err = store.NewBucketStore(u.logger,
 				nil,
 				userBkt,
-				filepath.Join(u.cfg.SyncDir, user),
+				filepath.Join(u.cfg.BucketStoreCfg.Dir, user),
 				indexCache,
-				uint64(2*units.Gibibyte),
-				0,
-				20,
-				false,
-				20,
+				uint64(u.cfg.BucketStoreCfg.MaxChunkPoolBytes),
+				u.cfg.BucketStoreCfg.MaxSampleCount,
+				u.cfg.BucketStoreCfg.MaxConcurrent,
+				u.cfg.BucketStoreCfg.DebugLogging,
+				u.cfg.BucketStoreCfg.BlockSyncConcurrency,
 				&store.FilterConfig{
 					MinTime: *mint,
 					MaxTime: *maxt,

@@ -155,7 +155,7 @@ web-build: web-pre
 check-web: web-pre
 	@git diff --exit-code -- website/
 
-web-deploy: web-build
+web-deploy:
 	./tools/website/web-deploy.sh
 
 endif

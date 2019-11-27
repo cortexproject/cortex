@@ -32,14 +32,12 @@ workflows:
     - deploy_website:
         requires:
         - test
-        # - build
-        # - lint
-        # - integration
-        # filters:
-          # branches:
-          #   only: master
-          # tags:
-          #   only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+        - build
+        filters:
+          branches:
+            only: master
+          tags:
+            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
     - deploy:
         requires:
         - build
@@ -128,6 +126,16 @@ jobs:
         command: |
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false
+    - run:
+        name: Build Website
+        command: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false web-build
+
+    - persist_to_workspace:
+        root: .
+        paths:
+          - website/public/
 
     - store_artifacts:
         path: pkg/querier/frontend/frontend.pb.go
@@ -154,6 +162,8 @@ jobs:
     <<: *defaults
     steps:
     - checkout
+    - attach_workspace:
+        at: .
     - run:
         name: deploy-website
         command: make BUILD_IN_CONTAINER=false web-deploy

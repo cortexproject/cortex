@@ -35,8 +35,6 @@ type Config struct {
 	PushPullInterval time.Duration `yaml:"pull_push_interval"`
 	GossipInterval   time.Duration `yaml:"gossip_interval"`
 	GossipNodes      int           `yaml:"gossip_nodes"`
-	ProbeInterval    time.Duration
-	ProbeTimeout     time.Duration
 
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
@@ -67,8 +65,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", 0, "How often to gossip. Uses memberlist LAN defaults if 0.")
 	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", 0, "How many nodes to gossip to. Uses memberlist LAN defaults if 0.")
 	f.DurationVar(&cfg.PushPullInterval, prefix+"memberlist.pullpush-interval", 0, "How often to use pull/push sync. Uses memberlist LAN defaults if 0.")
-	f.DurationVar(&cfg.ProbeInterval, prefix+"memberlist.probe-interval", 0, "How often to probe random nodes. Uses memberlist LAN defaults if 0.")
-	f.DurationVar(&cfg.ProbeTimeout, prefix+"memberlist.probe-timeout", 0, "Timeout to wait for an ack from a probed node before assuming it is unhealthy.")
 
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }
@@ -163,12 +159,6 @@ func NewMemberlistClient(cfg Config, codec codec.Codec) (*Client, error) {
 	}
 	if cfg.NodeName != "" {
 		mlCfg.Name = cfg.NodeName
-	}
-	if cfg.ProbeInterval != 0 {
-		mlCfg.ProbeInterval = cfg.ProbeInterval
-	}
-	if cfg.ProbeTimeout != 0 {
-		mlCfg.ProbeTimeout = cfg.ProbeTimeout
 	}
 
 	mlCfg.LogOutput = newMemberlistLoggerAdapter(util.Logger, false)

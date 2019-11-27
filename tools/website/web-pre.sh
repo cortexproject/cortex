@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if ! [[ "$0" =~ "tools/web-pre.sh" ]]; then
+if ! [[ "$0" =~ "tools/website/web-pre.sh" ]]; then
 	echo "must be run from repository root"
 	exit 255
 fi

@@ -106,13 +106,20 @@ func NewTripperware(
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
 	}
+
+	var shardingware Middleware
 	if cfg.SumShards {
+		var mapperware Middleware
+		mapperware, shardingware = NewQueryShardMiddleware(log, promql.NewEngine(engineOpts), schema.Configs)
+
+		// only add mapperware at this point -- shardingware will be added after splitting/caching/retry middlewares.
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			InstrumentMiddleware("sum_shards"),
-			NewQueryShardMiddleware(log, promql.NewEngine(engineOpts), schema.Configs),
+			InstrumentMiddleware("sum_shards.astMapperware"),
+			mapperware,
 		)
 	}
+
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
 	if cfg.SplitQueriesByDay {
 		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
@@ -121,6 +128,7 @@ func NewTripperware(
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
+
 	if cfg.CacheResults {
 		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
 		if err != nil {
@@ -130,6 +138,15 @@ func NewTripperware(
 	}
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry"), NewRetryMiddleware(log, cfg.MaxRetries))
+	}
+
+	// the other half of the query sharding middleware should be added at the end of the middleware chain
+	if shardingware != nil {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			InstrumentMiddleware("sum_shards.queryShard"),
+			shardingware,
+		)
 	}
 
 	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {

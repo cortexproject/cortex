@@ -65,37 +65,70 @@ func mapQuery(mapper astmapper.ASTMapper, query string) (promql.Node, error) {
 }
 
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
-func NewQueryShardMiddleware(logger log.Logger, engine *promql.Engine, confs ShardingConfigs) Middleware {
-	return MiddlewareFunc(func(next Handler) Handler {
-		if !confs.hasShards() {
-			level.Warn(logger).Log("msg", "no configuration with shard found", "confs", fmt.Sprintf("%+v", confs))
-			return next
-		}
-		return &queryShard{
-			logger: log.With(logger, "middleware", "QueryShard"),
-			confs:  confs,
-			next:   next,
-			engine: engine,
-		}
+func NewQueryShardMiddleware(logger log.Logger, engine *promql.Engine, confs ShardingConfigs) (Middleware, Middleware) {
+	passthrough := MiddlewareFunc(func(next Handler) Handler {
+		return next
 	})
-}
 
-type queryShard struct {
-	logger log.Logger
-	confs  ShardingConfigs
-	next   Handler
-	engine *promql.Engine
-}
+	noshards := !confs.hasShards()
 
-func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
-
-	conf, err := qs.confs.ValidRange(r.GetStart(), r.GetEnd())
-	// query exists across multiple sharding configs or doesn't have sharding, so don't try to do AST mapping.
-	if err != nil || conf.RowShards < 2 {
-		return qs.next.Do(ctx, r)
+	if noshards {
+		level.Warn(logger).Log(
+			"middleware", "QueryShard",
+			"msg", "no configuration with shard found",
+			"confs", fmt.Sprintf("%+v", confs),
+		)
+		return passthrough, passthrough
 	}
 
-	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
+	getConf := func(r Request) (chunk.PeriodConfig, error) {
+		conf, err := confs.ValidRange(r.GetStart(), r.GetEnd())
+
+		// query exists across multiple sharding configs
+		if err != nil {
+			return conf, err
+		}
+
+		// query doesn't have shard factor, so don't try to do AST mapping.
+		if conf.RowShards < 2 {
+			return conf, errors.Errorf("shard factor not high enough: [%d]", conf.RowShards)
+		}
+
+		return conf, nil
+	}
+
+	mapperware := MiddlewareFunc(func(next Handler) Handler {
+		return &astMapperware{
+			getConf: getConf,
+			logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
+			next:    next,
+		}
+	})
+
+	shardingware := MiddlewareFunc(func(next Handler) Handler {
+		return &queryShard{
+			getConf: getConf,
+			next:    next,
+			engine:  engine,
+		}
+	})
+
+	return mapperware, shardingware
+}
+
+type astMapperware struct {
+	getConf func(Request) (chunk.PeriodConfig, error)
+	logger  log.Logger
+	next    Handler
+}
+
+func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
+	conf, err := ast.getConf(r)
+	// cannot shard with this timerange
+	if err != nil {
+		level.Warn(ast.logger).Log("err", err.Error())
+		return ast.next.Do(ctx, r)
+	}
 
 	shardSummer, err := astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher)
 	if err != nil {
@@ -117,14 +150,33 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 
 	strMappedQuery := mappedQuery.String()
 	if strMappedQuery == strQuery {
-		level.Debug(qs.logger).Log("msg", "unaltered query", "query", strQuery)
+		level.Debug(ast.logger).Log("msg", "unaltered query", "query", strQuery)
 	} else {
-		level.Debug(qs.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
+		level.Debug(ast.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
 	}
+
+	return ast.next.Do(ctx, r.WithQuery(strMappedQuery))
+
+}
+
+type queryShard struct {
+	getConf func(Request) (chunk.PeriodConfig, error)
+	next    Handler
+	engine  *promql.Engine
+}
+
+func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
+	// since there's no available sharding configuration for this time range,
+	// no astmapping has been performed, so skip this middleware.
+	if _, err := qs.getConf(r); err != nil {
+		return qs.next.Do(ctx, r)
+	}
+
+	queryable := lazyquery.NewLazyQueryable(&DownstreamQueryable{r, qs.next})
 
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
-		strMappedQuery,
+		r.GetQuery(),
 		TimeFromMillis(r.GetStart()),
 		TimeFromMillis(r.GetEnd()),
 		time.Duration(r.GetStep())*time.Millisecond,

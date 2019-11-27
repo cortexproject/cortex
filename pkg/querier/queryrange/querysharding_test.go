@@ -81,7 +81,7 @@ func TestMiddleware(t *testing.T) {
 				Timeout:       time.Minute,
 			})
 
-			handler := NewQueryShardMiddleware(
+			mapperware, shardingware := NewQueryShardMiddleware(
 				log.NewNopLogger(),
 				engine,
 				ShardingConfigs{
@@ -89,7 +89,8 @@ func TestMiddleware(t *testing.T) {
 						RowShards: 3,
 					},
 				},
-			).Wrap(c.next)
+			)
+			handler := MergeMiddlewares(mapperware, shardingware).Wrap(c.next)
 
 			// escape hatch for custom tests
 			if c.override != nil {
@@ -375,7 +376,7 @@ func BenchmarkQuerySharding(b *testing.B) {
 			}
 
 			for _, shardFactor := range shards {
-				mware := NewQueryShardMiddleware(
+				mapperware, shardingware := NewQueryShardMiddleware(
 					log.NewNopLogger(),
 					engine,
 					// ensure that all requests are shard compatbile
@@ -385,7 +386,9 @@ func BenchmarkQuerySharding(b *testing.B) {
 							RowShards: shardFactor,
 						},
 					},
-				).Wrap(downstream)
+				)
+
+				mware := MergeMiddlewares(mapperware, shardingware).Wrap(downstream)
 
 				b.Run(
 					fmt.Sprintf(

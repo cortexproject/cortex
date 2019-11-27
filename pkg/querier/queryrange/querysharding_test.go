@@ -10,7 +10,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
@@ -349,7 +348,7 @@ func BenchmarkQuerySharding(b *testing.B) {
 				Timeout:       time.Minute,
 			})
 
-			queryable := astmapper.NewMockShardedQueryable(
+			queryable := NewMockShardedQueryable(
 				tc.samplesPerSeries,
 				tc.labels,
 				tc.labelBuckets,

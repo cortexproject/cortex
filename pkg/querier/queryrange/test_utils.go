@@ -1,10 +1,11 @@
-package astmapper
+package queryrange
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -87,7 +88,7 @@ func (q *MockShardedQueryable) Select(
 ) (storage.SeriesSet, storage.Warnings, error) {
 	tStart := time.Now()
 
-	shard, _, err := ShardFromMatchers(matchers)
+	shard, _, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -145,7 +146,7 @@ func (q *MockShardedQueryable) Select(
 
 // ShardLabelSeries allows extending a Series with new labels. This is helpful for adding cortex shard labels
 type ShardLabelSeries struct {
-	shard *ShardAnnotation
+	shard *astmapper.ShardAnnotation
 	name  string
 	storage.Series
 }

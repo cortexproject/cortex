@@ -1,10 +1,11 @@
-package astmapper
+package queryrange
 
 import (
 	"math"
 	"sort"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -108,8 +109,8 @@ func TestNewMockShardedqueryable(t *testing.T) {
 
 			set, _, err := q.Select(nil, &labels.Matcher{
 				Type: labels.MatchEqual,
-				Name: ShardLabel,
-				Value: ShardAnnotation{
+				Name: astmapper.ShardLabel,
+				Value: astmapper.ShardAnnotation{
 					Shard: i,
 					Of:    tc.shards,
 				}.String(),

@@ -89,6 +89,18 @@ func TestShardSummer(t *testing.T) {
 			  sum by(foo, bom, __cortex_shard__) (rate(bar1{__cortex_shard__="1_of_2",baz="blip"}[1m]))
 			)`,
 		},
+		// sharding histogram inputs
+		{
+			shards: 2,
+			input:  `histogram_quantile(0.9, sum(rate(alertmanager_http_request_duration_seconds_bucket[10m])) by (job, le))`,
+			expected: `histogram_quantile(
+				    0.9,
+				    sum by(job, le) (
+				      sum by(job, le, __cortex_shard__) (rate(alertmanager_http_request_duration_seconds_bucket{__cortex_shard__="0_of_2"}[10m])) or
+				      sum by(job, le, __cortex_shard__) (rate(alertmanager_http_request_duration_seconds_bucket{__cortex_shard__="1_of_2"}[10m]))
+				    )
+				  )`,
+		},
 	}
 
 	for i, c := range testExpr {

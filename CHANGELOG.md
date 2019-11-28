@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+* [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
+
 ## 0.4.0 / 2019-12-02
 
 * [CHANGE] The frontend component has been refactored to be easier to re-use. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734

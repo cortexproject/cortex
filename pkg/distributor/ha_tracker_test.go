@@ -46,7 +46,8 @@ outer:
 			if r.GetReplica() != replica {
 				err = fmt.Errorf("replicas did not match: %s != %s", r.GetReplica(), replica)
 				continue outer
-			} else if !timestamp.Time(r.GetReceivedAt()).Equal(expected) {
+			}
+			if !timestamp.Time(r.GetReceivedAt()).Equal(expected) {
 				err = fmt.Errorf("timestamps did not match: %+v != %+v", timestamp.Time(r.GetReceivedAt()), expected)
 				continue outer
 			}

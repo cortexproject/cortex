@@ -19,9 +19,6 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 // Loader loads the configuration from file.
 type Loader func(filename string) (interface{}, error)
 
-// Listener gets notified when new config is loaded
-type Listener func(newConfig interface{})
-
 // ManagerConfig holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
 type ManagerConfig struct {
@@ -43,7 +40,7 @@ type Manager struct {
 	quit chan struct{}
 
 	listenersMtx sync.Mutex
-	listeners    []Listener
+	listeners    []chan interface{}
 
 	configMtx sync.RWMutex
 	config    interface{}
@@ -69,17 +66,34 @@ func NewRuntimeConfigManager(cfg ManagerConfig) (*Manager, error) {
 	return &mgr, nil
 }
 
-// AddListener registers new listener function, that will receive updates configuration.
-// Listener is called asynchronously to avoid blocking main reloading loop.
-func (om *Manager) AddListener(l Listener) {
-	if l == nil {
-		panic("nil listener")
-	}
+// CreateListenerChannel creates new channel that can be used to receive new config values.
+// If there is no receiver waiting for value when config manager tries to send the update,
+// or channel buffer is full, update is discarded.
+//
+// When config manager is stopped, it closes all channels to notify receivers that they will
+// not receive any more updates.
+func (om *Manager) CreateListenerChannel(buffer int) <-chan interface{} {
+	ch := make(chan interface{}, buffer)
 
 	om.listenersMtx.Lock()
 	defer om.listenersMtx.Unlock()
 
-	om.listeners = append(om.listeners, l)
+	om.listeners = append(om.listeners, ch)
+	return ch
+}
+
+// CloseListenerChannel removes given channel from list of channels to send notifications to and closes channel.
+func (om *Manager) CloseListenerChannel(listener <-chan interface{}) {
+	om.listenersMtx.Lock()
+	defer om.listenersMtx.Unlock()
+
+	for ix, ch := range om.listeners {
+		if ch == listener {
+			om.listeners = append(om.listeners[:ix], om.listeners[ix+1:]...)
+			close(ch)
+			break
+		}
+	}
 }
 
 func (om *Manager) loop() {
@@ -129,14 +143,28 @@ func (om *Manager) setConfig(config interface{}) {
 func (om *Manager) callListeners(newValue interface{}) {
 	om.listenersMtx.Lock()
 	defer om.listenersMtx.Unlock()
-	for _, l := range om.listeners {
-		go l(newValue)
+
+	for _, ch := range om.listeners {
+		select {
+		case ch <- newValue:
+			// ok
+		default:
+			// nobody is listening or buffer full.
+		}
 	}
 }
 
 // Stop stops the Manager
 func (om *Manager) Stop() {
 	close(om.quit)
+
+	om.listenersMtx.Lock()
+	defer om.listenersMtx.Unlock()
+
+	for _, ch := range om.listeners {
+		close(ch)
+	}
+	om.listeners = nil
 }
 
 // GetConfig returns last loaded config value, possibly nil.

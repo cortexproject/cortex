@@ -50,20 +50,23 @@ func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLi
 func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {
 	// returns function that can be used in MultiConfig.ConfigProvider
 	return func() <-chan kv.MultiRuntimeConfig {
-		ch := make(chan kv.MultiRuntimeConfig, 1)
-
-		listener := func(newOverrides interface{}) {
-			cfg, ok := newOverrides.(*runtimeConfigValues)
-			if !ok || cfg == nil {
-				return
-			}
-
-			ch <- cfg.Multi
-		}
+		outCh := make(chan kv.MultiRuntimeConfig, 1)
 
 		// push initial config to the channel
-		listener(manager.GetConfig())
-		manager.AddListener(listener)
-		return ch
+		val := manager.GetConfig()
+		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+			outCh <- cfg.Multi
+		}
+
+		ch := manager.CreateListenerChannel(1)
+		go func() {
+			for val := range ch {
+				if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+					outCh <- cfg.Multi
+				}
+			}
+		}()
+
+		return outCh
 	}
 }

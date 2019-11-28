@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uber-go/atomic"
 	"gopkg.in/yaml.v2"
 )
 
@@ -83,7 +84,7 @@ func TestNewOverridesManager(t *testing.T) {
 	require.NotNil(t, overridesManager.GetConfig())
 }
 
-func TestOverridesManager_Listener(t *testing.T) {
+func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 	tempFile, err := ioutil.TempFile("", "test-validation")
 	require.NoError(t, err)
 	require.NoError(t, tempFile.Close())
@@ -110,11 +111,8 @@ func TestOverridesManager_Listener(t *testing.T) {
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
 	require.NoError(t, err)
 
-	// listeners are called asynchronously
-	ch := make(chan interface{})
-	overridesManager.AddListener(func(newConfig interface{}) {
-		ch <- newConfig
-	})
+	// need to use buffer, otherwise LoadConfig will throw away update
+	ch := overridesManager.CreateListenerChannel(1)
 
 	// rewrite file
 	err = ioutil.WriteFile(tempFile.Name(), []byte(`overrides:
@@ -143,4 +141,82 @@ func TestOverridesManager_Listener(t *testing.T) {
 
 	// Make sure test limits were loaded.
 	require.NotNil(t, overridesManager.GetConfig())
+}
+
+func TestOverridesManager_ListenerChannel(t *testing.T) {
+	var config = atomic.NewInt32(555)
+
+	// testing NewRuntimeConfigManager with overrides reload config set
+	overridesManagerConfig := ManagerConfig{
+		ReloadPeriod: 5 * time.Second,
+		LoadPath:     "ignored",
+		Loader: func(filename string) (i interface{}, err error) {
+			val := int(config.Load())
+			return val, nil
+		},
+	}
+
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
+	require.NoError(t, err)
+
+	// need to use buffer, otherwise LoadConfig will throw away update
+	ch := overridesManager.CreateListenerChannel(1)
+
+	err = overridesManager.LoadConfig()
+	require.NoError(t, err)
+
+	select {
+	case newValue := <-ch:
+		require.Equal(t, 555, newValue)
+	case <-time.After(time.Second):
+		t.Fatal("listener was not called")
+	}
+
+	config.Store(1111)
+	err = overridesManager.LoadConfig()
+	require.NoError(t, err)
+
+	select {
+	case newValue := <-ch:
+		require.Equal(t, 1111, newValue)
+	case <-time.After(time.Second):
+		t.Fatal("listener was not called")
+	}
+
+	overridesManager.CloseListenerChannel(ch)
+	select {
+	case _, ok := <-ch:
+		require.False(t, ok)
+	case <-time.After(time.Second):
+		t.Fatal("channel not closed")
+	}
+}
+
+func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
+	var config = atomic.NewInt32(555)
+
+	// testing NewRuntimeConfigManager with overrides reload config set
+	overridesManagerConfig := ManagerConfig{
+		ReloadPeriod: 5 * time.Second,
+		LoadPath:     "ignored",
+		Loader: func(filename string) (i interface{}, err error) {
+			val := int(config.Load())
+			return val, nil
+		},
+	}
+
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
+	require.NoError(t, err)
+
+	// need to use buffer, otherwise LoadConfig will throw away update
+	ch := overridesManager.CreateListenerChannel(0)
+
+	overridesManager.Stop()
+
+	select {
+	case _, ok := <-ch:
+		require.False(t, ok)
+	case <-time.After(time.Second):
+		t.Fatal("channel not closed")
+	}
 }

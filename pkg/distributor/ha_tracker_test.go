@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (
@@ -59,67 +60,62 @@ outer:
 	return err
 }
 
-func TestFailoverGreaterUpdate(t *testing.T) {
-	type testCase struct {
-		in   HATrackerConfig
-		fail bool
-	}
+func TestHATrackerConfig_Validate(t *testing.T) {
+	t.Parallel()
 
-	cases := []testCase{
-		{
-			in: HATrackerConfig{
-				EnableHATracker:        true,
-				UpdateTimeout:          time.Second,
-				UpdateTimeoutJitterMax: 0,
-				FailoverTimeout:        time.Second,
-				KVStore: kv.Config{
-					Store: "inmemory",
-				},
-			},
-			fail: true,
+	tests := map[string]struct {
+		cfg         HATrackerConfig
+		expectedErr error
+	}{
+		"should pass with default config": {
+			cfg: func() HATrackerConfig {
+				cfg := HATrackerConfig{}
+				flagext.DefaultValues(&cfg)
+
+				return cfg
+			}(),
+			expectedErr: nil,
 		},
-		{
-			in: HATrackerConfig{
-				EnableHATracker:        true,
-				UpdateTimeout:          time.Second,
-				UpdateTimeoutJitterMax: 0,
-				FailoverTimeout:        1999 * time.Millisecond,
-				KVStore: kv.Config{
-					Store: "inmemory",
-				},
-			},
-			fail: true,
+		"should fail if max update timeout jitter is negative": {
+			cfg: func() HATrackerConfig {
+				cfg := HATrackerConfig{}
+				flagext.DefaultValues(&cfg)
+				cfg.UpdateTimeoutJitterMax = -1
+
+				return cfg
+			}(),
+			expectedErr: errNegativeUpdateTimeoutJitterMax,
 		},
-		{
-			in: HATrackerConfig{
-				EnableHATracker:        true,
-				UpdateTimeout:          time.Second,
-				UpdateTimeoutJitterMax: 0,
-				FailoverTimeout:        2000 * time.Millisecond,
-				KVStore: kv.Config{
-					Store: "inmemory",
-				},
-			},
-			fail: false,
+		"should fail if failover timeout is < update timeout + jitter + 1 sec": {
+			cfg: func() HATrackerConfig {
+				cfg := HATrackerConfig{}
+				flagext.DefaultValues(&cfg)
+				cfg.FailoverTimeout = 5 * time.Second
+				cfg.UpdateTimeout = 4 * time.Second
+				cfg.UpdateTimeoutJitterMax = 2 * time.Second
+
+				return cfg
+			}(),
+			expectedErr: fmt.Errorf(errInvalidFailoverTimeout, 5*time.Second, 7*time.Second),
 		},
-		{
-			in: HATrackerConfig{
-				EnableHATracker:        true,
-				UpdateTimeout:          time.Second,
-				UpdateTimeoutJitterMax: 0,
-				FailoverTimeout:        2001 * time.Millisecond,
-				KVStore: kv.Config{
-					Store: "inmemory",
-				},
-			},
-			fail: false,
+		"should pass if failover timeout is >= update timeout + jitter + 1 sec": {
+			cfg: func() HATrackerConfig {
+				cfg := HATrackerConfig{}
+				flagext.DefaultValues(&cfg)
+				cfg.FailoverTimeout = 7 * time.Second
+				cfg.UpdateTimeout = 4 * time.Second
+				cfg.UpdateTimeoutJitterMax = 2 * time.Second
+
+				return cfg
+			}(),
+			expectedErr: nil,
 		},
 	}
 
-	for _, c := range cases {
-		err := c.in.Validate()
-		fail := err != nil
-		assert.Equal(t, c.fail, fail, "unexpected result: %s", err)
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			assert.Equal(t, testData.expectedErr, testData.cfg.Validate())
+		})
 	}
 }
 

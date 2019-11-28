@@ -54,7 +54,7 @@ func NewRuntimeConfigManager(cfg ManagerConfig) (*Manager, error) {
 	}
 
 	if cfg.LoadPath != "" {
-		if err := mgr.LoadConfig(); err != nil {
+		if err := mgr.loadConfig(); err != nil {
 			// Log but don't stop on error - we don't want to halt all ingesters because of a typo
 			level.Error(util.Logger).Log("msg", "failed to load config", "err", err)
 		}
@@ -103,7 +103,7 @@ func (om *Manager) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			err := om.LoadConfig()
+			err := om.loadConfig()
 			if err != nil {
 				// Log but don't stop on error - we don't want to halt all ingesters because of a typo
 				level.Error(util.Logger).Log("msg", "failed to load config", "err", err)
@@ -114,13 +114,9 @@ func (om *Manager) loop() {
 	}
 }
 
-// LoadConfig loads configuration using the loader function, and if successful,
+// loadConfig loads configuration using the loader function, and if successful,
 // stores it as current configuration and notifies listeners.
-func (om *Manager) LoadConfig() error {
-	if om.cfg.LoadPath == "" {
-		return nil
-	}
-
+func (om *Manager) loadConfig() error {
 	cfg, err := om.cfg.Loader(om.cfg.LoadPath)
 	if err != nil {
 		overridesReloadSuccess.Set(0)

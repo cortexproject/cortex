@@ -111,7 +111,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
 	require.NoError(t, err)
 
-	// need to use buffer, otherwise LoadConfig will throw away update
+	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
 
 	// rewrite file
@@ -121,7 +121,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	// reload
-	err = overridesManager.LoadConfig()
+	err = overridesManager.loadConfig()
 	require.NoError(t, err)
 
 	var newValue interface{}
@@ -159,10 +159,10 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
 	require.NoError(t, err)
 
-	// need to use buffer, otherwise LoadConfig will throw away update
+	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
 
-	err = overridesManager.LoadConfig()
+	err = overridesManager.loadConfig()
 	require.NoError(t, err)
 
 	select {
@@ -173,7 +173,7 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 	}
 
 	config.Store(1111)
-	err = overridesManager.LoadConfig()
+	err = overridesManager.loadConfig()
 	require.NoError(t, err)
 
 	select {
@@ -208,7 +208,7 @@ func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig)
 	require.NoError(t, err)
 
-	// need to use buffer, otherwise LoadConfig will throw away update
+	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(0)
 
 	overridesManager.Stop()

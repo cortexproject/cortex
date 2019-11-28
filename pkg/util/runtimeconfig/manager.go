@@ -103,6 +103,10 @@ func (om *Manager) loop() {
 // LoadConfig loads configuration using the loader function, and if successful,
 // stores it as current configuration and notifies listeners.
 func (om *Manager) LoadConfig() error {
+	if om.cfg.LoadPath == "" {
+		return nil
+	}
+
 	cfg, err := om.cfg.Loader(om.cfg.LoadPath)
 	if err != nil {
 		overridesReloadSuccess.Set(0)

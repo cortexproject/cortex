@@ -10,7 +10,7 @@ RUN go clean -i net && \
 ENV HUGO_VERSION=v0.59.1
 RUN git clone https://github.com/gohugoio/hugo.git --branch ${HUGO_VERSION} --depth 1 && \
 	cd hugo  && go install --tags extended && cd ../ && \
-	rm -rf hugo/
+	rm -rf hugo/ && rm -rf /go/pkg /go/src
 RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v1.3.0/shfmt_v1.3.0_linux_amd64 && \
 	echo "b1925c2c405458811f0c227266402cf1868b4de529f114722c2e3a5af4ac7bb2  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \

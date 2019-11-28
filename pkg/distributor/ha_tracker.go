@@ -207,7 +207,7 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 	c.electedLock.RLock()
 	entry, ok := c.elected[key]
 	c.electedLock.RUnlock()
-	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout {
+	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout+c.updateTimeoutJitter {
 		if entry.Replica != replica {
 			return replicasNotMatchError(replica, entry.Replica)
 		}

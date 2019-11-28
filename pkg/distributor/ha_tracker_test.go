@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
 	"github.com/weaveworks/common/user"
 
@@ -24,8 +25,12 @@ var (
 
 func checkReplicaTimestamp(ctx context.Context, c *haTracker, user, cluster, replica string, expected time.Time) error {
 	var err error
-	ticker := time.NewTicker(time.Millisecond * 10)
+	ticker := time.NewTicker(time.Millisecond * 50)
 	key := fmt.Sprintf("%s/%s", user, cluster)
+
+	// Round the expected timestamp with milliseconds precision
+	// to match "received at" precision
+	expected = expected.Truncate(time.Millisecond)
 
 outer:
 	for {
@@ -35,19 +40,22 @@ outer:
 			r := c.elected[key]
 			c.electedLock.RUnlock()
 
+			// If the replica or the timestamp don't match, we save the error
+			// to return if the expected match is not found within the timeout period
 			if r.GetReplica() != replica {
 				err = fmt.Errorf("replicas did not match: %s != %s", r.GetReplica(), replica)
 				continue outer
-			}
-			if timestamp.Time(r.GetReceivedAt()).Equal(expected) {
+			} else if !timestamp.Time(r.GetReceivedAt()).Equal(expected) {
 				err = fmt.Errorf("timestamps did not match: %+v != %+v", timestamp.Time(r.GetReceivedAt()), expected)
 				continue outer
 			}
+
 			return nil
 		case <-ctx.Done():
 			break outer
 		}
 	}
+
 	return err
 }
 
@@ -60,9 +68,10 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 	cases := []testCase{
 		{
 			in: HATrackerConfig{
-				EnableHATracker: true,
-				UpdateTimeout:   time.Second,
-				FailoverTimeout: time.Second,
+				EnableHATracker:        true,
+				UpdateTimeout:          time.Second,
+				UpdateTimeoutJitterMax: 0,
+				FailoverTimeout:        time.Second,
 				KVStore: kv.Config{
 					Store: "inmemory",
 				},
@@ -71,9 +80,10 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 		},
 		{
 			in: HATrackerConfig{
-				EnableHATracker: true,
-				UpdateTimeout:   time.Second,
-				FailoverTimeout: 1999 * time.Millisecond,
+				EnableHATracker:        true,
+				UpdateTimeout:          time.Second,
+				UpdateTimeoutJitterMax: 0,
+				FailoverTimeout:        1999 * time.Millisecond,
 				KVStore: kv.Config{
 					Store: "inmemory",
 				},
@@ -82,9 +92,10 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 		},
 		{
 			in: HATrackerConfig{
-				EnableHATracker: true,
-				UpdateTimeout:   time.Second,
-				FailoverTimeout: 2000 * time.Millisecond,
+				EnableHATracker:        true,
+				UpdateTimeout:          time.Second,
+				UpdateTimeoutJitterMax: 0,
+				FailoverTimeout:        2000 * time.Millisecond,
 				KVStore: kv.Config{
 					Store: "inmemory",
 				},
@@ -93,9 +104,10 @@ func TestFailoverGreaterUpdate(t *testing.T) {
 		},
 		{
 			in: HATrackerConfig{
-				EnableHATracker: true,
-				UpdateTimeout:   time.Second,
-				FailoverTimeout: 2001 * time.Millisecond,
+				EnableHATracker:        true,
+				UpdateTimeout:          time.Second,
+				UpdateTimeoutJitterMax: 0,
+				FailoverTimeout:        2001 * time.Millisecond,
 				KVStore: kv.Config{
 					Store: "inmemory",
 				},
@@ -120,19 +132,22 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
-		EnableHATracker: true,
-		KVStore:         kv.Config{Mock: mock},
-		UpdateTimeout:   time.Millisecond,
-		FailoverTimeout: time.Millisecond * 2,
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Mock: mock},
+		UpdateTimeout:          time.Millisecond,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Millisecond * 2,
 	})
 	assert.NoError(t, err)
 
 	// Write the first time.
+	mtime.NowForce(start)
 	err = c.checkReplica(context.Background(), "user", cluster, replica)
 	assert.NoError(t, err)
 
 	// We need to wait for WatchPrefix to grab the value.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+
 	// Check to see if the value in the trackers cache is correct.
 	err = checkReplicaTimestamp(ctx, c, "user", cluster, replica, start)
 	cancel()
@@ -145,10 +160,11 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 	start := mtime.Now()
 
 	c, err := newClusterTracker(HATrackerConfig{
-		EnableHATracker: true,
-		KVStore:         kv.Config{Store: "inmemory"},
-		UpdateTimeout:   100 * time.Millisecond,
-		FailoverTimeout: time.Second,
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Store: "inmemory"},
+		UpdateTimeout:          100 * time.Millisecond,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Second,
 	})
 	assert.NoError(t, err)
 
@@ -177,10 +193,11 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	replica2 := "replica2"
 
 	c, err := newClusterTracker(HATrackerConfig{
-		EnableHATracker: true,
-		KVStore:         kv.Config{Store: "inmemory"},
-		UpdateTimeout:   100 * time.Millisecond,
-		FailoverTimeout: time.Second,
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Store: "inmemory"},
+		UpdateTimeout:          100 * time.Millisecond,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Second,
 	})
 
 	// Write the first time.
@@ -208,10 +225,11 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	replica2 := "replica2"
 
 	c, err := newClusterTracker(HATrackerConfig{
-		EnableHATracker: true,
-		KVStore:         kv.Config{Store: "inmemory"},
-		UpdateTimeout:   100 * time.Millisecond,
-		FailoverTimeout: time.Second,
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Store: "inmemory"},
+		UpdateTimeout:          100 * time.Millisecond,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Second,
 	})
 	assert.NoError(t, err)
 
@@ -246,9 +264,9 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// Test that writes only happen every write timeout.
-func TestCheckReplicaWriteTimeout(t *testing.T) {
-	start := mtime.Now()
+// Test that writes only happen every update timeout.
+func TestCheckReplicaUpdateTimeout(t *testing.T) {
+	startTime := mtime.Now()
 	replica := "r1"
 	cluster := "c1"
 	user := "user"
@@ -256,44 +274,51 @@ func TestCheckReplicaWriteTimeout(t *testing.T) {
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
-		EnableHATracker: true,
-		KVStore:         kv.Config{Mock: mock},
-		UpdateTimeout:   100 * time.Millisecond,
-		FailoverTimeout: time.Second,
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Mock: mock},
+		UpdateTimeout:          time.Second,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Second,
 	})
 	assert.NoError(t, err)
 
 	// Write the first time.
+	mtime.NowForce(startTime)
 	err = c.checkReplica(context.Background(), user, cluster, replica)
+
 	assert.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, start)
+	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, startTime)
 	cancel()
 	assert.NoError(t, err)
 
-	// Timestamp should not update here.
+	// Timestamp should not update here, since time has not advanced.
 	err = c.checkReplica(context.Background(), user, cluster, replica)
 	assert.NoError(t, err)
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, start)
+	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, startTime)
 	cancel()
 	assert.NoError(t, err)
 
 	// Wait 500ms and the timestamp should still not update.
-	mtime.NowForce(start.Add(500 * time.Millisecond))
+	updateTime := time.Unix(0, startTime.UnixNano()).Add(500 * time.Millisecond)
+	mtime.NowForce(updateTime)
+
 	err = c.checkReplica(context.Background(), user, cluster, replica)
 	assert.NoError(t, err)
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, start)
+	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, startTime)
 	cancel()
 	assert.NoError(t, err)
 
 	// Now we've waited > 1s, so the timestamp should update.
-	mtime.NowForce(start.Add(1100 * time.Millisecond))
+	updateTime = time.Unix(0, startTime.UnixNano()).Add(1100 * time.Millisecond)
+	mtime.NowForce(updateTime)
+
 	err = c.checkReplica(context.Background(), user, cluster, replica)
 	assert.NoError(t, err)
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, mtime.Now())
+	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, updateTime)
 	cancel()
 	assert.NoError(t, err)
 }
@@ -308,14 +333,16 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 	c, err := newClusterTracker(HATrackerConfig{
-		EnableHATracker: true,
-		KVStore:         kv.Config{Mock: mock},
-		UpdateTimeout:   100 * time.Millisecond,
-		FailoverTimeout: time.Second,
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Mock: mock},
+		UpdateTimeout:          100 * time.Millisecond,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Second,
 	})
 	assert.NoError(t, err)
 
 	// Write the first time for user 1.
+	mtime.NowForce(start)
 	err = c.checkReplica(ctxUser1, user, cluster, replica)
 	assert.NoError(t, err)
 	ctx, cancel := context.WithTimeout(ctxUser1, time.Second)
@@ -339,6 +366,87 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, mtime.Now())
 	cancel()
 	assert.NoError(t, err)
+}
+
+func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		updateTimeout     time.Duration
+		updateJitter      time.Duration
+		startTime         time.Time
+		updateTime        time.Time
+		expectedTimestamp time.Time
+	}{
+		"should not refresh the replica if the update timeout is not expired yet (without jitter)": {
+			updateTimeout:     10 * time.Second,
+			updateJitter:      0,
+			startTime:         time.Unix(5, 0),
+			updateTime:        time.Unix(14, 0),
+			expectedTimestamp: time.Unix(5, 0),
+		},
+		"should refresh the replica if the update timeout is expired (without jitter)": {
+			updateTimeout:     10 * time.Second,
+			updateJitter:      0,
+			startTime:         time.Unix(5, 0),
+			updateTime:        time.Unix(15, 0),
+			expectedTimestamp: time.Unix(15, 0),
+		},
+		"should not refresh the replica if the update timeout is not expired yet (with jitter)": {
+			updateTimeout:     10 * time.Second,
+			updateJitter:      2 * time.Second,
+			startTime:         time.Unix(5, 0),
+			updateTime:        time.Unix(16, 0),
+			expectedTimestamp: time.Unix(5, 0),
+		},
+		"should refresh the replica if the update timeout is expired (with jitter)": {
+			updateTimeout:     10 * time.Second,
+			updateJitter:      2 * time.Second,
+			startTime:         time.Unix(5, 0),
+			updateTime:        time.Unix(17, 0),
+			expectedTimestamp: time.Unix(17, 0),
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Init HA tracker
+			codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+			mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+			c, err := newClusterTracker(HATrackerConfig{
+				EnableHATracker:        true,
+				KVStore:                kv.Config{Mock: mock},
+				UpdateTimeout:          testData.updateTimeout,
+				UpdateTimeoutJitterMax: 0,
+				FailoverTimeout:        time.Second,
+			})
+			assert.NoError(t, err)
+
+			// Init context used by the test
+			ctx, cancel := context.WithTimeout(ctxUser1, time.Second)
+			defer cancel()
+
+			// Override the jitter so that it's not based on a random value
+			// we can't control in tests
+			c.updateTimeoutJitter = testData.updateJitter
+
+			// Init the replica in the KV Store
+			mtime.NowForce(testData.startTime)
+			err = c.checkReplica(ctx, "user1", "cluster", "replica-1")
+			require.NoError(t, err)
+			err = checkReplicaTimestamp(ctx, c, "user1", "cluster", "replica-1", testData.startTime)
+			assert.NoError(t, err)
+
+			// Refresh the replica in the KV Store
+			mtime.NowForce(testData.updateTime)
+			err = c.checkReplica(ctx, "user1", "cluster", "replica-1")
+			require.NoError(t, err)
+
+			// Assert on the the received timestamp
+			err = checkReplicaTimestamp(ctx, c, "user1", "cluster", "replica-1", testData.expectedTimestamp)
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestFindHALabels(t *testing.T) {

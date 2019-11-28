@@ -184,6 +184,11 @@ func (t *Cortex) stopRuntimeConfig() (err error) {
 
 func (t *Cortex) initOverrides(cfg *Config) (err error) {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(cfg.LimitsConfig)
+	// By this time, config has already been loaded from YAML file, but without default limits.
+	// We don't want to wait until next reload to default limits to be used, so we ask runtime
+	// config manager to reload configuration again. Errors are ignored (already logged by previous
+	// load, if there was any)
+	_ = t.runtimeConfig.LoadConfig()
 	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
 	return err
 }

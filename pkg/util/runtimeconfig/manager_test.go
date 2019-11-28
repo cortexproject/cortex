@@ -123,7 +123,7 @@ func TestOverridesManager_Listener(t *testing.T) {
 	require.NoError(t, err)
 
 	// reload
-	err = overridesManager.loadConfig()
+	err = overridesManager.LoadConfig()
 	require.NoError(t, err)
 
 	var newValue interface{}

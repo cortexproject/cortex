@@ -1,6 +1,11 @@
 package memberlist
 
 import (
+	"fmt"
+	"time"
+
+	armonmetrics "github.com/armon/go-metrics"
+	armonprometheus "github.com/armon/go-metrics/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -155,6 +160,22 @@ func (m *Client) createAndRegisterMetrics() {
 	}
 
 	m.cfg.MetricsRegisterer.MustRegister(m)
+
+	// memberlist uses armonmetrics package for internal usage
+	// here we configure armonmetrics to use prometheus
+	sink, err := armonprometheus.NewPrometheusSink() // there is no option to pass registrerer, this uses default
+	if err == nil {
+		cfg := armonmetrics.DefaultConfig("")
+		cfg.EnableHostname = false         // no need to put hostname into metric
+		cfg.EnableHostnameLabel = false    // no need to put hostname into labels
+		cfg.EnableRuntimeMetrics = false   // metrics about Go runtime already provided by prometheus
+		cfg.EnableTypePrefix = true        // to make better sense of internal memberlist metrics
+		cfg.TimerGranularity = time.Second // timers are in seconds in prometheus world
+
+		armonmetrics.NewGlobal(cfg, sink)
+	} else {
+		fmt.Println("Error while registering ")
+	}
 }
 
 // Describe returns prometheus descriptions via supplied channel

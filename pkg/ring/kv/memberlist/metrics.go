@@ -17,7 +17,7 @@ func (m *Client) createAndRegisterMetrics() {
 	m.totalSizeOfReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "received_broadcasts_size",
+		Name:      "received_broadcasts_bytes",
 		Help:      "Total size of received broadcast user messages",
 	})
 
@@ -68,7 +68,7 @@ func (m *Client) createAndRegisterMetrics() {
 	m.totalSizeOfBroadcastMessagesInQueue = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "messages_in_broadcast_size_total",
+		Name:      "messages_in_broadcast_queue_bytes",
 		Help:      "Total size of messages waiting in the broadcast queue",
 	})
 
@@ -96,11 +96,10 @@ func (m *Client) createAndRegisterMetrics() {
 	m.storeValuesDesc = prometheus.NewDesc(
 		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_count"),
 		"Number of values in KV Store",
-		nil, nil,
-	)
+		nil, nil)
 
 	m.storeSizesDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_value_size"),
+		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_value_bytes"),
 		"Sizes of values in KV Store in bytes",
 		[]string{"key"}, nil)
 
@@ -117,15 +116,10 @@ func (m *Client) createAndRegisterMetrics() {
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "cluster_node_health_score",
-		Help:      "Health score of this cluster. Lower the better. 0 = totally health",
+		Help:      "Health score of this cluster. Lower value is better. 0 = healthy",
 	}, func() float64 {
 		return float64(m.memberlist.GetHealthScore())
 	})
-
-	m.memberlistMembersInfoDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "cluster_members_last_timestamp"),
-		"State information about memberlist cluster members",
-		[]string{"name", "address"}, nil)
 
 	m.watchPrefixDroppedNotifications = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
@@ -167,7 +161,6 @@ func (m *Client) createAndRegisterMetrics() {
 func (m *Client) Describe(ch chan<- *prometheus.Desc) {
 	ch <- m.storeValuesDesc
 	ch <- m.storeSizesDesc
-	ch <- m.memberlistMembersInfoDesc
 }
 
 // Collect returns extra metrics via supplied channel

@@ -106,9 +106,8 @@ type Client struct {
 	storeValuesDesc *prometheus.Desc
 	storeSizesDesc  *prometheus.Desc
 
-	memberlistMembersCount    prometheus.GaugeFunc
-	memberlistHealthScore     prometheus.GaugeFunc
-	memberlistMembersInfoDesc *prometheus.Desc
+	memberlistMembersCount prometheus.GaugeFunc
+	memberlistHealthScore  prometheus.GaugeFunc
 }
 
 type valueDesc struct {

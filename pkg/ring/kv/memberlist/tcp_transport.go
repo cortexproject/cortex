@@ -421,13 +421,10 @@ func (t *TCPTransport) writeTo(b []byte, addr string) error {
 	buf.WriteByte(byte(packet))
 
 	// We need to send our address to the other side, otherwise other side can only see IP and port from TCP header.
-	// But that doesn't match our node address (source port is assigned automatically), which confuses memberlist.
-	// We will announce first listener's address as our address. This is what memberlist's net_transport.go does as well.
-	// ourAddr := t.tcpListeners[0].Addr().String()
+	// But that doesn't match our node address (new TCP connection has new random port), which confuses memberlist.
+	// So we send our advertised address, so that memberlist on the receiving side can match it with correct node.
+	// This seems to be important for node probes (pings) done by memberlist.
 	ourAddr := t.getAdvertisedAddr()
-	if ourAddr == "" {
-		ourAddr = t.tcpListeners[0].Addr().String()
-	}
 	if len(ourAddr) > 255 {
 		return fmt.Errorf("local address too long")
 	}

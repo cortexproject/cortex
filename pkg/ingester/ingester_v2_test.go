@@ -158,7 +158,7 @@ func TestIngester_v2Push(t *testing.T) {
 			res, err := i.v2Query(ctx, &client.QueryRequest{
 				StartTimestampMs: math.MinInt64,
 				EndTimestampMs:   math.MaxInt64,
-				Matchers:         []*client.LabelMatcher{{client.REGEX_MATCH, labels.MetricName, ".*"}},
+				Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
 			})
 
 			require.NoError(t, err)

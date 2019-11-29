@@ -289,6 +289,9 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 		return i.v2Push(ctx, req)
 	}
 
+	// Reuse the slice once done (whether the function completes successfully or errors out)
+	defer client.ReuseSlice(req.Timeseries)
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
@@ -314,7 +317,6 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 			return nil, err
 		}
 	}
-	client.ReuseSlice(req.Timeseries)
 
 	return &client.WriteResponse{}, lastPartialErr
 }

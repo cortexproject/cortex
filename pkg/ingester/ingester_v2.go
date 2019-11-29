@@ -68,6 +68,9 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 // v2Push adds metrics to a block
 func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+	// Reuse the slice once done (whether the function completes successfully or errors out)
+	defer client.ReuseSlice(req.Timeseries)
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
@@ -100,8 +103,6 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	if err := app.Commit(); err != nil {
 		return nil, err
 	}
-
-	client.ReuseSlice(req.Timeseries)
 
 	return &client.WriteResponse{}, nil
 }

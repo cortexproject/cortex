@@ -41,6 +41,7 @@ github.com/alecthomas/template/parse
 github.com/alecthomas/units
 # github.com/armon/go-metrics v0.0.0-20190430140413-ec5e00d3c878
 github.com/armon/go-metrics
+github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a
 github.com/asaskevich/govalidator
 # github.com/aws/aws-sdk-go v1.25.22

@@ -1,11 +1,12 @@
 package memberlist
 
 import (
-	"fmt"
 	"time"
 
 	armonmetrics "github.com/armon/go-metrics"
 	armonprometheus "github.com/armon/go-metrics/prometheus"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -15,49 +16,49 @@ func (m *Client) createAndRegisterMetrics() {
 	m.numberOfReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "received_broadcasts",
+		Name:      "received_broadcasts_total",
 		Help:      "Number of received broadcast user messages",
 	})
 
 	m.totalSizeOfReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "received_broadcasts_bytes",
+		Name:      "received_broadcasts_bytes_total",
 		Help:      "Total size of received broadcast user messages",
 	})
 
 	m.numberOfInvalidReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "received_broadcasts_invalid",
+		Name:      "received_broadcasts_invalid_total",
 		Help:      "Number of received broadcast user messages that were invalid. Hopefully 0.",
 	})
 
 	m.numberOfPushes = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "state_pushes_count",
+		Name:      "state_pushes_total",
 		Help:      "How many times did this node push its full state to another node",
 	})
 
 	m.totalSizeOfPushes = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "state_pushes_bytes",
+		Name:      "state_pushes_bytes_total",
 		Help:      "Total size of pushed state",
 	})
 
 	m.numberOfPulls = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "state_pulls_count",
+		Name:      "state_pulls_total",
 		Help:      "How many times did this node pull full state from another node",
 	})
 
 	m.totalSizeOfPulls = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "state_pulls_bytes",
+		Name:      "state_pulls_bytes_total",
 		Help:      "Total size of pulled state",
 	})
 
@@ -80,31 +81,31 @@ func (m *Client) createAndRegisterMetrics() {
 	m.casAttempts = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "cas_attempt_count",
+		Name:      "cas_attempt_total",
 		Help:      "Attempted CAS operations",
 	})
 
 	m.casSuccesses = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "cas_success_count",
+		Name:      "cas_success_total",
 		Help:      "Successful CAS operations",
 	})
 
 	m.casFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "cas_failure_count",
+		Name:      "cas_failure_total",
 		Help:      "Failed CAS operations",
 	})
 
 	m.storeValuesDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_count"),
+		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_count"), // gauge
 		"Number of values in KV Store",
 		nil, nil)
 
 	m.storeSizesDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_value_bytes"),
+		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_value_bytes"), // gauge
 		"Sizes of values in KV Store in bytes",
 		[]string{"key"}, nil)
 
@@ -172,9 +173,11 @@ func (m *Client) createAndRegisterMetrics() {
 		cfg.EnableTypePrefix = true        // to make better sense of internal memberlist metrics
 		cfg.TimerGranularity = time.Second // timers are in seconds in prometheus world
 
-		armonmetrics.NewGlobal(cfg, sink)
-	} else {
-		fmt.Println("Error while registering ")
+		_, err = armonmetrics.NewGlobal(cfg, sink)
+	}
+
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to register prometheus metrics for memberlist", "err", err)
 	}
 }
 

@@ -465,7 +465,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
 		}
 	} else {
-		level.Warn(util.Logger).Log("msg", "not loading tokens from file, tokens file path is empty")
+		level.Info(util.Logger).Log("msg", "not loading tokens from file, tokens file path is empty")
 	}
 
 	err = i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
@@ -480,7 +480,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			// We use the tokens from the file only if it does not exist in the ring yet.
 			if len(tokensFromFile) > 0 {
 				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
-				if len(tokensFromFile) == i.cfg.NumTokens {
+				if len(tokensFromFile) >= i.cfg.NumTokens {
 					i.setState(ACTIVE)
 				}
 				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState(), i.cfg.NormaliseTokens)
@@ -537,7 +537,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			newTokens := GenerateTokens(needTokens, takenTokens)
 
 			ringTokens = append(ringTokens, newTokens...)
-			sort.Sort(sortableUint32(ringTokens))
+			sort.Sort(ringTokens)
 
 			ringDesc.AddIngester(i.ID, i.Addr, ringTokens, i.GetState(), i.cfg.NormaliseTokens)
 
@@ -560,10 +560,10 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 }
 
 func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
-	sort.Sort(sortableUint32(fromRing))
+	sort.Sort(fromRing)
 
 	tokens := i.getTokens()
-	sort.Sort(sortableUint32(tokens))
+	sort.Sort(tokens)
 
 	if len(tokens) != len(fromRing) {
 		return false
@@ -596,11 +596,10 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)
-
 		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
 		myTokens = append(myTokens, newTokens...)
-		sort.Sort(sortableUint32(myTokens))
+		sort.Sort(myTokens)
 		i.setTokens(myTokens)
 
 		return ringDesc, true, nil

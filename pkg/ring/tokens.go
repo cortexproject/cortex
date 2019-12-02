@@ -10,6 +10,10 @@ import (
 // Tokens is a simple list of tokens.
 type Tokens []uint32
 
+func (t Tokens) Len() int           { return len(t) }
+func (t Tokens) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
+func (t Tokens) Less(i, j int) bool { return t[i] < t[j] }
+
 // StoreToFile stores the tokens in the given directory.
 func (t Tokens) StoreToFile(tokenFilePath string) error {
 	if tokenFilePath == "" {
@@ -27,7 +31,7 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 		// If the file was not closed, then there must already be an error, hence ignore
 		// the error (if any) from f.Close(). If the file was already closed, then
 		// we would ignore the error in that case too.
-		f.Close()
+		_ = f.Close()
 	}()
 
 	b, err := t.Marshal()
@@ -50,9 +54,6 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 func LoadTokensFromFile(tokenFilePath string) (Tokens, error) {
 	b, err := ioutil.ReadFile(tokenFilePath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	var t Tokens

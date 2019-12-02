@@ -319,8 +319,8 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 			continue
 		}
 
-		if !sort.IsSorted(sortableUint32(ing.Tokens)) {
-			sort.Sort(sortableUint32(ing.Tokens))
+		if !sort.IsSorted(Tokens(ing.Tokens)) {
+			sort.Sort(Tokens(ing.Tokens))
 		}
 
 		seen := make(map[uint32]bool)
@@ -407,7 +407,7 @@ func resolveConflicts(normalizedIngesters map[string]IngesterDesc) {
 		}
 	}
 
-	sort.Sort(sortableUint32(tokens))
+	sort.Sort(Tokens(tokens))
 
 	// let's store the resolved result back
 	newTokenLists := map[string][]uint32{}

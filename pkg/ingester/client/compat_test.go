@@ -89,6 +89,8 @@ func TestQueryResponse(t *testing.T) {
 
 }
 
+// This test shows label sets with same fingerprints, and also shows how to easily create new collisions
+// (by adding "_" or "A" label with specific values, see below).
 func TestFingerprintCollisions(t *testing.T) {
 	// "8yn0iYCKYHlIj4-BwPqk" and "GReLUrM4wMqfg9yzV3KQ" have same FNV-1a hash.
 	// If we use it as a single label name (for labels that have same value), we get colliding labels.
@@ -96,7 +98,7 @@ func TestFingerprintCollisions(t *testing.T) {
 	c2 := labels.FromStrings("GReLUrM4wMqfg9yzV3KQ", "hello")
 	verifyCollision(t, true, c1, c2)
 
-	// Adding _="ypfajYg2lsv" or _="KiqbryhzUpn" respectively to most [*] metrics will produce collision.
+	// Adding _="ypfajYg2lsv" or _="KiqbryhzUpn" respectively to most metrics will produce collision.
 	// It's because "_\xffypfajYg2lsv" and "_\xffKiqbryhzUpn" have same FNV-1a hash, and "_" label is sorted before
 	// most other labels (except labels starting with upper-case letter)
 
@@ -119,8 +121,8 @@ func TestFingerprintCollisions(t *testing.T) {
 	c2 = metric.Set("_", _label2).Labels()
 	verifyCollision(t, false, c1, c2)
 
-	// But A="K6sjsNNczPl" and A="cswpLMIZpwt" label has similar property.
-	// (Again, "A\xffK6sjsNNczPl" and "A\xffcswpLMIZpwt" have same FNV-1a hash)
+	// A="K6sjsNNczPl" and A="cswpLMIZpwt" label has similar property.
+	// (Again, because "A\xffK6sjsNNczPl" and "A\xffcswpLMIZpwt" have same FNV-1a hash)
 	// This time, "A" is the smallest possible label name, and is always sorted first.
 
 	const Alabel1 = "K6sjsNNczPl"

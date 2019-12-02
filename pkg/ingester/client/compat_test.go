@@ -130,6 +130,12 @@ func TestFingerprintCollisions(t *testing.T) {
 	c1 = metric.Set("A", Alabel1).Labels()
 	c2 = metric.Set("A", Alabel2).Labels()
 	verifyCollision(t, true, c1, c2)
+
+	// Adding the same suffix to the "A" label also works.
+	metric = labels.NewBuilder(labels.FromStrings("__name__", "up", "Z", "hello"))
+	c1 = metric.Set("A", Alabel1+"suffix").Labels()
+	c2 = metric.Set("A", Alabel2+"suffix").Labels()
+	verifyCollision(t, true, c1, c2)
 }
 
 func verifyCollision(t *testing.T, collision bool, ls1 labels.Labels, ls2 labels.Labels) {

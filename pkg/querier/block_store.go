@@ -113,7 +113,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 				Bucket: bkt,
 			}
 
-			indexCacheSizeBytes := u.cfg.BucketStoreCfg.IndexCacheSizeBytes
+			indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 			maxItemSizeBytes := indexCacheSizeBytes / 2
 			indexCache, err := storecache.NewIndexCache(u.logger, nil, storecache.Opts{
 				MaxSizeBytes:     indexCacheSizeBytes,
@@ -125,13 +125,13 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			bs, err = store.NewBucketStore(u.logger,
 				nil,
 				userBkt,
-				filepath.Join(u.cfg.BucketStoreCfg.Dir, user),
+				filepath.Join(u.cfg.BucketStore.SyncDir, user),
 				indexCache,
-				uint64(u.cfg.BucketStoreCfg.MaxChunkPoolBytes),
-				u.cfg.BucketStoreCfg.MaxSampleCount,
-				u.cfg.BucketStoreCfg.MaxConcurrent,
-				u.cfg.BucketStoreCfg.DebugLogging,
-				u.cfg.BucketStoreCfg.BlockSyncConcurrency,
+				uint64(u.cfg.BucketStore.MaxChunkPoolBytes),
+				u.cfg.BucketStore.MaxSampleCount,
+				u.cfg.BucketStore.MaxConcurrent,
+				u.cfg.BucketStore.DebugLogging,
+				u.cfg.BucketStore.BlockSyncConcurrency,
 				&store.FilterConfig{
 					MinTime: *mint,
 					MaxTime: *maxt,

@@ -184,7 +184,7 @@ func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
 func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
 	if op == Write && i.State != ACTIVE {
 		return false
-	} else if op == Read && i.State == JOINING {
+	} else if op == Read && i.State != ACTIVE && i.State != LEAVING {
 		return false
 	}
 	return time.Now().Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout

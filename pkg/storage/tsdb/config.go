@@ -99,18 +99,16 @@ type BucketStoreConfig struct {
 	MaxChunkPoolBytes    uint64 `yaml:"max_chunk_pool_bytes"`
 	MaxSampleCount       uint64 `yaml:"max_sample_count"`
 	MaxConcurrent        int    `yaml:"max_concurrent"`
-	DebugLogging         bool   `yaml:"debug_logging"`
 	BlockSyncConcurrency int    `yaml:"block_sync_concurrency"`
 }
 
 // RegisterFlags registers the BucketStore flags
 func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 
-	f.StringVar(&cfg.Dir, "experimental.tsdb.bucket-store.sync-dir", "tsdb-sync", "Directory to place synced tsdb indicies.")
+	f.StringVar(&cfg.SyncDir, "experimental.tsdb.bucket-store.sync-dir", "tsdb-sync", "Directory to place synced tsdb indicies.")
 	f.Uint64Var(&cfg.IndexCacheSizeBytes, "experimental.tsdb.bucket-store.index-cache-size-bytes", uint64(250*units.Mebibyte), "Size of index cache in bytes per tenant.")
 	f.Uint64Var(&cfg.MaxChunkPoolBytes, "experimental.tsdb.bucket-store.max-chunk-pool-bytes", uint64(2*units.Gibibyte), "Max size of chunk pool in bytes per tenant.")
 	f.Uint64Var(&cfg.MaxSampleCount, "experimental.tsdb.bucket-store.max-sample-count", 0, "Max number of samples (0 is no limit) per query when loading series from storage.")
 	f.IntVar(&cfg.MaxConcurrent, "experimental.tsdb.bucket-store.max-concurrent", 20, "Max number of concurrent queries to the storage per tenant.")
-	f.BoolVar(&cfg.DebugLogging, "experimental.tsdb.bucket-store.debug-logging", false, "Turn on debug logging.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "experimental.tsdb.bucket-store.block-sync-concurrency", 20, "Number of Go routines to use when syncing blocks from object storage per tenant.")
 }

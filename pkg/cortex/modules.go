@@ -197,7 +197,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	var store querier.ChunkStore
 
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
-		store, err = querier.NewBlockQuerier(cfg.TSDB, prometheus.DefaultRegisterer)
+		store, err = querier.NewBlockQuerier(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
 		if err != nil {
 			return err
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -27,7 +28,7 @@ type BlockQuerier struct {
 }
 
 // NewBlockQuerier returns a client to query a block store
-func NewBlockQuerier(cfg tsdb.Config, r prometheus.Registerer) (*BlockQuerier, error) {
+func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, r prometheus.Registerer) (*BlockQuerier, error) {
 	b := &BlockQuerier{
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_sync_seconds",
@@ -38,7 +39,7 @@ func NewBlockQuerier(cfg tsdb.Config, r prometheus.Registerer) (*BlockQuerier, e
 
 	r.MustRegister(b.syncTimes)
 
-	us, err := NewUserStore(cfg, util.Logger)
+	us, err := NewUserStore(cfg, logLevel, util.Logger)
 	if err != nil {
 		return nil, err
 	}

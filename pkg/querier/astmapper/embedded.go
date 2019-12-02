@@ -106,31 +106,6 @@ func VectorSquasher(nodes ...promql.Node) (promql.Expr, error) {
 	return Squash(JSONCodec, false, nodes...)
 }
 
-// ShallowEmbedSelectors encodes selector queries if they do not already have the EmbeddedQueryFlag.
-// This is primarily useful for deferring query execution.
-var ShallowEmbedSelectors = NewASTNodeMapper(NodeMapperFunc(shallowEmbedSelectors))
-
-func shallowEmbedSelectors(node promql.Node) (mapped promql.Node, finished bool, err error) {
-	switch n := node.(type) {
-	case *promql.VectorSelector:
-		if n.Name == EmbeddedQueryFlag {
-			return n, true, nil
-		}
-		squashed, err := Squash(JSONCodec, false, n)
-		return squashed, true, err
-
-	case *promql.MatrixSelector:
-		if n.Name == EmbeddedQueryFlag {
-			return n, true, nil
-		}
-		squashed, err := Squash(JSONCodec, true, n)
-		return squashed, true, err
-
-	default:
-		return n, false, nil
-	}
-}
-
 // OrSquasher is a custom squasher which mimics the intuitive but less efficient OR'ing of sharded vectors.
 func OrSquasher(nodes ...promql.Node) (promql.Expr, error) {
 	combined := nodes[0]

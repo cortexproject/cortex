@@ -64,7 +64,7 @@ func CloneNode(node promql.Node) (promql.Node, error) {
 // NodeMapper either maps a single AST node or returns the unaltered node.
 // It also returns a bool to signal that no further recursion is necessary.
 // This is helpful because it allows mappers to only implement logic for node types they want to change.
-// It makes some mappers trivially easy to implement (see ShallowEmbedSelectors from embedded.go)
+// It makes some mappers trivially easy to implement
 type NodeMapper interface {
 	MapNode(node promql.Node) (mapped promql.Node, finished bool, err error)
 }

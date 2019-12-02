@@ -135,11 +135,16 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 
+	subtreeFolder, err := astmapper.NewSubtreeFolder(astmapper.JSONCodec)
+	if err != nil {
+		return nil, err
+	}
+
 	strQuery := r.GetQuery()
 	mappedQuery, err := mapQuery(
 		astmapper.NewMultiMapper(
 			shardSummer,
-			astmapper.ShallowEmbedSelectors,
+			subtreeFolder,
 		),
 		strQuery,
 	)
@@ -149,11 +154,7 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	strMappedQuery := mappedQuery.String()
-	if strMappedQuery == strQuery {
-		level.Debug(ast.logger).Log("msg", "unaltered query", "query", strQuery)
-	} else {
-		level.Debug(ast.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
-	}
+	level.Debug(ast.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
 
 	return ast.next.Do(ctx, r.WithQuery(strMappedQuery))
 

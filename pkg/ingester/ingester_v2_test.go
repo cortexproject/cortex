@@ -171,24 +171,6 @@ func TestIngester_v2Push(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
-
-	/*
-
-		require.Equal(t, ring.PENDING, i.lifecycler.GetState())
-
-		// Mock request
-		userID := "test"
-		ctx := user.InjectOrgID(context.Background(), userID)
-		req := &client.WriteRequest{}
-
-		res, err := i.v2Push(ctx, req)
-		assert.Equal(t, nil, err)
-		assert.Nil(t, res)
-
-		// Check if the TSDB has been created
-		_, tsdbCreated := i.TSDBState.dbs[userID]
-		assert.False(t, tsdbCreated)
-	*/
 }
 
 func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, func(), error) {

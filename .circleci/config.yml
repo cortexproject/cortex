@@ -161,6 +161,9 @@ jobs:
   deploy_website:
     <<: *defaults
     steps:
+    - add_ssh_keys:
+        fingerprints:
+        - "72:f2:e3:39:18:1f:95:17:90:b3:37:5e:49:ed:7e:a3"
     - checkout
     - attach_workspace:
         at: .

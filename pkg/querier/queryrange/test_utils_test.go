@@ -16,7 +16,7 @@ func TestGenLabelsCorrectness(t *testing.T) {
 		sort.Sort(set)
 	}
 	expected := []labels.Labels{
-		labels.Labels{
+		{
 			labels.Label{
 				Name:  "a",
 				Value: "0",
@@ -26,7 +26,7 @@ func TestGenLabelsCorrectness(t *testing.T) {
 				Value: "0",
 			},
 		},
-		labels.Labels{
+		{
 			labels.Label{
 				Name:  "a",
 				Value: "0",
@@ -36,7 +36,7 @@ func TestGenLabelsCorrectness(t *testing.T) {
 				Value: "1",
 			},
 		},
-		labels.Labels{
+		{
 			labels.Label{
 				Name:  "a",
 				Value: "1",
@@ -46,7 +46,7 @@ func TestGenLabelsCorrectness(t *testing.T) {
 				Value: "0",
 			},
 		},
-		labels.Labels{
+		{
 			labels.Label{
 				Name:  "a",
 				Value: "1",

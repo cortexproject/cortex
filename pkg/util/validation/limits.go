@@ -156,7 +156,7 @@ func (o *Overrides) HAReplicaLabel(userID string) string {
 	return o.overridesManager.GetLimits(userID).(*Limits).HAReplicaLabel
 }
 
-// DropLabels returns whether the cluster label should be dropped when ingesting HA samples for the user.
+// DropLabels returns the list of labels to be dropped when ingesting HA samples for the user.
 func (o *Overrides) DropLabels(userID string) flagext.StringSlice {
 	return o.overridesManager.GetLimits(userID).(*Limits).DropLabels
 }

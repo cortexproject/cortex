@@ -281,10 +281,9 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 	return true, nil
 }
 
-// Validates a single series from a write request. Will remove HA labels if necessary.
-// Takes a pointer for a partial error so that we can get partial errors, errors during validation
-// of a single sample, back from the function without adding an additional return param.
-// Returns a token for the series if it is valid, the validated series with it's labels/samples, and any fatal error.
+// Validates a single series from a write request. Will remove labels if
+// any are configured to be dropped for the user ID.
+// Returns the validated series with it's labels/samples, and any error.
 func (d *Distributor) validateSeries(key uint32, ts ingester_client.PreallocTimeseries, userID string, removeReplica bool) (client.PreallocTimeseries, error) {
 	// If we found both the cluster and replica labels, we only want to include the cluster label when
 	// storing series in Cortex. If we kept the replica label we would end up with another series for the same
@@ -292,9 +291,14 @@ func (d *Distributor) validateSeries(key uint32, ts ingester_client.PreallocTime
 	if removeReplica {
 		removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
 	}
-	for _, s := range d.limits.DropLabels(userID) {
-		removeLabel(s, &ts.Labels)
+
+	for _, labelName := range d.limits.DropLabels(userID) {
+		removeLabel(labelName, &ts.Labels)
 	}
+	if len(ts.Labels) == 0 {
+		return emptyPreallocSeries, nil
+	}
+
 	key, err := d.tokenForLabels(userID, ts.Labels)
 	if err != nil {
 		return emptyPreallocSeries, err
@@ -368,6 +372,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		validatedSeries, err := d.validateSeries(key, ts, userID, removeReplica)
+		// Errors in validation are considered non-fatal, as one series in a request may contain
+		// invalid data but all the remaining series could be perfectly valid.
 		if err != nil {
 			lastPartialErr = err
 		}

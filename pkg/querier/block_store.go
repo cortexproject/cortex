@@ -123,7 +123,8 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			if err != nil {
 				return err
 			}
-			bs, err = store.NewBucketStore(u.logger,
+			bs, err = store.NewBucketStore(
+				u.logger,
 				nil,
 				userBkt,
 				filepath.Join(u.cfg.SyncDir, user),
@@ -137,6 +138,8 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 					MinTime: *mint,
 					MaxTime: *maxt,
 				},
+				nil,   // No relabelling config
+				false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 			)
 			if err != nil {
 				return err

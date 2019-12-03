@@ -22,6 +22,8 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	promlabels "github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -44,13 +46,29 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// maxSamplesPerChunk is approximately the max number of samples that we may have in any given chunk. This is needed
-// for precalculating the number of samples that we may have to retrieve and decode for any given query
-// without downloading them. Please take a look at https://github.com/prometheus/tsdb/pull/397 to know
-// where this number comes from. Long story short: TSDB is made in such a way, and it is made in such a way
-// because you barely get any improvements in compression when the number of samples is beyond this.
-// Take a look at Figure 6 in this whitepaper http://www.vldb.org/pvldb/vol8/p1816-teller.pdf.
-const maxSamplesPerChunk = 120
+const (
+	// maxSamplesPerChunk is approximately the max number of samples that we may have in any given chunk. This is needed
+	// for precalculating the number of samples that we may have to retrieve and decode for any given query
+	// without downloading them. Please take a look at https://github.com/prometheus/tsdb/pull/397 to know
+	// where this number comes from. Long story short: TSDB is made in such a way, and it is made in such a way
+	// because you barely get any improvements in compression when the number of samples is beyond this.
+	// Take a look at Figure 6 in this whitepaper http://www.vldb.org/pvldb/vol8/p1816-teller.pdf.
+	maxSamplesPerChunk = 120
+
+	maxChunkSize = 16000
+
+	// CompatibilityTypeLabelName is an artificial label that Store Gateway can optionally advertise. This is required for compatibility
+	// with pre v0.8.0 Querier. Previous Queriers was strict about duplicated external labels of all StoreAPIs that had any labels.
+	// Now with newer Store Gateway advertising all the external labels it has access to, there was simple case where
+	// Querier was blocking Store Gateway as duplicate with sidecar.
+	//
+	// Newer Queriers are not strict, no duplicated external labels check is there anymore.
+	// Additionally newer Queriers removes/ignore this exact labels from UI and querying.
+	//
+	// This label name is intentionally against Prometheus label style.
+	// TODO(bwplotka): Remove it at some point.
+	CompatibilityTypeLabelName = "@thanos_compatibility_store_type"
+)
 
 type bucketStoreMetrics struct {
 	blocksLoaded          prometheus.Gauge
@@ -215,7 +233,11 @@ type BucketStore struct {
 	samplesLimiter *Limiter
 	partitioner    partitioner
 
-	filterConfig *FilterConfig
+	filterConfig  *FilterConfig
+	relabelConfig []*relabel.Config
+
+	labelSets                map[uint64]labels.Labels
+	enableCompatibilityLabel bool
 }
 
 // NewBucketStore creates a new bucket backed store that implements the store API against
@@ -232,6 +254,8 @@ func NewBucketStore(
 	debugLogging bool,
 	blockSyncConcurrency int,
 	filterConf *FilterConfig,
+	relabelConfig []*relabel.Config,
+	enableCompatibilityLabel bool,
 ) (*BucketStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -241,7 +265,7 @@ func NewBucketStore(
 		return nil, errors.Errorf("max concurrency value cannot be lower than 0 (got %v)", maxConcurrent)
 	}
 
-	chunkPool, err := pool.NewBytesPool(2e5, 50e6, 2, maxChunkPoolBytes)
+	chunkPool, err := pool.NewBytesPool(maxChunkSize, 50e6, 2, maxChunkPoolBytes)
 	if err != nil {
 		return nil, errors.Wrap(err, "create chunk pool")
 	}
@@ -263,9 +287,11 @@ func NewBucketStore(
 			maxConcurrent,
 			extprom.WrapRegistererWithPrefix("thanos_bucket_store_series_", reg),
 		),
-		samplesLimiter: NewLimiter(maxSampleCount, metrics.queriesDropped),
-		partitioner:    gapBasedPartitioner{maxGapSize: maxGapSize},
-		filterConfig:   filterConf,
+		samplesLimiter:           NewLimiter(maxSampleCount, metrics.queriesDropped),
+		partitioner:              gapBasedPartitioner{maxGapSize: maxGapSize},
+		filterConfig:             filterConf,
+		relabelConfig:            relabelConfig,
+		enableCompatibilityLabel: enableCompatibilityLabel,
 	}
 	s.metrics = metrics
 
@@ -359,6 +385,14 @@ func (s *BucketStore) SyncBlocks(ctx context.Context) error {
 		}
 		s.metrics.blockDrops.Inc()
 	}
+
+	// Sync advertise labels.
+	s.mtx.Lock()
+	s.labelSets = make(map[uint64]labels.Labels, len(s.blocks))
+	for _, bs := range s.blocks {
+		s.labelSets[bs.labels.Hash()] = append(labels.Labels(nil), bs.labels...)
+	}
+	s.mtx.Unlock()
 
 	return nil
 }
@@ -456,6 +490,15 @@ func (s *BucketStore) addBlock(ctx context.Context, id ulid.ULID) (err error) {
 	lset := labels.FromMap(b.meta.Thanos.Labels)
 	h := lset.Hash()
 
+	// Check for block labels by relabeling.
+	// If output is empty, the block will be dropped.
+	if processedLabels := relabel.Process(promlabels.FromMap(lset.Map()), s.relabelConfig...); processedLabels == nil {
+		level.Debug(s.logger).Log("msg", "dropping block(drop in relabeling)", "block", id)
+		return os.RemoveAll(dir)
+	}
+	b.labels = lset
+	sort.Sort(b.labels)
+
 	set, ok := s.blockSets[h]
 	if !ok {
 		set = newBucketBlockSet(lset)
@@ -519,12 +562,29 @@ func (s *BucketStore) TimeRange() (mint, maxt int64) {
 // Info implements the storepb.StoreServer interface.
 func (s *BucketStore) Info(context.Context, *storepb.InfoRequest) (*storepb.InfoResponse, error) {
 	mint, maxt := s.TimeRange()
-	// Store nodes hold global data and thus have no labels.
-	return &storepb.InfoResponse{
+	res := &storepb.InfoResponse{
 		StoreType: component.Store.ToProto(),
 		MinTime:   mint,
 		MaxTime:   maxt,
-	}, nil
+	}
+
+	s.mtx.RLock()
+	res.LabelSets = make([]storepb.LabelSet, 0, len(s.labelSets))
+	for _, ls := range s.labelSets {
+		lset := make([]storepb.Label, 0, len(ls))
+		for _, l := range ls {
+			lset = append(lset, storepb.Label{Name: l.Name, Value: l.Value})
+		}
+		res.LabelSets = append(res.LabelSets, storepb.LabelSet{Labels: lset})
+	}
+	s.mtx.RUnlock()
+
+	if s.enableCompatibilityLabel && len(res.LabelSets) > 0 {
+		// This is for compatibility with Querier v0.7.0.
+		// See query.StoreCompatibilityTypeLabelName comment for details.
+		res.LabelSets = append(res.LabelSets, storepb.LabelSet{Labels: []storepb.Label{{Name: CompatibilityTypeLabelName, Value: "store"}}})
+	}
+	return res, nil
 }
 
 func (s *BucketStore) limitMinTime(mint int64) int64 {
@@ -998,12 +1058,12 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 }
 
 // bucketBlockSet holds all blocks of an equal label set. It internally splits
-// them up by downsampling resolution and allows querying
+// them up by downsampling resolution and allows querying.
 type bucketBlockSet struct {
 	labels      labels.Labels
 	mtx         sync.RWMutex
-	resolutions []int64          // available resolution, high to low (in milliseconds)
-	blocks      [][]*bucketBlock // ordered buckets for the existing resolutions
+	resolutions []int64          // Available resolution, high to low (in milliseconds).
+	blocks      [][]*bucketBlock // Ordered buckets for the existing resolutions.
 }
 
 // newBucketBlockSet initializes a new set with the known downsampling windows hard-configured.
@@ -1138,6 +1198,8 @@ type bucketBlock struct {
 	pendingReaders sync.WaitGroup
 
 	partitioner partitioner
+
+	labels labels.Labels
 }
 
 func newBucketBlock(
@@ -1188,8 +1250,8 @@ func (b *bucketBlock) indexCacheFilename() string {
 }
 
 func loadMeta(ctx context.Context, logger log.Logger, bucket objstore.BucketReader, dir string, id ulid.ULID) (error, *metadata.Meta) {
-	// If we haven't seen the block before download the meta.json file.
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	// If we haven't seen the block before or it is missing the meta.json, download it.
+	if _, err := os.Stat(path.Join(dir, block.MetaFilename)); os.IsNotExist(err) {
 		if err := os.MkdirAll(dir, 0777); err != nil {
 			return errors.Wrap(err, "create dir"), nil
 		}
@@ -1275,11 +1337,13 @@ func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length i
 
 	r, err := b.bucket.GetRange(ctx, b.chunkObjs[seq], off, length)
 	if err != nil {
+		b.chunkPool.Put(c)
 		return nil, errors.Wrap(err, "get range reader")
 	}
 	defer runutil.CloseWithLogOnErr(b.logger, r, "readChunkRange close range reader")
 
 	if _, err = io.Copy(buf, r); err != nil {
+		b.chunkPool.Put(c)
 		return nil, errors.Wrap(err, "read range")
 	}
 	internalBuf := buf.Bytes()
@@ -1302,8 +1366,7 @@ func (b *bucketBlock) Close() error {
 	return nil
 }
 
-// bucketIndexReader is a custom index reader (not conforming index.Reader interface) that gets postings
-// by
+// bucketIndexReader is a custom index reader (not conforming index.Reader interface) that gets postings.
 type bucketIndexReader struct {
 	logger log.Logger
 	ctx    context.Context
@@ -1434,7 +1497,7 @@ func toPostingGroup(lvalsFn func(name string) []string, m labels.Matcher) *posti
 
 	// If the matcher selects an empty value, it selects all the series which don't
 	// have the label name set too. See: https://github.com/prometheus/prometheus/issues/3575
-	// and https://github.com/prometheus/prometheus/pull/3578#issuecomment-351653555
+	// and https://github.com/prometheus/prometheus/pull/3578#issuecomment-351653555.
 	if m.Matches("") {
 		allName, allValue := index.AllPostingsKey()
 
@@ -1766,8 +1829,6 @@ func (r *bucketChunkReader) addPreload(id uint64) error {
 
 // preload all added chunk IDs. Must be called before the first call to Chunk is made.
 func (r *bucketChunkReader) preload(samplesLimiter *Limiter) error {
-	const maxChunkSize = 16000
-
 	var g run.Group
 
 	numChunks := uint64(0)

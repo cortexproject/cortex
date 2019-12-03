@@ -163,8 +163,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		// doesn't try to auto decode the body of objects with
 		// content-encoding set to `gzip`.
 		//
-		// Refer:
-		//    https://golang.org/src/net/http/transport.go?h=roundTrip#L1843
+		// Refer: https://golang.org/src/net/http/transport.go?h=roundTrip#L1843.
 		DisableCompression: true,
 		TLSClientConfig:    &tls.Config{InsecureSkipVerify: config.HTTPConfig.InsecureSkipVerify},
 	})
@@ -237,6 +236,10 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error) err
 		}
 		// This sometimes happens with empty buckets.
 		if object.Key == "" {
+			continue
+		}
+		// The s3 client can also return the directory itself in the ListObjects call above.
+		if object.Key == dir {
 			continue
 		}
 		if err := f(object.Key); err != nil {
@@ -401,7 +404,7 @@ func NewTestBucketFromConfig(t testing.TB, location string, c Config, reuseBucke
 	if c.Bucket == "" {
 		src := rand.NewSource(time.Now().UnixNano())
 
-		// Bucket name need to conform: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-s3-bucket-naming-requirements.html
+		// Bucket name need to conform: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-s3-bucket-naming-requirements.html.
 		bktToCreate = strings.Replace(fmt.Sprintf("test_%s_%x", strings.ToLower(t.Name()), src.Int63()), "_", "-", -1)
 		if len(bktToCreate) >= 63 {
 			bktToCreate = bktToCreate[:63]

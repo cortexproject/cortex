@@ -496,75 +496,75 @@ func (t *TCPTransport) Shutdown() error {
 }
 
 func (t *TCPTransport) registerMetrics() {
-	const subsystem = "tcp_transport"
+	const subsystem = "memberlist_tcp_transport"
 
 	t.incomingStreams = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "incoming_memberlist_streams",
+		Name:      "incoming_streams_total",
 		Help:      "Number of incoming memberlist streams",
 	})
 
 	t.outgoingStreams = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "outgoing_memberlist_streams",
+		Name:      "outgoing_streams_total",
 		Help:      "Number of outgoing streams",
 	})
 
 	t.outgoingStreamErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "outgoing_memberlist_stream_errors",
+		Name:      "outgoing_stream_errors_total",
 		Help:      "Number of errors when opening memberlist stream to another node",
 	})
 
 	t.receivedPackets = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "memberlist_packets_received",
+		Name:      "packets_received_total",
 		Help:      "Number of received memberlist packets",
 	})
 
 	t.receivedPacketsBytes = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "memberlist_packets_received_bytes",
+		Name:      "packets_received_bytes_total",
 		Help:      "Total bytes received as packets",
 	})
 
 	t.receivedPacketsErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "memberlist_packets_received_errors",
+		Name:      "packets_received_errors_total",
 		Help:      "Number of errors when receiving memberlist packets",
 	})
 
 	t.sentPackets = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "memberlist_packets_sent",
+		Name:      "packets_sent_total",
 		Help:      "Number of memberlist packets sent",
 	})
 
 	t.sentPacketsBytes = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "memberlist_packets_sent_bytes",
+		Name:      "packets_sent_bytes_total",
 		Help:      "Total bytes sent as packets",
 	})
 
 	t.sentPacketsErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "memberlist_packets_sent_errors",
+		Name:      "packets_sent_errors_total",
 		Help:      "Number of errors when sending memberlist packets",
 	})
 
 	t.unknownConnections = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "unknown_connections",
+		Name:      "unknown_connections_total",
 		Help:      "Number of unknown TCP connections (not a packet or stream)",
 	})
 

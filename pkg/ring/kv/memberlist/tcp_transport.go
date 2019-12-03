@@ -81,6 +81,9 @@ type TCPTransport struct {
 
 	shutdown int32
 
+	advertiseMu   sync.RWMutex
+	advertiseAddr string
+
 	// metrics
 	incomingStreams      prometheus.Counter
 	outgoingStreams      prometheus.Counter
@@ -351,7 +354,23 @@ func (t *TCPTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 		advertisePort = t.GetAutoBindPort()
 	}
 
+	level.Debug(util.Logger).Log("msg", "FinalAdvertiseAddr", "advertiseAddr", advertiseAddr.String(), "advertisePort", advertisePort)
+
+	t.setAdvertisedAddr(advertiseAddr, advertisePort)
 	return advertiseAddr, advertisePort, nil
+}
+
+func (t *TCPTransport) setAdvertisedAddr(advertiseAddr net.IP, advertisePort int) {
+	t.advertiseMu.Lock()
+	defer t.advertiseMu.Unlock()
+	addr := net.TCPAddr{IP: advertiseAddr, Port: advertisePort}
+	t.advertiseAddr = addr.String()
+}
+
+func (t *TCPTransport) getAdvertisedAddr() string {
+	t.advertiseMu.RLock()
+	defer t.advertiseMu.RUnlock()
+	return t.advertiseAddr
 }
 
 // WriteTo is a packet-oriented interface that fires off the given
@@ -402,9 +421,10 @@ func (t *TCPTransport) writeTo(b []byte, addr string) error {
 	buf.WriteByte(byte(packet))
 
 	// We need to send our address to the other side, otherwise other side can only see IP and port from TCP header.
-	// But that doesn't match our node address (source port is assigned automatically), which confuses memberlist.
-	// We will announce first listener's address as our address. This is what memberlist's net_transport.go does as well.
-	ourAddr := t.tcpListeners[0].Addr().String()
+	// But that doesn't match our node address (new TCP connection has new random port), which confuses memberlist.
+	// So we send our advertised address, so that memberlist on the receiving side can match it with correct node.
+	// This seems to be important for node probes (pings) done by memberlist.
+	ourAddr := t.getAdvertisedAddr()
 	if len(ourAddr) > 255 {
 		return fmt.Errorf("local address too long")
 	}

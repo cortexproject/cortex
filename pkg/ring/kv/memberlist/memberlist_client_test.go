@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -118,6 +119,8 @@ func (ts sortableUint32) Len() int           { return len(ts) }
 func (ts sortableUint32) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts sortableUint32) Less(i, j int) bool { return ts[i] < ts[j] }
 
+const key = "test"
+
 func updateFn(name string) func(*data) (*data, bool, error) {
 	return func(in *data) (out *data, retry bool, err error) {
 		// Modify value that was passed as a parameter.
@@ -168,18 +171,29 @@ func getData(t *testing.T, kv *Client, key string) *data {
 
 func cas(t *testing.T, kv *Client, key string, updateFn func(*data) (*data, bool, error)) {
 	t.Helper()
+
+	if err := casWithErr(context.Background(), t, kv, key, updateFn); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func casWithErr(ctx context.Context, t *testing.T, kv *Client, key string, updateFn func(*data) (*data, bool, error)) error {
+	t.Helper()
 	fn := func(in interface{}) (out interface{}, retry bool, err error) {
 		var r *data = nil
 		if in != nil {
 			r = in.(*data)
 		}
 
-		return updateFn(r)
+		d, rt, e := updateFn(r)
+		if d == nil {
+			// translate nil pointer to nil interface value
+			return nil, rt, e
+		}
+		return d, rt, e
 	}
 
-	if err := kv.CAS(context.Background(), key, fn); err != nil {
-		t.Fatal(err)
-	}
+	return kv.CAS(ctx, key, fn)
 }
 
 func TestBasicGetAndCas(t *testing.T) {
@@ -235,6 +249,151 @@ func TestBasicGetAndCas(t *testing.T) {
 	if r.Members[name].State != LEFT {
 		t.Errorf("Expected member to be LEFT, got %v", r)
 	}
+}
+
+func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
+	t.Helper()
+
+	c := dataCodec{}
+
+	cfg := Config{
+		TCPTransport: TCPTransportConfig{},
+	}
+
+	kv, err := NewMemberlistClient(cfg, c)
+	if err != nil {
+		t.Fatal("Failed to setup KV client", err)
+	}
+	defer kv.Stop()
+
+	testFN(t, kv)
+}
+
+func TestCASNoOutput(t *testing.T) {
+	withFixtures(t, func(t *testing.T, kv *Client) {
+		// should succeed with single call
+		calls := 0
+		cas(t, kv, key, func(d *data) (*data, bool, error) {
+			calls++
+			return nil, true, nil
+		})
+
+		require.Equal(t, 1, calls)
+	})
+}
+
+func TestCASErrorNoRetry(t *testing.T) {
+	withFixtures(t, func(t *testing.T, kv *Client) {
+		calls := 0
+		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
+			calls++
+			return nil, false, errors.New("don't worry, be happy")
+		})
+		require.EqualError(t, err, "failed to CAS-update key test: fn returned error: don't worry, be happy")
+		require.Equal(t, 1, calls)
+	})
+}
+
+func TestCASErrorWithRetries(t *testing.T) {
+	withFixtures(t, func(t *testing.T, kv *Client) {
+		calls := 0
+		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
+			calls++
+			return nil, true, errors.New("don't worry, be happy")
+		})
+		require.EqualError(t, err, "failed to CAS-update key test: fn returned error: don't worry, be happy")
+		require.Equal(t, 10, calls) // hard-coded in CAS function.
+	})
+}
+
+func TestCASNoChange(t *testing.T) {
+	withFixtures(t, func(t *testing.T, kv *Client) {
+		cas(t, kv, key, func(in *data) (*data, bool, error) {
+			if in == nil {
+				in = &data{Members: map[string]member{}}
+			}
+
+			in.Members["hello"] = member{
+				Timestamp: time.Now().Unix(),
+				Tokens:    generateTokens(128),
+				State:     JOINING,
+			}
+
+			return in, true, nil
+		})
+
+		startTime := time.Now()
+		calls := 0
+		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
+			calls++
+			return d, true, nil
+		})
+		require.EqualError(t, err, "failed to CAS-update key test: no change detected")
+		require.Equal(t, maxCasRetries, calls)
+		// if there was no change, CAS sleeps before every retry
+		require.True(t, time.Since(startTime) >= (maxCasRetries-1)*noChangeDetectedRetrySleep)
+	})
+}
+
+func TestCASNoChangeShortTimeout(t *testing.T) {
+	withFixtures(t, func(t *testing.T, kv *Client) {
+		cas(t, kv, key, func(in *data) (*data, bool, error) {
+			if in == nil {
+				in = &data{Members: map[string]member{}}
+			}
+
+			in.Members["hello"] = member{
+				Timestamp: time.Now().Unix(),
+				Tokens:    generateTokens(128),
+				State:     JOINING,
+			}
+
+			return in, true, nil
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		calls := 0
+		err := casWithErr(ctx, t, kv, key, func(d *data) (*data, bool, error) {
+			calls++
+			return d, true, nil
+		})
+		require.EqualError(t, err, "failed to CAS-update key test: context deadline exceeded")
+		require.Equal(t, 1, calls) // hard-coded in CAS function.
+	})
+}
+
+func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
+	withFixtures(t, func(t *testing.T, kv *Client) {
+		cas(t, kv, key, func(in *data) (*data, bool, error) {
+			return &data{Members: map[string]member{"nonempty": {Timestamp: time.Now().Unix()}}}, true, nil
+		})
+
+		calls := 0
+		// outer cas
+		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
+			// outer CAS logic
+			calls++
+
+			// run inner-CAS that succeeds, and that will make outer cas to fail
+			cas(t, kv, key, func(d *data) (*data, bool, error) {
+				// to avoid delays due to merging, we update different ingester each time.
+				d.Members[fmt.Sprintf("%d", calls)] = member{
+					Timestamp: time.Now().Unix(),
+				}
+				return d, true, nil
+			})
+
+			d.Members["world"] = member{
+				Timestamp: time.Now().Unix(),
+			}
+			return d, true, nil
+		})
+
+		require.EqualError(t, err, "failed to CAS-update key test: too many retries")
+		require.Equal(t, maxCasRetries, calls)
+	})
 }
 
 func TestMultipleCAS(t *testing.T) {

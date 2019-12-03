@@ -90,6 +90,7 @@ var (
 		Name:      "distributor_replication_factor",
 		Help:      "The configured replication factor.",
 	})
+	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -250,11 +251,11 @@ func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, erro
 	return h, nil
 }
 
-// Remove the replica label from a slice of LabelPairs if it exists.
-func removeReplicaLabel(replica string, labels *[]client.LabelAdapter) {
+// Remove the label labelname from a slice of LabelPairs if it exists.
+func removeLabel(labelName string, labels *[]client.LabelAdapter) {
 	for i := 0; i < len(*labels); i++ {
 		pair := (*labels)[i]
-		if pair.Name == replica {
+		if pair.Name == labelName {
 			*labels = append((*labels)[:i], (*labels)[i+1:]...)
 			return
 		}
@@ -279,6 +280,52 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 		return false, err
 	}
 	return true, nil
+}
+
+// Validates a single series from a write request. Will remove labels if
+// any are configured to be dropped for the user ID.
+// Returns the validated series with it's labels/samples, and any error.
+func (d *Distributor) validateSeries(key uint32, ts ingester_client.PreallocTimeseries, userID string, removeReplica bool) (client.PreallocTimeseries, error) {
+	// If we found both the cluster and replica labels, we only want to include the cluster label when
+	// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+	// series we're trying to dedupe when HA tracking moves over to a different replica.
+	if removeReplica {
+		removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+	}
+
+	for _, labelName := range d.limits.DropLabels(userID) {
+		removeLabel(labelName, &ts.Labels)
+	}
+	if len(ts.Labels) == 0 {
+		return emptyPreallocSeries, nil
+	}
+
+	key, err := d.tokenForLabels(userID, ts.Labels)
+	if err != nil {
+		return emptyPreallocSeries, err
+	}
+
+	labelsHistogram.Observe(float64(len(ts.Labels)))
+	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
+		return emptyPreallocSeries, err
+	}
+
+	metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
+	samples := make([]client.Sample, 0, len(ts.Samples))
+	for _, s := range ts.Samples {
+		if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
+			return emptyPreallocSeries, err
+		}
+		samples = append(samples, s)
+	}
+
+	return client.PreallocTimeseries{
+			TimeSeries: &client.TimeSeries{
+				Labels:  ts.Labels,
+				Samples: samples,
+			},
+		},
+		nil
 }
 
 // Push implements client.IngesterServer
@@ -308,7 +355,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			}
 			return nil, err
 		}
-		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels
+		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
 		if !removeReplica {
 			nonHASamples.WithLabelValues(userID).Add(float64(numSamples))
 		}
@@ -320,20 +367,20 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	keys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
 	for _, ts := range req.Timeseries {
-		// If we found both the cluster and replica labels, we only want to include the cluster label when
-		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
-		// series we're trying to dedupe when HA tracking moves over to a different replica.
-		if removeReplica {
-			removeReplicaLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
-		}
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
 			return nil, err
 		}
 
-		labelsHistogram.Observe(float64(len(ts.Labels)))
-		if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
+		validatedSeries, err := d.validateSeries(key, ts, userID, removeReplica)
+		// Errors in validation are considered non-fatal, as one series in a request may contain
+		// invalid data but all the remaining series could be perfectly valid.
+		if err != nil {
 			lastPartialErr = err
+		}
+
+		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
+		if validatedSeries == emptyPreallocSeries {
 			continue
 		}
 
@@ -348,13 +395,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		keys = append(keys, key)
-		validatedTimeseries = append(validatedTimeseries, client.PreallocTimeseries{
-			TimeSeries: &client.TimeSeries{
-				Labels:  ts.Labels,
-				Samples: samples,
-			},
-		})
-
+		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedSamples += len(ts.Samples)
 	}
 	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))

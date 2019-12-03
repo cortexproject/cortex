@@ -108,6 +108,9 @@ The ingester query API was improved over time, but defaults to the old behaviour
 - `distributor.ha-tracker.enable` 
    Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option `enable-for-all-users` is still needed to enable ingestion of HA samples for all users.
 
+- `distributor.drop-label`
+   This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.
+
 ### Ring/HA Tracker Store
 
 The KVStore client is used by both the Ring and HA Tracker.
@@ -177,7 +180,7 @@ Flags for configuring KV store based on memberlist library. This feature is expe
 
 ### HA Tracker
 
-HA tracking has two of it's own flags:
+HA tracking has two of its own flags:
 - `distributor.ha-tracker.cluster`
    Prometheus label to look for in samples to identify a Prometheus HA cluster. (default "cluster")
 - `distributor.ha-tracker.replica`

@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"testing"
@@ -24,7 +25,7 @@ var (
 	ctx    = context.Background()
 	engine = promql.NewEngine(promql.EngineOpts{
 		Reg:                prometheus.DefaultRegisterer,
-		MaxConcurrent:      100,
+		MaxConcurrent:      1000,
 		Logger:             util.Logger,
 		Timeout:            1 * time.Hour,
 		MaxSamples:         10e6,
@@ -484,8 +485,8 @@ func Test_FunctionParallelism(t *testing.T) {
 					require.Equal(t, basePt.T, shardPt.T)
 					require.Equal(
 						t,
-						fmt.Sprintf("%.6f", basePt.V),
-						fmt.Sprintf("%.6f", shardPt.V),
+						math.Round(basePt.V*1e6)/1e6,
+						math.Round(shardPt.V*1e6)/1e6,
 					)
 				}
 
@@ -512,6 +513,11 @@ type testMatrix struct {
 	series []*promql.StorageSeries
 }
 
+func (m *testMatrix) Copy() *testMatrix {
+	cpy := *m
+	return &cpy
+}
+
 func (m testMatrix) Next() bool { return len(m.series) != 0 }
 
 func (m *testMatrix) At() storage.Series {
@@ -532,7 +538,7 @@ func (m *testMatrix) Select(selectParams *storage.SelectParams, matchers ...*lab
 		return splitByShard(s.Shard, s.Of, m), nil, nil
 	}
 
-	return m, nil, nil
+	return m.Copy(), nil, nil
 }
 
 func (m *testMatrix) LabelValues(name string) ([]string, storage.Warnings, error) {

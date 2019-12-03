@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMiddleware(t *testing.T) {
+func TestQueryshardingMiddleware(t *testing.T) {
 	var testExpr = []struct {
 		name     string
 		next     Handler
@@ -290,6 +290,120 @@ func parseDate(in string) model.Time {
 		panic(err)
 	}
 	return model.Time(t.UnixNano())
+}
+
+// mappingValidator can be injected into a middleware chain to assert that a query matches an expected query
+type mappingValidator struct {
+	t        *testing.T
+	expected string
+	next     Handler
+}
+
+func (v *mappingValidator) Do(ctx context.Context, req Request) (Response, error) {
+	expr, err := promql.ParseExpr(req.GetQuery())
+	require.Nil(v.t, err)
+
+	require.Equal(v.t, v.expected, expr.String())
+	return v.next.Do(ctx, req)
+}
+
+// approximatelyEquals ensures two responses are approximately equal, up to 6 decimals precision per sample
+func approximatelyEquals(t *testing.T, a, b *PrometheusResponse) {
+	require.Equal(t, a.Status, b.Status)
+	if a.Status != StatusSuccess {
+		return
+	}
+	as, err := ResponseToSamples(a)
+	require.Nil(t, err)
+	bs, err := ResponseToSamples(b)
+	require.Nil(t, err)
+
+	require.Equal(t, len(as), len(bs))
+
+	for i := 0; i < len(as); i++ {
+		a := as[i]
+		b := bs[i]
+		require.Equal(t, a.Labels, b.Labels)
+		require.Equal(t, len(a.Samples), len(b.Samples))
+
+		for j := 0; j < len(a.Samples); j++ {
+			aSample := &a.Samples[j]
+			aSample.Value = math.Round(aSample.Value*1e6) / 1e6
+			bSample := &b.Samples[j]
+			bSample.Value = math.Round(bSample.Value*1e6) / 1e6
+		}
+		require.Equal(t, a, b)
+	}
+}
+
+func TestQueryshardingCorrectness(t *testing.T) {
+	shardFactor := 2
+	req := &PrometheusRequest{
+		Path:  "/query_range",
+		Start: start.UnixNano() / nanosecondsInMillisecond,
+		End:   end.UnixNano() / nanosecondsInMillisecond,
+		Step:  int64(step) / int64(time.Second),
+	}
+	for _, tc := range []struct {
+		desc   string
+		query  string
+		mapped string
+	}{
+		{
+			desc:   "fully encoded histogram_quantile",
+			query:  `histogram_quantile(0.5, rate(bar1{baz="blip"}[30s]))`,
+			mapped: `__embedded_queries__{__cortex_queries__="{\"Concat\":[\"histogram_quantile(0.5, rate(bar1{baz=\\\"blip\\\"}[30s]))\"]}"}`,
+		},
+		{
+			desc:   "entire query with shard summer",
+			query:  `sum by (foo,bar) (min_over_time(bar1{baz="blip"}[1m]))`,
+			mapped: `sum by(foo, bar) (__embedded_queries__{__cortex_queries__="{\"Concat\":[\"sum by(foo, bar, __cortex_shard__) (min_over_time(bar1{__cortex_shard__=\\\"0_of_2\\\",baz=\\\"blip\\\"}[1m]))\",\"sum by(foo, bar, __cortex_shard__) (min_over_time(bar1{__cortex_shard__=\\\"1_of_2\\\",baz=\\\"blip\\\"}[1m]))\"]}"})`,
+		},
+		{
+			desc:   "shard one leg encode the other",
+			query:  "sum(rate(bar1[1m])) or rate(bar1[1m])",
+			mapped: `sum without(__cortex_shard__) (__embedded_queries__{__cortex_queries__="{\"Concat\":[\"sum by(__cortex_shard__) (rate(bar1{__cortex_shard__=\\\"0_of_2\\\"}[1m]))\",\"sum by(__cortex_shard__) (rate(bar1{__cortex_shard__=\\\"1_of_2\\\"}[1m]))\"]}"}) or __embedded_queries__{__cortex_queries__="{\"Concat\":[\"rate(bar1[1m])\"]}"}`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			mapperware, shardingware := NewQueryShardMiddleware(
+				log.NewNopLogger(),
+				engine,
+				// ensure that all requests are shard compatbile
+				ShardingConfigs{
+					chunk.PeriodConfig{
+						Schema:    "v10",
+						RowShards: uint32(shardFactor),
+					},
+				},
+			)
+
+			downstream := &downstreamHandler{
+				engine:    engine,
+				queryable: shardAwareQueryable,
+			}
+
+			assertionMWare := MiddlewareFunc(func(next Handler) Handler {
+				return &mappingValidator{
+					t:        t,
+					expected: tc.mapped,
+					next:     next,
+				}
+			})
+
+			shardedMWare := MergeMiddlewares(mapperware, assertionMWare, shardingware).Wrap(downstream)
+			passthrough := downstream
+
+			r := req.WithQuery(tc.query)
+			shardedRes, err := shardedMWare.Do(context.Background(), r)
+			require.Nil(t, err)
+
+			res, err := passthrough.Do(context.Background(), r)
+			require.Nil(t, err)
+
+			approximatelyEquals(t, res.(*PrometheusResponse), shardedRes.(*PrometheusResponse))
+		})
+	}
 }
 
 func BenchmarkQuerySharding(b *testing.B) {

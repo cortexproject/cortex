@@ -1,4 +1,4 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Configuration</title><link>/docs/configuration/</link><description>Recent content in Configuration on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/configuration/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Cortex Arguments</title><link>/docs/configuration/arguments.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/arguments.md/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Configuration</title><link>/docs/configuration/</link><description>Recent content in Configuration on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/configuration/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Cortex Arguments</title><link>/docs/configuration/arguments/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/arguments/</guid><description>
 &lt;h2 id=&#34;general-notes&#34;&gt;General Notes&lt;/h2&gt;
 &lt;p&gt;Cortex has evolved over several years, and the command-line options sometimes reflect this heritage. In some cases the default value for options is not the recommended value, and in some cases names do not reflect the true meaning. We do intend to clean this up, but it requires a lot of care to avoid breaking existing installations. In the meantime we regret the inconvenience.&lt;/p&gt;
 &lt;p&gt;Duration arguments should be specified with a unit like &lt;code&gt;5s&lt;/code&gt; or &lt;code&gt;3h&lt;/code&gt;. Valid time units are &amp;ldquo;ms&amp;rdquo;, &amp;ldquo;s&amp;rdquo;, &amp;ldquo;m&amp;rdquo;, &amp;ldquo;h&amp;rdquo;.&lt;/p&gt;
@@ -181,15 +181,13 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;/ul&gt;
 &lt;p&gt;The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created. (default 12h)&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;code&gt;-ingester.max-chunk-idle&lt;/code&gt;
-&lt;br /&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-ingester.max-chunk-idle&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;If a series doesn&amp;rsquo;t receive a sample for this duration, it is flushed and removed from memory.&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;code&gt;-ingester.max-stale-chunk-idle&lt;/code&gt;
-&lt;br /&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-ingester.max-stale-chunk-idle&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;If a series receives a &lt;a href=&#34;https://www.robustperception.io/staleness-and-promql&#34; target=&#34;_blank&#34;&gt;staleness marker&lt;/a&gt;, then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don&amp;rsquo;t want a single failed scrape to cause a chunk flush.&lt;/p&gt;
+&lt;p&gt;If a series receives a &lt;a href=&#34;https://www.robustperception.io/staleness-and-promql&#34;&gt;staleness marker&lt;/a&gt;, then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don&amp;rsquo;t want a single failed scrape to cause a chunk flush.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ingester.chunk-age-jitter&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
@@ -201,11 +199,11 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ingester.join-after&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;How long to wait in PENDING state during the &lt;a href=&#34;/docs/guides/ingester-handover.md/&#34; target=&#34;_blank&#34;&gt;hand-over process&lt;/a&gt;. (default 0s)&lt;/p&gt;
+&lt;p&gt;How long to wait in PENDING state during the &lt;a href=&#34;/docs/guides/ingester-handover/&#34;&gt;hand-over process&lt;/a&gt;. (default 0s)&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ingester.max-transfer-retries&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;How many times a LEAVING ingester tries to find a PENDING ingester during the &lt;a href=&#34;/docs/guides/ingester-handover.md/&#34; target=&#34;_blank&#34;&gt;hand-over process&lt;/a&gt;. Each attempt takes a second or so. Negative value or zero disables hand-over process completely. (default 10)&lt;/p&gt;
+&lt;p&gt;How many times a LEAVING ingester tries to find a PENDING ingester during the &lt;a href=&#34;/docs/guides/ingester-handover/&#34;&gt;hand-over process&lt;/a&gt;. Each attempt takes a second or so. Negative value or zero disables hand-over process completely. (default 10)&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ingester.normalise-tokens&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
@@ -292,7 +290,7 @@ Make sure you configure ingesters with a different cache to queriers, which need
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;s3.force-path-style&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;Set this to &lt;code&gt;true&lt;/code&gt; to force the request to use path-style addressing (&lt;code&gt;http://s3.amazonaws.com/BUCKET/KEY&lt;/code&gt;). By default, the S3 client will use virtual hosted bucket addressing when possible (&lt;code&gt;http://BUCKET.s3.amazonaws.com/KEY&lt;/code&gt;).&lt;/p&gt;</description></item><item><title>Docs: Prometheus Frontend</title><link>/docs/configuration/prometheus-frontend.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/prometheus-frontend.md/</guid><description>
+&lt;p&gt;Set this to &lt;code&gt;true&lt;/code&gt; to force the request to use path-style addressing (&lt;code&gt;http://s3.amazonaws.com/BUCKET/KEY&lt;/code&gt;). By default, the S3 client will use virtual hosted bucket addressing when possible (&lt;code&gt;http://BUCKET.s3.amazonaws.com/KEY&lt;/code&gt;).&lt;/p&gt;</description></item><item><title>Docs: Prometheus Frontend</title><link>/docs/configuration/prometheus-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/prometheus-frontend/</guid><description>
 &lt;p&gt;You can use the Cortex query frontend with any Prometheus-API compatible
 service, including Prometheus and Thanos. Use this config file to get
 the benefits of query parallelisation and caching.&lt;/p&gt;
@@ -309,12 +307,10 @@ the benefits of query parallelisation and caching.&lt;/p&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;server&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;http_listen_port&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9091&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;frontend&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;log_queries_longer_than&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1s&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;query_range&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;split_queries_by_day&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;align_queries_with_step&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;cache_results&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;compress_responses&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;results_cache&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;max_freshness&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1m&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
@@ -335,7 +331,12 @@ the benefits of query parallelisation and caching.&lt;/p&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# memcached_client:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# host: memcached.default.svc.cluster.local&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# service: memcached&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# consistent_hash: true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config.md/</guid><description>
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# consistent_hash: true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;frontend&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;log_queries_longer_than&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1s&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;compress_responses&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
 &lt;p&gt;Configuration for running Cortex in single-process mode.
 This should not be used in production. It is only for getting started
 and development.&lt;/p&gt;

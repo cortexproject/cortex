@@ -1,4 +1,4 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Documentation</title><link>/docs/</link><description>Recent content in Documentation on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Cortex Arguments</title><link>/docs/configuration/arguments.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/arguments.md/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Documentation</title><link>/docs/</link><description>Recent content in Documentation on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Cortex Arguments</title><link>/docs/configuration/arguments/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/arguments/</guid><description>
 &lt;h2 id=&#34;general-notes&#34;&gt;General Notes&lt;/h2&gt;
 &lt;p&gt;Cortex has evolved over several years, and the command-line options sometimes reflect this heritage. In some cases the default value for options is not the recommended value, and in some cases names do not reflect the true meaning. We do intend to clean this up, but it requires a lot of care to avoid breaking existing installations. In the meantime we regret the inconvenience.&lt;/p&gt;
 &lt;p&gt;Duration arguments should be specified with a unit like &lt;code&gt;5s&lt;/code&gt; or &lt;code&gt;3h&lt;/code&gt;. Valid time units are &amp;ldquo;ms&amp;rdquo;, &amp;ldquo;s&amp;rdquo;, &amp;ldquo;m&amp;rdquo;, &amp;ldquo;h&amp;rdquo;.&lt;/p&gt;
@@ -181,15 +181,13 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;/ul&gt;
 &lt;p&gt;The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created. (default 12h)&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;code&gt;-ingester.max-chunk-idle&lt;/code&gt;
-&lt;br /&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-ingester.max-chunk-idle&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;If a series doesn&amp;rsquo;t receive a sample for this duration, it is flushed and removed from memory.&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;code&gt;-ingester.max-stale-chunk-idle&lt;/code&gt;
-&lt;br /&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-ingester.max-stale-chunk-idle&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;If a series receives a &lt;a href=&#34;https://www.robustperception.io/staleness-and-promql&#34; target=&#34;_blank&#34;&gt;staleness marker&lt;/a&gt;, then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don&amp;rsquo;t want a single failed scrape to cause a chunk flush.&lt;/p&gt;
+&lt;p&gt;If a series receives a &lt;a href=&#34;https://www.robustperception.io/staleness-and-promql&#34;&gt;staleness marker&lt;/a&gt;, then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don&amp;rsquo;t want a single failed scrape to cause a chunk flush.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ingester.chunk-age-jitter&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
@@ -201,11 +199,11 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ingester.join-after&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;How long to wait in PENDING state during the &lt;a href=&#34;/docs/guides/ingester-handover.md/&#34; target=&#34;_blank&#34;&gt;hand-over process&lt;/a&gt;. (default 0s)&lt;/p&gt;
+&lt;p&gt;How long to wait in PENDING state during the &lt;a href=&#34;/docs/guides/ingester-handover/&#34;&gt;hand-over process&lt;/a&gt;. (default 0s)&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ingester.max-transfer-retries&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;How many times a LEAVING ingester tries to find a PENDING ingester during the &lt;a href=&#34;/docs/guides/ingester-handover.md/&#34; target=&#34;_blank&#34;&gt;hand-over process&lt;/a&gt;. Each attempt takes a second or so. Negative value or zero disables hand-over process completely. (default 10)&lt;/p&gt;
+&lt;p&gt;How many times a LEAVING ingester tries to find a PENDING ingester during the &lt;a href=&#34;/docs/guides/ingester-handover/&#34;&gt;hand-over process&lt;/a&gt;. Each attempt takes a second or so. Negative value or zero disables hand-over process completely. (default 10)&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-ingester.normalise-tokens&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
@@ -292,20 +290,20 @@ Make sure you configure ingesters with a different cache to queriers, which need
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;s3.force-path-style&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;Set this to &lt;code&gt;true&lt;/code&gt; to force the request to use path-style addressing (&lt;code&gt;http://s3.amazonaws.com/BUCKET/KEY&lt;/code&gt;). By default, the S3 client will use virtual hosted bucket addressing when possible (&lt;code&gt;http://BUCKET.s3.amazonaws.com/KEY&lt;/code&gt;).&lt;/p&gt;</description></item><item><title>Docs: Running Cortex in Production</title><link>/docs/guides/running.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running.md/</guid><description>
+&lt;p&gt;Set this to &lt;code&gt;true&lt;/code&gt; to force the request to use path-style addressing (&lt;code&gt;http://s3.amazonaws.com/BUCKET/KEY&lt;/code&gt;). By default, the S3 client will use virtual hosted bucket addressing when possible (&lt;code&gt;http://BUCKET.s3.amazonaws.com/KEY&lt;/code&gt;).&lt;/p&gt;</description></item><item><title>Docs: Running Cortex in Production</title><link>/docs/guides/running-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running-in-production/</guid><description>
 &lt;p&gt;This document assumes you have read the
-&lt;a href=&#34;/docs/architecture.md/&#34; target=&#34;_blank&#34;&gt;architecture&lt;/a&gt; document.&lt;/p&gt;
+&lt;a href=&#34;/docs/architecture/&#34;&gt;architecture&lt;/a&gt; document.&lt;/p&gt;
 &lt;p&gt;In addition to the general advice in this document, please see these
 platform-specific notes:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;/docs/guides/aws-specific.md/&#34; target=&#34;_blank&#34;&gt;AWS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;/docs/guides/aws/&#34;&gt;AWS&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;planning&#34;&gt;Planning&lt;/h2&gt;
 &lt;h3 id=&#34;tenants&#34;&gt;Tenants&lt;/h3&gt;
 &lt;p&gt;If you will run Cortex as a multi-tenant system, you need to give each
 tenant a unique ID - this can be any string. Managing tenants and
 allocating IDs must be done outside of Cortex. You must also configure
-&lt;a href=&#34;/docs/guides/auth.md/&#34; target=&#34;_blank&#34;&gt;Authentication and Authorisation&lt;/a&gt;.&lt;/p&gt;
+&lt;a href=&#34;/docs/guides/auth/&#34;&gt;Authentication and Authorisation&lt;/a&gt;.&lt;/p&gt;
 &lt;h3 id=&#34;storage&#34;&gt;Storage&lt;/h3&gt;
 &lt;p&gt;Cortex requires a scalable storage back-end. Commercial cloud options
 are DynamoDB and Bigtable: the advantage is you don&amp;rsquo;t have to know how
@@ -360,7 +358,7 @@ total rate at which samples will arrive at Cortex.&lt;/li&gt;
 &lt;li&gt;The rate at which series are added and removed. This can be very
 high if you monitor objects that come and go - for example if you run
 thousands of batch jobs lasting a minute or so and capture metrics
-with a unique ID for each one. &lt;a href=&#34;https://www.robustperception.io/using-tsdb-analyze-to-investigate-churn-and-cardinality&#34; target=&#34;_blank&#34;&gt;Read how to analyse this on
+with a unique ID for each one. &lt;a href=&#34;https://www.robustperception.io/using-tsdb-analyze-to-investigate-churn-and-cardinality&#34;&gt;Read how to analyse this on
 Prometheus&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;How compressible the time-series data are. If a metric stays at
 the same value constantly, then Cortex can compress it very well, so
@@ -478,7 +476,7 @@ the same data:&lt;/p&gt;
 &lt;p&gt;Add a chunk cache via &lt;code&gt;-memcached.hostname&lt;/code&gt; to allow writes to be de-duplicated.&lt;/p&gt;
 &lt;p&gt;As recommended under &lt;a href=&#34;#chunk-encoding&#34;&gt;Chunk encoding&lt;/a&gt;, use Bigchunk:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt; -ingester.chunk-encoding=3 # bigchunk
-&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth.md/</guid><description>
+&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
 &lt;p&gt;All Cortex components take the tenant ID from a header &lt;code&gt;X-Scope-OrgID&lt;/code&gt;
 on each request. They trust this value completely: if you need to
 protect your Cortex installation from accidental or malicious calls
@@ -489,7 +487,7 @@ interface and humans sending queries from GUIs, supply credentials
 which identify them and confirm they are authorised.&lt;/p&gt;
 &lt;p&gt;When configuring the remote_write API in Prometheus there is no way to
 add extra headers. The user and password fields of http Basic auth, or
-Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p&gt;</description></item><item><title>Docs: Prometheus Frontend</title><link>/docs/configuration/prometheus-frontend.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/prometheus-frontend.md/</guid><description>
+Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p&gt;</description></item><item><title>Docs: Prometheus Frontend</title><link>/docs/configuration/prometheus-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/prometheus-frontend/</guid><description>
 &lt;p&gt;You can use the Cortex query frontend with any Prometheus-API compatible
 service, including Prometheus and Thanos. Use this config file to get
 the benefits of query parallelisation and caching.&lt;/p&gt;
@@ -506,12 +504,10 @@ the benefits of query parallelisation and caching.&lt;/p&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;server&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;http_listen_port&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9091&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;frontend&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;log_queries_longer_than&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1s&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;query_range&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;split_queries_by_day&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;align_queries_with_step&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;cache_results&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;compress_responses&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;results_cache&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;max_freshness&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1m&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
@@ -532,20 +528,25 @@ the benefits of query parallelisation and caching.&lt;/p&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# memcached_client:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# host: memcached.default.svc.cluster.local&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# service: memcached&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# consistent_hash: true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Getting Started</title><link>/docs/getting_started/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting_started/</guid><description>
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# consistent_hash: true&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;frontend&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;log_queries_longer_than&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;1s&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;compress_responses&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Getting Started</title><link>/docs/getting-started/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/</guid><description>
 &lt;p&gt;Cortex can be runs as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
 This document will focus on single-process Cortex.
-See &lt;a href=&#34;/docs/architecture.md/&#34; target=&#34;_blank&#34;&gt;the architecture doc&lt;/a&gt; For more information about the microservices.&lt;/p&gt;
+See &lt;a href=&#34;/docs/architecture/&#34;&gt;the architecture doc&lt;/a&gt; For more information about the microservices.&lt;/p&gt;
 &lt;p&gt;Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (DynamoDB, Bigtable, Cassandra, S3, GCS etc).
 This document will focus on using local storage.
 Local storage is explicitly not production ready at this time.
 Cortex can also make use of external memcacheds for caching and although these are not mandatory, they should be used in production.&lt;/p&gt;
 &lt;h2 id=&#34;single-instance-single-process&#34;&gt;Single instance, single process&lt;/h2&gt;
-&lt;p&gt;For simplicity &amp;amp; to get started, we&amp;rsquo;ll run it as a single process with no dependencies:&lt;/p&gt;
+&lt;p&gt;For simplicity &amp;amp; to get started, we&amp;rsquo;ll run it as a &lt;a href=&#34;/docs/configuration/single-process-config/&#34;&gt;single process&lt;/a&gt; with no dependencies:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ go build ./cmd/cortex
-$ ./cortex -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./docs/single-process-config.yaml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+$ ./cortex -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./docs/configuration/single-process-config.yaml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;This starts a single Cortex node storing chunks and index to your local filesystem in &lt;code&gt;/tmp/cortex&lt;/code&gt;.
 It is not intended for production use.&lt;/p&gt;
 &lt;p&gt;Add the following to your Prometheus config (documentation/examples/prometheus.yml in Prometheus repo):&lt;/p&gt;
@@ -558,7 +559,7 @@ $ go build ./cmd/prometheus
 $ ./prometheus --config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./documentation/examples/prometheus.yml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;Your Prometheus instance will now start pushing data to Cortex. To query that data, start a Grafana instance:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;grafana -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;3000&lt;/span&gt;:3000 grafana/grafana&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;In &lt;a href=&#34;http://localhost:3000&#34; target=&#34;_blank&#34;&gt;the Grafana UI&lt;/a&gt; (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code&gt;http://host.docker.internal:9009/api/prom&lt;/code&gt;).&lt;/p&gt;
+&lt;p&gt;In &lt;a href=&#34;http://localhost:3000&#34;&gt;the Grafana UI&lt;/a&gt; (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code&gt;http://host.docker.internal:9009/api/prom&lt;/code&gt;).&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;To clean up:&lt;/strong&gt; press CTRL-C in both terminals (for Cortex and Promrtheus) and run &lt;code&gt;docker rm -f grafana&lt;/code&gt;.&lt;/p&gt;
 &lt;h2 id=&#34;horizontally-scale-out&#34;&gt;Horizontally scale out&lt;/h2&gt;
 &lt;p&gt;Next we&amp;rsquo;re going to show how you can run a scale out Cortex cluster using Docker.
@@ -569,22 +570,22 @@ We&amp;rsquo;ll need:
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ make ./cmd/cortex/.uptodate
 $ docker network create cortex
 $ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;consul --network&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex -e &lt;span style=&#34;color:#000&#34;&gt;CONSUL_BIND_INTERFACE&lt;/span&gt;&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;eth0 consul&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;Next we&amp;rsquo;ll run a couple of Cortex instances pointed at that Consul. You&amp;rsquo;ll note with Cortex configuration can be specified in either a config file or overridden on the command line. See &lt;a href=&#34;/docs/configuration/arguments.md/&#34; target=&#34;_blank&#34;&gt;the arguments documentation&lt;/a&gt; for more information about Cortex configuration options.&lt;/p&gt;
+&lt;p&gt;Next we&amp;rsquo;ll run a couple of Cortex instances pointed at that Consul. You&amp;rsquo;ll note with Cortex configuration can be specified in either a config file or overridden on the command line. See &lt;a href=&#34;/docs/configuration/arguments/&#34;&gt;the arguments documentation&lt;/a&gt; for more information about Cortex configuration options.&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex1 --network&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
-&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
+&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9001&lt;/span&gt;:9009 &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; quay.io/cortexproject/cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -ring.store&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;consul &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -consul.hostname&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;consul:8500
 $ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex2 --network&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
-&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
+&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9002&lt;/span&gt;:9009 &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; quay.io/cortexproject/cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -ring.store&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;consul &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -consul.hostname&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;consul:8500&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;If you go to &lt;a href=&#34;http://localhost:9001/ring&#34; target=&#34;_blank&#34;&gt;http://localhost:9001/ring&lt;/a&gt; (or &lt;a href=&#34;http://localhost:9002/ring&#34; target=&#34;_blank&#34;&gt;http://localhost:9002/ring&lt;/a&gt;) you should see both Cortex nodes join the ring.&lt;/p&gt;
+&lt;p&gt;If you go to &lt;a href=&#34;http://localhost:9001/ring&#34;&gt;http://localhost:9001/ring&lt;/a&gt; (or &lt;a href=&#34;http://localhost:9002/ring&#34;&gt;http://localhost:9002/ring&lt;/a&gt;) you should see both Cortex nodes join the ring.&lt;/p&gt;
 &lt;p&gt;To demonstrate the correct operation of Cortex clustering, we&amp;rsquo;ll send samples
 to one of the instances and queries to another. In production, you&amp;rsquo;d want to
 load balance both pushes and queries evenly among all the nodes.&lt;/p&gt;
@@ -593,7 +594,7 @@ load balance both pushes and queries evenly among all the nodes.&lt;/p&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;&lt;/span&gt;-&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;url&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;http&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;//localhost&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9001&lt;/span&gt;/api/prom/push&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ ./prometheus --config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;./documentation/examples/prometheus.yml&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;And Grafana at the second:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;grafana --network&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;3000&lt;/span&gt;:3000 grafana/grafana&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;In &lt;a href=&#34;http://localhost:3000&#34; target=&#34;_blank&#34;&gt;the Grafana UI&lt;/a&gt; (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code&gt;http://cortex2:9009/api/prom&lt;/code&gt;).&lt;/p&gt;
+&lt;p&gt;In &lt;a href=&#34;http://localhost:3000&#34;&gt;the Grafana UI&lt;/a&gt; (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code&gt;http://cortex2:9009/api/prom&lt;/code&gt;).&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;To clean up:&lt;/strong&gt; CTRL-C the Prometheus process and run:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;$ docker rm -f cortex1 cortex2 consul grafana
 $ docker network remove cortex
@@ -607,7 +608,7 @@ $ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt
 $ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;grafana --network&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;3000&lt;/span&gt;:3000 grafana/grafana&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;Finally, launch 3 Cortex nodes with replication factor 3:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-sh&#34; data-lang=&#34;sh&#34;&gt;$ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex1 --network&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
-&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
+&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9001&lt;/span&gt;:9009 &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; quay.io/cortexproject/cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
@@ -615,7 +616,7 @@ $ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -consul.hostname&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;consul:8500 &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -distributor.replication-factor&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;3&lt;/span&gt;
 $ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex2 --network&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
-&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
+&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9002&lt;/span&gt;:9009 &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; quay.io/cortexproject/cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
@@ -623,7 +624,7 @@ $ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -consul.hostname&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;consul:8500 &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -distributor.replication-factor&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;3&lt;/span&gt;
 $ docker run -d --name&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex3 --network&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
-&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
+&lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -v &lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;$(&lt;/span&gt;&lt;span style=&#34;color:#204a87&#34;&gt;pwd&lt;/span&gt;&lt;span style=&#34;color:#204a87;font-weight:bold&#34;&gt;)&lt;/span&gt;/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -p &lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;9003&lt;/span&gt;:9009 &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; quay.io/cortexproject/cortex &lt;span style=&#34;color:#4e9a06&#34;&gt;\
 &lt;/span&gt;&lt;span style=&#34;color:#4e9a06&#34;&gt;&lt;/span&gt; -config.file&lt;span style=&#34;color:#ce5c00;font-weight:bold&#34;&gt;=&lt;/span&gt;/etc/single-process-config.yaml &lt;span style=&#34;color:#4e9a06&#34;&gt;\
@@ -642,14 +643,14 @@ and verify the same data appears in both Prometheus and Cortex.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;To clean up:&lt;/strong&gt; CTRL-C the Prometheus process and run:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;$ docker rm -f cortex1 cortex2 cortex3 consul grafana
 $ docker network remove cortex
-&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Running Cortex at AWS</title><link>/docs/guides/aws-specific.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/aws-specific.md/</guid><description>
+&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Running Cortex at AWS</title><link>/docs/guides/aws/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/aws/</guid><description>
 &lt;p&gt;[this is a work in progress]&lt;/p&gt;
-&lt;p&gt;See also the &lt;a href=&#34;/docs/guides/running.md/&#34; target=&#34;_blank&#34;&gt;Running in Production&lt;/a&gt; document.&lt;/p&gt;
+&lt;p&gt;See also the &lt;a href=&#34;/docs/guides/running-in-production/&#34;&gt;Running in Production&lt;/a&gt; document.&lt;/p&gt;
 &lt;h2 id=&#34;credentials&#34;&gt;Credentials&lt;/h2&gt;
 &lt;p&gt;You can supply credentials to Cortex by setting environment variables
 &lt;code&gt;AWS_ACCESS_KEY_ID&lt;/code&gt;, &lt;code&gt;AWS_SECRET_ACCESS_KEY&lt;/code&gt; (and &lt;code&gt;AWS_SESSION_TOKEN&lt;/code&gt;
 if you use MFA), or use a short-term token solution such as
-&lt;a href=&#34;https://github.com/uswitch/kiam&#34; target=&#34;_blank&#34;&gt;kiam&lt;/a&gt;.&lt;/p&gt;
+&lt;a href=&#34;https://github.com/uswitch/kiam&#34;&gt;kiam&lt;/a&gt;.&lt;/p&gt;
 &lt;h2 id=&#34;should-i-use-s3-or-dynamodb&#34;&gt;Should I use S3 or DynamoDB ?&lt;/h2&gt;
 &lt;p&gt;Note that the choices are: &amp;ldquo;chunks&amp;rdquo; of timeseries data in S3 and index
 in DynamoDB, or everything in DynamoDB. Using just S3 is not an option.&lt;/p&gt;
@@ -714,7 +715,7 @@ minutes to finish scaling. In the config above they are set.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;ondemand-throughput-mode&lt;/code&gt; tells AWS to charge for what you use, as
 opposed to continuous provisioning. This mode is cost-effective for
 older data, which is never written and only read sporadically.&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config.md/</guid><description>
+&lt;/ul&gt;</description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
 &lt;p&gt;Configuration for running Cortex in single-process mode.
 This should not be used in production. It is only for getting started
 and development.&lt;/p&gt;
@@ -779,7 +780,7 @@ and development.&lt;/p&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;directory&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;/tmp/cortex/index&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
 &lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;filesystem&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
-&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;directory&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;/tmp/cortex/chunks&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling.md/</guid><description>
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;directory&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;/tmp/cortex/chunks&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;</description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling/</guid><description>
 &lt;h2 id=&#34;context&#34;&gt;Context&lt;/h2&gt;
 &lt;p&gt;You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p&gt;
 &lt;p&gt;Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheis T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheis, T1.a, T1.b and T2.a and T2.b.&lt;/p&gt;
@@ -800,11 +801,11 @@ replica: replica2
 &lt;p&gt;These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be &lt;code&gt;team&lt;/code&gt;, &lt;code&gt;cluster&lt;/code&gt;, &lt;code&gt;prometheus&lt;/code&gt;, etc.&lt;/p&gt;
 &lt;p&gt;The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data, but preserves the cluster label. This way, your timeseries won&amp;rsquo;t change when replicas change.&lt;/p&gt;
 &lt;h3 id=&#34;server-side&#34;&gt;Server Side&lt;/h3&gt;
-&lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments.md/#ha-tracker&#34; target=&#34;_blank&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Cortex Architecture</title><link>/docs/architecture.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/architecture.md/</guid><description>
+&lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments/#ha-tracker&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Cortex Architecture</title><link>/docs/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/architecture/</guid><description>
 &lt;p&gt;Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the &lt;a href=&#34;#ingester&#34;&gt;ingesters&lt;/a&gt;) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex&amp;rsquo;s architecture.&lt;/p&gt;
-&lt;p align=&#34;center&#34;&gt;&lt;img src=&#34;https://github.com/cortexproject/cortex/blob/master/docs/architecture.png?raw=true&#34; alt=&#34;Cortex Architecture&#34;&gt;&lt;/p&gt;
+&lt;p align=&#34;center&#34;&gt;&lt;img src=&#34;/images/architecture.png&#34; alt=&#34;Cortex Architecture&#34;&gt;&lt;/p&gt;
 &lt;h2 id=&#34;the-role-of-prometheus&#34;&gt;The role of Prometheus&lt;/h2&gt;
-&lt;p&gt;Prometheus instances scrape samples from various targets and then push them to Cortex (using Prometheus&amp;rsquo; &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations&#34; target=&#34;_blank&#34;&gt;remote write API&lt;/a&gt;). That remote write API emits batched &lt;a href=&#34;https://google.github.io/snappy/&#34; target=&#34;_blank&#34;&gt;Snappy&lt;/a&gt;-compressed &lt;a href=&#34;https://developers.google.com/protocol-buffers/&#34; target=&#34;_blank&#34;&gt;Protocol Buffer&lt;/a&gt; messages inside the body of an HTTP &lt;code&gt;PUT&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;Prometheus instances scrape samples from various targets and then push them to Cortex (using Prometheus&amp;rsquo; &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations&#34;&gt;remote write API&lt;/a&gt;). That remote write API emits batched &lt;a href=&#34;https://google.github.io/snappy/&#34;&gt;Snappy&lt;/a&gt;-compressed &lt;a href=&#34;https://developers.google.com/protocol-buffers/&#34;&gt;Protocol Buffer&lt;/a&gt; messages inside the body of an HTTP &lt;code&gt;PUT&lt;/code&gt; request.&lt;/p&gt;
 &lt;p&gt;Cortex requires that each HTTP request bear a header specifying a tenant ID for the request. Request authentication and authorization are handled by an external reverse proxy.&lt;/p&gt;
 &lt;p&gt;Incoming samples (writes from Prometheus) are handled by the &lt;a href=&#34;#distributor&#34;&gt;distributor&lt;/a&gt; while incoming reads (PromQL queries) are handled by the &lt;a href=&#34;#query-frontend&#34;&gt;query frontend&lt;/a&gt;.&lt;/p&gt;
 &lt;h2 id=&#34;services&#34;&gt;Services&lt;/h2&gt;
@@ -812,7 +813,7 @@ replica: replica2
 &lt;p&gt;Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don&amp;rsquo;t coordinate or communicate with each other within that layer.&lt;/p&gt;
 &lt;h3 id=&#34;distributor&#34;&gt;Distributor&lt;/h3&gt;
 &lt;p&gt;The &lt;strong&gt;distributor&lt;/strong&gt; service is responsible for handling samples written by Prometheus. It&amp;rsquo;s essentially the &amp;ldquo;first stop&amp;rdquo; in the write path for Prometheus samples. Once the distributor receives samples from Prometheus, it splits them into batches and then sends them to multiple &lt;a href=&#34;#ingester&#34;&gt;ingesters&lt;/a&gt; in parallel.&lt;/p&gt;
-&lt;p&gt;Distributors communicate with ingesters via &lt;a href=&#34;https://grpc.io&#34; target=&#34;_blank&#34;&gt;gRPC&lt;/a&gt;. They are stateless and can be scaled up and down as needed.&lt;/p&gt;
+&lt;p&gt;Distributors communicate with ingesters via &lt;a href=&#34;https://grpc.io&#34;&gt;gRPC&lt;/a&gt;. They are stateless and can be scaled up and down as needed.&lt;/p&gt;
 &lt;p&gt;If the HA Tracker is enabled, the Distributor will deduplicate incoming samples that contain both a cluster and replica label. It talks to a KVStore to store state about which replica per cluster it&amp;rsquo;s accepting samples from for a given user ID. Samples with one or neither of these labels will be accepted by default.&lt;/p&gt;
 &lt;h4 id=&#34;hashing&#34;&gt;Hashing&lt;/h4&gt;
 &lt;p&gt;Distributors use consistent hashing, in conjunction with the (configurable) replication factor, to determine &lt;em&gt;which&lt;/em&gt; instances of the ingester service receive each sample.&lt;/p&gt;
@@ -826,17 +827,17 @@ replica: replica2
 &lt;p&gt;This hashing scheme was originally chosen to reduce the number of required ingesters on the query path. The trade-off, however, is that the write load on the ingesters is less even.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;h4 id=&#34;the-hash-ring&#34;&gt;The hash ring&lt;/h4&gt;
-&lt;p&gt;A consistent hash ring is stored in &lt;a href=&#34;https://www.consul.io/&#34; target=&#34;_blank&#34;&gt;Consul&lt;/a&gt; as a single key-value pair, with the ring data structure also encoded as a &lt;a href=&#34;https://developers.google.com/protocol-buffers/&#34; target=&#34;_blank&#34;&gt;Protobuf&lt;/a&gt; message. The consistent hash ring consists of a list of tokens and ingesters. Hashed values are looked up in the ring; the replication set is built for the closest unique ingesters by token. One of the benefits of this system is that adding and remove ingesters results in only 1/&lt;em&gt;N&lt;/em&gt; of the series being moved (where &lt;em&gt;N&lt;/em&gt; is the number of ingesters).&lt;/p&gt;
+&lt;p&gt;A consistent hash ring is stored in &lt;a href=&#34;https://www.consul.io/&#34;&gt;Consul&lt;/a&gt; as a single key-value pair, with the ring data structure also encoded as a &lt;a href=&#34;https://developers.google.com/protocol-buffers/&#34;&gt;Protobuf&lt;/a&gt; message. The consistent hash ring consists of a list of tokens and ingesters. Hashed values are looked up in the ring; the replication set is built for the closest unique ingesters by token. One of the benefits of this system is that adding and remove ingesters results in only 1/&lt;em&gt;N&lt;/em&gt; of the series being moved (where &lt;em&gt;N&lt;/em&gt; is the number of ingesters).&lt;/p&gt;
 &lt;h4 id=&#34;quorum-consistency&#34;&gt;Quorum consistency&lt;/h4&gt;
 &lt;p&gt;All distributors share access to the same hash ring, which means that write requests can be sent to any distributor.&lt;/p&gt;
-&lt;p&gt;To ensure consistent query results, Cortex uses &lt;a href=&#34;https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf&#34; target=&#34;_blank&#34;&gt;Dynamo&lt;/a&gt;-style quorum consistency on reads and writes. This means that the distributor will wait for a positive response of at least one half plus one of the ingesters to send the sample to before responding to the user.&lt;/p&gt;
+&lt;p&gt;To ensure consistent query results, Cortex uses &lt;a href=&#34;https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf&#34;&gt;Dynamo&lt;/a&gt;-style quorum consistency on reads and writes. This means that the distributor will wait for a positive response of at least one half plus one of the ingesters to send the sample to before responding to the user.&lt;/p&gt;
 &lt;h4 id=&#34;load-balancing-across-distributors&#34;&gt;Load balancing across distributors&lt;/h4&gt;
-&lt;p&gt;We recommend randomly load balancing write requests across distributor instances, ideally by running the distributors as a Kubernetes &lt;a href=&#34;https://kubernetes.io/docs/concepts/services-networking/service/&#34; target=&#34;_blank&#34;&gt;Service&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;We recommend randomly load balancing write requests across distributor instances, ideally by running the distributors as a Kubernetes &lt;a href=&#34;https://kubernetes.io/docs/concepts/services-networking/service/&#34;&gt;Service&lt;/a&gt;.&lt;/p&gt;
 &lt;h3 id=&#34;ingester&#34;&gt;Ingester&lt;/h3&gt;
 &lt;p&gt;The &lt;strong&gt;ingester&lt;/strong&gt; service is responsible for writing sample data to long-term storage backends (DynamoDB, S3, Cassandra, etc.).&lt;/p&gt;
 &lt;p&gt;Samples from each timeseries are built up in &amp;ldquo;chunks&amp;rdquo; in memory inside each ingester, then flushed to the &lt;a href=&#34;#chunk-store&#34;&gt;chunk store&lt;/a&gt;. By default each chunk is up to 12 hours long.&lt;/p&gt;
 &lt;p&gt;If an ingester process crashes or exits abruptly, all the data that has not yet been flushed will be lost. Cortex is usually configured to hold multiple (typically 3) replicas of each timeseries to mitigate this risk.&lt;/p&gt;
-&lt;p&gt;A &lt;a href=&#34;/docs/guides/ingester-handover.md/&#34; target=&#34;_blank&#34;&gt;hand-over process&lt;/a&gt; manages the state when ingesters are added, removed or replaced.&lt;/p&gt;
+&lt;p&gt;A &lt;a href=&#34;/docs/guides/ingester-handover/&#34;&gt;hand-over process&lt;/a&gt; manages the state when ingesters are added, removed or replaced.&lt;/p&gt;
 &lt;h4 id=&#34;write-de-amplification&#34;&gt;Write de-amplification&lt;/h4&gt;
 &lt;p&gt;Ingesters store the last 12 hours worth of samples in order to perform &lt;strong&gt;write de-amplification&lt;/strong&gt;, i.e. batching and compressing samples for the same series and flushing them out to the &lt;a href=&#34;#chunk-store&#34;&gt;chunk store&lt;/a&gt;. Under normal operations, there should be &lt;em&gt;many&lt;/em&gt; orders of magnitude fewer operations per second (OPS) worth of writes to the chunk store than to the ingesters.&lt;/p&gt;
 &lt;p&gt;Write de-amplification is the main source of Cortex&amp;rsquo;s low total cost of ownership (TCO).&lt;/p&gt;
@@ -854,7 +855,7 @@ workers then the ruler will lag behind.&lt;/p&gt;
 Ruler, grouping them, and passing on to a notification channel such as
 email, PagerDuty, etc.&lt;/p&gt;
 &lt;p&gt;Like the Ruler, AlertManager is configured per-tenant in a database.&lt;/p&gt;
-&lt;p&gt;&lt;a href=&#34;https://prometheus.io/docs/alerting/alertmanager/&#34; target=&#34;_blank&#34;&gt;Upstream Docs&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;https://prometheus.io/docs/alerting/alertmanager/&#34;&gt;Upstream Docs&lt;/a&gt;.&lt;/p&gt;
 &lt;h3 id=&#34;query-frontend&#34;&gt;Query frontend&lt;/h3&gt;
 &lt;p&gt;The &lt;strong&gt;query frontend&lt;/strong&gt; is an optional service that accepts HTTP requests, queues them by tenant ID, and retries in case of errors.&lt;/p&gt;
 &lt;blockquote&gt;
@@ -874,18 +875,18 @@ email, PagerDuty, etc.&lt;/p&gt;
 &lt;h4 id=&#34;parallelism&#34;&gt;Parallelism&lt;/h4&gt;
 &lt;p&gt;The query frontend job accepts gRPC streaming requests from the queriers, which then &amp;ldquo;pull&amp;rdquo; requests from the frontend. For high availability it&amp;rsquo;s recommended that you run multiple frontends; the queriers will connect to—and pull requests from—all of them. To reap the benefit of fair scheduling, it is recommended that you run fewer frontends than queriers. Two should suffice in most cases.&lt;/p&gt;
 &lt;h3 id=&#34;querier&#34;&gt;Querier&lt;/h3&gt;
-&lt;p&gt;The &lt;strong&gt;querier&lt;/strong&gt; service handles the actual &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/querying/basics/&#34; target=&#34;_blank&#34;&gt;PromQL&lt;/a&gt; evaluation of samples stored in long-term storage.&lt;/p&gt;
+&lt;p&gt;The &lt;strong&gt;querier&lt;/strong&gt; service handles the actual &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/querying/basics/&#34;&gt;PromQL&lt;/a&gt; evaluation of samples stored in long-term storage.&lt;/p&gt;
 &lt;p&gt;It embeds the chunk store client code for fetching data from long-term storage and communicates with &lt;a href=&#34;#ingester&#34;&gt;ingesters&lt;/a&gt; for more recent data.&lt;/p&gt;
 &lt;h2 id=&#34;chunk-store&#34;&gt;Chunk store&lt;/h2&gt;
 &lt;p&gt;The &lt;strong&gt;chunk store&lt;/strong&gt; is Cortex&amp;rsquo;s long-term data store, designed to support interactive querying and sustained writing without the need for background maintenance tasks. It consists of:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;An index for the chunks. This index can be backed by &lt;a href=&#34;https://aws.amazon.com/dynamodb&#34; target=&#34;_blank&#34;&gt;DynamoDB from Amazon Web Services&lt;/a&gt;, &lt;a href=&#34;https://cloud.google.com/bigtable&#34; target=&#34;_blank&#34;&gt;Bigtable from Google Cloud Platform&lt;/a&gt;, &lt;a href=&#34;https://cassandra.apache.org&#34; target=&#34;_blank&#34;&gt;Apache Cassandra&lt;/a&gt;.&lt;/li&gt;
-&lt;li&gt;A key-value (KV) store for the chunk data itself, which can be DynamoDB, Bigtable, Cassandra again, or an object store such as &lt;a href=&#34;https://aws.amazon.com/s3&#34; target=&#34;_blank&#34;&gt;Amazon S3&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;An index for the chunks. This index can be backed by &lt;a href=&#34;https://aws.amazon.com/dynamodb&#34;&gt;DynamoDB from Amazon Web Services&lt;/a&gt;, &lt;a href=&#34;https://cloud.google.com/bigtable&#34;&gt;Bigtable from Google Cloud Platform&lt;/a&gt;, &lt;a href=&#34;https://cassandra.apache.org&#34;&gt;Apache Cassandra&lt;/a&gt;.&lt;/li&gt;
+&lt;li&gt;A key-value (KV) store for the chunk data itself, which can be DynamoDB, Bigtable, Cassandra again, or an object store such as &lt;a href=&#34;https://aws.amazon.com/s3&#34;&gt;Amazon S3&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;blockquote&gt;
 &lt;p&gt;Unlike the other core components of Cortex, the chunk store is not a separate service, job, or process, but rather a library embedded in the three services that need to access Cortex data: the &lt;a href=&#34;#ingester&#34;&gt;ingester&lt;/a&gt;, &lt;a href=&#34;#querier&#34;&gt;querier&lt;/a&gt;, and &lt;a href=&#34;#ruler&#34;&gt;ruler&lt;/a&gt;.&lt;/p&gt;
 &lt;/blockquote&gt;
-&lt;p&gt;The chunk store relies on a unified interface to the &amp;ldquo;&lt;a href=&#34;https://en.wikipedia.org/wiki/NoSQL&#34; target=&#34;_blank&#34;&gt;NoSQL&lt;/a&gt;&amp;rdquo; stores—DynamoDB, Bigtable, and Cassandra—that can be used to back the chunk store index. This interface assumes that the index is a collection of entries keyed by:&lt;/p&gt;
+&lt;p&gt;The chunk store relies on a unified interface to the &amp;ldquo;&lt;a href=&#34;https://en.wikipedia.org/wiki/NoSQL&#34;&gt;NoSQL&lt;/a&gt;&amp;rdquo; stores—DynamoDB, Bigtable, and Cassandra—that can be used to back the chunk store index. This interface assumes that the index is a collection of entries keyed by:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;A &lt;strong&gt;hash key&lt;/strong&gt;. This is required for &lt;em&gt;all&lt;/em&gt; reads and writes.&lt;/li&gt;
 &lt;li&gt;A &lt;strong&gt;range key&lt;/strong&gt;. This is required for writes and can be omitted for reads, which can be queried by prefix or range.&lt;/li&gt;
@@ -898,20 +899,20 @@ email, PagerDuty, etc.&lt;/p&gt;
 &lt;p&gt;A set of schemas are used to map the matchers and label sets used on reads and writes to the chunk store into appropriate operations on the index. Schemas have been added as Cortex has evolved, mainly in an attempt to better load balance writes and improve query performance.&lt;/p&gt;
 &lt;blockquote&gt;
 &lt;p&gt;The current schema recommendation is the &lt;strong&gt;v10 schema&lt;/strong&gt;. v11 schema is an experimental schema.&lt;/p&gt;
-&lt;/blockquote&gt;</description></item><item><title>Docs: Cortex APIs</title><link>/docs/apis.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/apis.md/</guid><description>
+&lt;/blockquote&gt;</description></item><item><title>Docs: Cortex APIs</title><link>/docs/apis/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/apis/</guid><description>
 &lt;p&gt;[this is a work in progress]&lt;/p&gt;
 &lt;h2 id=&#34;remote-api&#34;&gt;Remote API&lt;/h2&gt;
 &lt;p&gt;Cortex supports Prometheus&amp;rsquo;
-&lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_read&#34; target=&#34;_blank&#34;&gt;&lt;code&gt;remote_read&lt;/code&gt;&lt;/a&gt;
+&lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_read&#34;&gt;&lt;code&gt;remote_read&lt;/code&gt;&lt;/a&gt;
 and
-&lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write&#34; target=&#34;_blank&#34;&gt;&lt;code&gt;remote_write&lt;/code&gt;&lt;/a&gt;
+&lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write&#34;&gt;&lt;code&gt;remote_write&lt;/code&gt;&lt;/a&gt;
 APIs. The encoding is Protobuf over http.&lt;/p&gt;
 &lt;p&gt;Read is on &lt;code&gt;/api/prom/read&lt;/code&gt; and write is on &lt;code&gt;/api/prom/push&lt;/code&gt;.&lt;/p&gt;
 &lt;h2 id=&#34;configs-api&#34;&gt;Configs API&lt;/h2&gt;
 &lt;p&gt;The configs service provides an API-driven multi-tenant approach to handling various configuration files for prometheus. The service hosts an API where users can read and write Prometheus rule files, Alertmanager configuration files, and Alertmanager templates to a database.&lt;/p&gt;
 &lt;p&gt;Each tenant will have it&amp;rsquo;s own set of rule files, Alertmanager config, and templates. A POST operation will effectively replace the existing copy with the configs provided in the request body.&lt;/p&gt;
 &lt;h3 id=&#34;configs-format&#34;&gt;Configs Format&lt;/h3&gt;
-&lt;p&gt;At the current time of writing, the API is part-way through a migration from a single Configs service that handled all three sets of data to a split API (&lt;a href=&#34;https://github.com/cortexproject/cortex/issues/619&#34; target=&#34;_blank&#34;&gt;Tracking issue&lt;/a&gt;). All APIs take and return all sets of data.&lt;/p&gt;
+&lt;p&gt;At the current time of writing, the API is part-way through a migration from a single Configs service that handled all three sets of data to a split API (&lt;a href=&#34;https://github.com/cortexproject/cortex/issues/619&#34;&gt;Tracking issue&lt;/a&gt;). All APIs take and return all sets of data.&lt;/p&gt;
 &lt;p&gt;The following schema is used both when retrieving the current configs from the API and when setting new configs via the API.&lt;/p&gt;
 &lt;h4 id=&#34;schema&#34;&gt;Schema:&lt;/h4&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-json&#34; data-lang=&#34;json&#34;&gt;&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;{&lt;/span&gt;
@@ -932,9 +933,9 @@ APIs. The encoding is Protobuf over http.&lt;/p&gt;
 &lt;h4 id=&#34;formatting&#34;&gt;Formatting&lt;/h4&gt;
 &lt;p&gt;&lt;code&gt;id&lt;/code&gt; - should be incremented every time data is updated; Cortex will use the config with the highest number.&lt;/p&gt;
 &lt;p&gt;&lt;code&gt;rule_format_version&lt;/code&gt; - allows compatibility for tenants with config in Prometheus V1 format. Pass &amp;ldquo;1&amp;rdquo; or &amp;ldquo;2&amp;rdquo; according to which Prometheus version you want to match.&lt;/p&gt;
-&lt;p&gt;&lt;code&gt;config.alertmanager_config&lt;/code&gt; - The contents of the alertmanager config file should be as described &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/&#34; target=&#34;_blank&#34;&gt;here&lt;/a&gt;, encoded as a single string to fit within the overall JSON payload.&lt;/p&gt;
-&lt;p&gt;&lt;code&gt;config.rules_files&lt;/code&gt; - The contents of a rules file should be as described &lt;a href=&#34;http://prometheus.io/docs/prometheus/latest/configuration/recording_rules/&#34; target=&#34;_blank&#34;&gt;here&lt;/a&gt;, encoded as a single string to fit within the overall JSON payload.&lt;/p&gt;
-&lt;p&gt;&lt;code&gt;config.template_files&lt;/code&gt; - The contents of a template file should be as described &lt;a href=&#34;https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates&#34; target=&#34;_blank&#34;&gt;here&lt;/a&gt;, encoded as a single string to fit within the overall JSON payload.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;config.alertmanager_config&lt;/code&gt; - The contents of the alertmanager config file should be as described &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/&#34;&gt;here&lt;/a&gt;, encoded as a single string to fit within the overall JSON payload.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;config.rules_files&lt;/code&gt; - The contents of a rules file should be as described &lt;a href=&#34;http://prometheus.io/docs/prometheus/latest/configuration/recording_rules/&#34;&gt;here&lt;/a&gt;, encoded as a single string to fit within the overall JSON payload.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;config.template_files&lt;/code&gt; - The contents of a template file should be as described &lt;a href=&#34;https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates&#34;&gt;here&lt;/a&gt;, encoded as a single string to fit within the overall JSON payload.&lt;/p&gt;
 &lt;h3 id=&#34;endpoints&#34;&gt;Endpoints&lt;/h3&gt;
 &lt;h4 id=&#34;manage-alertmanager&#34;&gt;Manage Alertmanager&lt;/h4&gt;
 &lt;p&gt;&lt;code&gt;GET /api/prom/configs/alertmanager&lt;/code&gt; - Get current Alertmanager config&lt;/p&gt;
@@ -997,15 +998,15 @@ APIs. The encoding is Protobuf over http.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;Normal Response Codes: NoContent(204)&lt;/li&gt;
 &lt;li&gt;Error Response Codes: Unauthorized(401)&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover.md/</guid><description>
-&lt;p&gt;The &lt;a href=&#34;/docs/architecture.md/#ingester&#34; target=&#34;_blank&#34;&gt;ingester&lt;/a&gt; holds several hours of sample
+&lt;/ul&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover/</guid><description>
+&lt;p&gt;The &lt;a href=&#34;/docs/architecture/#ingester&#34;&gt;ingester&lt;/a&gt; holds several hours of sample
 data in memory. When we want to shut down an ingester, either for
 software version update or to drain a node for maintenance, this data
 must not be discarded.&lt;/p&gt;
 &lt;p&gt;Each ingester goes through different states in its lifecycle. When
 working normally, the state is &lt;code&gt;ACTIVE&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;On start-up, an ingester first goes into state &lt;code&gt;PENDING&lt;/code&gt;. After a
-&lt;a href=&#34;/docs/configuration/arguments.md/#ingester&#34; target=&#34;_blank&#34;&gt;short time&lt;/a&gt;, if nothing happens, it adds
+&lt;a href=&#34;/docs/configuration/arguments/#ingester&#34;&gt;short time&lt;/a&gt;, if nothing happens, it adds
 itself to the ring and goes into state ACTIVE.&lt;/p&gt;
 &lt;p&gt;A running ingester is notified to shut down by Unix signal
 &lt;code&gt;SIGINT&lt;/code&gt;. On receipt of this signal it goes into state &lt;code&gt;LEAVING&lt;/code&gt; and
@@ -1014,8 +1015,8 @@ ingester goes into state &lt;code&gt;JOINING&lt;/code&gt; and the leaver transfe
 in-memory data over to the joiner. On successful transfer the leaver
 removes itself from the ring and exits and the joiner changes to
 &lt;code&gt;ACTIVE&lt;/code&gt;, taking over ownership of the leaver&amp;rsquo;s
-&lt;a href=&#34;/docs/architecture.md/#hashing&#34; target=&#34;_blank&#34;&gt;ring tokens&lt;/a&gt;.&lt;/p&gt;
-&lt;p&gt;If a leaving ingester does not find a pending ingester after &lt;a href=&#34;/docs/configuration/arguments.md/#ingester&#34; target=&#34;_blank&#34;&gt;several attempts&lt;/a&gt;, it will flush all of its chunks to
+&lt;a href=&#34;/docs/architecture/#hashing&#34;&gt;ring tokens&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;If a leaving ingester does not find a pending ingester after &lt;a href=&#34;/docs/configuration/arguments/#ingester&#34;&gt;several attempts&lt;/a&gt;, it will flush all of its chunks to
 the backing database, then remove itself from the ring and exit. This
 may take tens of minutes to complete.&lt;/p&gt;
 &lt;p&gt;During hand-over, neither the leaving nor joining ingesters will
@@ -1033,14 +1034,14 @@ complete. The sudden increase in flush queue can be alarming!&lt;/p&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_received_chunks&lt;/code&gt; - number of chunks received by joining ingester&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;You can see the current state of the ring via http browser request to
-&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing.md/</guid><description>
-&lt;p&gt;Cortex uses &lt;a href=&#34;https://www.jaegertracing.io/&#34; target=&#34;_blank&#34;&gt;Jaeger&lt;/a&gt; to implement distributed
+&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
+&lt;p&gt;Cortex uses &lt;a href=&#34;https://www.jaegertracing.io/&#34;&gt;Jaeger&lt;/a&gt; to implement distributed
 tracing. We have found Jaeger invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p&gt;
 &lt;h2 id=&#34;dependencies&#34;&gt;Dependencies&lt;/h2&gt;
 &lt;p&gt;In order to send traces you will need to set up a Jaeger deployment. A
 deployment includes either the jaeger all-in-one binary, or else a distributed
-system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href=&#34;https://github.com/jaegertracing/jaeger-kubernetes&#34; target=&#34;_blank&#34;&gt;Jaeger
+system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href=&#34;https://github.com/jaegertracing/jaeger-kubernetes&#34;&gt;Jaeger
 Kubernetes&lt;/a&gt; is an excellent
 resource.&lt;/p&gt;
 &lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
@@ -1055,16 +1056,98 @@ or in an upstream service such as your frontdoor.&lt;/p&gt;
 &lt;p&gt;To enable sampling in Cortex components you can specify either
 &lt;code&gt;JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code&gt; for remote sampling, or
 &lt;code&gt;JAEGER_SAMPLER_TYPE&lt;/code&gt; and &lt;code&gt;JAEGER_SAMPLER_PARAM&lt;/code&gt; to manually set sampling
-configuration. See the &lt;a href=&#34;https://github.com/jaegertracing/jaeger-client-go#environment-variables&#34; target=&#34;_blank&#34;&gt;Jaeger Client Go
+configuration. See the &lt;a href=&#34;https://github.com/jaegertracing/jaeger-client-go#environment-variables&#34;&gt;Jaeger Client Go
 documentation&lt;/a&gt;
 for the full list of environment variables you can configure.&lt;/p&gt;
 &lt;p&gt;Note that you must specify one of &lt;code&gt;JAEGER_AGENT_HOST&lt;/code&gt; or
 &lt;code&gt;JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code&gt; in each component for Jaeger to be enabled,
-even if you plan to use the default values.&lt;/p&gt;</description></item><item><title>Docs: Code of Conduct</title><link>/docs/code-of-conduct/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/code-of-conduct/</guid><description>
-&lt;p&gt;Cortex follows the &lt;a href=&#34;https://github.com/cncf/foundation/blob/master/code-of-conduct.md&#34; target=&#34;_blank&#34;&gt;CNCF Code of Conduct&lt;/a&gt;.&lt;/p&gt;</description></item><item><title>Docs: Contributing</title><link>/docs/contributing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/</guid><description>
+even if you plan to use the default values.&lt;/p&gt;</description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
+&lt;h2 id=&#34;master-unreleased&#34;&gt;master / unreleased&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;[CHANGE] The frontend component has been refactored to be easier to re-use. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1734&#34;&gt;#1734&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] Remove direct DB/API access from the ruler&lt;/li&gt;
+&lt;li&gt;[CHANGE] Removed &lt;code&gt;Delta&lt;/code&gt; encoding. Any old chunks with &lt;code&gt;Delta&lt;/code&gt; encoding cannot be read anymore. If &lt;code&gt;ingester.chunk-encoding&lt;/code&gt; is set to &lt;code&gt;Delta&lt;/code&gt; the ingester will fail to start. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1706&#34;&gt;#1706&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] Setting &lt;code&gt;-ingester.max-transfer-retries&lt;/code&gt; to 0 now disables hand-over when ingester is shutting down. Previously, zero meant infinite number of attempts. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1771&#34;&gt;#1771&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] &lt;code&gt;dynamo&lt;/code&gt; has been removed as a valid storage name to make it consistent for all components. &lt;code&gt;aws&lt;/code&gt; and &lt;code&gt;aws-dynamo&lt;/code&gt; remain as valid storage names.&lt;/li&gt;
+&lt;li&gt;[FEATURE] Global limit on the max series per user and metric &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1760&#34;&gt;#1760&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;-ingester.max-global-series-per-user&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;-ingester.max-global-series-per-metric&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Requires &lt;code&gt;-distributor.replication-factor&lt;/code&gt; and &lt;code&gt;-distributor.shard-by-all-labels&lt;/code&gt; set for the ingesters too&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Flush chunks with stale markers early with &lt;code&gt;ingester.max-stale-chunk-idle&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1759&#34;&gt;#1759&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] EXPERIMENTAL: Added new KV Store backend based on memberlist library. Components can gossip about tokens and ingester states, instead of using Consul or Etcd. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1721&#34;&gt;#1721&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Allow Query Frontend to log slow queries with &lt;code&gt;frontend.log-queries-longer-than&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1744&#34;&gt;#1744&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] The frontend split and cache intervals can now be configured using the respective flag &lt;code&gt;--querier.split-queries-by-interval&lt;/code&gt; and &lt;code&gt;--frontend.cache-split-interval&lt;/code&gt;.
+&lt;ul&gt;
+&lt;li&gt;If &lt;code&gt;--querier.split-queries-by-interval&lt;/code&gt; is not provided request splitting is disabled by default.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;--querier.split-queries-by-day&lt;/code&gt; is still accepted for backward compatibility but has been deprecated. You should now use &lt;code&gt;--querier.split-queries-by-interval&lt;/code&gt;. We recommend a to use a multiple of 24 hours.&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Allocation improvements in adding samples to Chunk. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1706&#34;&gt;#1706&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1708&#34;&gt;#1708&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: &lt;code&gt;--consul.watch-rate-limit&lt;/code&gt;, and &lt;code&gt;--consul.watch-burst-size&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1708&#34;&gt;#1708&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Added jitter to HA deduping heartbeats, configure using &lt;code&gt;distributor.ha-tracker.update-timeout-jitter-max&lt;/code&gt; &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1534&#34;&gt;#1534&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Allocation improvements in adding samples to Chunk. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1706&#34;&gt;#1706&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1708&#34;&gt;#1708&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: &lt;code&gt;--consul.watch-rate-limit&lt;/code&gt;, and &lt;code&gt;--consul.watch-burst-size&lt;/code&gt;. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1708&#34;&gt;#1708&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;0-3-0-2019-10-11&#34;&gt;0.3.0 / 2019-10-11&lt;/h2&gt;
+&lt;p&gt;This release adds support for Redis as an alternative to Memcached, and also includes many optimisations which reduce CPU and memory usage.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[CHANGE] Gauge metrics were renamed to drop the &lt;code&gt;_total&lt;/code&gt; suffix. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1685&#34;&gt;#1685&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;In Alertmanager, &lt;code&gt;alertmanager_configs_total&lt;/code&gt; is now &lt;code&gt;alertmanager_configs&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;In Ruler, &lt;code&gt;scheduler_configs_total&lt;/code&gt; is now &lt;code&gt;scheduler_configs&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;scheduler_groups_total&lt;/code&gt; is now &lt;code&gt;scheduler_groups&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] &lt;code&gt;--alertmanager.configs.auto-slack-root&lt;/code&gt; flag was dropped as auto Slack root is not supported anymore. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1597&#34;&gt;#1597&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] In table-manager, default DynamoDB capacity was reduced from 3,000 units to 1,000 units. We recommend you do not run with the defaults: find out what figures are needed for your environment and set that via &lt;code&gt;-dynamodb.periodic-table.write-throughput&lt;/code&gt; and &lt;code&gt;-dynamodb.chunk-table.write-throughput&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;[FEATURE] Add Redis support for caching &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1612&#34;&gt;#1612&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Allow spreading chunk writes across multiple S3 buckets &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1625&#34;&gt;#1625&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Added &lt;code&gt;/shutdown&lt;/code&gt; endpoint for ingester to shutdown all operations of the ingester. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1746&#34;&gt;#1746&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Upgraded Prometheus to 2.12.0 and Alertmanager to 0.19.0. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1597&#34;&gt;#1597&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Cortex is now built with Go 1.13 &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1675&#34;&gt;#1675&lt;/a&gt;, &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1676&#34;&gt;#1676&lt;/a&gt;, &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1679&#34;&gt;#1679&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[ENHANCEMENT] Many optimisations, mostly impacting ingester and querier: &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1574&#34;&gt;#1574&lt;/a&gt;, &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1624&#34;&gt;#1624&lt;/a&gt;, &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1638&#34;&gt;#1638&lt;/a&gt;, &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1644&#34;&gt;#1644&lt;/a&gt;, &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1649&#34;&gt;#1649&lt;/a&gt;, &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1654&#34;&gt;#1654&lt;/a&gt;, &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1702&#34;&gt;#1702&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Full list of changes: &lt;a href=&#34;https://github.com/cortexproject/cortex/compare/v0.2.0...v0.3.0&#34;&gt;https://github.com/cortexproject/cortex/compare/v0.2.0...v0.3.0&lt;/a&gt;&lt;/p&gt;
+&lt;h2 id=&#34;0-2-0-2019-09-05&#34;&gt;0.2.0 / 2019-09-05&lt;/h2&gt;
+&lt;p&gt;This release has several exciting features, the most notable of them being setting &lt;code&gt;-ingester.spread-flushes&lt;/code&gt; to potentially reduce your storage space by upto 50%.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[CHANGE] Flags changed due to changes upstream in Prometheus Alertmanager &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/929&#34;&gt;#929&lt;/a&gt;:
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;alertmanager.mesh.listen-address&lt;/code&gt; is now &lt;code&gt;cluster.listen-address&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;alertmanager.mesh.peer.host&lt;/code&gt; and &lt;code&gt;alertmanager.mesh.peer.service&lt;/code&gt; can be replaced by &lt;code&gt;cluster.peer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;alertmanager.mesh.hardware-address&lt;/code&gt;, &lt;code&gt;alertmanager.mesh.nickname&lt;/code&gt;, &lt;code&gt;alertmanager.mesh.password&lt;/code&gt;, and &lt;code&gt;alertmanager.mesh.peer.refresh-interval&lt;/code&gt; all disappear.&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] &amp;ndash;claim-on-rollout flag deprecated; feature is now always on &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1566&#34;&gt;#1566&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] Retention period must now be a multiple of periodic table duration &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1564&#34;&gt;#1564&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[CHANGE] The value for the name label for the chunks memcache in all &lt;code&gt;cortex_cache_&lt;/code&gt; metrics is now &lt;code&gt;chunksmemcache&lt;/code&gt; (before it was &lt;code&gt;memcache&lt;/code&gt;) &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1569&#34;&gt;#1569&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Makes the ingester flush each timeseries at a specific point in the max-chunk-age cycle with &lt;code&gt;-ingester.spread-flushes&lt;/code&gt;. This means multiple replicas of a chunk are very likely to contain the same contents which cuts chunk storage space by up to 66%. &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1578&#34;&gt;#1578&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Make minimum number of chunk samples configurable per user &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1620&#34;&gt;#1620&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Honor HTTPS for custom S3 URLs &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1603&#34;&gt;#1603&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] You can now point the query-frontend at a normal Prometheus for parallelisation and caching &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1441&#34;&gt;#1441&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] You can now specify &lt;code&gt;http_config&lt;/code&gt; on alert receivers &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/929&#34;&gt;#929&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Add option to use jump hashing to load balance requests to memcached &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1554&#34;&gt;#1554&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] Add status page for HA tracker to distributors &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1546&#34;&gt;#1546&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] The distributor ring page is now easier to read with alternate rows grayed out &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1621&#34;&gt;#1621&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;0-1-0-2019-08-07&#34;&gt;0.1.0 / 2019-08-07&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;[CHANGE] HA Tracker flags were renamed to provide more clarity &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1465&#34;&gt;#1465&lt;/a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;distributor.accept-ha-labels&lt;/code&gt; is now &lt;code&gt;distributor.ha-tracker.enable&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;distributor.accept-ha-samples&lt;/code&gt; is now &lt;code&gt;distributor.ha-tracker.enable-for-all-users&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ha-tracker.replica&lt;/code&gt; is now &lt;code&gt;distributor.ha-tracker.replica&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ha-tracker.cluster&lt;/code&gt; is now &lt;code&gt;distributor.ha-tracker.cluster&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;[FEATURE] You can specify &amp;ldquo;heap ballast&amp;rdquo; to reduce Go GC Churn &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1489&#34;&gt;#1489&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] HA Tracker no longer always makes a request to Consul/Etcd when a request is not from the active replica &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1516&#34;&gt;#1516&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Queries are now correctly cancelled by the query-frontend &lt;a href=&#34;https://github.com/cortexproject/cortex/pulls/1508&#34;&gt;#1508&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Docs: Code of Conduct</title><link>/docs/code-of-conduct/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/code-of-conduct/</guid><description>
+&lt;p&gt;Cortex follows the &lt;a href=&#34;https://github.com/cncf/foundation/blob/master/code-of-conduct.md&#34;&gt;CNCF Code of Conduct&lt;/a&gt;.&lt;/p&gt;</description></item><item><title>Docs: Contributing</title><link>/docs/contributing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/</guid><description>
 &lt;p&gt;Welcome! We&amp;rsquo;re excited that you&amp;rsquo;re interested in contributing. Below are some basic guidelines.&lt;/p&gt;
 &lt;h2 id=&#34;workflow&#34;&gt;Workflow&lt;/h2&gt;
-&lt;p&gt;Cortex follows a standard GitHub pull request workflow. If you&amp;rsquo;re unfamiliar with this workflow, read the very helpful &lt;a href=&#34;https://guides.github.com/introduction/flow/&#34; target=&#34;_blank&#34;&gt;Understanding the GitHub flow&lt;/a&gt; guide from GitHub.&lt;/p&gt;
+&lt;p&gt;Cortex follows a standard GitHub pull request workflow. If you&amp;rsquo;re unfamiliar with this workflow, read the very helpful &lt;a href=&#34;https://guides.github.com/introduction/flow/&#34;&gt;Understanding the GitHub flow&lt;/a&gt; guide from GitHub.&lt;/p&gt;
 &lt;p&gt;You are welcome to create draft PRs at any stage of readiness - this
 can be helpful to ask for assistance or to develop an idea. But before
 a piece of work is finished it should:&lt;/p&gt;
@@ -1077,7 +1160,7 @@ a piece of work is finished it should:&lt;/p&gt;
 &lt;h2 id=&#34;developer-certificates-of-origin-dcos&#34;&gt;Developer Certificates of Origin (DCOs)&lt;/h2&gt;
 &lt;p&gt;Before submitting your work in a pull request, make sure that &lt;em&gt;all&lt;/em&gt; commits are signed off with a &lt;strong&gt;Developer Certificate of Origin&lt;/strong&gt; (DCO). Here&amp;rsquo;s an example:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-shell&#34; data-lang=&#34;shell&#34;&gt;git commit -s -m &lt;span style=&#34;color:#4e9a06&#34;&gt;&amp;#34;Here is my signed commit&amp;#34;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;You can find further instructions &lt;a href=&#34;https://github.com/probot/dco#how-it-works&#34; target=&#34;_blank&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;You can find further instructions &lt;a href=&#34;https://github.com/probot/dco#how-it-works&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;
 &lt;h2 id=&#34;building-cortex&#34;&gt;Building Cortex&lt;/h2&gt;
 &lt;p&gt;To build:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;make
@@ -1101,11 +1184,11 @@ a convenient rule in the Makefile to do this:&lt;/p&gt;
 just built the images and they are available on the node(s) in your
 Kubernetes cluster)&lt;/p&gt;
 &lt;p&gt;Cortex will sit behind an nginx instance exposed on port 30080. A job is deployed to scrape itself. Try it:&lt;/p&gt;
-&lt;p&gt;&lt;a href=&#34;http://192.168.99.100:30080/api/prom/api/v1/query?query=up&#34; target=&#34;_blank&#34;&gt;http://192.168.99.100:30080/api/prom/api/v1/query?query=up&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href=&#34;http://192.168.99.100:30080/api/prom/api/v1/query?query=up&#34;&gt;http://192.168.99.100:30080/api/prom/api/v1/query?query=up&lt;/a&gt;&lt;/p&gt;
 &lt;p&gt;If that doesn&amp;rsquo;t work, your Minikube might be using a different ip address. Check with &lt;code&gt;minikube status&lt;/code&gt;.&lt;/p&gt;
 &lt;h3 id=&#34;dependency-management&#34;&gt;Dependency management&lt;/h3&gt;
-&lt;p&gt;We uses &lt;a href=&#34;https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more&#34; target=&#34;_blank&#34;&gt;Go modules&lt;/a&gt; to manage dependencies on external packages.
-This requires a working Go environment with version 1.11 or greater, git and &lt;a href=&#34;http://wiki.bazaar.canonical.com/Download&#34; target=&#34;_blank&#34;&gt;bzr&lt;/a&gt; installed.&lt;/p&gt;
+&lt;p&gt;We uses &lt;a href=&#34;https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more&#34;&gt;Go modules&lt;/a&gt; to manage dependencies on external packages.
+This requires a working Go environment with version 1.11 or greater, git and &lt;a href=&#34;http://wiki.bazaar.canonical.com/Download&#34;&gt;bzr&lt;/a&gt; installed.&lt;/p&gt;
 &lt;p&gt;To add or update a new dependency, use the &lt;code&gt;go get&lt;/code&gt; command:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;color:#8f5902;font-style:italic&#34;&gt;# Pick the latest tagged release.&lt;/span&gt;
 go get example.com/some/module/pkg

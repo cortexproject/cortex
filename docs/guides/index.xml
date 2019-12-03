@@ -1,17 +1,17 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Guides</title><link>/docs/guides/</link><description>Recent content in Guides on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/guides/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Running Cortex in Production</title><link>/docs/guides/running.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running.md/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Guides</title><link>/docs/guides/</link><description>Recent content in Guides on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/guides/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Running Cortex in Production</title><link>/docs/guides/running-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running-in-production/</guid><description>
 &lt;p&gt;This document assumes you have read the
-&lt;a href=&#34;/docs/architecture.md/&#34; target=&#34;_blank&#34;&gt;architecture&lt;/a&gt; document.&lt;/p&gt;
+&lt;a href=&#34;/docs/architecture/&#34;&gt;architecture&lt;/a&gt; document.&lt;/p&gt;
 &lt;p&gt;In addition to the general advice in this document, please see these
 platform-specific notes:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;/docs/guides/aws-specific.md/&#34; target=&#34;_blank&#34;&gt;AWS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;/docs/guides/aws/&#34;&gt;AWS&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id=&#34;planning&#34;&gt;Planning&lt;/h2&gt;
 &lt;h3 id=&#34;tenants&#34;&gt;Tenants&lt;/h3&gt;
 &lt;p&gt;If you will run Cortex as a multi-tenant system, you need to give each
 tenant a unique ID - this can be any string. Managing tenants and
 allocating IDs must be done outside of Cortex. You must also configure
-&lt;a href=&#34;/docs/guides/auth.md/&#34; target=&#34;_blank&#34;&gt;Authentication and Authorisation&lt;/a&gt;.&lt;/p&gt;
+&lt;a href=&#34;/docs/guides/auth/&#34;&gt;Authentication and Authorisation&lt;/a&gt;.&lt;/p&gt;
 &lt;h3 id=&#34;storage&#34;&gt;Storage&lt;/h3&gt;
 &lt;p&gt;Cortex requires a scalable storage back-end. Commercial cloud options
 are DynamoDB and Bigtable: the advantage is you don&amp;rsquo;t have to know how
@@ -66,7 +66,7 @@ total rate at which samples will arrive at Cortex.&lt;/li&gt;
 &lt;li&gt;The rate at which series are added and removed. This can be very
 high if you monitor objects that come and go - for example if you run
 thousands of batch jobs lasting a minute or so and capture metrics
-with a unique ID for each one. &lt;a href=&#34;https://www.robustperception.io/using-tsdb-analyze-to-investigate-churn-and-cardinality&#34; target=&#34;_blank&#34;&gt;Read how to analyse this on
+with a unique ID for each one. &lt;a href=&#34;https://www.robustperception.io/using-tsdb-analyze-to-investigate-churn-and-cardinality&#34;&gt;Read how to analyse this on
 Prometheus&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;How compressible the time-series data are. If a metric stays at
 the same value constantly, then Cortex can compress it very well, so
@@ -184,7 +184,7 @@ the same data:&lt;/p&gt;
 &lt;p&gt;Add a chunk cache via &lt;code&gt;-memcached.hostname&lt;/code&gt; to allow writes to be de-duplicated.&lt;/p&gt;
 &lt;p&gt;As recommended under &lt;a href=&#34;#chunk-encoding&#34;&gt;Chunk encoding&lt;/a&gt;, use Bigchunk:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt; -ingester.chunk-encoding=3 # bigchunk
-&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth.md/</guid><description>
+&lt;/code&gt;&lt;/pre&gt;</description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
 &lt;p&gt;All Cortex components take the tenant ID from a header &lt;code&gt;X-Scope-OrgID&lt;/code&gt;
 on each request. They trust this value completely: if you need to
 protect your Cortex installation from accidental or malicious calls
@@ -195,14 +195,14 @@ interface and humans sending queries from GUIs, supply credentials
 which identify them and confirm they are authorised.&lt;/p&gt;
 &lt;p&gt;When configuring the remote_write API in Prometheus there is no way to
 add extra headers. The user and password fields of http Basic auth, or
-Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p&gt;</description></item><item><title>Docs: Running Cortex at AWS</title><link>/docs/guides/aws-specific.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/aws-specific.md/</guid><description>
+Bearer token, can be used to convey tenant ID and/or credentials.&lt;/p&gt;</description></item><item><title>Docs: Running Cortex at AWS</title><link>/docs/guides/aws/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/aws/</guid><description>
 &lt;p&gt;[this is a work in progress]&lt;/p&gt;
-&lt;p&gt;See also the &lt;a href=&#34;/docs/guides/running.md/&#34; target=&#34;_blank&#34;&gt;Running in Production&lt;/a&gt; document.&lt;/p&gt;
+&lt;p&gt;See also the &lt;a href=&#34;/docs/guides/running-in-production/&#34;&gt;Running in Production&lt;/a&gt; document.&lt;/p&gt;
 &lt;h2 id=&#34;credentials&#34;&gt;Credentials&lt;/h2&gt;
 &lt;p&gt;You can supply credentials to Cortex by setting environment variables
 &lt;code&gt;AWS_ACCESS_KEY_ID&lt;/code&gt;, &lt;code&gt;AWS_SECRET_ACCESS_KEY&lt;/code&gt; (and &lt;code&gt;AWS_SESSION_TOKEN&lt;/code&gt;
 if you use MFA), or use a short-term token solution such as
-&lt;a href=&#34;https://github.com/uswitch/kiam&#34; target=&#34;_blank&#34;&gt;kiam&lt;/a&gt;.&lt;/p&gt;
+&lt;a href=&#34;https://github.com/uswitch/kiam&#34;&gt;kiam&lt;/a&gt;.&lt;/p&gt;
 &lt;h2 id=&#34;should-i-use-s3-or-dynamodb&#34;&gt;Should I use S3 or DynamoDB ?&lt;/h2&gt;
 &lt;p&gt;Note that the choices are: &amp;ldquo;chunks&amp;rdquo; of timeseries data in S3 and index
 in DynamoDB, or everything in DynamoDB. Using just S3 is not an option.&lt;/p&gt;
@@ -267,7 +267,7 @@ minutes to finish scaling. In the config above they are set.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;ondemand-throughput-mode&lt;/code&gt; tells AWS to charge for what you use, as
 opposed to continuous provisioning. This mode is cost-effective for
 older data, which is never written and only read sporadically.&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling.md/</guid><description>
+&lt;/ul&gt;</description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling/</guid><description>
 &lt;h2 id=&#34;context&#34;&gt;Context&lt;/h2&gt;
 &lt;p&gt;You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p&gt;
 &lt;p&gt;Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheis T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheis, T1.a, T1.b and T2.a and T2.b.&lt;/p&gt;
@@ -288,15 +288,15 @@ replica: replica2
 &lt;p&gt;These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be &lt;code&gt;team&lt;/code&gt;, &lt;code&gt;cluster&lt;/code&gt;, &lt;code&gt;prometheus&lt;/code&gt;, etc.&lt;/p&gt;
 &lt;p&gt;The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data, but preserves the cluster label. This way, your timeseries won&amp;rsquo;t change when replicas change.&lt;/p&gt;
 &lt;h3 id=&#34;server-side&#34;&gt;Server Side&lt;/h3&gt;
-&lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments.md/#ha-tracker&#34; target=&#34;_blank&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover.md/</guid><description>
-&lt;p&gt;The &lt;a href=&#34;/docs/architecture.md/#ingester&#34; target=&#34;_blank&#34;&gt;ingester&lt;/a&gt; holds several hours of sample
+&lt;p&gt;To enable handling of samples, see the &lt;a href=&#34;/docs/configuration/arguments/#ha-tracker&#34;&gt;distributor flags&lt;/a&gt; having &lt;code&gt;ha-tracker&lt;/code&gt; in them.&lt;/p&gt;</description></item><item><title>Docs: Ingester Hand-over</title><link>/docs/guides/ingester-handover/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingester-handover/</guid><description>
+&lt;p&gt;The &lt;a href=&#34;/docs/architecture/#ingester&#34;&gt;ingester&lt;/a&gt; holds several hours of sample
 data in memory. When we want to shut down an ingester, either for
 software version update or to drain a node for maintenance, this data
 must not be discarded.&lt;/p&gt;
 &lt;p&gt;Each ingester goes through different states in its lifecycle. When
 working normally, the state is &lt;code&gt;ACTIVE&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;On start-up, an ingester first goes into state &lt;code&gt;PENDING&lt;/code&gt;. After a
-&lt;a href=&#34;/docs/configuration/arguments.md/#ingester&#34; target=&#34;_blank&#34;&gt;short time&lt;/a&gt;, if nothing happens, it adds
+&lt;a href=&#34;/docs/configuration/arguments/#ingester&#34;&gt;short time&lt;/a&gt;, if nothing happens, it adds
 itself to the ring and goes into state ACTIVE.&lt;/p&gt;
 &lt;p&gt;A running ingester is notified to shut down by Unix signal
 &lt;code&gt;SIGINT&lt;/code&gt;. On receipt of this signal it goes into state &lt;code&gt;LEAVING&lt;/code&gt; and
@@ -305,8 +305,8 @@ ingester goes into state &lt;code&gt;JOINING&lt;/code&gt; and the leaver transfe
 in-memory data over to the joiner. On successful transfer the leaver
 removes itself from the ring and exits and the joiner changes to
 &lt;code&gt;ACTIVE&lt;/code&gt;, taking over ownership of the leaver&amp;rsquo;s
-&lt;a href=&#34;/docs/architecture.md/#hashing&#34; target=&#34;_blank&#34;&gt;ring tokens&lt;/a&gt;.&lt;/p&gt;
-&lt;p&gt;If a leaving ingester does not find a pending ingester after &lt;a href=&#34;/docs/configuration/arguments.md/#ingester&#34; target=&#34;_blank&#34;&gt;several attempts&lt;/a&gt;, it will flush all of its chunks to
+&lt;a href=&#34;/docs/architecture/#hashing&#34;&gt;ring tokens&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;If a leaving ingester does not find a pending ingester after &lt;a href=&#34;/docs/configuration/arguments/#ingester&#34;&gt;several attempts&lt;/a&gt;, it will flush all of its chunks to
 the backing database, then remove itself from the ring and exit. This
 may take tens of minutes to complete.&lt;/p&gt;
 &lt;p&gt;During hand-over, neither the leaving nor joining ingesters will
@@ -324,14 +324,14 @@ complete. The sudden increase in flush queue can be alarming!&lt;/p&gt;
 &lt;li&gt;&lt;code&gt;cortex_ingester_received_chunks&lt;/code&gt; - number of chunks received by joining ingester&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;You can see the current state of the ring via http browser request to
-&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing.md/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing.md/</guid><description>
-&lt;p&gt;Cortex uses &lt;a href=&#34;https://www.jaegertracing.io/&#34; target=&#34;_blank&#34;&gt;Jaeger&lt;/a&gt; to implement distributed
+&lt;code&gt;/ring&lt;/code&gt; on a distributor.&lt;/p&gt;</description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
+&lt;p&gt;Cortex uses &lt;a href=&#34;https://www.jaegertracing.io/&#34;&gt;Jaeger&lt;/a&gt; to implement distributed
 tracing. We have found Jaeger invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p&gt;
 &lt;h2 id=&#34;dependencies&#34;&gt;Dependencies&lt;/h2&gt;
 &lt;p&gt;In order to send traces you will need to set up a Jaeger deployment. A
 deployment includes either the jaeger all-in-one binary, or else a distributed
-system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href=&#34;https://github.com/jaegertracing/jaeger-kubernetes&#34; target=&#34;_blank&#34;&gt;Jaeger
+system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href=&#34;https://github.com/jaegertracing/jaeger-kubernetes&#34;&gt;Jaeger
 Kubernetes&lt;/a&gt; is an excellent
 resource.&lt;/p&gt;
 &lt;h2 id=&#34;configuration&#34;&gt;Configuration&lt;/h2&gt;
@@ -346,7 +346,7 @@ or in an upstream service such as your frontdoor.&lt;/p&gt;
 &lt;p&gt;To enable sampling in Cortex components you can specify either
 &lt;code&gt;JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code&gt; for remote sampling, or
 &lt;code&gt;JAEGER_SAMPLER_TYPE&lt;/code&gt; and &lt;code&gt;JAEGER_SAMPLER_PARAM&lt;/code&gt; to manually set sampling
-configuration. See the &lt;a href=&#34;https://github.com/jaegertracing/jaeger-client-go#environment-variables&#34; target=&#34;_blank&#34;&gt;Jaeger Client Go
+configuration. See the &lt;a href=&#34;https://github.com/jaegertracing/jaeger-client-go#environment-variables&#34;&gt;Jaeger Client Go
 documentation&lt;/a&gt;
 for the full list of environment variables you can configure.&lt;/p&gt;
 &lt;p&gt;Note that you must specify one of &lt;code&gt;JAEGER_AGENT_HOST&lt;/code&gt; or

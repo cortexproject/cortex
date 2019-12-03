@@ -42,6 +42,14 @@ var (
 		Name: "cortex_ingester_received_files",
 		Help: "The total number of files received by this ingester whilst joining",
 	})
+	receivedBytes = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_received_bytes_total",
+		Help: "The total number of bytes received by this ingester whilst joining",
+	})
+	sentBytes = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_sent_bytes_total",
+		Help: "The total number of bytes sent by this ingester whilst leaving",
+	})
 
 	once *sync.Once
 )
@@ -51,7 +59,9 @@ func init() {
 	prometheus.MustRegister(sentChunks)
 	prometheus.MustRegister(receivedChunks)
 	prometheus.MustRegister(sentFiles)
+	prometheus.MustRegister(receivedBytes)
 	prometheus.MustRegister(receivedFiles)
+	prometheus.MustRegister(sentBytes)
 }
 
 // TransferChunks receives all the chunks from another ingester.
@@ -208,6 +218,20 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 	fromIngesterID := ""
 
 	xfer := func() error {
+
+		// Validate the final directory is empty, if it exists and is empty delete it so a move can succeed
+		err := removeEmptyDir(i.cfg.TSDBConfig.Dir)
+		if err != nil {
+			return errors.Wrap(err, "remove existing TSDB directory")
+		}
+
+		tmpDir, err := ioutil.TempDir("", "tsdb_xfer")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmpDir)
+
+		bytesXfer := 0
 		filesXfer := 0
 
 		files := make(map[string]*os.File)
@@ -236,15 +260,14 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 					return errors.Wrap(err, "TransferTSDB: checkFromIngesterIsInLeavingState")
 				}
 			}
-			filesXfer++
+			bytesXfer += len(f.Data)
 
-			// TODO(thor) To avoid corruption from errors, it's probably best to write to a temp dir, and then move that to the final location
 			createfile := func(f *client.TimeSeriesFile) (*os.File, error) {
-				dir := filepath.Join(i.cfg.TSDBConfig.Dir, filepath.Dir(f.Filename))
+				dir := filepath.Join(tmpDir, filepath.Dir(f.Filename))
 				if err := os.MkdirAll(dir, 0777); err != nil {
 					return nil, errors.Wrap(err, "TransferTSDB: MkdirAll")
 				}
-				file, err := os.Create(filepath.Join(i.cfg.TSDBConfig.Dir, f.Filename))
+				file, err := os.Create(filepath.Join(tmpDir, f.Filename))
 				if err != nil {
 					return nil, errors.Wrap(err, "TransferTSDB: Create")
 				}
@@ -260,7 +283,7 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 				if err != nil {
 					return err
 				}
-
+				filesXfer++
 				files[f.Filename] = file
 			} else {
 
@@ -275,10 +298,12 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 			return errors.Wrap(err, "TransferTSDB: ClaimTokensFor")
 		}
 
+		receivedBytes.Add(float64(bytesXfer))
 		receivedFiles.Add(float64(filesXfer))
-		level.Error(util.Logger).Log("msg", "Total files xfer", "from_ingester", fromIngesterID, "num", filesXfer)
+		level.Info(util.Logger).Log("msg", "Total xfer", "from_ingester", fromIngesterID, "files", filesXfer, "bytes", bytesXfer)
 
-		return nil
+		// Move the tmpdir to the final location
+		return os.Rename(tmpDir, i.cfg.TSDBConfig.Dir)
 	}
 
 	if err := i.transfer(stream.Context(), xfer); err != nil {
@@ -644,6 +669,7 @@ func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, t
 		if err != nil {
 			return err
 		}
+		sentBytes.Add(float64(len(tsfile.Data)))
 	}
 
 	// Send final data
@@ -653,7 +679,19 @@ func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, t
 		if err != nil {
 			return err
 		}
+		sentBytes.Add(float64(len(tsfile.Data)))
 	}
 
 	return nil
+}
+
+func removeEmptyDir(dir string) error {
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	return os.Remove(dir)
 }

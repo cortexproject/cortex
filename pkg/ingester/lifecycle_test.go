@@ -4,6 +4,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"os"
 	"testing"
 	"time"
 
@@ -423,6 +424,7 @@ func TestV2IngesterTransfer(t *testing.T) {
 	require.NoError(t, err)
 	dir2, err := ioutil.TempDir("", "tsdb")
 	require.NoError(t, err)
+	require.NoError(t, os.Remove(dir2)) // remove the destination dir so there isn't a move conflict
 
 	// Start the first ingester, and get it into ACTIVE state.
 	cfg1 := defaultIngesterTestConfig()
@@ -521,4 +523,10 @@ func TestV2IngesterTransfer(t *testing.T) {
 	response, err = ing2.Query(ctx, request)
 	require.NoError(t, err)
 	assert.Equal(t, expectedResponse, response)
+
+	// Assert the data is in the expected location of dir2
+	files, err := ioutil.ReadDir(dir2)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(files))
+	require.Equal(t, "1", files[0].Name())
 }

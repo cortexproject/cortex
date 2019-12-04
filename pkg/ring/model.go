@@ -35,7 +35,8 @@ func NewDesc() *Desc {
 	}
 }
 
-// AddIngester adds the given ingester to the ring.
+// AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
+// any other tokens are removed.
 func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}

@@ -123,16 +123,15 @@ func TestAddIngester(t *testing.T) {
 func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 	r := NewDesc()
 
-	const (
-		ing1Name = "ing1"
-	)
+	const ing1Name = "ing1"
 
-	newTokens := GenerateTokens(128, nil)
+	oldTokens := []uint32{11111, 22222, 33333}
+	// old tokens will be replaced
+	for _, t := range oldTokens {
+		r.Tokens = append(r.Tokens, TokenDesc{Token: t, Ingester: ing1Name})
+	}
 
-	// previous tokens for ingester1 will be replaced
-	r.Tokens = append(r.Tokens, TokenDesc{Token: 11111, Ingester: ing1Name})
-	r.Tokens = append(r.Tokens, TokenDesc{Token: 22222, Ingester: ing1Name})
-	r.Tokens = append(r.Tokens, TokenDesc{Token: 33333, Ingester: ing1Name})
+	newTokens := GenerateTokens(128, oldTokens)
 
 	r.AddIngester(ing1Name, "addr", newTokens, ACTIVE)
 

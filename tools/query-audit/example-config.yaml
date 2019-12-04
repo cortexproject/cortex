@@ -1,0 +1,37 @@
+control:
+  host: http://localhost:8080/api/prom
+  headers:
+    "X-Scope-OrgID": 1234
+
+test:
+  host: http://localhost:8081/api/prom
+  headers:
+    "X-Scope-OrgID": 1234
+
+queries:
+  - query: 'sum(rate(container_cpu_usage_seconds_total[5m]))'
+    start: 2019-11-25T00:00:00Z
+    end: 2019-11-28T00:00:00Z
+    step_size: 15m
+  - query: 'sum(rate(container_cpu_usage_seconds_total[5m])) by (container_name)'
+    start: 2019-11-25T00:00:00Z
+    end: 2019-11-28T00:00:00Z
+    step_size: 15m
+  - query: 'sum(rate(container_cpu_usage_seconds_total[5m])) without (container_name)'
+    start: 2019-11-25T00:00:00Z
+    end: 2019-11-26T00:00:00Z
+    step_size: 15m
+  - query: 'histogram_quantile(0.9, sum(rate(cortex_cache_value_size_bytes_bucket[5m])) by (le, job))'
+    start: 2019-11-25T00:00:00Z
+    end: 2019-11-25T06:00:00Z
+    step_size: 15m
+    # two shardable legs
+  - query: 'sum without (instance, job) (rate(cortex_query_frontend_queue_length[5m])) or sum by (job) (rate(cortex_query_frontend_queue_length[5m]))'
+    start: 2019-11-25T00:00:00Z
+    end: 2019-11-25T06:00:00Z
+    step_size: 15m
+    # one shardable leg
+  - query: 'sum without (instance, job) (rate(cortex_cache_request_duration_seconds_count[5m])) or rate(cortex_cache_request_duration_seconds_count[5m])'
+    start: 2019-11-25T00:00:00Z
+    end: 2019-11-25T06:00:00Z
+    step_size: 15m

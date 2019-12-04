@@ -73,11 +73,14 @@ func Run(conf Config) error {
 		}
 
 		fmt.Println(fmt.Sprintf(
-			"\n%f%% avg diff across %d series and %d samples for query: %s",
+			"\n%f%% avg diff for:\n\tquery: %s\n\tseries: %d\n\tsamples: %d\n\tstart: %v\n\tend: %v\n\tstep: %v",
 			diff.Diff*100,
+			query.Query,
 			diff.Series,
 			len(diff.sampleDiffs),
-			query.Query,
+			query.Start,
+			query.End,
+			query.StepSize,
 		))
 
 	}

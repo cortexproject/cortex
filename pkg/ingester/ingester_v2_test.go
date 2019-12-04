@@ -139,12 +139,20 @@ func TestIngester_v2Push(t *testing.T) {
 			registry := prometheus.NewRegistry()
 
 			// Create a mocked ingester
-			i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), registry)
+			cfg := defaultIngesterTestConfig()
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 			require.NoError(t, err)
 			defer i.Shutdown()
 			defer cleanup()
 
 			ctx := user.InjectOrgID(context.Background(), "test")
+
+			// Wait until the ingester is ACTIVE
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
 
 			// Push timeseries
 			for idx, req := range testData.reqs {

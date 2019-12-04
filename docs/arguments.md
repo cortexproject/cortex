@@ -63,6 +63,28 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 ## Query Frontend
 
+- `-querier.sum-shards`
+
+   If set to true, will cause the query frontend to mutate incoming queries when possible by turning `sum` operations into sharded `sum` operations. This requires a shard-compatible schema (v10+). An abridged example:
+   `sum by (foo) (rate(bar{baz=”blip”}[1m]))` ->
+   ```
+   sum by (foo) (
+    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”0of16”}[1m])) or
+    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”1of16”}[1m])) or
+    ...
+    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”15of16”}[1m]))
+   )
+   ```
+   When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `config-yaml` CLI flag). This is the same schema config the queriers consume.
+   It's also advised to increase downstream concurrency controls as well to account for more queries of smaller sizes:
+
+   - `querier.max-outstanding-requests-per-tenant`
+   - `querier.max-query-parallelism`
+   - `querier.max-concurrent`
+   - `server.grpc-max-concurrent-streams`
+
+   Instrumentation (traces) also scale with the number of sharded queries and it's suggested to account for increased throughput there as well.
+
 - `-querier.align-querier-with-step`
 
    If set to true, will cause the query frontend to mutate incoming queries and align their start and end parameters to the step parameter of the query.  This improves the cacheability of the query results.

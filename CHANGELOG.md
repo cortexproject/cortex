@@ -11,6 +11,7 @@
     * `querier.max-outstanding-requests-per-tenant`
     * `querier.max-query-parallelism`
     * `querier.max-concurrent`
+    * `server.grpc-max-concurrent-streams` (for both query-frontends and queriers)
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 
 ## 0.4.0 / 2019-12-02

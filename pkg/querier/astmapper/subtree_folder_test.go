@@ -89,6 +89,11 @@ func TestSubtreeMapper(t *testing.T) {
 			  sum without(__cortex_shard__) (__embedded_queries__{__cortex_queries__="tstquery"})
 `,
 		},
+		// should not embed scalars
+		{
+			input:    `histogram_quantile(0.5, __embedded_queries__{__cortex_queries__="tstquery"})`,
+			expected: `histogram_quantile(0.5, __embedded_queries__{__cortex_queries__="tstquery"})`,
+		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			mapper, err := NewSubtreeFolder(JSONCodec)

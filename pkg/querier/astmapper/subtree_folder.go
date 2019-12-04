@@ -27,6 +27,12 @@ func NewSubtreeFolder(codec Codec) (ASTMapper, error) {
 
 // MapNode impls NodeMapper
 func (f *subtreeFolder) MapNode(node promql.Node) (promql.Node, bool, error) {
+	switch n := node.(type) {
+	// do not attempt to fold number or string leaf nodes
+	case *promql.NumberLiteral, *promql.StringLiteral:
+		return n, true, nil
+	}
+
 	containsEmbedded, err := Predicate(node, predicate(isEmbedded))
 	if err != nil {
 		return nil, true, err

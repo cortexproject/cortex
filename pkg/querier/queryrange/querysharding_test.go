@@ -364,6 +364,11 @@ func TestQueryshardingCorrectness(t *testing.T) {
 			query:  "sum(rate(bar1[1m])) or rate(bar1[1m])",
 			mapped: `sum without(__cortex_shard__) (__embedded_queries__{__cortex_queries__="{\"Concat\":[\"sum by(__cortex_shard__) (rate(bar1{__cortex_shard__=\\\"0_of_2\\\"}[1m]))\",\"sum by(__cortex_shard__) (rate(bar1{__cortex_shard__=\\\"1_of_2\\\"}[1m]))\"]}"}) or __embedded_queries__{__cortex_queries__="{\"Concat\":[\"rate(bar1[1m])\"]}"}`,
 		},
+		{
+			desc:   "should skip encoding leaf scalar/strings",
+			query:  `histogram_quantile(0.5, sum(rate(cortex_cache_value_size_bytes_bucket[5m])) by (le))`,
+			mapped: `histogram_quantile(0.5, sum by(le) (__embedded_queries__{__cortex_queries__="{\"Concat\":[\"sum by(le, __cortex_shard__) (rate(cortex_cache_value_size_bytes_bucket{__cortex_shard__=\\\"0_of_2\\\"}[5m]))\",\"sum by(le, __cortex_shard__) (rate(cortex_cache_value_size_bytes_bucket{__cortex_shard__=\\\"1_of_2\\\"}[5m]))\"]}"}))`,
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			mapperware, shardingware := NewQueryShardMiddleware(

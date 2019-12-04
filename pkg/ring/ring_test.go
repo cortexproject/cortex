@@ -92,30 +92,50 @@ func TestDoBatchZeroIngesters(t *testing.T) {
 func TestAddIngester(t *testing.T) {
 	r := NewDesc()
 
-	ing1 := GenerateTokens(128, nil)
-	ing2 := GenerateTokens(128, ing1)
+	const (
+		ing1Name = "ing1"
+		ing2Name = "ing2"
+	)
 
-	for _, t := range ing1 {
-		r.Tokens = append(r.Tokens, TokenDesc{
-			Token:    t,
-			Ingester: "test",
-		})
+	ing1Tokens := GenerateTokens(128, nil)
+	ing2Tokens := GenerateTokens(128, ing1Tokens)
+
+	// store tokens to r.Tokens
+	for _, t := range ing1Tokens {
+		r.Tokens = append(r.Tokens, TokenDesc{Token: t, Ingester: ing1Name})
 	}
 
-	for _, t := range ing2 {
-		r.Tokens = append(r.Tokens, TokenDesc{
-			Token:    t,
-			Ingester: "Ingester2",
-		})
+	for _, t := range ing2Tokens {
+		r.Tokens = append(r.Tokens, TokenDesc{Token: t, Ingester: ing2Name})
 	}
 
-	r.AddIngester("test", "addr", ing1, ACTIVE)
+	r.AddIngester(ing1Name, "addr", ing1Tokens, ACTIVE)
 
-	require.Equal(t, "addr", r.Ingesters["test"].Addr)
-	require.Equal(t, ing1, r.Ingesters["test"].Tokens)
+	require.Equal(t, "addr", r.Ingesters[ing1Name].Addr)
+	require.Equal(t, ing1Tokens, r.Ingesters[ing1Name].Tokens)
 
-	require.Equal(t, len(ing2), len(r.Tokens))
+	require.Equal(t, len(ing2Tokens), len(r.Tokens))
 	for _, tok := range r.Tokens {
 		require.NotEqual(t, "test", tok.Ingester)
 	}
+}
+
+func TestAddIngesterReplacesExistingTokens(t *testing.T) {
+	r := NewDesc()
+
+	const (
+		ing1Name = "ing1"
+	)
+
+	newTokens := GenerateTokens(128, nil)
+
+	// previous tokens for ingester1 will be replaced
+	r.Tokens = append(r.Tokens, TokenDesc{Token: 11111, Ingester: ing1Name})
+	r.Tokens = append(r.Tokens, TokenDesc{Token: 22222, Ingester: ing1Name})
+	r.Tokens = append(r.Tokens, TokenDesc{Token: 33333, Ingester: ing1Name})
+
+	r.AddIngester(ing1Name, "addr", newTokens, ACTIVE)
+
+	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
+	require.Equal(t, 0, len(r.Tokens)) // all previous tokens were removed
 }

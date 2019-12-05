@@ -101,7 +101,11 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	}
 
 	// Keep track of in-flight requests, in order to safely start blocks transfer
-	// (at shutdown) only once all in-flight write requests have completed
+	// (at shutdown) only once all in-flight write requests have completed.
+	// It's important to increase the number of in-flight requests within the lock
+	// (even if sync.WaitGroup is thread-safe), otherwise there's a race condition
+	// with the TSDB transfer, which - after the stopped flag is set to true - waits
+	// until all in-flight requests to reach zero.
 	i.TSDBState.inflightWriteReqs.Add(1)
 	i.userStatesMtx.RUnlock()
 	defer i.TSDBState.inflightWriteReqs.Done()

@@ -53,6 +53,7 @@ type LifecyclerConfig struct {
 	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
+	TokensFilePath   string        `yaml:"tokens_file_path,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address"`
@@ -84,6 +85,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
+	f.StringVar(&cfg.TokensFilePath, prefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -125,7 +127,7 @@ type Lifecycler struct {
 	// back empty.  And it changes during lifecycle of ingester.
 	stateMtx sync.Mutex
 	state    IngesterState
-	tokens   []uint32
+	tokens   Tokens
 
 	// Controls the ready-reporting
 	readyLock sync.Mutex
@@ -246,18 +248,24 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error
 	return <-err
 }
 
-func (i *Lifecycler) getTokens() []uint32 {
+func (i *Lifecycler) getTokens() Tokens {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 	return i.tokens
 }
 
-func (i *Lifecycler) setTokens(tokens []uint32) {
+func (i *Lifecycler) setTokens(tokens Tokens) {
 	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
+
 	i.tokens = tokens
+	if i.cfg.TokensFilePath != "" {
+		if err := i.tokens.StoreToFile(i.cfg.TokensFilePath); err != nil {
+			level.Error(util.Logger).Log("msg", "error storing tokens to disk", "path", i.cfg.TokensFilePath, "err", err)
+		}
+	}
 }
 
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
@@ -270,7 +278,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	err := make(chan error)
 
 	i.actorChan <- func() {
-		var tokens []uint32
+		var tokens Tokens
 
 		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
 			ringDesc, ok := in.(*Desc)
@@ -445,9 +453,22 @@ heartbeatLoop:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
 func (i *Lifecycler) initRing(ctx context.Context) error {
-	var ringDesc *Desc
+	var (
+		ringDesc       *Desc
+		tokensFromFile Tokens
+		err            error
+	)
 
-	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	if i.cfg.TokensFilePath != "" {
+		tokensFromFile, err = LoadTokensFromFile(i.cfg.TokensFilePath)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
+		}
+	} else {
+		level.Info(util.Logger).Log("msg", "not loading tokens from file, tokens file path is empty")
+	}
+
+	err = i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -456,6 +477,17 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		ingesterDesc, ok := ringDesc.Ingesters[i.ID]
 		if !ok {
+			// We use the tokens from the file only if it does not exist in the ring yet.
+			if len(tokensFromFile) > 0 {
+				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
+				if len(tokensFromFile) >= i.cfg.NumTokens {
+					i.setState(ACTIVE)
+				}
+				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState(), i.cfg.NormaliseTokens)
+				i.setTokens(tokensFromFile)
+				return ringDesc, true, nil
+			}
+
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
 			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
@@ -505,7 +537,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			newTokens := GenerateTokens(needTokens, takenTokens)
 
 			ringTokens = append(ringTokens, newTokens...)
-			sort.Sort(sortableUint32(ringTokens))
+			sort.Sort(ringTokens)
 
 			ringDesc.AddIngester(i.ID, i.Addr, ringTokens, i.GetState(), i.cfg.NormaliseTokens)
 
@@ -527,11 +559,11 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 	return result
 }
 
-func (i *Lifecycler) compareTokens(fromRing []uint32) bool {
-	sort.Sort(sortableUint32(fromRing))
+func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
+	sort.Sort(fromRing)
 
 	tokens := i.getTokens()
-	sort.Sort(sortableUint32(tokens))
+	sort.Sort(tokens)
 
 	if len(tokens) != len(fromRing) {
 		return false
@@ -566,9 +598,9 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 		i.setState(targetState)
 		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
-		tokens := append(myTokens, newTokens...)
-		sort.Sort(sortableUint32(tokens))
-		i.setTokens(tokens)
+		myTokens = append(myTokens, newTokens...)
+		sort.Sort(myTokens)
+		i.setTokens(myTokens)
 
 		return ringDesc, true, nil
 	})

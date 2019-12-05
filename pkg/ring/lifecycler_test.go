@@ -2,6 +2,9 @@ package ring
 
 import (
 	"context"
+	"io/ioutil"
+	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -252,11 +255,92 @@ func TestCheckReady(t *testing.T) {
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester")
-	l1.setTokens([]uint32{1})
+	l1.setTokens(Tokens([]uint32{1}))
 	l1.Start()
 	require.NoError(t, err)
 
 	// Delete the ring key before checking ready
 	err = l1.CheckReady(context.Background())
 	require.Error(t, err)
+}
+
+type noopFlushTransferer struct {
+	lifecycler *Lifecycler
+}
+
+func (f *noopFlushTransferer) StopIncomingRequests()                 {}
+func (f *noopFlushTransferer) Flush()                                {}
+func (f *noopFlushTransferer) TransferOut(ctx context.Context) error { return nil }
+
+func TestTokensOnDisk(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	r, err := New(ringConfig, "ingester")
+	require.NoError(t, err)
+	defer r.Stop()
+
+	tokenDir, err := ioutil.TempDir(os.TempDir(), "tokens_on_disk")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, os.RemoveAll(tokenDir))
+	}()
+
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+	lifecyclerConfig.NumTokens = 512
+	lifecyclerConfig.TokensFilePath = tokenDir + "/tokens"
+	lifecyclerConfig.NormaliseTokens = true
+
+	// Start first ingester.
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester")
+	require.NoError(t, err)
+	l1.Start()
+	// Check this ingester joined, is active, and has 512 token.
+	var expTokens []uint32
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		if ok {
+			expTokens = desc.Ingesters["ing1"].Tokens
+		}
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing1"].State == ACTIVE &&
+			len(desc.Ingesters["ing1"].Tokens) == 512 &&
+			len(desc.Tokens) == 0
+	})
+
+	l1.Shutdown()
+
+	// Start new ingester at same token directory.
+	lifecyclerConfig.ID = "ing2"
+	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester")
+	require.NoError(t, err)
+	l2.Start()
+	defer l2.Shutdown()
+
+	// Check this ingester joined, is active, and has 512 token.
+	var actTokens []uint32
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		if ok {
+			actTokens = desc.Ingesters["ing2"].Tokens
+		}
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing2"].State == ACTIVE &&
+			len(desc.Ingesters["ing2"].Tokens) == 512 &&
+			len(desc.Tokens) == 0
+	})
+
+	// Check for same tokens.
+	sort.Slice(expTokens, func(i, j int) bool { return expTokens[i] < expTokens[j] })
+	sort.Slice(actTokens, func(i, j int) bool { return actTokens[i] < actTokens[j] })
+	for i := 0; i < 512; i++ {
+		require.Equal(t, expTokens, actTokens)
+	}
 }

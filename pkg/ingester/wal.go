@@ -62,12 +62,12 @@ func (noop) Log(*Record) error {
 func (noop) Stop() {}
 
 type walWrapper struct {
-	cfg      WALConfig
-	ingester *Ingester
-	quit     chan struct{}
-	wait     sync.WaitGroup
+	cfg  WALConfig
+	quit chan struct{}
+	wait sync.WaitGroup
 
-	wal *wal.WAL
+	wal           *wal.WAL
+	getUserStates func() map[string]*userState
 
 	// Checkpoint metrics.
 	checkpointDeleteFail    prometheus.Counter
@@ -79,17 +79,7 @@ type walWrapper struct {
 // newWAL creates a WAL object.
 // * If the WAL is disabled, then the returned WAL is a no-op WAL.
 // * If WAL recovery is enabled, then the userStates is always set for ingester.
-func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
-	if cfg.recover {
-		level.Info(util.Logger).Log("msg", "recovering from WAL")
-		start := time.Now()
-		if err := recoverFromWAL(ingester); err != nil {
-			return nil, err
-		}
-		elapsed := time.Since(start)
-		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
-	}
-
+func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, error) {
 	if !cfg.walEnabled {
 		return &noop{}, nil
 	}
@@ -104,10 +94,10 @@ func newWAL(cfg WALConfig, ingester *Ingester) (WAL, error) {
 	}
 
 	w := &walWrapper{
-		cfg:      cfg,
-		ingester: ingester,
-		quit:     make(chan struct{}),
-		wal:      tsdbWAL,
+		cfg:           cfg,
+		quit:          make(chan struct{}),
+		wal:           tsdbWAL,
+		getUserStates: userStatesFunc,
 	}
 
 	w.checkpointDeleteFail = prometheus.NewCounter(prometheus.CounterOpts{
@@ -203,12 +193,17 @@ func (w *walWrapper) checkpoint() (err error) {
 	if !w.cfg.checkpointEnabled {
 		return nil
 	}
+
 	w.checkpointCreationTotal.Inc()
 	defer func() {
 		if err != nil {
 			w.checkpointCreationFail.Inc()
 		}
 	}()
+
+	if w.getUserStates == nil {
+		return errors.New("function to get user states not initialised")
+	}
 
 	_, lastSegment, err := w.wal.Segments()
 	if err != nil {
@@ -239,7 +234,7 @@ func (w *walWrapper) checkpoint() (err error) {
 	}()
 
 	var wireChunkBuf []client.Chunk
-	for userID, state := range w.ingester.userStates.cp() {
+	for userID, state := range w.getUserStates() {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
 			wireChunkBuf, err = w.checkpointSeries(cp, userID, pair.fp, pair.series, wireChunkBuf)

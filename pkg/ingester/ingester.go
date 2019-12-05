@@ -219,15 +219,24 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 
-	i.wal, err = newWAL(cfg.WALConfig, i)
-	if err != nil {
-		i.lifecycler.Shutdown()
-		return nil, err
+	if cfg.WALConfig.recover {
+		level.Info(util.Logger).Log("msg", "recovering from WAL")
+		start := time.Now()
+		if err := recoverFromWAL(i); err != nil {
+			return nil, err
+		}
+		elapsed := time.Since(start)
+		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 	}
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
 		i.userStates = newUserStates(i.limiter, cfg)
+	}
+
+	i.wal, err = newWAL(cfg.WALConfig, i.userStates.cp)
+	if err != nil {
+		return nil, err
 	}
 
 	// Now that user states have been created, we can start the lifecycler

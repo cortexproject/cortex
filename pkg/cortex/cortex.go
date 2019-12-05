@@ -80,7 +80,7 @@ type Config struct {
 	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
 	ConfigStore   config_client.Config                       `yaml:"config_store,omitempty"`
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
-	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
 }
 
 // RegisterFlags registers flag.

@@ -28,9 +28,9 @@ type ManagerConfig struct {
 }
 
 // RegisterFlags registers flags.
-func (omc *ManagerConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&omc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
-	f.DurationVar(&omc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
+func (mc *ManagerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&mc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
+	f.DurationVar(&mc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
 }
 
 // Manager periodically reloads the configuration from a file, and keeps this

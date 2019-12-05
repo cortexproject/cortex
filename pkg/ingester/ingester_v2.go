@@ -435,7 +435,9 @@ func (i *Ingester) closeAllTSDB() {
 			}
 
 			// Now that the TSDB has been closed, we should remove it from the
-			// set of open ones.
+			// set of open ones. This lock acquisition doesn't deadlock with the
+			// outer one, because the outer one is released as soon as all go
+			// routines are started.
 			i.userStatesMtx.Lock()
 			delete(i.TSDBState.dbs, userID)
 			i.userStatesMtx.Unlock()

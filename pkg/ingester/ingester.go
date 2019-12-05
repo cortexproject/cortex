@@ -118,6 +118,10 @@ type Config struct {
 
 	RateUpdatePeriod time.Duration
 
+	// Controls whether this is a job that solely flushes and exits or not.
+	// Useful when paired with WAL to flush WAL data immediately in case of incidents.
+	IsFlushJob bool
+
 	// Use tsdb block storage
 	TSDBEnabled bool        `yaml:"-"`
 	TSDBConfig  tsdb.Config `yaml:"-"`
@@ -145,6 +149,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", false, "If true, spread series flushes across the whole period of MaxChunkAge")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
+	f.BoolVar(&cfg.IsFlushJob, "ingester.is-flush-job", false, "Enables flush mode where the ingester just flushes and exits.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -204,6 +209,12 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes, cfg.ConcurrentFlushes),
 	}
 
+	// If it's a flush job then transfers needs to be disabled.
+	if cfg.IsFlushJob {
+		cfg.LifecyclerConfig.NumTokens = 0
+		cfg.MaxTransferRetries = -1 // Disables transfers.
+	}
+
 	var err error
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
 	if err != nil {
@@ -214,6 +225,11 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg)
 
+	// If its a job, the ingester should not participate in the transfer or ingestion logic. It already has 0 tokens,
+	// and if we set the initial state to ACTIVE, it won't be transferred to.
+	if cfg.IsFlushJob {
+		i.lifecycler.SetState(ring.ACTIVE)
+	}
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
 

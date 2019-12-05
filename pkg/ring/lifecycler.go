@@ -233,7 +233,9 @@ func (i *Lifecycler) GetState() IngesterState {
 	return i.state
 }
 
-func (i *Lifecycler) setState(state IngesterState) {
+// SetState sets the internal state. This doesn't change the state in the ring.
+// Use ChangeState instead.
+func (i *Lifecycler) SetState(state IngesterState) {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 	i.state = state
@@ -481,7 +483,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			if len(tokensFromFile) > 0 {
 				level.Info(util.Logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
 				if len(tokensFromFile) >= i.cfg.NumTokens {
-					i.setState(ACTIVE)
+					i.SetState(ACTIVE)
 				}
 				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState(), i.cfg.NormaliseTokens)
 				i.setTokens(tokensFromFile)
@@ -495,7 +497,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		}
 
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
-		i.setState(ingesterDesc.State)
+		i.SetState(ingesterDesc.State)
 		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
 
@@ -595,7 +597,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 		}
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
-		i.setState(targetState)
+		i.SetState(targetState)
 		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
 		myTokens = append(myTokens, newTokens...)
@@ -662,7 +664,7 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 	}
 
 	level.Info(util.Logger).Log("msg", "changing ingester state from", "old_state", currState, "new_state", state)
-	i.setState(state)
+	i.SetState(state)
 	return i.updateConsul(ctx)
 }
 

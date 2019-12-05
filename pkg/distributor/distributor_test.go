@@ -24,10 +24,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -420,6 +422,104 @@ func TestSlowQueries(t *testing.T) {
 	}
 }
 
+func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
+	fixtures := []struct {
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "status", Value: "500"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+		// The two following series have the same FastFingerprint=e002a3a451262627
+		{labels.Labels{{Name: labels.MetricName, Value: "fast_fingerprint_collision"}, {Name: "app", Value: "l"}, {Name: "uniq0", Value: "0"}, {Name: "uniq1", Value: "1"}}, 1, 300000},
+		{labels.Labels{{Name: labels.MetricName, Value: "fast_fingerprint_collision"}, {Name: "app", Value: "m"}, {Name: "uniq0", Value: "1"}, {Name: "uniq1", Value: "1"}}, 1, 300000},
+	}
+
+	tests := map[string]struct {
+		matchers []*labels.Matcher
+		expected []metric.Metric
+	}{
+		"should return an empty response if no metric match": {
+			matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "unknown"),
+			},
+			expected: []metric.Metric{},
+		},
+		"should filter metrics by single matcher": {
+			matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
+			},
+			expected: []metric.Metric{
+				{Metric: util.LabelsToMetric(fixtures[0].lbls)},
+				{Metric: util.LabelsToMetric(fixtures[1].lbls)},
+			},
+		},
+		"should filter metrics by multiple matchers": {
+			matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "status", "200"),
+				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
+			},
+			expected: []metric.Metric{
+				{Metric: util.LabelsToMetric(fixtures[0].lbls)},
+			},
+		},
+		"should return all matching metrics even if their FastFingerprint collide": {
+			matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "fast_fingerprint_collision"),
+			},
+			expected: []metric.Metric{
+				{Metric: util.LabelsToMetric(fixtures[3].lbls)},
+				{Metric: util.LabelsToMetric(fixtures[4].lbls)},
+			},
+		},
+	}
+
+	// Create distributor
+	d := prepare(t, 3, 3, time.Duration(0), true, nil)
+	defer d.Stop()
+
+	// Push fixtures
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	for _, series := range fixtures {
+		req := mockWriteRequest(series.lbls, series.value, series.timestamp)
+		_, err := d.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// Run tests
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			now := model.Now()
+
+			metrics, err := d.MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, testData.expected, metrics)
+		})
+	}
+}
+
+func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
+	m, err := labels.NewMatcher(t, n, v)
+	if err != nil {
+		panic(err)
+	}
+
+	return m
+}
+
+func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) *client.WriteRequest {
+	samples := []client.Sample{
+		{
+			TimestampMs: timestampMs,
+			Value:       value,
+		},
+	}
+
+	return client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
+}
+
 func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits) *Distributor {
 	ingesters := []mockIngester{}
 	for i := 0; i < happyIngesters; i++ {
@@ -619,12 +719,22 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 	}
 
 	for j := range req.Timeseries {
-		hash, _ := shardByAllLabels(orgid, req.Timeseries[j].Labels)
+		series := req.Timeseries[j]
+		hash, _ := shardByAllLabels(orgid, series.Labels)
 		existing, ok := i.timeseries[hash]
 		if !ok {
-			i.timeseries[hash] = &req.Timeseries[j]
+			// Make a copy because the request Timeseries are reused
+			item := client.TimeSeries{
+				Labels:  make([]client.LabelAdapter, len(series.TimeSeries.Labels)),
+				Samples: make([]client.Sample, len(series.TimeSeries.Samples)),
+			}
+
+			copy(item.Labels, series.TimeSeries.Labels)
+			copy(item.Samples, series.TimeSeries.Samples)
+
+			i.timeseries[hash] = &client.PreallocTimeseries{TimeSeries: &item}
 		} else {
-			existing.Samples = append(existing.Samples, req.Timeseries[j].Samples...)
+			existing.Samples = append(existing.Samples, series.Samples...)
 		}
 	}
 
@@ -715,6 +825,30 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 	return &stream{
 		results: results,
 	}, nil
+}
+
+func (i *mockIngester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest, opts ...grpc.CallOption) (*client.MetricsForLabelMatchersResponse, error) {
+	i.Lock()
+	defer i.Unlock()
+
+	if !i.happy {
+		return nil, errFail
+	}
+
+	_, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	response := client.MetricsForLabelMatchersResponse{}
+	for _, matchers := range multiMatchers {
+		for _, ts := range i.timeseries {
+			if match(ts.Labels, matchers) {
+				response.Metric = append(response.Metric, &client.Metric{Labels: ts.Labels})
+			}
+		}
+	}
+	return &response, nil
 }
 
 type stream struct {

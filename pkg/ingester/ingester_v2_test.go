@@ -715,7 +715,7 @@ func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Re
 	clientCfg := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
 
-	overrides, err := validation.NewOverrides(limits)
+	overrides, err := validation.NewOverrides(limits, nil)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [FEATURE] The distributor can now drop labels from samples (similar to the removal of the replica label for HA ingestion) per user via the `distributor.drop-label` flag. #1726
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 
 ## 0.4.0 / 2019-12-02

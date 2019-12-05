@@ -105,7 +105,7 @@ func (m *fpMapper) maybeAddMapping(
 		// A new mapping has to be created.
 		mappedFP = m.nextMappedFP()
 		mappedFPs[ms] = mappedFP
-		level.Info(util.Logger).Log(
+		level.Debug(util.Logger).Log(
 			"msg", "fingerprint collision detected, mapping to new fingerprint",
 			"old_fp", fp,
 			"new_fp", mappedFP,
@@ -119,7 +119,7 @@ func (m *fpMapper) maybeAddMapping(
 	m.mtx.Lock()
 	m.mappings[fp] = mappedFPs
 	m.mtx.Unlock()
-	level.Info(util.Logger).Log(
+	level.Debug(util.Logger).Log(
 		"msg", "fingerprint collision detected, mapping to new fingerprint",
 		"old_fp", fp,
 		"new_fp", mappedFP,

@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/shipper"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	old_ctx "golang.org/x/net/context"
@@ -68,6 +70,8 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 // v2Push adds metrics to a block
 func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+	var lastPartialErr error
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
@@ -77,6 +81,11 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	if err != nil {
 		return nil, err
 	}
+
+	// Keep track of some stats which are tracked only if the samples will be
+	// successfully committed
+	succeededSamplesCount := 0
+	failedSamplesCount := 0
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender()
@@ -89,21 +98,44 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 				return nil, fmt.Errorf("ingester stopping")
 			}
 
-			if _, err := app.Add(lset, s.TimestampMs, s.Value); err != nil {
-				if err := app.Rollback(); err != nil {
-					level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID, "err", err)
-				}
-				return nil, err
+			_, err := app.Add(lset, s.TimestampMs, s.Value)
+			if err == nil {
+				succeededSamplesCount++
+				continue
 			}
+
+			failedSamplesCount++
+
+			// Check if the error is a soft error we can proceed on. If so, we keep track
+			// of it, so that we can return it back to the distributor, which will return a
+			// 400 error to the client. The client (Prometheus) will not retry on 400, and
+			// we actually ingested all samples which haven't failed.
+			if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample || err == tsdb.ErrAmendSample {
+				lastPartialErr = httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				continue
+			}
+
+			// The error looks an issue on our side, so we should rollback
+			if rollbackErr := app.Rollback(); rollbackErr != nil {
+				level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID, "err", rollbackErr)
+			}
+
+			return nil, err
 		}
 	}
 	if err := app.Commit(); err != nil {
 		return nil, err
 	}
 
+	// Increment metrics only if the samples have been successfully committed.
+	// If the code didn't reach this point, it means that we returned an error
+	// which will be converted into an HTTP 5xx and the client should/will retry.
+	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
+	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
+
 	client.ReuseSlice(req.Timeseries)
 
-	return &client.WriteResponse{}, nil
+	return &client.WriteResponse{}, lastPartialErr
 }
 
 func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {

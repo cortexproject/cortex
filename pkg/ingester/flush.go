@@ -181,7 +181,7 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *memo
 	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
 	if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
 		flushReasons.WithLabelValues(flush.String()).Inc()
-		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
+		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "nlabels", len(series.metric), "queue", flushQueueIndex)
 	}
 }
 
@@ -326,7 +326,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	defer sp.Finish()
 	sp.SetTag("organization", userID)
 
-	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "queue", flushQueueIndex)
+	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "nlabels", len(series.metric), "queue", flushQueueIndex)
 	err := i.flushChunks(ctx, userID, fp, series.metric, chunks)
 	if err != nil {
 		return err
@@ -383,7 +383,7 @@ func (i *Ingester) flushChunks(ctx context.Context, userID string, fp model.Fing
 	// Record statistsics only when actual put request did not return error.
 	for _, chunkDesc := range chunkDescs {
 		utilization, length, size := chunkDesc.C.Utilization(), chunkDesc.C.Len(), chunkDesc.C.Size()
-		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "utilization", utilization, "length", length, "size", size, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)
+		util.Event().Log("msg", "chunk flushed", "userID", userID, "fp", fp, "series", metric, "nlabels", len(metric), "utilization", utilization, "length", length, "size", size, "firstTime", chunkDesc.FirstTime, "lastTime", chunkDesc.LastTime)
 		chunkUtilization.Observe(utilization)
 		chunkLength.Observe(float64(length))
 		chunkSize.Observe(float64(size))

@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -48,6 +49,9 @@ var (
 		Name:      "ha_tracker_kv_store_cas_total",
 		Help:      "The total number of CAS calls to the KV store for a user ID/cluster.",
 	}, []string{"user", "cluster"})
+
+	errNegativeUpdateTimeoutJitterMax = errors.New("HA tracker max update timeout jitter shouldn't be negative")
+	errInvalidFailoverTimeout         = "HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)"
 )
 
 // ProtoReplicaDescFactory makes new InstanceDescs
@@ -117,10 +121,15 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *HATrackerConfig) Validate() error {
-	if cfg.FailoverTimeout < cfg.UpdateTimeout+cfg.UpdateTimeoutJitterMax+time.Second {
-		return fmt.Errorf("HA Tracker failover timeout (%v) must be at least 1s greater than update timeout (%v)",
-			cfg.FailoverTimeout, cfg.UpdateTimeout+cfg.UpdateTimeoutJitterMax+time.Second)
+	if cfg.UpdateTimeoutJitterMax < 0 {
+		return errNegativeUpdateTimeoutJitterMax
 	}
+
+	minFailureTimeout := cfg.UpdateTimeout + cfg.UpdateTimeoutJitterMax + time.Second
+	if cfg.FailoverTimeout < minFailureTimeout {
+		return fmt.Errorf(errInvalidFailoverTimeout, cfg.FailoverTimeout, minFailureTimeout)
+	}
+
 	return nil
 }
 
@@ -207,7 +216,7 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 	c.electedLock.RLock()
 	entry, ok := c.elected[key]
 	c.electedLock.RUnlock()
-	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout {
+	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout+c.updateTimeoutJitter {
 		if entry.Replica != replica {
 			return replicasNotMatchError(replica, entry.Replica)
 		}

@@ -109,7 +109,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	c.Ruler.RegisterFlags(f)
 	c.ConfigDB.RegisterFlags(f)
-	c.ConfigStore.RegisterFlags(f)
+	c.ConfigStore.RegisterFlagsWithPrefix("alertmanager.", f)
 	c.Alertmanager.RegisterFlags(f)
 
 	// These don't seem to have a home.

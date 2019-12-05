@@ -21,7 +21,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/configs/api"
-	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -358,17 +357,10 @@ func (t *Cortex) stopTableManager() error {
 }
 
 func (t *Cortex) initRuler(cfg *Config) (err error) {
-	cfg.Querier.MaxConcurrent = cfg.Ruler.NumWorkers
-	cfg.Querier.Timeout = cfg.Ruler.GroupTimeout
 	cfg.Ruler.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	queryable, engine := querier.New(cfg.Querier, t.distributor, t.store)
 
-	rulesAPI, err := config_client.New(cfg.ConfigStore)
-	if err != nil {
-		return err
-	}
-
-	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, rulesAPI)
+	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor)
 	if err != nil {
 		return
 	}

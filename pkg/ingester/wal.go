@@ -148,6 +148,9 @@ func (w *walWrapper) Stop() {
 }
 
 func (w *walWrapper) Log(record *Record) error {
+	if record == nil {
+		return nil
+	}
 	buf, err := proto.Marshal(record)
 	if err != nil {
 		return err

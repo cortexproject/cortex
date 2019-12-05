@@ -212,6 +212,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	// During WAL recovery, it will create new user states which requires the limiter.
 	// Hence initialise the limiter before creating the WAL.
+	// The '!cfg.WALConfig.walEnabled' argument says don't flush on shutdown if the WAL is enabled.
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", !cfg.WALConfig.walEnabled)
 	if err != nil {
 		return nil, err
@@ -224,8 +225,8 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return nil, err
 	}
 
+	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		// If userStates is nil, it means that the WAL recovery did not happen.
 		i.userStates = newUserStates(i.limiter, cfg)
 	}
 

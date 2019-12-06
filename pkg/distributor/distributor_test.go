@@ -389,12 +389,7 @@ func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
 		userID, err := user.ExtractOrgID(ctx)
 		assert.NoError(t, err)
 
-		key, err := d.tokenForLabels(userID, tc.series.Labels)
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
-		}
-
-		series, err := d.validateSeries(key, tc.series, userID, tc.removeReplica)
+		_, series, err := d.validateSeries(tc.series, userID, tc.removeReplica)
 		if !reflect.DeepEqual(series, tc.outputSeries) {
 			t.Fatalf("output of validate series did not match expected output:\n\texpected: %+v\n\t got: %+v", tc.outputSeries, series)
 		}

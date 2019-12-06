@@ -192,6 +192,10 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 		healthy = true
 	}
 
+	if op == Reporting {
+		healthy = true
+	}
+
 	return healthy && time.Now().Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 

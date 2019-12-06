@@ -11,34 +11,39 @@ func TestIngesterDesc_IsHealthy(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		ingester      *IngesterDesc
-		timeout       time.Duration
-		writeExpected bool
-		readExpected  bool
+		ingester       *IngesterDesc
+		timeout        time.Duration
+		writeExpected  bool
+		readExpected   bool
+		reportExpected bool
 	}{
 		"ALIVE ingester with last keepalive newer than timeout": {
-			ingester:      &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
-			timeout:       time.Minute,
-			writeExpected: true,
-			readExpected:  true,
+			ingester:       &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:        time.Minute,
+			writeExpected:  true,
+			readExpected:   true,
+			reportExpected: true,
 		},
 		"ALIVE ingester with last keepalive older than timeout": {
-			ingester:      &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-90 * time.Second).Unix()},
-			timeout:       time.Minute,
-			writeExpected: false,
-			readExpected:  false,
+			ingester:       &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-90 * time.Second).Unix()},
+			timeout:        time.Minute,
+			writeExpected:  false,
+			readExpected:   false,
+			reportExpected: false,
 		},
 		"JOINING ingester with last keepalive newer than timeout": {
-			ingester:      &IngesterDesc{State: JOINING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
-			timeout:       time.Minute,
-			writeExpected: false,
-			readExpected:  false,
+			ingester:       &IngesterDesc{State: JOINING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:        time.Minute,
+			writeExpected:  false,
+			readExpected:   false,
+			reportExpected: true,
 		},
 		"LEAVING ingester with last keepalive newer than timeout": {
-			ingester:      &IngesterDesc{State: LEAVING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
-			timeout:       time.Minute,
-			writeExpected: false,
-			readExpected:  true,
+			ingester:       &IngesterDesc{State: LEAVING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:        time.Minute,
+			writeExpected:  false,
+			readExpected:   true,
+			reportExpected: true,
 		},
 	}
 
@@ -51,6 +56,9 @@ func TestIngesterDesc_IsHealthy(t *testing.T) {
 
 			actual = testData.ingester.IsHealthy(Read, testData.timeout)
 			assert.Equal(t, testData.readExpected, actual)
+
+			actual = testData.ingester.IsHealthy(Reporting, testData.timeout)
+			assert.Equal(t, testData.reportExpected, actual)
 		})
 	}
 }

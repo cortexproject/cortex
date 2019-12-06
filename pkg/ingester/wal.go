@@ -88,7 +88,7 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, er
 	if cfg.metricsRegisterer != nil {
 		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, cfg.metricsRegisterer)
 	}
-	tsdbWAL, err := wal.New(util.Logger, walRegistry, cfg.dir, true)
+	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.dir, wal.DefaultSegmentSize/4, true)
 	if err != nil {
 		return nil, err
 	}

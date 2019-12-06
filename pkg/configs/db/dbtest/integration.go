@@ -39,7 +39,7 @@ func Setup(t *testing.T) db.DB {
 	// Don't use db.MustNew, here so we can do a transaction around the whole test, to rollback.
 	pg, err := postgres.New(
 		fmt.Sprintf("postgres://postgres@%s/configs_test?sslmode=disable", dbAddr),
-		migrationsDir,
+		fmt.Sprintf("file:%s", migrationsDir),
 	)
 	require.NoError(t, err)
 

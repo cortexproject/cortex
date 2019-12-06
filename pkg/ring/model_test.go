@@ -104,7 +104,7 @@ func TestClaimTokensFromNormalizedToNormalized(t *testing.T) {
 	r := normalizedSource()
 	result := r.ClaimTokens("first", "second", true)
 
-	assert.Equal(t, []uint32{100, 200, 300}, result)
+	assert.Equal(t, Tokens{100, 200, 300}, result)
 	assert.Equal(t, normalizedOutput(), r)
 }
 
@@ -112,7 +112,7 @@ func TestClaimTokensFromNormalizedToUnnormalized(t *testing.T) {
 	r := normalizedSource()
 	result := r.ClaimTokens("first", "second", false)
 
-	assert.Equal(t, []uint32{100, 200, 300}, result)
+	assert.Equal(t, Tokens{100, 200, 300}, result)
 	assert.Equal(t, unnormalizedOutput(), r)
 }
 
@@ -120,7 +120,7 @@ func TestClaimTokensFromUnnormalizedToUnnormalized(t *testing.T) {
 	r := unnormalizedSource()
 	result := r.ClaimTokens("first", "second", false)
 
-	assert.Equal(t, []uint32{100, 200, 300}, result)
+	assert.Equal(t, Tokens{100, 200, 300}, result)
 	assert.Equal(t, unnormalizedOutput(), r)
 }
 
@@ -129,7 +129,7 @@ func TestClaimTokensFromUnnormalizedToNormalized(t *testing.T) {
 
 	result := r.ClaimTokens("first", "second", true)
 
-	assert.Equal(t, []uint32{100, 200, 300}, result)
+	assert.Equal(t, Tokens{100, 200, 300}, result)
 	assert.Equal(t, normalizedOutput(), r)
 }
 

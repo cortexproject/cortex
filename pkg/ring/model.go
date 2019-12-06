@@ -79,8 +79,8 @@ func (d *Desc) RemoveIngester(id string) {
 // This method assumes that Ring is in the correct state, 'from' ingester has no tokens anywhere,
 // and 'to' ingester uses either normalised or non-normalised tokens, but not both. Tokens list must
 // be sorted properly. If all of this is true, everything will be fine.
-func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
-	var result []uint32
+func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) Tokens {
+	var result Tokens
 
 	if normaliseTokens {
 
@@ -169,8 +169,8 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 }
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.
-func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
-	var takenTokens, myTokens []uint32
+func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
+	takenTokens, myTokens := Tokens{}, Tokens{}
 	for _, token := range migrateRing(d) {
 		takenTokens = append(takenTokens, token.Token)
 		if token.Ingester == id {
@@ -319,8 +319,8 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 			continue
 		}
 
-		if !sort.IsSorted(sortableUint32(ing.Tokens)) {
-			sort.Sort(sortableUint32(ing.Tokens))
+		if !sort.IsSorted(Tokens(ing.Tokens)) {
+			sort.Sort(Tokens(ing.Tokens))
 		}
 
 		seen := make(map[uint32]bool)
@@ -407,7 +407,7 @@ func resolveConflicts(normalizedIngesters map[string]IngesterDesc) {
 		}
 	}
 
-	sort.Sort(sortableUint32(tokens))
+	sort.Sort(Tokens(tokens))
 
 	// let's store the resolved result back
 	newTokenLists := map[string][]uint32{}

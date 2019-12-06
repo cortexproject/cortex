@@ -2,6 +2,14 @@
 
 ## master / unreleased
 
+* [CHANGE] Flags changed with transition to upstream Prometheus rules manager:
+  * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`
+  * `ruler.group-timeout`has been removed
+  * `ruler.num-workers` has been removed
+  * `ruler.rule-path` has been added to specify where the prometheus rule manager will sync rule files
+  * `ruler.storage.type` has beem added to specify the rule store backend type, currently only the configdb.
+  * `ruler.poll-interval` has been added to specify the interval in which to poll new rule groups.
+* [FEATURE] The distributor can now drop labels from samples (similar to the removal of the replica label for HA ingestion) per user via the `distributor.drop-label` flag. #1726
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 
 ## 0.4.0 / 2019-12-02

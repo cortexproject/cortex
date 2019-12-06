@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -11,12 +12,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -27,7 +30,7 @@ type BlockQuerier struct {
 }
 
 // NewBlockQuerier returns a client to query a block store
-func NewBlockQuerier(cfg tsdb.Config, r prometheus.Registerer) (*BlockQuerier, error) {
+func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, r prometheus.Registerer) (*BlockQuerier, error) {
 	b := &BlockQuerier{
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_sync_seconds",
@@ -38,7 +41,7 @@ func NewBlockQuerier(cfg tsdb.Config, r prometheus.Registerer) (*BlockQuerier, e
 
 	r.MustRegister(b.syncTimes)
 
-	us, err := NewUserStore(cfg, util.Logger)
+	us, err := NewUserStore(cfg, logLevel, util.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -108,13 +111,20 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 			return nil, err
 		}
 
-		chunks = append(chunks, seriesToChunks(userID, resp.GetSeries())...)
+		// Convert Thanos store series into Cortex chunks
+		convertedChunks, err := seriesToChunks(userID, resp.GetSeries())
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "failed converting TSDB series to Cortex chunks", "err", err)
+			return nil, err
+		}
+
+		chunks = append(chunks, convertedChunks...)
 	}
 
 	return chunks, nil
 }
 
-func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
+func seriesToChunks(userID string, series *storepb.Series) ([]chunk.Chunk, error) {
 	var lbls labels.Labels
 	for _, label := range series.Labels {
 		// We have to remove the external label set by the shipper
@@ -135,8 +145,7 @@ func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
 
 		enc, err := chunkenc.FromData(chunkenc.EncXOR, c.Raw.Data)
 		if err != nil {
-			level.Warn(util.Logger).Log("msg", "failed to convert raw encoding to chunk", "err", err)
-			continue
+			return nil, errors.Wrap(err, fmt.Sprintf("failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", lbls, c.MinTime, c.MaxTime))
 		}
 
 		it := enc.Iterator(nil)
@@ -147,8 +156,7 @@ func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
 				Value:     model.SampleValue(v),
 			})
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "failed adding sample to chunk", "err", err)
-				continue
+				return nil, errors.Wrap(err, fmt.Sprintf("failed adding sample to chunk (series: %v timestamp: %d value: %f)", lbls, ts, v))
 			}
 
 			if overflow != nil {
@@ -157,9 +165,15 @@ func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
 			}
 		}
 
+		// Ensure the iteration has not been interrupted because of an error
+		if it.Err() != nil {
+			return nil, errors.Wrap(it.Err(), fmt.Sprintf("failed reading sample from encoded chunk (series: %v min time: %d max time: %d)", lbls, c.MinTime, c.MaxTime))
+		}
+
 		if ch.Len() > 0 {
 			chunks = append(chunks, chunk.NewChunk(userID, client.Fingerprint(lbls), lbls, ch, model.Time(c.MinTime), model.Time(c.MaxTime)))
 		}
 	}
-	return chunks
+
+	return chunks, nil
 }

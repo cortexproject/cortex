@@ -2,8 +2,8 @@ package distributor
 
 import (
 	"context"
-	"errors"
 	"flag"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -90,8 +90,7 @@ var (
 		Name:      "distributor_replication_factor",
 		Help:      "The configured replication factor.",
 	})
-	emptyPreallocSeries     = ingester_client.PreallocTimeseries{}
-	errShardLabelsNotSorted = errors.New("Labels not sorted")
+	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -244,7 +243,7 @@ func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, erro
 	var lastLabelName string
 	for _, label := range labels {
 		if strings.Compare(lastLabelName, label.Name) >= 0 {
-			return 0, errShardLabelsNotSorted
+			return 0, fmt.Errorf("Labels not sorted")
 		}
 		h = client.HashAdd32(h, label.Name)
 		h = client.HashAdd32(h, label.Value)
@@ -286,44 +285,22 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Validates a single series from a write request. Will remove labels if
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
-func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string, removeReplica bool) (uint32, client.PreallocTimeseries, error) {
-	// If we found both the cluster and replica labels, we only want to include the cluster label when
-	// storing series in Cortex. If we kept the replica label we would end up with another series for the same
-	// series we're trying to dedupe when HA tracking moves over to a different replica.
-	if removeReplica {
-		removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
-	}
-
-	for _, labelName := range d.limits.DropLabels(userID) {
-		removeLabel(labelName, &ts.Labels)
-	}
-	if len(ts.Labels) == 0 {
-		return 0, emptyPreallocSeries, nil
-	}
-
-	// Generate the sharding token based on the series labels without the HA replica
-	// label and dropped labels (if any)
-	key, err := d.tokenForLabels(userID, ts.Labels)
-	if err != nil {
-		return key, emptyPreallocSeries, err
-	}
-
+func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (client.PreallocTimeseries, error) {
 	labelsHistogram.Observe(float64(len(ts.Labels)))
 	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
-		return key, emptyPreallocSeries, err
+		return emptyPreallocSeries, err
 	}
 
 	metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
 	samples := make([]client.Sample, 0, len(ts.Samples))
 	for _, s := range ts.Samples {
 		if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
-			return key, emptyPreallocSeries, err
+			return emptyPreallocSeries, err
 		}
 		samples = append(samples, s)
 	}
 
-	return key,
-		client.PreallocTimeseries{
+	return client.PreallocTimeseries{
 			TimeSeries: &client.TimeSeries{
 				Labels:  ts.Labels,
 				Samples: samples,
@@ -371,13 +348,29 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	keys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
 	for _, ts := range req.Timeseries {
-		key, validatedSeries, err := d.validateSeries(ts, userID, removeReplica)
+		// If we found both the cluster and replica labels, we only want to include the cluster label when
+		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+		// series we're trying to dedupe when HA tracking moves over to a different replica.
+		if removeReplica {
+			removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+		}
 
-		// In case of a fatal error (ie. logic bug) we should fail the entire
-		// request and not consider it a partial error.
-		if err == errShardLabelsNotSorted {
+		for _, labelName := range d.limits.DropLabels(userID) {
+			removeLabel(labelName, &ts.Labels)
+		}
+
+		if len(ts.Labels) == 0 {
+			continue
+		}
+
+		// Generate the sharding token based on the series labels without the HA replica
+		// label and dropped labels (if any)
+		key, err := d.tokenForLabels(userID, ts.Labels)
+		if err != nil {
 			return nil, err
 		}
+
+		validatedSeries, err := d.validateSeries(ts, userID)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.

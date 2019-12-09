@@ -96,7 +96,7 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:master-94ba16ade configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:master-d74af5958 configs-integration-test
     - run:
         name: Load Images
         command: ln -s /tmp/images ./docker-images; make BUILD_IN_CONTAINER=false load-images

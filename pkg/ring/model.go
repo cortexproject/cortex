@@ -184,15 +184,14 @@ func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
 func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
 	healthy := false
 
-	if op == Write && i.State == ACTIVE {
-		healthy = true
-	}
+	switch op {
+	case Write:
+		healthy = i.State == ACTIVE
 
-	if op == Read && (i.State == ACTIVE || i.State == LEAVING || i.State == PENDING) {
-		healthy = true
-	}
+	case Read:
+		healthy = i.State == ACTIVE || i.State == LEAVING || i.State == PENDING
 
-	if op == Reporting {
+	case Reporting:
 		healthy = true
 	}
 

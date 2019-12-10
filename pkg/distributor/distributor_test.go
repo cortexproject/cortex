@@ -383,6 +383,114 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 	}
 }
 
+func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {
+	tests := map[string]struct {
+		inputSeries    labels.Labels
+		expectedSeries labels.Labels
+		expectedToken  uint32
+	}{
+		"metric_1 with value_1": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+			},
+			expectedToken: 0x58b1e325,
+		},
+		"metric_1 with value_1 and dropped label due to config": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+				{Name: "dropped", Value: "unused"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+			},
+			expectedToken: 0x58b1e325,
+		},
+		"metric_1 with value_1 and dropped HA replica label": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+				{Name: "__replica__", Value: "replica_1"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+			},
+			expectedToken: 0x58b1e325,
+		},
+		"metric_2 with value_1": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_2"},
+				{Name: "key", Value: "value_1"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_2"},
+				{Name: "key", Value: "value_1"},
+			},
+			expectedToken: 0xa60906f2,
+		},
+		"metric_1 with value_2": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_2"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_2"},
+			},
+			expectedToken: 0x18abc8a2,
+		},
+	}
+
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.DropLabels = []string{"dropped"}
+	limits.AcceptHASamples = true
+
+	ctx = user.InjectOrgID(context.Background(), "user")
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			d, ingesters := prepare(t, 1, 1, 0, true, &limits)
+			defer d.Stop()
+
+			// Push the series to the distributor
+			req := mockWriteRequest(testData.inputSeries, 1, 1)
+			_, err := d.Push(ctx, req)
+			require.NoError(t, err)
+
+			// Since each test pushes only 1 series, we do expect the ingester
+			// to have received exactly 1 series
+			require.Equal(t, 1, len(ingesters))
+			require.Equal(t, 1, len(ingesters[0].timeseries))
+
+			var actualSeries *client.PreallocTimeseries
+			var actualToken uint32
+
+			for token, ts := range ingesters[0].timeseries {
+				actualSeries = ts
+				actualToken = token
+			}
+
+			// Ensure the series and the sharding token is the expected one
+			assert.Equal(t, testData.expectedSeries, client.FromLabelAdaptersToLabels(actualSeries.Labels))
+			assert.Equal(t, testData.expectedToken, actualToken)
+		})
+	}
+}
+
 func TestSlowQueries(t *testing.T) {
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	nIngesters := 3

@@ -3,7 +3,6 @@ package ingester
 import (
 	"bytes"
 	"context"
-	go_errors "errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -391,15 +389,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			return nil
 		}
 
-		// Log just with an info level errors which are expected to happen
-		var lvl log.Logger
-		if go_errors.Is(err, errTransferNoPendingIngesters) {
-			lvl = level.Info(util.Logger)
-		} else {
-			lvl = level.Warn(util.Logger)
-		}
-
-		lvl.Log("msg", "transfer attempt failed", "err", err, "attempt", backoff.NumRetries()+1, "max_retries", i.cfg.MaxTransferRetries)
+		level.Warn(util.Logger).Log("msg", "transfer attempt failed", "err", err, "attempt", backoff.NumRetries()+1, "max_retries", i.cfg.MaxTransferRetries)
 
 		backoff.Wait()
 	}

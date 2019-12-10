@@ -161,6 +161,8 @@ type Cortex struct {
 	configAPI    *api.API
 	configDB     db.DB
 	alertmanager *alertmanager.MultitenantAlertmanager
+
+	stopped bool
 }
 
 // New makes a new Cortex.
@@ -261,6 +263,11 @@ func (t *Cortex) Run() error {
 
 // Stop gracefully stops a Cortex.
 func (t *Cortex) Stop() error {
+	if t.stopped {
+		return nil
+	}
+
+	t.stopped = true
 	t.stopModule(t.target)
 	deps := orderedDeps(t.target)
 	// iterate over our deps in reverse order and call stopModule

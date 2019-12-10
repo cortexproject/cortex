@@ -81,7 +81,7 @@ func main() {
 
 	runtime.KeepAlive(ballast)
 	err = t.Stop()
-	util.CheckFatal("initializing cortex", err)
+	util.CheckFatal("stopping cortex", err)
 }
 
 // LoadConfig read YAML-formatted config from filename into cfg.

@@ -23,6 +23,10 @@ var (
 // RuleStore is used to store and retrieve rules
 type RuleStore interface {
 	ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
+	ListRuleGroups(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
+	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
+	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error
+	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
 }
 
 // RuleGroupList contains a set of rule groups
@@ -105,4 +109,24 @@ func getLatestConfigID(cfgs map[string]userconfig.VersionedRulesConfig, latest u
 		}
 	}
 	return ret
+}
+
+// ListRuleGroups is not implemented
+func (c *ConfigRuleStore) ListRuleGroups(ctx context.Context, userID string, namespace string) (RuleGroupList, error) {
+	return nil, errors.New("not implemented by the config service rule store")
+}
+
+// GetRuleGroup is not implemented
+func (c *ConfigRuleStore) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error) {
+	return nil, errors.New("not implemented by the config service rule store")
+}
+
+// SetRuleGroup is not implemented
+func (c *ConfigRuleStore) SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error {
+	return errors.New("not implemented by the config service rule store")
+}
+
+// DeleteRuleGroup is not implemented
+func (c *ConfigRuleStore) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
+	return errors.New("not implemented by the config service rule store")
 }

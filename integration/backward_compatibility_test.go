@@ -61,7 +61,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	now := time.Now()
 	series, expectedVector := generateSeries("series_1", now)
 
-	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "user-1")
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
 	require.NoError(t, err)
 
 	res, err := c.Push(series)
@@ -91,7 +91,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 		require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 		// Query the series
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "user-1")
+		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
 		require.NoError(t, err)
 
 		result, err := c.Query("series_1", now)

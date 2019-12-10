@@ -48,6 +48,11 @@ var (
 		Name:      "ruler_config_updates_total",
 		Help:      "Total number of config updates triggered by a user",
 	}, []string{"user"})
+	managersTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "ruler_managers_total",
+		Help:      "Total number of managers registered and running in the ruler",
+	})
 )
 
 // Config is the configuration for the recording rules server.
@@ -343,6 +348,9 @@ func (r *Ruler) run(ctx context.Context) error {
 			return nil
 		case <-tick.C:
 			r.loadRules(ctx)
+			r.userManagerMtx.Lock()
+			managersTotal.Set(float64(len(r.userManagers)))
+			r.userManagerMtx.Unlock()
 		}
 	}
 }

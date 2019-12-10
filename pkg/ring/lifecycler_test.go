@@ -308,7 +308,6 @@ func TestCheckReady(t *testing.T) {
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey)
-	l1.setTokens(Tokens([]uint32{1}))
 	l1.Start()
 	require.NoError(t, err)
 

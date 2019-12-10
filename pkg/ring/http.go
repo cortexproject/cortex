@@ -101,7 +101,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		// http.Redirect() would convert our relative URL to absolute, which is not what we want.
 		// Browser knows how to do that, and it also knows real URL. Furthermore it will also preserve tokens parameter.
-		// Note that relative Location URLs are explicitely allowed by specification, so we're not doing anything wrong here.
+		// Note that relative Location URLs are explicitly allowed by specification, so we're not doing anything wrong here.
 		w.Header().Set("Location", "#")
 		w.WriteHeader(http.StatusFound)
 

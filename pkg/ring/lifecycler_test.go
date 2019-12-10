@@ -332,7 +332,7 @@ func TestTokensOnDisk(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
-	r, err := New(ringConfig, "ingester")
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	defer r.Stop()
 
@@ -348,13 +348,13 @@ func TestTokensOnDisk(t *testing.T) {
 	lifecyclerConfig.NormaliseTokens = true
 
 	// Start first ingester.
-	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester")
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	l1.Start()
 	// Check this ingester joined, is active, and has 512 token.
 	var expTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		if ok {
@@ -371,7 +371,7 @@ func TestTokensOnDisk(t *testing.T) {
 
 	// Start new ingester at same token directory.
 	lifecyclerConfig.ID = "ing2"
-	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester")
+	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	l2.Start()
 	defer l2.Shutdown()
@@ -379,7 +379,7 @@ func TestTokensOnDisk(t *testing.T) {
 	// Check this ingester joined, is active, and has 512 token.
 	var actTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		if ok {

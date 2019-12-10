@@ -156,7 +156,7 @@ func (cfg *Config) Validate() error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinRing bool) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -186,7 +186,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsRing *ring.Lifecycler
 
-	if !canJoinRing {
+	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey)

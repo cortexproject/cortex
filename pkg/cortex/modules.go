@@ -176,9 +176,9 @@ func (t *Cortex) initDistributor(cfg *Config) (err error) {
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
 	// ruler's dependency)
-	canJoinRing := (cfg.Target == All || cfg.Target == Distributor)
+	canJoinDistributorsRing := (cfg.Target == All || cfg.Target == Distributor)
 
-	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring, canJoinRing)
+	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring, canJoinDistributorsRing)
 	if err != nil {
 		return
 	}

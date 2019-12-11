@@ -334,6 +334,10 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				// These samples have been deduped.
 				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
 			}
+
+			// Ensure the request slice is reused if the series get deduped.
+			client.ReuseSlice(req.Timeseries)
+
 			return nil, err
 		}
 		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
@@ -400,11 +404,17 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
 
 	if len(keys) == 0 {
+		// Ensure the request slice is reused if there's no series passing the validation.
+		client.ReuseSlice(req.Timeseries)
+
 		return &client.WriteResponse{}, lastPartialErr
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
 	if !limiter.AllowN(time.Now(), validatedSamples) {
+		// Ensure the request slice is reused if the request is rate limited.
+		client.ReuseSlice(req.Timeseries)
+
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))

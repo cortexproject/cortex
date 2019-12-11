@@ -182,12 +182,20 @@ func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 
 // IsHealthy checks whether the ingester appears to be alive and heartbeating
 func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
-	if op == Write && i.State != ACTIVE {
-		return false
-	} else if op == Read && i.State == JOINING {
-		return false
+	healthy := false
+
+	switch op {
+	case Write:
+		healthy = (i.State == ACTIVE)
+
+	case Read:
+		healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
+
+	case Reporting:
+		healthy = true
 	}
-	return time.Now().Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
+
+	return healthy && time.Now().Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
 // Merge merges other ring into this one. Returns sub-ring that represents the change,

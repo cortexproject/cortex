@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
 	"sort"
 	"strconv"
 	"sync"
@@ -100,7 +99,7 @@ func TestDistributorPush(t *testing.T) {
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
-				d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, nil)
+				d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, shardByAllLabels, nil)
 				defer d.Stop()
 
 				request := makeWriteRequest(tc.samples)
@@ -157,7 +156,7 @@ func TestDistributorPushHAInstances(t *testing.T) {
 				flagext.DefaultValues(&limits)
 				limits.AcceptHASamples = true
 
-				d := prepare(t, 1, 1, 0, shardByAllLabels, &limits)
+				d, _ := prepare(t, 1, 1, 0, shardByAllLabels, &limits)
 				codec := codec.Proto{Factory: ProtoReplicaDescFactory}
 				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
 
@@ -279,7 +278,7 @@ func TestDistributorPushQuery(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil)
+			d, _ := prepare(t, tc.numIngesters, tc.happyIngesters, 0, tc.shardByAllLabels, nil)
 			defer d.Stop()
 
 			request := makeWriteRequest(tc.samples)
@@ -302,78 +301,54 @@ func TestDistributorPushQuery(t *testing.T) {
 	}
 }
 
-func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
+func TestDistributor_Push_LabelRemoval(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "user")
 
 	type testcase struct {
-		series        client.PreallocTimeseries
-		outputSeries  client.PreallocTimeseries
-		removeReplica bool
-		removeLabels  []string
+		inputSeries    labels.Labels
+		expectedSeries labels.Labels
+		removeReplica  bool
+		removeLabels   []string
 	}
 
 	cases := []testcase{
 		{ // Remove both cluster and replica label.
-			series: client.PreallocTimeseries{
-				TimeSeries: &client.TimeSeries{
-					Labels: []client.LabelAdapter{
-						{Name: "__name__", Value: "some_metric"},
-						{Name: "cluster", Value: "one"},
-						{Name: "__replica__", Value: "two"}},
-				},
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "some_metric"},
+				{Name: "cluster", Value: "one"},
+				{Name: "__replica__", Value: "two"},
 			},
-			outputSeries: client.PreallocTimeseries{
-				TimeSeries: &client.TimeSeries{
-					Labels: []client.LabelAdapter{
-						{Name: "__name__", Value: "some_metric"},
-					},
-					Samples: []client.Sample{},
-				},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "some_metric"},
 			},
 			removeReplica: true,
 			removeLabels:  []string{"cluster"},
 		},
 		{ // Remove multiple labels and replica.
-			series: client.PreallocTimeseries{
-				TimeSeries: &client.TimeSeries{
-					Labels: []client.LabelAdapter{
-						{Name: "__name__", Value: "some_metric"},
-						{Name: "cluster", Value: "one"},
-						{Name: "__replica__", Value: "two"},
-						{Name: "foo", Value: "bar"},
-						{Name: "some", Value: "thing"}},
-				},
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "some_metric"},
+				{Name: "cluster", Value: "one"},
+				{Name: "__replica__", Value: "two"},
+				{Name: "foo", Value: "bar"},
+				{Name: "some", Value: "thing"},
 			},
-			outputSeries: client.PreallocTimeseries{
-				TimeSeries: &client.TimeSeries{
-					Labels: []client.LabelAdapter{
-						{Name: "__name__", Value: "some_metric"},
-						{Name: "cluster", Value: "one"},
-					},
-					Samples: []client.Sample{},
-				},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "some_metric"},
+				{Name: "cluster", Value: "one"},
 			},
 			removeReplica: true,
 			removeLabels:  []string{"foo", "some"},
 		},
 		{ // Don't remove any labels.
-			series: client.PreallocTimeseries{
-				TimeSeries: &client.TimeSeries{
-					Labels: []client.LabelAdapter{
-						{Name: "__name__", Value: "some_metric"},
-						{Name: "cluster", Value: "one"},
-						{Name: "__replica__", Value: "two"}},
-				},
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "some_metric"},
+				{Name: "cluster", Value: "one"},
+				{Name: "__replica__", Value: "two"},
 			},
-			outputSeries: client.PreallocTimeseries{
-				TimeSeries: &client.TimeSeries{
-					Labels: []client.LabelAdapter{
-						{Name: "__name__", Value: "some_metric"},
-						{Name: "cluster", Value: "one"},
-						{Name: "__replica__", Value: "two"},
-					},
-					Samples: []client.Sample{},
-				},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "some_metric"},
+				{Name: "cluster", Value: "one"},
+				{Name: "__replica__", Value: "two"},
 			},
 			removeReplica: false,
 		},
@@ -384,20 +359,135 @@ func TestDistributorValidateSeriesLabelRemoval(t *testing.T) {
 		var limits validation.Limits
 		flagext.DefaultValues(&limits)
 		limits.DropLabels = tc.removeLabels
-		d := prepare(t, 1, 1, 0, true, &limits)
+		limits.AcceptHASamples = tc.removeReplica
 
-		userID, err := user.ExtractOrgID(ctx)
-		assert.NoError(t, err)
+		d, ingesters := prepare(t, 1, 1, 0, true, &limits)
+		defer d.Stop()
 
-		key, err := d.tokenForLabels(userID, tc.series.Labels)
-		if err != nil {
-			t.Fatalf("unexpected error: %s", err)
+		// Push the series to the distributor
+		req := mockWriteRequest(tc.inputSeries, 1, 1)
+		_, err = d.Push(ctx, req)
+		require.NoError(t, err)
+
+		// Since each test pushes only 1 series, we do expect the ingester
+		// to have received exactly 1 series
+		assert.Equal(t, 1, len(ingesters))
+		actualSeries := []*client.PreallocTimeseries{}
+
+		for _, ts := range ingesters[0].timeseries {
+			actualSeries = append(actualSeries, ts)
 		}
 
-		series, err := d.validateSeries(key, tc.series, userID, tc.removeReplica)
-		if !reflect.DeepEqual(series, tc.outputSeries) {
-			t.Fatalf("output of validate series did not match expected output:\n\texpected: %+v\n\t got: %+v", tc.outputSeries, series)
-		}
+		assert.Equal(t, 1, len(actualSeries))
+		assert.Equal(t, tc.expectedSeries, client.FromLabelAdaptersToLabels(actualSeries[0].Labels))
+	}
+}
+
+func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {
+	tests := map[string]struct {
+		inputSeries    labels.Labels
+		expectedSeries labels.Labels
+		expectedToken  uint32
+	}{
+		"metric_1 with value_1": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+			},
+			expectedToken: 0x58b1e325,
+		},
+		"metric_1 with value_1 and dropped label due to config": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+				{Name: "dropped", Value: "unused"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+			},
+			expectedToken: 0x58b1e325,
+		},
+		"metric_1 with value_1 and dropped HA replica label": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+				{Name: "__replica__", Value: "replica_1"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_1"},
+				{Name: "cluster", Value: "cluster_1"},
+			},
+			expectedToken: 0x58b1e325,
+		},
+		"metric_2 with value_1": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_2"},
+				{Name: "key", Value: "value_1"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_2"},
+				{Name: "key", Value: "value_1"},
+			},
+			expectedToken: 0xa60906f2,
+		},
+		"metric_1 with value_2": {
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_2"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "metric_1"},
+				{Name: "key", Value: "value_2"},
+			},
+			expectedToken: 0x18abc8a2,
+		},
+	}
+
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.DropLabels = []string{"dropped"}
+	limits.AcceptHASamples = true
+
+	ctx = user.InjectOrgID(context.Background(), "user")
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			d, ingesters := prepare(t, 1, 1, 0, true, &limits)
+			defer d.Stop()
+
+			// Push the series to the distributor
+			req := mockWriteRequest(testData.inputSeries, 1, 1)
+			_, err := d.Push(ctx, req)
+			require.NoError(t, err)
+
+			// Since each test pushes only 1 series, we do expect the ingester
+			// to have received exactly 1 series
+			require.Equal(t, 1, len(ingesters))
+			require.Equal(t, 1, len(ingesters[0].timeseries))
+
+			var actualSeries *client.PreallocTimeseries
+			var actualToken uint32
+
+			for token, ts := range ingesters[0].timeseries {
+				actualSeries = ts
+				actualToken = token
+			}
+
+			// Ensure the series and the sharding token is the expected one
+			assert.Equal(t, testData.expectedSeries, client.FromLabelAdaptersToLabels(actualSeries.Labels))
+			assert.Equal(t, testData.expectedToken, actualToken)
+		})
 	}
 }
 
@@ -410,7 +500,7 @@ func TestSlowQueries(t *testing.T) {
 			if nIngesters-happy > 1 {
 				expectedErr = promql.ErrStorage{Err: errFail}
 			}
-			d := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels, nil)
+			d, _ := prepare(t, nIngesters, happy, 100*time.Millisecond, shardByAllLabels, nil)
 			defer d.Stop()
 
 			_, err := d.Query(ctx, 0, 10, nameMatcher)
@@ -476,7 +566,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 	}
 
 	// Create distributor
-	d := prepare(t, 3, 3, time.Duration(0), true, nil)
+	d, _ := prepare(t, 3, 3, time.Duration(0), true, nil)
 	defer d.Stop()
 
 	// Push fixtures
@@ -520,7 +610,7 @@ func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) *cli
 	return client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
 }
 
-func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits) *Distributor {
+func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Duration, shardByAllLabels bool, limits *validation.Limits) (*Distributor, []mockIngester) {
 	ingesters := []mockIngester{}
 	for i := 0; i < happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
@@ -577,7 +667,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	d, err := New(cfg, clientConfig, overrides, ring)
 	require.NoError(t, err)
 
-	return d
+	return d, ingesters
 }
 
 func makeWriteRequest(samples int) *client.WriteRequest {
@@ -945,7 +1035,7 @@ func TestDistributorValidation(t *testing.T) {
 			limits.RejectOldSamplesMaxAge = 24 * time.Hour
 			limits.MaxLabelNamesPerSeries = 2
 
-			d := prepare(t, 3, 3, 0, true, &limits)
+			d, _ := prepare(t, 3, 3, 0, true, &limits)
 			defer d.Stop()
 
 			_, err := d.Push(ctx, client.ToWriteRequest(tc.labels, tc.samples, client.API))

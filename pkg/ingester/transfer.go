@@ -305,7 +305,36 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 		level.Info(util.Logger).Log("msg", "Total xfer", "from_ingester", fromIngesterID, "files", filesXfer, "bytes", bytesXfer)
 
 		// Move the tmpdir to the final location
-		return os.Rename(tmpDir, i.cfg.TSDBConfig.Dir)
+		err = os.Rename(tmpDir, i.cfg.TSDBConfig.Dir)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("unable to move received TSDB blocks from %s to %s", tmpDir, i.cfg.TSDBConfig.Dir))
+		}
+
+		// At this point all TSDBs have been received, so we can proceed loading TSDBs in memory.
+		// This is required because of two reasons:
+		// 1. No WAL replay performance penalty once the ingester switches to ACTIVE state
+		// 2. If a query is received on user X, for which the TSDB has been transferred, before
+		//    the first series is ingested, if we don't open the TSDB the query will return an
+		//    empty result (because the TSDB is opened only on first push or transfer)
+		userIDs, err := ioutil.ReadDir(i.cfg.TSDBConfig.Dir)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("unable to list TSDB users in %s", i.cfg.TSDBConfig.Dir))
+		}
+
+		for _, user := range userIDs {
+			userID := user.Name()
+
+			level.Info(util.Logger).Log("msg", fmt.Sprintf("Loading TSDB for user %s", userID))
+			_, err = i.getOrCreateTSDB(userID, true)
+
+			if err != nil {
+				level.Error(util.Logger).Log("msg", fmt.Sprintf("Unable to load TSDB for user %s", userID), "err", err)
+			} else {
+				level.Info(util.Logger).Log("msg", fmt.Sprintf("Loaded TSDB for user %s", userID))
+			}
+		}
+
+		return nil
 	}
 
 	if err := i.transfer(stream.Context(), xfer); err != nil {

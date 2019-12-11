@@ -19,7 +19,7 @@ func BenchmarkMarshalling(b *testing.B) {
 		apiResp, err := PrometheusCodec.DecodeResponse(context.Background(), &http.Response{
 			StatusCode: 200,
 			Body:       ioutil.NopCloser(bytes.NewReader(buf)),
-		})
+		}, nil)
 		require.NoError(b, err)
 
 		resp, err := PrometheusCodec.EncodeResponse(context.Background(), apiResp)

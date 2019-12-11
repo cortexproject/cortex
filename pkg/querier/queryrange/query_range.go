@@ -40,8 +40,10 @@ type Codec interface {
 	Merger
 	// DecodeRequest decodes a Request from an http request.
 	DecodeRequest(context.Context, *http.Request) (Request, error)
-	// DecodeResponse decodes a Response from an http response..
-	DecodeResponse(context.Context, *http.Response) (Response, error)
+	// DecodeResponse decodes a Response from an http response.
+	// The original request is also passed as a parameter this is useful for implementation that needs the request
+	// to merge result or build the result correctly.
+	DecodeResponse(context.Context, *http.Response, Request) (Response, error)
 	// EncodeRequest encodes a Request into an http request.
 	EncodeRequest(context.Context, Request) (*http.Request, error)
 	// EncodeResponse encodes a Response into an http response.
@@ -198,7 +200,7 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Requ
 	return req.WithContext(ctx), nil
 }
 
-func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response) (Response, error) {
+func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ Request) (Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))

@@ -61,7 +61,7 @@ If both &lt;code&gt;iterators&lt;/code&gt; and &lt;code&gt;batch-iterators&lt;/c
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-querier.split-queries-by-day&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;If set to true, will case the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.&lt;/p&gt;
+&lt;p&gt;If set to true, will cause the query frontend to split multi-day queries into multiple single-day queries and execute them in parallel.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;-querier.cache-results&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
@@ -93,6 +93,8 @@ This is used by a component with an embedded distributor (Querier and Ruler) to 
 Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup. This defaults to false, and is technically defined in the Distributor limits.&lt;/p&gt;&lt;/li&gt;
 &lt;li&gt;&lt;p&gt;&lt;code&gt;distributor.ha-tracker.enable&lt;/code&gt;
 Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels). Global (for distributors), this ensures that the necessary internal data structures for the HA handling are created. The option &lt;code&gt;enable-for-all-users&lt;/code&gt; is still needed to enable ingestion of HA samples for all users.&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;&lt;code&gt;distributor.drop-label&lt;/code&gt;
+This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.&lt;/p&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;ring-ha-tracker-store&#34;&gt;Ring/HA Tracker Store&lt;/h3&gt;
 &lt;p&gt;The KVStore client is used by both the Ring and HA Tracker.
@@ -157,7 +159,7 @@ Timeout for writing &amp;lsquo;packet&amp;rsquo; data.&lt;/li&gt;
 Log debug transport messages. Note: global log.level must be at debug level as well.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id=&#34;ha-tracker&#34;&gt;HA Tracker&lt;/h3&gt;
-&lt;p&gt;HA tracking has two of it&amp;rsquo;s own flags:
+&lt;p&gt;HA tracking has two of its own flags:
 - &lt;code&gt;distributor.ha-tracker.cluster&lt;/code&gt;
 Prometheus label to look for in samples to identify a Prometheus HA cluster. (default &amp;ldquo;cluster&amp;rdquo;)
 - &lt;code&gt;distributor.ha-tracker.replica&lt;/code&gt;
@@ -252,11 +254,14 @@ Make sure you configure ingesters with a different cache to queriers, which need
 &lt;p&gt;When running Cortex on Kubernetes, store this file in a config map and mount it in each services&amp;rsquo; containers. When changing the values there is no need to restart the services, unless otherwise specified.&lt;/p&gt;
 &lt;p&gt;Valid fields are (with their corresponding flags for default values):&lt;/p&gt;
 &lt;ul&gt;
+&lt;li&gt;&lt;code&gt;ingestion_rate_strategy&lt;/code&gt; / &lt;code&gt;-distributor.ingestion-rate-limit-strategy&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;ingestion_rate&lt;/code&gt; / &lt;code&gt;-distributor.ingestion-rate-limit&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;ingestion_burst_size&lt;/code&gt; / &lt;code&gt;-distributor.ingestion-burst-size&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;The per-tenant rate limit (and burst size), in samples per second. Enforced on a per distributor basis, actual effective rate limit will be N times higher, where N is the number of distributor replicas.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;NB&lt;/strong&gt; Limits are reset every &lt;code&gt;-distributor.limiter-reload-period&lt;/code&gt;, as such if you set a very high burst limit it will never be hit.&lt;/p&gt;
+&lt;p&gt;The per-tenant rate limit (and burst size), in samples per second. It supports two strategies: &lt;code&gt;local&lt;/code&gt; (default) and &lt;code&gt;global&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;local&lt;/code&gt; strategy enforces the limit on a per distributor basis, actual effective rate limit will be N times higher, where N is the number of distributor replicas.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;global&lt;/code&gt; strategy enforces the limit globally, configuring a per-distributor local rate limiter as &lt;code&gt;ingestion_rate / N&lt;/code&gt;, where N is the number of distributor replicas (it&amp;rsquo;s automatically adjusted if the number of replicas change). The &lt;code&gt;ingestion_burst_size&lt;/code&gt; refers to the per-distributor local rate limiter (even in the case of the &lt;code&gt;global&lt;/code&gt; strategy) and should be set at least to the maximum number of samples expected in a single push request.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;global&lt;/code&gt; strategy requires the distributors to form their own ring, which is used to keep track of the current number of healthy distributor replicas. The ring is configured by &lt;code&gt;distributor: { ring: {}}&lt;/code&gt; / &lt;code&gt;-distributor.ring.*&lt;/code&gt;.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;max_label_name_length&lt;/code&gt; / &lt;code&gt;-validation.max-length-label-name&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;max_label_value_length&lt;/code&gt; / &lt;code&gt;-validation.max-length-label-value&lt;/code&gt;&lt;/li&gt;

@@ -286,10 +286,11 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 	if err != nil {
 		return
 	}
-	tripperware, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
+	tripperware, cache, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
 	if err != nil {
 		return err
 	}
+	t.cache = cache
 	t.frontend.Wrap(tripperware)
 
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
@@ -303,6 +304,10 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 
 func (t *Cortex) stopQueryFrontend() (err error) {
 	t.frontend.Close()
+	if t.cache != nil {
+		t.cache.Stop()
+		t.cache = nil
+	}
 	return
 }
 

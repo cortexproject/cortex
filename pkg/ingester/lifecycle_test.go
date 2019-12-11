@@ -75,7 +75,7 @@ func TestIngesterRestart(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
 	})
 
 	{
@@ -87,7 +87,7 @@ func TestIngesterRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost")
+		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
 	})
 }
 
@@ -394,7 +394,7 @@ func TestIngesterFlush(t *testing.T) {
 	// the ring, the data is in the chunk store.
 	ing.lifecycler.Shutdown()
 	test.Poll(t, 200*time.Millisecond, 0, func() interface{} {
-		r, err := ing.lifecycler.KVStore.Get(context.Background(), ring.ConsulKey)
+		r, err := ing.lifecycler.KVStore.Get(context.Background(), ring.IngesterRingKey)
 		if err != nil {
 			return -1
 		}

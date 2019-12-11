@@ -151,7 +151,7 @@ func (t *Cortex) stopServer() (err error) {
 }
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
-	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester")
+	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
 	}
@@ -171,7 +171,14 @@ func (t *Cortex) stopOverrides() error {
 }
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
-	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring)
+	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
+
+	// Check whether the distributor can join the distributors ring, which is
+	// whenever it's not running as an internal dependency (ie. querier or
+	// ruler's dependency)
+	canJoinDistributorsRing := (cfg.Target == All || cfg.Target == Distributor)
+
+	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring, canJoinDistributorsRing)
 	if err != nil {
 		return
 	}

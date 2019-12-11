@@ -67,7 +67,7 @@ require (
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20190709142735-eb7dd97135a5
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/api v0.11.0
 	google.golang.org/grpc v1.25.1
 	gopkg.in/yaml.v2 v2.2.2

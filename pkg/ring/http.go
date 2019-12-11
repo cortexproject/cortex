@@ -86,7 +86,7 @@ func (r *Ring) forget(ctx context.Context, id string) error {
 		ringDesc.RemoveIngester(id)
 		return ringDesc, true, nil
 	}
-	return r.KVClient.CAS(ctx, ConsulKey, unregister)
+	return r.KVClient.CAS(ctx, r.key, unregister)
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {

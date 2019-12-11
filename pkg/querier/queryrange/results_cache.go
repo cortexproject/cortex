@@ -152,7 +152,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 
 func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent) (Response, []Extent, error) {
 	var (
-		reqResps []requestResponse
+		reqResps []RequestResponse
 		err      error
 	)
 	log, ctx := spanlogger.New(ctx, "handleHit")
@@ -168,14 +168,14 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return response, nil, err
 	}
 
-	reqResps, err = doRequests(ctx, s.next, requests, s.limits)
+	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	for _, reqResp := range reqResps {
-		responses = append(responses, reqResp.resp)
-		extent, err := toExtent(ctx, reqResp.req, reqResp.resp)
+		responses = append(responses, reqResp.Response)
+		extent, err := toExtent(ctx, reqResp.Request, reqResp.Response)
 		if err != nil {
 			return nil, nil, err
 		}

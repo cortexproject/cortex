@@ -508,7 +508,12 @@ The `querier_config` configures the Cortex querier.
 # Maximum lookback beyond which queries are not sent to ingester. 0 means all
 # queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within
-[ingestermaxquerylookback: <duration> | default = 0s]
+[query_ingesters_within: <duration> | default = 0s]
+
+# The time after which a metric should only be queried from storage and not just
+# ingesters. 0 means all queries are sent to store.
+# CLI flag: -querier.query-store-after
+[query_store_after: <duration> | default = 0s]
 
 # The default evaluation interval or step size for subqueries.
 # CLI flag: -querier.default-evaluation-interval
@@ -1516,10 +1521,6 @@ write_dedupe_cache_config:
   # The fifo_cache_config configures the local in-memory cache.
   # The CLI flags prefix for this block config is: store.index-cache-write
   [fifocache: <fifo_cache_config>]
-
-# Minimum time between chunk update and being saved to the store.
-# CLI flag: -store.min-chunk-age
-[min_chunk_age: <duration> | default = 0s]
 
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than

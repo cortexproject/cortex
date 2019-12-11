@@ -186,10 +186,10 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 
 	switch op {
 	case Write:
-		healthy = i.State == ACTIVE
+		healthy = (i.State == ACTIVE)
 
 	case Read:
-		healthy = i.State == ACTIVE || i.State == LEAVING || i.State == PENDING
+		healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
 
 	case Reporting:
 		healthy = true

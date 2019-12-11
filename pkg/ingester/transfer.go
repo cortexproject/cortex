@@ -52,6 +52,8 @@ var (
 	})
 
 	once *sync.Once
+
+	errTransferNoPendingIngesters = errors.New("no pending ingesters")
 )
 
 func init() {
@@ -377,16 +379,22 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 		MaxRetries: i.cfg.MaxTransferRetries,
 	})
 
+	// Keep track of the last error so that we can log it with the highest level
+	// once all retries have completed
+	var err error
+
 	for backoff.Ongoing() {
-		err := i.transferOut(ctx)
+		err = i.transferOut(ctx)
 		if err == nil {
 			return nil
 		}
 
-		level.Error(util.Logger).Log("msg", "transfer failed", "err", err)
+		level.Warn(util.Logger).Log("msg", "transfer attempt failed", "err", err, "attempt", backoff.NumRetries()+1, "max_retries", i.cfg.MaxTransferRetries)
+
 		backoff.Wait()
 	}
 
+	level.Error(util.Logger).Log("msg", "all transfer attempts failed", "err", err)
 	return backoff.Err()
 }
 
@@ -403,7 +411,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 
 	targetIngester, err := i.findTargetIngester(ctx)
 	if err != nil {
-		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
+		return fmt.Errorf("cannot find ingester to transfer chunks to: %w", err)
 	}
 
 	level.Info(util.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
@@ -487,7 +495,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 
 	targetIngester, err := i.findTargetIngester(ctx)
 	if err != nil {
-		return fmt.Errorf("cannot find ingester to transfer blocks to: %v", err)
+		return fmt.Errorf("cannot find ingester to transfer blocks to: %w", err)
 	}
 
 	level.Info(util.Logger).Log("msg", "sending blocks", "to_ingester", targetIngester.Addr)
@@ -534,7 +542,7 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 
 	ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
 	if len(ingesters) <= 0 {
-		return nil, fmt.Errorf("no pending ingesters")
+		return nil, errTransferNoPendingIngesters
 	}
 
 	return &ingesters[0], nil

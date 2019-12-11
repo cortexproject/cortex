@@ -686,6 +686,17 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	i.countersLock.Unlock()
 }
 
+// FlushOnShutdown returns if flushing is enabled if transfer fails on a shutdown.
+func (i *Lifecycler) FlushOnShutdown() bool {
+	return i.flushOnShutdown
+}
+
+// SetFlushOnShutdown enables/disables flush on shutdown if transfer fails.
+// Passing 'true' enables it, and 'false' disabled it.
+func (i *Lifecycler) SetFlushOnShutdown(flushOnShutdown bool) {
+	i.flushOnShutdown = flushOnShutdown
+}
+
 func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := i.flushOnShutdown
 	transferStart := time.Now()

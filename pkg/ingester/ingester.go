@@ -308,7 +308,11 @@ func (i *Ingester) Shutdown() {
 //     * Change the state of ring to stop accepting writes.
 //     * Flush all the chunks.
 func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+	originalState := i.lifecycler.FlushOnShutdown()
+	// We want to flush the chunks if transfer fails irrespective of original flag.
+	i.lifecycler.SetFlushOnShutdown(true)
 	i.Shutdown()
+	i.lifecycler.SetFlushOnShutdown(originalState)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -40,7 +40,9 @@ type Codec interface {
 	Merger
 	// DecodeRequest decodes a Request from an http request.
 	DecodeRequest(context.Context, *http.Request) (Request, error)
-	// DecodeResponse decodes a Response from an http response..
+	// DecodeResponse decodes a Response from an http response.
+	// The original request is also passed as a parameter this is useful for implementation that needs the request
+	// to merge result or build the result correctly.
 	DecodeResponse(context.Context, *http.Response, Request) (Response, error)
 	// EncodeRequest encodes a Request into an http request.
 	EncodeRequest(context.Context, Request) (*http.Request, error)

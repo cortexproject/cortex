@@ -198,6 +198,13 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
 	}
 
+	if cfg.WALConfig.walEnabled {
+		// If WAL is enabled, we don't transfer out the data to any ingester.
+		// Either the next ingester which takes it's place should recover from WAL
+		// or the data has to be flushed during scaledown.
+		cfg.MaxTransferRetries = 0
+	}
+
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,

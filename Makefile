@@ -78,16 +78,16 @@ GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
+GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache \
+			-v $(shell pwd)/.pkg:/go/pkg \
+			-v $(shell pwd):/go/src/github.com/cortexproject/cortex
+
 exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-build web-pre web-deploy: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
 	@echo ">>>> Entering build container: $@"
-	@$(SUDO) time docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
-		$(BUILD_IMAGE) $@;
+	@$(SUDO) time docker run $(RM) $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
@@ -95,10 +95,7 @@ configs-integration-test: build-image/$(UPTODATE)
 	@DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
 	echo ; \
 	echo ">>>> Entering build container: $@"; \
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/cortexproject/cortex \
+	$(SUDO) docker run $(RM) $(TTY) -i $(GOVOLUMES) \
 		-v $(shell pwd)/cmd/cortex/migrations:/migrations \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \

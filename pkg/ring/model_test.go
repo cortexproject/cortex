@@ -94,48 +94,18 @@ func normalizedOutput() *Desc {
 	}
 }
 
-func unnormalizedOutput() *Desc {
-	return &Desc{
-		Ingesters: map[string]IngesterDesc{
-			"first":  {},
-			"second": {},
-		},
-		Tokens: []TokenDesc{
-			{Token: 100, Ingester: "second"},
-			{Token: 200, Ingester: "second"},
-			{Token: 300, Ingester: "second"},
-		},
-	}
-}
-
 func TestClaimTokensFromNormalizedToNormalized(t *testing.T) {
 	r := normalizedSource()
-	result := r.ClaimTokens("first", "second", true)
+	result := r.ClaimTokens("first", "second")
 
 	assert.Equal(t, Tokens{100, 200, 300}, result)
 	assert.Equal(t, normalizedOutput(), r)
 }
 
-func TestClaimTokensFromNormalizedToUnnormalized(t *testing.T) {
-	r := normalizedSource()
-	result := r.ClaimTokens("first", "second", false)
-
-	assert.Equal(t, Tokens{100, 200, 300}, result)
-	assert.Equal(t, unnormalizedOutput(), r)
-}
-
-func TestClaimTokensFromUnnormalizedToUnnormalized(t *testing.T) {
-	r := unnormalizedSource()
-	result := r.ClaimTokens("first", "second", false)
-
-	assert.Equal(t, Tokens{100, 200, 300}, result)
-	assert.Equal(t, unnormalizedOutput(), r)
-}
-
 func TestClaimTokensFromUnnormalizedToNormalized(t *testing.T) {
 	r := unnormalizedSource()
 
-	result := r.ClaimTokens("first", "second", true)
+	result := r.ClaimTokens("first", "second")
 
 	assert.Equal(t, Tokens{100, 200, 300}, result)
 	assert.Equal(t, normalizedOutput(), r)

@@ -11,6 +11,7 @@
   * `ruler.poll-interval` has been added to specify the interval in which to poll new rule groups.
 * [CHANGE] Use relative links from /ring page to make it work when used behind reverse proxy. #1896
 * [CHANGE] Deprecated `-distributor.limiter-reload-period` flag. #1766
+* [CHANGE] Ingesters now write only normalised tokens to the ring, although they can still read denormalised tokens used by other ingesters. `-ingester.normalise-tokens` is now deprecated, and ignored. If you want to switch back to using denormalised tokens, you need to downgrade to Cortex 0.4.0. Previous versions don't handle claiming tokens from normalised ingesters correctly. #1809
 * [FEATURE] The distributor can now drop labels from samples (similar to the removal of the replica label for HA ingestion) per user via the `distributor.drop-label` flag. #1726
 * [FEATURE] Added `global` ingestion rate limiter strategy. Deprecated `-distributor.limiter-reload-period` flag. #1766
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861

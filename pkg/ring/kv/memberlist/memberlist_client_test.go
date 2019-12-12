@@ -405,6 +405,7 @@ func TestMultipleCAS(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to setup KV client", err)
 	}
+	kv.maxCasRetries = 20
 	defer kv.Stop()
 
 	wg := &sync.WaitGroup{}
@@ -419,7 +420,7 @@ func TestMultipleCAS(t *testing.T) {
 			defer wg.Done()
 			<-start
 			up := updateFn(name)
-			cas(t, kv, "test", up) // PENDING state
+			cas(t, kv, "test", up) // JOINING state
 			cas(t, kv, "test", up) // ACTIVE state
 		}(fmt.Sprintf(namePattern, i))
 	}

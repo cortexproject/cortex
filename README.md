@@ -1,4 +1,4 @@
-<p align="center"><img src="imgs/logo.png" alt="Cortex Logo"></p>
+<p align="center"><img src="images/logo.png" alt="Cortex Logo"></p>
 
 [![Circle CI](https://circleci.com/gh/cortexproject/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/cortexproject/cortex/tree/master)
 [![GoDoc](https://godoc.org/github.com/cortexproject/cortex?status.svg)](https://godoc.org/github.com/cortexproject/cortex)

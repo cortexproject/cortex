@@ -151,7 +151,7 @@ func (t *Cortex) stopServer() (err error) {
 }
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
-	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester")
+	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
 	}
@@ -171,7 +171,14 @@ func (t *Cortex) stopOverrides() error {
 }
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
-	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring)
+	cfg.Distributor.DistributorRing.ListenPort = cfg.Server.GRPCListenPort
+
+	// Check whether the distributor can join the distributors ring, which is
+	// whenever it's not running as an internal dependency (ie. querier or
+	// ruler's dependency)
+	canJoinDistributorsRing := (cfg.Target == All || cfg.Target == Distributor)
+
+	t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.overrides, t.ring, canJoinDistributorsRing)
 	if err != nil {
 		return
 	}
@@ -286,10 +293,11 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 	if err != nil {
 		return
 	}
-	tripperware, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
+	tripperware, cache, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
 	if err != nil {
 		return err
 	}
+	t.cache = cache
 	t.frontend.Wrap(tripperware)
 
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
@@ -303,6 +311,10 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 
 func (t *Cortex) stopQueryFrontend() (err error) {
 	t.frontend.Close()
+	if t.cache != nil {
+		t.cache.Stop()
+		t.cache = nil
+	}
 	return
 }
 

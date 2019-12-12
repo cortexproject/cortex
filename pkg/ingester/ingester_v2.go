@@ -3,7 +3,7 @@ package ingester
 import (
 	"fmt"
 	"net/http"
-	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -13,7 +13,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	lbls "github.com/prometheus/prometheus/tsdb/labels"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -26,14 +25,25 @@ import (
 	old_ctx "golang.org/x/net/context"
 )
 
+const (
+	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
+)
+
 // TSDBState holds data structures used by the TSDB storage engine
 type TSDBState struct {
 	dbs    map[string]*tsdb.DB // tsdb sharded by userID
 	bucket objstore.Bucket
+
+	// Keeps count of in-flight requests
+	inflightWriteReqs sync.WaitGroup
+
+	// Used to run only once operations at shutdown, during the blocks/wal
+	// transferring to a joining ingester
+	transferOnce sync.Once
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
-func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
 	if err != nil {
 		return nil, err
@@ -44,7 +54,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		clientConfig: clientConfig,
 		metrics:      newIngesterMetrics(registerer),
 		limits:       limits,
-		chunkStore:   chunkStore,
+		chunkStore:   nil,
 		quit:         make(chan struct{}),
 
 		TSDBState: TSDBState{
@@ -53,7 +63,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		},
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +87,28 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		return nil, fmt.Errorf("no user id")
 	}
 
-	db, err := i.getOrCreateTSDB(userID)
+	db, err := i.getOrCreateTSDB(userID, false)
 	if err != nil {
 		return nil, err
 	}
+
+	// Ensure the ingester shutdown procedure hasn't started
+	i.userStatesMtx.RLock()
+
+	if i.stopped {
+		i.userStatesMtx.RUnlock()
+		return nil, fmt.Errorf("ingester stopping")
+	}
+
+	// Keep track of in-flight requests, in order to safely start blocks transfer
+	// (at shutdown) only once all in-flight write requests have completed.
+	// It's important to increase the number of in-flight requests within the lock
+	// (even if sync.WaitGroup is thread-safe), otherwise there's a race condition
+	// with the TSDB transfer, which - after the stopped flag is set to true - waits
+	// until all in-flight requests to reach zero.
+	i.TSDBState.inflightWriteReqs.Add(1)
+	i.userStatesMtx.RUnlock()
+	defer i.TSDBState.inflightWriteReqs.Done()
 
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
@@ -94,10 +122,6 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		lset := cortex_tsdb.FromLabelAdaptersToLabels(ts.Labels)
 
 		for _, s := range ts.Samples {
-			if i.stopped {
-				return nil, fmt.Errorf("ingester stopping")
-			}
-
 			_, err := app.Add(lset, s.TimestampMs, s.Value)
 			if err == nil {
 				succeededSamplesCount++
@@ -117,7 +141,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 			// The error looks an issue on our side, so we should rollback
 			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID, "err", rollbackErr)
+				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "userID", userID, "err", rollbackErr)
 			}
 
 			return nil, err
@@ -151,9 +175,9 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 
 	i.metrics.queries.Inc()
 
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db: %v", err)
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.QueryResponse{}, nil
 	}
 
 	q, err := db.Querier(int64(from), int64(through))
@@ -162,29 +186,12 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 	}
 	defer q.Close()
 
-	// two different versions of the labels package are being used, converting matchers must be done
-	var converted []lbls.Matcher
-	for _, m := range matchers {
-		switch m.Type {
-		case labels.MatchEqual:
-			converted = append(converted, lbls.NewEqualMatcher(m.Name, m.Value))
-		case labels.MatchNotEqual:
-			converted = append(converted, lbls.Not(lbls.NewEqualMatcher(m.Name, m.Value)))
-		case labels.MatchRegexp:
-			rm, err := lbls.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
-			if err != nil {
-				return nil, err
-			}
-			converted = append(converted, rm)
-		case labels.MatchNotRegexp:
-			rm, err := lbls.NewRegexpMatcher(m.Name, "^(?:"+m.Value+")$")
-			if err != nil {
-				return nil, err
-			}
-			converted = append(converted, lbls.Not(rm))
-		}
+	convertedMatchers, err := cortex_tsdb.FromLegacyLabelMatchersToMatchers(matchers)
+	if err != nil {
+		return nil, err
 	}
-	ss, err := q.Select(converted...)
+
+	ss, err := q.Select(convertedMatchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -193,13 +200,8 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 	for ss.Next() {
 		series := ss.At()
 
-		// convert labels to LabelAdapter
-		var adapters []client.LabelAdapter
-		for _, l := range series.Labels() {
-			adapters = append(adapters, client.LabelAdapter(l))
-		}
 		ts := client.TimeSeries{
-			Labels: adapters,
+			Labels: cortex_tsdb.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
 		it := series.Iterator()
@@ -220,9 +222,9 @@ func (i *Ingester) v2LabelValues(ctx old_ctx.Context, req *client.LabelValuesReq
 		return nil, err
 	}
 
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db: %v", err)
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.LabelValuesResponse{}, nil
 	}
 
 	through := time.Now()
@@ -249,9 +251,9 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 		return nil, err
 	}
 
-	db, err := i.getOrCreateTSDB(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user db: %v", err)
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.LabelNamesResponse{}, nil
 	}
 
 	through := time.Now()
@@ -272,6 +274,78 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 	}, nil
 }
 
+func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.MetricsForLabelMatchersResponse{}, nil
+	}
+
+	// Parse the request
+	from, to, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new instance of the TSDB querier
+	q, err := db.Querier(int64(from), int64(to))
+	if err != nil {
+		return nil, err
+	}
+	defer q.Close()
+
+	// Run a query for each matchers set and collect all the results
+	added := map[string]struct{}{}
+	result := &client.MetricsForLabelMatchersResponse{
+		Metric: make([]*client.Metric, 0),
+	}
+
+	for _, matchers := range matchersSet {
+		convertedMatchers, err := cortex_tsdb.FromLegacyLabelMatchersToMatchers(matchers)
+		if err != nil {
+			return nil, err
+		}
+
+		seriesSet, err := q.Select(convertedMatchers...)
+		if err != nil {
+			return nil, err
+		}
+
+		for seriesSet.Next() {
+			if seriesSet.Err() != nil {
+				break
+			}
+
+			// Given the same series can be matched by multiple matchers and we want to
+			// return the unique set of matching series, we do check if the series has
+			// already been added to the result
+			ls := seriesSet.At().Labels()
+			key := ls.String()
+			if _, ok := added[key]; ok {
+				continue
+			}
+
+			result.Metric = append(result.Metric, &client.Metric{
+				Labels: cortex_tsdb.FromLabelsToLabelAdapters(ls),
+			})
+
+			added[key] = struct{}{}
+		}
+
+		// In case of any error while iterating the series, we break
+		// the execution and return it
+		if err := seriesSet.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
+}
+
 func (i *Ingester) getTSDB(userID string) *tsdb.DB {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
@@ -279,58 +353,102 @@ func (i *Ingester) getTSDB(userID string) *tsdb.DB {
 	return db
 }
 
-func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
+func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) {
 	db := i.getTSDB(userID)
-	if db == nil {
-		i.userStatesMtx.Lock()
-		defer i.userStatesMtx.Unlock()
-
-		// Check again for DB in the event it was created in-between locks
-		var ok bool
-		db, ok = i.TSDBState.dbs[userID]
-		if !ok {
-
-			udir := i.userDir(userID)
-
-			// Create a new user database
-			var err error
-			db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
-				RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-				BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
-				NoLockfile:        true,
-			})
-			if err != nil {
-				return nil, err
-			}
-
-			// Thanos shipper requires at least 1 external label to be set. For this reason,
-			// we set the tenant ID as external label and we'll filter it out when reading
-			// the series from the storage.
-			l := lbls.Labels{
-				{
-					Name:  cortex_tsdb.TenantIDExternalLabel,
-					Value: userID,
-				},
-			}
-
-			// Create a new shipper for this database
-			s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
-			i.done.Add(1)
-			go func() {
-				defer i.done.Done()
-				runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
-					if uploaded, err := s.Sync(context.Background()); err != nil {
-						level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
-					}
-					return nil
-				})
-			}()
-
-			i.TSDBState.dbs[userID] = db
-		}
+	if db != nil {
+		return db, nil
 	}
+
+	i.userStatesMtx.Lock()
+	defer i.userStatesMtx.Unlock()
+
+	// Check again for DB in the event it was created in-between locks
+	var ok bool
+	db, ok = i.TSDBState.dbs[userID]
+	if ok {
+		return db, nil
+	}
+
+	// We're ready to create the TSDB, however we must be sure that the ingester
+	// is in the ACTIVE state, otherwise it may conflict with the transfer in/out.
+	// The TSDB is created when the first series is pushed and this shouldn't happen
+	// to a non-ACTIVE ingester, however we want to protect from any bug, cause we
+	// may have data loss or TSDB WAL corruption if the TSDB is created before/during
+	// a transfer in occurs.
+	if ingesterState := i.lifecycler.GetState(); !force && ingesterState != ring.ACTIVE {
+		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
+	}
+
+	udir := i.cfg.TSDBConfig.BlocksDir(userID)
+
+	// Create a new user database
+	var err error
+	db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
+		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
+		NoLockfile:        true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Thanos shipper requires at least 1 external label to be set. For this reason,
+	// we set the tenant ID as external label and we'll filter it out when reading
+	// the series from the storage.
+	l := lbls.Labels{
+		{
+			Name:  cortex_tsdb.TenantIDExternalLabel,
+			Value: userID,
+		},
+	}
+
+	// Create a new shipper for this database
+	s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
+	i.done.Add(1)
+	go func() {
+		defer i.done.Done()
+		runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
+			if uploaded, err := s.Sync(context.Background()); err != nil {
+				level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
+			}
+			return nil
+		})
+	}()
+
+	i.TSDBState.dbs[userID] = db
 
 	return db, nil
 }
 
-func (i *Ingester) userDir(userID string) string { return filepath.Join(i.cfg.TSDBConfig.Dir, userID) }
+func (i *Ingester) closeAllTSDB() {
+	i.userStatesMtx.Lock()
+
+	wg := &sync.WaitGroup{}
+	wg.Add(len(i.TSDBState.dbs))
+
+	// Concurrently close all users TSDB
+	for userID, db := range i.TSDBState.dbs {
+		userID := userID
+
+		go func(db *tsdb.DB) {
+			defer wg.Done()
+
+			if err := db.Close(); err != nil {
+				level.Warn(util.Logger).Log("msg", "unable to close TSDB", "err", err, "user", userID)
+				return
+			}
+
+			// Now that the TSDB has been closed, we should remove it from the
+			// set of open ones. This lock acquisition doesn't deadlock with the
+			// outer one, because the outer one is released as soon as all go
+			// routines are started.
+			i.userStatesMtx.Lock()
+			delete(i.TSDBState.dbs, userID)
+			i.userStatesMtx.Unlock()
+		}(db)
+	}
+
+	// Wait until all Close() completed
+	i.userStatesMtx.Unlock()
+	wg.Wait()
+}

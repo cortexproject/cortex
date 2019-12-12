@@ -1,0 +1,63 @@
++++
+title = "Cortex"
+linkTitle = "Cortex"
+
++++
+
+{{< blocks/cover title="Horizontally scalable, highly available, multi-tenant, long term Prometheus." image_anchor="top" height="full" color="white" >}}
+<div class="mx-auto">
+	<a class="btn btn-lg btn-primary mr-3 mb-4" href="{{< relref "/docs" >}}">
+		Learn More <i class="fas fa-arrow-alt-circle-right ml-2"></i>
+	</a>
+	<a class="btn btn-lg btn-secondary mr-3 mb-4" href="https://github.com/cortexproject/cortex/releases">
+		Releases <i class="fab fa-github ml-2 "></i>
+	</a>
+	<div class="mx-auto mt-5">
+		{{< blocks/link-down color="primary" >}}
+	</div>
+</div>
+{{< /blocks/cover >}}
+
+{{< adopters color="light">}}
+
+<a id="td-block-2" class="td-offset-anchor"></a>
+<section class="row td-box td-box--dark td-box--gradient td-box--height-auto">
+		{{% blocks/feature icon="fa-archive" title="Long term storage" %}}
+		Durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
+		{{% /blocks/feature %}}
+		
+		
+		{{% blocks/feature icon="fa-bolt" title="Blazin' fast PromQL" %}}
+		Cortex makes your PromQL queries blazin' fast through aggressive parallelization and caching.
+		{{% /blocks/feature %}}
+		
+		{{% blocks/feature icon="fa-search" title="A global view of data" %}}
+		Cortex gives you a global view of Prometheus time series data that includes data in long-term storage, greatly expanding the usefulness of PromQL for analytical purposes.
+		{{% /blocks/feature %}}
+		
+		{{% blocks/feature icon="fa-expand" title="Horizontally scalable" %}}
+		Cortex runs across multiple machines in a cluster, exceeding the throughput and storage of a single machine. This enables you to send the metrics from multiple Prometheus servers to a single Cortex cluster.
+		{{% /blocks/feature %}}
+</section>
+
+<a id="td-block-3" class="td-offset-anchor"></a>
+<section class="row td-box td-box--white td-box--gradient td-box--height-auto">
+	<div class="col-lg-6 col-sm-12 text-center">
+		<img width="150" src="/images/cncf_color.png">
+		<p>We are a <a href="https://www.cncf.io/">Cloud Native Computing Foundation</a> Sandbox project.</p>
+	</div>
+	<div class="col-lg-6 col-sm-12 text-center">
+		<h3 class="text-primary">Join the community !</h3>
+		<p>Join users and companies that are using Cortex in production.</p>
+		<a href="https://slack.cncf.io/" class="btn btn-outline-primary m-2" role="button">
+			<i class="fab fa-slack"></i> Slack
+		</a>
+		<a href="https://github.com/cortexproject/cortex/issues/new" role="button" class="btn btn-outline-primary m-2">
+			<i class="fab fa-github"></i> Issues
+		</button>
+		<a href="https://twitter.com/cortexmetrics" role="button" class="btn btn-outline-primary m-2">
+			<i class="fab fa-twitter"></i> Twitter
+		</a>
+	</div>
+</section>
+<div>

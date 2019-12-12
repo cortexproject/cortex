@@ -7,10 +7,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	opentracing "github.com/opentracing/opentracing-go"
@@ -25,6 +23,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	billing "github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/httpgrpc"
@@ -97,18 +97,20 @@ var (
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
 	cfg           Config
-	ring          ring.ReadRing
+	ingestersRing ring.ReadRing
 	ingesterPool  *ingester_client.Pool
 	limits        *validation.Overrides
 	billingClient *billing.Client
 
+	// The global rate limiter requires a distributors ring to count
+	// the number of healthy instances
+	distributorsRing *ring.Lifecycler
+
 	// For handling HA replicas.
 	Replicas *haTracker
 
-	// Per-user rate limiters.
-	ingestLimitersMtx sync.RWMutex
-	ingestLimiters    map[string]*rate.Limiter
-	quit              chan struct{}
+	// Per-user rate limiter.
+	ingestionRateLimiter *limiter.RateLimiter
 }
 
 // Config contains the configuration require to
@@ -120,15 +122,17 @@ type Config struct {
 
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
 
-	MaxRecvMsgSize      int           `yaml:"max_recv_msg_size"`
-	RemoteTimeout       time.Duration `yaml:"remote_timeout,omitempty"`
-	ExtraQueryDelay     time.Duration `yaml:"extra_queue_delay,omitempty"`
-	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period,omitempty"`
+	MaxRecvMsgSize  int           `yaml:"max_recv_msg_size"`
+	RemoteTimeout   time.Duration `yaml:"remote_timeout,omitempty"`
+	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay,omitempty"`
 
 	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
 
+	// Distributors ring
+	DistributorRing RingConfig `yaml:"ring,omitempty"`
+
 	// for testing
-	ingesterClientFactory client.Factory
+	ingesterClientFactory client.Factory `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -136,12 +140,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
 	cfg.HATrackerConfig.RegisterFlags(f)
+	cfg.DistributorRing.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
+	flagext.DeprecatedFlag(f, "distributor.limiter-reload-period", "DEPRECATED. No more required because the local limiter is reconfigured as soon as the overrides change.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
@@ -151,7 +156,7 @@ func (cfg *Config) Validate() error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ring ring.ReadRing) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool) (*Distributor, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = func(addr string) (grpc_health_v1.HealthClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -167,7 +172,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		}
 	}
 
-	replicationFactor.Set(float64(ring.ReplicationFactor()))
+	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
 	replicas, err := newClusterTracker(cfg.HATrackerConfig)
@@ -175,47 +180,49 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		return nil, err
 	}
 
-	d := &Distributor{
-		cfg:            cfg,
-		ring:           ring,
-		ingesterPool:   ingester_client.NewPool(cfg.PoolConfig, ring, cfg.ingesterClientFactory, util.Logger),
-		billingClient:  billingClient,
-		limits:         limits,
-		ingestLimiters: map[string]*rate.Limiter{},
-		quit:           make(chan struct{}),
-		Replicas:       replicas,
+	// Create the configured ingestion rate limit strategy (local or global). In case
+	// it's an internal dependency and can't join the distributors ring, we skip rate
+	// limiting.
+	var ingestionRateStrategy limiter.RateLimiterStrategy
+	var distributorsRing *ring.Lifecycler
+
+	if !canJoinDistributorsRing {
+		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
+	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey)
+		if err != nil {
+			return nil, err
+		}
+
+		distributorsRing.Start()
+
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRing)
+	} else {
+		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)
 	}
-	go d.loop()
+
+	d := &Distributor{
+		cfg:                  cfg,
+		ingestersRing:        ingestersRing,
+		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
+		billingClient:        billingClient,
+		distributorsRing:     distributorsRing,
+		limits:               limits,
+		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		Replicas:             replicas,
+	}
 
 	return d, nil
 }
 
-func (d *Distributor) loop() {
-	if d.cfg.LimiterReloadPeriod == 0 {
-		return
-	}
-
-	ticker := time.NewTicker(d.cfg.LimiterReloadPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			d.ingestLimitersMtx.Lock()
-			d.ingestLimiters = make(map[string]*rate.Limiter, len(d.ingestLimiters))
-			d.ingestLimitersMtx.Unlock()
-
-		case <-d.quit:
-			return
-		}
-	}
-}
-
 // Stop stops the distributor's maintenance loop.
 func (d *Distributor) Stop() {
-	close(d.quit)
 	d.ingesterPool.Stop()
 	d.Replicas.stop()
+
+	if d.distributorsRing != nil {
+		d.distributorsRing.Shutdown()
+	}
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
@@ -285,26 +292,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Validates a single series from a write request. Will remove labels if
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
-func (d *Distributor) validateSeries(key uint32, ts ingester_client.PreallocTimeseries, userID string, removeReplica bool) (client.PreallocTimeseries, error) {
-	// If we found both the cluster and replica labels, we only want to include the cluster label when
-	// storing series in Cortex. If we kept the replica label we would end up with another series for the same
-	// series we're trying to dedupe when HA tracking moves over to a different replica.
-	if removeReplica {
-		removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
-	}
-
-	for _, labelName := range d.limits.DropLabels(userID) {
-		removeLabel(labelName, &ts.Labels)
-	}
-	if len(ts.Labels) == 0 {
-		return emptyPreallocSeries, nil
-	}
-
-	key, err := d.tokenForLabels(userID, ts.Labels)
-	if err != nil {
-		return emptyPreallocSeries, err
-	}
-
+func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (client.PreallocTimeseries, error) {
 	labelsHistogram.Observe(float64(len(ts.Labels)))
 	if err := validation.ValidateLabels(d.limits, userID, ts.Labels); err != nil {
 		return emptyPreallocSeries, err
@@ -353,6 +341,10 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				// These samples have been deduped.
 				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
 			}
+
+			// Ensure the request slice is reused if the series get deduped.
+			client.ReuseSlice(req.Timeseries)
+
 			return nil, err
 		}
 		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
@@ -367,12 +359,30 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	keys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
 	for _, ts := range req.Timeseries {
+		// If we found both the cluster and replica labels, we only want to include the cluster label when
+		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+		// series we're trying to dedupe when HA tracking moves over to a different replica.
+		if removeReplica {
+			removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+		}
+
+		for _, labelName := range d.limits.DropLabels(userID) {
+			removeLabel(labelName, &ts.Labels)
+		}
+
+		if len(ts.Labels) == 0 {
+			continue
+		}
+
+		// Generate the sharding token based on the series labels without the HA replica
+		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
 			return nil, err
 		}
 
-		validatedSeries, err := d.validateSeries(key, ts, userID, removeReplica)
+		validatedSeries, err := d.validateSeries(ts, userID)
+
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
 		if err != nil {
@@ -401,18 +411,24 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
 
 	if len(keys) == 0 {
+		// Ensure the request slice is reused if there's no series passing the validation.
+		client.ReuseSlice(req.Timeseries)
+
 		return &client.WriteResponse{}, lastPartialErr
 	}
 
-	limiter := d.getOrCreateIngestLimiter(userID)
-	if !limiter.AllowN(time.Now(), validatedSamples) {
+	now := time.Now()
+	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamples) {
+		// Ensure the request slice is reused if the request is rate limited.
+		client.ReuseSlice(req.Timeseries)
+
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", limiter.Limit(), numSamples)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", d.ingestionRateLimiter.Limit(now, userID), numSamples)
 	}
 
-	err = ring.DoBatch(ctx, d.ring, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+	err = ring.DoBatch(ctx, d.ingestersRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
 		for _, i := range indexes {
 			timeseries = append(timeseries, validatedTimeseries[i])
@@ -431,24 +447,6 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 	return &client.WriteResponse{}, lastPartialErr
-}
-
-func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
-	d.ingestLimitersMtx.RLock()
-	limiter, ok := d.ingestLimiters[userID]
-	d.ingestLimitersMtx.RUnlock()
-
-	if ok {
-		return limiter
-	}
-
-	limiter = rate.NewLimiter(rate.Limit(d.limits.IngestionRate(userID)), d.limits.IngestionBurstSize(userID))
-
-	d.ingestLimitersMtx.Lock()
-	d.ingestLimiters[userID] = limiter
-	d.ingestLimitersMtx.Unlock()
-
-	return limiter
 }
 
 func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries) error {
@@ -472,7 +470,7 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDes
 
 // forAllIngesters runs f, in parallel, for all ingesters
 func (d *Distributor) forAllIngesters(ctx context.Context, reallyAll bool, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
-	replicationSet, err := d.ring.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll()
 	if err != nil {
 		return nil, err
 	}
@@ -594,8 +592,8 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 		totalStats.NumSeries += r.NumSeries
 	}
 
-	totalStats.IngestionRate /= float64(d.ring.ReplicationFactor())
-	totalStats.NumSeries /= uint64(d.ring.ReplicationFactor())
+	totalStats.IngestionRate /= float64(d.ingestersRing.ReplicationFactor())
+	totalStats.NumSeries /= uint64(d.ingestersRing.ReplicationFactor())
 
 	return totalStats, nil
 }
@@ -615,7 +613,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.forAllIngesters(), so we can fail after first error.
-	replicationSet, err := d.ring.GetAll()
+	replicationSet, err := d.ingestersRing.GetAll()
 	if err != nil {
 		return nil, err
 	}

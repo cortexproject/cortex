@@ -196,7 +196,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	if cfg.TSDBEnabled {
-		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
+		return NewV2(cfg, clientConfig, limits, registerer)
 	}
 
 	i := &Ingester{
@@ -216,7 +216,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	var err error
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return nil, err
 	}
@@ -581,6 +581,10 @@ func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2MetricsForLabelMatchers(ctx, req)
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, ok, err := i.userStates.getViaContext(ctx)

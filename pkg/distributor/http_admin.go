@@ -90,7 +90,7 @@ func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request
 	}{
 		Now:               time.Now(),
 		Stats:             stats,
-		ReplicationFactor: d.ring.ReplicationFactor(),
+		ReplicationFactor: d.ingestersRing.ReplicationFactor(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

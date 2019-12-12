@@ -14,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -156,6 +157,7 @@ type Cortex struct {
 	worker       frontend.Worker
 	frontend     *frontend.Frontend
 	tableManager *chunk.TableManager
+	cache        cache.Cache
 
 	ruler        *ruler.Ruler
 	configAPI    *api.API

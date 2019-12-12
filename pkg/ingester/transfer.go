@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/shipper"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -50,12 +51,10 @@ var (
 		Name: "cortex_ingester_sent_bytes_total",
 		Help: "The total number of bytes sent by this ingester whilst leaving",
 	})
-
-	once *sync.Once
+	errTransferNoPendingIngesters = errors.New("no pending ingesters")
 )
 
 func init() {
-	once = &sync.Once{}
 	prometheus.MustRegister(sentChunks)
 	prometheus.MustRegister(receivedChunks)
 	prometheus.MustRegister(sentFiles)
@@ -157,7 +156,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 // transfer, as claiming tokens would possibly end up with this ingester owning no tokens, due to conflict
 // resolution in ring merge function. Hopefully the leaving ingester will retry transfer again.
 func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIngesterID string) error {
-	v, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
+	v, err := i.lifecycler.KVStore.Get(ctx, i.lifecycler.RingKey)
 	if err != nil {
 		return errors.Wrap(err, "get ring")
 	}
@@ -303,7 +302,36 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 		level.Info(util.Logger).Log("msg", "Total xfer", "from_ingester", fromIngesterID, "files", filesXfer, "bytes", bytesXfer)
 
 		// Move the tmpdir to the final location
-		return os.Rename(tmpDir, i.cfg.TSDBConfig.Dir)
+		err = os.Rename(tmpDir, i.cfg.TSDBConfig.Dir)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("unable to move received TSDB blocks from %s to %s", tmpDir, i.cfg.TSDBConfig.Dir))
+		}
+
+		// At this point all TSDBs have been received, so we can proceed loading TSDBs in memory.
+		// This is required because of two reasons:
+		// 1. No WAL replay performance penalty once the ingester switches to ACTIVE state
+		// 2. If a query is received on user X, for which the TSDB has been transferred, before
+		//    the first series is ingested, if we don't open the TSDB the query will return an
+		//    empty result (because the TSDB is opened only on first push or transfer)
+		userIDs, err := ioutil.ReadDir(i.cfg.TSDBConfig.Dir)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("unable to list TSDB users in %s", i.cfg.TSDBConfig.Dir))
+		}
+
+		for _, user := range userIDs {
+			userID := user.Name()
+
+			level.Info(util.Logger).Log("msg", fmt.Sprintf("Loading TSDB for user %s", userID))
+			_, err = i.getOrCreateTSDB(userID, true)
+
+			if err != nil {
+				level.Error(util.Logger).Log("msg", fmt.Sprintf("Unable to load TSDB for user %s", userID), "err", err)
+			} else {
+				level.Info(util.Logger).Log("msg", fmt.Sprintf("Loaded TSDB for user %s", userID))
+			}
+		}
+
+		return nil
 	}
 
 	if err := i.transfer(stream.Context(), xfer); err != nil {
@@ -377,16 +405,23 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 		MaxRetries: i.cfg.MaxTransferRetries,
 	})
 
+	// Keep track of the last error so that we can log it with the highest level
+	// once all retries have completed
+	var err error
+
 	for backoff.Ongoing() {
-		err := i.transferOut(ctx)
+		err = i.transferOut(ctx)
 		if err == nil {
+			level.Info(util.Logger).Log("msg", "transfer successfully completed")
 			return nil
 		}
 
-		level.Error(util.Logger).Log("msg", "transfer failed", "err", err)
+		level.Warn(util.Logger).Log("msg", "transfer attempt failed", "err", err, "attempt", backoff.NumRetries()+1, "max_retries", i.cfg.MaxTransferRetries)
+
 		backoff.Wait()
 	}
 
+	level.Error(util.Logger).Log("msg", "all transfer attempts failed", "err", err)
 	return backoff.Err()
 }
 
@@ -403,7 +438,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 
 	targetIngester, err := i.findTargetIngester(ctx)
 	if err != nil {
-		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
+		return fmt.Errorf("cannot find ingester to transfer chunks to: %w", err)
 	}
 
 	level.Info(util.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
@@ -465,32 +500,64 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 }
 
 func (i *Ingester) v2TransferOut(ctx context.Context) error {
-	if len(i.TSDBState.dbs) == 0 {
-		level.Info(util.Logger).Log("msg", "nothing to transfer")
+	// Skip TSDB transfer if there are no DBs
+	i.userStatesMtx.RLock()
+	skip := len(i.TSDBState.dbs) == 0
+	i.userStatesMtx.RUnlock()
+
+	if skip {
+		level.Info(util.Logger).Log("msg", "the ingester has nothing to transfer")
 		return nil
 	}
 
-	// Close all user databases
-	wg := &sync.WaitGroup{}
-	// Only perform a shutdown once
-	once.Do(func() {
+	// This transfer function may be called multiple times in case of error,
+	// until the max number of retries is reached. For this reason, we run
+	// some initialization only once.
+	i.TSDBState.transferOnce.Do(func() {
+		// In order to transfer TSDB WAL without closing the TSDB itself - which is a
+		// pre-requisite to continue serving read requests while transferring - we need
+		// to make sure no more series will be written to the TSDB. For this reason, we
+		// wait until all in-flight write requests have been completed. No new write
+		// requests will be accepted because the "stopped" flag has already been set.
+		level.Info(util.Logger).Log("msg", "waiting for in-flight write requests to complete")
+
+		// Do not use the parent context cause we don't want to interrupt while waiting
+		// for in-flight requests to complete if the parent context is cancelled, given
+		// this logic run only once.
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer waitCancel()
+
+		if err := util.WaitGroup(waitCtx, &i.TSDBState.inflightWriteReqs); err != nil {
+			level.Warn(util.Logger).Log("msg", "timeout expired while waiting in-flight write requests to complete, transfer will continue anyway", "err", err)
+		}
+
+		// Before beginning transfer, we need to make sure no WAL compaction will occur.
+		// If there's an on-going compaction, the DisableCompactions() will wait until
+		// completed.
+		level.Info(util.Logger).Log("msg", "disabling compaction on all TSDBs")
+
+		i.userStatesMtx.RLock()
+		wg := &sync.WaitGroup{}
 		wg.Add(len(i.TSDBState.dbs))
+
 		for _, db := range i.TSDBState.dbs {
-			go func(closer io.Closer) {
+			go func(db *tsdb.DB) {
 				defer wg.Done()
-				if err := closer.Close(); err != nil {
-					level.Warn(util.Logger).Log("msg", "failed to close db", "err", err)
-				}
+				db.DisableCompactions()
 			}(db)
 		}
+
+		i.userStatesMtx.RUnlock()
+		wg.Wait()
 	})
 
+	// Look for a joining ingester to transfer blocks and WAL to
 	targetIngester, err := i.findTargetIngester(ctx)
 	if err != nil {
-		return fmt.Errorf("cannot find ingester to transfer blocks to: %v", err)
+		return errors.Wrap(err, "cannot find ingester to transfer blocks to")
 	}
 
-	level.Info(util.Logger).Log("msg", "sending blocks", "to_ingester", targetIngester.Addr)
+	level.Info(util.Logger).Log("msg", "begin transferring TSDB blocks and WAL to joining ingester", "to_ingester", targetIngester.Addr)
 	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.clientConfig)
 	if err != nil {
 		return err
@@ -500,10 +567,8 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 	ctx = user.InjectOrgID(ctx, "-1")
 	stream, err := c.TransferTSDB(ctx)
 	if err != nil {
-		return errors.Wrap(err, "TransferTSDB")
+		return errors.Wrap(err, "TransferTSDB() has failed")
 	}
-
-	wg.Wait() // wait for all databases to have closed
 
 	// Grab a list of all blocks that need to be shipped
 	blocks, err := unshippedBlocks(i.cfg.TSDBConfig.Dir)
@@ -522,19 +587,24 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 		return errors.Wrap(err, "CloseAndRecv")
 	}
 
+	// The transfer out has been successfully completed. Now we should close
+	// all open TSDBs: the Close() will wait until all on-going read operations
+	// will be completed.
+	i.closeAllTSDB()
+
 	return nil
 }
 
 // findTargetIngester finds an ingester in PENDING state.
 func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, error) {
-	ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
+	ringDesc, err := i.lifecycler.KVStore.Get(ctx, i.lifecycler.RingKey)
 	if err != nil {
 		return nil, err
 	}
 
 	ingesters := ringDesc.(*ring.Desc).FindIngestersByState(ring.PENDING)
 	if len(ingesters) <= 0 {
-		return nil, fmt.Errorf("no pending ingesters")
+		return nil, errTransferNoPendingIngesters
 	}
 
 	return &ingesters[0], nil
@@ -583,7 +653,7 @@ func unshippedBlocks(dir string) (map[string][]string, error) {
 }
 
 func transferUser(ctx context.Context, stream client.Ingester_TransferTSDBClient, dir, ingesterID, userID string, blocks []string) {
-	level.Info(util.Logger).Log("msg", "xfer user", "user", userID)
+	level.Info(util.Logger).Log("msg", "transferring user blocks", "user", userID)
 	// Transfer all blocks
 	for _, blk := range blocks {
 		err := filepath.Walk(filepath.Join(dir, userID, blk), func(path string, info os.FileInfo, err error) error {
@@ -622,6 +692,7 @@ func transferUser(ctx context.Context, stream client.Ingester_TransferTSDBClient
 	}
 
 	// Transfer WAL
+	level.Info(util.Logger).Log("msg", "transferring user WAL", "user", userID)
 	err := filepath.Walk(filepath.Join(dir, userID, "wal"), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -654,10 +725,10 @@ func transferUser(ctx context.Context, stream client.Ingester_TransferTSDBClient
 	})
 
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "failed to transfer user wal", "err", err)
+		level.Warn(util.Logger).Log("msg", "failed to transfer user WAL", "err", err)
 	}
 
-	level.Info(util.Logger).Log("msg", "xfer user complete", "user", userID)
+	level.Info(util.Logger).Log("msg", "user blocks and WAL transfer completed", "user", userID)
 }
 
 func batchSend(batch int, b []byte, stream client.Ingester_TransferTSDBClient, tsfile *client.TimeSeriesFile) error {

@@ -22,7 +22,7 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 
 	// If any operations failed further in the function, we keep the temporary
 	// file hanging around for debugging.
-	f, err := ioutil.TempFile(os.TempDir(), "tokens")
+	f, err := os.Create(tokenFilePath + ".tmp")
 	if err != nil {
 		return err
 	}

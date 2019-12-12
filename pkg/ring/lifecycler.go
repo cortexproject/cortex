@@ -49,8 +49,6 @@ type LifecyclerConfig struct {
 	ObservePeriod    time.Duration `yaml:"observe_period,omitempty"`
 	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
 	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
-	UnusedFlag       bool          `yaml:"claim_on_rollout,omitempty"` // DEPRECATED - left for backwards-compatibility
-	UnusedFlag2      bool          `yaml:"normalise_tokens,omitempty"` // DEPRECATED - left for backwards-compatibility
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
 	TokensFilePath   string        `yaml:"tokens_file_path,omitempty"`
@@ -60,6 +58,10 @@ type LifecyclerConfig struct {
 	Port           int
 	ID             string
 	SkipUnregister bool
+
+	// graveyard for unused flags.
+	UnusedFlag  bool `yaml:"claim_on_rollout,omitempty"` // DEPRECATED - left for backwards-compatibility
+	UnusedFlag2 bool `yaml:"normalise_tokens,omitempty"` // DEPRECATED - left for backwards-compatibility
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

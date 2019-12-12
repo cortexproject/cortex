@@ -3,6 +3,7 @@ package ingester
 import (
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -32,6 +33,13 @@ const (
 type TSDBState struct {
 	dbs    map[string]*tsdb.DB // tsdb sharded by userID
 	bucket objstore.Bucket
+
+	// Keeps count of in-flight requests
+	inflightWriteReqs sync.WaitGroup
+
+	// Used to run only once operations at shutdown, during the blocks/wal
+	// transferring to a joining ingester
+	transferOnce sync.Once
 }
 
 // NewV2 returns a new Ingester that uses prometheus block storage instead of chunk storage
@@ -84,6 +92,24 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		return nil, err
 	}
 
+	// Ensure the ingester shutdown procedure hasn't started
+	i.userStatesMtx.RLock()
+
+	if i.stopped {
+		i.userStatesMtx.RUnlock()
+		return nil, fmt.Errorf("ingester stopping")
+	}
+
+	// Keep track of in-flight requests, in order to safely start blocks transfer
+	// (at shutdown) only once all in-flight write requests have completed.
+	// It's important to increase the number of in-flight requests within the lock
+	// (even if sync.WaitGroup is thread-safe), otherwise there's a race condition
+	// with the TSDB transfer, which - after the stopped flag is set to true - waits
+	// until all in-flight requests to reach zero.
+	i.TSDBState.inflightWriteReqs.Add(1)
+	i.userStatesMtx.RUnlock()
+	defer i.TSDBState.inflightWriteReqs.Done()
+
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	succeededSamplesCount := 0
@@ -96,10 +122,6 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		lset := cortex_tsdb.FromLabelAdaptersToLabels(ts.Labels)
 
 		for _, s := range ts.Samples {
-			if i.stopped {
-				return nil, fmt.Errorf("ingester stopping")
-			}
-
 			_, err := app.Add(lset, s.TimestampMs, s.Value)
 			if err == nil {
 				succeededSamplesCount++
@@ -119,7 +141,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 			// The error looks an issue on our side, so we should rollback
 			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID, "err", rollbackErr)
+				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "userID", userID, "err", rollbackErr)
 			}
 
 			return nil, err
@@ -396,4 +418,37 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	i.TSDBState.dbs[userID] = db
 
 	return db, nil
+}
+
+func (i *Ingester) closeAllTSDB() {
+	i.userStatesMtx.Lock()
+
+	wg := &sync.WaitGroup{}
+	wg.Add(len(i.TSDBState.dbs))
+
+	// Concurrently close all users TSDB
+	for userID, db := range i.TSDBState.dbs {
+		userID := userID
+
+		go func(db *tsdb.DB) {
+			defer wg.Done()
+
+			if err := db.Close(); err != nil {
+				level.Warn(util.Logger).Log("msg", "unable to close TSDB", "err", err, "user", userID)
+				return
+			}
+
+			// Now that the TSDB has been closed, we should remove it from the
+			// set of open ones. This lock acquisition doesn't deadlock with the
+			// outer one, because the outer one is released as soon as all go
+			// routines are started.
+			i.userStatesMtx.Lock()
+			delete(i.TSDBState.dbs, userID)
+			i.userStatesMtx.Unlock()
+		}(db)
+	}
+
+	// Wait until all Close() completed
+	i.userStatesMtx.Unlock()
+	wg.Wait()
 }

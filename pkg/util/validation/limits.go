@@ -158,8 +158,7 @@ func (o *Overrides) IngestionRate(userID string) float64 {
 // to each distributor instance (local) or evenly shared across the cluster (global).
 func (o *Overrides) IngestionRateStrategy() string {
 	// The ingestion rate strategy can't be overridden on a per-tenant basis
-	defaultLimits := o.overridesManager.cfg.Defaults
-	return defaultLimits.(*Limits).IngestionRateStrategy
+	return o.defaultLimits.IngestionRateStrategy
 }
 
 // IngestionBurstSize returns the burst size for ingestion rate.

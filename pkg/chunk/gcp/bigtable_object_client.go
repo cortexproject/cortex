@@ -8,15 +8,17 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type bigtableObjectClient struct {
-	cfg       Config
-	schemaCfg chunk.SchemaConfig
-	client    *bigtable.Client
+	cfg          Config
+	schemaCfg    chunk.SchemaConfig
+	client       *bigtable.Client
+	writeLimiter *rate.Limiter
 }
 
 // NewBigtableObjectClient makes a new chunk.ObjectClient that stores chunks in
@@ -32,9 +34,10 @@ func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.Sc
 
 func newBigtableObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) chunk.ObjectClient {
 	return &bigtableObjectClient{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		client:    client,
+		cfg:          cfg,
+		schemaCfg:    schemaCfg,
+		client:       client,
+		writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), bigtableMaxWriteBatchSize),
 	}
 }
 
@@ -45,6 +48,8 @@ func (s *bigtableObjectClient) Stop() {
 func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	keys := map[string][]string{}
 	muts := map[string][]*bigtable.Mutation{}
+
+	backoff := util.NewBackoff(ctx, s.cfg.BackoffConfig)
 
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
@@ -65,6 +70,10 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 
 	for tableName := range keys {
 		table := s.client.Open(tableName)
+		if s.writeLimiter.Allow() == false {
+			s.writeLimiter.WaitN(ctx, len(muts))
+			backoff.Wait()
+		}
 		errs, err := table.ApplyBulk(ctx, keys[tableName], muts[tableName])
 		if err != nil {
 			return err

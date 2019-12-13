@@ -76,10 +76,8 @@ func New(uri, migrationsDir string) (DB, error) {
 	}
 
 	if migrationsDir != "" {
-		i := strings.Index(migrationsDir, ":")
-
 		// Add file scheme if no scheme is present
-		if i < 1 {
+		if !strings.HasPrefix(migrationsDir, "file:") {
 			migrationsDir = "file:" + migrationsDir
 		}
 

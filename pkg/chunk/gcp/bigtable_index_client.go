@@ -13,20 +13,22 @@ import (
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/pkg/errors"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/pkg/errors"
 )
 
 const (
-	columnFamily = "f"
-	columnPrefix = columnFamily + ":"
-	column       = "c"
-	separator    = "\000"
-	maxRowReads  = 100
+	columnFamily              = "f"
+	columnPrefix              = columnFamily + ":"
+	column                    = "c"
+	separator                 = "\000"
+	maxRowReads               = 100
+	bigtableMaxWriteBatchSize = 10000
 )
 
 // Config for a StorageClient
@@ -34,13 +36,13 @@ type Config struct {
 	Project  string `yaml:"project"`
 	Instance string `yaml:"instance"`
 
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
-
-	ColumnKey      bool
-	DistributeKeys bool
-
+	GRPCClientConfig     grpcclient.Config `yaml:"grpc_client_config"`
+	BackoffConfig        util.BackoffConfig
+	ColumnKey            bool
+	DistributeKeys       bool
 	TableCacheEnabled    bool
 	TableCacheExpiration time.Duration
+	WriteLimit           float64
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -49,16 +51,19 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
-
+	f.Float64Var(&cfg.WriteLimit, "bigtable.throttle-limit", 10.0, "BigTable rate cap to back off when throttled.")
+	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "bigtable.min-backoff", 100*time.Millisecond, "Minimum backoff time")
+	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "bigtable.max-backoff", 50*time.Second, "Maximum backoff time")
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
 type storageClientColumnKey struct {
-	cfg       Config
-	schemaCfg chunk.SchemaConfig
-	client    *bigtable.Client
-	keysFn    keysFn
+	cfg          Config
+	schemaCfg    chunk.SchemaConfig
+	client       *bigtable.Client
+	keysFn       keysFn
+	writeLimiter *rate.Limiter
 
 	distributeKeys bool
 }
@@ -81,9 +86,10 @@ func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaC
 func newStorageClientV1(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) *storageClientV1 {
 	return &storageClientV1{
 		storageClientColumnKey{
-			cfg:       cfg,
-			schemaCfg: schemaCfg,
-			client:    client,
+			cfg:          cfg,
+			schemaCfg:    schemaCfg,
+			client:       client,
+			writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), bigtableMaxWriteBatchSize),
 			keysFn: func(hashValue string, rangeValue []byte) (string, string) {
 				rowKey := hashValue + separator + string(rangeValue)
 				return rowKey, column
@@ -105,9 +111,10 @@ func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.
 func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) *storageClientColumnKey {
 
 	return &storageClientColumnKey{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		client:    client,
+		cfg:          cfg,
+		schemaCfg:    schemaCfg,
+		client:       client,
+		writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), bigtableMaxWriteBatchSize),
 		keysFn: func(hashValue string, rangeValue []byte) (string, string) {
 
 			// We hash the row key and prepend it back to the key for better distribution.
@@ -171,6 +178,8 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	bigtableBatch := batch.(bigtableWriteBatch)
 
+	backoff := util.NewBackoff(ctx, s.cfg.BackoffConfig)
+
 	for tableName, rows := range bigtableBatch.tables {
 		table := s.client.Open(tableName)
 		rowKeys := make([]string, 0, len(rows))
@@ -179,7 +188,10 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 			rowKeys = append(rowKeys, rowKey)
 			muts = append(muts, mut)
 		}
-
+		if s.writeLimiter.Allow() == false {
+			s.writeLimiter.WaitN(ctx, len(muts))
+			backoff.Wait()
+		}
 		errs, err := table.ApplyBulk(ctx, rowKeys, muts)
 		if err != nil {
 			return err

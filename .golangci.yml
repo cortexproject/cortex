@@ -1,0 +1,8 @@
+output:
+  format: line-number
+
+linters-settings:
+  errcheck:
+    # path to a file containing a list of functions to exclude from checking
+    # see https://github.com/kisielk/errcheck#excluding-functions for details
+    exclude: ./.errcheck-exclude

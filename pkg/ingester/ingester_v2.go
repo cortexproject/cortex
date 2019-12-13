@@ -407,12 +407,14 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	i.done.Add(1)
 	go func() {
 		defer i.done.Done()
-		runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
+		if err := runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
 			if uploaded, err := s.Sync(context.Background()); err != nil {
 				level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
 			}
 			return nil
-		})
+		}); err != nil {
+			level.Warn(util.Logger).Log("err", err)
+		}
 	}()
 
 	i.TSDBState.dbs[userID] = db

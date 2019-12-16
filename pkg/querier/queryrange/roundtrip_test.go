@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -18,10 +19,14 @@ func TestRoundTrip(t *testing.T) {
 	s := httptest.NewServer(
 		middleware.AuthenticateUser.Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var err error
 				if r.RequestURI == query {
-					w.Write([]byte(responseBody))
+					_, err = w.Write([]byte(responseBody))
 				} else {
-					w.Write([]byte("bar"))
+					_, err = w.Write([]byte("bar"))
+				}
+				if err != nil {
+					t.Fatal(err)
 				}
 			}),
 		),
@@ -36,7 +41,10 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
-	roundtripper := NewRoundTripper(downstream, PrometheusCodec, LimitsMiddleware(fakeLimits{}))
+	tw, _, err := NewTripperware(Config{}, util.Logger, fakeLimits{}, PrometheusCodec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for i, tc := range []struct {
 		path, expectedBody string
@@ -56,7 +64,7 @@ func TestRoundTrip(t *testing.T) {
 			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 			require.NoError(t, err)
 
-			resp, err := roundtripper.RoundTrip(req)
+			resp, err := tw(downstream).RoundTrip(req)
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)
 

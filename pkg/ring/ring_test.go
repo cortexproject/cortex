@@ -35,7 +35,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	for i := 0; i < numIngester; i++ {
 		tokens := GenerateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE, false)
+		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), tokens, ACTIVE)
 	}
 
 	cfg := Config{}
@@ -87,4 +87,54 @@ func TestDoBatchZeroIngesters(t *testing.T) {
 		ringDesc: desc,
 	}
 	require.Error(t, DoBatch(ctx, &r, keys, callback, cleanup))
+}
+
+func TestAddIngester(t *testing.T) {
+	r := NewDesc()
+
+	const (
+		ing1Name = "ing1"
+		ing2Name = "ing2"
+	)
+
+	ing1Tokens := GenerateTokens(128, nil)
+	ing2Tokens := GenerateTokens(128, ing1Tokens)
+
+	// store tokens to r.Tokens
+	for _, t := range ing1Tokens {
+		r.Tokens = append(r.Tokens, TokenDesc{Token: t, Ingester: ing1Name})
+	}
+
+	for _, t := range ing2Tokens {
+		r.Tokens = append(r.Tokens, TokenDesc{Token: t, Ingester: ing2Name})
+	}
+
+	r.AddIngester(ing1Name, "addr", ing1Tokens, ACTIVE)
+
+	require.Equal(t, "addr", r.Ingesters[ing1Name].Addr)
+	require.Equal(t, ing1Tokens, r.Ingesters[ing1Name].Tokens)
+
+	require.Equal(t, len(ing2Tokens), len(r.Tokens))
+	for _, tok := range r.Tokens {
+		require.NotEqual(t, "test", tok.Ingester)
+	}
+}
+
+func TestAddIngesterReplacesExistingTokens(t *testing.T) {
+	r := NewDesc()
+
+	const ing1Name = "ing1"
+
+	oldTokens := []uint32{11111, 22222, 33333}
+	// old tokens will be replaced
+	for _, t := range oldTokens {
+		r.Tokens = append(r.Tokens, TokenDesc{Token: t, Ingester: ing1Name})
+	}
+
+	newTokens := GenerateTokens(128, oldTokens)
+
+	r.AddIngester(ing1Name, "addr", newTokens, ACTIVE)
+
+	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
+	require.Equal(t, 0, len(r.Tokens)) // all previous tokens were removed
 }

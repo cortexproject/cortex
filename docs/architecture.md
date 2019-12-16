@@ -1,8 +1,13 @@
-# Cortex Architecture
+---
+title: "Cortex Architecture"
+linkTitle: "Cortex Architecture"
+weight: 4
+slug: architecture
+---
 
 Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the [ingesters](#ingester)) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex's architecture.
 
-<p align="center"><img src="architecture.png" alt="Cortex Architecture"></p>
+<p align="center"><img src="../images/architecture.png" alt="Cortex Architecture"></p>
 
 ## The role of Prometheus
 

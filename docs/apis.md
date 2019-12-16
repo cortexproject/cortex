@@ -1,4 +1,9 @@
-# Cortex APIs
+---
+title: "Cortex APIs"
+linkTitle: "Cortex APIs"
+weight: 5
+slug: apis
+---
 
 [this is a work in progress]
 
@@ -33,7 +38,7 @@ The following schema is used both when retrieving the current configs from the A
     "rule_format_version": "2",
     "config": {
         "alertmanager_config": "<standard alertmanager.yaml config>",
-        "rules_files": { 
+        "rules_files": {
             "rules.yaml": "<standard rules.yaml config>",
             "rules2.yaml": "<standard rules.yaml config>"
          },
@@ -75,14 +80,14 @@ The following schema is used both when retrieving the current configs from the A
 
 Normal Response: OK(200)
 ```json
-{ 
+{
     "status": "success"
 }
 ```
 
 Error Response: BadRequest(400)
 ```json
-{ 
+{
     "status": "error",
     "error": "error message"
 }

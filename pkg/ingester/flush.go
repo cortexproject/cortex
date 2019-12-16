@@ -76,7 +76,9 @@ var (
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
+	level.Info(util.Logger).Log("msg", "starting to flush all the chunks")
 	i.sweepUsers(true)
+	level.Info(util.Logger).Log("msg", "flushing of chunks complete")
 
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
@@ -89,7 +91,9 @@ func (i *Ingester) Flush() {
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
+	level.Info(util.Logger).Log("msg", "starting to flush all the chunks")
 	i.sweepUsers(true)
+	level.Info(util.Logger).Log("msg", "flushing of chunks complete")
 	w.WriteHeader(http.StatusNoContent)
 }
 

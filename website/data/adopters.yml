@@ -1,0 +1,29 @@
+---
+adopters:
+- name: Aspen Mesh
+  url: https://aspenmesh.io/
+  logo: aspen-mesh.png
+- name: DigitalOcean
+  url: https://www.digitalocean.com/
+  logo: digitalocean.png
+- name: Electronic Arts
+  url: https://www.ea.com/
+  logo: ea.png
+- name: GoJek
+  url: https://www.gojek.io/
+  logo: gojek.png
+- name: Grafana Labs
+  url: https://grafana.com/
+  logo: grafana.svg
+- name: MayaData
+  url: https://mayadata.io/
+  logo: mayadata.svg
+- name: Platform9
+  url: https://platform9.com/
+  logo: platform9.svg
+- name: REWE Digital
+  url: https://rewe-digital.com/
+  logo: rewe.png
+- name: Weaveworks
+  url: https://www.weave.works/
+  logo: weaveworks.svg

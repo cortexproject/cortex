@@ -47,12 +47,14 @@ func (l limits) Do(ctx context.Context, r Request) (Response, error) {
 	return l.next.Do(ctx, r)
 }
 
-type requestResponse struct {
-	req  Request
-	resp Response
+// RequestResponse contains a request response and the respective request that was used.
+type RequestResponse struct {
+	Request  Request
+	Response Response
 }
 
-func doRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]requestResponse, error) {
+// DoRequests executes a list of requests in parallel. The limits parameters is used to limit parallelism per single request.
+func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]RequestResponse, error) {
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -71,7 +73,7 @@ func doRequests(ctx context.Context, downstream Handler, reqs []Request, limits 
 		close(intermediate)
 	}()
 
-	respChan, errChan := make(chan requestResponse), make(chan error)
+	respChan, errChan := make(chan RequestResponse), make(chan error)
 	parallelism := limits.MaxQueryParallelism(userid)
 	if parallelism > len(reqs) {
 		parallelism = len(reqs)
@@ -83,13 +85,13 @@ func doRequests(ctx context.Context, downstream Handler, reqs []Request, limits 
 				if err != nil {
 					errChan <- err
 				} else {
-					respChan <- requestResponse{req, resp}
+					respChan <- RequestResponse{req, resp}
 				}
 			}
 		}()
 	}
 
-	resps := make([]requestResponse, 0, len(reqs))
+	resps := make([]RequestResponse, 0, len(reqs))
 	var firstErr error
 	for range reqs {
 		select {

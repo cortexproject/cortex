@@ -29,14 +29,14 @@ func (s splitByInterval) Do(ctx context.Context, r Request) (Response, error) {
 	// to line up the boundaries with step.
 	reqs := splitQuery(r, s.interval)
 
-	reqResps, err := doRequests(ctx, s.next, reqs, s.limits)
+	reqResps, err := DoRequests(ctx, s.next, reqs, s.limits)
 	if err != nil {
 		return nil, err
 	}
 
 	resps := make([]Response, 0, len(reqResps))
 	for _, reqResp := range reqResps {
-		resps = append(resps, reqResp.resp)
+		resps = append(resps, reqResp.Response)
 	}
 
 	response, err := s.merger.MergeResponse(resps...)

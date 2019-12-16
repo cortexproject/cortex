@@ -26,6 +26,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 )
 
@@ -89,7 +90,7 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, error) {
+func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, cache.Cache, error) {
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
@@ -102,11 +103,13 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
+	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		c = cache
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache"), queryCacheMiddleware)
 	}
 	if cfg.MaxRetries > 0 {
@@ -119,7 +122,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 			return NewRoundTripper(next, codec, queryRangeMiddleware...)
 		}
 		return next
-	}), nil
+	}), c, nil
 }
 
 type roundTripper struct {
@@ -176,5 +179,5 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	return q.codec.DecodeResponse(ctx, response)
+	return q.codec.DecodeResponse(ctx, response, r)
 }

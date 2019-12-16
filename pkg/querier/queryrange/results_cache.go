@@ -79,10 +79,10 @@ type resultsCache struct {
 // Each request starting from within the same interval will hit the same cache entry.
 // If the cache doesn't have the entire duration of the request cached, it will query the uncached parts and append them to the cache entries.
 // see `generateKey`.
-func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, merger Merger, extractor Extractor) (Middleware, error) {
+func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, merger Merger, extractor Extractor) (Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return MiddlewareFunc(func(next Handler) Handler {
@@ -95,7 +95,7 @@ func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits
 			merger:    merger,
 			extractor: extractor,
 		}
-	}), nil
+	}), c, nil
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
@@ -152,7 +152,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 
 func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent) (Response, []Extent, error) {
 	var (
-		reqResps []requestResponse
+		reqResps []RequestResponse
 		err      error
 	)
 	log, ctx := spanlogger.New(ctx, "handleHit")
@@ -168,14 +168,14 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return response, nil, err
 	}
 
-	reqResps, err = doRequests(ctx, s.next, requests, s.limits)
+	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	for _, reqResp := range reqResps {
-		responses = append(responses, reqResp.resp)
-		extent, err := toExtent(ctx, reqResp.req, reqResp.resp)
+		responses = append(responses, reqResp.Response)
+		extent, err := toExtent(ctx, reqResp.Request, reqResp.Response)
 		if err != nil {
 			return nil, nil, err
 		}

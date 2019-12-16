@@ -3,4 +3,7 @@ cmd/cortex/cortex
 .uptodate
 .pkg
 .cache
-images/
+docker-images/
+website/public
+website/resources
+website/content/en/docs

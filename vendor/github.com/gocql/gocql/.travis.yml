@@ -11,29 +11,31 @@ cache:
 matrix:
   fast_finish: true
 
+branches:
+  only:
+  - master
+
 env:
   global:
     - GOMAXPROCS=2
   matrix:
-    - CASS=2.1.12
-      AUTH=false
-    - CASS=2.2.5
+    - CASS=2.2.13
       AUTH=true
-    - CASS=2.2.5
+    - CASS=2.2.13
       AUTH=false
-    - CASS=3.0.8
+    - CASS=3.0.17
+      AUTH=false
+    - CASS=3.11.3
       AUTH=false
 
 go:
-  - 1.8
-  - 1.9
+  - "1.10"
+  - "1.11"
 
 install:
-  - pip install --user cql PyYAML six
-  - git clone https://github.com/pcmanus/ccm.git
-  - pushd ccm
-  - ./setup.py install --user
-  - popd
+  - ./install_test_deps.sh $TRAVIS_REPO_SLUG
+  - cd ../..
+  - cd gocql/gocql
   - go get .
 
 script:

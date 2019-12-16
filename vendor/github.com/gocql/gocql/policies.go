@@ -5,6 +5,8 @@
 package gocql
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -117,7 +119,7 @@ func (c *cowHostList) remove(ip net.IP) bool {
 		return false
 	}
 
-	newL = newL[:size-1 : size-1]
+	newL = newL[: size-1 : size-1]
 	c.list.Store(&newL)
 	c.mu.Unlock()
 
@@ -128,8 +130,23 @@ func (c *cowHostList) remove(ip net.IP) bool {
 // exposes the correct functions for the retry policy logic to evaluate correctly.
 type RetryableQuery interface {
 	Attempts() int
+	SetConsistency(c Consistency)
 	GetConsistency() Consistency
+	Context() context.Context
 }
+
+type RetryType uint16
+
+const (
+	Retry         RetryType = 0x00 // retry on same connection
+	RetryNextHost RetryType = 0x01 // retry on another connection
+	Ignore        RetryType = 0x02 // ignore error and return result
+	Rethrow       RetryType = 0x03 // raise error and stop retrying
+)
+
+// ErrUnknownRetryType is returned if the retry policy returns a retry type
+// unknown to the query executor.
+var ErrUnknownRetryType = errors.New("unknown retry type returned by retry policy")
 
 // RetryPolicy interface is used by gocql to determine if a query can be attempted
 // again after a retryable error has been received. The interface allows gocql
@@ -140,6 +157,7 @@ type RetryableQuery interface {
 // interface.
 type RetryPolicy interface {
 	Attempt(RetryableQuery) bool
+	GetRetryType(error) RetryType
 }
 
 // SimpleRetryPolicy has simple logic for attempting a query a fixed number of times.
@@ -162,6 +180,10 @@ func (s *SimpleRetryPolicy) Attempt(q RetryableQuery) bool {
 	return q.Attempts() <= s.NumRetries
 }
 
+func (s *SimpleRetryPolicy) GetRetryType(err error) RetryType {
+	return RetryNextHost
+}
+
 // ExponentialBackoffRetryPolicy sleeps between attempts
 type ExponentialBackoffRetryPolicy struct {
 	NumRetries int
@@ -176,21 +198,90 @@ func (e *ExponentialBackoffRetryPolicy) Attempt(q RetryableQuery) bool {
 	return true
 }
 
-func (e *ExponentialBackoffRetryPolicy) napTime(attempts int) time.Duration {
-	if e.Min <= 0 {
-		e.Min = 100 * time.Millisecond
+// used to calculate exponentially growing time
+func getExponentialTime(min time.Duration, max time.Duration, attempts int) time.Duration {
+	if min <= 0 {
+		min = 100 * time.Millisecond
 	}
-	if e.Max <= 0 {
-		e.Max = 10 * time.Second
+	if max <= 0 {
+		max = 10 * time.Second
 	}
-	minFloat := float64(e.Min)
+	minFloat := float64(min)
 	napDuration := minFloat * math.Pow(2, float64(attempts-1))
 	// add some jitter
 	napDuration += rand.Float64()*minFloat - (minFloat / 2)
-	if napDuration > float64(e.Max) {
-		return time.Duration(e.Max)
+	if napDuration > float64(max) {
+		return time.Duration(max)
 	}
 	return time.Duration(napDuration)
+}
+
+func (e *ExponentialBackoffRetryPolicy) GetRetryType(err error) RetryType {
+	return RetryNextHost
+}
+
+// DowngradingConsistencyRetryPolicy: Next retry will be with the next consistency level
+// provided in the slice
+//
+// On a read timeout: the operation is retried with the next provided consistency
+// level.
+//
+// On a write timeout: if the operation is an :attr:`~.UNLOGGED_BATCH`
+// and at least one replica acknowledged the write, the operation is
+// retried with the next consistency level.  Furthermore, for other
+// write types, if at least one replica acknowledged the write, the
+// timeout is ignored.
+//
+// On an unavailable exception: if at least one replica is alive, the
+// operation is retried with the next provided consistency level.
+
+type DowngradingConsistencyRetryPolicy struct {
+	ConsistencyLevelsToTry []Consistency
+}
+
+func (d *DowngradingConsistencyRetryPolicy) Attempt(q RetryableQuery) bool {
+	currentAttempt := q.Attempts()
+
+	if currentAttempt > len(d.ConsistencyLevelsToTry) {
+		return false
+	} else if currentAttempt > 0 {
+		q.SetConsistency(d.ConsistencyLevelsToTry[currentAttempt-1])
+		if gocqlDebug {
+			Logger.Printf("%T: set consistency to %q\n",
+				d,
+				d.ConsistencyLevelsToTry[currentAttempt-1])
+		}
+	}
+	return true
+}
+
+func (d *DowngradingConsistencyRetryPolicy) GetRetryType(err error) RetryType {
+	switch t := err.(type) {
+	case *RequestErrUnavailable:
+		if t.Alive > 0 {
+			return Retry
+		}
+		return Rethrow
+	case *RequestErrWriteTimeout:
+		if t.WriteType == "SIMPLE" || t.WriteType == "BATCH" || t.WriteType == "COUNTER" {
+			if t.Received > 0 {
+				return Ignore
+			}
+			return Rethrow
+		}
+		if t.WriteType == "UNLOGGED_BATCH" {
+			return Retry
+		}
+		return Rethrow
+	case *RequestErrReadTimeout:
+		return Retry
+	default:
+		return RetryNextHost
+	}
+}
+
+func (e *ExponentialBackoffRetryPolicy) napTime(attempts int) time.Duration {
+	return getExponentialTime(e.Min, e.Max, attempts)
 }
 
 type HostStateNotifier interface {
@@ -333,6 +424,10 @@ func (t *tokenAwareHostPolicy) IsLocal(host *HostInfo) bool {
 }
 
 func (t *tokenAwareHostPolicy) KeyspaceChanged(update KeyspaceUpdateEvent) {
+	t.updateKeyspaceMetadata(update.Keyspace)
+}
+
+func (t *tokenAwareHostPolicy) updateKeyspaceMetadata(keyspace string) {
 	meta, _ := t.keyspaces.Load().(*keyspaceMeta)
 	var size = 1
 	if meta != nil {
@@ -343,18 +438,20 @@ func (t *tokenAwareHostPolicy) KeyspaceChanged(update KeyspaceUpdateEvent) {
 		replicas: make(map[string]map[token][]*HostInfo, size),
 	}
 
-	ks, err := t.session.KeyspaceMetadata(update.Keyspace)
+	ks, err := t.session.KeyspaceMetadata(keyspace)
 	if err == nil {
 		strat := getStrategy(ks)
-		tr := t.tokenRing.Load().(*tokenRing)
-		if tr != nil {
-			newMeta.replicas[update.Keyspace] = strat.replicaMap(t.hosts.get(), tr.tokens)
+		if strat != nil {
+			tr, _ := t.tokenRing.Load().(*tokenRing)
+			if tr != nil {
+				newMeta.replicas[keyspace] = strat.replicaMap(t.hosts.get(), tr.tokens)
+			}
 		}
 	}
 
 	if meta != nil {
 		for ks, replicas := range meta.replicas {
-			if ks != update.Keyspace {
+			if ks != keyspace {
 				newMeta.replicas[ks] = replicas
 			}
 		}
@@ -376,6 +473,20 @@ func (t *tokenAwareHostPolicy) SetPartitioner(partitioner string) {
 }
 
 func (t *tokenAwareHostPolicy) AddHost(host *HostInfo) {
+	t.HostUp(host)
+	if t.session != nil { // disable for unit tests
+		t.updateKeyspaceMetadata(t.session.cfg.Keyspace)
+	}
+}
+
+func (t *tokenAwareHostPolicy) RemoveHost(host *HostInfo) {
+	t.HostDown(host)
+	if t.session != nil { // disable for unit tests
+		t.updateKeyspaceMetadata(t.session.cfg.Keyspace)
+	}
+}
+
+func (t *tokenAwareHostPolicy) HostUp(host *HostInfo) {
 	t.hosts.add(host)
 	t.fallback.AddHost(host)
 
@@ -385,7 +496,7 @@ func (t *tokenAwareHostPolicy) AddHost(host *HostInfo) {
 	t.resetTokenRing(partitioner)
 }
 
-func (t *tokenAwareHostPolicy) RemoveHost(host *HostInfo) {
+func (t *tokenAwareHostPolicy) HostDown(host *HostInfo) {
 	t.hosts.remove(host.ConnectAddress())
 	t.fallback.RemoveHost(host)
 
@@ -393,17 +504,6 @@ func (t *tokenAwareHostPolicy) RemoveHost(host *HostInfo) {
 	partitioner := t.partitioner
 	t.mu.RUnlock()
 	t.resetTokenRing(partitioner)
-}
-
-func (t *tokenAwareHostPolicy) HostUp(host *HostInfo) {
-	// TODO: need to avoid doing all the work on AddHost on hostup/down
-	// because it now expensive to calculate the replica map for each
-	// token
-	t.AddHost(host)
-}
-
-func (t *tokenAwareHostPolicy) HostDown(host *HostInfo) {
-	t.RemoveHost(host)
 }
 
 func (t *tokenAwareHostPolicy) resetTokenRing(partitioner string) {
@@ -429,8 +529,8 @@ func (t *tokenAwareHostPolicy) getReplicas(keyspace string, token token) ([]*Hos
 	if meta == nil {
 		return nil, false
 	}
-	tokens, ok := meta.replicas[keyspace][token]
-	return tokens, ok
+	replicas, ok := meta.replicas[keyspace][token]
+	return replicas, ok
 }
 
 func (t *tokenAwareHostPolicy) Pick(qry ExecutableQuery) NextHost {
@@ -450,9 +550,7 @@ func (t *tokenAwareHostPolicy) Pick(qry ExecutableQuery) NextHost {
 		return t.fallback.Pick(qry)
 	}
 
-	token := tr.partitioner.Hash(routingKey)
-	primaryEndpoint := tr.GetHostForToken(token)
-
+	primaryEndpoint, token := tr.GetHostForPartitionKey(routingKey)
 	if primaryEndpoint == nil || token == nil {
 		return t.fallback.Pick(qry)
 	}
@@ -706,3 +804,83 @@ func (d *dcAwareRR) Pick(q ExecutableQuery) NextHost {
 		return (*selectedHost)(host)
 	}
 }
+
+// ConvictionPolicy interface is used by gocql to determine if a host should be
+// marked as DOWN based on the error and host info
+type ConvictionPolicy interface {
+	// Implementations should return `true` if the host should be convicted, `false` otherwise.
+	AddFailure(error error, host *HostInfo) bool
+	//Implementations should clear out any convictions or state regarding the host.
+	Reset(host *HostInfo)
+}
+
+// SimpleConvictionPolicy implements a ConvictionPolicy which convicts all hosts
+// regardless of error
+type SimpleConvictionPolicy struct {
+}
+
+func (e *SimpleConvictionPolicy) AddFailure(error error, host *HostInfo) bool {
+	return true
+}
+
+func (e *SimpleConvictionPolicy) Reset(host *HostInfo) {}
+
+// ReconnectionPolicy interface is used by gocql to determine if reconnection
+// can be attempted after connection error. The interface allows gocql users
+// to implement their own logic to determine how to attempt reconnection.
+//
+type ReconnectionPolicy interface {
+	GetInterval(currentRetry int) time.Duration
+	GetMaxRetries() int
+}
+
+// ConstantReconnectionPolicy has simple logic for returning a fixed reconnection interval.
+//
+// Examples of usage:
+//
+//     cluster.ReconnectionPolicy = &gocql.ConstantReconnectionPolicy{MaxRetries: 10, Interval: 8 * time.Second}
+//
+type ConstantReconnectionPolicy struct {
+	MaxRetries int
+	Interval   time.Duration
+}
+
+func (c *ConstantReconnectionPolicy) GetInterval(currentRetry int) time.Duration {
+	return c.Interval
+}
+
+func (c *ConstantReconnectionPolicy) GetMaxRetries() int {
+	return c.MaxRetries
+}
+
+// ExponentialReconnectionPolicy returns a growing reconnection interval.
+type ExponentialReconnectionPolicy struct {
+	MaxRetries      int
+	InitialInterval time.Duration
+}
+
+func (e *ExponentialReconnectionPolicy) GetInterval(currentRetry int) time.Duration {
+	return getExponentialTime(e.InitialInterval, math.MaxInt16*time.Second, e.GetMaxRetries())
+}
+
+func (e *ExponentialReconnectionPolicy) GetMaxRetries() int {
+	return e.MaxRetries
+}
+
+type SpeculativeExecutionPolicy interface {
+	Attempts() int
+	Delay() time.Duration
+}
+
+type NonSpeculativeExecution struct{}
+
+func (sp NonSpeculativeExecution) Attempts() int        { return 0 } // No additional attempts
+func (sp NonSpeculativeExecution) Delay() time.Duration { return 1 } // The delay. Must be positive to be used in a ticker.
+
+type SimpleSpeculativeExecution struct {
+	NumAttempts  int
+	TimeoutDelay time.Duration
+}
+
+func (sp *SimpleSpeculativeExecution) Attempts() int        { return sp.NumAttempts }
+func (sp *SimpleSpeculativeExecution) Delay() time.Duration { return sp.TimeoutDelay }

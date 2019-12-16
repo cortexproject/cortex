@@ -38,14 +38,16 @@ func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	lifecyclerConfig.NumTokens = 1
 	lifecyclerConfig.ID = id
 	lifecyclerConfig.FinalSleep = 0
+	lifecyclerConfig.HeartbeatPeriod = 100 * time.Millisecond
+
 	return lifecyclerConfig
 }
 
-func checkDenormalised(d interface{}, id string) bool {
+func checkDenormalisedLeaving(d interface{}, id string) bool {
 	desc, ok := d.(*Desc)
 	return ok &&
 		len(desc.Ingesters) == 1 &&
-		desc.Ingesters[id].State == ACTIVE &&
+		desc.Ingesters[id].State == LEAVING &&
 		len(desc.Ingesters[id].Tokens) == 0 &&
 		len(desc.Tokens) == 1
 }
@@ -64,44 +66,66 @@ func TestRingNormaliseMigration(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
-	r, err := New(ringConfig, "ingester")
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	defer r.Stop()
 
 	// Add an 'ingester' with denormalised tokens.
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
 
-	ft := &flushTransferer{}
-	l1, err := NewLifecycler(lifecyclerConfig1, ft, "ingester", true)
+	// Since code to insert ingester with denormalised tokens into ring was removed,
+	// instead of running lifecycler, we do it manually here.
+	token := uint32(0)
+	err = r.KVClient.CAS(context.Background(), IngesterRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		require.Nil(t, in)
+		r := NewDesc()
+		tks := GenerateTokens(lifecyclerConfig1.NumTokens, nil)
+		r.Ingesters[lifecyclerConfig1.ID] = IngesterDesc{
+			Addr:      lifecyclerConfig1.Addr,
+			Timestamp: time.Now().Unix(),
+			State:     LEAVING, // expected by second ingester`
+		}
+		for _, t := range tks {
+			r.Tokens = append(r.Tokens, TokenDesc{
+				Token:    t,
+				Ingester: lifecyclerConfig1.ID,
+			})
+		}
+		token = tks[0]
+		return r, true, nil
+	})
 	require.NoError(t, err)
-	l1.Start()
 
 	// Check this ingester joined, is active, and has one token.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
-		return checkDenormalised(d, "ing1")
+		return checkDenormalisedLeaving(d, "ing1")
 	})
-
-	token := l1.tokens[0]
 
 	// Add a second ingester with normalised tokens.
 	var lifecyclerConfig2 = testLifecyclerConfig(ringConfig, "ing2")
 	lifecyclerConfig2.JoinAfter = 100 * time.Second
-	lifecyclerConfig2.NormaliseTokens = true
 
-	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", true)
+	l2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l2.Start()
 
-	// This will block until l1 has successfully left the ring.
-	ft.lifecycler = l2 // When l1 shutsdown, call l2.ClaimTokensFor("ing1")
-	l1.Shutdown()
+	// Since there is nothing that would make l2 to claim tokens from l1 (normally done on transfer)
+	// we do it manually.
+	require.NoError(t, l2.ClaimTokensFor(context.Background(), "ing1"))
+	require.NoError(t, l2.ChangeState(context.Background(), ACTIVE))
 
 	// Check the new ingester joined, has the same token, and is active.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
+
+		if desc, ok := d.(*Desc); ok {
+			// lifecycler for ingester 1 isn't running, so we need to delete it manually
+			// (to make checkNormalised happy)
+			delete(desc.Ingesters, lifecyclerConfig1.ID)
+		}
 		return checkNormalised(d, "ing2") &&
 			d.(*Desc).Ingesters["ing2"].Tokens[0] == token
 	})
@@ -112,7 +136,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
-	r, err := New(ringConfig, "ingester")
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	defer r.Stop()
 
@@ -121,7 +145,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig1.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig1.JoinAfter = 100 * time.Millisecond
 
-	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester", true)
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
 
@@ -137,7 +161,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig2.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig2.JoinAfter = 100 * time.Millisecond
 
-	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", true)
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler2.HealthyInstancesCount())
 
@@ -151,6 +175,57 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	// Assert the first ingester count is updated
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		return lifecycler1.HealthyInstancesCount() == 2
+	})
+}
+
+func TestLifecycler_NilFlushTransferer(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+
+	// Create a lifecycler with nil FlushTransferer to make sure it operates correctly
+	lifecycler, err := NewLifecycler(lifecyclerConfig, nil, "ingester", IngesterRingKey, true)
+	require.NoError(t, err)
+	lifecycler.Start()
+
+	// Ensure the lifecycler joined the ring
+	test.Poll(t, time.Second, 1, func() interface{} {
+		return lifecycler.HealthyInstancesCount()
+	})
+
+	lifecycler.Shutdown()
+	assert.Equal(t, 0, lifecycler.HealthyInstancesCount())
+}
+
+func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
+	// Create a shared ring
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	// Create two lifecyclers, each on a separate ring
+	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "instance-1")
+	lifecyclerConfig2 := testLifecyclerConfig(ringConfig, "instance-2")
+
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, nil, "service-1", "ring-1", true)
+	require.NoError(t, err)
+	lifecycler1.Start()
+	defer lifecycler1.Shutdown()
+
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, nil, "service-2", "ring-2", true)
+	require.NoError(t, err)
+	lifecycler2.Start()
+	defer lifecycler2.Shutdown()
+
+	// Ensure each lifecycler reports 1 healthy instance, because they're
+	// in a different ring
+	test.Poll(t, time.Second, 1, func() interface{} {
+		return lifecycler1.HealthyInstancesCount()
+	})
+
+	test.Poll(t, time.Second, 1, func() interface{} {
+		return lifecycler2.HealthyInstancesCount()
 	})
 }
 
@@ -168,20 +243,19 @@ func TestRingRestart(t *testing.T) {
 	codec := GetCodec()
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
 
-	r, err := New(ringConfig, "ingester")
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	defer r.Stop()
 
 	// Add an 'ingester' with normalised tokens.
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
-	lifecyclerConfig1.NormaliseTokens = true
-	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", true)
+	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l1.Start()
 
 	// Check this ingester joined, is active, and has one token.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
 		return checkNormalised(d, "ing1")
 	})
@@ -189,13 +263,13 @@ func TestRingRestart(t *testing.T) {
 	token := l1.tokens[0]
 
 	// Add a second ingester with the same settings, so it will think it has restarted
-	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", true)
+	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l2.Start()
 
 	// Check the new ingester picked up the same token
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
 		l2Tokens := l2.getTokens()
 		return checkNormalised(d, "ing1") &&
@@ -249,17 +323,16 @@ func TestCheckReady(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = &MockClient{}
 
-	r, err := New(ringConfig, "ingester")
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	defer r.Stop()
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
 	cfg.MinReadyDuration = 1 * time.Nanosecond
-
-	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", true)
-	l1.setTokens(Tokens([]uint32{1}))
-
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	l1.Start()
 	require.NoError(t, err)
+
+	l1.setTokens(Tokens([]uint32{1}))
 
 	// Delete the ring key before checking ready
 	err = l1.CheckReady(context.Background())
@@ -279,7 +352,7 @@ func TestTokensOnDisk(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
-	r, err := New(ringConfig, "ingester")
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
 	require.NoError(t, err)
 	defer r.Stop()
 
@@ -292,16 +365,15 @@ func TestTokensOnDisk(t *testing.T) {
 	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
 	lifecyclerConfig.NumTokens = 512
 	lifecyclerConfig.TokensFilePath = tokenDir + "/tokens"
-	lifecyclerConfig.NormaliseTokens = true
 
 	// Start first ingester.
-	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", true)
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l1.Start()
 	// Check this ingester joined, is active, and has 512 token.
 	var expTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		if ok {
@@ -318,7 +390,7 @@ func TestTokensOnDisk(t *testing.T) {
 
 	// Start new ingester at same token directory.
 	lifecyclerConfig.ID = "ing2"
-	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", true)
+	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true)
 	require.NoError(t, err)
 	l2.Start()
 	defer l2.Shutdown()
@@ -326,7 +398,7 @@ func TestTokensOnDisk(t *testing.T) {
 	// Check this ingester joined, is active, and has 512 token.
 	var actTokens []uint32
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
-		d, err := r.KVClient.Get(context.Background(), ConsulKey)
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
 		if ok {

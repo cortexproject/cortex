@@ -1,0 +1,97 @@
+/*
+
+Add styles or override variables from the theme here.
+
+*/
+$primary: #3b697e;
+$secondary: #b73b02;
+$light: #e9ecef;
+
+.td-navbar {
+    background: white !important;
+}
+
+.btn-lg {
+    border-radius: 0.5rem!important;
+}
+
+.btn {
+    border-radius: 0.5rem!important;
+}
+
+.td-search-input {
+    background-color: aliceblue!important;
+}
+
+.navbar-dark .navbar-nav .nav-link {
+    color: $primary !important;
+}
+::placeholder {
+    color: $primary !important;
+}
+
+.navbar-bg-onscroll {
+    box-shadow: 0 2px 2px -2px rgba(0,0,0,.2);
+    #cortex-logo {
+        display: block !important;
+    }
+    * {
+        color: white !important;
+    }
+}
+
+.navbar-nocover {
+    background-color: $primary !important;
+    .td-navbar-nav-scroll .nav-link {
+        color: white !important;
+    }
+    .td-search-input {
+        background-color: aliceblue !important;
+    }
+}
+
+.adopter-img {
+    background-repeat: no-repeat;
+    background-size: contain;
+    background-position: center center;
+    background-attachment: inherit;
+    height: 100px;
+}
+
+footer {
+   min-height: unset!important;
+}
+
+.logos {
+    padding: 0!important;
+}
+
+.display-1 {
+    font-size: 1.5rem!important;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.companies {
+    font-size: 1.5rem!important;
+}
+
+@media (min-width: 576px) {
+    .display-1 { font-size: 1.75rem!important; }
+    .companies { font-size: 2rem!important; }
+
+}
+@media (min-width: 768px) {
+    .display-1 { font-size: 2rem!important; }
+    .companies { font-size: 2rem!important; }
+
+}
+@media (min-width: 992px) {
+    .display-1 { font-size: 2.5em!important; }
+    .companies { font-size: 2rem!important; }
+
+}
+@media (min-width: 1200px) {
+    .display-1 { font-size: 3rem!important; }
+    .companies { font-size: 1.75rem!important; }
+}

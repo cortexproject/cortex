@@ -50,9 +50,11 @@ function run_tests() {
 	elif [[ $version == 2.2.* || $version == 3.0.* ]]; then
 		proto=4
 		ccm updateconf 'enable_user_defined_functions: true'
+		export JVM_EXTRA_OPTS=" -Dcassandra.test.fail_writes_ks=test -Dcassandra.custom_query_handler_class=org.apache.cassandra.cql3.CustomPayloadMirroringQueryHandler"
 	elif [[ $version == 3.*.* ]]; then
-		proto=4
+		proto=5
 		ccm updateconf 'enable_user_defined_functions: true'
+		export JVM_EXTRA_OPTS=" -Dcassandra.test.fail_writes_ks=test -Dcassandra.custom_query_handler_class=org.apache.cassandra.cql3.CustomPayloadMirroringQueryHandler"
 	fi
 
 	sleep 1s
@@ -64,7 +66,7 @@ function run_tests() {
 
 	local args="-gocql.timeout=60s -runssl -proto=$proto -rf=3 -clusterSize=$clusterSize -autowait=2000ms -compressor=snappy -gocql.cversion=$version -cluster=$(ccm liveset) ./..."
 
-    go test -v -tags unit
+	go test -v -tags unit -race
 
 	if [ "$auth" = true ]
 	then
@@ -72,13 +74,14 @@ function run_tests() {
 		go test -run=TestAuthentication -tags "integration gocql_debug" -timeout=15s -runauth $args
 	else
 		sleep 1s
-		go test -tags "integration gocql_debug" -timeout=5m $args
+		go test -tags "cassandra gocql_debug" -timeout=5m -race $args
+		go test -tags "integration gocql_debug" -timeout=5m -race $args
 
 		ccm clear
 		ccm start
 		sleep 1s
 
-		go test -tags "ccm gocql_debug" -timeout=5m $args
+		go test -tags "ccm gocql_debug" -timeout=5m -race $args
 	fi
 
 	ccm remove

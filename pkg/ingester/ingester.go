@@ -195,7 +195,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	if cfg.TSDBEnabled {
-		return NewV2(cfg, clientConfig, limits, chunkStore, registerer)
+		return NewV2(cfg, clientConfig, limits, registerer)
 	}
 
 	if cfg.WALConfig.walEnabled {
@@ -216,11 +216,10 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	}
 
 	var err error
-
 	// During WAL recovery, it will create new user states which requires the limiter.
 	// Hence initialise the limiter before creating the WAL.
 	// The '!cfg.WALConfig.walEnabled' argument says don't flush on shutdown if the WAL is enabled.
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", !cfg.WALConfig.walEnabled)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.walEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -626,6 +625,10 @@ func (i *Ingester) LabelNames(ctx old_ctx.Context, req *client.LabelNamesRequest
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx old_ctx.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	if i.cfg.TSDBEnabled {
+		return i.v2MetricsForLabelMatchers(ctx, req)
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 	state, ok, err := i.userStates.getViaContext(ctx)

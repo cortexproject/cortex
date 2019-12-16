@@ -209,7 +209,7 @@ func (fakeLimits) MaxQueryParallelism(string) int {
 
 func TestResultsCache(t *testing.T) {
 	calls := 0
-	rcm, err := NewResultsCacheMiddleware(
+	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		ResultsCacheConfig{
 			CacheConfig: cache.Config{
@@ -250,7 +250,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	rcm, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
+	rcm, _, err := NewResultsCacheMiddleware(log.NewNopLogger(), cfg, fakeLimits{}, PrometheusCodec, PrometheusResponseExtractor)
 	require.NoError(t, err)
 
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
@@ -277,7 +277,7 @@ func TestResultsCacheRecent(t *testing.T) {
 }
 
 func Test_resultsCache_MissingData(t *testing.T) {
-	rm, err := NewResultsCacheMiddleware(
+	rm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		ResultsCacheConfig{
 			CacheConfig: cache.Config{

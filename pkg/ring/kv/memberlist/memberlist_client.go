@@ -109,6 +109,11 @@ type Client struct {
 
 	memberlistMembersCount prometheus.GaugeFunc
 	memberlistHealthScore  prometheus.GaugeFunc
+
+	// make this configurable for tests. Default value is fine for normal usage
+	// where updates are coming from network, but when running tests with many
+	// goroutines using same KV, default can be too low.
+	maxCasRetries int
 }
 
 type valueDesc struct {
@@ -177,6 +182,7 @@ func NewMemberlistClient(cfg Config, codec codec.Codec) (*Client, error) {
 		prefixWatchers: make(map[string][]chan string),
 		codec:          codec,
 		shutdown:       make(chan struct{}),
+		maxCasRetries:  maxCasRetries,
 	}
 
 	mlCfg.Delegate = memberlistClient
@@ -437,7 +443,7 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 	var lastError error = nil
 
 outer:
-	for retries := maxCasRetries; retries > 0; retries-- {
+	for retries := m.maxCasRetries; retries > 0; retries-- {
 		m.casAttempts.Inc()
 
 		if lastError == errNoChangeDetected {

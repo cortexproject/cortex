@@ -89,7 +89,7 @@ func TestResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response)
+			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, resp)
 

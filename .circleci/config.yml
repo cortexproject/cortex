@@ -3,7 +3,7 @@ version: 2.1
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: cortexproject/build-image:master-94ba16ade
+    - image: cortexproject/build-image:master-d74af5958
   working_directory: /go/src/github.com/cortexproject/cortex
 
 workflows:
@@ -29,6 +29,13 @@ workflows:
         filters:
           tags:
             only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+    - deploy_website:
+        requires:
+        - test
+        - build
+        filters:
+          branches:
+            only: master
     - deploy:
         requires:
         - build
@@ -89,10 +96,10 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:master-94ba16ade configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=cortexproject/build-image:master-d74af5958 configs-integration-test
     - run:
         name: Load Images
-        command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
+        command: ln -s /tmp/images ./docker-images; make BUILD_IN_CONTAINER=false load-images
     - run:
         name: Ingester hand-over test
         command: ./integration-tests/test-handover.sh
@@ -114,6 +121,16 @@ jobs:
         command: |
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false
+    - run:
+        name: Build Website
+        command: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false web-build
+
+    - persist_to_workspace:
+        root: .
+        paths:
+          - website/public/
 
     - store_artifacts:
         path: pkg/querier/frontend/frontend.pb.go
@@ -130,13 +147,26 @@ jobs:
         name: Save Images
         command: |
           mkdir /tmp/images
-          ln -s /tmp/images ./images
+          ln -s /tmp/images ./docker-images
           make BUILD_IN_CONTAINER=false save-images
 
     - save_cache:
         key: v1-cortex-{{ .Branch }}-{{ .Revision }}
         paths:
         - /tmp/images/
+
+  deploy_website:
+    <<: *defaults
+    steps:
+    - add_ssh_keys:
+        fingerprints:
+        - "72:f2:e3:39:18:1f:95:17:90:b3:37:5e:49:ed:7e:a3"
+    - checkout
+    - attach_workspace:
+        at: .
+    - run:
+        name: deploy-website
+        command: make BUILD_IN_CONTAINER=false web-deploy
 
   deploy:
     <<: *defaults
@@ -150,7 +180,7 @@ jobs:
 
     - run:
         name: Load Images
-        command: ln -s /tmp/images ./images; make BUILD_IN_CONTAINER=false load-images
+        command: ln -s /tmp/images ./docker-images; make BUILD_IN_CONTAINER=false load-images
 
     - run:
         name: Deploy

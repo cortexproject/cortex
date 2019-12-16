@@ -35,6 +35,11 @@ const (
 	queryStreamBatchSize = 128
 )
 
+var (
+	// This is initialised if the WAL is enabled and the records are fetched from this pool.
+	recordPool sync.Pool
+)
+
 type ingesterMetrics struct {
 	flushQueueLength    prometheus.Gauge
 	ingestedSamples     prometheus.Counter
@@ -203,6 +208,12 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		// Either the next ingester which takes it's place should recover from WAL
 		// or the data has to be flushed during scaledown.
 		cfg.MaxTransferRetries = 0
+
+		recordPool = sync.Pool{
+			New: func() interface{} {
+				return &Record{}
+			},
+		}
 	}
 
 	i := &Ingester{
@@ -335,9 +346,15 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 
 	var record *Record
 	if i.cfg.WALConfig.walEnabled {
-		record = &Record{
-			UserId:  userID,
-			Samples: make([]Sample, 0, len(req.Timeseries)),
+		record = recordPool.Get().(*Record)
+		record.UserId = userID
+		// Assuming there is not much churn in most cases, there is no use
+		// keeping the record.Labels slice hanging around.
+		record.Labels = nil
+		if cap(record.Samples) < len(req.Timeseries) {
+			record.Samples = make([]Sample, 0, len(req.Timeseries))
+		} else {
+			record.Samples = record.Samples[:0]
 		}
 	}
 
@@ -363,8 +380,11 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	}
 	client.ReuseSlice(req.Timeseries)
 
-	if err := i.wal.Log(record); err != nil {
-		return nil, err
+	if record != nil {
+		if err := i.wal.Log(record); err != nil {
+			return nil, err
+		}
+		recordPool.Put(record)
 	}
 
 	return &client.WriteResponse{}, lastPartialErr

@@ -120,7 +120,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
 			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
-			return RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if !strings.HasSuffix(r.URL.Path, "/query_range") {
 					return next.RoundTrip(r)
 				}
@@ -129,14 +129,6 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 		}
 		return next
 	}), c, nil
-}
-
-// RoundTripperFunc is a syntax sugar for declaring http.RoundTripper from a function.
-type RoundTripperFunc func(*http.Request) (*http.Response, error)
-
-// RoundTrip uses the function to roundtrip the request.
-func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return fn(req)
 }
 
 type roundTripper struct {

@@ -15,6 +15,7 @@
 * [FEATURE] The distributor can now drop labels from samples (similar to the removal of the replica label for HA ingestion) per user via the `distributor.drop-label` flag. #1726
 * [FEATURE] Added `global` ingestion rate limiter strategy. Deprecated `-distributor.limiter-reload-period` flag. #1766
 * [FEATURE] Added support for Microsoft Azure blob storage to be used for storing chunk data. #1913
+* [ENHANCEMENT] Added `password` and `enableTLS` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service.
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
   
 ## 0.4.0 / 2019-12-02

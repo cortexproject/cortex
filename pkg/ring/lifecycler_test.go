@@ -418,3 +418,60 @@ func TestTokensOnDisk(t *testing.T) {
 		require.Equal(t, expTokens, actTokens)
 	}
 }
+
+// JoinInLeavingState ensures that if the lifecycler starts up and the ring already has it in a LEAVING state that it still is able to auto join
+func TestJoinInLeavingState(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	codec := GetCodec()
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(codec)
+
+	r, err := New(ringConfig, "ingester", IngesterRingKey)
+	require.NoError(t, err)
+	defer r.Stop()
+
+	cfg := testLifecyclerConfig(ringConfig, "ing1")
+	cfg.NumTokens = 2
+	cfg.MinReadyDuration = 1 * time.Nanosecond
+
+	// Set state as LEAVING
+	err = r.KVClient.CAS(context.Background(), IngesterRingKey, func(in interface{}) (interface{}, bool, error) {
+		r := &Desc{
+			Ingesters: map[string]IngesterDesc{
+				"ing1": {
+					State:  LEAVING,
+					Tokens: []uint32{1, 4},
+				},
+			},
+			Tokens: []TokenDesc{
+				{
+					Ingester: "ing2",
+					Token:    2,
+				},
+				{
+					Ingester: "ing2",
+					Token:    3,
+				},
+			},
+		}
+
+		return r, true, nil
+	})
+	require.NoError(t, err)
+
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey)
+	l1.Start()
+	require.NoError(t, err)
+
+	// Check that the lifecycler was able to join after coming up in LEAVING
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+		require.NoError(t, err)
+		desc, ok := d.(*Desc)
+		return ok &&
+			len(desc.Ingesters) == 1 &&
+			desc.Ingesters["ing1"].State == ACTIVE &&
+			len(desc.Ingesters["ing1"].Tokens) == cfg.NumTokens &&
+			len(desc.Tokens) == 2
+	})
+}

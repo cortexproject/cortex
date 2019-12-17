@@ -125,29 +125,21 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 // WatchKey implements kv.Client.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
-	backoff := util.NewBackoff(ctx, util.BackoffConfig{
-		MinBackoff: 1 * time.Second,
-		MaxBackoff: 1 * time.Minute,
-	})
-	for backoff.Ongoing() {
-		watchChan := c.cli.Watch(ctx, key)
-		for {
-			resp, ok := <-watchChan
-			if !ok {
-				break
+	watchChan := c.cli.Watch(ctx, key)
+	for resp := range watchChan {
+		if err := resp.Err(); err != nil {
+			level.Error(util.Logger).Log("msg", "watch chan error", "key", key, "err", err)
+		}
+
+		for _, event := range resp.Events {
+			out, err := c.codec.Decode(event.Kv.Value)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+				continue
 			}
-			backoff.Reset()
 
-			for _, event := range resp.Events {
-				out, err := c.codec.Decode(event.Kv.Value)
-				if err != nil {
-					level.Error(util.Logger).Log("msg", "error decoding key", "key", key, "err", err)
-					continue
-				}
-
-				if !f(out) {
-					return
-				}
+			if !f(out) {
+				return
 			}
 		}
 	}

@@ -754,7 +754,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	cfg.DistributorRing.HeartbeatPeriod = 100 * time.Millisecond
 	cfg.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
 	cfg.DistributorRing.KVStore.Mock = kvStore
-	cfg.DistributorRing.InstanceInterfaceNames = []string{"eth0", "en0", "lo0"}
+	cfg.DistributorRing.InstanceAddr = "127.0.0.1"
 
 	overrides, err := validation.NewOverrides(*limits)
 	require.NoError(t, err)

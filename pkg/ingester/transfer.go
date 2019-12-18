@@ -397,7 +397,7 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 // Called as part of the ingester shutdown process.
 func (i *Ingester) TransferOut(ctx context.Context) error {
 	if i.cfg.MaxTransferRetries <= 0 {
-		return fmt.Errorf("transfers disabled")
+		return ring.ErrTransferDisabled
 	}
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,

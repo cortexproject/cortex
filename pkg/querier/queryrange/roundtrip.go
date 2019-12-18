@@ -119,7 +119,13 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			return NewRoundTripper(next, codec, queryRangeMiddleware...)
+			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
+			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if !strings.HasSuffix(r.URL.Path, "/query_range") {
+					return next.RoundTrip(r)
+				}
+				return queryrange.RoundTrip(r)
+			})
 		}
 		return next
 	}), c, nil
@@ -143,9 +149,6 @@ func NewRoundTripper(next http.RoundTripper, codec Codec, middlewares ...Middlew
 }
 
 func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	if !strings.HasSuffix(r.URL.Path, "/query_range") {
-		return q.next.RoundTrip(r)
-	}
 
 	request, err := q.codec.DecodeRequest(r.Context(), r)
 	if err != nil {

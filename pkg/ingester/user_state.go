@@ -195,8 +195,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.length())
 	if err != nil {
 		u.fpLocker.Unlock(fp)
-		u.discardedSamples.WithLabelValues(perUserSeriesLimit).Inc()
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+		return fp, nil, makeLimitError(perUserSeriesLimit, err)
 	}
 
 	metricName, err := extract.MetricNameFromLabelAdapters(metric)
@@ -209,8 +208,7 @@ func (u *userState) getSeries(metric labelPairs) (model.Fingerprint, *memorySeri
 	err = u.canAddSeriesFor(string(metricName))
 	if err != nil {
 		u.fpLocker.Unlock(fp)
-		u.discardedSamples.WithLabelValues(perMetricSeriesLimit).Inc()
-		return fp, nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s for: %s", err.Error(), metric)
+		return fp, nil, makeMetricLimitError(perMetricSeriesLimit, client.FromLabelAdaptersToLabels(metric), err)
 	}
 
 	u.memSeriesCreatedTotal.Inc()

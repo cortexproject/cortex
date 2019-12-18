@@ -293,7 +293,7 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}
-	var lastPartialErr error
+	var lastPartialErr *validationError
 
 	for _, ts := range req.Timeseries {
 		for _, s := range ts.Samples {
@@ -303,12 +303,9 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 			}
 
 			i.metrics.ingestedSamplesFail.Inc()
-			if httpResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
-				switch httpResp.Code {
-				case http.StatusBadRequest, http.StatusTooManyRequests:
-					lastPartialErr = err
-					continue
-				}
+			if ve, ok := err.(*validationError); ok {
+				lastPartialErr = ve
+				continue
 			}
 
 			return nil, err
@@ -316,7 +313,10 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 	}
 	client.ReuseSlice(req.Timeseries)
 
-	return &client.WriteResponse{}, lastPartialErr
+	if lastPartialErr != nil {
+		return &client.WriteResponse{}, lastPartialErr.WrappedError()
+	}
+	return &client.WriteResponse{}, nil
 }
 
 func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum) error {
@@ -338,6 +338,9 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	}
 	state, fp, series, err := i.userStates.getOrCreateSeries(ctx, userID, labels)
 	if err != nil {
+		if ve, ok := err.(*validationError); ok {
+			state.discardedSamples.WithLabelValues(ve.errorType).Inc()
+		}
 		state = nil // don't want to unlock the fp if there is an error
 		return err
 	}
@@ -357,13 +360,11 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		Value:     value,
 		Timestamp: timestamp,
 	}); err != nil {
-		if mse, ok := err.(*memorySeriesError); ok {
-			state.discardedSamples.WithLabelValues(mse.errorType).Inc()
-			if mse.noReport {
+		if ve, ok := err.(*validationError); ok {
+			state.discardedSamples.WithLabelValues(ve.errorType).Inc()
+			if ve.noReport {
 				return nil
 			}
-			// Use a dumb string template to avoid the message being parsed as a template
-			err = httpgrpc.Errorf(http.StatusBadRequest, "%s", mse.message)
 		}
 		return err
 	}

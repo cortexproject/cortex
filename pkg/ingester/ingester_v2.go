@@ -111,7 +111,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
 			if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample || err == tsdb.ErrAmendSample {
-				lastPartialErr = httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				lastPartialErr = err
 				continue
 			}
 
@@ -135,7 +135,10 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 	client.ReuseSlice(req.Timeseries)
 
-	return &client.WriteResponse{}, lastPartialErr
+	if lastPartialErr != nil {
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, lastPartialErr.Error())
+	}
+	return &client.WriteResponse{}, nil
 }
 
 func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*client.QueryResponse, error) {

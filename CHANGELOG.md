@@ -16,6 +16,7 @@
 * [FEATURE] Added `global` ingestion rate limiter strategy. Deprecated `-distributor.limiter-reload-period` flag. #1766
 * [FEATURE] Added support for Microsoft Azure blob storage to be used for storing chunk data. #1913
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
+* [BUGFIX] Fixed #1904 ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
   
 ## 0.4.0 / 2019-12-02
 

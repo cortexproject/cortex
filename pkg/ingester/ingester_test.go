@@ -523,9 +523,19 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 }
 
 func BenchmarkIngesterPush(b *testing.B) {
+	limits := defaultLimitsTestConfig()
+	benchmarkIngesterPush(b, limits, false)
+}
+
+func BenchmarkIngesterPushErrors(b *testing.B) {
+	limits := defaultLimitsTestConfig()
+	limits.MaxLocalSeriesPerMetric = 1
+	benchmarkIngesterPush(b, limits, true)
+}
+
+func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpected bool) {
 	cfg := defaultIngesterTestConfig()
 	clientCfg := defaultClientTestConfig()
-	limits := defaultLimitsTestConfig()
 
 	const (
 		series  = 100
@@ -567,7 +577,9 @@ func BenchmarkIngesterPush(b *testing.B) {
 						allSamples[i].TimestampMs = int64(j + 1)
 					}
 					_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, client.API))
-					require.NoError(b, err)
+					if !errorsExpected {
+						require.NoError(b, err)
+					}
 				}
 				ing.Shutdown()
 			}

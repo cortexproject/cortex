@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -41,25 +42,22 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.walEnabled, "ingester.wal-enable", false, "Enable the WAL.")
 	f.BoolVar(&cfg.checkpointEnabled, "ingester.checkpoint-enable", false, "Enable checkpointing.")
 	f.BoolVar(&cfg.recover, "ingester.recover-from-wal", false, "Recover data from existing WAL.")
-	f.StringVar(&cfg.dir, "ingester.wal-dir", "", "Directory to store the WAL.")
+	f.StringVar(&cfg.dir, "ingester.wal-dir", "wal", "Directory to store the WAL.")
 	f.DurationVar(&cfg.checkpointDuration, "ingester.checkpoint-duration", 1*time.Hour, "Duration over which to checkpoint.")
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
 type WAL interface {
-	Log(record *Record) error
+	// Log marshalls the records and writes it into the WAL.
+	Log(*Record) error
+	// Stop stops all the WAL operations.
 	Stop()
 }
 
-type noop struct{}
+type noopWAL struct{}
 
-// Log a Record to the WAL.
-func (noop) Log(*Record) error {
-	return nil
-}
-
-// Stop any background WAL processes.
-func (noop) Stop() {}
+func (noopWAL) Log(*Record) error { return nil }
+func (noopWAL) Stop()             {}
 
 type walWrapper struct {
 	cfg  WALConfig
@@ -81,7 +79,7 @@ type walWrapper struct {
 // * If WAL recovery is enabled, then the userStates is always set for ingester.
 func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, error) {
 	if !cfg.walEnabled {
-		return &noop{}, nil
+		return &noopWAL{}, nil
 	}
 
 	var walRegistry prometheus.Registerer
@@ -138,14 +136,19 @@ func (w *walWrapper) Stop() {
 }
 
 func (w *walWrapper) Log(record *Record) error {
-	if record == nil {
+	select {
+	case <-w.quit:
 		return nil
+	default:
+		if record == nil {
+			return nil
+		}
+		buf, err := proto.Marshal(record)
+		if err != nil {
+			return err
+		}
+		return w.wal.Log(buf)
 	}
-	buf, err := proto.Marshal(record)
-	if err != nil {
-		return err
-	}
-	return w.wal.Log(buf)
 }
 
 func (w *walWrapper) run() {
@@ -163,14 +166,14 @@ func (w *walWrapper) run() {
 		case <-ticker.C:
 			start := time.Now()
 			level.Info(util.Logger).Log("msg", "starting checkpoint")
-			if err := w.checkpoint(); err != nil {
+			if err := w.performCheckpoint(); err != nil {
 				level.Error(util.Logger).Log("msg", "error checkpointing series", "err", err)
 				continue
 			}
 			elapsed := time.Since(start)
 			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 		case <-w.quit:
-			if err := w.checkpoint(); err != nil {
+			if err := w.performCheckpoint(); err != nil {
 				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
 			}
 			return
@@ -189,7 +192,7 @@ func (w *walWrapper) isStopped() bool {
 
 const checkpointPrefix = "checkpoint."
 
-func (w *walWrapper) checkpoint() (err error) {
+func (w *walWrapper) performCheckpoint() (err error) {
 	if !w.cfg.checkpointEnabled {
 		return nil
 	}
@@ -215,29 +218,29 @@ func (w *walWrapper) checkpoint() (err error) {
 		return err
 	}
 
-	newIdx := lastCh + 1
+	// Checkpoint is named after the last WAL segment present so that when replaying the WAL
+	// we can start from that particular WAL segment.
+	checkpointDir := filepath.Join(w.wal.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", lastSegment))
+	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
+	checkpointDirTemp := checkpointDir + ".tmp"
 
-	cpdir := filepath.Join(w.wal.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", newIdx))
-	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", cpdir)
-	cpdirtmp := cpdir + ".tmp"
-
-	if err := os.MkdirAll(cpdirtmp, 0777); err != nil {
+	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
 		return errors.Wrap(err, "create checkpoint dir")
 	}
-	cp, err := wal.New(nil, nil, cpdirtmp, true)
+	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, true)
 	if err != nil {
 		return errors.Wrap(err, "open checkpoint")
 	}
 	defer func() {
-		cp.Close()
-		os.RemoveAll(cpdirtmp)
+		checkpoint.Close()
+		os.RemoveAll(checkpointDirTemp)
 	}()
 
 	var wireChunkBuf []client.Chunk
 	for userID, state := range w.getUserStates() {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
-			wireChunkBuf, err = w.checkpointSeries(cp, userID, pair.fp, pair.series, wireChunkBuf)
+			wireChunkBuf, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf)
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return err
@@ -245,21 +248,25 @@ func (w *walWrapper) checkpoint() (err error) {
 		}
 	}
 
-	if err := cp.Close(); err != nil {
+	if err := checkpoint.Close(); err != nil {
 		return errors.Wrap(err, "close checkpoint")
 	}
-	if err := fileutil.Replace(cpdirtmp, cpdir); err != nil {
+	if err := fileutil.Replace(checkpointDirTemp, checkpointDir); err != nil {
 		return errors.Wrap(err, "rename checkpoint directory")
 	}
 
 	// The last segment might still have been active during the checkpointing,
 	// hence delete only the segments before that.
 	if err := w.wal.Truncate(lastSegment - 1); err != nil {
-		return err
+		// It is fine to have old WAL segments hanging around if deletion failed.
+		// We can try again next time.
+		level.Error(util.Logger).Log("msg", "error deleting old WAL segments", "err", err)
 	}
 
 	if lastCh >= 0 {
 		if err := w.deleteCheckpoints(lastCh); err != nil {
+			// It is fine to have old checkpoints hanging around if deletion failed.
+			// We can try again next time.
 			level.Error(util.Logger).Log("msg", "error deleting old checkpoint", "err", err)
 		}
 	}
@@ -270,25 +277,35 @@ func (w *walWrapper) checkpoint() (err error) {
 // lastCheckpoint returns the directory name and index of the most recent checkpoint.
 // If dir does not contain any checkpoints, -1 is returned as index.
 func lastCheckpoint(dir string) (string, int, error) {
-	files, err := ioutil.ReadDir(dir)
+	dirs, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return "", -1, err
 	}
-	// Traverse list backwards since there may be multiple checkpoints left.
-	for i := len(files) - 1; i >= 0; i-- {
-		fi := files[i]
+	var (
+		maxIdx        = -1
+		checkpointDir string
+	)
+	// There may be multiple checkpoints left, so select the one with max index.
+	for i := 0; i < len(dirs); i++ {
+		di := dirs[i]
 
-		if !strings.HasPrefix(fi.Name(), checkpointPrefix) {
+		if !strings.HasPrefix(di.Name(), checkpointPrefix) {
 			continue
 		}
-		if !fi.IsDir() {
-			return "", -1, fmt.Errorf("checkpoint %s is not a directory", fi.Name())
+		if !di.IsDir() {
+			return "", -1, fmt.Errorf("checkpoint %s is not a directory", di.Name())
 		}
-		idx, err := strconv.Atoi(fi.Name()[len(checkpointPrefix):])
+		idx, err := strconv.Atoi(di.Name()[len(checkpointPrefix):])
 		if err != nil {
 			continue
 		}
-		return filepath.Join(dir, fi.Name()), idx, nil
+		if idx > maxIdx {
+			checkpointDir = di.Name()
+			maxIdx = idx
+		}
+	}
+	if maxIdx >= 0 {
+		return filepath.Join(dir, checkpointDir), maxIdx, nil
 	}
 	return "", -1, nil
 }
@@ -388,13 +405,13 @@ func recoverFromWAL(ingester *Ingester) (err error) {
 		return nil
 	}
 
-	level.Info(util.Logger).Log("msg", "recovering from segments", "dir", walDir)
+	level.Info(util.Logger).Log("msg", "recovering from WAL", "dir", walDir, "start_segment", idx)
 	start := time.Now()
-	if err := processWAL(walDir, userStates, nWorkers, stateCache, seriesCache); err != nil {
+	if err := processWAL(walDir, idx, userStates, nWorkers, stateCache, seriesCache); err != nil {
 		return err
 	}
 	elapsed := time.Since(start)
-	level.Info(util.Logger).Log("msg", "recovered from segments", "time", elapsed.String())
+	level.Info(util.Logger).Log("msg", "recovered from WAL", "time", elapsed.String())
 
 	return nil
 }
@@ -433,7 +450,7 @@ func processCheckpoint(name string, userStates *userStates, nWorkers int,
 		}
 	)
 
-	reader, closer, err := newWalReader(name)
+	reader, closer, err := newWalReader(name, -1)
 	if err != nil {
 		return err
 	}
@@ -531,7 +548,7 @@ type samplesWithUserID struct {
 }
 
 // processWAL processes the records in the WAL concurrently.
-func processWAL(name string, userStates *userStates, nWorkers int,
+func processWAL(name string, startSegment int, userStates *userStates, nWorkers int,
 	stateCache []map[string]*userState, seriesCache []map[string]map[uint64]*memorySeries) error {
 	var (
 		wg      sync.WaitGroup
@@ -556,7 +573,7 @@ func processWAL(name string, userStates *userStates, nWorkers int,
 		}(inputs[i], outputs[i], stateCache[i], seriesCache[i])
 	}
 
-	reader, closer, err := newWalReader(name)
+	reader, closer, err := newWalReader(name, startSegment)
 	if err != nil {
 		return err
 	}
@@ -717,10 +734,63 @@ func processWALSamples(userStates *userStates, stateCache map[string]*userState,
 	}
 }
 
-func newWalReader(name string) (*wal.Reader, io.Closer, error) {
-	segmentReader, err := wal.NewSegmentsReader(name)
-	if err != nil {
-		return nil, nil, err
+// If startSegment is <0, it means all the segments.
+func newWalReader(name string, startSegment int) (*wal.Reader, io.Closer, error) {
+	var (
+		segmentReader io.ReadCloser
+		err           error
+	)
+	if startSegment < 0 {
+		segmentReader, err = wal.NewSegmentsReader(name)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		first, last, err := SegmentRange(name)
+		if err != nil {
+			return nil, nil, err
+		}
+		if startSegment > last {
+			return nil, nil, errors.New("start segment is beyond the last WAL segment")
+		}
+		if first > startSegment {
+			startSegment = first
+		}
+		segmentReader, err = wal.NewSegmentsRangeReader(wal.SegmentRange{
+			Dir:   name,
+			First: startSegment,
+			Last:  -1, // Till the end.
+		})
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	return wal.NewReader(segmentReader), segmentReader, nil
+}
+
+// SegmentRange returns the first and last segment index of the WAL in the dir.
+// If https://github.com/prometheus/prometheus/pull/6477 is merged, get rid of this
+// method and use from Prometheus directly.
+func SegmentRange(dir string) (int, int, error) {
+	files, err := fileutil.ReadDir(dir)
+	if err != nil {
+		return 0, 0, err
+	}
+	first, last := math.MaxInt32, math.MinInt32
+	for _, fn := range files {
+		k, err := strconv.Atoi(fn)
+		if err != nil {
+			continue
+		}
+		if k < first {
+			first = k
+		}
+		if k > last {
+			last = k
+		}
+	}
+	if first == math.MaxInt32 || last == math.MinInt32 {
+		return -1, -1, nil
+	}
+	return first, last, nil
 }

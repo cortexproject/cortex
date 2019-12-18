@@ -179,6 +179,7 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// This should never be nil.
 	wal WAL
 
 	// Hook for injecting behaviour from tests.
@@ -305,9 +306,7 @@ func (i *Ingester) Shutdown() {
 		close(i.quit)
 		i.done.Wait()
 
-		if i.wal != nil {
-			i.wal.Stop()
-		}
+		i.wal.Stop()
 
 		// Next initiate our graceful exit from the ring.
 		i.lifecycler.Shutdown()

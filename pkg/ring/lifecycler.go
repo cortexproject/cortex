@@ -707,8 +707,12 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := i.flushOnShutdown
 	transferStart := time.Now()
 	if err := i.flushTransferer.TransferOut(ctx); err != nil {
-		level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another instance", "ring", i.RingName, "err", err)
-		shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
+		if err == ErrTransferDisabled {
+			level.Info(util.Logger).Log("msg", "transfers are disabled")
+		} else {
+			level.Error(util.Logger).Log("msg", "failed to transfer chunks to another instance", "ring", i.RingName, "err", err)
+			shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
+		}
 	} else {
 		flushRequired = false
 		shutdownDuration.WithLabelValues("transfer", "success", i.RingName).Observe(time.Since(transferStart).Seconds())

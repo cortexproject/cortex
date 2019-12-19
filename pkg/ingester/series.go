@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/value"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
@@ -49,11 +48,6 @@ func newMemorySeries(m labels.Labels) *memorySeries {
 		metric:   m,
 		lastTime: model.Earliest,
 	}
-}
-
-// helper to extract the not-necessarily-sorted type used elsewhere, without casting everywhere.
-func (s *memorySeries) labels() []client.LabelPair {
-	return newLabelPairs(s.metric)
 }
 
 // add adds a sample pair to the series, possibly creating a new chunk.

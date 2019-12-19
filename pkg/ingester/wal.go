@@ -351,7 +351,7 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 	buf, err := proto.Marshal(&Series{
 		UserId:      userID,
 		Fingerprint: uint64(fp),
-		Labels:      series.labels(),
+		Labels:      client.FromLabelsToLabelAdapters(series.metric),
 		Chunks:      wireChunks,
 	})
 	if err != nil {
@@ -472,6 +472,11 @@ Loop:
 		if err := proto.Unmarshal(reader.Record(), s); err != nil {
 			return err
 		}
+		// The yoloString from the unmarshal of LabelAdapter gets corrupted
+		// when travelling through the channel. Hence making a copy of that.
+		// This extra alloc during the read path is fine as it's only 1 time
+		// and saves extra allocs during write path by having LabelAdapter.
+		s.Labels = copyLabelAdapters(s.Labels)
 
 		select {
 		case errFromChan = <-errChan:
@@ -500,6 +505,17 @@ Loop:
 		}
 	}
 	return nil
+}
+
+func copyLabelAdapters(las []client.LabelAdapter) []client.LabelAdapter {
+	for i := range las {
+		n, v := make([]byte, len(las[i].Name)), make([]byte, len(las[i].Value))
+		copy(n, las[i].Name)
+		copy(v, las[i].Value)
+		las[i].Name = string(n)
+		las[i].Value = string(v)
+	}
+	return las
 }
 
 func processCheckpointRecord(userStates *userStates, seriesPool *sync.Pool, stateCache map[string]*userState,
@@ -580,7 +596,6 @@ func processWAL(name string, startSegment int, userStates *userStates, nWorkers 
 	defer closer.Close()
 
 	var (
-		la          []client.LabelAdapter
 		errFromChan error
 		record      = &Record{}
 	)
@@ -605,15 +620,7 @@ Loop:
 				if ok {
 					continue
 				}
-
-				la = la[:0]
-				for _, l := range labels.Labels {
-					la = append(la, client.LabelAdapter{
-						Name:  string(l.Name),
-						Value: string(l.Value),
-					})
-				}
-				_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), la, nil, true)
+				_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), labels.Labels, nil, true)
 				if err != nil {
 					return err
 				}

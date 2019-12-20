@@ -232,6 +232,35 @@ We do not recommend configuring a liveness probe on ingesters -
 killing them is a last resort and should not be left to a machine.
 
 
+### Remote writing Prometheus
+
+To configure your Prometheus instances for remote writes take a look at
+the [Prometheus Remote Write Config](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write). We recommend to tune the following 
+parameters of the `queue_config`:
+
+```yaml
+remote_write:
+  - queue_config:
+      capacity: 5000
+      max_shards: 20
+      min_shards: 5
+      max_samples_per_send: 1000
+```
+
+Please take note that these values are tweaked for our use cases
+and may be necessary to adapt depending on your workload. Take a
+look at the [remote write tuning docs](https://prometheus.io/docs/practices/remote_write/).
+
+If you experience a rather high delay for your metrics to appear in
+Cortex (15s+) you can try increasing the `min_shards` in your remote
+write config. Sometimes Prometheus does not increase the number of
+shards even though it hasn't caught up the lag. You can monitor the
+delay with this Prometheus query:
+
+```
+time() - sum by (statefulset_kubernetes_io_pod_name) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds)
+```
+
 ## Optimising
 
 ### Optimising Storage

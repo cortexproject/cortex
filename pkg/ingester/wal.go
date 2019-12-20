@@ -39,8 +39,8 @@ type WALConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.walEnabled, "ingester.wal-enable", false, "Enable the WAL.")
-	f.BoolVar(&cfg.checkpointEnabled, "ingester.checkpoint-enable", false, "Enable checkpointing.")
+	f.BoolVar(&cfg.walEnabled, "ingester.wal-enabled", false, "Enable the WAL.")
+	f.BoolVar(&cfg.checkpointEnabled, "ingester.checkpoint-enabled", false, "Enable checkpointing.")
 	f.BoolVar(&cfg.recover, "ingester.recover-from-wal", false, "Recover data from existing WAL.")
 	f.StringVar(&cfg.dir, "ingester.wal-dir", "wal", "Directory to store the WAL.")
 	f.DurationVar(&cfg.checkpointDuration, "ingester.checkpoint-duration", 1*time.Hour, "Duration over which to checkpoint.")
@@ -437,10 +437,17 @@ func segmentsExist(dir string) (bool, error) {
 // processCheckpoint loads the chunks of the series present in the last checkpoint.
 func processCheckpoint(name string, userStates *userStates, nWorkers int,
 	stateCache []map[string]*userState, seriesCache []map[string]map[uint64]*memorySeries) error {
+
+	reader, closer, err := newWalReader(name, -1)
+	if err != nil {
+		return err
+	}
+	defer closer.Close()
+
 	var (
 		inputs = make([]chan *Series, nWorkers)
 		// errChan is to capture the errors from goroutine.
-		// The channel size is nWorkers to not block any worker if all of them error out.
+		// The channel size is nWorkers+1 to not block any worker if all of them error out.
 		errChan    = make(chan error, nWorkers)
 		wg         = sync.WaitGroup{}
 		seriesPool = &sync.Pool{
@@ -449,12 +456,6 @@ func processCheckpoint(name string, userStates *userStates, nWorkers int,
 			},
 		}
 	)
-
-	reader, closer, err := newWalReader(name, -1)
-	if err != nil {
-		return err
-	}
-	defer closer.Close()
 
 	wg.Add(nWorkers)
 	for i := 0; i < nWorkers; i++ {
@@ -465,12 +466,15 @@ func processCheckpoint(name string, userStates *userStates, nWorkers int,
 		}(inputs[i], stateCache[i], seriesCache[i])
 	}
 
-	var errFromChan error
+	var capturedErr error
 Loop:
 	for reader.Next() {
 		s := seriesPool.Get().(*Series)
 		if err := proto.Unmarshal(reader.Record(), s); err != nil {
-			return err
+			// We don't return here in order to close/drain all the channels and
+			// make sure all goroutines exit.
+			capturedErr = err
+			break Loop
 		}
 		// The yoloString from the unmarshal of LabelAdapter gets corrupted
 		// when travelling through the channel. Hence making a copy of that.
@@ -479,7 +483,7 @@ Loop:
 		s.Labels = copyLabelAdapters(s.Labels)
 
 		select {
-		case errFromChan = <-errChan:
+		case capturedErr = <-errChan:
 			// Exit early on an error.
 			// Only acts upon the first error received.
 			break Loop
@@ -488,17 +492,24 @@ Loop:
 			inputs[mod] <- s
 		}
 	}
+
 	for i := 0; i < nWorkers; i++ {
 		close(inputs[i])
 	}
 	wg.Wait()
+	// If any worker errored out, some input channels might not be empty.
+	// Hence drain them.
+	for i := 0; i < nWorkers; i++ {
+		for range inputs[i] {
+		}
+	}
 
-	if errFromChan != nil {
-		return errFromChan
+	if capturedErr != nil {
+		return capturedErr
 	}
 	select {
-	case errFromChan = <-errChan:
-		return errFromChan
+	case capturedErr = <-errChan:
+		return capturedErr
 	default:
 		if err := reader.Err(); err != nil {
 			return err
@@ -566,6 +577,13 @@ type samplesWithUserID struct {
 // processWAL processes the records in the WAL concurrently.
 func processWAL(name string, startSegment int, userStates *userStates, nWorkers int,
 	stateCache []map[string]*userState, seriesCache []map[string]map[uint64]*memorySeries) error {
+
+	reader, closer, err := newWalReader(name, startSegment)
+	if err != nil {
+		return err
+	}
+	defer closer.Close()
+
 	var (
 		wg      sync.WaitGroup
 		inputs  = make([]chan *samplesWithUserID, nWorkers)
@@ -589,27 +607,24 @@ func processWAL(name string, startSegment int, userStates *userStates, nWorkers 
 		}(inputs[i], outputs[i], stateCache[i], seriesCache[i])
 	}
 
-	reader, closer, err := newWalReader(name, startSegment)
-	if err != nil {
-		return err
-	}
-	defer closer.Close()
-
 	var (
-		errFromChan error
+		capturedErr error
 		record      = &Record{}
 	)
 Loop:
 	for reader.Next() {
 		select {
-		case errFromChan = <-errChan:
+		case capturedErr = <-errChan:
 			// Exit early on an error.
 			// Only acts upon the first error received.
 			break Loop
 		default:
 		}
 		if err := proto.Unmarshal(reader.Record(), record); err != nil {
-			return err
+			// We don't return here in order to close/drain all the channels and
+			// make sure all goroutines exit.
+			capturedErr = err
+			break Loop
 		}
 
 		if len(record.Labels) > 0 {
@@ -622,7 +637,10 @@ Loop:
 				}
 				_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), labels.Labels, nil, true)
 				if err != nil {
-					return err
+					// We don't return here in order to close/drain all the channels and
+					// make sure all goroutines exit.
+					capturedErr = err
+					break Loop
 				}
 			}
 		}
@@ -680,12 +698,12 @@ Loop:
 		}
 	}
 
-	if errFromChan != nil {
-		return errFromChan
+	if capturedErr != nil {
+		return capturedErr
 	}
 	select {
-	case errFromChan = <-errChan:
-		return errFromChan
+	case capturedErr = <-errChan:
+		return capturedErr
 	default:
 		if err := reader.Err(); err != nil {
 			return err

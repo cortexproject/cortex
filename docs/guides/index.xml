@@ -174,6 +174,26 @@ port: 80
 &lt;/code&gt;&lt;/pre&gt;
 &lt;p&gt;We do not recommend configuring a liveness probe on ingesters -
 killing them is a last resort and should not be left to a machine.&lt;/p&gt;
+&lt;h3 id=&#34;remote-writing-prometheus&#34;&gt;Remote writing Prometheus&lt;/h3&gt;
+&lt;p&gt;To configure your Prometheus instances for remote writes take a look at
+the &lt;a href=&#34;https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write&#34;&gt;Prometheus Remote Write Config&lt;/a&gt;. We recommend to tune the following
+parameters of the &lt;code&gt;queue_config&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-yaml&#34; data-lang=&#34;yaml&#34;&gt;remote_write&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;-&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;queue_config&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;capacity&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;5000&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;max_shards&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;20&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;min_shards&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;5&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt;
+&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;max_samples_per_send&lt;span style=&#34;color:#000;font-weight:bold&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#f8f8f8;text-decoration:underline&#34;&gt; &lt;/span&gt;&lt;span style=&#34;color:#0000cf;font-weight:bold&#34;&gt;1000&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Please take note that these values are tweaked for our use cases
+and may be necessary to adapt depending on your workload. Take a
+look at the &lt;a href=&#34;https://prometheus.io/docs/practices/remote_write/&#34;&gt;remote write tuning docs&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;If you experience a rather high delay for your metrics to appear in
+Cortex (15s+) you can try increasing the &lt;code&gt;min_shards&lt;/code&gt; in your remote
+write config. Sometimes Prometheus does not increase the number of
+shards even though it hasn&amp;rsquo;t caught up the lag. You can monitor the
+delay with this Prometheus query:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;time() - sum by (statefulset_kubernetes_io_pod_name) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds)
+&lt;/code&gt;&lt;/pre&gt;
 &lt;h2 id=&#34;optimising&#34;&gt;Optimising&lt;/h2&gt;
 &lt;h3 id=&#34;optimising-storage&#34;&gt;Optimising Storage&lt;/h3&gt;
 &lt;p&gt;These ingester options reduce the chance of storing multiple copies of

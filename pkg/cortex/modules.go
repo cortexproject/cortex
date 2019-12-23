@@ -236,6 +236,13 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 	subrouter.Path("/validate_expr").Handler(t.httpAuthMiddleware.Wrap(http.HandlerFunc(t.distributor.ValidateExprHandler)))
 	subrouter.Path("/chunks").Handler(t.httpAuthMiddleware.Wrap(querier.ChunksHandler(queryable)))
 	subrouter.Path("/user_stats").Handler(middleware.AuthenticateUser.Wrap(http.HandlerFunc(t.distributor.UserStatsHandler)))
+
+	// Once the execution reaches this point, all synchronous initialization has been
+	// done and the querier is ready to serve queries, so we're just returning a 202.
+	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
 	return
 }
 

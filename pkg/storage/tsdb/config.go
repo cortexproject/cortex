@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	// Constants for the config values
-	BackendS3  = "s3"
+	// BackendS3 is the value for the S3 storage backend
+	BackendS3 = "s3"
+
+	// BackendGCS is the value for the GCS storage backend
 	BackendGCS = "gcs"
 
 	// TenantIDExternalLabel is the external label set when shipping blocks to the storage

@@ -20,16 +20,21 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
-	"github.com/prometheus/prometheus/tsdb/labels"
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
 
 const (
 	// IndexCacheVersion is a enumeration of index cache versions supported by Thanos.
 	IndexCacheVersion1 = iota + 1
+)
+
+var (
+	IndexCacheUnmarshalError = errors.New("unmarshal index cache")
 )
 
 type postingsRange struct {
@@ -194,7 +199,7 @@ func ReadIndexCache(logger log.Logger, fn string) (
 	}
 
 	if err = json.Unmarshal(bytes, &v); err != nil {
-		return 0, nil, nil, nil, errors.Wrap(err, "unmarshal index cache")
+		return 0, nil, nil, nil, errors.Wrap(IndexCacheUnmarshalError, err.Error())
 	}
 
 	strs := map[string]string{}

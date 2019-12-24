@@ -13,8 +13,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
-	lbls "github.com/prometheus/prometheus/tsdb/labels"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -119,7 +119,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	app := db.Appender()
 	for _, ts := range req.Timeseries {
 		// Convert labels to the type expected by TSDB
-		lset := cortex_tsdb.FromLabelAdaptersToLabels(ts.Labels)
+		lset := client.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
 		for _, s := range ts.Samples {
 			_, err := app.Add(lset, s.TimestampMs, s.Value)
@@ -189,12 +189,7 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 	}
 	defer q.Close()
 
-	convertedMatchers, err := cortex_tsdb.FromLegacyLabelMatchersToMatchers(matchers)
-	if err != nil {
-		return nil, err
-	}
-
-	ss, err := q.Select(convertedMatchers...)
+	ss, err := q.Select(matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +199,7 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 		series := ss.At()
 
 		ts := client.TimeSeries{
-			Labels: cortex_tsdb.FromLabelsToLabelAdapters(series.Labels()),
+			Labels: client.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
 		it := series.Iterator()
@@ -308,12 +303,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	}
 
 	for _, matchers := range matchersSet {
-		convertedMatchers, err := cortex_tsdb.FromLegacyLabelMatchersToMatchers(matchers)
-		if err != nil {
-			return nil, err
-		}
-
-		seriesSet, err := q.Select(convertedMatchers...)
+		seriesSet, err := q.Select(matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -333,7 +323,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 			}
 
 			result.Metric = append(result.Metric, &client.Metric{
-				Labels: cortex_tsdb.FromLabelsToLabelAdapters(ls),
+				Labels: client.FromLabelsToLabelAdapters(ls),
 			})
 
 			added[key] = struct{}{}
@@ -398,7 +388,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading
 	// the series from the storage.
-	l := lbls.Labels{
+	l := labels.Labels{
 		{
 			Name:  cortex_tsdb.TenantIDExternalLabel,
 			Value: userID,
@@ -406,7 +396,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	}
 
 	// Create a new shipper for this database
-	s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() lbls.Labels { return l }, metadata.ReceiveSource)
+	s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
 	i.done.Add(1)
 	go func() {
 		defer i.done.Done()

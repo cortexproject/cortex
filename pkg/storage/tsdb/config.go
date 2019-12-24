@@ -12,10 +12,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/s3"
 )
 
-// Constants for the config values
 const (
+	// Constants for the config values
 	BackendS3  = "s3"
 	BackendGCS = "gcs"
+
+	// TenantIDExternalLabel is the external label set when shipping blocks to the storage
+	TenantIDExternalLabel = "__org_id__"
 )
 
 // Validation errors

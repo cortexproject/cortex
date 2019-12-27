@@ -48,31 +48,38 @@ type Config struct {
 // DurationList is the block ranges for a tsdb
 type DurationList []time.Duration
 
-// String implements the flag.Var interface
-func (d DurationList) String() string { return "RangeList is the block ranges for a tsdb" }
+// String implements the flag.Value interface
+func (d *DurationList) String() string {
+	values := make([]string, 0, len(*d))
+	for _, v := range *d {
+		values = append(values, v.String())
+	}
 
-// Set implements the flag.Var interface
-func (d DurationList) Set(s string) error {
-	blocks := strings.Split(s, ",")
-	d = make([]time.Duration, 0, len(blocks)) // flag.Parse may be called twice, so overwrite instead of append
-	for _, blk := range blocks {
-		t, err := time.ParseDuration(blk)
+	return strings.Join(values, ",")
+}
+
+// Set implements the flag.Value interface
+func (d *DurationList) Set(s string) error {
+	values := strings.Split(s, ",")
+	*d = make([]time.Duration, 0, len(values)) // flag.Parse may be called twice, so overwrite instead of append
+	for _, v := range values {
+		t, err := time.ParseDuration(v)
 		if err != nil {
 			return err
 		}
-		d = append(d, t)
+		*d = append(*d, t)
 	}
 	return nil
 }
 
-// ToMillisecondRanges returns the duration list in milliseconds
-func (d DurationList) ToMillisecondRanges() []int64 {
-	ranges := make([]int64, 0, len(d))
-	for _, t := range d {
-		ranges = append(ranges, int64(t/time.Millisecond))
+// ToMillisecond returns the duration list in milliseconds
+func (d *DurationList) ToMillisecond() []int64 {
+	values := make([]int64, 0, len(*d))
+	for _, t := range *d {
+		values = append(values, int64(t/time.Millisecond))
 	}
 
-	return ranges
+	return values
 }
 
 // RegisterFlags registers the TSDB flags
@@ -86,7 +93,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	f.StringVar(&cfg.Dir, "experimental.tsdb.dir", "tsdb", "directory to place all TSDB's into")
-	f.Var(cfg.BlockRanges, "experimental.tsdb.block-ranges-period", "comma separated list of TSDB block ranges in time.Duration format")
+	f.Var(&cfg.BlockRanges, "experimental.tsdb.block-ranges-period", "comma separated list of TSDB block ranges in time.Duration format")
 	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB block retention")
 	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 30*time.Second, "the frequency at which tsdb blocks are scanned for shipping. 0 means shipping is disabled.")
 	f.StringVar(&cfg.Backend, "experimental.tsdb.backend", "s3", "TSDB storage backend to use")

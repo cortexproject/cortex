@@ -466,7 +466,7 @@ func (t *Cortex) stopAlertmanager() error {
 }
 
 func (t *Cortex) initCompactor(cfg *Config) (err error) {
-	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB)
+	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 	return err
 }
 

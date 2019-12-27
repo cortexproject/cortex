@@ -86,7 +86,7 @@ func TestConfig_DurationList(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			testdata.f(&testdata.cfg)
-			assert.Equal(t, testdata.expectedRanges, testdata.cfg.BlockRanges.ToMillisecondRanges())
+			assert.Equal(t, testdata.expectedRanges, testdata.cfg.BlockRanges.ToMillisecond())
 		})
 	}
 }

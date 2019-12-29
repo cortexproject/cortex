@@ -1,10 +1,13 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: s3
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      name: s3
   template:
     metadata:
       labels:

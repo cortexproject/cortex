@@ -33,12 +33,15 @@ subjects:
   name: retrieval
   namespace: default
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: retrieval
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      name: retrieval
   template:
     metadata:
       labels:

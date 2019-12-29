@@ -1,10 +1,13 @@
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: querier
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      name: querier
   template:
     metadata:
       labels:

@@ -16,10 +16,16 @@
 * [FEATURE] Added `global` ingestion rate limiter strategy. Deprecated `-distributor.limiter-reload-period` flag. #1766
 * [FEATURE] Added support for Microsoft Azure blob storage to be used for storing chunk data. #1913
 * [FEATURE] Added readiness probe endpoint`/ready` to queriers. #1934
+* [FEATURE] EXPERIMENTAL: Added `/series` API endpoint support with TSDB blocks storage. #1830
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service.
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 * [BUGFIX] Fixed #1904 ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
-  
+* [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
+* [BUGFIX] Fixed handling of out of order/bound samples in ingester with the experimental TSDB blocks storage. #1864
+* [BUGFIX] Fixed querying ingesters in `LEAVING` state with the experimental TSDB blocks storage. #1854
+* [BUGFIX] Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. #1837
+* [BUGFIX] Fixed TSDB creation conflict with blocks transfer in a `JOINING` ingester with the experimental TSDB blocks storage. #1818
+
 ## 0.4.0 / 2019-12-02
 
 * [CHANGE] The frontend component has been refactored to be easier to re-use. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734
@@ -39,6 +45,7 @@
 * [FEATURE] EXPERIMENTAL: Use TSDB in the ingesters & flush blocks to S3/GCS ala Thanos. This will let us use an Object Store more efficiently and reduce costs. #1695
 * [FEATURE] Allow Query Frontend to log slow queries with `frontend.log-queries-longer-than`. #1744
 * [FEATURE] Add HTTP handler to trigger ingester flush & shutdown - used when running as a stateful set with the WAL enabled.  #1746
+* [FEATURE] EXPERIMENTAL: Added GCS support to TSDB blocks storage. #1772
 * [ENHANCEMENT] Reduce memory allocations in the write path. #1706
 * [ENHANCEMENT] Consul client now follows recommended practices for blocking queries wrt returned Index value. #1708
 * [ENHANCEMENT] Consul client can optionally rate-limit itself during Watch (used e.g. by ring watchers) and WatchPrefix (used by HA feature) operations. Rate limiting is disabled by default. New flags added: `--consul.watch-rate-limit`, and `--consul.watch-burst-size`. #1708
@@ -48,6 +55,7 @@
 * [BUGFIX] Fix bug where duplicate labels can be returned through metadata APIs. #1790
 * [BUGFIX] Fix reading of old, v3 chunk data. #1779
 * [BUGFIX] Now support IAM roles in service accounts in AWS EKS. #1803
+* [BUGFIX] Fixed duplicated series returned when querying both ingesters and store with the experimental TSDB blocks storage. #1778
 
 In this release we updated the following dependencies:
 - gRPC v1.25.0  (resulted in a drop of 30% CPU usage when compression is on)

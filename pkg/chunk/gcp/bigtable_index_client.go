@@ -37,22 +37,24 @@ type Config struct {
 	Project  string `yaml:"project"`
 	Instance string `yaml:"instance"`
 
-	GRPCClientConfig     grpcclient.Config `yaml:"grpc_client_config"`
-	BackoffConfig        util.BackoffConfig
-	ColumnKey            bool
-	DistributeKeys       bool
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+
+	ColumnKey      bool
+	DistributeKeys bool
+
 	TableCacheEnabled    bool
 	TableCacheExpiration time.Duration
-	WriteLimit           float64
-	MaxWriteBurstSize    int
+
+	WriteLimit        int
+	MaxWriteBurstSize int
 }
 
 var (
 	rateLimitedWriteRequest = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
-		Name:      "rate_limited_write_requests_total",
+		Name:      "bigtable_rate_limited_requests_total",
 		Help:      "Total count of rate limited write requests.",
-	}, []string{"name"})
+	}, []string{"operation"})
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -61,10 +63,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
-	f.Float64Var(&cfg.WriteLimit, "bigtable.write-rate-limit", 0.0, "BigTable rate limiter, default it is disabled.")
-	f.IntVar(&cfg.MaxWriteBurstSize, "bigtable.write-max-burst-limit", 0, "BigTable maximum burst size, default it is disabled.")
-	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "bigtable.min-backoff", 100*time.Millisecond, "Minimum backoff time")
-	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "bigtable.max-backoff", 50*time.Second, "Maximum backoff time")
+	f.IntVar(&cfg.WriteLimit, "bigtable.write-rate-limit", 0, "BigTable rate limiter for write operations, by default it is disabled.")
+	f.IntVar(&cfg.MaxWriteBurstSize, "bigtable.write-limit-burst", 0, "BigTable maximum burst size for write operations, by default it is disabled.")
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
 }
 
@@ -197,10 +197,10 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 			rowKeys = append(rowKeys, rowKey)
 			muts = append(muts, mut)
 		}
-		if s.writeLimiter.Allow() == false {
-			s.writeLimiter.WaitN(ctx, len(muts))
-			rateLimitedWriteRequest.WithLabelValues("rate_limited_write_request_bigtable_index_client").Inc()
-		}
+
+		s.writeLimiter.WaitN(ctx, len(muts))
+		//rateLimitedWriteRequest.WithLabelValues("write-index").Inc()
+
 		errs, err := table.ApplyBulk(ctx, rowKeys, muts)
 		if err != nil {
 			return err

@@ -69,8 +69,8 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	for tableName := range keys {
 		table := s.client.Open(tableName)
 		if s.writeLimiter.Allow() == false {
-			s.writeLimiter.WaitN(ctx, len(muts))
-			rateLimitedWriteRequest.WithLabelValues("rate_limited_write_request_bigtable_object_client").Inc()
+			s.writeLimiter.WaitN(ctx, len(muts[tableName]))
+			rateLimitedWriteRequest.WithLabelValues("write-chunks").Inc()
 		}
 		errs, err := table.ApplyBulk(ctx, keys[tableName], muts[tableName])
 		if err != nil {

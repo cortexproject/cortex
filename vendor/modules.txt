@@ -516,7 +516,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.8.1-0.20191223135439-39f8623b577f
+# github.com/thanos-io/thanos v0.8.1-0.20200102143048-a37ac093a67a
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/metadata
 github.com/thanos-io/thanos/pkg/compact/downsample

@@ -60,6 +60,8 @@ The blocks storage doesn't require a dedicated backend for the index, so it only
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 
+For more information, please check out the "[Blocks storage](operations/blocks-storage.md)" documentation.
+
 ## Services
 
 Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform specific tasks and run separately and in parallel.

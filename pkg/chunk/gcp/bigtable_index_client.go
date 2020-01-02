@@ -14,6 +14,8 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -23,12 +25,11 @@ import (
 )
 
 const (
-	columnFamily              = "f"
-	columnPrefix              = columnFamily + ":"
-	column                    = "c"
-	separator                 = "\000"
-	maxRowReads               = 100
-	bigtableMaxWriteBatchSize = 10000
+	columnFamily = "f"
+	columnPrefix = columnFamily + ":"
+	column       = "c"
+	separator    = "\000"
+	maxRowReads  = 100
 )
 
 // Config for a StorageClient
@@ -43,7 +44,16 @@ type Config struct {
 	TableCacheEnabled    bool
 	TableCacheExpiration time.Duration
 	WriteLimit           float64
+	MaxWriteBurstSize    int
 }
+
+var (
+	rateLimitedWriteRequest = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "rate_limited_write_requests_total",
+		Help:      "Total count of rate limited write requests.",
+	}, []string{"name"})
+)
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -51,7 +61,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
-	f.Float64Var(&cfg.WriteLimit, "bigtable.throttle-limit", 10.0, "BigTable rate cap to back off when throttled.")
+	f.Float64Var(&cfg.WriteLimit, "bigtable.write-rate-limit", 0.0, "BigTable rate limiter, default it is disabled.")
+	f.IntVar(&cfg.MaxWriteBurstSize, "bigtable.write-max-burst-limit", 0, "BigTable maximum burst size, default it is disabled.")
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "bigtable.min-backoff", 100*time.Millisecond, "Minimum backoff time")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "bigtable.max-backoff", 50*time.Second, "Maximum backoff time")
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
@@ -89,7 +100,7 @@ func newStorageClientV1(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtab
 			cfg:          cfg,
 			schemaCfg:    schemaCfg,
 			client:       client,
-			writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), bigtableMaxWriteBatchSize),
+			writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), cfg.MaxWriteBurstSize),
 			keysFn: func(hashValue string, rangeValue []byte) (string, string) {
 				rowKey := hashValue + separator + string(rangeValue)
 				return rowKey, column
@@ -114,7 +125,7 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 		cfg:          cfg,
 		schemaCfg:    schemaCfg,
 		client:       client,
-		writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), bigtableMaxWriteBatchSize),
+		writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), cfg.MaxWriteBurstSize),
 		keysFn: func(hashValue string, rangeValue []byte) (string, string) {
 
 			// We hash the row key and prepend it back to the key for better distribution.
@@ -178,8 +189,6 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	bigtableBatch := batch.(bigtableWriteBatch)
 
-	backoff := util.NewBackoff(ctx, s.cfg.BackoffConfig)
-
 	for tableName, rows := range bigtableBatch.tables {
 		table := s.client.Open(tableName)
 		rowKeys := make([]string, 0, len(rows))
@@ -190,7 +199,7 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 		}
 		if s.writeLimiter.Allow() == false {
 			s.writeLimiter.WaitN(ctx, len(muts))
-			backoff.Wait()
+			rateLimitedWriteRequest.WithLabelValues("rate_limited_write_request_bigtable_index_client").Inc()
 		}
 		errs, err := table.ApplyBulk(ctx, rowKeys, muts)
 		if err != nil {

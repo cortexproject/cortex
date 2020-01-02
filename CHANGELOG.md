@@ -21,7 +21,7 @@
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 * [BUGFIX] Fixed #1904 ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
-* [BUGFIX] Fixed handling of out of order/bound samples in ingester with the experimental TSDB blocks storage. #1864
+* [BUGFIX] Fixed handling of out of order/bound samples in ingesters with the experimental TSDB blocks storage. #1864
 * [BUGFIX] Fixed querying ingesters in `LEAVING` state with the experimental TSDB blocks storage. #1854
 * [BUGFIX] Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. #1837
 * [BUGFIX] Fixed TSDB creation conflict with blocks transfer in a `JOINING` ingester with the experimental TSDB blocks storage. #1818

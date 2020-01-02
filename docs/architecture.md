@@ -28,7 +28,7 @@ The two engines mostly share the same Cortex architecture with few differences o
 
 ### Chunks storage (default)
 
-The chunks storage stores each single time series into a separate object called chunk. Each chunk contains the timestamp-value pairs for a given period (defaults to 12 hours) of the series. Series chunks are then indexed by time range period and metric labels, in order to provide a fast lookup across millions - or even billions - of chunks.
+The chunks storage stores each single time series into a separate object called _chunk_. Each chunk contains the timestamp-value pairs for a given period (defaults to 12 hours) of the series. chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) chunks.
 
 For this reason, the chunks storage consists of:
 
@@ -45,26 +45,26 @@ For this reason, the chunks storage consists of:
 
 Internally, the access to the chunks storage relies on a unified interface called "chunks store". Unlike other Cortex components, the chunk store is not a separate service, but rather a library embedded in the services that need to access the long-term storage: [ingester](#ingester), [querier](#querier) and [ruler](#ruler).
 
-The chunk and index data format is versioned, in order to allow Cortex operators to upgrade the cluster to the latest stable version and take advantage of new features and improvements - which may introduce changes in the storage format - without requiring any downtime or complex procedures to rewrite the stored data.
+The chunk and index format are versioned, this allows Cortex operators to upgrade the cluster to take advantage of new features and improvements. This strategy enables changes in the storage format without requiring any downtime or complex procedures to rewrite the stored data. A set of schemas are used to map the version while reading and writing time series belonging to a specific period of time.
 
-A set of storage schemas are used to map the version to use to read and write time series belonging to a specific period of time. The current schema recommendation is the **v10 schema** (v11 is still experimental). For more information about the schema, please check out the "[Schema](guides/running.md#schema)" documentation.
+The current schema recommendation is the **v10 schema** (v11 is still experimental). For more information about the schema, please check out the [Schema](guides/running.md#schema) documentation.
 
 ### Blocks storage (experimental)
 
-The blocks storage is based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores all the time series for a given tenant and period (defaults to 2 hours) into a single TSDB block. Each block is composed by few files storing the chunks and the block index.
+The blocks storage is based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores each tenant's time series into their own TSDB which write out their series to a on-disk block (defaults to 2h block range periods). Each block is composed by few files storing the chunks and the block index.
 
-The chunk files contain the timestamp-value pairs for multiple series. The series inside the chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.
+The TSDB chunk files contain the timestamp-value pairs for multiple series. The series inside the chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.
 
-The blocks storage doesn't require a dedicated backend for the index, so it only requires an object store for the block files, which can be:
+The blocks storage doesn't require a dedicated storage backend for the index. The only requirement is an object store for the block files, which can be:
 
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 
-For more information, please check out the "[Blocks storage](operations/blocks-storage.md)" documentation.
+For more information, please check out the [Blocks storage](operations/blocks-storage.md) documentation.
 
 ## Services
 
-Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform specific tasks and run separately and in parallel.
+Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task, run separately, and in parallel.
 
 Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don't coordinate or communicate with each other within that layer.
 
@@ -79,28 +79,35 @@ The Cortex services are:
 
 ### Distributor
 
-The **distributor** service is responsible for handling incoming series by Prometheus. It's the first stop in the write path for series samples. Once the distributor receives samples from Prometheus, each series is validated for correctness and to ensure that it is within the configured tenant (or global) limits. Valid samples and then split into batches and sent to multiple [ingesters](#ingester) in parallel.
+The **distributor** service is responsible for handling incoming series from Prometheus. It's the first stop in the write path for series samples. Once the distributor receives samples from Prometheus, each series is validated for correctness and to ensure that it is within the configured tenant limits, falling back to default ones in case limits have not been overridden for the specific tenant. Valid samples and then split into batches and sent to multiple [ingesters](#ingester) in parallel.
+
+The validation done by the distributor includes:
+
+- The metric name is formally correct
+- The configured max number of labels per metric is respected
+- The configured max length of a label name and value is respected
+- The timestamp is not older/newer than the configured min/max time range
 
 Distributors are **stateless** and can be scaled up and down as needed.
 
-#### HA Tracker
+#### High Availability Tracker
 
-The distributor features an **HA Tracker**. When enabled, the distributor deduplicates incoming samples from redundant Prometheus servers. This allows you to have multiple HA replicas of the same Prometheus servers, writing the same series to Cortex and then deduplicate these series in the Cortex distributor.
+The distributor features a **High Availability (HA) Tracker**. When enabled, the distributor deduplicates incoming samples from redundant Prometheus servers. This allows you to have multiple HA replicas of the same Prometheus servers, writing the same series to Cortex and then deduplicate these series in the Cortex distributor.
 
-The HA Tracker deduplicates incoming samples based on a cluster and replica label. The cluster label uniquely identifies the cluster of redundant Prometheus servers for a given tenant, while the replica label uniquely identify the replica within the Prometheus servers cluster. Incoming samples are considered duplicated - and thus skipped - if received by any replica which is not the current primary within a cluster.
+The HA Tracker deduplicates incoming samples based on a cluster and replica label. The cluster label uniquely identifies the cluster of redundant Prometheus servers for a given tenant, while the replica label uniquely identifies the replica within the Prometheus cluster. Incoming samples are considered duplicated - and thus dropped - if received by any replica which is not the current primary within a cluster.
 
-The HA Tracker requires a key-value (KV) store to coordinate which is the currently elected primary replica from which the distributor accepts the samples. Samples with one or neither of the replica and cluster labels are accepted by default and never deduplicated.
+The HA Tracker requires a key-value (KV) store to coordinate which replica is currently elected. The distributor will only accept samples from the current leader. Samples with one or no labels (of the replica and cluster) are accepted by default and never deduplicated.
 
 The supported KV stores for the HA tracker are:
 
 * [Consul](https://www.consul.io)
 * [Etcd](https://etcd.io)
 
-For more information, please check out the "[Config for sending HA pairs data to Cortex](guides/ha-pair-handling.md)" documentation.
+For more information, please refer to [config for sending HA pairs data to Cortex](guides/ha-pair-handling.md) in the documentation.
 
 #### Hashing
 
-Distributors use consistent hashing, in conjunction with a configurable replication factor, to determine which instances of the ingester service should receive a given series.
+Distributors use consistent hashing, in conjunction with a configurable replication factor, to determine which ingester instances should receive a given series.
 
 Cortex supports two hashing strategies:
 
@@ -108,6 +115,10 @@ Cortex supports two hashing strategies:
 2. Hash the metric name, labels and tenant ID (recommended, enabled with `-distributor.shard-by-all-labels=true`)
 
 The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to any ingester since a metric could be spread across any ingester given different label sets. The first hashing strategy (default) was originally chosen to reduce the number of required ingesters on the query path, but running Cortex in production showed that an evenly distributed write load on the ingesters is preferable at the cost of always querying all ingesters.
+
+The trade-off associated with the latter is that writes are more balanced across ingesters, but requires each query to look across all ingesters, since a metric could be spread across any ingester given different label sets.
+
+The first hashing strategy (default) was originally chosen to reduce the number of required ingesters on the query path, but running Cortex in production showed that an evenly distributed write load on the ingesters is preferable at the cost of always querying most of the ingesters.
 
 #### The hash ring
 
@@ -151,7 +162,7 @@ Ingesters contain a **lifecycler** which manages the lifecycle of an ingester an
 
 5. `UNHEALTHY` is an ingester's state when it has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
 
-For more information about the hand-over process, please check out the "[Ingester hand-over](guides/ingester-handover.md)" documentation.
+For more information about the hand-over process, please check out the [Ingester hand-over](guides/ingester-handover.md) documentation.
 
 Ingesters are **semi-stateful**.
 
@@ -188,7 +199,7 @@ Queriers are **stateless** and can be scaled up and down as needed.
 
 The **query frontend** is an **optional service** providing the same querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
 
-The query frontend internally performs some query mangling and push execution jobs for the queriers to an internal queue. In this setup, queriers act as workers picking jobs from the query frontend queue, executing the jobs and pushing back the result which is then aggregated by the query frontend before returning it to the client who performed the query request. Queriers need to be configured with the query frontend address - via the `-querier.frontend-address` CLI flag - in order to allow them to connect to the query frontends and pick up jobs to execute.
+The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address - via the `-querier.frontend-address` CLI flag - in order to allow them to connect to the query frontends.
 
 Query frontends are **stateless**. However, due to how the internal queue works, it's recommended to run a few query frontend replicas to reap the benefit of fair scheduling. Two replicas should suffice in most cases.
 
@@ -206,7 +217,7 @@ The query frontend splits multi-day queries into multiple single-day queries, ex
 
 #### Caching
 
-The query frontend supports Memcached as backend to cache query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results.
+The query frontend supports caching query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any cortex caching backend (currently memcached, redis, and an in-memory cache).
 
 ### Ruler
 

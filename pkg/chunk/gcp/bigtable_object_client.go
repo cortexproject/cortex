@@ -37,7 +37,7 @@ func newBigtableObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, client *b
 		cfg:          cfg,
 		schemaCfg:    schemaCfg,
 		client:       client,
-		writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), bigtableMaxWriteBatchSize),
+		writeLimiter: rate.NewLimiter(rate.Limit(cfg.WriteLimit), cfg.MaxWriteBurstSize),
 	}
 }
 
@@ -48,8 +48,6 @@ func (s *bigtableObjectClient) Stop() {
 func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	keys := map[string][]string{}
 	muts := map[string][]*bigtable.Mutation{}
-
-	backoff := util.NewBackoff(ctx, s.cfg.BackoffConfig)
 
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
@@ -72,7 +70,7 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 		table := s.client.Open(tableName)
 		if s.writeLimiter.Allow() == false {
 			s.writeLimiter.WaitN(ctx, len(muts))
-			backoff.Wait()
+			rateLimitedWriteRequest.WithLabelValues("rate_limited_write_request_bigtable_object_client").Inc()
 		}
 		errs, err := table.ApplyBulk(ctx, keys[tableName], muts[tableName])
 		if err != nil {

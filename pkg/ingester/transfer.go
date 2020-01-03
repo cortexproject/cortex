@@ -544,7 +544,7 @@ func (i *Ingester) v2TransferOut(ctx context.Context) error {
 			go func(db *tsdb.DB) {
 				defer wg.Done()
 				db.DisableCompactions()
-			}(db)
+			}(db.DB)
 		}
 
 		i.userStatesMtx.RUnlock()
@@ -619,33 +619,48 @@ func unshippedBlocks(dir string) (map[string][]string, error) {
 
 	blocks := make(map[string][]string, len(userIDs))
 	for _, user := range userIDs {
-		userID := user.Name()
-		blocks[userID] = []string{} // seed the map with the userID to ensure we xfer the WAL, even if all blocks are shipped
-
-		blockIDs, err := ioutil.ReadDir(filepath.Join(dir, userID))
+		blks, err := unshippedUserBlocks(filepath.Join(dir, user.Name()))
 		if err != nil {
+			continue
+		}
+
+		blocks[user.Name()] = blks
+	}
+
+	return blocks, nil
+}
+
+// unshippedUserBlocks returns a ulid list of blocks that haven't been shipped for a given user
+func unshippedUserBlocks(dir string) ([]string, error) {
+	blockIDs, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	m, err := shipper.ReadMetaFile(dir)
+	if err != nil {
+		// If the cleanup function runs before the shipper has had a chance to run there wont be a meta file written yet.
+		// So we can treat it as an "empty" meta file and no blocks have been shipped.
+		if !os.IsNotExist(err) {
 			return nil, err
 		}
+		m = &shipper.Meta{}
+	}
 
-		m, err := shipper.ReadMetaFile(filepath.Join(dir, userID))
+	shipped := make(map[string]bool)
+	for _, u := range m.Uploaded {
+		shipped[u.String()] = true
+	}
+
+	blocks := []string{}
+	for _, blockID := range blockIDs {
+		_, err := ulid.Parse(blockID.Name())
 		if err != nil {
-			return nil, err
+			continue
 		}
 
-		shipped := make(map[string]bool)
-		for _, u := range m.Uploaded {
-			shipped[u.String()] = true
-		}
-
-		for _, blockID := range blockIDs {
-			_, err := ulid.Parse(blockID.Name())
-			if err != nil {
-				continue
-			}
-
-			if _, ok := shipped[blockID.Name()]; !ok {
-				blocks[userID] = append(blocks[userID], blockID.Name())
-			}
+		if _, ok := shipped[blockID.Name()]; !ok {
+			blocks = append(blocks, blockID.Name())
 		}
 	}
 

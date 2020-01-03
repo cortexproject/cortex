@@ -4,15 +4,18 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/pkg/errors"
@@ -23,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
@@ -820,6 +824,156 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			defer ingester.Shutdown()
 
 			testData.check(t, ingester)
+		})
+	}
+}
+
+func TestCleanupTSDB(t *testing.T) {
+	dir, err := ioutil.TempDir("", "tsdb")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	clientCfg := defaultClientTestConfig()
+	limits := defaultLimitsTestConfig()
+
+	overrides, err := validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+	ingesterCfg := defaultIngesterTestConfig()
+	ingesterCfg.TSDBEnabled = true
+	ingesterCfg.TSDBConfig.Dir = dir
+	ingesterCfg.TSDBConfig.Backend = "s3"
+	ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
+	ingesterCfg.TSDBConfig.MaxStaleAge = 10 * time.Minute
+
+	ingester := &Ingester{
+		cfg:          ingesterCfg,
+		metrics:      newIngesterMetrics(nil),
+		clientConfig: clientCfg,
+		limits:       overrides,
+		chunkStore:   nil,
+		quit:         make(chan struct{}),
+
+		TSDBState: TSDBState{
+			dbs: make(map[string]*UserTSDB),
+		},
+	}
+	ingester.lifecycler, err = ring.NewLifecycler(ingesterCfg.LifecyclerConfig, ingester, "ingester", ring.IngesterRingKey)
+	require.NoError(t, err)
+
+	ingester.limiter = NewSeriesLimiter(overrides, ingester.lifecycler, ingesterCfg.LifecyclerConfig.RingConfig.ReplicationFactor, ingesterCfg.ShardByAllLabels)
+	ingester.userStates = newUserStates(ingester.limiter, ingesterCfg)
+	ingester.lifecycler.Start()
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return ingester.lifecycler.GetState()
+	})
+
+	tests := map[string]struct {
+		shippingOff   bool
+		blocks        int
+		unshipped     int
+		recentlyWrite bool
+		removed       bool
+	}{
+		"no unshipped recently written": {
+			blocks:        rand.Intn(10) + 1,
+			unshipped:     0,    // no unshipped
+			recentlyWrite: true, // recently written
+			removed:       false,
+		},
+		"no blocks recently written": {
+			blocks:        0,
+			recentlyWrite: true, // recently written
+			removed:       false,
+		},
+		"unshipped not recently written": {
+			blocks:        rand.Intn(10) + 1,
+			unshipped:     100,
+			recentlyWrite: false,
+			removed:       true,
+		},
+		"no blocks not recently written": {
+			blocks:        0,
+			recentlyWrite: false,
+			removed:       true,
+		},
+		"no unshipped blocks not recently written": {
+			blocks:        rand.Intn(10) + 1,
+			unshipped:     0,
+			recentlyWrite: false,
+			removed:       true,
+		},
+		"shipping disabled": {
+			shippingOff:   true,
+			blocks:        rand.Intn(10) + 1,
+			unshipped:     100,
+			recentlyWrite: false,
+			removed:       true,
+		},
+	}
+
+	for name, test := range tests {
+
+		t.Run(name, func(t *testing.T) {
+			user := strings.Replace(name, " ", "_", -1)
+
+			// Create a new user database. Do this instead og getOrCreateTSDB to avoid starting a shipper routine
+			db := &UserTSDB{}
+			udir := ingester.cfg.TSDBConfig.BlocksDir(user)
+
+			var err error
+			db.DB, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+				RetentionDuration: uint64(ingester.cfg.TSDBConfig.Retention / time.Millisecond),
+				BlockRanges:       ingester.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
+				NoLockfile:        true,
+			})
+			require.NoError(t, err)
+
+			ingester.userStatesMtx.Lock()
+			ingester.TSDBState.dbs[user] = db
+			ingester.userStatesMtx.Unlock()
+
+			if test.shippingOff {
+				ingester.cfg.TSDBConfig.ShipInterval = 0
+				db.shipperCancel = nil
+				db.shipperDone = nil
+			} else {
+				ingester.cfg.TSDBConfig.ShipInterval = 30 * time.Minute
+				_, cancel := context.WithCancel(context.Background())
+				db.shipperCancel = cancel
+				db.shipperDone = &sync.WaitGroup{}
+			}
+
+			// Create the on-disk tsdb
+			createTSDB(t, dir, []*userTSDB{
+				{
+					userID:      user,
+					shipPercent: 100 - test.unshipped,
+					numBlocks:   test.blocks,
+					meta: &shipper.Meta{
+						Version: shipper.MetaVersion1,
+					},
+				},
+			})
+
+			// Mark last written
+			if test.recentlyWrite {
+				db.firstEmpty = time.Now()
+			} else {
+				db.firstEmpty = time.Now().Add(-1 * time.Hour)
+			}
+
+			stop := make(chan struct{})
+			require.NoError(t, ingester.closeStaleTSDBs(stop))
+
+			// Check that the dir was deleted
+			_, err = ioutil.ReadDir(filepath.Join(dir, user))
+			if test.removed {
+				require.Error(t, os.ErrNotExist, err)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

@@ -36,6 +36,7 @@ type Config struct {
 	ShipInterval time.Duration     `yaml:"ship_interval"`
 	Backend      string            `yaml:"backend"`
 	BucketStore  BucketStoreConfig `yaml:"bucket_store"`
+	MaxStaleAge  time.Duration     `yaml:"max_stale_age"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -91,6 +92,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 30*time.Second, "the frequency at which tsdb blocks are scanned for shipping. 0 means shipping is disabled.")
 	f.StringVar(&cfg.Backend, "experimental.tsdb.backend", "s3", "TSDB storage backend to use")
 	f.IntVar(&cfg.MaxTSDBOpeningConcurrencyOnStartup, "experimental.tsdb.max-tsdb-opening-concurrency-on-startup", 10, "limit the number of concurrently opening TSDB's on startup")
+	f.DurationVar(&cfg.MaxStaleAge, "experimental.tsdb.max-stale-age", time.Hour, "The max duration a TSDB remains open when nothing has been written to it.")
 }
 
 // Validate the config

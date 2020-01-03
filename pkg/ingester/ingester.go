@@ -43,6 +43,7 @@ type ingesterMetrics struct {
 	queriedSamples      prometheus.Histogram
 	queriedSeries       prometheus.Histogram
 	queriedChunks       prometheus.Histogram
+	cleanupDuration     prometheus.Histogram
 }
 
 func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
@@ -81,6 +82,11 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
 			Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 		}),
+		cleanupDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "cortex_ingester_cleanup_duration",
+			Help:    "The time it takes to perform a cleanup operation.",
+			Buckets: prometheus.DefBuckets,
+		}),
 	}
 
 	if r != nil {
@@ -92,6 +98,7 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			m.queriedSamples,
 			m.queriedSeries,
 			m.queriedChunks,
+			m.cleanupDuration,
 		)
 	}
 

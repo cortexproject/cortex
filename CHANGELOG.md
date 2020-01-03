@@ -23,6 +23,8 @@
 * [FEATURE] Added readiness probe endpoint`/ready` to queriers. #1934
 * [FEATURE] EXPERIMENTAL: Added `/series` API endpoint support with TSDB blocks storage. #1830
 * [FEATURE] Added "multi" KV store that can interact with two other KV stores, primary one for all reads and writes, and secondary one, which only receives writes. Primary/secondary store can be modified in runtime via runtime-config mechanism (previously "overrides"). #1749
+* [FEATURE] EXPERIMENTAL: close stale TSDBs after a time period of not receiving writes. #1958
+  * `--experimental.tsdb.max-stale-age`
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service.
 * [ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. #1917
   * `--experimental.tsdb.max-tsdb-opening-concurrency-on-startup`

@@ -3,6 +3,7 @@ package ingester
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,9 +35,28 @@ const (
 	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
 )
 
+const (
+	active = iota
+	closing
+)
+
+// UserTSDB is a users TSDB
+type UserTSDB struct {
+	*tsdb.DB
+	sync.WaitGroup
+
+	shipperCancel context.CancelFunc
+	shipperDone   *sync.WaitGroup
+
+	firstEmpty time.Time
+
+	// state indicates if the TSDB is currently active or in the process of closing.
+	state int
+}
+
 // TSDBState holds data structures used by the TSDB storage engine
 type TSDBState struct {
-	dbs    map[string]*tsdb.DB // tsdb sharded by userID
+	dbs    map[string]*UserTSDB // tsdb sharded by userID
 	bucket objstore.Bucket
 
 	// Keeps count of in-flight requests
@@ -63,7 +83,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		quit:         make(chan struct{}),
 
 		TSDBState: TSDBState{
-			dbs:    make(map[string]*tsdb.DB),
+			dbs:    make(map[string]*UserTSDB),
 			bucket: bucketClient,
 		},
 	}
@@ -85,6 +105,9 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
 
+	// Start a cleanup routine that will close and remove TSDB's that are no longer active
+	i.startCleanupLoop()
+
 	return i, nil
 }
 
@@ -101,6 +124,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	if err != nil {
 		return nil, wrapWithUser(err, userID)
 	}
+	defer db.Done()
 
 	// Ensure the ingester shutdown procedure hasn't started
 	i.userStatesMtx.RLock()
@@ -195,6 +219,7 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 	if db == nil {
 		return &client.QueryResponse{}, nil
 	}
+	defer db.Done()
 
 	q, err := db.Querier(int64(from), int64(through))
 	if err != nil {
@@ -243,6 +268,7 @@ func (i *Ingester) v2LabelValues(ctx old_ctx.Context, req *client.LabelValuesReq
 	if db == nil {
 		return &client.LabelValuesResponse{}, nil
 	}
+	defer db.Done()
 
 	through := time.Now()
 	from := through.Add(-i.cfg.TSDBConfig.Retention)
@@ -272,6 +298,7 @@ func (i *Ingester) v2LabelNames(ctx old_ctx.Context, req *client.LabelNamesReque
 	if db == nil {
 		return &client.LabelNamesResponse{}, nil
 	}
+	defer db.Done()
 
 	through := time.Now()
 	from := through.Add(-i.cfg.TSDBConfig.Retention)
@@ -301,6 +328,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	if db == nil {
 		return &client.MetricsForLabelMatchersResponse{}, nil
 	}
+	defer db.Done()
 
 	// Parse the request
 	from, to, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
@@ -358,14 +386,20 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx old_ctx.Context, req *client.Me
 	return result, nil
 }
 
-func (i *Ingester) getTSDB(userID string) *tsdb.DB {
+func (i *Ingester) getTSDB(userID string) *UserTSDB {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-	db, _ := i.TSDBState.dbs[userID]
+	db, ok := i.TSDBState.dbs[userID]
+	if ok {
+		if db.state == closing {
+			return nil
+		}
+		db.Add(1)
+	}
 	return db
 }
 
-func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) {
+func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*UserTSDB, error) {
 	db := i.getTSDB(userID)
 	if db != nil {
 		return db, nil
@@ -378,6 +412,10 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	var ok bool
 	db, ok = i.TSDBState.dbs[userID]
 	if ok {
+		if db.state == closing {
+			return nil, fmt.Errorf("tsdb is closing")
+		}
+		db.Add(1)
 		return db, nil
 	}
 
@@ -391,23 +429,12 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
 	}
 
-	// Create the database and a shipper for a user
-	db, err := i.createTSDB(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add the db to list of user databases
-	i.TSDBState.dbs[userID] = db
-	return db, nil
-}
-
-// createTSDB creates a TSDB for a given userID, and returns the created db.
-func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
+	db = &UserTSDB{}
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
 
 	// Create a new user database
-	db, err := tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+	var err error
+	db.DB, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
 		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
 		NoLockfile:        true,
@@ -415,34 +442,13 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// Thanos shipper requires at least 1 external label to be set. For this reason,
-	// we set the tenant ID as external label and we'll filter it out when reading
-	// the series from the storage.
-	l := labels.Labels{
-		{
-			Name:  cortex_tsdb.TenantIDExternalLabel,
-			Value: userID,
-		},
-	}
+	// Save the database
+	i.TSDBState.dbs[userID] = db
 
 	// Create a new shipper for this database
-	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
-		i.done.Add(1)
-		go func() {
-			defer i.done.Done()
-			if err := runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
-				if uploaded, err := s.Sync(context.Background()); err != nil {
-					level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
-				}
-				return nil
-			}); err != nil {
-				level.Warn(util.Logger).Log("err", err)
-			}
-		}()
-	}
+	i.startShipper(userID)
 
+	db.Add(1)
 	return db, nil
 }
 
@@ -456,7 +462,7 @@ func (i *Ingester) closeAllTSDB() {
 	for userID, db := range i.TSDBState.dbs {
 		userID := userID
 
-		go func(db *tsdb.DB) {
+		go func(db *UserTSDB) {
 			defer wg.Done()
 
 			if err := db.Close(); err != nil {
@@ -523,16 +529,12 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		go func(userID string) {
 			defer wg.Done()
 			defer openGate.Done()
-			db, err := i.createTSDB(userID)
+			db, err := i.getOrCreateTSDB(userID, true)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)
 				return
 			}
-
-			// Add the database to the map of user databases
-			i.userStatesMtx.Lock()
-			i.TSDBState.dbs[userID] = db
-			i.userStatesMtx.Unlock()
+			db.Done()
 
 		}(userID)
 
@@ -547,4 +549,197 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
 	}
 	return err
+}
+
+// closeStaleTSDBs walks the TSDB directory for each user to determine if the TSDB should be closed.
+//  If
+// - The directory is empty of blocks
+// OR
+// - The directory has every block marked as shipped (if required)
+// AND
+// - The TSDB head has been empty for the given period
+// THEN
+// - Close the TSDB, stop the shipper routine, and delete the directory and it's contents.
+func (i *Ingester) closeStaleTSDBs(stopc <-chan struct{}) error {
+	now := time.Now()
+	defer func() {
+		i.metrics.cleanupDuration.Observe(time.Since(now).Seconds())
+	}()
+
+	// Get users from disk, that way if cleanup fails after the tsdb has been closed we'll still finish cleanup
+	userIDs, err := ioutil.ReadDir(i.cfg.TSDBConfig.Dir)
+	if err != nil {
+		return err
+	}
+
+	for _, info := range userIDs {
+		select {
+		case <-stopc:
+			return nil
+		default:
+			if i.shouldCloseTSDB(info.Name(), now) {
+				i.closeTSDB(info.Name())
+			}
+		}
+	}
+
+	return nil
+}
+
+// shouldCloseTSDB performs the majority of checks against a tsdb without having to hold the lock.
+func (i *Ingester) shouldCloseTSDB(user string, now time.Time) bool {
+	db := i.getTSDB(user)
+	if db == nil {
+		return true
+	}
+	defer db.Done()
+
+	// DB not empty, skip it.
+	if db.Head().NumSeries() != 0 {
+		db.firstEmpty = time.Time{} // reset first empty to never
+		return false
+	}
+
+	if db.firstEmpty.IsZero() {
+		db.firstEmpty = now
+	}
+
+	// If the TSDB hasn't been empty for the required stale age, don't close it.
+	// TSDB has received a write within the window.
+	if now.Sub(db.firstEmpty) <= i.cfg.TSDBConfig.MaxStaleAge {
+		return false
+	}
+
+	blocksDir := i.cfg.TSDBConfig.BlocksDir(user)
+	unshipped, err := unshippedUserBlocks(blocksDir)
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "failed to read unshipped blocks", "err", err, "user", user)
+		return false
+	}
+
+	// Ensure there are no unshipped blocks
+	if len(unshipped) != 0 && i.cfg.TSDBConfig.ShipInterval > 0 {
+		return false
+	}
+
+	return true
+}
+
+// closeTSDB holds the userStatesMtx lock and shuts down a given TSDB.
+func (i *Ingester) closeTSDB(user string) {
+	db := i.setTSDBState(user, closing) // mark the db as closing to prevent further accesses
+	if db != nil {
+
+		// Wait for all accesses to the db to finish
+		db.Wait()
+
+		// DB not empty, write must have happened in between shouldCloseTSDB and closeTSDB
+		if db.Head().NumSeries() != 0 {
+			db.firstEmpty = time.Time{}  // reset first empty to never
+			i.setTSDBState(user, active) // mark tsdb as still active
+			return
+		}
+
+		// Stop the shipper routine for this TSDB
+		if db.shipperCancel != nil {
+			db.shipperCancel()
+			db.shipperDone.Wait()
+		}
+
+		db.DisableCompactions()
+
+		// Close the TSDB
+		if err := db.Close(); err != nil {
+			// Restart shipper and compactor to roll-back the shutdown changes that have been made in the event this db becomes active again
+			db.EnableCompactions()
+			i.startShipper(user)
+			i.setTSDBState(user, active) // mark tsdb as still active
+			level.Warn(util.Logger).Log("msg", "unable to close TSDB", "err", err, "user", user)
+			return
+		}
+
+		// DB is shutdown, remove it from the list
+		i.userStatesMtx.Lock()
+		delete(i.TSDBState.dbs, user)
+		i.userStatesMtx.Unlock()
+	}
+
+	// Cleanup the on-disk contents
+	if err := os.RemoveAll(i.cfg.TSDBConfig.BlocksDir(user)); err != nil {
+		level.Warn(util.Logger).Log("msg", "failed to remove all user tsdb dir", "err", err, "user", user)
+		return
+	}
+}
+
+// startShipper starts a shipper for a given user TSDB. It does not obtain the lock, callers need to ensure they hold the lock before calling.
+func (i *Ingester) startShipper(userID string) {
+	if i.cfg.TSDBConfig.ShipInterval <= 0 {
+		return
+	}
+
+	s := i.createShipper(userID, i.cfg.TSDBConfig.BlocksDir(userID))
+	i.done.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer i.done.Done()
+		defer wg.Done()
+		err := runutil.Repeat(i.cfg.TSDBConfig.ShipInterval, i.quit, func() error {
+			if uploaded, err := s.Sync(ctx); err != nil && err != context.Canceled {
+				level.Warn(util.Logger).Log("err", err, "uploaded", uploaded)
+			}
+			return nil
+		})
+		if err != nil {
+			level.Warn(util.Logger).Log("err", err, "msg", "error while shipping")
+		}
+	}()
+
+	i.TSDBState.dbs[userID].shipperDone = wg
+	i.TSDBState.dbs[userID].shipperCancel = cancel
+}
+
+func (i *Ingester) createShipper(userID, dir string) *shipper.Shipper {
+
+	// Thanos shipper requires at least 1 external label to be set. For this reason,
+	// we set the tenant ID as external label and we'll filter it out when reading
+	// the series from the storage.
+	l := labels.Labels{
+		{
+			Name:  cortex_tsdb.TenantIDExternalLabel,
+			Value: userID,
+		},
+	}
+
+	// Create a new shipper for this database
+	return shipper.New(util.Logger, nil, dir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
+}
+
+func (i *Ingester) startCleanupLoop() {
+	i.done.Add(1)
+	go func() {
+		defer i.done.Done()
+		err := runutil.Repeat(time.Minute, i.quit, func() error {
+			if err := i.closeStaleTSDBs(i.quit); err != nil {
+				level.Warn(util.Logger).Log("err", err, "msg", "cleanup failed")
+			}
+			return nil
+		})
+		if err != nil {
+			level.Warn(util.Logger).Log("err", err, "msg", "error during cleanup")
+		}
+	}()
+}
+
+// setTSDBState sets the TSDB for the given user to the specified state and returns the db without increasing the WaitGroup
+func (i *Ingester) setTSDBState(user string, state int) *UserTSDB {
+	i.userStatesMtx.Lock()
+	db, ok := i.TSDBState.dbs[user]
+	if ok {
+		db.state = state
+	}
+	i.userStatesMtx.Unlock()
+
+	return db
 }

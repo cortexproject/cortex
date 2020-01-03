@@ -5,7 +5,7 @@ weight: 1
 slug: blocks-storage
 ---
 
-The blocks storage is an **experimental** Cortex storage engine based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores all the time series for a given tenant and period (defaults to 2 hours) into a single TSDB block. Each block is composed by chunk files - containing the timestamp-value pairs for multiple series - and an index, which indexes metric names and labels to time series in the chunk files.
+The blocks storage is an **experimental** Cortex storage engine based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores each tenant's time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by chunk files - containing the timestamp-value pairs for multiple series - and an index, which indexes metric names and labels to time series in the chunk files.
 
 The supported backends for the blocks storage are:
 
@@ -18,24 +18,24 @@ The rest of the document assumes you have read the [Cortex architecture](../arch
 
 ## How it works
 
-When the blocks storage is used, each **ingester** creates a per-tenant TSDB and ships the TSDB blocks - which by default are cut every 2 hours - to the long-term storage.
+When the blocks storage is used, each **ingester** creates a per-tenant TSDB and ships the TSDB Blocks - which by default are cut every 2 hours - to the long-term storage.
 
-**Queriers** periodically iterate over the storage bucket to discover recently uploaded blocks and - for each block - download a subset of the block index - called "index header" - which is kept in memory and used to provide fast lookups.
+**Queriers** periodically iterate over the storage bucket to discover recently uploaded Blocks and - for each Block - download a subset of the block index - called "index header" - which is kept in memory and used to provide fast lookups.
 
 ### The write path
 
 **Ingesters** receive incoming samples from the distributors. Each push request belongs to a tenant, and the ingester append the received samples to the specific per-tenant TSDB. The received samples are both kept in-memory and written to a write-ahead log (WAL) stored on the local disk and used to recover the in-memory series in case the ingester abruptly terminates. The per-tenant TSDB is lazily created in each ingester upon the first push request is received for that tenant.
 
-The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB block is cut, which by default occurs every 2 hours. Each new block cut is then uploaded to the long-term storage and kept in the ingester for some more time, in order to give queriers enough time to discover the new block from the storage and download its index header.
+The in-memory samples are periodically flushed to disk - and the WAL truncated - when a new TSDB Block is cut, which by default occurs every 2 hours. Each new Block cut is then uploaded to the long-term storage and kept in the ingester for some more time, in order to give queriers enough time to discover the new Block from the storage and download its index header.
 
 
 In order to effectively use the **WAL** and being able to recover the in-memory series upon ingester abruptly termination, the WAL needs to be stored to a persistent local disk which can survive in the event of an ingester failure (ie. AWS EBS volume or GCP persistent disk when running in the cloud). For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the ingesters.
 
 ### The read path
 
-**Queriers** - at startup - iterate over the entire storage bucket to discover all tenants blocks and - for each of them - download the index header. During this initial synchronization phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
+**Queriers** - at startup - iterate over the entire storage bucket to discover all tenants Blocks and - for each of them - download the index header. During this initial synchronization phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 
-Queriers also periodically re-iterate over the storage bucket to discover newly uploaded blocks (by the ingesters) and find out blocks deleted in the meanwhile, as effect of an optional retention policy.
+Queriers also periodically re-iterate over the storage bucket to discover newly uploaded Blocks (by the ingesters) and find out Blocks deleted in the meanwhile, as effect of an optional retention policy.
 
 The blocks chunks and the entire index is never fully downloaded by the queriers. In the read path, a querier lookups the series label names and values using the in-memory index header and then download the required segments of the index and chunks for the matching series directly from the long-term storage using byte-range requests.
 
@@ -49,14 +49,14 @@ It's important to note that - differently than the [chunks storage](../architect
 
 ### Compactor
 
-The **compactor** is an optional - but highly recommended - service which compacts multiple blocks of a given tenant into a single optimized larger block. The compactor has two main benefits:
+The **compactor** is an optional - but highly recommended - service which compacts multiple Blocks of a given tenant into a single optimized larger Block. The compactor has two main benefits:
 
-1. Vertically compact blocks uploaded by all ingesters for the same time range
-2. Horizontally compact blocks with small time ranges into a single larger block
+1. Vertically compact Blocks uploaded by all ingesters for the same time range
+2. Horizontally compact Blocks with small time ranges into a single larger Block
 
-The **vertical compaction** compacts all the blocks of a tenant uploaded by any ingester for the same block range period (defaults to 2 hours) into a single block, de-duplicating samples that are originally written to N blocks as effect of the replication.
+The **vertical compaction** compacts all the Blocks of a tenant uploaded by any ingester for the same Block range period (defaults to 2 hours) into a single Block, de-duplicating samples that are originally written to N Blocks as effect of the replication.
 
-The **horizontal compaction** triggers after the vertical compaction and compacts several blocks belonging to adjacent small range periods (2 hours) into a single larger block. Despite the total block chunks size doesn't change after this compaction, it may have a significative impact on the reduction of the index size and its index header kept in memory by queriers.
+The **horizontal compaction** triggers after the vertical compaction and compacts several Blocks belonging to adjacent small range periods (2 hours) into a single larger Block. Despite the total block chunks size doesn't change after this compaction, it may have a significative impact on the reduction of the index size and its index header kept in memory by queriers.
 
 The compactor is **stateless**.
 

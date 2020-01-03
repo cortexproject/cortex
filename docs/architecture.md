@@ -28,15 +28,15 @@ The two engines mostly share the same Cortex architecture with few differences o
 
 ### Chunks storage (default)
 
-The chunks storage stores each single time series into a separate object called _chunk_. Each chunk contains the timestamp-value pairs for a given period (defaults to 12 hours) of the series. chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) chunks.
+The chunks storage stores each single time series into a separate object called _Chunk_. Each Chunk contains the timestamp-value pairs for a given period (defaults to 12 hours) of the series. Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.
 
 For this reason, the chunks storage consists of:
 
-* An index for the chunks. This index can be backed by:
+* An index for the Chunks. This index can be backed by:
     * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
     * [Google Bigtable](https://cloud.google.com/bigtable)
     * [Apache Cassandra](https://cassandra.apache.org)
-* An object store for the chunk data itself, which can be:
+* An object store for the Chunk data itself, which can be:
     * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
     * [Google Bigtable](https://cloud.google.com/bigtable)
     * [Apache Cassandra](https://cassandra.apache.org)
@@ -51,11 +51,11 @@ The current schema recommendation is the **v10 schema** (v11 is still experiment
 
 ### Blocks storage (experimental)
 
-The blocks storage is based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores each tenant's time series into their own TSDB which write out their series to a on-disk block (defaults to 2h block range periods). Each block is composed by few files storing the chunks and the block index.
+The blocks storage is based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores each tenant's time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by few files storing the chunks and the block index.
 
-The TSDB chunk files contain the timestamp-value pairs for multiple series. The series inside the chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.
+The TSDB chunk files contain the timestamp-value pairs for multiple series. The series inside the Chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.
 
-The blocks storage doesn't require a dedicated storage backend for the index. The only requirement is an object store for the block files, which can be:
+The blocks storage doesn't require a dedicated storage backend for the index. The only requirement is an object store for the Block files, which can be:
 
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)

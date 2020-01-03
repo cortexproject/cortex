@@ -92,8 +92,7 @@ type Compactor struct {
 	// Client used to run operations on the bucket storing blocks.
 	bucketClient objstore.Bucket
 
-	// Channel used to signal when the compactor should stop.
-	quit   chan struct{}
+	// Wait group used to wait until the internal go routine completes.
 	runner sync.WaitGroup
 
 	// Context used to run compaction and its cancel function to
@@ -133,7 +132,6 @@ func newCompactor(ctx context.Context, cancelCtx context.CancelFunc, compactorCf
 		logger:        logger,
 		bucketClient:  bucketClient,
 		tsdbCompactor: tsdbCompactor,
-		quit:          make(chan struct{}),
 		ctx:           ctx,
 		cancelCtx:     cancelCtx,
 		compactionRunsStarted: prometheus.NewCounter(prometheus.CounterOpts{
@@ -165,7 +163,6 @@ func newCompactor(ctx context.Context, cancelCtx context.CancelFunc, compactorCf
 // Shutdown the compactor and waits until done. This may take some time
 // if there's a on-going compaction.
 func (c *Compactor) Shutdown() {
-	close(c.quit)
 	c.cancelCtx()
 	c.runner.Wait()
 }
@@ -183,7 +180,7 @@ func (c *Compactor) run() {
 		select {
 		case <-ticker.C:
 			c.compactUsersWithRetries(c.ctx)
-		case <-c.quit:
+		case <-c.ctx.Done():
 			return
 		}
 	}

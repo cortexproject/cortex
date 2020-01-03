@@ -48,6 +48,7 @@ type ingesterMetrics struct {
 	queriedSamples      prometheus.Histogram
 	queriedSeries       prometheus.Histogram
 	queriedChunks       prometheus.Histogram
+	walReplayDuration   prometheus.Summary
 }
 
 func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
@@ -85,6 +86,11 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Help: "The total number of chunks returned from queries.",
 			// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
 			Buckets: prometheus.ExponentialBuckets(10, 8, 7),
+		}),
+		walReplayDuration: prometheus.NewSummary(prometheus.SummaryOpts{
+			Name:       "cortex_ingester_wal_replay_duration_seconds",
+			Help:       "Time taken to replay the checkpoint and the WAL.",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		}),
 	}
 
@@ -245,6 +251,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		}
 		elapsed := time.Since(start)
 		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+		i.metrics.walReplayDuration.Observe(elapsed.Seconds())
 	}
 
 	// If the WAL recover happened, then the userStates would already be set.
@@ -334,7 +341,6 @@ func (i *Ingester) StopIncomingRequests() {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-
 	if i.cfg.TSDBEnabled {
 		return i.v2Push(ctx, req)
 	}

@@ -43,7 +43,7 @@ type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring,omitempty"`
 
 	// Config for the ingester lifecycle control
-	ListenPort       *int
+	ListenPort       *int          `yaml:"-"`
 	NumTokens        int           `yaml:"num_tokens,omitempty"`
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
 	ObservePeriod    time.Duration `yaml:"observe_period,omitempty"`
@@ -54,10 +54,10 @@ type LifecyclerConfig struct {
 	TokensFilePath   string        `yaml:"tokens_file_path,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
-	Addr           string `yaml:"address"`
-	Port           int
-	ID             string
-	SkipUnregister bool
+	Addr           string `yaml:"address" doc:"hidden"`
+	Port           int    `doc:"hidden"`
+	ID             string `doc:"hidden"`
+	SkipUnregister bool   `yaml:"-"`
 
 	// graveyard for unused flags.
 	UnusedFlag  bool `yaml:"claim_on_rollout,omitempty"` // DEPRECATED - left for backwards-compatibility

@@ -55,8 +55,8 @@ type TCPTransportConfig struct {
 	TransportDebug bool
 
 	// Where to put custom metrics. nil = don't register.
-	MetricsRegisterer prometheus.Registerer
-	MetricsNamespace  string
+	MetricsRegisterer prometheus.Registerer `yaml:"-"`
+	MetricsNamespace  string                `yaml:"-"`
 }
 
 // RegisterFlags registers flags.

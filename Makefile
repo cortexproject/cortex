@@ -186,5 +186,16 @@ prime-minikube: save-images
 		fi \
 	done
 
+# Generates the config file documentation.
+doc:
+	cp ./docs/configuration/config-file-reference.template ./docs/configuration/config-file-reference.md
+	go run ./tools/doc-generator/ >> ./docs/configuration/config-file-reference.md
+
+clean-doc:
+	rm -f ./docs/configuration/config-file-reference.md
+
+check-doc: clean-doc doc
+	@git diff --exit-code -- ./docs/configuration/config-file-reference.md
+
 web-serve:
 	cd website && hugo --config config.toml -v server

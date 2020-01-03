@@ -22,10 +22,10 @@ type RingConfig struct {
 	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout,omitempty"`
 
 	// Instance details
-	InstanceID             string   `yaml:"instance_id"`
-	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
-	InstancePort           int      `yaml:"instance_port"`
-	InstanceAddr           string   `yaml:"instance_addr"`
+	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
+	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"hidden"`
+	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
+	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 
 	// Injected internally
 	ListenPort int `yaml:"-"`

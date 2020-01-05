@@ -5,7 +5,7 @@ weight: 3
 slug: getting-started
 ---
 
-Cortex can be runs as a single binary or as multiple independent microservices.
+Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
 This document will focus on single-process Cortex.

@@ -1182,3 +1182,23 @@ func TestRemoveReplicaLabel(t *testing.T) {
 		assert.Equal(t, c.labelsOut, c.labelsIn)
 	}
 }
+
+func TestShardByAllLabelsChecksForSortedLabelNames(t *testing.T) {
+	val, err := shardByAllLabels("test", []client.LabelAdapter{
+		{Name: "__name__", Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "sample", Value: "1"},
+	})
+
+	assert.NotZero(t, val)
+	assert.NoError(t, err)
+
+	val, err = shardByAllLabels("test", []client.LabelAdapter{
+		{Name: "__name__", Value: "foo"},
+		{Name: "sample", Value: "1"},
+		{Name: "bar", Value: "baz"},
+	})
+
+	assert.Zero(t, val)
+	assert.Error(t, err)
+}

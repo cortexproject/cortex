@@ -28,7 +28,7 @@ The two engines mostly share the same Cortex architecture with few differences o
 
 ### Chunks storage (default)
 
-The chunks storage stores each single time series into a separate object called _Chunk_. Each Chunk contains the timestamp-value pairs for a given period (defaults to 12 hours) of the series. Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.
+The chunks storage stores each single time series into a separate object called _Chunk_. Each Chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.
 
 For this reason, the chunks storage consists of:
 
@@ -53,7 +53,7 @@ The current schema recommendation is the **v10 schema** (v11 is still experiment
 
 The blocks storage is based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores each tenant's time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by few files storing the chunks and the block index.
 
-The TSDB chunk files contain the timestamp-value pairs for multiple series. The series inside the Chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.
+The TSDB chunk files contain the samples for multiple series. The series inside the Chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.
 
 The blocks storage doesn't require a dedicated storage backend for the index. The only requirement is an object store for the Block files, which can be:
 
@@ -64,7 +64,7 @@ For more information, please check out the [Blocks storage](operations/blocks-st
 
 ## Services
 
-Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task, run separately, and in parallel.
+Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task, run separately, and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.
 
 Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don't coordinate or communicate with each other within that layer.
 
@@ -79,11 +79,11 @@ The Cortex services are:
 
 ### Distributor
 
-The **distributor** service is responsible for handling incoming series from Prometheus. It's the first stop in the write path for series samples. Once the distributor receives samples from Prometheus, each series is validated for correctness and to ensure that it is within the configured tenant limits, falling back to default ones in case limits have not been overridden for the specific tenant. Valid samples and then split into batches and sent to multiple [ingesters](#ingester) in parallel.
+The **distributor** service is responsible for handling incoming samples from Prometheus. It's the first stop in the write path for series samples. Once the distributor receives samples from Prometheus, each sample is validated for correctness and to ensure that it is within the configured tenant limits, falling back to default ones in case limits have not been overridden for the specific tenant. Valid samples are then split into batches and sent to multiple [ingesters](#ingester) in parallel.
 
 The validation done by the distributor includes:
 
-- The metric name is formally correct
+- The metric labels name are formally correct
 - The configured max number of labels per metric is respected
 - The configured max length of a label name and value is respected
 - The timestamp is not older/newer than the configured min/max time range
@@ -107,18 +107,14 @@ For more information, please refer to [config for sending HA pairs data to Corte
 
 #### Hashing
 
-Distributors use consistent hashing, in conjunction with a configurable replication factor, to determine which ingester instances should receive a given series.
+Distributors use consistent hashing, in conjunction with a configurable replication factor, to determine which ingester instance(s) should receive a given series.
 
 Cortex supports two hashing strategies:
 
 1. Hash the metric name and tenant ID (default)
-2. Hash the metric name, labels and tenant ID (recommended, enabled with `-distributor.shard-by-all-labels=true`)
+2. Hash the metric name, labels and tenant ID (enabled with `-distributor.shard-by-all-labels=true`)
 
-The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to any ingester since a metric could be spread across any ingester given different label sets. The first hashing strategy (default) was originally chosen to reduce the number of required ingesters on the query path, but running Cortex in production showed that an evenly distributed write load on the ingesters is preferable at the cost of always querying all ingesters.
-
-The trade-off associated with the latter is that writes are more balanced across ingesters, but requires each query to look across all ingesters, since a metric could be spread across any ingester given different label sets.
-
-The first hashing strategy (default) was originally chosen to reduce the number of required ingesters on the query path, but running Cortex in production showed that an evenly distributed write load on the ingesters is preferable at the cost of always querying most of the ingesters.
+The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to any ingester since a metric could be spread across multiple ingesters given different label sets.
 
 #### The hash ring
 
@@ -197,7 +193,7 @@ Queriers are **stateless** and can be scaled up and down as needed.
 
 ### Query frontend
 
-The **query frontend** is an **optional service** providing the same querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
+The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
 
 The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address - via the `-querier.frontend-address` CLI flag - in order to allow them to connect to the query frontends.
 

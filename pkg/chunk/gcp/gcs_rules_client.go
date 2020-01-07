@@ -16,6 +16,11 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+// GCS Rule Storage Schema
+// =======================
+// Object Name: "rules/<user_id>/<namespace>/<group_name>"
+// Storage Format: Encoded rules.RuleGroupDesc
+
 const (
 	rulePrefix = "rules/"
 )

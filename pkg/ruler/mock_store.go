@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
 
+// mockRuleStore is used for testing purposes
 type mockRuleStore struct {
 	sync.Mutex
 	rules map[string]*rules.RuleGroupDesc

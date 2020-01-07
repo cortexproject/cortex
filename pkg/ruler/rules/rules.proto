@@ -1,3 +1,5 @@
+// Rule Proto Representations
+
 syntax = "proto3";
 
 package rules;
@@ -11,6 +13,7 @@ import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
+// RuleGroupDesc is a proto representation of a cortex rule group
 message RuleGroupDesc {
   string name = 1;
   string namespace = 2;
@@ -20,6 +23,7 @@ message RuleGroupDesc {
   string user = 6;
 }
 
+// RuleDesc is a proto representation of a Prometheus Rule
 message RuleDesc {
   string expr = 1;
   string record = 2;

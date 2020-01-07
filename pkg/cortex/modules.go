@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -40,6 +41,7 @@ type moduleName int
 // The various modules that make up Cortex.
 const (
 	Ring moduleName = iota
+	RuntimeConfig
 	Overrides
 	Server
 	Distributor
@@ -58,6 +60,8 @@ func (m moduleName) String() string {
 	switch m {
 	case Ring:
 		return "ring"
+	case RuntimeConfig:
+		return "runtime-config"
 	case Overrides:
 		return "overrides"
 	case Server:
@@ -152,6 +156,7 @@ func (t *Cortex) stopServer() (err error) {
 }
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
@@ -161,14 +166,28 @@ func (t *Cortex) initRing(cfg *Config) (err error) {
 	return
 }
 
-func (t *Cortex) initOverrides(cfg *Config) (err error) {
-	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig)
+func (t *Cortex) initRuntimeConfig(cfg *Config) (err error) {
+	if cfg.RuntimeConfig.LoadPath == "" {
+		cfg.RuntimeConfig.LoadPath = cfg.LimitsConfig.PerTenantOverrideConfig
+		cfg.RuntimeConfig.ReloadPeriod = cfg.LimitsConfig.PerTenantOverridePeriod
+	}
+	cfg.RuntimeConfig.Loader = loadRuntimeConfig
+
+	// make sure to set default limits before we start loading configuration into memory
+	validation.SetDefaultLimitsForYAMLUnmarshalling(cfg.LimitsConfig)
+
+	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(cfg.RuntimeConfig)
 	return err
 }
 
-func (t *Cortex) stopOverrides() error {
-	t.overrides.Stop()
+func (t *Cortex) stopRuntimeConfig() (err error) {
+	t.runtimeConfig.Stop()
 	return nil
+}
+
+func (t *Cortex) initOverrides(cfg *Config) (err error) {
+	t.overrides, err = validation.NewOverrides(cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
+	return err
 }
 
 func (t *Cortex) initDistributor(cfg *Config) (err error) {
@@ -257,6 +276,7 @@ func (t *Cortex) stopQuerier() error {
 }
 
 func (t *Cortex) initIngester(cfg *Config) (err error) {
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
@@ -446,14 +466,19 @@ var modules = map[moduleName]module{
 		stop: (*Cortex).stopServer,
 	},
 
+	RuntimeConfig: {
+		init: (*Cortex).initRuntimeConfig,
+		stop: (*Cortex).stopRuntimeConfig,
+	},
+
 	Ring: {
-		deps: []moduleName{Server},
+		deps: []moduleName{Server, RuntimeConfig},
 		init: (*Cortex).initRing,
 	},
 
 	Overrides: {
+		deps: []moduleName{RuntimeConfig},
 		init: (*Cortex).initOverrides,
-		stop: (*Cortex).stopOverrides,
 	},
 
 	Distributor: {
@@ -469,7 +494,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Overrides, Store, Server},
+		deps: []moduleName{Overrides, Store, Server, RuntimeConfig},
 		init: (*Cortex).initIngester,
 		stop: (*Cortex).stopIngester,
 	},

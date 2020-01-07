@@ -122,7 +122,7 @@ The KVStore client is used by both the Ring and HA Tracker.
 - `{ring,distributor.ha-tracker}.prefix`
    The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.
 - `{ring,distributor.ha-tracker}.store`
-   Backend storage to use for the ring (consul, etcd, inmemory).
+   Backend storage to use for the ring (consul, etcd, inmemory, memberlist, multi).
 
 #### Consul
 
@@ -182,6 +182,35 @@ Flags for configuring KV store based on memberlist library. This feature is expe
    Timeout for writing 'packet' data.
 - `memberlist.transport-debug`
    Log debug transport messages. Note: global log.level must be at debug level as well.
+   
+#### Multi KV
+
+This is a special key-value implementation that uses two different KV stores (eg. consul, etcd or memberlist). One of them is always marked as primary, and all reads and writes go to primary store. Other one, secondary, is only used for writes. The idea is that operator can use multi KV store to migrate from primary to secondary store in runtime.
+
+For example, migration from Consul to Etcd would look like this:
+
+- Set `ring.store` to use `multi` store. Set `-multi.primary=consul` and `-multi.secondary=etcd`. All consul and etcd settings must still be specified.
+- Start all Cortex microservices. They will still use Consul as primary KV, but they will also write share ring via etcd.
+- Operator can now use "runtime config" mechanism to switch primary store to etcd.
+- After all Cortex microservices have picked up new primary store, and everything looks correct, operator can now shut down Consul, and modify Cortex configuration to use `-ring.store=etcd` only.
+- At this point, Consul can be shut down.
+
+Multi KV has following parameters:
+
+- `multi.primary` - name of primary KV store. Same values as in `ring.store` are supported, except `multi`.
+- `multi.secondary` - name of secondary KV store.
+- `multi.mirror-enabled` - enable mirroring of values to secondary store, defaults to true
+- `multi.mirror-timeout` - wait max this time to write to secondary store to finish. Default to 2 seconds. Errors writing to secondary store are not reported to caller, but are logged and also reported via `cortex_multikv_mirror_write_errors_total` metric.
+
+Multi KV also reacts on changes done via runtime configuration. It uses this section:
+
+```yaml
+multi_kv_config:
+    mirror-enabled: false
+    primary: memberlist
+```
+
+Note that runtime configuration values take precedence over command line options.
 
 ### HA Tracker
 
@@ -276,11 +305,37 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
    Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
    Make sure you configure ingesters with a different cache to queriers, which need the whole value.
 
+## Runtime Configuration file
+
+Cortex has a concept of "runtime config" file, which is simply a file that is reloaded while Cortex is running. It is used by some Cortex components to allow operator to change some aspects of Cortex configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
+
+At the moment, two components use runtime configuration: limits and multi KV store.
+
+Example runtime configuration file:
+
+```yaml
+overrides:
+  tenant1:
+    ingestion_rate: 10000
+    max_series_per_metric: 100000
+    max_series_per_query: 100000
+  tenant2:
+    max_samples_per_query: 1000000
+    max_series_per_metric: 100000
+    max_series_per_query: 100000
+
+multi_kv_config:
+    mirror-enabled: false
+    primary: memberlist
+```
+
+When running Cortex on Kubernetes, store this file in a config map and mount it in each services' containers.  When changing the values there is no need to restart the services, unless otherwise specified.
+
 ## Ingester, Distributor & Querier limits.
 
-Cortex implements various limits on the requests it can process, in order to prevent a single tenant overwhelming the cluster.  There are various default global limits which apply to all tenants which can be set on the command line.  These limits can also be overridden on a per-tenant basis, using a configuration file.  Specify the filename for the override configuration file using the `-limits.per-user-override-config=<filename>` flag.  The override file will be re-read every 10 seconds by default - this can also be controlled using the `-limits.per-user-override-period=10s` flag.
+Cortex implements various limits on the requests it can process, in order to prevent a single tenant overwhelming the cluster.  There are various default global limits which apply to all tenants which can be set on the command line.  These limits can also be overridden on a per-tenant basis by using `overrides` field of runtime configuration file.
 
-The override file should be in YAML format and contain a single `overrides` field, which itself is a map of tenant ID (same values as passed in the `X-Scope-OrgID` header) to the various limits.  An example `overrides.yml` could look like:
+The `overrides` field is a map of tenant ID (same values as passed in the `X-Scope-OrgID` header) to the various limits.  An example could look like:
 
 ```yaml
 overrides:
@@ -294,9 +349,7 @@ overrides:
     max_series_per_query: 100000
 ```
 
-When running Cortex on Kubernetes, store this file in a config map and mount it in each services' containers.  When changing the values there is no need to restart the services, unless otherwise specified.
-
-Valid fields are (with their corresponding flags for default values):
+Valid per-tenant limits are (with their corresponding flags for default values):
 
 - `ingestion_rate_strategy` / `-distributor.ingestion-rate-limit-strategy`
 - `ingestion_rate` / `-distributor.ingestion-rate-limit`

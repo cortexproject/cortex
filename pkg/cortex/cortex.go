@@ -31,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -75,10 +76,11 @@ type Config struct {
 	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB           tsdb.Config              `yaml:"tsdb"`
 
-	Ruler        ruler.Config                               `yaml:"ruler,omitempty"`
-	ConfigDB     db.Config                                  `yaml:"configdb,omitempty"`
-	ConfigStore  config_client.Config                       `yaml:"config_store,omitempty"`
-	Alertmanager alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
+	Ruler         ruler.Config                               `yaml:"ruler,omitempty"`
+	ConfigDB      db.Config                                  `yaml:"configdb,omitempty"`
+	ConfigStore   config_client.Config                       `yaml:"config_store,omitempty"`
+	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager,omitempty"`
+	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -112,6 +114,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ConfigDB.RegisterFlags(f)
 	c.ConfigStore.RegisterFlagsWithPrefix("alertmanager.", f)
 	c.Alertmanager.RegisterFlags(f)
+	c.RuntimeConfig.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	flag.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
@@ -146,16 +149,17 @@ type Cortex struct {
 	target             moduleName
 	httpAuthMiddleware middleware.Interface
 
-	server       *server.Server
-	ring         *ring.Ring
-	overrides    *validation.Overrides
-	distributor  *distributor.Distributor
-	ingester     *ingester.Ingester
-	store        chunk.Store
-	worker       frontend.Worker
-	frontend     *frontend.Frontend
-	tableManager *chunk.TableManager
-	cache        cache.Cache
+	server        *server.Server
+	ring          *ring.Ring
+	overrides     *validation.Overrides
+	distributor   *distributor.Distributor
+	ingester      *ingester.Ingester
+	store         chunk.Store
+	worker        frontend.Worker
+	frontend      *frontend.Frontend
+	tableManager  *chunk.TableManager
+	cache         cache.Cache
+	runtimeConfig *runtimeconfig.Manager
 
 	ruler        *ruler.Ruler
 	configAPI    *api.API

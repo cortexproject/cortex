@@ -60,6 +60,7 @@ require (
 	github.com/thanos-io/thanos v0.8.1-0.20200102143048-a37ac093a67a
 	github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
+	github.com/uber-go/atomic v1.4.0
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 	github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4

@@ -1,6 +1,6 @@
 ---
 title: "Cortex Architecture"
-linkTitle: "Cortex Architecture"
+linkTitle: "Architecture"
 weight: 4
 slug: architecture
 ---
@@ -15,139 +15,214 @@ Prometheus instances scrape samples from various targets and then push them to C
 
 Cortex requires that each HTTP request bear a header specifying a tenant ID for the request. Request authentication and authorization are handled by an external reverse proxy.
 
-Incoming samples (writes from Prometheus) are handled by the [distributor](#distributor) while incoming reads (PromQL queries) are handled by the [query frontend](#query-frontend).
+Incoming samples (writes from Prometheus) are handled by the [distributor](#distributor) while incoming reads (PromQL queries) are handled by the [querier](#querier) or optionally by the [query frontend](#query-frontend).
+
+## Storage
+
+Cortex currently supports two storage engines to store and query the time series:
+
+- Chunks (default, stable)
+- Blocks (experimental)
+
+The two engines mostly share the same Cortex architecture with few differences outlined in the rest of the document.
+
+### Chunks storage (default)
+
+The chunks storage stores each single time series into a separate object called _Chunk_. Each Chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.
+
+For this reason, the chunks storage consists of:
+
+* An index for the Chunks. This index can be backed by:
+    * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+    * [Google Bigtable](https://cloud.google.com/bigtable)
+    * [Apache Cassandra](https://cassandra.apache.org)
+* An object store for the Chunk data itself, which can be:
+    * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+    * [Google Bigtable](https://cloud.google.com/bigtable)
+    * [Apache Cassandra](https://cassandra.apache.org)
+    * [Amazon S3](https://aws.amazon.com/s3)
+    * [Google Cloud Storage](https://cloud.google.com/storage/)
+
+Internally, the access to the chunks storage relies on a unified interface called "chunks store". Unlike other Cortex components, the chunk store is not a separate service, but rather a library embedded in the services that need to access the long-term storage: [ingester](#ingester), [querier](#querier) and [ruler](#ruler).
+
+The chunk and index format are versioned, this allows Cortex operators to upgrade the cluster to take advantage of new features and improvements. This strategy enables changes in the storage format without requiring any downtime or complex procedures to rewrite the stored data. A set of schemas are used to map the version while reading and writing time series belonging to a specific period of time.
+
+The current schema recommendation is the **v10 schema** (v11 is still experimental). For more information about the schema, please check out the [Schema](guides/running.md#schema) documentation.
+
+### Blocks storage (experimental)
+
+The blocks storage is based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores each tenant's time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by few files storing the chunks and the block index.
+
+The TSDB chunk files contain the samples for multiple series. The series inside the Chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.
+
+The blocks storage doesn't require a dedicated storage backend for the index. The only requirement is an object store for the Block files, which can be:
+
+* [Amazon S3](https://aws.amazon.com/s3)
+* [Google Cloud Storage](https://cloud.google.com/storage/)
+
+For more information, please check out the [Blocks storage](operations/blocks-storage.md) documentation.
 
 ## Services
 
-Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform specific tasks and run separately (and potentially in parallel).
+Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task, run separately, and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.
 
 Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don't coordinate or communicate with each other within that layer.
 
+The Cortex services are:
+
+- [Distributor](#distributor)
+- [Ingester](#ingester)
+- [Querier](#querier)
+- [Query frontend](#query-frontend) (optional)
+- [Ruler](#ruler) (optional)
+- [Alertmanager](#alertmanager) (optional)
+
 ### Distributor
 
-The **distributor** service is responsible for handling samples written by Prometheus. It's essentially the "first stop" in the write path for Prometheus samples. Once the distributor receives samples from Prometheus, it splits them into batches and then sends them to multiple [ingesters](#ingester) in parallel.
+The **distributor** service is responsible for handling incoming samples from Prometheus. It's the first stop in the write path for series samples. Once the distributor receives samples from Prometheus, each sample is validated for correctness and to ensure that it is within the configured tenant limits, falling back to default ones in case limits have not been overridden for the specific tenant. Valid samples are then split into batches and sent to multiple [ingesters](#ingester) in parallel.
 
-Distributors communicate with ingesters via [gRPC](https://grpc.io). They are stateless and can be scaled up and down as needed.
+The validation done by the distributor includes:
 
-If the HA Tracker is enabled, the Distributor will deduplicate incoming samples that contain both a cluster and replica label. It talks to a KVStore to store state about which replica per cluster it's accepting samples from for a given user ID. Samples with one or neither of these labels will be accepted by default.
+- The metric labels name are formally correct
+- The configured max number of labels per metric is respected
+- The configured max length of a label name and value is respected
+- The timestamp is not older/newer than the configured min/max time range
+
+Distributors are **stateless** and can be scaled up and down as needed.
+
+#### High Availability Tracker
+
+The distributor features a **High Availability (HA) Tracker**. When enabled, the distributor deduplicates incoming samples from redundant Prometheus servers. This allows you to have multiple HA replicas of the same Prometheus servers, writing the same series to Cortex and then deduplicate these series in the Cortex distributor.
+
+The HA Tracker deduplicates incoming samples based on a cluster and replica label. The cluster label uniquely identifies the cluster of redundant Prometheus servers for a given tenant, while the replica label uniquely identifies the replica within the Prometheus cluster. Incoming samples are considered duplicated - and thus dropped - if received by any replica which is not the current primary within a cluster.
+
+The HA Tracker requires a key-value (KV) store to coordinate which replica is currently elected. The distributor will only accept samples from the current leader. Samples with one or no labels (of the replica and cluster) are accepted by default and never deduplicated.
+
+The supported KV stores for the HA tracker are:
+
+* [Consul](https://www.consul.io)
+* [Etcd](https://etcd.io)
+
+For more information, please refer to [config for sending HA pairs data to Cortex](guides/ha-pair-handling.md) in the documentation.
 
 #### Hashing
 
-Distributors use consistent hashing, in conjunction with the (configurable) replication factor, to determine *which* instances of the ingester service receive each sample.
+Distributors use consistent hashing, in conjunction with a configurable replication factor, to determine which ingester instance(s) should receive a given series.
 
-The hash itself is based on one of two schemes:
+Cortex supports two hashing strategies:
 
-1. The metric name and tenant ID
-2. All the series labels and tenant ID
+1. Hash the metric name and tenant ID (default)
+2. Hash the metric name, labels and tenant ID (enabled with `-distributor.shard-by-all-labels=true`)
 
-The trade-off associated with the latter is that writes are more balanced but they must involve every ingester in each query.
-
-> This hashing scheme was originally chosen to reduce the number of required ingesters on the query path. The trade-off, however, is that the write load on the ingesters is less even.
+The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to any ingester since a metric could be spread across multiple ingesters given different label sets.
 
 #### The hash ring
 
-A consistent hash ring is stored in [Consul](https://www.consul.io/) as a single key-value pair, with the ring data structure also encoded as a [Protobuf](https://developers.google.com/protocol-buffers/) message. The consistent hash ring consists of a list of tokens and ingesters. Hashed values are looked up in the ring; the replication set is built for the closest unique ingesters by token. One of the benefits of this system is that adding and remove ingesters results in only 1/_N_ of the series being moved (where _N_ is the number of ingesters).
+A hash ring - stored in a key-value (KV) store - is used to achieve consistent hashing for the series sharding and replication across the ingesters. All [ingesters](#ingester) register themselves into the hash ring with a set of tokens they own; each token is a random unsigned 32-bit number. Each incoming series is [hashed](#hashing) in the distributor and then pushed to the ingester owning the tokens range for the series hash number plus N-1 subsequent ingesters in the ring, where N is the replication factor.
+
+To do the hash lookup, distributors find the smallest appropriate token whose value is larger than the [hash of the series](#hashing). When the replication factor is larger than 1, the next subsequent tokens (clockwise in the ring) that belong to different ingesters will also be included in the result.
+
+The effect of this hash set up is that each token that an ingester owns is responsible for a range of hashes. If there are three tokens with values 0, 25, and 50, then a hash of 3 would be given to the ingester that owns the token 25; the ingester owning token 25 is responsible for the hash range of 1-25.
+
+The supported KV stores for the hash ring are:
+
+* [Consul](https://www.consul.io)
+* [Etcd](https://etcd.io)
+* Gossip [memberlist](https://github.com/hashicorp/memberlist) (experimental)
 
 #### Quorum consistency
 
-All distributors share access to the same hash ring, which means that write requests can be sent to any distributor.
+Since all distributors share access to the same hash ring, write requests can be sent to any distributor and you can setup a stateless load balancer in front of it.
 
-To ensure consistent query results, Cortex uses [Dynamo](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf)-style quorum consistency on reads and writes. This means that the distributor will wait for a positive response of at least one half plus one of the ingesters to send the sample to before responding to the user.
+To ensure consistent query results, Cortex uses [Dynamo-style](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf) quorum consistency on reads and writes. This means that the distributor will wait for a positive response of at least one half plus one of the ingesters to send the sample to before successfully responding to the Prometheus write request.
 
 #### Load balancing across distributors
 
-We recommend randomly load balancing write requests across distributor instances, ideally by running the distributors as a Kubernetes [Service](https://kubernetes.io/docs/concepts/services-networking/service/).
+We recommend randomly load balancing write requests across distributor instances. For example, if you're running Cortex in a Kubernetes cluster, you could run the distributors as a Kubernetes [Service](https://kubernetes.io/docs/concepts/services-networking/service/).
 
 ### Ingester
 
-The **ingester** service is responsible for writing sample data to long-term storage backends (DynamoDB, S3, Cassandra, etc.).
+The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#storage) on the write path and returning in-memory series samples for queries on the read path. 
 
-Samples from each timeseries are built up in "chunks" in memory inside each ingester, then flushed to the [chunk store](#chunk-store). By default each chunk is up to 12 hours long.
+Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 12 hours for the chunks storage and 2 hours for the experimental blocks storage). For this reason, the [queriers](#querier) may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.
 
-If an ingester process crashes or exits abruptly, all the data that has not yet been flushed will be lost. Cortex is usually configured to hold multiple (typically 3) replicas of each timeseries to mitigate this risk.
+Ingesters contain a **lifecycler** which manages the lifecycle of an ingester and stores the **ingester state** in the [hash ring](#the-hash-ring). Each ingester could be in one of the following states:
 
-A [hand-over process](ingester-handover.md) manages the state when ingesters are added, removed or replaced.
+1. `PENDING` is an ingester's state when it just started and is waiting for a hand-over from another ingester that is `LEAVING`. If no hand-over occurs within the configured timeout period, the ingester will join the ring with a new set of random tokens (ie. during a scale up).
 
-#### Write de-amplification
+2. `JOINING` is an ingester's state when it is currently inserting its tokens into the ring and initializing itself. While in this state, the ingester may receive series and tokens from another `LEAVING` ingester, as part of the hand-over process.
 
-Ingesters store the last 12 hours worth of samples in order to perform **write de-amplification**, i.e. batching and compressing samples for the same series and flushing them out to the [chunk store](#chunk-store). Under normal operations, there should be *many* orders of magnitude fewer operations per second (OPS) worth of writes to the chunk store than to the ingesters.
+3. `ACTIVE` is an ingester's state when it is fully initialized. It may receive both write and read requests for tokens it owns.
+
+4. `LEAVING` is an ingester's state when it is shutting down. It cannot receive write requests anymore, while it could still receive read requests for series it has in memory. While in this state, the ingester may look for a `JOINING` ingester with which engage an hand-over process, used to transfer the `LEAVING` ingester state to a `JOINING` one (ie. during a rolling update).
+
+5. `UNHEALTHY` is an ingester's state when it has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
+
+For more information about the hand-over process, please check out the [Ingester hand-over](guides/ingester-handover.md) documentation.
+
+Ingesters are **semi-stateful**.
+
+#### Ingesters failure and data loss
+
+If an ingester process crashes or exits abruptly, all the in-memory series that have not yet been flushed to the long-term storage will be lost. There are two main ways to mitigate this failure mode:
+
+1. Replication
+2. Write-ahead log (WAL)
+
+The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster looses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.
+
+The **write-ahead log** (WAL) is used to write to a persistent local disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
+
+Contrary to the sole replication and given the persistent local disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.
+
+The WAL for the chunks storage is an experimental feature (disabled by default), while it's always enabled for the blocks storage.
+
+#### Ingesters write de-amplification
+
+Ingesters store recently received samples in-memory in order to perform write de-amplification. If the ingesters would immediately write received samples to the long-term storage, the system would be very difficult to scale due to the very high pressure on the storage. For this reason, the ingesters batch and compress samples in-memory and periodically flush them out to the storage.
 
 Write de-amplification is the main source of Cortex's low total cost of ownership (TCO).
 
-### Ruler
+### Querier
 
-Ruler executes PromQL queries for Recording Rules and Alerts.  Ruler
-is configured from a database, so that different rules can be set for
-each tenant.
+The **querier** service handles queries using the [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) query language.
 
-All the rules for one instance are executed as a group, then
-rescheduled to be executed again 15 seconds later. Execution is done
-by a 'worker' running on a goroutine - if you don't have enough
-workers then the ruler will lag behind.
+Queriers fetch series samples both from the ingesters and long-term storage: the ingesters hold the in-memory series which have not yet been flushed to the long-term storage. Because of the replication factor, it is possible that the querier may receive duplicated samples; to resolve this, for a given time series the querier internally **deduplicates** samples with the same exact timestamp.
 
-Ruler can be scaled horizontally.
-
-### AlertManager
-
-AlertManager is responsible for accepting alert notifications from
-Ruler, grouping them, and passing on to a notification channel such as
-email, PagerDuty, etc.
-
-Like the Ruler, AlertManager is configured per-tenant in a database.
-
-[Upstream Docs](https://prometheus.io/docs/alerting/alertmanager/).
+Queriers are **stateless** and can be scaled up and down as needed.
 
 ### Query frontend
 
-The **query frontend** is an optional service that accepts HTTP requests, queues them by tenant ID, and retries in case of errors.
+The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
 
-> The query frontend is completely optional; you can use queriers directly. To use the query frontend, direct incoming authenticated reads at them and set the `-querier.frontend-address` flag on the queriers.
+The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address - via the `-querier.frontend-address` CLI flag - in order to allow them to connect to the query frontends.
+
+Query frontends are **stateless**. However, due to how the internal queue works, it's recommended to run a few query frontend replicas to reap the benefit of fair scheduling. Two replicas should suffice in most cases.
 
 #### Queueing
 
-Queuing performs a number of functions for the query frontend:
+The query frontend queuing mechanism is used to:
 
-* It ensures that large queries that cause an out-of-memory (OOM) error in the querier will be retried. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce TCO.
-* It prevents multiple large requests from being convoyed on a single querier by distributing them first-in/first-out (FIFO) across all queriers.
-* It prevents a single tenant from denial-of-service-ing (DoSing) other tenants by fairly scheduling queries between tenants.
+* Ensure that large queries - that could cause an out-of-memory (OOM) error in the querier - will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
+* Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
+* Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.
 
 #### Splitting
 
-The query frontend splits multi-day queries into multiple single-day queries, executing these queries in parallel on downstream queriers and stitching the results back together again. This prevents large, multi-day queries from OOMing a single querier and helps them execute faster.
+The query frontend splits multi-day queries into multiple single-day queries, executing these queries in parallel on downstream queriers and stitching the results back together again. This prevents large (multi-day) queries from causing out of memory issues in a single querier and helps to execute them faster.
 
 #### Caching
 
-The query frontend caches query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results.
+The query frontend supports caching query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any cortex caching backend (currently memcached, redis, and an in-memory cache).
 
-#### Parallelism
+### Ruler
 
-The query frontend job accepts gRPC streaming requests from the queriers, which then "pull" requests from the frontend. For high availability it's recommended that you run multiple frontends; the queriers will connect to—and pull requests from—all of them. To reap the benefit of fair scheduling, it is recommended that you run fewer frontends than queriers. Two should suffice in most cases.
+The **ruler** is an **optional service** executing PromQL queries for recording rules and alerts. The ruler requires a database storing the recording rules and alerts for each tenant.
 
-### Querier
+Ruler can be scaled horizontally.
 
-The **querier** service handles the actual [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) evaluation of samples stored in long-term storage.
+### Alertmanager
 
-It embeds the chunk store client code for fetching data from long-term storage and communicates with [ingesters](#ingester) for more recent data.
+The **alertmanager** is an **optional service** responsible for accepting alert notifications from the [ruler](#ruler), deduplicating and grouping them, and routing them to the correct notification channel, such as email, PagerDuty or OpsGenie.
 
-## Chunk store
-
-The **chunk store** is Cortex's long-term data store, designed to support interactive querying and sustained writing without the need for background maintenance tasks. It consists of:
-
-* An index for the chunks. This index can be backed by [DynamoDB from Amazon Web Services](https://aws.amazon.com/dynamodb), [Bigtable from Google Cloud Platform](https://cloud.google.com/bigtable), [Apache Cassandra](https://cassandra.apache.org).
-* A key-value (KV) store for the chunk data itself, which can be DynamoDB, Bigtable, Cassandra again, or an object store such as [Amazon S3](https://aws.amazon.com/s3)
-
-> Unlike the other core components of Cortex, the chunk store is not a separate service, job, or process, but rather a library embedded in the three services that need to access Cortex data: the [ingester](#ingester), [querier](#querier), and [ruler](#ruler).
-
-The chunk store relies on a unified interface to the "[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores—DynamoDB, Bigtable, and Cassandra—that can be used to back the chunk store index. This interface assumes that the index is a collection of entries keyed by:
-
-* A **hash key**. This is required for *all* reads and writes.
-* A **range key**. This is required for writes and can be omitted for reads, which can be queried by prefix or range.
-
-The interface works somewhat differently across the supported databases:
-
-* DynamoDB supports range and hash keys natively. Index entries are thus modelled directly as DynamoDB entries, with the hash key as the distribution key and the range as the range key.
-* For Bigtable and Cassandra, index entries are modelled as individual column values. The hash key becomes the row key and the range key becomes the column key.
-
-A set of schemas are used to map the matchers and label sets used on reads and writes to the chunk store into appropriate operations on the index. Schemas have been added as Cortex has evolved, mainly in an attempt to better load balance writes and improve query performance.
-
-> The current schema recommendation is the **v10 schema**. v11 schema is an experimental schema.
+The Cortex alertmanager is built on top of the [Prometheus Alertmanager](https://prometheus.io/docs/alerting/alertmanager/), adding multi-tenancy support. Like the [ruler](#ruler), the alertmanager requires a database storing the per-tenant configuration.

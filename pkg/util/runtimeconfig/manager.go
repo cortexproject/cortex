@@ -60,7 +60,7 @@ func NewRuntimeConfigManager(cfg ManagerConfig) (*Manager, error) {
 		}
 		go mgr.loop()
 	} else {
-		level.Info(util.Logger).Log("msg", "config disabled")
+		level.Info(util.Logger).Log("msg", "runtime config disabled: file not specified")
 	}
 
 	return &mgr, nil

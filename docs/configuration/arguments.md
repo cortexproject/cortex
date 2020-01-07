@@ -185,19 +185,22 @@ Flags for configuring KV store based on memberlist library. This feature is expe
    
 #### Multi KV
 
-This is a special key-value implementation that uses two other KV stores (eg. consul, etcd or memberlist). One of them is always marked as primary, and all reads and writes go to primary store. Other one, secondary, is only used for writes. The idea is that operator can use multi KV store to migrate from primary to secondary store in runtime. For example, migration from Consul to Memberlist would look like this:
+This is a special key-value implementation that uses two different KV stores (eg. consul, etcd or memberlist). One of them is always marked as primary, and all reads and writes go to primary store. Other one, secondary, is only used for writes. The idea is that operator can use multi KV store to migrate from primary to secondary store in runtime.
 
-- Set `ring.store` to use `multi` store. Set `-multi.primary=consul` and `-multi.secondary=memberlist`. All consul and memberlist settings must still be specified.
-- Start all Cortex microservices. They will still use Consul as primary KV, but they will also write share ring via memberlist.
-- Operator can now use "runtime config" mechanism to switch primary store to memberlist.
-- After all Cortex microservices have picked up new primary store, and everything looks correct, operator can now shut down Consul, and modify Cortex configuration to use `-ring.store=memberlist` only.
+For example, migration from Consul to Etcd would look like this:
+
+- Set `ring.store` to use `multi` store. Set `-multi.primary=consul` and `-multi.secondary=etcd`. All consul and etcd settings must still be specified.
+- Start all Cortex microservices. They will still use Consul as primary KV, but they will also write share ring via etcd.
+- Operator can now use "runtime config" mechanism to switch primary store to etcd.
+- After all Cortex microservices have picked up new primary store, and everything looks correct, operator can now shut down Consul, and modify Cortex configuration to use `-ring.store=etcd` only.
+- At this point, Consul can be shut down.
 
 Multi KV has following parameters:
 
 - `multi.primary` - name of primary KV store. Same values as in `ring.store` are supported, except `multi`.
 - `multi.secondary` - name of secondary KV store.
 - `multi.mirror-enabled` - enable mirroring of values to secondary store, defaults to true
-- `multi.mirror-timeout` - wait max this time to write to secondary store to finish. Default to 2 seconds. Errors writing to secondary store are not reported to caller, but are logged to the log file and also reported via `cortex_multikv_mirror_write_errors_total` metric.
+- `multi.mirror-timeout` - wait max this time to write to secondary store to finish. Default to 2 seconds. Errors writing to secondary store are not reported to caller, but are logged and also reported via `cortex_multikv_mirror_write_errors_total` metric.
 
 Multi KV also reacts on changes done via runtime configuration. It uses this section:
 

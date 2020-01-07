@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/uber-go/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -90,6 +90,9 @@ type MultiClient struct {
 	mirrorTimeout    time.Duration
 	mirroringEnabled *atomic.Bool
 
+	// logger with "multikv" component
+	logger log.Logger
+
 	// The primary client used for interaction.
 	primaryID *atomic.Int32
 
@@ -113,6 +116,8 @@ func NewMultiClient(cfg MultiConfig, clients []kvclient) *MultiClient {
 
 		mirrorTimeout:    cfg.MirrorTimeout,
 		mirroringEnabled: atomic.NewBool(cfg.MirrorEnabled),
+
+		logger: log.With(util.Logger, "component", "multikv"),
 	}
 
 	ctx, cancelFn := context.WithCancel(context.Background())
@@ -139,7 +144,7 @@ func (m *MultiClient) watchConfigChannel(ctx context.Context, configChannel <-ch
 				enabled := *cfg.Mirroring
 				old := m.mirroringEnabled.Swap(enabled)
 				if old != enabled {
-					level.Info(util.Logger).Log("msg", "toggled mirroring", "enabled", enabled)
+					level.Info(m.logger).Log("msg", "toggled mirroring", "enabled", enabled)
 				}
 				m.updateMirrorEnabledGauge()
 			}
@@ -147,10 +152,10 @@ func (m *MultiClient) watchConfigChannel(ctx context.Context, configChannel <-ch
 			if cfg.PrimaryStore != "" {
 				switched, err := m.setNewPrimaryClient(cfg.PrimaryStore)
 				if switched {
-					level.Info(util.Logger).Log("msg", "switched primary KV store", "primary", cfg.PrimaryStore)
+					level.Info(m.logger).Log("msg", "switched primary KV store", "primary", cfg.PrimaryStore)
 				}
 				if err != nil {
-					level.Error(util.Logger).Log("msg", "failed to switch primary KV store", "primary", cfg.PrimaryStore, "err", err)
+					level.Error(m.logger).Log("msg", "failed to switch primary KV store", "primary", cfg.PrimaryStore, "err", err)
 				}
 			}
 
@@ -339,9 +344,9 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 
 		if err != nil {
 			mirrorFailuresCounter.Inc()
-			level.Warn(util.Logger).Log("msg", "failed to update value in secondary store", "key", key, "err", err, "primary", primary.name, "secondary", kvc.name)
+			level.Warn(m.logger).Log("msg", "failed to update value in secondary store", "key", key, "err", err, "primary", primary.name, "secondary", kvc.name)
 		} else {
-			level.Debug(util.Logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)
+			level.Debug(m.logger).Log("msg", "stored updated value to secondary store", "key", key, "primary", primary.name, "secondary", kvc.name)
 		}
 	}
 }

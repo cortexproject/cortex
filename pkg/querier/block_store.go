@@ -99,7 +99,6 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 		var bs *store.BucketStore
 		var ok bool
 		if bs, ok = u.stores[user]; !ok {
-
 			level.Info(u.logger).Log("msg", "creating user bucket store", "user", user)
 
 			// Instance a new bucket used by this tenant's shipper. We're going

@@ -434,13 +434,13 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		{ // Don't remove any labels.
 			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
-				{Name: "cluster", Value: "one"},
 				{Name: "__replica__", Value: "two"},
+				{Name: "cluster", Value: "one"},
 			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
-				{Name: "cluster", Value: "one"},
 				{Name: "__replica__", Value: "two"},
+				{Name: "cluster", Value: "one"},
 			},
 			removeReplica: false,
 		},
@@ -484,43 +484,43 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 		"metric_1 with value_1": {
 			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
-				{Name: "key", Value: "value_1"},
 				{Name: "cluster", Value: "cluster_1"},
+				{Name: "key", Value: "value_1"},
 			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
-				{Name: "key", Value: "value_1"},
 				{Name: "cluster", Value: "cluster_1"},
+				{Name: "key", Value: "value_1"},
 			},
-			expectedToken: 0x58b1e325,
+			expectedToken: 0xec0a2e9d,
 		},
 		"metric_1 with value_1 and dropped label due to config": {
 			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
-				{Name: "key", Value: "value_1"},
 				{Name: "cluster", Value: "cluster_1"},
-				{Name: "dropped", Value: "unused"},
+				{Name: "key", Value: "value_1"},
+				{Name: "dropped", Value: "unused"}, // will be dropped, doesn't need to be in correct order
 			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
-				{Name: "key", Value: "value_1"},
 				{Name: "cluster", Value: "cluster_1"},
+				{Name: "key", Value: "value_1"},
 			},
-			expectedToken: 0x58b1e325,
+			expectedToken: 0xec0a2e9d,
 		},
 		"metric_1 with value_1 and dropped HA replica label": {
 			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
-				{Name: "key", Value: "value_1"},
 				{Name: "cluster", Value: "cluster_1"},
+				{Name: "key", Value: "value_1"},
 				{Name: "__replica__", Value: "replica_1"},
 			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
-				{Name: "key", Value: "value_1"},
 				{Name: "cluster", Value: "cluster_1"},
+				{Name: "key", Value: "value_1"},
 			},
-			expectedToken: 0x58b1e325,
+			expectedToken: 0xec0a2e9d,
 		},
 		"metric_2 with value_1": {
 			inputSeries: labels.Labels{
@@ -795,10 +795,10 @@ func makeWriteRequestHA(samples int, replica, cluster string) *client.WriteReque
 			TimeSeries: &client.TimeSeries{
 				Labels: []client.LabelAdapter{
 					{Name: "__name__", Value: "foo"},
-					{Name: "bar", Value: "baz"},
-					{Name: "sample", Value: fmt.Sprintf("%d", i)},
 					{Name: "__replica__", Value: replica},
+					{Name: "bar", Value: "baz"},
 					{Name: "cluster", Value: cluster},
+					{Name: "sample", Value: fmt.Sprintf("%d", i)},
 				},
 			},
 		}
@@ -1181,4 +1181,24 @@ func TestRemoveReplicaLabel(t *testing.T) {
 		removeLabel(replicaLabel, &c.labelsIn)
 		assert.Equal(t, c.labelsOut, c.labelsIn)
 	}
+}
+
+func TestShardByAllLabelsChecksForSortedLabelNames(t *testing.T) {
+	val, err := shardByAllLabels("test", []client.LabelAdapter{
+		{Name: "__name__", Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "sample", Value: "1"},
+	})
+
+	assert.NotZero(t, val)
+	assert.NoError(t, err)
+
+	val, err = shardByAllLabels("test", []client.LabelAdapter{
+		{Name: "__name__", Value: "foo"},
+		{Name: "sample", Value: "1"},
+		{Name: "bar", Value: "baz"},
+	})
+
+	assert.Zero(t, val)
+	assert.Error(t, err)
 }

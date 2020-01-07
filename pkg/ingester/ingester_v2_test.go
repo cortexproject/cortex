@@ -29,6 +29,7 @@ import (
 func TestIngester_v2Push(t *testing.T) {
 	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	userID := "test"
 
 	tests := map[string]struct {
 		reqs             []*client.WriteRequest
@@ -71,7 +72,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, tsdb.ErrOutOfOrderSample.Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrOutOfOrderSample, userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 10}}},
 			},
@@ -95,7 +96,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, tsdb.ErrOutOfBounds.Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrOutOfBounds, userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -119,7 +120,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, tsdb.ErrAmendSample.Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrAmendSample, userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -147,7 +148,7 @@ func TestIngester_v2Push(t *testing.T) {
 			defer i.Shutdown()
 			defer cleanup()
 
-			ctx := user.InjectOrgID(context.Background(), "test")
+			ctx := user.InjectOrgID(context.Background(), userID)
 
 			// Wait until the ingester is ACTIVE
 			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -470,7 +471,7 @@ func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
 	req := &client.WriteRequest{}
 
 	res, err := i.v2Push(ctx, req)
-	assert.Equal(t, fmt.Errorf(errTSDBCreateIncompatibleState, "PENDING"), err)
+	assert.Equal(t, wrapWithUser(fmt.Errorf(errTSDBCreateIncompatibleState, "PENDING"), userID).Error(), err.Error())
 	assert.Nil(t, res)
 
 	// Check if the TSDB has been created

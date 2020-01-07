@@ -89,7 +89,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 	db, err := i.getOrCreateTSDB(userID, false)
 	if err != nil {
-		return nil, err
+		return nil, wrapWithUser(err, userID)
 	}
 
 	// Ensure the ingester shutdown procedure hasn't started
@@ -141,14 +141,14 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 			// The error looks an issue on our side, so we should rollback
 			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "userID", userID, "err", rollbackErr)
+				level.Warn(util.Logger).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
 			}
 
-			return nil, err
+			return nil, wrapWithUser(err, userID)
 		}
 	}
 	if err := app.Commit(); err != nil {
-		return nil, err
+		return nil, wrapWithUser(err, userID)
 	}
 
 	// Increment metrics only if the samples have been successfully committed.
@@ -160,7 +160,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 	client.ReuseSlice(req.Timeseries)
 
 	if lastPartialErr != nil {
-		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, lastPartialErr.Error())
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(lastPartialErr, userID).Error())
 	}
 	return &client.WriteResponse{}, nil
 }

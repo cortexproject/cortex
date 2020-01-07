@@ -19,16 +19,6 @@ var (
 	ErrUserNotFound = errors.New("no rule groups found for user")
 )
 
-// RuleStoreConditions are used to filter retrieived results from a rule store
-type RuleStoreConditions struct {
-	// UserID specifies to only retrieve rules with this ID
-	UserID string
-
-	// Namespaces filters results only rule groups with the specified namespace
-	// are retrieved
-	Namespace string
-}
-
 // RuleStore is used to store and retrieve rules
 type RuleStore interface {
 	ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)

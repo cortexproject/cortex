@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -221,6 +222,8 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 		querier.DummyRulesRetriever{},
 		0, 0, 0, // Remote read samples and concurrency limit.
 		regexp.MustCompile(".*"),
+		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
+		&v1.PrometheusVersion{},
 	)
 	promRouter := route.New().WithPrefix("/api/prom/api/v1")
 	api.Register(promRouter)

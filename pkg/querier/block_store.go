@@ -117,7 +117,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 
 			indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 			maxItemSizeBytes := indexCacheSizeBytes / 2
-			indexCache, err := storecache.NewIndexCache(u.logger, nil, storecache.Opts{
+			indexCache, err := storecache.NewInMemoryIndexCache(u.logger, nil, storecache.Opts{
 				MaxSizeBytes:     indexCacheSizeBytes,
 				MaxItemSizeBytes: maxItemSizeBytes,
 			})

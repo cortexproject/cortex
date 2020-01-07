@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"sort"
+	"time"
 
 	"github.com/minio/minio-go/v6/pkg/encrypt"
 	"github.com/minio/minio-go/v6/pkg/s3utils"
@@ -40,6 +41,8 @@ type PutObjectOptions struct {
 	ContentDisposition      string
 	ContentLanguage         string
 	CacheControl            string
+	Mode                    *RetentionMode
+	RetainUntilDate         *time.Time
 	ServerSideEncryption    encrypt.ServerSide
 	NumThreads              uint
 	StorageClass            string
@@ -80,6 +83,14 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 	if opts.CacheControl != "" {
 		header["Cache-Control"] = []string{opts.CacheControl}
 	}
+
+	if opts.Mode != nil {
+		header["x-amz-object-lock-mode"] = []string{opts.Mode.String()}
+	}
+	if opts.RetainUntilDate != nil {
+		header["x-amz-object-lock-retain-until-date"] = []string{opts.RetainUntilDate.Format(time.RFC3339)}
+	}
+
 	if opts.ServerSideEncryption != nil {
 		opts.ServerSideEncryption.Marshal(header)
 	}
@@ -107,6 +118,11 @@ func (opts PutObjectOptions) validate() (err error) {
 		}
 		if !httpguts.ValidHeaderFieldValue(v) {
 			return ErrInvalidArgument(v + " unsupported user defined metadata value")
+		}
+	}
+	if opts.Mode != nil {
+		if !opts.Mode.IsValid() {
+			return ErrInvalidArgument(opts.Mode.String() + " unsupported retention mode")
 		}
 	}
 	return nil

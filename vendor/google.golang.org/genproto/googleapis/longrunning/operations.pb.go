@@ -16,6 +16,8 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	status "google.golang.org/genproto/googleapis/rpc/status"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status1 "google.golang.org/grpc/status"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -742,6 +744,26 @@ type OperationsServer interface {
 	// state before the specified timeout (including immediately), meaning even an
 	// immediate response is no guarantee that the operation is done.
 	WaitOperation(context.Context, *WaitOperationRequest) (*Operation, error)
+}
+
+// UnimplementedOperationsServer can be embedded to have forward compatible implementations.
+type UnimplementedOperationsServer struct {
+}
+
+func (*UnimplementedOperationsServer) ListOperations(ctx context.Context, req *ListOperationsRequest) (*ListOperationsResponse, error) {
+	return nil, status1.Errorf(codes.Unimplemented, "method ListOperations not implemented")
+}
+func (*UnimplementedOperationsServer) GetOperation(ctx context.Context, req *GetOperationRequest) (*Operation, error) {
+	return nil, status1.Errorf(codes.Unimplemented, "method GetOperation not implemented")
+}
+func (*UnimplementedOperationsServer) DeleteOperation(ctx context.Context, req *DeleteOperationRequest) (*empty.Empty, error) {
+	return nil, status1.Errorf(codes.Unimplemented, "method DeleteOperation not implemented")
+}
+func (*UnimplementedOperationsServer) CancelOperation(ctx context.Context, req *CancelOperationRequest) (*empty.Empty, error) {
+	return nil, status1.Errorf(codes.Unimplemented, "method CancelOperation not implemented")
+}
+func (*UnimplementedOperationsServer) WaitOperation(ctx context.Context, req *WaitOperationRequest) (*Operation, error) {
+	return nil, status1.Errorf(codes.Unimplemented, "method WaitOperation not implemented")
 }
 
 func RegisterOperationsServer(s *grpc.Server, srv OperationsServer) {

@@ -285,7 +285,7 @@ func (s *StreamingReader) Read(buf []byte) (int, error) {
 					// bytes read from baseReader different than
 					// content length provided.
 					if s.bytesRead != s.contentLen {
-						return 0, io.ErrUnexpectedEOF
+						return 0, fmt.Errorf("http: ContentLength=%d with Body length %d", s.contentLen, s.bytesRead)
 					}
 
 					// Sign the chunk and write it to s.buf.

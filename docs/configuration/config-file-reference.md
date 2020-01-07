@@ -1810,6 +1810,14 @@ The `redis_config` configures the Redis backend cache.
 # Maximum number of active connections in pool.
 # CLI flag: -<prefix>.redis.max-active-conns
 [max_active_conns: <int> | default = 0]
+
+# Password to use when connecting to redis.
+# CLI flag: -<prefix>.redis.password
+[password: <string> | default = ""]
+
+# Enables connecting to redis with TLS.
+# CLI flag: -<prefix>.redis.enable-tls
+[enable_tls: <boolean> | default = false]
 ```
 
 ## `memcached_config`

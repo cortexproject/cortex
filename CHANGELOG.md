@@ -22,6 +22,7 @@
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service.
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 * [BUGFIX] Fixed #1904 ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
+* [BUGFIX] Reduce memory usage when ingester Push() errors. #1922
 * [BUGFIX] TSDB: Fixed handling of out of order/bound samples in ingesters with the experimental TSDB blocks storage. #1864
 * [BUGFIX] TSDB: Fixed querying ingesters in `LEAVING` state with the experimental TSDB blocks storage. #1854
 * [BUGFIX] TSDB: Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. #1837

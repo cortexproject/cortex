@@ -153,7 +153,7 @@ func formatLabelSet(ls []client.LabelAdapter) string {
 
 	labelStrings := make([]string, 0, len(ls))
 	for _, l := range ls {
-		if l.Name == model.MetricNameLabel && !hasMetricName {
+		if l.Name == model.MetricNameLabel && !hasMetricName && l.Value != "" {
 			metricName = l.Value
 			hasMetricName = true
 		} else {

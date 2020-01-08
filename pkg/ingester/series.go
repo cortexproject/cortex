@@ -204,8 +204,6 @@ func (s *memorySeries) setChunks(descs []*desc) error {
 	if len(descs) > 0 {
 		s.lastTime = descs[len(descs)-1].LastTime
 	}
-	memoryChunks.Add(float64(len(descs)))
-
 	return nil
 }
 

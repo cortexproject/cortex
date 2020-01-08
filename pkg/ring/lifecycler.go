@@ -114,11 +114,12 @@ type Lifecycler struct {
 	actorChan chan func()
 
 	// These values are initialised at startup, and never change
+	ID       string
+	Addr     string
+	RingName string
+	RingKey  string
 
-	ID              string
-	Addr            string
-	RingName        string
-	RingKey         string
+	// Whether to flush if transfer fails on shutdown.
 	flushOnShutdown bool
 
 	// We need to remember the ingester state just in case consul goes away and comes

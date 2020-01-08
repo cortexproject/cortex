@@ -48,7 +48,7 @@ type ingesterMetrics struct {
 	queriedSamples      prometheus.Histogram
 	queriedSeries       prometheus.Histogram
 	queriedChunks       prometheus.Histogram
-	walReplayDuration   prometheus.Summary
+	walReplayDuration   prometheus.Gauge
 }
 
 func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
@@ -87,10 +87,9 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
 			Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 		}),
-		walReplayDuration: prometheus.NewSummary(prometheus.SummaryOpts{
-			Name:       "cortex_ingester_wal_replay_duration_seconds",
-			Help:       "Time taken to replay the checkpoint and the WAL.",
-			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+		walReplayDuration: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_wal_replay_duration_seconds",
+			Help: "Time taken to replay the checkpoint and the WAL.",
 		}),
 	}
 
@@ -103,6 +102,7 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			m.queriedSamples,
 			m.queriedSeries,
 			m.queriedChunks,
+			m.walReplayDuration,
 		)
 	}
 
@@ -247,11 +247,12 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		level.Info(util.Logger).Log("msg", "recovering from WAL")
 		start := time.Now()
 		if err := recoverFromWAL(i); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 			return nil, err
 		}
 		elapsed := time.Since(start)
 		level.Info(util.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
-		i.metrics.walReplayDuration.Observe(elapsed.Seconds())
+		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 	}
 
 	// If the WAL recover happened, then the userStates would already be set.

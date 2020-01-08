@@ -72,11 +72,10 @@ type walWrapper struct {
 	checkpointDeleteTotal   prometheus.Counter
 	checkpointCreationFail  prometheus.Counter
 	checkpointCreationTotal prometheus.Counter
+	checkpointDuration      prometheus.Summary
 }
 
-// newWAL creates a WAL object.
-// * If the WAL is disabled, then the returned WAL is a no-op WAL.
-// * If WAL recovery is enabled, then the userStates is always set for ingester.
+// newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
 func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, error) {
 	if !cfg.walEnabled {
 		return &noopWAL{}, nil
@@ -114,12 +113,18 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, er
 		Name: "ingester_checkpoint_creations_total",
 		Help: "Total number of checkpoint creations attempted.",
 	})
+	w.checkpointDuration = prometheus.NewSummary(prometheus.SummaryOpts{
+		Name:       "ingester_checkpoint_duration_seconds",
+		Help:       "Time taken to create a checkpoint.",
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+	})
 	if cfg.metricsRegisterer != nil {
 		cfg.metricsRegisterer.MustRegister(
 			w.checkpointDeleteFail,
 			w.checkpointDeleteTotal,
 			w.checkpointCreationFail,
 			w.checkpointCreationTotal,
+			w.checkpointDuration,
 		)
 	}
 
@@ -131,7 +136,6 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState) (WAL, er
 func (w *walWrapper) Stop() {
 	close(w.quit)
 	w.wait.Wait()
-
 	w.wal.Close()
 }
 
@@ -161,7 +165,7 @@ func (w *walWrapper) run() {
 	ticker := time.NewTicker(w.cfg.checkpointDuration)
 	defer ticker.Stop()
 
-	for !w.isStopped() {
+	for {
 		select {
 		case <-ticker.C:
 			start := time.Now()
@@ -172,21 +176,14 @@ func (w *walWrapper) run() {
 			}
 			elapsed := time.Since(start)
 			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
+			w.checkpointDuration.Observe(elapsed.Seconds())
 		case <-w.quit:
+			level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
 			if err := w.performCheckpoint(); err != nil {
 				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
 			}
 			return
 		}
-	}
-}
-
-func (w *walWrapper) isStopped() bool {
-	select {
-	case <-w.quit:
-		return true
-	default:
-		return false
 	}
 }
 
@@ -511,11 +508,8 @@ Loop:
 	case capturedErr = <-errChan:
 		return capturedErr
 	default:
-		if err := reader.Err(); err != nil {
-			return err
-		}
+		return reader.Err()
 	}
-	return nil
 }
 
 func copyLabelAdapters(las []client.LabelAdapter) []client.LabelAdapter {
@@ -563,6 +557,7 @@ func processCheckpointRecord(userStates *userStates, seriesPool *sync.Pool, stat
 			errChan <- err
 			return
 		}
+		memoryChunks.Add(float64(len(descs)))
 
 		seriesCache[s.UserId][s.Fingerprint] = series
 		seriesPool.Put(s)
@@ -705,16 +700,8 @@ Loop:
 	case capturedErr = <-errChan:
 		return capturedErr
 	default:
-		if err := reader.Err(); err != nil {
-			return err
-		}
+		return reader.Err()
 	}
-
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func processWALSamples(userStates *userStates, stateCache map[string]*userState, seriesCache map[string]map[uint64]*memorySeries,

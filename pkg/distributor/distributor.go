@@ -3,15 +3,13 @@ package distributor
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -26,7 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	billing "github.com/weaveworks/billing-client"
+	"github.com/weaveworks/billing-client"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
@@ -227,7 +225,7 @@ func (d *Distributor) Stop() {
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
 	if d.cfg.ShardByAllLabels {
-		return shardByAllLabels(userID, labels)
+		return shardByAllLabels(userID, labels), nil
 	}
 
 	metricName, err := extract.MetricNameFromLabelAdapters(labels)
@@ -244,19 +242,14 @@ func shardByMetricName(userID string, metricName string) uint32 {
 	return h
 }
 
-func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
+func shardByAllLabels(userID string, labels []client.LabelAdapter) uint32 {
 	h := client.HashNew32()
 	h = client.HashAdd32(h, userID)
-	var lastLabelName string
 	for _, label := range labels {
-		if strings.Compare(lastLabelName, label.Name) >= 0 {
-			return 0, fmt.Errorf("labels not sorted")
-		}
 		h = client.HashAdd32(h, label.Name)
 		h = client.HashAdd32(h, label.Value)
-		lastLabelName = label.Name
 	}
-	return h, nil
+	return h
 }
 
 // Remove the label labelname from a slice of LabelPairs if it exists.

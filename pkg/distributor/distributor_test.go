@@ -905,7 +905,7 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 
 	for j := range req.Timeseries {
 		series := req.Timeseries[j]
-		hash, _ := shardByAllLabels(orgid, series.Labels)
+		hash := shardByAllLabels(orgid, series.Labels)
 		existing, ok := i.timeseries[hash]
 		if !ok {
 			// Make a copy because the request Timeseries are reused
@@ -1183,22 +1183,19 @@ func TestRemoveReplicaLabel(t *testing.T) {
 	}
 }
 
-func TestShardByAllLabelsChecksForSortedLabelNames(t *testing.T) {
-	val, err := shardByAllLabels("test", []client.LabelAdapter{
+// This is not great, but we deal with unsorted labels when validating labels.
+func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
+	val1 := shardByAllLabels("test", []client.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
 		{Name: "sample", Value: "1"},
 	})
 
-	assert.NotZero(t, val)
-	assert.NoError(t, err)
-
-	val, err = shardByAllLabels("test", []client.LabelAdapter{
+	val2 := shardByAllLabels("test", []client.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "sample", Value: "1"},
 		{Name: "bar", Value: "baz"},
 	})
 
-	assert.Zero(t, val)
-	assert.Error(t, err)
+	assert.NotEqual(t, val1, val2)
 }

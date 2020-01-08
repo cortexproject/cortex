@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	yamlFieldNameParser = regexp.MustCompile("^[^,]+")
+	yamlFieldNameParser   = regexp.MustCompile("^[^,]+")
+	yamlFieldInlineParser = regexp.MustCompile("^[^,]*,inline$")
 )
 
 type configBlock struct {
@@ -101,9 +102,9 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 			continue
 		}
 
-		// Skip fields not exported via yaml
+		// Skip fields not exported via yaml (unless they're inline)
 		fieldName := getFieldName(field)
-		if fieldName == "" {
+		if fieldName == "" && !isFieldInline(field) {
 			continue
 		}
 
@@ -135,33 +136,39 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 
 			// Since we're going to recursively iterate, we need to create a new sub
 			// block and pass it to the doc generation function.
-			var blockName string
-			var blockDesc string
+			var subBlock *configBlock
 
-			if isRoot {
-				blockName = rootName
-				blockDesc = rootDesc
+			if !isFieldInline(field) {
+				var blockName string
+				var blockDesc string
+
+				if isRoot {
+					blockName = rootName
+					blockDesc = rootDesc
+				} else {
+					blockName = fieldName
+					blockDesc = ""
+				}
+
+				subBlock = &configBlock{
+					name: blockName,
+					desc: blockDesc,
+				}
+
+				block.Add(&configEntry{
+					kind:      "block",
+					name:      fieldName,
+					required:  isFieldRequired(field),
+					block:     subBlock,
+					blockDesc: blockDesc,
+					root:      isRoot,
+				})
+
+				if isRoot {
+					blocks = append(blocks, subBlock)
+				}
 			} else {
-				blockName = fieldName
-				blockDesc = ""
-			}
-
-			subBlock := &configBlock{
-				name: blockName,
-				desc: blockDesc,
-			}
-
-			block.Add(&configEntry{
-				kind:      "block",
-				name:      fieldName,
-				required:  isFieldRequired(field),
-				block:     subBlock,
-				blockDesc: blockDesc,
-				root:      isRoot,
-			})
-
-			if isRoot {
-				blocks = append(blocks, subBlock)
+				subBlock = block
 			}
 
 			// Recursively generate the doc for the sub-block
@@ -319,6 +326,10 @@ func isFieldHidden(f reflect.StructField) bool {
 
 func isFieldRequired(f reflect.StructField) bool {
 	return strings.Contains(f.Tag.Get("doc"), "required")
+}
+
+func isFieldInline(f reflect.StructField) bool {
+	return yamlFieldInlineParser.MatchString(f.Tag.Get("yaml"))
 }
 
 func isRootBlock(t reflect.Type) (string, string, bool) {

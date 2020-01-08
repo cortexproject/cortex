@@ -93,6 +93,15 @@ Supported contents and default values of the config file:
 
 # The alertmanager_config configures the Cortex alertmanager.
 [alertmanager: <alertmanager_config>]
+
+runtime_config:
+  # How often to check runtime config file.
+  # CLI flag: -runtime-config.reload-period
+  [period: <duration> | default = 10s]
+
+  # File with the configuration that can be updated in runtime.
+  # CLI flag: -runtime-config.file
+  [file: <string> | default = ""]
 ```
 
 ## `server_config`
@@ -205,9 +214,13 @@ ha_tracker:
 
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist (experimental).
+    # inmemory, multi, memberlist (experimental).
     # CLI flag: -distributor.ha-tracker.store
     [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -distributor.ha-tracker.prefix
+    [prefix: <string> | default = "collectors/"]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
@@ -221,9 +234,22 @@ ha_tracker:
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [memberlist: <memberlist_config>]
 
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -distributor.ha-tracker.prefix
-    [prefix: <string> | default = "collectors/"]
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -distributor.ha-tracker.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -distributor.ha-tracker.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -distributor.ha-tracker.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -distributor.ha-tracker.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
 
 # remote_write API max receive message size (bytes).
 # CLI flag: -distributor.max-recv-msg-size
@@ -245,9 +271,13 @@ ha_tracker:
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist (experimental).
+    # inmemory, multi, memberlist (experimental).
     # CLI flag: -distributor.ring.store
     [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -distributor.ring.prefix
+    [prefix: <string> | default = "collectors/"]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -261,9 +291,22 @@ ring:
     # The CLI flags prefix for this block config is: distributor.ring
     [memberlist: <memberlist_config>]
 
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -distributor.ring.prefix
-    [prefix: <string> | default = "collectors/"]
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -distributor.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -distributor.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -distributor.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -distributor.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
 
   # Period at which to heartbeat to the ring.
   # CLI flag: -distributor.ring.heartbeat-period
@@ -284,9 +327,13 @@ lifecycler:
   ring:
     kvstore:
       # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, memberlist (experimental).
+      # inmemory, multi, memberlist (experimental).
       # CLI flag: -ring.store
       [store: <string> | default = "consul"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -ring.prefix
+      [prefix: <string> | default = "collectors/"]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -297,9 +344,22 @@ lifecycler:
       # The memberlist_config configures the Gossip memberlist.
       [memberlist: <memberlist_config>]
 
-      # The prefix for the keys in the store. Should end with a /.
-      # CLI flag: -ring.prefix
-      [prefix: <string> | default = "collectors/"]
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to secondary store.
+        # CLI flag: -multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing value to secondary store.
+        # CLI flag: -multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
     # CLI flag: -ring.heartbeat-timeout
@@ -602,9 +662,13 @@ lifecyclerconfig:
   ring:
     kvstore:
       # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, memberlist (experimental).
+      # inmemory, multi, memberlist (experimental).
       # CLI flag: -ruler.store
       [store: <string> | default = "consul"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -ruler.prefix
+      [prefix: <string> | default = "collectors/"]
 
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is: ruler
@@ -618,9 +682,22 @@ lifecyclerconfig:
       # The CLI flags prefix for this block config is: ruler
       [memberlist: <memberlist_config>]
 
-      # The prefix for the keys in the store. Should end with a /.
-      # CLI flag: -ruler.prefix
-      [prefix: <string> | default = "collectors/"]
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -ruler.multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -ruler.multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to secondary store.
+        # CLI flag: -ruler.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing value to secondary store.
+        # CLI flag: -ruler.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
     # CLI flag: -ruler.ring.heartbeat-timeout
@@ -1659,6 +1736,23 @@ The `memberlist_config` configures the Gossip memberlist.
 # Timeout for leaving memberlist cluster.
 # CLI flag: -<prefix>.memberlist.leave-timeout
 [leave_timeout: <duration> | default = 5s]
+
+# IP address to listen on for gossip messages. Multiple addresses may be
+# specified. Defaults to 0.0.0.0
+# CLI flag: -<prefix>.memberlist.bind-addr
+[bind_addr: <list of string> | default = ]
+
+# Port to listen on for gossip messages.
+# CLI flag: -<prefix>.memberlist.bind-port
+[bind_port: <int> | default = 7946]
+
+# Timeout used when connecting to other nodes to send packet.
+# CLI flag: -<prefix>.memberlist.packet-dial-timeout
+[packet_dial_timeout: <duration> | default = 5s]
+
+# Timeout for writing 'packet' data.
+# CLI flag: -<prefix>.memberlist.packet-write-timeout
+[packet_write_timeout: <duration> | default = 5s]
 ```
 
 ## `limits_config`
@@ -1776,11 +1870,13 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
 
-# File name of per-user overrides.
+# File name of per-user overrides. [deprecated, use -runtime-config.file
+# instead]
 # CLI flag: -limits.per-user-override-config
 [per_tenant_override_config: <string> | default = ""]
 
-# Period with which to reload the overrides.
+# Period with which to reload the overrides. [deprecated, use
+# -runtime-config.reload-period instead]
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
 ```

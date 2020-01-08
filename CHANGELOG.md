@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+## 0.5.0-rc.0 / 2020-01-08 
+
 * [CHANGE] Flags changed with transition to upstream Prometheus rules manager:
   * `ruler.client-timeout` is now `ruler.configs.client-timeout` in order to match `ruler.configs.url`
   * `ruler.group-timeout`has been removed

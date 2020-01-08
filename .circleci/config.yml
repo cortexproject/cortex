@@ -3,7 +3,7 @@ version: 2.1
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: cortexproject/build-image:master-d74af5958
+    - image: quay.io/cortexproject/build-image:update-lint-ae47f740a
   working_directory: /go/src/github.com/cortexproject/cortex
 
 workflows:
@@ -67,6 +67,10 @@ jobs:
     - checkout
     - run:
         name: Lint
+        command: make BUILD_IN_CONTAINER=false lint
+    # fails to run everything first time - see https://github.com/golangci/golangci-lint/issues/866
+    - run:
+        name: Lint again
         command: make BUILD_IN_CONTAINER=false lint
     - run:
         name: Check vendor directory is consistent.

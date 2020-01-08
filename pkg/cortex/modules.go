@@ -344,7 +344,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 func (t *Cortex) stopQueryFrontend() (err error) {
 	t.frontend.Close()
 	if t.cache != nil {
-		t.cache.Stop()
+		_ = t.cache.Stop()
 		t.cache = nil
 	}
 	return

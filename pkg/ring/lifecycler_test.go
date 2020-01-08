@@ -340,7 +340,6 @@ func TestCheckReady(t *testing.T) {
 }
 
 type noopFlushTransferer struct {
-	lifecycler *Lifecycler
 }
 
 func (f *noopFlushTransferer) StopIncomingRequests()                 {}

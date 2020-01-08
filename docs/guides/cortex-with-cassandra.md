@@ -1,10 +1,11 @@
-## Running Cortex with Cassandra
+---
+title: "Running Cortex with Cassandra"
+linkTitle: "Running Cortex with Cassandra"
+weight: 7
+slug: cassandra
+---
 
 This guide covers how to run a single local Cortex instance - with the chunks storage engine - storing time series chunks and index in Cassandra.
-
-We can run Cortex as a single binary either by running it as an container or as a process by building it from scratch.
-
-Now we are using Cassandra as backend storage. Let's create a new Cassandra instance by running the below commands or you can use the existing Cassandra setup:
 
 In this guide we're going to:
 
@@ -13,32 +14,30 @@ In this guide we're going to:
 3. Configure Prometheus to send series to Cortex
 4. Configure Grafana to visualise metrics
 
-Run Cassandra with following cmd
+## Setup a locally running Cassandra
+
+Run Cassandra with following cmd:
 
 ```
 docker run -d --name cassandra --rm -p 9042:9042 cassandra:3.11
 ```
 
-Get a cql shell in the Cassandra container
+Get a cql shell in the Cassandra container:
 
 ```
 docker exec -it <container_id> cqlsh
 ```
 
-create a new keyspace for Cortex metrics in Cassandra by using the below command
+Create a new Cassandra keyspace for Cortex metrics:
 
 ```
 CREATE KEYSPACE cortex WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 1};
 ```
+## Configure Cortex to store chunks and index on Cassandra
 
-Now Cortex needs configuration details. Now create a file called
-"single-process-config.yaml" add below content into it and make sure to add Cassandra instance details i.e
-
-Replace
-
- **LOCALHOST** = Addresses of your Cassandra instance, This can accept multiple addresses by passing them as comma separated values.
-
- **KEYSPACE**  = Add the desired keyspace for storing metrics from Cortex.
+Now we have to configure Cortex to store chunks and index in Cassandra. Create a config file called `single-process-config.yaml` and add the following content, replacing the placeholders:
+- `LOCALHOST`: Addresses of your Cassandra instance. This can accept multiple addresses by passing them as comma separated values.
+- `KEYSPACE`: The name of the Cassandra keyspace used to store the metrics.
 
 
 
@@ -106,29 +105,31 @@ storage:
     keyspace: KEYSPACE   # configure desired keyspace here.
 ```
 
-Running Cortex as an image
+Run Cortex using the latest stable version:
 
 ```
 docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex -config.file=/etc/single-process-config.yaml
 ```
 In case you prefer to run the master version, please follow this [documentation](https://github.com/cortexproject/cortex/blob/master/docs/getting_started.md) on how to build Cortex from sources.
 
-Now the Cortex is running on http://localhost:9009
+## Configure Prometheus to send series to Cortex
 
-Add remote write configuration for your prometheus config file. This writes the metrics data to your Cortex. 
+Now the Cortex is running on `http://localhost:9009`.
+
+Add following snippet to your Prometheus configuration file, in order to configure the remote write to send metrics to Cortex running locally:
 
 ```
 remote_write:
    - url: http://localhost:9009/api/prom/push
 ```
+## Configure Grafana to visualise metrics
 
-Run grafana to visualise metrics from Cortex service.
+Run grafana to visualise metrics from Cortex:
 
 ```
 docker run -d --name=grafana -p 3000:3000 grafana/grafana
 ```
 
-Add a data source in grafana by picking the prometheus type as data source and configure Cortex url to query metrics. 
-i.e http://localhost:9009/api/prom
+Add a data source in grafana by picking the Prometheus type as data source and configure Cortex url to query metrics: `http://localhost:9009/api/prom`.
 
 Now you can monitor the Cortex reads & writes by creating the dashboard's using this [documentation](https://github.com/cortexproject/cortex/tree/master/production/dashboards).

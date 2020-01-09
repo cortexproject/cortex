@@ -64,7 +64,7 @@ For more information, please check out the [Blocks storage](operations/blocks-st
 
 ## Services
 
-Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task, run separately, and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.
+Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task. These components run separately and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.
 
 Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don't coordinate or communicate with each other within that layer.
 
@@ -94,7 +94,7 @@ Distributors are **stateless** and can be scaled up and down as needed.
 
 The distributor features a **High Availability (HA) Tracker**. When enabled, the distributor deduplicates incoming samples from redundant Prometheus servers. This allows you to have multiple HA replicas of the same Prometheus servers, writing the same series to Cortex and then deduplicate these series in the Cortex distributor.
 
-The HA Tracker deduplicates incoming samples based on a cluster and replica label. The cluster label uniquely identifies the cluster of redundant Prometheus servers for a given tenant, while the replica label uniquely identifies the replica within the Prometheus cluster. Incoming samples are considered duplicated - and thus dropped - if received by any replica which is not the current primary within a cluster.
+The HA Tracker deduplicates incoming samples based on a cluster and replica label. The cluster label uniquely identifies the cluster of redundant Prometheus servers for a given tenant, while the replica label uniquely identifies the replica within the Prometheus cluster. Incoming samples are considered duplicated &mdash; and thus dropped &mdash; if received by any replica which is not the current primary within a cluster.
 
 The HA Tracker requires a key-value (KV) store to coordinate which replica is currently elected. The distributor will only accept samples from the current leader. Samples with one or no labels (of the replica and cluster) are accepted by default and never deduplicated.
 
@@ -118,7 +118,7 @@ The trade-off associated with the latter is that writes are more balanced across
 
 #### The hash ring
 
-A hash ring - stored in a key-value (KV) store - is used to achieve consistent hashing for the series sharding and replication across the ingesters. All [ingesters](#ingester) register themselves into the hash ring with a set of tokens they own; each token is a random unsigned 32-bit number. Each incoming series is [hashed](#hashing) in the distributor and then pushed to the ingester owning the tokens range for the series hash number plus N-1 subsequent ingesters in the ring, where N is the replication factor.
+A hash ring &mdash; stored in a key-value (KV) store &mdash; is used to achieve consistent hashing for the series sharding and replication across the ingesters. All [ingesters](#ingester) register themselves into the hash ring with a set of tokens they own; each token is a random unsigned 32-bit number. Each incoming series is [hashed](#hashing) in the distributor and then pushed to the ingester owning the tokens range for the series hash number plus N-1 subsequent ingesters in the ring, where N is the replication factor.
 
 To do the hash lookup, distributors find the smallest appropriate token whose value is larger than the [hash of the series](#hashing). When the replication factor is larger than 1, the next subsequent tokens (clockwise in the ring) that belong to different ingesters will also be included in the result.
 
@@ -195,7 +195,7 @@ Queriers are **stateless** and can be scaled up and down as needed.
 
 The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
 
-The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address - via the `-querier.frontend-address` CLI flag - in order to allow them to connect to the query frontends.
+The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address &mdash; via the `-querier.frontend-address` CLI flag &mdash; in order to allow them to connect to the query frontends.
 
 Query frontends are **stateless**. However, due to how the internal queue works, it's recommended to run a few query frontend replicas to reap the benefit of fair scheduling. Two replicas should suffice in most cases.
 
@@ -203,7 +203,7 @@ Query frontends are **stateless**. However, due to how the internal queue works,
 
 The query frontend queuing mechanism is used to:
 
-* Ensure that large queries - that could cause an out-of-memory (OOM) error in the querier - will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
+* Ensure that large queries &mdash; that could cause an out-of-memory (OOM) error in the querier &mdash; will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
 * Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
 * Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.
 

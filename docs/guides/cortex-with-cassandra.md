@@ -16,13 +16,13 @@ In this guide we're going to:
 
 ## Setup a locally running Cassandra
 
-Run Cassandra with following cmd:
+Run Cassandra with the following command:
 
 ```
 docker run -d --name cassandra --rm -p 9042:9042 cassandra:3.11
 ```
 
-Get a cql shell in the Cassandra container:
+Use Docker to execute the Cassandra Query Language (CQL) shell in the container:
 
 ```
 docker exec -it <container_id> cqlsh
@@ -30,17 +30,18 @@ docker exec -it <container_id> cqlsh
 
 Create a new Cassandra keyspace for Cortex metrics:
 
+A keyspace is an object that is used to hold column families, user defined types. A keyspace is like RDBMS database which contains column families, indexes, user defined types.
+
 ```
 CREATE KEYSPACE cortex WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 1};
 ```
 ## Configure Cortex to store chunks and index on Cassandra
 
-Now we have to configure Cortex to store chunks and index in Cassandra. Create a config file called `single-process-config.yaml` and add the following content, replacing the placeholders:
+Now, we have to configure Cortex to store the chunks and index in Cassandra. Create a config file called `single-process-config.yaml`, then add the content below. Make sure to replace the following placeholders:
 - `LOCALHOST`: Addresses of your Cassandra instance. This can accept multiple addresses by passing them as comma separated values.
 - `KEYSPACE`: The name of the Cassandra keyspace used to store the metrics.
 
-
-
+`single-process-config.yaml`
 ```
 # Configuration for running Cortex in single-process mode.
 # This should not be used in production.  It is only for getting started
@@ -110,13 +111,14 @@ Run Cortex using the latest stable version:
 ```
 docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex -config.file=/etc/single-process-config.yaml
 ```
-In case you prefer to run the master version, please follow this [documentation](https://github.com/cortexproject/cortex/blob/master/docs/getting_started.md) on how to build Cortex from sources.
+In case you prefer to run the master version, please follow this [documentation](https://github.com/cortexproject/cortex/blob/master/docs/getting_started.md) on how to build Cortex from source.
+
 
 ## Configure Prometheus to send series to Cortex
 
-Now the Cortex is running on `http://localhost:9009`.
+Now that Cortex is up, it should be running on `http://localhost:9009`.
 
-Add following snippet to your Prometheus configuration file, in order to configure the remote write to send metrics to Cortex running locally:
+Add the following section to your Prometheus configuration file. This will configure the remote write to send metrics to Cortex.
 
 ```
 remote_write:
@@ -130,6 +132,6 @@ Run grafana to visualise metrics from Cortex:
 docker run -d --name=grafana -p 3000:3000 grafana/grafana
 ```
 
-Add a data source in grafana by picking the Prometheus type as data source and configure Cortex url to query metrics: `http://localhost:9009/api/prom`.
+Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: `http://localhost:9009/api/prom`.
 
-Now you can monitor the Cortex reads & writes by creating the dashboard's using this [documentation](https://github.com/cortexproject/cortex/tree/master/production/dashboards).
+Finally, You can monitor Cortex's reads & writes by creating the dashboard. You can follow this [documentation](https://github.com/cortexproject/cortex/tree/master/production/dashboards) to do so.

@@ -148,13 +148,13 @@ Incoming series are not immediately written to the storage but kept in memory an
 
 Ingesters contain a **lifecycler** which manages the lifecycle of an ingester and stores the **ingester state** in the [hash ring](#the-hash-ring). Each ingester could be in one of the following states:
 
-1. `PENDING` is an ingester's state when it just started and is waiting for a hand-over from another ingester that is `LEAVING`. If no hand-over occurs within the configured timeout period, the ingester will join the ring with a new set of random tokens (ie. during a scale up).
+1. `PENDING` is an ingester's state when it just started and is waiting for a hand-over from another ingester that is `LEAVING`. If no hand-over occurs within the configured timeout period, the ingester will join the ring with a new set of random tokens (ie. during a scale up). When hand-over process starts, state changes to `JOINING`.
 
-2. `JOINING` is an ingester's state when it is currently inserting its tokens into the ring and initializing itself. While in this state, the ingester may receive series and tokens from another `LEAVING` ingester, as part of the hand-over process.
+2. `JOINING` is an ingester's state in two situations. First, ingester will switch to a `JOINING` state from `PENDING` state after auto-join timeout. In this case, ingester will generate tokens, store them into ring, optionally observe the ring for token conflicts and then move to `ACTIVE` state. Second, ingester will also switch into a `JOINING` state as a result of another `LEAVING` ingester initiating a hand-over process with `PENDING` (which then switches to `JOINING`). `JOINING` ingester then receives series and tokens from `LEAVING` ingester, and if everything goes well, `JOINING` ingester switches to `ACTIVE` state. If hand-over process fails, `JOINING` ingester will move back to `PENDING` state and either wait for another hand-over or auto-join timeout.
 
 3. `ACTIVE` is an ingester's state when it is fully initialized. It may receive both write and read requests for tokens it owns.
 
-4. `LEAVING` is an ingester's state when it is shutting down. It cannot receive write requests anymore, while it could still receive read requests for series it has in memory. While in this state, the ingester may look for a `JOINING` ingester with which engage an hand-over process, used to transfer the `LEAVING` ingester state to a `JOINING` one (ie. during a rolling update).
+4. `LEAVING` is an ingester's state when it is shutting down. It cannot receive write requests anymore, while it could still receive read requests for series it has in memory. While in this state, the ingester may look for a `PENDING` ingester to start a hand-over process with, used to transfer the state from `LEAVING` ingester to a `PENDING` one, during a rolling update. (`PENDING` ingester moves to `JOINING` state during hand-over process). If there is no new ingester to accept hand-over, ingester in `LEAVING` state will flush data to storage instead. 
 
 5. `UNHEALTHY` is an ingester's state when it has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
 

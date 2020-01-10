@@ -47,6 +47,12 @@ var (
 				},
 			},
 		},
+		Headers: []*PrometheusResponseHeader{
+			{
+				Name:   "Content-Type",
+				Values: []string{"application/json"},
+			},
+		},
 	}
 )
 

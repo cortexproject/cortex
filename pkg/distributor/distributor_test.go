@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1198,4 +1199,31 @@ func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 	})
 
 	assert.NotEqual(t, val1, val2)
+}
+
+func TestSortLabels(t *testing.T) {
+	sorted := []client.LabelAdapter{
+		{Name: "__name__", Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "cluster", Value: "cluster"},
+		{Name: "sample", Value: "1"},
+	}
+
+	// no allocations if input is already sorted
+	require.Equal(t, 0.0, testing.AllocsPerRun(100, func() {
+		sortLabelsIfNeeded(sorted)
+	}))
+
+	unsorted := []client.LabelAdapter{
+		{Name: "__name__", Value: "foo"},
+		{Name: "sample", Value: "1"},
+		{Name: "cluster", Value: "cluster"},
+		{Name: "bar", Value: "baz"},
+	}
+
+	sortLabelsIfNeeded(unsorted)
+
+	sort.SliceIsSorted(unsorted, func(i, j int) bool {
+		return strings.Compare(unsorted[i].Name, unsorted[j].Name) < 0
+	})
 }

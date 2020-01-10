@@ -63,9 +63,7 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 	ruler, err := NewRuler(cfg, engine, noopQueryable, nil, prometheus.NewRegistry(), l)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Ensure all rules are loaded before usage
 	ruler.loadRules(context.Background())
@@ -92,9 +90,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	r := newTestRuler(t, cfg)
 	defer r.Stop()
 	n, err := r.getOrCreateNotifier("1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	for _, not := range r.notifiers {
 		defer not.stop()
 	}

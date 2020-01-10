@@ -22,6 +22,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
+var (
+	// Value that cachecontrolHeader has if the response indicates that the results should not be cached.
+	noCacheValue = "no-store"
+)
+
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
 	CacheConfig       cache.Config  `yaml:"cache"`
@@ -59,6 +64,7 @@ var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Resp
 			ResultType: promRes.Data.ResultType,
 			Result:     extractMatrix(start, end, promRes.Data.Result),
 		},
+		Headers: promRes.Headers,
 	}
 })
 
@@ -137,6 +143,25 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if promResp, ok := response.(*PrometheusResponse); ok {
+		shouldNotCache := false
+		for _, hv := range promResp.Headers {
+			if hv == nil {
+				continue
+			}
+			if hv.Name != cachecontrolHeader {
+				continue
+			}
+			if hv.Values[0] == noCacheValue {
+				shouldNotCache = true
+				level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
+			}
+		}
+		if shouldNotCache {
+			return response, []Extent{}, nil
+		}
 	}
 
 	extent, err := toExtent(ctx, r, response)

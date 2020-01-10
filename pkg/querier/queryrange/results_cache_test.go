@@ -117,7 +117,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
-					&PrometheusResponseHeader{
+					{
 						Name:   "something",
 						Values: []string{},
 					},
@@ -129,7 +129,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
-					&PrometheusResponseHeader{
+					{
 						Name:   cachecontrolHeader,
 						Values: []string{noCacheValue},
 					},
@@ -141,7 +141,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
-					&PrometheusResponseHeader{
+					{
 						Name:   cachecontrolHeader,
 						Values: []string{"foo", noCacheValue},
 					},

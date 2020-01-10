@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
@@ -80,7 +81,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 // v2Push adds metrics to a block
 func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	var lastPartialErr error
+	var firstPartialErr error
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -135,7 +136,10 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
 			if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample || err == tsdb.ErrAmendSample {
-				lastPartialErr = err
+				if firstPartialErr == nil {
+					firstPartialErr = errors.Wrapf(err, "series=%s", lset.String())
+				}
+
 				continue
 			}
 
@@ -159,8 +163,8 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 	client.ReuseSlice(req.Timeseries)
 
-	if lastPartialErr != nil {
-		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(lastPartialErr, userID).Error())
+	if firstPartialErr != nil {
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(firstPartialErr, userID).Error())
 	}
 	return &client.WriteResponse{}, nil
 }

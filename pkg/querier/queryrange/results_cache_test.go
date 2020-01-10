@@ -108,6 +108,57 @@ func mkExtent(start, end int64) Extent {
 	}
 }
 
+func TestShouldCache(t *testing.T) {
+	for i, tc := range []struct {
+		input    Response
+		expected bool
+	}{
+		// Does not contain the needed header.
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					&PrometheusResponseHeader{
+						Name:   "something",
+						Values: []string{},
+					},
+				},
+			}),
+			expected: false,
+		},
+		// Does contain the header which has the value.
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					&PrometheusResponseHeader{
+						Name:   cachecontrolHeader,
+						Values: []string{noCacheValue},
+					},
+				},
+			}),
+			expected: true,
+		},
+		// Header contains extra values.
+		{
+			input: Response(&PrometheusResponse{
+				Headers: []*PrometheusResponseHeader{
+					&PrometheusResponseHeader{
+						Name:   cachecontrolHeader,
+						Values: []string{"foo", noCacheValue},
+					},
+				},
+			}),
+			expected: false,
+		},
+	} {
+		{
+			t.Run(strconv.Itoa(i), func(t *testing.T) {
+				ret := shouldCacheResponse(tc.input)
+				require.Equal(t, tc.expected, ret)
+			})
+		}
+	}
+}
+
 func TestPartiton(t *testing.T) {
 	for i, tc := range []struct {
 		input                  Request

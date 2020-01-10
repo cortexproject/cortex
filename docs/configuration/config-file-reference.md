@@ -26,7 +26,7 @@ Supported contents and default values of the config file:
 # The Cortex service to run. Supported values are: all, distributor, ingester,
 # querier, query-frontend, table-manager, ruler, alertmanager, configs.
 # CLI flag: -target
-[target: <int> | default = all]
+[target: <string> | default = "all"]
 
 # Set to false to disable auth.
 # CLI flag: -auth.enabled

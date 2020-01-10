@@ -236,6 +236,8 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "url", nil
 	case "time.Duration":
 		return "duration", nil
+	case "cortex.moduleName":
+		return "string", nil
 	}
 
 	// Fallback to auto-detection of built-in data types

@@ -36,7 +36,7 @@ func main() {
 	flag.StringVar(&configFile, "config.file", "", "Configuration file to load.")
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
-	flag.IntVar(&mutexProfileFraction, "mutex-profile-fraction", 0, "Fraction at which mutex profile vents will be reported, 0 to disable")
+	flag.IntVar(&mutexProfileFraction, "debug.mutex-profile-fraction", 0, "Fraction at which mutex profile vents will be reported, 0 to disable")
 
 	if mutexProfileFraction > 0 {
 		runtime.SetMutexProfileFraction(mutexProfileFraction)

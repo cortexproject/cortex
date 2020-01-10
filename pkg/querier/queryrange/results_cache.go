@@ -154,7 +154,7 @@ func shouldCacheResponse(r Response) bool {
 				shouldNotCache = true
 			}
 		}
-		return shouldNotCache
+		return !shouldNotCache
 	}
 	return false
 }

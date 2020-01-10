@@ -177,10 +177,7 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 				return nil, err
 			}
 
-			for _, otherBlock := range otherBlocks {
-				blocks = append(blocks, otherBlock)
-			}
-
+			blocks = append(blocks, otherBlocks...)
 			continue
 		}
 

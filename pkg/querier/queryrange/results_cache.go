@@ -156,7 +156,7 @@ func shouldCacheResponse(r Response) bool {
 		}
 		return !shouldNotCache
 	}
-	return false
+	return true
 }
 
 func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Extent, error) {

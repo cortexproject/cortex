@@ -47,12 +47,7 @@ var (
 				},
 			},
 		},
-		Headers: []*PrometheusResponseHeader{
-			{
-				Name:   "Content-Type",
-				Values: []string{"application/json"},
-			},
-		},
+		Headers: []*PrometheusResponseHeader{},
 	}
 )
 
@@ -129,7 +124,7 @@ func TestShouldCache(t *testing.T) {
 					},
 				},
 			}),
-			expected: false,
+			expected: true,
 		},
 		// Does contain the header which has the value.
 		{
@@ -141,7 +136,7 @@ func TestShouldCache(t *testing.T) {
 					},
 				},
 			}),
-			expected: true,
+			expected: false,
 		},
 		// Header contains extra values.
 		{
@@ -153,7 +148,7 @@ func TestShouldCache(t *testing.T) {
 					},
 				},
 			}),
-			expected: false,
+			expected: true,
 		},
 	} {
 		{

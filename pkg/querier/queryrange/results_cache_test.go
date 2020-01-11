@@ -31,6 +31,12 @@ var (
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
+	respHeaders = []*PrometheusResponseHeader{
+		{
+			Name:   "Content-Type",
+			Values: []string{"application/json"},
+		},
+	}
 	parsedResponse = &PrometheusResponse{
 		Status: "success",
 		Data: PrometheusData{
@@ -47,7 +53,6 @@ var (
 				},
 			},
 		},
-		Headers: []*PrometheusResponseHeader{},
 	}
 )
 

@@ -14,8 +14,6 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -48,14 +46,6 @@ type Config struct {
 	WriteLimit        int
 	MaxWriteBurstSize int
 }
-
-var (
-	rateLimitedWriteRequest = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "bigtable_rate_limited_requests_total",
-		Help:      "Total count of rate limited write requests.",
-	}, []string{"operation"})
-)
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -198,14 +188,21 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 			muts = append(muts, mut)
 		}
 
-		if _, ok := ctx.Deadline(); !ok {
-			ctxDeadline := time.Now().Add(5 * time.Minute)
-			newCtx, cancel := context.WithDeadline(ctx, ctxDeadline)
-			ctx = newCtx
-			defer cancel()
-		}
+		if s.cfg.WriteLimit > 0 {
 
-		s.writeLimiter.WaitN(ctx, len(muts))
+			if _, ok := ctx.Deadline(); !ok {
+				ctxDeadline := time.Now().Add(5 * time.Minute)
+				newCtx, cancel := context.WithDeadline(ctx, ctxDeadline)
+				ctx = newCtx
+				defer cancel()
+			}
+
+			err := s.writeLimiter.WaitN(ctx, len(muts))
+
+			if err != nil {
+				return err
+			}
+		}
 
 		errs, err := table.ApplyBulk(ctx, rowKeys, muts)
 		if err != nil {

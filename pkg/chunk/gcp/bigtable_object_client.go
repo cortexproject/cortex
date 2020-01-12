@@ -70,14 +70,21 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	for tableName := range keys {
 		table := s.client.Open(tableName)
 
-		if _, ok := ctx.Deadline(); !ok {
-			ctxDeadline := time.Now().Add(5 * time.Minute)
-			newCtx, cancel := context.WithDeadline(ctx, ctxDeadline)
-			ctx = newCtx
-			defer cancel()
-		}
+		if s.cfg.WriteLimit > 0 {
 
-		s.writeLimiter.WaitN(ctx, len(muts[tableName]))
+			if _, ok := ctx.Deadline(); !ok {
+				ctxDeadline := time.Now().Add(5 * time.Minute)
+				newCtx, cancel := context.WithDeadline(ctx, ctxDeadline)
+				ctx = newCtx
+				defer cancel()
+			}
+
+			err := s.writeLimiter.WaitN(ctx, len(muts[tableName]))
+
+			if err != nil {
+				return err
+			}
+		}
 
 		errs, err := table.ApplyBulk(ctx, keys[tableName], muts[tableName])
 		if err != nil {

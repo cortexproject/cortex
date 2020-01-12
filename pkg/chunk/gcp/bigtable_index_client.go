@@ -63,8 +63,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
-	f.IntVar(&cfg.WriteLimit, "bigtable.write-rate-limit", 0, "BigTable rate limiter for write operations, by default it is disabled.")
-	f.IntVar(&cfg.MaxWriteBurstSize, "bigtable.write-limit-burst", 0, "BigTable maximum burst size for write operations, by default it is disabled.")
+	f.IntVar(&cfg.WriteLimit, "bigtable.write-rate-limit", 0, "BigTable rate limiter for write operations, with 0 is disable.")
+	f.IntVar(&cfg.MaxWriteBurstSize, "bigtable.write-limit-burst-size", 0, "BigTable maximum burst size for write operations when the rate limit is enabled, with 0 is disabled.")
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
 }
 
@@ -198,8 +198,14 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 			muts = append(muts, mut)
 		}
 
+		if _, ok := ctx.Deadline(); !ok {
+			ctxDeadline := time.Now().Add(5 * time.Minute)
+			newCtx, cancel := context.WithDeadline(ctx, ctxDeadline)
+			ctx = newCtx
+			defer cancel()
+		}
+
 		s.writeLimiter.WaitN(ctx, len(muts))
-		//rateLimitedWriteRequest.WithLabelValues("write-index").Inc()
 
 		errs, err := table.ApplyBulk(ctx, rowKeys, muts)
 		if err != nil {

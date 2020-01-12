@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
@@ -68,10 +69,16 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 
 	for tableName := range keys {
 		table := s.client.Open(tableName)
-		if s.writeLimiter.Allow() == false {
-			s.writeLimiter.WaitN(ctx, len(muts[tableName]))
-			rateLimitedWriteRequest.WithLabelValues("write-chunks").Inc()
+
+		if _, ok := ctx.Deadline(); !ok {
+			ctxDeadline := time.Now().Add(5 * time.Minute)
+			newCtx, cancel := context.WithDeadline(ctx, ctxDeadline)
+			ctx = newCtx
+			defer cancel()
 		}
+
+		s.writeLimiter.WaitN(ctx, len(muts[tableName]))
+
 		errs, err := table.ApplyBulk(ctx, keys[tableName], muts[tableName])
 		if err != nil {
 			return err

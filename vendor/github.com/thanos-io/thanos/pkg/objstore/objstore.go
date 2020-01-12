@@ -2,10 +2,13 @@ package objstore
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -51,6 +54,9 @@ type BucketReader interface {
 
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
+
+	// ObjectSize returns the size of the specified object.
+	ObjectSize(ctx context.Context, name string) (uint64, error)
 }
 
 // UploadDir uploads all files in srcdir to the bucket with into a top-level directory
@@ -109,7 +115,7 @@ func DownloadFile(ctx context.Context, logger log.Logger, bkt BucketReader, src,
 
 	rc, err := bkt.Get(ctx, src)
 	if err != nil {
-		return errors.Wrap(err, "get file")
+		return errors.Wrapf(err, "get file %s", src)
 	}
 	defer runutil.CloseWithLogOnErr(logger, rc, "download block's file reader")
 
@@ -201,7 +207,7 @@ func BucketWithMetrics(name string, b Bucket, r prometheus.Registerer) Bucket {
 			Name:        "thanos_objstore_bucket_operation_duration_seconds",
 			Help:        "Duration of operations against the bucket",
 			ConstLabels: prometheus.Labels{"bucket": name},
-			Buckets:     []float64{0.005, 0.01, 0.02, 0.04, 0.08, 0.15, 0.3, 0.6, 1, 1.5, 2.5, 5, 10, 20, 30},
+			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 		}, []string{"operation"}),
 		lastSuccessfullUploadTime: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "thanos_objstore_bucket_last_successful_upload_time",
@@ -233,6 +239,21 @@ func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string)
 	b.ops.WithLabelValues(op).Inc()
 
 	return err
+}
+
+// ObjectSize returns the size of the specified object.
+func (b *metricBucket) ObjectSize(ctx context.Context, name string) (uint64, error) {
+	const op = "objectsize"
+	b.ops.WithLabelValues(op).Inc()
+	start := time.Now()
+
+	rc, err := b.bkt.ObjectSize(ctx, name)
+	if err != nil {
+		b.opsFailures.WithLabelValues(op).Inc()
+		return 0, err
+	}
+	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+	return rc, nil
 }
 
 func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -371,4 +392,15 @@ func (rc *timingReadCloser) Read(b []byte) (n int, err error) {
 		rc.ok = false
 	}
 	return n, err
+}
+
+func CreateTemporaryTestBucketName(t testing.TB) string {
+	src := rand.NewSource(time.Now().UnixNano())
+
+	// Bucket name need to conform: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-s3-bucket-naming-requirements.html.
+	name := strings.Replace(strings.Replace(fmt.Sprintf("test_%x_%s", src.Int63(), strings.ToLower(t.Name())), "_", "-", -1), "/", "-", -1)
+	if len(name) >= 63 {
+		name = name[:63]
+	}
+	return name
 }

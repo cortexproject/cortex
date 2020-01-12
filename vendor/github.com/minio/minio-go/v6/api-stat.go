@@ -29,13 +29,19 @@ import (
 
 // BucketExists verify if bucket exists and you have permission to access it.
 func (c Client) BucketExists(bucketName string) (bool, error) {
+	return c.BucketExistsWithContext(context.Background(), bucketName)
+}
+
+// BucketExistsWithContext verify if bucket exists and you have permission to access it. Allows for a Context to
+// control cancellations and timeouts.
+func (c Client) BucketExistsWithContext(ctx context.Context, bucketName string) (bool, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return false, err
 	}
 
 	// Execute HEAD on bucketName.
-	resp, err := c.executeMethod(context.Background(), "HEAD", requestMetadata{
+	resp, err := c.executeMethod(ctx, "HEAD", requestMetadata{
 		bucketName:       bucketName,
 		contentSHA256Hex: emptySHA256Hex,
 	})
@@ -91,6 +97,12 @@ func extractObjMetadata(header http.Header) http.Header {
 
 // StatObject verifies if object exists and you have permission to access.
 func (c Client) StatObject(bucketName, objectName string, opts StatObjectOptions) (ObjectInfo, error) {
+	return c.StatObjectWithContext(context.Background(), bucketName, objectName, opts)
+}
+
+// StatObjectWithContext verifies if object exists and you have permission to access with a context to control
+// cancellations and timeouts.
+func (c Client) StatObjectWithContext(ctx context.Context, bucketName, objectName string, opts StatObjectOptions) (ObjectInfo, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ObjectInfo{}, err
@@ -98,7 +110,7 @@ func (c Client) StatObject(bucketName, objectName string, opts StatObjectOptions
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
 		return ObjectInfo{}, err
 	}
-	return c.statObject(context.Background(), bucketName, objectName, opts)
+	return c.statObject(ctx, bucketName, objectName, opts)
 }
 
 // Lower level API for statObject supporting pre-conditions and range headers.
@@ -176,6 +188,17 @@ func (c Client) statObject(ctx context.Context, bucketName, objectName string, o
 	if t, err := time.Parse(http.TimeFormat, expiryStr); err == nil {
 		expTime = t.UTC()
 	}
+
+	metadata := extractObjMetadata(resp.Header)
+	userMetadata := map[string]string{}
+	const xamzmeta = "x-amz-meta-"
+	const xamzmetaLen = len(xamzmeta)
+	for k, v := range metadata {
+		if strings.HasPrefix(strings.ToLower(k), xamzmeta) {
+			userMetadata[k[xamzmetaLen:]] = v[0]
+		}
+	}
+
 	// Save object metadata info.
 	return ObjectInfo{
 		ETag:         md5sum,
@@ -187,6 +210,7 @@ func (c Client) statObject(ctx context.Context, bucketName, objectName string, o
 		// Extract only the relevant header keys describing the object.
 		// following function filters out a list of standard set of keys
 		// which are not part of object metadata.
-		Metadata: extractObjMetadata(resp.Header),
+		Metadata:     metadata,
+		UserMetadata: userMetadata,
 	}, nil
 }

@@ -16,6 +16,8 @@ import (
 	longrunning "google.golang.org/genproto/googleapis/longrunning"
 	field_mask "google.golang.org/genproto/protobuf/field_mask"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -1650,6 +1652,68 @@ type BigtableInstanceAdminServer interface {
 	SetIamPolicy(context.Context, *v1.SetIamPolicyRequest) (*v1.Policy, error)
 	// Returns permissions that the caller has on the specified instance resource.
 	TestIamPermissions(context.Context, *v1.TestIamPermissionsRequest) (*v1.TestIamPermissionsResponse, error)
+}
+
+// UnimplementedBigtableInstanceAdminServer can be embedded to have forward compatible implementations.
+type UnimplementedBigtableInstanceAdminServer struct {
+}
+
+func (*UnimplementedBigtableInstanceAdminServer) CreateInstance(ctx context.Context, req *CreateInstanceRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateInstance not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) GetInstance(ctx context.Context, req *GetInstanceRequest) (*Instance, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInstance not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) ListInstances(ctx context.Context, req *ListInstancesRequest) (*ListInstancesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListInstances not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) UpdateInstance(ctx context.Context, req *Instance) (*Instance, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateInstance not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) PartialUpdateInstance(ctx context.Context, req *PartialUpdateInstanceRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PartialUpdateInstance not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) DeleteInstance(ctx context.Context, req *DeleteInstanceRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteInstance not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) CreateCluster(ctx context.Context, req *CreateClusterRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateCluster not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) GetCluster(ctx context.Context, req *GetClusterRequest) (*Cluster, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCluster not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) ListClusters(ctx context.Context, req *ListClustersRequest) (*ListClustersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListClusters not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) UpdateCluster(ctx context.Context, req *Cluster) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateCluster not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) DeleteCluster(ctx context.Context, req *DeleteClusterRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteCluster not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) CreateAppProfile(ctx context.Context, req *CreateAppProfileRequest) (*AppProfile, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateAppProfile not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) GetAppProfile(ctx context.Context, req *GetAppProfileRequest) (*AppProfile, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAppProfile not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) ListAppProfiles(ctx context.Context, req *ListAppProfilesRequest) (*ListAppProfilesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAppProfiles not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) UpdateAppProfile(ctx context.Context, req *UpdateAppProfileRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateAppProfile not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) DeleteAppProfile(ctx context.Context, req *DeleteAppProfileRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteAppProfile not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) GetIamPolicy(ctx context.Context, req *v1.GetIamPolicyRequest) (*v1.Policy, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetIamPolicy not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) SetIamPolicy(ctx context.Context, req *v1.SetIamPolicyRequest) (*v1.Policy, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetIamPolicy not implemented")
+}
+func (*UnimplementedBigtableInstanceAdminServer) TestIamPermissions(ctx context.Context, req *v1.TestIamPermissionsRequest) (*v1.TestIamPermissionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TestIamPermissions not implemented")
 }
 
 func RegisterBigtableInstanceAdminServer(s *grpc.Server, srv BigtableInstanceAdminServer) {

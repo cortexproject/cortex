@@ -497,6 +497,12 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
+		// If the ingester failed to clean it's ring entry up in can leave it's state in LEAVING.
+		// Move it into ACTIVE to ensure the ingester joins the ring.
+		if ingesterDesc.State == LEAVING && len(ingesterDesc.Tokens) == i.cfg.NumTokens {
+			ingesterDesc.State = ACTIVE
+		}
+
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
 		i.setState(ingesterDesc.State)
 		tokens, _ := ringDesc.TokensFor(i.ID)

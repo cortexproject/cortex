@@ -65,7 +65,7 @@ weight = 1
 [params]
 
 # First one is picked as the Twitter card image if not set on page.
-# images = ["images/project-illustration.png"]
+images = ["https://cncf-branding.netlify.com/img/projects/cortex/horizontal/color/cortex-horizontal-color.png"]
 
 # Menu title if your navbar has a versions selector to access old versions of your site.
 # This menu appears only if you have at least one [params.versions] set.

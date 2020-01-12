@@ -1,0 +1,42 @@
+//
+// Top navigation bar
+//
+
+.td-navbar {
+    .nav-link {
+        font-weight: $font-weight-normal;
+    }
+}
+
+//
+// Left sidebar
+//
+
+.td-sidebar-nav {
+    &__section {
+        ul {
+            margin-left: 5px;
+        }
+    }
+    
+    .td-sidebar-link {
+        padding: 0.5rem 0;
+
+        &__page {
+            font-weight: $font-weight-normal;
+        }
+    }
+    
+    // Display a left border on the active page
+    a {
+        font-size: 0.9rem;
+        font-weight: $font-weight-normal;
+        padding-left: 13px !important;
+
+        &.active {
+            border-left: 3px solid $primary;
+            font-weight: $font-weight-bold;
+            padding-left: 10px !important;
+        }
+    }
+}

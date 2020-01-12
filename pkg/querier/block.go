@@ -47,9 +47,12 @@ func NewBlockQuerier(cfg tsdb.Config, logLevel logging.Level, r prometheus.Regis
 	}
 	b.us = us
 
+	level.Info(util.Logger).Log("msg", "synchronizing TSDB blocks for all users")
 	if err := us.InitialSync(context.Background()); err != nil {
-		level.Warn(util.Logger).Log("msg", "InitialSync failed", "err", err)
+		level.Warn(util.Logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
+		return nil, err
 	}
+	level.Info(util.Logger).Log("msg", "successfully synchronized TSDB blocks for all users")
 
 	stopc := make(chan struct{})
 	go runutil.Repeat(30*time.Second, stopc, func() error {

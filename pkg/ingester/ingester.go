@@ -308,13 +308,13 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 				continue
 			}
 
-			return nil, err
+			return nil, wrapWithUser(err, userID)
 		}
 	}
 	client.ReuseSlice(req.Timeseries)
 
 	if lastPartialErr != nil {
-		return &client.WriteResponse{}, lastPartialErr.WrappedError()
+		return &client.WriteResponse{}, lastPartialErr.WrapWithUser(userID).WrappedError()
 	}
 	return &client.WriteResponse{}, nil
 }
@@ -341,7 +341,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		if ve, ok := err.(*validationError); ok {
 			state.discardedSamples.WithLabelValues(ve.errorType).Inc()
 		}
-		state = nil // don't want to unlock the fp if there is an error
+
+		// Reset the state so that the defer will not try to unlock the fpLocker
+		// in case of error, because that lock has already been released on error.
+		state = nil
 		return err
 	}
 

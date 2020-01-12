@@ -1,0 +1,3 @@
+io/ioutil.WriteFile
+io/ioutil.ReadFile
+(github.com/go-kit/kit/log.Logger).Log

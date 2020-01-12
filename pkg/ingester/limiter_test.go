@@ -90,7 +90,7 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerMetric:  testData.maxLocalSeriesPerMetric,
 				MaxGlobalSeriesPerMetric: testData.maxGlobalSeriesPerMetric,
-			})
+			}, nil)
 			require.NoError(t, err)
 
 			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
@@ -180,7 +180,7 @@ func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerUser:  testData.maxLocalSeriesPerUser,
 				MaxGlobalSeriesPerUser: testData.maxGlobalSeriesPerUser,
-			})
+			}, nil)
 			require.NoError(t, err)
 
 			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
@@ -242,7 +242,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerMetric:  testData.maxLocalSeriesPerMetric,
 				MaxGlobalSeriesPerMetric: testData.maxGlobalSeriesPerMetric,
-			})
+			}, nil)
 			require.NoError(t, err)
 
 			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
@@ -304,7 +304,7 @@ func TestSeriesLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerUser:  testData.maxLocalSeriesPerUser,
 				MaxGlobalSeriesPerUser: testData.maxGlobalSeriesPerUser,
-			})
+			}, nil)
 			require.NoError(t, err)
 
 			limiter := NewSeriesLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)

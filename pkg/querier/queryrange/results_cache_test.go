@@ -124,7 +124,7 @@ func TestShouldCache(t *testing.T) {
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
-						Name:   "something",
+						Name:   "meaninglessheader",
 						Values: []string{},
 					},
 				},
@@ -143,7 +143,7 @@ func TestShouldCache(t *testing.T) {
 			}),
 			expected: false,
 		},
-		// Header contains extra values.
+		// Header contains extra values but still good.
 		{
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
@@ -153,7 +153,7 @@ func TestShouldCache(t *testing.T) {
 					},
 				},
 			}),
-			expected: true,
+			expected: false,
 		},
 	} {
 		{

@@ -143,6 +143,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 func shouldCacheResponse(r Response) bool {
 	if promResp, ok := r.(*PrometheusResponse); ok {
 		shouldNotCache := false
+	outer:
 		for _, hv := range promResp.Headers {
 			if hv == nil {
 				continue
@@ -150,8 +151,11 @@ func shouldCacheResponse(r Response) bool {
 			if hv.Name != cachecontrolHeader {
 				continue
 			}
-			if hv.Values[0] == noCacheValue {
-				shouldNotCache = true
+			for _, v := range hv.Values {
+				if v == noCacheValue {
+					shouldNotCache = true
+					break outer
+				}
 			}
 		}
 		return !shouldNotCache

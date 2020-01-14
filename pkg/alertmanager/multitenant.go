@@ -406,15 +406,6 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 	return nil
 }
 
-// alertmanagerConfigFromConfig returns the Alertmanager config from the Cortex configuration.
-func alertmanagerConfigFromConfig(c alerts.AlertConfigDesc) (*amconfig.Config, error) {
-	cfg, err := amconfig.Load(c.RawConfig)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing Alertmanager config: %s", err)
-	}
-	return cfg, nil
-}
-
 func (am *MultitenantAlertmanager) deleteUser(userID string) {
 	am.alertmanagersMtx.Lock()
 	if existing, hasExisting := am.alertmanagers[userID]; hasExisting {

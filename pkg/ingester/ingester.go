@@ -355,7 +355,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		slot := startOfCycle.Add(time.Duration(uint64(fp) % uint64(i.cfg.MaxChunkAge)))
 		// If adding this sample means the head chunk will span that point in time, close so it will get flushed
 		if series.head().FirstTime < slot && timestamp >= slot {
-			series.closeHead()
+			series.closeHead(reasonSpreadFlush)
 		}
 	}
 
